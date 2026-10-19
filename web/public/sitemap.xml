@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Las URL las completa el build con VITE_SITE_URL. Sin esa variable, este archivo no se publica. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>__SITE_URL__/</loc>
+  </url>
+  <url>
+    <loc>__SITE_URL__/richiesta/</loc>
+  </url>
+  <url>
+    <loc>__SITE_URL__/privacy/</loc>
+  </url>
+</urlset>

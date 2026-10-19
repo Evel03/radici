@@ -1,0 +1,7 @@
+# Se permite el rastreo: mientras VITE_NOINDEX=true cada página lleva
+# <meta name="robots" content="noindex">, y el buscador tiene que poder leerla.
+# La URL del sitemap la completa el build con VITE_SITE_URL (sin ella, se quita la línea).
+User-agent: *
+Allow: /
+
+Sitemap: __SITE_URL__/sitemap.xml

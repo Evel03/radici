@@ -1,0 +1,62 @@
+/* /privacy: texto largo y legible. */
+
+.legal {
+  padding-block: 2rem 4rem;
+}
+
+.draft {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding: 0.9rem 1rem;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.draft__badge {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.legal__title {
+  font-size: clamp(2rem, 6vw, 2.8rem);
+}
+
+.legal__meta {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.legal__intro {
+  font-size: 1.1rem;
+}
+
+.legal section {
+  margin-top: 2rem;
+}
+
+.legal h2 {
+  font-size: 1.35rem;
+}
+
+.legal ul {
+  margin: 0 0 1em;
+  padding-left: 1.25rem;
+}
+
+.legal li {
+  margin-bottom: 0.4rem;
+}
+
+.legal__back {
+  margin-top: 3rem;
+}

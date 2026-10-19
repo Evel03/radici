@@ -1,0 +1,500 @@
+/* Landing: composición tipográfica, etiquetas de táper y secciones. */
+
+:root {
+  --band-bg: #8a3815;
+  --band-text: #fbf6ee;
+  --label-bg: #fffaf2;
+  --label-tape: #e9c9a8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --band-bg: #ee9a72;
+    --band-text: #1c1713;
+    --label-bg: #f4ebe1;
+    --label-tape: #c99a74;
+  }
+}
+
+.eyebrow {
+  margin-bottom: 0.75rem;
+  color: var(--olive);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Hero */
+.hero {
+  overflow: hidden;
+  padding-block: 2.5rem 3rem;
+  background:
+    radial-gradient(60rem 30rem at 110% -10%, var(--accent-soft), transparent 60%),
+    var(--bg);
+}
+
+.hero__inner {
+  display: grid;
+  gap: 2.5rem;
+  align-items: center;
+}
+
+.hero__title {
+  max-width: 16ch;
+  margin-bottom: 1rem;
+}
+
+.hero__lead {
+  max-width: 38rem;
+  color: var(--muted);
+  font-size: 1.15rem;
+}
+
+.hero .actions {
+  margin-top: 1.5rem;
+}
+
+.hero__note {
+  margin: 1rem 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.hero__art {
+  position: relative;
+  display: grid;
+  gap: 0.9rem;
+  max-width: 22rem;
+  padding-top: 2rem;
+}
+
+.hero__steam {
+  position: absolute;
+  top: -0.5rem;
+  left: 2.5rem;
+  width: 6rem;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.45;
+}
+
+.fridge-label {
+  position: relative;
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.9rem 1.1rem 0.9rem 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--label-bg);
+  box-shadow: var(--shadow);
+  color: #2a1f18;
+}
+
+.fridge-label::before {
+  position: absolute;
+  top: -0.55rem;
+  left: 1rem;
+  width: 3.2rem;
+  height: 1.1rem;
+  background: var(--label-tape);
+  opacity: 0.85;
+  transform: rotate(-4deg);
+  content: "";
+}
+
+.fridge-label__dish {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.fridge-label__meta {
+  color: #5f5047;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fridge-label--1 {
+  transform: rotate(-2deg);
+}
+
+.fridge-label--2 {
+  margin-left: 1.5rem;
+  transform: rotate(1.5deg);
+}
+
+.fridge-label--3 {
+  margin-left: 0.5rem;
+  transform: rotate(-1deg);
+}
+
+@media (min-width: 56rem) {
+  .hero {
+    padding-block: 4.5rem 5rem;
+  }
+
+  .hero__inner {
+    grid-template-columns: 1.3fr 1fr;
+  }
+
+  .hero__art {
+    justify-self: end;
+  }
+}
+
+/* Secciones */
+.section {
+  padding-block: 3.5rem;
+}
+
+.section--alt {
+  background: var(--bg-alt);
+}
+
+.section__title {
+  max-width: 24ch;
+}
+
+.section__intro {
+  max-width: 40rem;
+  margin-bottom: 2rem;
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
+@media (min-width: 56rem) {
+  .section {
+    padding-block: 5rem;
+  }
+}
+
+/* Cómo funciona */
+.steps {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.step {
+  position: relative;
+  padding: 1.5rem 1.25rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  counter-increment: step;
+}
+
+.step::before {
+  position: absolute;
+  top: 1.1rem;
+  right: 1.25rem;
+  color: var(--accent);
+  font-family: var(--font-serif);
+  font-size: 2.4rem;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0.35;
+  content: counter(step);
+}
+
+.step__icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-bottom: 0.75rem;
+  color: var(--accent);
+}
+
+.step__title {
+  margin-bottom: 0.4rem;
+}
+
+.step p {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (min-width: 40rem) {
+  .steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 64rem) {
+  .steps {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Qué incluye */
+.checklist {
+  display: grid;
+  gap: 1.25rem 2.5rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checklist li {
+  display: flex;
+  gap: 0.9rem;
+}
+
+.checklist__icon {
+  width: 2rem;
+  height: 2rem;
+  padding: 0.3rem;
+  border-radius: 999px;
+  background: var(--olive-soft);
+  color: var(--olive);
+  stroke-width: 2.4;
+}
+
+.checklist h3 {
+  margin-bottom: 0.25rem;
+  font-size: 1.12rem;
+}
+
+.checklist p {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (min-width: 48rem) {
+  .checklist {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Cómo se paga */
+.price-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.card {
+  padding: 1.5rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card p:last-child {
+  margin-bottom: 0;
+}
+
+.card__title {
+  font-size: 1.3rem;
+}
+
+.card--olive {
+  border-color: transparent;
+  background: var(--olive-soft);
+}
+
+.card--olive .card__title {
+  color: var(--olive);
+}
+
+.card--example {
+  border: 2px dashed var(--line);
+}
+
+.example {
+  margin: 1rem 0;
+}
+
+.example__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.45rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.example__row dt {
+  color: var(--muted);
+}
+
+.example__row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.example__row--total {
+  border-bottom: 0;
+  font-size: 1.15rem;
+}
+
+.example__row--total dt {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.example__row--total dd {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+@media (min-width: 48rem) {
+  .price-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 64rem) {
+  .price-grid {
+    grid-template-columns: 1fr 1fr 1fr 1.2fr;
+  }
+}
+
+/* Para quién */
+.who-grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.who {
+  padding: 1.5rem 1.25rem;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.who__icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--accent);
+}
+
+.who p {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (min-width: 48rem) {
+  .who-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Alergias */
+.allergy {
+  display: grid;
+  gap: 2rem;
+}
+
+.allergy__text p {
+  max-width: 40rem;
+}
+
+.allergy__label {
+  color: var(--olive);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tags li {
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.95rem;
+}
+
+@media (min-width: 56rem) {
+  .allergy {
+    grid-template-columns: 1.4fr 1fr;
+    align-items: start;
+  }
+}
+
+/* Preguntas */
+.faq {
+  border-top: 1px solid var(--line);
+}
+
+.faq details {
+  border-bottom: 1px solid var(--line);
+}
+
+.faq summary {
+  position: relative;
+  padding: 1.1rem 2.5rem 1.1rem 0;
+  font-weight: 650;
+  list-style: none;
+  cursor: pointer;
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary::after {
+  position: absolute;
+  top: 50%;
+  right: 0.25rem;
+  color: var(--accent);
+  font-size: 1.5rem;
+  font-weight: 400;
+  line-height: 1;
+  transform: translateY(-50%);
+  content: "+";
+}
+
+.faq details[open] summary::after {
+  content: "\2212";
+}
+
+.faq details p {
+  margin: 0;
+  padding-bottom: 1.1rem;
+  color: var(--muted);
+}
+
+/* CTA final */
+.final-cta {
+  padding-block: 3.5rem;
+  background: var(--band-bg);
+  color: var(--band-text);
+  text-align: center;
+}
+
+.final-cta__inner {
+  display: grid;
+  justify-items: center;
+}
+
+.final-cta__title {
+  max-width: 20ch;
+}
+
+.final-cta p {
+  max-width: 34rem;
+  font-size: 1.1rem;
+}
+
+.final-cta .btn--light:focus-visible {
+  outline-color: var(--band-text);
+}

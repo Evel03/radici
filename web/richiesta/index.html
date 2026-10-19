@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="it" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="request.metaTitle"></title>
+    <meta name="description" data-i18n-attr="content:request.metaDescription" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fbf6ee" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1c1713" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="__BRAND_NAME__" />
+    <meta property="og:locale" content="it_IT" />
+    <meta property="og:title" data-i18n-attr="content:request.metaTitle" />
+    <meta property="og:description" data-i18n-attr="content:request.metaDescription" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script type="module" src="/src/pages/richiesta.ts"></script>
+  </head>
+  <body>
+    <!-- partial:header -->
+
+    <main id="main" class="request-page">
+      <div class="container">
+        <header class="page-head">
+          <h1 class="page-head__title" data-i18n="request.title"></h1>
+          <p class="page-head__intro" data-i18n="request.intro"></p>
+        </header>
+
+        <noscript>
+          <p class="notice notice--warn" data-i18n="request.noscript"></p>
+        </noscript>
+
+        <section id="done" class="done" tabindex="-1" aria-labelledby="done-title" hidden>
+          <svg class="icon done__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
+          <h2 id="done-title" class="done__title" data-i18n="request.done.title"></h2>
+          <p data-i18n="request.done.text"></p>
+          <div class="actions">
+            <a id="done-retry" class="btn btn--primary" href="#" target="_blank" rel="noopener noreferrer" data-i18n="request.done.retry"></a>
+            <button id="done-edit" class="btn btn--ghost" type="button" data-i18n="request.done.edit"></button>
+          </div>
+        </section>
+
+        <div id="request-layout" class="request-layout">
+          <form id="request-form" class="request-form" novalidate>
+            <fieldset class="panel">
+              <legend class="panel__title" data-i18n="request.typeLegend"></legend>
+              <div class="choices choices--2">
+                <label class="choice">
+                  <input type="radio" name="type" value="week" checked />
+                  <span class="choice__body">
+                    <span class="choice__title" data-i18n="request.type.week"></span>
+                    <span class="choice__hint" data-i18n="request.typeHint.week"></span>
+                  </span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="type" value="extra" />
+                  <span class="choice__body">
+                    <span class="choice__title" data-i18n="request.type.extra"></span>
+                    <span class="choice__hint" data-i18n="request.typeHint.extra"></span>
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset class="panel" aria-describedby="err-people">
+              <legend class="panel__title" data-i18n="request.peopleLegend"></legend>
+              <div class="steppers">
+                <div class="field">
+                  <label class="field__label" for="adults" data-i18n="request.adults"></label>
+                  <div class="stepper">
+                    <button class="stepper__btn" type="button" data-step="-1" aria-controls="adults" data-i18n-attr="aria-label:request.adultsLess">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14" /></svg>
+                    </button>
+                    <input class="stepper__input" id="adults" name="adults" type="number" inputmode="numeric" step="1" value="2" />
+                    <button class="stepper__btn" type="button" data-step="1" aria-controls="adults" data-i18n-attr="aria-label:request.adultsMore">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14M12 5v14" /></svg>
+                    </button>
+                  </div>
+                  <p class="field__error" id="err-adults" hidden></p>
+                </div>
+                <div class="field">
+                  <label class="field__label" for="kids" data-i18n="request.kids"></label>
+                  <div class="stepper">
+                    <button class="stepper__btn" type="button" data-step="-1" aria-controls="kids" data-i18n-attr="aria-label:request.kidsLess">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14" /></svg>
+                    </button>
+                    <input class="stepper__input" id="kids" name="kids" type="number" inputmode="numeric" step="1" value="0" aria-describedby="hint-kids" />
+                    <button class="stepper__btn" type="button" data-step="1" aria-controls="kids" data-i18n-attr="aria-label:request.kidsMore">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14M12 5v14" /></svg>
+                    </button>
+                  </div>
+                  <p class="field__hint" id="hint-kids" data-i18n="request.kidsHint"></p>
+                  <p class="field__error" id="err-kids" hidden></p>
+                </div>
+              </div>
+              <p class="field__error" id="err-people" hidden></p>
+            </fieldset>
+
+            <fieldset class="panel">
+              <legend class="panel__title" data-i18n="request.planLegend"></legend>
+              <div class="field">
+                <label class="field__label" for="days" data-i18n="request.days"></label>
+                <div class="stepper">
+                  <button class="stepper__btn" type="button" data-step="-1" aria-controls="days" data-i18n-attr="aria-label:request.daysLess">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14" /></svg>
+                  </button>
+                  <input class="stepper__input" id="days" name="days" type="number" inputmode="numeric" step="1" value="5" aria-describedby="hint-days" />
+                  <button class="stepper__btn" type="button" data-step="1" aria-controls="days" data-i18n-attr="aria-label:request.daysMore">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14M12 5v14" /></svg>
+                  </button>
+                </div>
+                <p class="field__hint" id="hint-days" data-i18n="request.daysHint"></p>
+                <p class="field__error" id="err-days" hidden></p>
+              </div>
+              <fieldset class="subgroup" aria-describedby="err-meals">
+                <legend class="subgroup__title" data-i18n="request.mealsLegend"></legend>
+                <div class="choices choices--3">
+                  <label class="choice choice--compact">
+                    <input type="radio" name="meals" value="lunch" />
+                    <span class="choice__body"><span class="choice__title" data-i18n="request.meals.lunch"></span></span>
+                  </label>
+                  <label class="choice choice--compact">
+                    <input type="radio" name="meals" value="dinner" checked />
+                    <span class="choice__body"><span class="choice__title" data-i18n="request.meals.dinner"></span></span>
+                  </label>
+                  <label class="choice choice--compact">
+                    <input type="radio" name="meals" value="both" />
+                    <span class="choice__body"><span class="choice__title" data-i18n="request.meals.both"></span></span>
+                  </label>
+                </div>
+                <p class="field__error" id="err-meals" hidden></p>
+              </fieldset>
+            </fieldset>
+
+            <fieldset class="panel">
+              <legend class="panel__title" data-i18n="request.restrictionsLegend"></legend>
+              <p class="panel__intro" data-i18n="request.restrictionsIntro"></p>
+
+              <fieldset class="subgroup">
+                <legend class="subgroup__title" data-i18n="request.allergensTitle"></legend>
+                <div class="chips">
+                  <label class="chip"><input type="checkbox" name="allergens" value="gluten" /><span data-i18n="allergens.gluten"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="crustaceans" /><span data-i18n="allergens.crustaceans"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="eggs" /><span data-i18n="allergens.eggs"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="fish" /><span data-i18n="allergens.fish"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="peanuts" /><span data-i18n="allergens.peanuts"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="soy" /><span data-i18n="allergens.soy"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="milk" /><span data-i18n="allergens.milk"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="nuts" /><span data-i18n="allergens.nuts"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="celery" /><span data-i18n="allergens.celery"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="mustard" /><span data-i18n="allergens.mustard"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="sesame" /><span data-i18n="allergens.sesame"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="sulphites" /><span data-i18n="allergens.sulphites"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="lupin" /><span data-i18n="allergens.lupin"></span></label>
+                  <label class="chip"><input type="checkbox" name="allergens" value="molluscs" /><span data-i18n="allergens.molluscs"></span></label>
+                </div>
+                <p id="celiac-note" class="note" data-i18n="request.celiacNote"></p>
+              </fieldset>
+
+              <fieldset class="subgroup">
+                <legend class="subgroup__title" data-i18n="request.dietsTitle"></legend>
+                <div class="chips">
+                  <label class="chip"><input type="checkbox" name="diets" value="vegetarian" /><span data-i18n="diets.vegetarian"></span></label>
+                  <label class="chip"><input type="checkbox" name="diets" value="vegan" /><span data-i18n="diets.vegan"></span></label>
+                </div>
+              </fieldset>
+
+              <div class="field">
+                <label class="field__label" for="restrictionsNote" data-i18n="request.restrictionsNoteLabel"></label>
+                <input class="input" id="restrictionsNote" name="restrictionsNote" type="text" autocomplete="off" aria-describedby="hint-restrictionsNote" />
+                <p class="field__hint" id="hint-restrictionsNote" data-i18n="request.restrictionsNoteHint"></p>
+                <p class="field__error" id="err-restrictionsNote" hidden></p>
+              </div>
+
+              <div id="health-consent" class="consent consent--health" hidden>
+                <label class="check">
+                  <input id="healthConsent" name="healthConsent" type="checkbox" aria-describedby="hint-healthConsent" />
+                  <span data-i18n="request.healthConsentLabel"></span>
+                </label>
+                <p class="field__hint" id="hint-healthConsent" data-i18n="request.healthConsentHint"></p>
+                <p class="field__error" id="err-healthConsent" hidden></p>
+              </div>
+            </fieldset>
+
+            <fieldset class="panel">
+              <legend class="panel__title" data-i18n="request.whenLegend"></legend>
+              <div class="field">
+                <label class="field__label" for="date" data-i18n="request.dateLabel"></label>
+                <input class="input input--date" id="date" name="date" type="date" aria-describedby="hint-date" />
+                <p class="field__hint" id="hint-date" data-i18n="request.dateHint"></p>
+                <p class="field__error" id="err-date" hidden></p>
+              </div>
+              <fieldset class="subgroup">
+                <legend class="subgroup__title" data-i18n="request.slotLegend"></legend>
+                <div class="choices choices--3">
+                  <label class="choice choice--compact">
+                    <input type="radio" name="slot" value="morning" />
+                    <span class="choice__body"><span class="choice__title" data-i18n="request.slot.morning"></span></span>
+                  </label>
+                  <label class="choice choice--compact">
+                    <input type="radio" name="slot" value="afternoon" />
+                    <span class="choice__body"><span class="choice__title" data-i18n="request.slot.afternoon"></span></span>
+                  </label>
+                  <label class="choice choice--compact">
+                    <input type="radio" name="slot" value="any" checked />
+                    <span class="choice__body"><span class="choice__title" data-i18n="request.slot.any"></span></span>
+                  </label>
+                </div>
+              </fieldset>
+            </fieldset>
+
+            <fieldset class="panel">
+              <legend class="panel__title" data-i18n="request.contactLegend"></legend>
+              <div class="field">
+                <label class="field__label" for="name" data-i18n="request.nameLabel"></label>
+                <input class="input" id="name" name="name" type="text" autocomplete="name" required />
+                <p class="field__error" id="err-name" hidden></p>
+              </div>
+              <div class="field">
+                <label class="field__label" for="zone" data-i18n="request.zoneLabel"></label>
+                <input class="input" id="zone" name="zone" type="text" autocomplete="off" required aria-describedby="hint-zone" />
+                <p class="field__hint" id="hint-zone" data-i18n="request.zoneHint"></p>
+                <p class="field__error" id="err-zone" hidden></p>
+              </div>
+              <div class="field">
+                <label class="field__label" for="phone" data-i18n="request.phoneLabel"></label>
+                <input class="input" id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required aria-describedby="hint-phone" />
+                <p class="field__hint" id="hint-phone" data-i18n="request.phoneHint"></p>
+                <p class="field__error" id="err-phone" hidden></p>
+              </div>
+              <div class="field">
+                <label class="field__label" for="email" data-i18n="request.emailLabel"></label>
+                <input class="input" id="email" name="email" type="email" inputmode="email" autocomplete="email" />
+                <p class="field__error" id="err-email" hidden></p>
+              </div>
+              <div class="field">
+                <label class="field__label" for="notes" data-i18n="request.notesLabel"></label>
+                <textarea class="input" id="notes" name="notes" rows="3" aria-describedby="hint-notes"></textarea>
+                <p class="field__hint" id="hint-notes" data-i18n="request.notesHint"></p>
+                <p class="field__error" id="err-notes" hidden></p>
+              </div>
+            </fieldset>
+
+            <div class="panel panel--submit">
+              <div class="consent">
+                <label class="check">
+                  <input id="privacyConsent" name="privacyConsent" type="checkbox" required />
+                  <span data-i18n-html="request.privacyConsentLabel"></span>
+                </label>
+                <p class="field__error" id="err-privacyConsent" hidden></p>
+              </div>
+              <p id="config-warning" class="notice notice--error" data-i18n="request.missingNumber" hidden></p>
+              <p id="form-error" class="notice notice--error" role="alert" hidden></p>
+              <button id="submit" class="btn btn--primary btn--lg btn--block" type="submit" disabled>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M4 20l1.3-3.9A8 8 0 1 1 8 18.8z" />
+                </svg>
+                <span data-i18n="request.submit"></span>
+              </button>
+              <p class="field__hint field__hint--center" data-i18n="request.submitHint"></p>
+            </div>
+          </form>
+
+          <aside id="quote" class="quote" aria-labelledby="quote-title">
+            <h2 id="quote-title" class="quote__title" data-i18n="request.quote.title"></h2>
+            <div id="quote-body">
+              <dl class="quote__list">
+                <div class="quote__row quote__row--total">
+                  <dt data-i18n="request.quote.total"></dt>
+                  <dd id="q-total" aria-live="polite"></dd>
+                </div>
+                <div class="quote__row">
+                  <dt data-i18n="request.quote.service"></dt>
+                  <dd id="q-service"></dd>
+                </div>
+                <div class="quote__row">
+                  <dt data-i18n="request.quote.groceries"></dt>
+                  <dd id="q-groceries"></dd>
+                </div>
+                <div class="quote__row">
+                  <dt data-i18n="request.quote.time"></dt>
+                  <dd id="q-time"></dd>
+                </div>
+                <div class="quote__row quote__row--portions">
+                  <dt data-i18n="request.quote.portions"></dt>
+                  <dd id="q-portions"></dd>
+                </div>
+              </dl>
+              <p class="quote__note" data-i18n="request.quote.note"></p>
+            </div>
+            <p id="quote-invalid" class="quote__invalid" data-i18n="request.quote.invalid" hidden></p>
+          </aside>
+        </div>
+      </div>
+    </main>
+
+    <!-- partial:footer -->
+  </body>
+</html>
