@@ -4,7 +4,6 @@
 // Nunca se registran en consola datos del pedido (contacto, salud, notas).
 import "../styles/base.css";
 import "../styles/request.css";
-import { config } from "../config.ts";
 import { LIMITS } from "../engine.ts";
 import type { MessageKey, Params } from "../i18n/core.ts";
 import { addDays, todayInRome } from "../lib/dates.ts";
@@ -25,6 +24,7 @@ import {
 } from "../request/model.ts";
 import { buildPayload, type PayloadOptions } from "../request/payload.ts";
 import { computeQuote } from "../request/quote.ts";
+import { createRequestKeys } from "../request/request-key.ts";
 import { publicRequestUrl, rateLimitMessage, sendPublicRequest, type SubmitOutcome } from "../request/submit.ts";
 import { summaryRows } from "../request/summary.ts";
 import { loadTurnstileScript, mountTurnstile, type TurnstileWidget } from "../request/turnstile.ts";
@@ -37,6 +37,7 @@ import {
   type FieldErrors,
   type FieldName,
 } from "../request/validate.ts";
+import { config } from "../site-config.ts";
 import { initShell, type Shell } from "./shell.ts";
 
 function byId<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -216,8 +217,24 @@ interface FormMessage {
   retry?: boolean;
 }
 
+/**
+ * En mobile el panel del presupuesto queda fijo abajo y tapa lo que pasa por detrás. Su alto real (cambia
+ * con el idioma, el tamaño de letra o el zoom) va a --quote-height, que usa el scroll-padding de
+ * request.css: así el control con foco nunca queda debajo del panel.
+ */
+function trackQuoteHeight(panel: HTMLElement): void {
+  const root = document.documentElement;
+  const apply = (): void => {
+    root.style.setProperty("--quote-height", `${Math.ceil(panel.getBoundingClientRect().height)}px`);
+  };
+  apply();
+  if (typeof ResizeObserver === "function") new ResizeObserver(apply).observe(panel);
+}
+
 function startRequestPage(shell: Shell): void {
   let phase: "editing" | "sending" | "done" = "editing";
+  /** Clave de idempotencia: la misma en los reintentos, para que el servidor nunca duplique el pedido. */
+  const keys = createRequestKeys();
   /** Después del primer intento de envío los errores se actualizan mientras se escribe. */
   let submitted = false;
   /** El cliente pidió enviar y falta el token de Turnstile: se envía solo cuando llegue. */
@@ -439,8 +456,12 @@ function startRequestPage(shell: Shell): void {
     showFormMessage(null);
     phase = "sending";
     setSending(true);
-    const payload = buildPayload(data, payloadOptions(token));
+    // La clave se reutiliza en los reintentos (red, 5xx, 429) y cambia solo según request-key.ts.
+    const snapshot = JSON.stringify(data);
+    keys.edited(snapshot);
+    const payload = buildPayload(data, { ...payloadOptions(token), requestKey: keys.current() });
     const outcome = await sendPublicRequest(endpoint, payload);
+    keys.settle(outcome.kind, snapshot);
     phase = "editing";
     setSending(false);
     // El servidor guarda el email en minúsculas: se muestra igual.
@@ -465,6 +486,7 @@ function startRequestPage(shell: Shell): void {
   const update = (): void => {
     if (phase === "done") return;
     const data = readForm();
+    keys.edited(JSON.stringify(data));
     healthBlock.hidden = !hasHealthData(data);
     celiacNote.classList.toggle("note--active", data.allergens.includes("gluten"));
     syncSteppers();
@@ -522,4 +544,7 @@ function startRequestPage(shell: Shell): void {
 }
 
 applyLimits(todayInRome());
+trackQuoteHeight(byId("quote"));
+// Si no llegan los textos, initShell muestra el aviso y se resuelve recién si un reintento funciona:
+// mientras tanto el botón de envío sigue deshabilitado, como viene en el HTML.
 void initShell().then(startRequestPage);

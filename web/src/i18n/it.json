@@ -3,10 +3,10 @@
     "skipToContent": "Vai al contenuto",
     "homeLink": "{brand}: pagina iniziale",
     "langLabel": "Scegli la lingua",
-    "langs": {
-      "it": "Italiano",
-      "es": "Español",
-      "en": "English"
+    "langLinks": {
+      "it": "IT – Italiano",
+      "es": "ES – Español",
+      "en": "EN – English"
     },
     "langCodes": {
       "it": "IT",
@@ -17,13 +17,16 @@
     "footerRequest": "Richiedi un preventivo",
     "footerPrivacy": "Informativa privacy",
     "footerNoCookies": "Niente cookie di profilazione, niente analytics.",
+    "loadError": "Non siamo riusciti a caricare una parte della pagina, quindi qualcosa potrebbe non funzionare. Controlla la connessione e ricarica la pagina.",
+    "reload": "Ricarica la pagina",
+    "ogImageAlt": "{brand}, cuoca a domicilio a Bergamo: «La cena è già pronta. Per tutta la settimana.» Porzioni etichettate in frigo.",
     "durationHours": "{h} h",
     "durationHoursMinutes": "{h} h {m} min",
     "durationMinutes": "{m} min"
   },
   "landing": {
-    "metaTitle": "{brand} · Cuoca a domicilio a Bergamo: pasti pronti per la settimana",
-    "metaDescription": "Evelyn fa la spesa, cucina a casa tua a Bergamo e ti lascia in frigo porzioni etichettate per più giorni. Spesa al costo dello scontrino. Calcola subito il preventivo.",
+    "metaTitle": "{brand} · Cuoca a domicilio a Bergamo, pasti pronti in frigo",
+    "metaDescription": "Evelyn fa la spesa e cucina a casa tua a Bergamo: porzioni etichettate in frigo per più giorni. Spesa al costo dello scontrino. Preventivo subito.",
     "hero": {
       "eyebrow": "Cuoca a domicilio · Bergamo",
       "title": "La cena è già pronta. Per tutta la settimana.",
@@ -313,5 +316,13 @@
     "changesTitle": "13. Modifiche",
     "changesBody": "<p>Se questa informativa cambia, pubblichiamo qui la nuova versione con la data aggiornata.</p>",
     "back": "Torna alla richiesta di preventivo"
+  },
+  "notFound": {
+    "metaTitle": "Pagina non trovata · {brand}",
+    "eyebrow": "Errore 404",
+    "title": "Questa pagina non c'è",
+    "text": "Forse il link è sbagliato o incompleto, oppure la pagina è stata spostata. Puoi ripartire da qui:",
+    "home": "Vai alla pagina iniziale",
+    "request": "Richiedi un preventivo"
   }
 }

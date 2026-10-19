@@ -451,6 +451,8 @@
   display: none;
 }
 
+/* "+" y "−" son decorativos (details ya anuncia si está abierto): texto alternativo vacío para que no
+   entren en el nombre de la pregunta. Los navegadores sin esa sintaxis usan la primera línea. */
 .faq summary::after {
   position: absolute;
   top: 50%;
@@ -461,10 +463,12 @@
   line-height: 1;
   transform: translateY(-50%);
   content: "+";
+  content: "+" / "";
 }
 
 .faq details[open] summary::after {
   content: "\2212";
+  content: "\2212" / "";
 }
 
 .faq details p {

@@ -1,14 +1,14 @@
 // Configuración de la web en un solo lugar.
-// Lee las variables VITE_* (ver web/.env.example). La lógica es una función pura
-// para poder usarla también desde vite.config.ts (Node) y desde los tests.
-// Todas son públicas: terminan en el JS del sitio (nada secreto acá).
+// Lee las variables VITE_* (ver web/.env.example). Funciones puras: las usan vite.config.ts (Node,
+// con el entorno resuelto: HTML, CSP, robots.txt) y los tests. El navegador lee solo lo suyo en
+// site-config.ts. Todas son públicas (nada secreto acá).
 
 export interface AppConfig {
-  /** Nombre de la marca (provisorio). */
+  /** Nombre de la marca (VITE_BRAND_NAME; por defecto Radici). */
   brandName: string;
   /** true: todas las páginas llevan <meta name="robots" content="noindex">. */
   noindex: boolean;
-  /** URL pública sin barra final (ej. https://mestolo.example.com). null si no se configuró. */
+  /** URL pública sin barra final (ej. https://radici.sepusola10.com). null si no se configuró. */
   siteUrl: string | null;
   /** Origen del proyecto de Supabase (ej. https://abcd.supabase.co). null si falta o no es válido. */
   supabaseUrl: string | null;
@@ -23,7 +23,7 @@ export interface AppConfig {
 
 type EnvLike = Readonly<Record<string, unknown>>;
 
-const DEFAULT_BRAND = "Mestolo";
+const DEFAULT_BRAND = "Radici";
 
 /** Sitekey de prueba de Cloudflare que siempre aprueba (visible): para desarrollo local. */
 export const TURNSTILE_TEST_SITE_KEY = "1x00000000000000000000AA";
@@ -82,5 +82,16 @@ export function resolveConfig(env: EnvLike): AppConfig {
   };
 }
 
-// En el navegador Vite reemplaza import.meta.env; en Node (vite.config.ts) no existe.
-export const config: AppConfig = resolveConfig((import.meta.env as EnvLike | undefined) ?? {});
+/**
+ * Lo único que usa el JS del navegador. noindex y la URL del sitio solo sirven en el build (HTML,
+ * robots.txt); la clave publicable de Supabase todavía no la usa nadie: si un día hace falta, se suma acá
+ * y en site-config.ts.
+ */
+export type SiteConfig = Pick<AppConfig, "brandName" | "supabaseUrl" | "turnstileSiteKey">;
+
+/** Variables que lee el navegador: las únicas que Vite pone en el JS publicado. */
+export const SITE_ENV_KEYS = ["VITE_BRAND_NAME", "VITE_SUPABASE_URL", "VITE_TURNSTILE_SITE_KEY"] as const;
+
+export function toSiteConfig(full: AppConfig): SiteConfig {
+  return { brandName: full.brandName, supabaseUrl: full.supabaseUrl, turnstileSiteKey: full.turnstileSiteKey };
+}

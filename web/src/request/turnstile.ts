@@ -6,7 +6,7 @@
 // - Siempre hay error-callback: sin él, Turnstile tira una excepción ante cualquier error.
 
 export const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
-const ONLOAD_CALLBACK = "mestoloTurnstileLoaded";
+const ONLOAD_CALLBACK = "radiciTurnstileLoaded";
 export const TURNSTILE_SCRIPT_URL = `${TURNSTILE_ORIGIN}/turnstile/v0/api.js?render=explicit&onload=${ONLOAD_CALLBACK}`;
 
 /** Acción del widget: la Edge Function puede comprobarla en la respuesta de siteverify. */

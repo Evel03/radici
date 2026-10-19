@@ -1,10 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { TURNSTILE_TEST_SITE_KEY, isTurnstileTestKey, normalizeSupabaseUrl, resolveConfig } from "./config.ts";
+import {
+  SITE_ENV_KEYS,
+  TURNSTILE_TEST_SITE_KEY,
+  isTurnstileTestKey,
+  normalizeSupabaseUrl,
+  resolveConfig,
+  toSiteConfig,
+} from "./config.ts";
+import siteConfigSource from "./site-config.ts?raw";
+
+/** Código sin comentarios de línea: los comentarios pueden nombrar import.meta.env sin leerlo. */
+function code(source: string): string {
+  return source.replace(/^\s*\/\/.*$/gm, "");
+}
 
 describe("resolveConfig", () => {
-  it("valores por defecto: marca Mestolo, noindex activado y sin backend", () => {
+  it("valores por defecto: marca Radici, noindex activado y sin backend", () => {
     expect(resolveConfig({})).toEqual({
-      brandName: "Mestolo",
+      brandName: "Radici",
       noindex: true,
       siteUrl: null,
       supabaseUrl: null,
@@ -67,6 +80,39 @@ describe("normalizeSupabaseUrl", () => {
     expect(normalizeSupabaseUrl("abcdefgh.supabase.co")).toBeNull();
     expect(normalizeSupabaseUrl("javascript:alert(1)")).toBeNull();
     expect(normalizeSupabaseUrl("ftp://abcdefgh.supabase.co")).toBeNull();
+  });
+});
+
+describe("configuración del navegador (site-config.ts)", () => {
+  it("toSiteConfig deja solo lo que usa el navegador", () => {
+    const full = resolveConfig({
+      VITE_SITE_URL: "https://prova.example.com",
+      VITE_NOINDEX: "false",
+      VITE_SUPABASE_URL: "https://abcdefgh.supabase.co",
+      VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_abc123",
+      VITE_TURNSTILE_SITE_KEY: "0x4AAAAAAAexample",
+    });
+    expect(toSiteConfig(full)).toEqual({
+      brandName: "Radici",
+      supabaseUrl: "https://abcdefgh.supabase.co",
+      turnstileSiteKey: "0x4AAAAAAAexample",
+    });
+  });
+
+  it("lee cada VITE_* por su nombre, solo las de SITE_ENV_KEYS (nunca import.meta.env entero)", () => {
+    const reads = [...code(siteConfigSource).matchAll(/import\.meta\.env(?:\.(\w+))?/g)].map((m) => m[1] ?? "(entero)");
+    expect(reads.sort()).toEqual([...SITE_ENV_KEYS].sort());
+  });
+
+  it("ningún otro módulo de src/ lee import.meta.env", () => {
+    const sources = import.meta.glob<string>(["./**/*.ts", "!./**/*.test.ts", "!./**/*.d.ts", "!./site-config.ts"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
+    expect(Object.keys(sources).length).toBeGreaterThan(10);
+    const readers = Object.entries(sources).filter(([, source]) => /import\.meta\.env\b/.test(code(source)));
+    expect(readers.map(([file]) => file)).toEqual([]);
   });
 });
 

@@ -5,17 +5,22 @@
 // - __BRAND_NAME__ se reemplaza por la marca configurada.
 // - Los elementos con data-i18n / data-i18n-html / data-i18n-attr se rellenan con el italiano
 //   de it.json: así la página tiene contenido sin JS y para SEO, sin duplicar textos en el HTML.
-// - Se agregan noindex, canonical/og:url y el JSON-LD según la configuración.
+// - Se agregan noindex, canonical/og:url, la imagen para compartir (og:image, con URL absoluta) y el
+//   JSON-LD según la configuración. La 404 nunca se indexa ni declara una URL propia.
 import type { AppConfig } from "../config.ts";
 import { parseAttrSpec, type I18n } from "../i18n/core.ts";
+import { OG_IMAGE } from "./images.ts";
 
 export interface RenderOptions {
   i18n: I18n;
   config: AppConfig;
-  /** Ruta pública de la página: "/", "/richiesta/", "/privacy/". */
+  /** Ruta pública de la página: "/", "/richiesta/", "/privacy/" o NOT_FOUND_PATH. */
   pagePath: string;
   partials: Readonly<Record<string, string>>;
 }
+
+/** La página 404 (dist/404.html): Cloudflare Pages la sirve con estado 404 en cualquier ruta que no existe. */
+export const NOT_FOUND_PATH = "/404.html";
 
 export function escapeHtml(value: string): string {
   return value
@@ -84,9 +89,11 @@ export function buildJsonLd(config: AppConfig, i18n: I18n): Record<string, unkno
   return {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
-    ...(url ? { "@id": `${url}#business`, url } : {}),
+    ...(url ? { "@id": `${url}#business`, url, image: `${config.siteUrl}${OG_IMAGE.path}` } : {}),
     name: config.brandName,
     description: i18n.t("landing.metaDescription"),
+    // Servicio a domicilio, sin local: solo ciudad, provincia y país. Nunca calle ni código postal.
+    address: { "@type": "PostalAddress", addressLocality: "Bergamo", addressRegion: "BG", addressCountry: "IT" },
     areaServed,
     knowsLanguage: ["it", "es", "en"],
     currenciesAccepted: "EUR",
@@ -104,11 +111,28 @@ export function buildJsonLd(config: AppConfig, i18n: I18n): Record<string, unkno
 
 function headExtras(opts: RenderOptions): string[] {
   const { config, pagePath, i18n } = opts;
+  const notFound = pagePath === NOT_FOUND_PATH;
   const tags: string[] = [];
   if (config.noindex) tags.push('<meta name="robots" content="noindex, nofollow">');
+  else if (notFound) tags.push('<meta name="robots" content="noindex">');
+  if (notFound) return tags;
+
   if (config.siteUrl) {
     const url = escapeHtml(`${config.siteUrl}${pagePath}`);
-    tags.push(`<link rel="canonical" href="${url}">`, `<meta property="og:url" content="${url}">`);
+    tags.push(
+      `<link rel="canonical" href="${url}">`,
+      `<meta property="og:url" content="${url}">`,
+      // Las vistas previas (WhatsApp, Facebook…) piden la imagen con URL absoluta.
+      `<meta property="og:image" content="${escapeHtml(`${config.siteUrl}${OG_IMAGE.path}`)}">`,
+      `<meta property="og:image:type" content="${OG_IMAGE.type}">`,
+      `<meta property="og:image:width" content="${OG_IMAGE.width}">`,
+      `<meta property="og:image:height" content="${OG_IMAGE.height}">`,
+      `<meta property="og:image:alt" content="${escapeHtml(i18n.t("common.ogImageAlt"))}">`,
+      '<meta name="twitter:card" content="summary_large_image">',
+    );
+  } else {
+    // Sin VITE_SITE_URL no hay URL absoluta para la imagen: tarjeta sin imagen grande (el build lo avisa).
+    tags.push('<meta name="twitter:card" content="summary">');
   }
   if (pagePath === "/") {
     // "<" escapado para que ningún texto pueda cerrar el <script>.

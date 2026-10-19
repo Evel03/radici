@@ -42,3 +42,12 @@
 # Los archivos de assets/ llevan hash en el nombre: se pueden cachear para siempre.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# Las copias en *.pages.dev nunca se indexan: la de producción (<proyecto>.pages.dev) y las vistas previas
+# (<rama o hash>.<proyecto>.pages.dev). El dominio propio no cambia: ahí manda VITE_NOINDEX. Ejemplo de las
+# docs de Pages ("Headers", act. 25/08/2026): en el host un marcador no cruza puntos, por eso son dos reglas.
+https://:project.pages.dev/*
+  X-Robots-Tag: noindex
+
+https://:version.:project.pages.dev/*
+  X-Robots-Tag: noindex

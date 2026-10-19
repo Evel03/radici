@@ -9,9 +9,15 @@
           <span class="brand__name">__BRAND_NAME__</span>
         </a>
         <nav class="lang-switch" data-i18n-attr="aria-label:common.langLabel">
-          <a href="?lang=it" hreflang="it" lang="it" data-lang="it" data-i18n="common.langCodes.it" data-i18n-attr="aria-label:common.langs.it"></a>
-          <a href="?lang=es" hreflang="es" lang="es" data-lang="es" data-i18n="common.langCodes.es" data-i18n-attr="aria-label:common.langs.es"></a>
-          <a href="?lang=en" hreflang="en" lang="en" data-lang="en" data-i18n="common.langCodes.en" data-i18n-attr="aria-label:common.langs.en"></a>
+          <a href="?lang=it" hreflang="it" lang="it" data-lang="it" data-i18n="common.langCodes.it" data-i18n-attr="aria-label:common.langLinks.it"></a>
+          <a href="?lang=es" hreflang="es" lang="es" data-lang="es" data-i18n="common.langCodes.es" data-i18n-attr="aria-label:common.langLinks.es"></a>
+          <a href="?lang=en" hreflang="en" lang="en" data-lang="en" data-i18n="common.langCodes.en" data-i18n-attr="aria-label:common.langLinks.en"></a>
         </nav>
       </div>
     </header>
+    <div id="load-error" class="load-error" role="alert" hidden>
+      <div class="container load-error__inner">
+        <p class="load-error__text" data-i18n="common.loadError"></p>
+        <button id="load-error-reload" class="btn btn--ghost btn--sm" type="button" data-i18n="common.reload"></button>
+      </div>
+    </div>

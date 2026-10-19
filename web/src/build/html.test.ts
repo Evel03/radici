@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import notFoundHtml from "../../404.html?raw";
 import indexHtml from "../../index.html?raw";
 import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
@@ -8,17 +9,18 @@ import itJson from "../i18n/it.json";
 import { createSiteI18n } from "../i18n/site.ts";
 import footer from "../partials/footer.html?raw";
 import header from "../partials/header.html?raw";
-import { buildJsonLd, fillTranslations, pagePathFromHtmlPath, renderPage } from "./html.ts";
+import { NOT_FOUND_PATH, buildJsonLd, fillTranslations, pagePathFromHtmlPath, renderPage } from "./html.ts";
+import { OG_IMAGE } from "./images.ts";
 
 const baseConfig: AppConfig = {
-  brandName: "Mestolo",
+  brandName: "Radici",
   noindex: true,
   siteUrl: null,
   supabaseUrl: null,
   supabasePublishableKey: null,
   turnstileSiteKey: null,
 };
-const i18n = createSiteI18n("it", flatten(itJson), "Mestolo");
+const i18n = createSiteI18n("it", flatten(itJson), "Radici");
 const partials = { header, footer };
 
 describe("fillTranslations", () => {
@@ -52,7 +54,7 @@ describe("renderPage con las páginas reales", () => {
       const out = renderPage(html, { i18n, config: baseConfig, pagePath: path, partials });
       expect(out).not.toMatch(/<!--\s*partial:/);
       expect(out).not.toContain("__BRAND_NAME__");
-      expect(out).toMatch(/<title[^>]*>[^<]*Mestolo[^<]*<\/title>/);
+      expect(out).toMatch(/<title[^>]*>[^<]*Radici[^<]*<\/title>/);
       expect(out).toContain('<meta name="robots" content="noindex, nofollow">');
       expect(out).toMatch(/<meta name="description"[^>]* content="[^"]{40,}"/);
       // Ningún {marcador} sin resolver en el contenido visible.
@@ -107,17 +109,103 @@ describe("renderPage con las páginas reales", () => {
     expect(landing).toContain('<script type="application/ld+json">');
     expect(privacy).not.toContain("application/ld+json");
   });
+
+  it("íconos en todas las páginas: favicon.ico, SVG y apple-touch-icon", () => {
+    for (const html of [indexHtml, requestHtml, privacyHtml, notFoundHtml]) {
+      expect(html).toContain('<link rel="icon" href="/favicon.ico" sizes="32x32" />');
+      expect(html).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml" />');
+      expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png" />');
+    }
+  });
+});
+
+describe("vista previa al compartir (Open Graph y X)", () => {
+  const withSite = { ...baseConfig, siteUrl: "https://radici.sepusola10.com" };
+  const pages = [
+    ["/", indexHtml],
+    ["/richiesta/", requestHtml],
+    ["/privacy/", privacyHtml],
+  ] as const;
+
+  it("con VITE_SITE_URL: og:image absoluta con tamaño y texto alternativo, y tarjeta grande", () => {
+    for (const [path, html] of pages) {
+      const out = renderPage(html, { i18n, config: withSite, pagePath: path, partials });
+      expect(out).toContain(`<meta property="og:image" content="https://radici.sepusola10.com${OG_IMAGE.path}">`);
+      expect(out).toContain('<meta property="og:image:type" content="image/png">');
+      expect(out).toContain('<meta property="og:image:width" content="1200">');
+      expect(out).toContain('<meta property="og:image:height" content="630">');
+      expect(out).toMatch(/<meta property="og:image:alt" content="Radici, cuoca a domicilio a Bergamo[^"]+">/);
+      expect(out).toContain('<meta name="twitter:card" content="summary_large_image">');
+      expect(out.match(/name="twitter:card"/g), path).toHaveLength(1);
+    }
+  });
+
+  it("sin VITE_SITE_URL: sin og:image (tendría que ser absoluta) y tarjeta chica", () => {
+    for (const [path, html] of pages) {
+      const out = renderPage(html, { i18n, config: baseConfig, pagePath: path, partials });
+      expect(out).not.toContain("og:image");
+      expect(out).toContain('<meta name="twitter:card" content="summary">');
+    }
+  });
+});
+
+describe("página 404", () => {
+  const render = (config: AppConfig) => renderPage(notFoundHtml, { i18n, config, pagePath: NOT_FOUND_PATH, partials });
+
+  it("en italiano, con cabecera, pie y estilos del sitio, sin marcadores pendientes", () => {
+    const out = render(baseConfig);
+    expect(out).toMatch(/<title data-i18n="notFound.metaTitle">Pagina non trovata · Radici<\/title>/);
+    expect(out).toContain('class="site-header"');
+    expect(out).toContain('class="site-footer"');
+    expect(out).toContain('<script type="module" src="/src/pages/not-found.ts"></script>');
+    expect(out).not.toMatch(/<!--\s*partial:/);
+    expect(out).not.toContain("__BRAND_NAME__");
+    expect(out.replace(/<script[\s\S]*?<\/script>/g, "")).not.toMatch(/\{\w+\}/);
+  });
+
+  it("nunca se indexa, ni con el sitio indexable, y no declara URL propia ni imagen", () => {
+    expect(render(baseConfig)).toContain('<meta name="robots" content="noindex, nofollow">');
+    const indexable = render({ ...baseConfig, noindex: false, siteUrl: "https://radici.sepusola10.com" });
+    expect(indexable).toContain('<meta name="robots" content="noindex">');
+    expect(indexable).not.toMatch(/canonical|og:url|og:image|twitter:card|application\/ld\+json/);
+  });
+
+  it("sin estilos ni scripts inline, y con URL absolutas (Pages la sirve en cualquier profundidad)", () => {
+    const out = render(baseConfig);
+    expect(out).not.toMatch(/\sstyle=/);
+    expect(out).not.toMatch(/<style/);
+    const urls = [...out.matchAll(/\s(?:href|src)="([^"]+)"/g)].map((m) => m[1] ?? "");
+    expect(urls.length).toBeGreaterThan(5);
+    for (const url of urls) expect(url, url).toMatch(/^(\/|#|\?lang=|https:\/\/)/);
+    expect(urls).toContain("/");
+    expect(urls).toContain("/richiesta/");
+  });
+
+  it("pagePathFromHtmlPath reconoce la 404", () => {
+    expect(pagePathFromHtmlPath("/404.html")).toBe(NOT_FOUND_PATH);
+  });
 });
 
 describe("JSON-LD", () => {
-  it("LocalBusiness con FoodService, areaServed Bergamo y sin dirección", () => {
+  it("LocalBusiness con FoodService, areaServed Bergamo e imagen", () => {
     const data = buildJsonLd({ ...baseConfig, siteUrl: "https://example.test" }, i18n);
     expect(data["@type"]).toBe("LocalBusiness");
-    expect(data["name"]).toBe("Mestolo");
+    expect(data["name"]).toBe("Radici");
     expect(data["url"]).toBe("https://example.test/");
+    expect(data["image"]).toBe(`https://example.test${OG_IMAGE.path}`);
     expect(JSON.stringify(data["areaServed"])).toContain("Bergamo");
     expect(JSON.stringify(data["makesOffer"])).toContain("FoodService");
-    expect(data).not.toHaveProperty("address");
+  });
+
+  it("dirección solo con ciudad, provincia y país (nunca calle ni código postal)", () => {
+    for (const config of [baseConfig, { ...baseConfig, siteUrl: "https://example.test" }]) {
+      expect(buildJsonLd(config, i18n)["address"]).toEqual({
+        "@type": "PostalAddress",
+        addressLocality: "Bergamo",
+        addressRegion: "BG",
+        addressCountry: "IT",
+      });
+    }
   });
 });
 

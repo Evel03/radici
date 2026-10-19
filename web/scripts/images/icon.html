@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Plantilla de los íconos en PNG: public/apple-touch-icon.png (180 × 180, cuadrado y opaco: iOS redondea
+      las esquinas) y los PNG de public/favicon.ico (16, 32 y 48 px, con las esquinas redondeadas y
+      transparentes). El marcador del cuerpo es public/favicon.svg, la única fuente del dibujo; para iOS el
+      script le saca el redondeo. La dibuja scripts/render-images.mjs con Chrome sin ventana; no se publica.
+    -->
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    {{svg}}
+  </body>
+</html>

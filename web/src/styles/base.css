@@ -189,10 +189,12 @@ svg {
   min-height: 4rem;
 }
 
+/* Links de la cabecera y del pie: al menos 44 px de alto para el dedo (WCAG 2.5.8 pide 24). */
 .brand {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: 2.75rem;
   color: var(--text);
   font-family: var(--font-serif);
   font-size: 1.4rem;
@@ -266,6 +268,12 @@ svg {
   width: 100%;
 }
 
+.btn--sm {
+  min-height: 2.75rem;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.95rem;
+}
+
 .btn--primary {
   background: var(--accent);
   color: var(--on-accent);
@@ -322,8 +330,11 @@ svg {
   font-weight: 650;
 }
 
+/* Flecha decorativa: con el texto alternativo vacío no se lee ("flecha derecha"). Los navegadores sin
+   esa sintaxis usan la primera línea. */
 .link-arrow::after {
   content: " \2192";
+  content: " \2192" / "";
 }
 
 .small {
@@ -348,6 +359,27 @@ svg {
   border-left-color: var(--error);
   background: var(--error-soft);
   color: var(--text);
+  font-weight: 600;
+}
+
+/* No llegaron los textos de un idioma (pages/shell.ts): aviso arriba con botón para recargar. */
+.load-error {
+  border-bottom: 2px solid var(--error);
+  background: var(--error-soft);
+}
+
+.load-error__inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 0.9rem;
+}
+
+.load-error__text {
+  flex: 1 1 18rem;
+  margin: 0;
   font-weight: 600;
 }
 
@@ -387,8 +419,9 @@ svg {
 }
 
 .site-footer__links a {
-  display: inline-block;
-  padding-block: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
   font-weight: 600;
 }
 

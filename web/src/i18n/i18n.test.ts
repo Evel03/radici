@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import notFoundHtml from "../../404.html?raw";
 import indexHtml from "../../index.html?raw";
 import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
@@ -6,7 +7,7 @@ import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
 import { ALLERGENS, DIETS, MEAL_OPTIONS, REQUEST_TYPES, SLOTS } from "../request/model.ts";
 import { FIELD_ORDER } from "../request/validate.ts";
-import { createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang } from "./core.ts";
+import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang } from "./core.ts";
 import en from "./en.json";
 import es from "./es.json";
 import itJson from "./it.json";
@@ -14,7 +15,7 @@ import itJson from "./it.json";
 const dicts = { it: flatten(itJson), es: flatten(es), en: flatten(en) };
 const itKeys = Object.keys(dicts.it).sort();
 
-const htmlFiles = { indexHtml, requestHtml, privacyHtml, headerHtml, footerHtml };
+const htmlFiles = { indexHtml, requestHtml, privacyHtml, notFoundHtml, headerHtml, footerHtml };
 
 /** Claves que el HTML pide con data-i18n, data-i18n-html y data-i18n-attr. */
 function htmlKeys(html: string): string[] {
@@ -100,6 +101,45 @@ describe("claves usadas por la web", () => {
   });
 });
 
+describe("SEO y accesibilidad de los textos", () => {
+  /** Caracteres como los cuenta un buscador (puntos de código, no unidades UTF-16). */
+  const length = (text: string): number => [...text].length;
+
+  for (const lang of LANGS) {
+    it(`${lang}: títulos ≤ 60 y descripciones ≤ 155 caracteres, con la marca por defecto`, () => {
+      const i18n = createI18n(lang, dicts[lang], { brand: "Radici" });
+      for (const page of ["landing", "request", "privacy", "notFound"]) {
+        const title = i18n.text(`${page}.metaTitle`);
+        expect(length(title), title).toBeLessThanOrEqual(60);
+      }
+      for (const page of ["landing", "request", "privacy"]) {
+        const description = i18n.text(`${page}.metaDescription`);
+        expect(length(description), description).toBeLessThanOrEqual(155);
+      }
+    });
+
+    it(`${lang}: el nombre accesible de cada idioma empieza con su texto visible (WCAG 2.5.3)`, () => {
+      for (const code of LANGS) {
+        const visible = dicts[lang][`common.langCodes.${code}`] ?? "";
+        expect(visible).not.toBe("");
+        expect(dicts[lang][`common.langLinks.${code}`]).toMatch(new RegExp(`^${visible}\\b`));
+      }
+    });
+  }
+
+  it("los links de idioma usan ese nombre accesible", () => {
+    for (const code of LANGS) {
+      expect(headerHtml).toContain(`data-i18n="common.langCodes.${code}" data-i18n-attr="aria-label:common.langLinks.${code}"`);
+    }
+  });
+
+  it("el aviso de carga fallida es una alerta con botón para recargar, oculta hasta que haga falta", () => {
+    expect(headerHtml).toMatch(/<div id="load-error" class="load-error" role="alert" hidden>/);
+    expect(headerHtml).toMatch(/<p class="load-error__text" data-i18n="common.loadError"><\/p>/);
+    expect(headerHtml).toMatch(/<button id="load-error-reload"[^>]*type="button"[^>]*data-i18n="common.reload"><\/button>/);
+  });
+});
+
 describe("núcleo de i18n", () => {
   it("interpola marcadores y deja los desconocidos", () => {
     expect(interpolate("Ciao {name}, {n} {x}", { name: "Eva", n: 2 })).toBe("Ciao Eva, 2 {x}");
@@ -114,8 +154,8 @@ describe("núcleo de i18n", () => {
   });
 
   it("createI18n aplica los valores globales y devuelve la clave si falta", () => {
-    const i18n = createI18n("es", { hello: "Hola {brand}" }, { brand: "Mestolo" });
-    expect(i18n.text("hello")).toBe("Hola Mestolo");
+    const i18n = createI18n("es", { hello: "Hola {brand}" }, { brand: "Radici" });
+    expect(i18n.text("hello")).toBe("Hola Radici");
     expect(i18n.text("nope")).toBe("nope");
     expect(i18n.locale).toBe("es-ES");
   });

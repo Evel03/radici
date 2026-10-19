@@ -60,6 +60,35 @@ describe("parseHeadersFile y headersFor (semántica de Cloudflare Pages)", () =>
     expect(() => parseHeadersFile("  X-Sola: sin regla")).toThrow();
     expect(() => parseHeadersFile("/*\n  sin-dos-puntos")).toThrow();
   });
+
+  describe("reglas con URL absoluta (host)", () => {
+    const hostRules = parseHeadersFile(
+      [
+        "https://:project.pages.dev/*",
+        "  X-Robots-Tag: noindex",
+        "  X-Project: :project",
+        "",
+        "https://www.example.com/solo/:page",
+        "  X-Page: :page",
+      ].join("\n"),
+    );
+
+    it("valen solo para ese host, sin importar protocolo ni puerto", () => {
+      expect(headersFor(hostRules, "/", "radici.pages.dev").get("X-Robots-Tag")).toBe("noindex");
+      expect(headersFor(hostRules, "/richiesta/", "Radici.Pages.Dev:443").get("X-Project")).toBe("radici");
+      expect(headersFor(hostRules, "/", "radici.sepusola10.com").has("X-Robots-Tag")).toBe(false);
+      expect(headersFor(hostRules, "/solo/uno", "www.example.com").get("X-Page")).toBe("uno");
+      expect(headersFor(hostRules, "/solo/uno", "example.com").has("X-Page")).toBe(false);
+    });
+
+    it("un marcador del host no cruza puntos", () => {
+      expect(headersFor(hostRules, "/", "rama.radici.pages.dev").has("X-Robots-Tag")).toBe(false);
+    });
+
+    it("sin host (pedido sin cabecera Host) no se aplican", () => {
+      expect(headersFor(hostRules, "/")).toEqual(new Map());
+    });
+  });
 });
 
 describe("renderHeadersFile", () => {
@@ -200,6 +229,26 @@ describe("public/_headers real", () => {
     expect(headersFor(rules, "/gestione/assets/AssetManifest.bin").get("Cache-Control")).toBe("no-cache");
     // Fuera de /gestione/ nada cambia.
     expect(headersFor(rules, "/gestionex").get("X-Robots-Tag")).toBeUndefined();
+  });
+
+  it("*.pages.dev (producción y vistas previas) nunca se indexa; el dominio propio no cambia", () => {
+    const pagesHosts = ["radici.pages.dev", "radici-3xv.pages.dev", "f1-pedidos-bandeja.radici.pages.dev", "a1b2c3d4.radici.pages.dev:443"];
+    for (const host of pagesHosts) {
+      for (const path of ["/", "/richiesta/", "/privacy/", "/no-existe", "/assets/main-abc.js"]) {
+        expect(headersFor(rules, path, host).get("X-Robots-Tag"), `${host}${path}`).toBe("noindex");
+      }
+      // /gestione/ suma su propio noindex, nofollow.
+      expect(headersFor(rules, "/gestione/", host).get("X-Robots-Tag")).toBe("noindex, nofollow, noindex");
+    }
+    for (const path of ["/", "/richiesta/", "/privacy/", "/no-existe"]) {
+      expect(headersFor(rules, path, "radici.sepusola10.com").has("X-Robots-Tag"), path).toBe(false);
+    }
+    // El host no cambia la CSP de ninguna ruta.
+    for (const path of ["/", "/richiesta/", "/gestione/"]) {
+      expect(headersFor(rules, path, "radici.pages.dev").get("Content-Security-Policy")).toBe(
+        headersFor(rules, path, "radici.sepusola10.com").get("Content-Security-Policy"),
+      );
+    }
   });
 
   it("/gestione/ en local (supabase start): Realtime por ws://", () => {

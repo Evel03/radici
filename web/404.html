@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="it" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="notFound.metaTitle"></title>
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fbf6ee" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1c1713" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script type="module" src="/src/pages/not-found.ts"></script>
+  </head>
+  <body>
+    <!-- partial:header -->
+
+    <main id="main" class="not-found">
+      <div class="container container--narrow not-found__inner">
+        <svg class="not-found__art" viewBox="0 0 120 80" aria-hidden="true" focusable="false">
+          <circle class="not-found__plate" cx="60" cy="40" r="30" />
+          <circle cx="60" cy="40" r="19" />
+          <path d="M20 10v18a5 5 0 0 0 10 0V10M25 10v60" />
+          <path d="M98 70V10c-5 4-8 12-8 22 0 5 3 7 8 7" />
+        </svg>
+        <p class="not-found__eyebrow" data-i18n="notFound.eyebrow"></p>
+        <h1 class="not-found__title" data-i18n="notFound.title"></h1>
+        <p class="not-found__text" data-i18n="notFound.text"></p>
+        <div class="actions">
+          <a class="btn btn--primary btn--lg" href="/" data-i18n="notFound.home"></a>
+          <a class="btn btn--ghost btn--lg" href="/richiesta/" data-i18n="notFound.request"></a>
+        </div>
+      </div>
+    </main>
+
+    <!-- partial:footer -->
+  </body>
+</html>

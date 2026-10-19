@@ -111,8 +111,10 @@
   font-weight: 650;
 }
 
+/* El "!" es solo visual: con el texto alternativo vacío los lectores de pantalla no lo leen al anunciar
+   el error. Los navegadores sin esa sintaxis (Safari < 17.4) ignoran la regla: sin "!", nunca leído. */
 .field__error::before {
-  content: "! ";
+  content: "! " / "";
   font-weight: 800;
 }
 
@@ -415,12 +417,6 @@ input[type="radio"] {
   outline-offset: 3px;
 }
 
-.btn--sm {
-  min-height: 2.75rem;
-  padding: 0.5rem 1.1rem;
-  font-size: 0.95rem;
-}
-
 .field--turnstile .btn--sm {
   justify-self: start;
   margin-top: 0.25rem;
@@ -463,10 +459,22 @@ input[type="radio"] {
 
 /* Panel de presupuesto: fijo abajo en mobile */
 @media (max-width: 55.99rem) {
-  /* Al navegar con teclado, el campo enfocado no queda debajo del panel fijo. */
+  /* Al navegar con teclado, el control enfocado no queda debajo del panel fijo: richiesta.ts pone el
+     alto real del panel en --quote-height (12rem hasta que corre el JS). */
   html {
-    scroll-padding-bottom: 12rem;
+    scroll-padding-bottom: calc(var(--quote-height, 12rem) + 0.75rem);
   }
+}
+
+/* Al recibir el foco, el control se desplaza con margen: se ven entera la tarjeta o el chip que lo
+   contiene (la casilla es solo una parte) y el mensaje de error de abajo. */
+.request-form :is(input, textarea, button) {
+  scroll-margin-block: 1rem 2.5rem;
+}
+
+/* En las tarjetas de opción la casilla está arriba a la izquierda y la pista ocupa hasta dos líneas. */
+.choice input {
+  scroll-margin-block: 1rem 5rem;
 }
 
 .quote {

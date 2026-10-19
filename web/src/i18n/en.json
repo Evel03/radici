@@ -3,10 +3,10 @@
     "skipToContent": "Skip to content",
     "homeLink": "{brand}: home page",
     "langLabel": "Choose language",
-    "langs": {
-      "it": "Italiano",
-      "es": "Español",
-      "en": "English"
+    "langLinks": {
+      "it": "IT – Italiano",
+      "es": "ES – Español",
+      "en": "EN – English"
     },
     "langCodes": {
       "it": "IT",
@@ -17,13 +17,16 @@
     "footerRequest": "Ask for a quote",
     "footerPrivacy": "Privacy notice",
     "footerNoCookies": "No profiling cookies, no analytics.",
+    "loadError": "We couldn't load part of this page, so some things may not work. Check your connection and reload the page.",
+    "reload": "Reload the page",
+    "ogImageAlt": "{brand}, home cook in Bergamo: “Dinner is already done. All week long.” Labelled portions in the fridge.",
     "durationHours": "{h} h",
     "durationHoursMinutes": "{h} h {m} min",
     "durationMinutes": "{m} min"
   },
   "landing": {
-    "metaTitle": "{brand} · Home cook in Bergamo: ready meals for the whole week",
-    "metaDescription": "Evelyn does the shopping, cooks in your kitchen in Bergamo and leaves labelled portions in your fridge for several days. Groceries at receipt cost. Get an instant quote.",
+    "metaTitle": "{brand} · Home cook in Bergamo: ready meals for the week",
+    "metaDescription": "Evelyn does the shopping, cooks in your kitchen in Bergamo and leaves labelled portions in your fridge for several days. Groceries at receipt cost.",
     "hero": {
       "eyebrow": "Home cook · Bergamo",
       "title": "Dinner is already done. All week long.",
@@ -313,5 +316,13 @@
     "changesTitle": "13. Changes",
     "changesBody": "<p>If this notice changes, we will publish the new version here with the updated date.</p>",
     "back": "Back to the quote request"
+  },
+  "notFound": {
+    "metaTitle": "Page not found · {brand}",
+    "eyebrow": "Error 404",
+    "title": "This page doesn't exist",
+    "text": "The link may be wrong or incomplete, or the page may have moved. You can start again from here:",
+    "home": "Go to the home page",
+    "request": "Ask for a quote"
   }
 }

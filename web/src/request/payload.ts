@@ -18,6 +18,8 @@ export interface PayloadOptions {
   locale: Locale;
   /** Token de Turnstile ("" si todavía no hay). */
   turnstileToken: string;
+  /** Clave de idempotencia del pedido (request-key.ts). La validación local no la necesita. */
+  requestKey?: string;
 }
 
 export function buildPayload(data: RequestData, opts: PayloadOptions): PublicRequestPayload {
@@ -47,5 +49,6 @@ export function buildPayload(data: RequestData, opts: PayloadOptions): PublicReq
       health: hasHealthData(data) && data.consentHealth ? CONSENT_VERSION : null,
     },
     turnstileToken: opts.turnstileToken,
+    ...(opts.requestKey ? { requestKey: opts.requestKey } : {}),
   };
 }

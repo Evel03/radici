@@ -15,7 +15,7 @@ export const TEST_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
 const dicts = { it: flatten(it), es: flatten(es), en: flatten(en) };
 
 export function i18nFor(lang: Lang) {
-  return createSiteI18n(lang, dicts[lang], "Mestolo");
+  return createSiteI18n(lang, dicts[lang], "Radici");
 }
 
 /** Pedido válido: vector 1 de SPEC.md §5.1 (2 adultos, 2 niños, 5 días, cena). */
