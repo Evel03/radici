@@ -1,0 +1,149 @@
+{
+  "@@locale": "it",
+
+  "appTitle": "Mestolo",
+  "@appTitle": {
+    "description": "Nombre de la app (provisorio). Igual en todos los idiomas."
+  },
+
+  "backendNotConfigured": "Backend non configurato",
+  "@backendNotConfigured": {
+    "description": "Aviso discreto en desarrollo cuando no hay SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY."
+  },
+
+  "homeHeadline": "Cucina di casa, a casa tua",
+  "@homeHeadline": {
+    "description": "Título de bienvenida de la pantalla de inicio."
+  },
+  "homeBody": "Evelyn fa la spesa, cucina da te per più giorni e lascia tutto in porzioni etichettate con piatto e data.",
+  "@homeBody": {
+    "description": "Explicación breve del servicio en la pantalla de inicio."
+  },
+  "homeQuoteCta": "Calcola preventivo",
+  "@homeQuoteCta": {
+    "description": "Botón que abre la calculadora de presupuesto."
+  },
+  "homeLoginCta": "Accedi",
+  "@homeLoginCta": {
+    "description": "Botón que abre el inicio de sesión."
+  },
+
+  "quoteTitle": "Calcola preventivo",
+  "@quoteTitle": {
+    "description": "Título de la calculadora de presupuesto."
+  },
+  "quotePeopleSection": "Persone",
+  "@quotePeopleSection": {
+    "description": "Encabezado de la sección de adultos y niños."
+  },
+  "quoteAdults": "Adulti",
+  "@quoteAdults": {
+    "description": "Etiqueta del contador de adultos."
+  },
+  "quoteKids": "Bambini",
+  "@quoteKids": {
+    "description": "Etiqueta del contador de niños."
+  },
+  "quoteDays": "Giorni",
+  "@quoteDays": {
+    "description": "Etiqueta del contador de días cubiertos por la sesión."
+  },
+  "quoteMealsSection": "Pasti",
+  "@quoteMealsSection": {
+    "description": "Encabezado del selector de comidas por día."
+  },
+  "mealLunch": "Pranzo",
+  "@mealLunch": {
+    "description": "Opción: solo almuerzo."
+  },
+  "mealDinner": "Cena",
+  "@mealDinner": {
+    "description": "Opción: solo cena."
+  },
+  "mealLunchAndDinner": "Pranzo e cena",
+  "@mealLunchAndDinner": {
+    "description": "Opción: almuerzo y cena."
+  },
+  "counterIncrease": "{label}: aumenta",
+  "@counterIncrease": {
+    "description": "Texto accesible y tooltip del botón +.",
+    "placeholders": {
+      "label": { "type": "String", "example": "Adulti" }
+    }
+  },
+  "counterDecrease": "{label}: diminuisci",
+  "@counterDecrease": {
+    "description": "Texto accesible y tooltip del botón −.",
+    "placeholders": {
+      "label": { "type": "String", "example": "Adulti" }
+    }
+  },
+  "quoteBreakdownSection": "Stima",
+  "@quoteBreakdownSection": {
+    "description": "Encabezado del desglose del presupuesto."
+  },
+  "quotePortions": "Porzioni",
+  "@quotePortions": {
+    "description": "Fila del desglose: cantidad de porciones."
+  },
+  "quoteRecipes": "Ricette",
+  "@quoteRecipes": {
+    "description": "Fila del desglose: cantidad de recetas distintas."
+  },
+  "quoteCookTime": "Tempo in cucina",
+  "@quoteCookTime": {
+    "description": "Fila del desglose: minutos de cocina."
+  },
+  "quoteMinutes": "{minutes} min",
+  "@quoteMinutes": {
+    "description": "Duración en minutos.",
+    "placeholders": {
+      "minutes": { "type": "int", "example": "180" }
+    }
+  },
+  "quoteService": "Servizio",
+  "@quoteService": {
+    "description": "Fila del desglose: costo del servicio (cocina + fijo de compra y traslado)."
+  },
+  "quoteGroceries": "Spesa stimata",
+  "@quoteGroceries": {
+    "description": "Fila del desglose: insumos estimados."
+  },
+  "quoteHold": "Massimo trattenuto sulla carta",
+  "@quoteHold": {
+    "description": "Fila del desglose: importe máximo retenido en la tarjeta (servicio + insumos con margen, SPEC §5.4)."
+  },
+  "quoteTotal": "Totale stimato",
+  "@quoteTotal": {
+    "description": "Fila del desglose: servicio + insumos estimados."
+  },
+  "quoteFootnote": "Il servizio comprende il tempo in cucina e un fisso per spesa e spostamento. La spesa si paga in base allo scontrino reale: l'importo trattenuto sulla carta è solo un massimo: si addebita il costo reale e il resto si libera da solo.",
+  "@quoteFootnote": {
+    "description": "Nota bajo el desglose."
+  },
+
+  "loginTitle": "Accedi",
+  "@loginTitle": {
+    "description": "Título de la pantalla de inicio de sesión."
+  },
+  "loginBody": "Ti inviamo un codice via email per entrare, senza password.",
+  "@loginBody": {
+    "description": "Explicación del acceso con código OTP."
+  },
+  "loginEmailLabel": "Email",
+  "@loginEmailLabel": {
+    "description": "Etiqueta del campo de email."
+  },
+  "loginEmailHint": "nome@esempio.it",
+  "@loginEmailHint": {
+    "description": "Ejemplo dentro del campo de email."
+  },
+  "loginSendCode": "Inviami il codice",
+  "@loginSendCode": {
+    "description": "Botón que pide el código de acceso."
+  },
+  "loginComingSoon": "L'accesso sarà disponibile a breve.",
+  "@loginComingSoon": {
+    "description": "Aviso temporal: el inicio de sesión todavía no está conectado (M2)."
+  }
+}

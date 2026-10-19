@@ -1,0 +1,8 @@
+# Localización de la app. Plantilla: italiano (idioma por defecto).
+# test/l10n/arb_keys_test.dart verifica que es y en tengan las mismas claves.
+arb-dir: lib/l10n
+template-arb-file: app_it.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+# AppLocalizations.of(context) devuelve no nulo: siempre hay delegado.
+nullable-getter: false
