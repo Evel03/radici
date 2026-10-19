@@ -3,7 +3,7 @@
 -- private.purge_expired_prospects borra los prospectos sin cuenta cuyos
 -- pedidos no avanzaron y cuyo último pedido supera prospect_retention_days,
 -- con todo lo suyo en cascada y los avisos que apuntan a esos pedidos, y los
--- intentos del límite por IP de más de 2 días.
+-- intentos del límite por IP de más de 1 día.
 -- Se prueba la función, no el planificador (solo que el trabajo existe).
 -- =====================================================================
 begin;
@@ -142,9 +142,10 @@ insert into public.sessions (id, chef_id, client_id, request_id, date, start_tim
 select '7e603000-0000-4000-8000-000000000003', fx.chef, fx.id, q.id, current_date - 150, '10:00', 150, 'confirmed'
 from fx_req q join fx on fx.k = q.k where q.k = 'p_live';
 
--- Límite por IP: un intento de hace 3 días (se borra) y uno de hace una hora (queda).
+-- Límite por IP: intentos de hace 3 días y de hace 25 horas (se borran) y uno de hace una hora (queda).
 insert into private.public_request_hits (ip_hash, created_at) values
   (repeat('1', 64), now() - interval '3 days'),
+  (repeat('1', 64), now() - interval '25 hours'),
   (repeat('2', 64), now() - interval '1 hour');
 
 create temp table results (k text primary key, r jsonb);
@@ -219,7 +220,7 @@ select is(
 select ok(
   (select (r ->> 'rate_limit_hits')::int >= 1 from results where k = 'run1')
   and not exists (select 1 from private.public_request_hits where ip_hash = repeat('1', 64)),
-  'y los intentos del límite por IP de más de 2 días (aunque no haya llegado otro intento)'
+  'y los intentos del límite por IP de más de 1 día (aunque no haya llegado otro intento)'
 );
 select is(
   (select count(*)::int from private.public_request_hits where ip_hash = repeat('2', 64)),

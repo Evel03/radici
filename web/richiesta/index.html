@@ -36,11 +36,17 @@
           <svg class="icon done__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
           <h2 id="done-title" class="done__title" data-i18n="request.done.title"></h2>
           <p class="done__lead" data-i18n="request.done.lead"></p>
-          <p id="done-email" class="done__email"></p>
-          <p class="small" data-i18n="request.done.spam"></p>
-          <h3 class="done__subtitle" data-i18n="request.done.summaryTitle"></h3>
-          <dl id="done-summary" class="summary"></dl>
-          <p class="small" data-i18n="request.quote.note"></p>
+          <!-- Reintento que el servidor ya tenía guardado de un envío anterior (request-key.ts) -->
+          <p id="done-replay" class="notice notice--warn" hidden></p>
+          <div id="done-contact">
+            <p id="done-email" class="done__email"></p>
+            <p class="small" data-i18n="request.done.spam"></p>
+          </div>
+          <div id="done-details">
+            <h3 class="done__subtitle" data-i18n="request.done.summaryTitle"></h3>
+            <dl id="done-summary" class="summary"></dl>
+            <p class="small" data-i18n="request.quote.note"></p>
+          </div>
           <div class="actions">
             <a class="btn btn--ghost" href="/" data-i18n="request.done.home"></a>
           </div>

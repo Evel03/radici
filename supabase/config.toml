@@ -177,7 +177,12 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = true
+# Radici: apagadas, como en producción ("Allow new users to sign up" OFF), hasta el área de clientes
+# (M2). Con altas abiertas cualquiera podía registrar antes el email de Evelyn con una contraseña suya
+# (contrato §8). Solo entran usuarios ya creados: los del seed en local; en producción, el de Evelyn,
+# creado confirmado desde el panel. [auth.email] enable_signup sigue en true: apagarlo desactiva el
+# login por email entero.
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -215,6 +220,9 @@ token_verifications = 30
 web3 = 30
 
 # Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
+# Radici: apagado (la app no manda captchaToken y con las altas apagadas nadie crea usuarios). Antes
+# de abrir las altas para el área de clientes (M2): Turnstile acá y en el panel (Attack Protection),
+# y captchaToken en el login de la app (web y nativa).
 # [auth.captcha]
 # enabled = true
 # provider = "hcaptcha"
@@ -233,9 +241,11 @@ secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
 # Number of characters used in the email OTP.
-otp_length = 6
+# Radici: 8 cifras y 10 minutos, como en producción (Email OTP Length / Expiration): un código más
+# largo y más corto en el tiempo es más difícil de adivinar. La app acepta de 6 a 10 cifras.
+otp_length = 8
 # Number of seconds before the email OTP expires (defaults to 1 hour).
-otp_expiry = 3600
+otp_expiry = 600
 
 # Use a production-ready SMTP server
 # [auth.email.smtp]
@@ -252,11 +262,12 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
-# Login con código (OTP) de la app: el email lleva el código de 6 cifras ({{ .Token }}), sin link.
+# Login con código (OTP) de la app: el email lleva el código de 8 cifras ({{ .Token }}), sin link.
 # signInWithOtp manda "magic_link" a un usuario existente y "confirmation" al que entra por
-# primera vez; los dos usan la misma plantilla. En producción el asunto y el HTML se copian a mano
-# en el panel (Authentication → Emails → Templates: "Magic link" y "Confirm signup"), con SMTP
-# propio (Resend) y "Email OTP length" = 6.
+# primera vez (con las altas apagadas, solo "magic_link"); los dos usan la misma plantilla. En
+# producción el asunto y el HTML se copian a mano en el panel (Authentication → Emails → Templates:
+# "Magic link" y "Confirm signup"), con SMTP propio (Resend), "Email OTP length" = 8 y
+# "Email OTP Expiration" = 600 (contrato §10).
 [auth.email.template.magic_link]
 subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Tu código de acceso{{ else if and .Data.locale (eq .Data.locale \"en\") }}Your sign-in code{{ else }}Il tuo codice di accesso{{ end }}"
 content_path = "./supabase/templates/login_code.html"

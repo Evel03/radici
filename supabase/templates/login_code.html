@@ -1,6 +1,7 @@
 <!doctype html>
 <!-- Código de acceso (OTP) de Supabase Auth: plantillas "Magic link" y "Confirm signup".
-     Solo el código de 6 cifras (variable Token), sin link: la app lo pide en pantalla.
+     Solo el código (variable Token: 8 cifras, vale 10 minutos; config.toml otp_length y
+     otp_expiry, y lo mismo en el panel), sin link: la app lo pide en pantalla.
      Idioma: user_metadata.locale (it por defecto; es, en). En producción se copia tal cual en
      Authentication → Emails del panel de Supabase. -->
 <html lang="it">
@@ -25,11 +26,11 @@
 {{ end }}
 <p style="margin:0 0 16px;font-size:32px;font-weight:700;letter-spacing:8px;font-family:Menlo,Consolas,monospace;">{{ .Token }}</p>
 {{ if and .Data.locale (eq .Data.locale "es") }}
-<p style="margin:0;font-size:14px;color:#6b5d52;">Escríbelo en la app. Vale 1 hora. Si no lo pediste, ignora este email.</p>
+<p style="margin:0;font-size:14px;color:#6b5d52;">Escríbelo en la app. Vale 10 minutos. Si no lo pediste, ignora este email.</p>
 {{ else if and .Data.locale (eq .Data.locale "en") }}
-<p style="margin:0;font-size:14px;color:#6b5d52;">Type it in the app. It is valid for 1 hour. If you didn't ask for it, ignore this email.</p>
+<p style="margin:0;font-size:14px;color:#6b5d52;">Type it in the app. It is valid for 10 minutes. If you didn't ask for it, ignore this email.</p>
 {{ else }}
-<p style="margin:0;font-size:14px;color:#6b5d52;">Scrivilo nell'app. Vale 1 ora. Se non l'hai chiesto tu, ignora questa email.</p>
+<p style="margin:0;font-size:14px;color:#6b5d52;">Scrivilo nell'app. Vale 10 minuti. Se non l'hai chiesto tu, ignora questa email.</p>
 {{ end }}
 </td></tr>
 </table>

@@ -24,7 +24,7 @@ import {
 } from "../request/model.ts";
 import { buildPayload, type PayloadOptions } from "../request/payload.ts";
 import { computeQuote } from "../request/quote.ts";
-import { createRequestKeys } from "../request/request-key.ts";
+import { createRequestKeys, doneViewFor, type DoneView } from "../request/request-key.ts";
 import { publicRequestUrl, rateLimitMessage, sendPublicRequest, type SubmitOutcome } from "../request/submit.ts";
 import { summaryRows } from "../request/summary.ts";
 import { loadTurnstileScript, mountTurnstile, type TurnstileWidget } from "../request/turnstile.ts";
@@ -74,7 +74,10 @@ const CONTROL_IDS = [...new Set(Object.values(CONTROLS).flat())];
 const form = byId<HTMLFormElement>("request-form");
 const layout = byId("request-layout");
 const done = byId("done");
+const doneReplay = byId("done-replay");
+const doneContact = byId("done-contact");
 const doneEmail = byId("done-email");
+const doneDetails = byId("done-details");
 const doneSummary = byId("done-summary");
 const healthBlock = byId("health-consent");
 const celiacNote = byId("celiac-note");
@@ -250,7 +253,16 @@ function startRequestPage(shell: Shell): void {
     server && server.data === JSON.stringify(data) ? server.errors : {};
   let formMessage: FormMessage | null = null;
   let statusKey: MessageKey | null = null;
-  let success: { data: RequestData; email: string; estimate: { totalCents: number } | null } | null = null;
+  /**
+   * Pantalla de gracias: los datos y el email que tiene guardados el servidor (null si no se sabe: un
+   * reintento después de varios envíos sin respuesta con datos distintos) y el aviso de reintento.
+   */
+  let success: {
+    data: RequestData | null;
+    email: string | null;
+    estimate: { totalCents: number } | null;
+    replay: DoneView["replay"];
+  } | null = null;
   let turnstile: TurnstileWidget | null = null;
 
   const payloadOptions = (turnstileToken: string): PayloadOptions => ({ locale: shell.i18n.lang, turnstileToken });
@@ -356,7 +368,17 @@ function startRequestPage(shell: Shell): void {
   const renderDone = (): void => {
     if (!success) return;
     const { t } = shell.i18n;
-    setText(doneEmail, t("request.done.email", { email: success.email }));
+    doneReplay.hidden = success.replay === null;
+    if (success.replay !== null) {
+      setText(doneReplay, t(success.replay === "earlier" ? "request.done.replayedEarlier" : "request.done.replayedUnknown"));
+    }
+    doneContact.hidden = success.email === null;
+    if (success.email !== null) setText(doneEmail, t("request.done.email", { email: success.email }));
+    doneDetails.hidden = success.data === null;
+    if (success.data === null) {
+      doneSummary.replaceChildren();
+      return;
+    }
     doneSummary.replaceChildren(
       ...summaryRows(success.data, success.estimate, shell.i18n).map((row) => {
         const item = document.createElement("div");
@@ -371,18 +393,31 @@ function startRequestPage(shell: Shell): void {
     );
   };
 
-  const showDone = (data: RequestData, email: string, estimate: { totalCents: number } | null): void => {
+  /** El servidor guarda el email limpio y en minúsculas: se muestra igual. */
+  const emailOf = (data: RequestData): string => buildPayload(data, payloadOptions("")).email.toLowerCase();
+
+  /**
+   * @param view lo que tiene guardado el servidor (doneViewFor): en un reintento con cambios, los datos
+   * del envío que llegó (la estimación del servidor es la de ese pedido), nunca los del formulario.
+   */
+  const showDone = (view: DoneView, estimate: { totalCents: number } | null): void => {
     phase = "done";
-    success = { data, email, estimate: estimate ?? computeQuote(data) };
+    const { data } = view;
+    success = {
+      data,
+      email: data ? emailOf(data) : null,
+      estimate: data ? (estimate ?? computeQuote(data)) : null,
+      replay: view.replay,
+    };
     renderDone();
     layout.hidden = true;
     done.hidden = false;
     done.focus();
   };
 
-  const handleOutcome = (outcome: SubmitOutcome, data: RequestData, email: string): void => {
+  const handleOutcome = (outcome: SubmitOutcome, data: RequestData, view: DoneView): void => {
     if (outcome.kind === "created") {
-      showDone(data, email, outcome.estimate);
+      showDone(view, outcome.estimate);
       return;
     }
     // Cualquier fallo: el token ya se usó o pudo usarse, Turnstile pide uno nuevo.
@@ -461,11 +496,16 @@ function startRequestPage(shell: Shell): void {
     keys.edited(snapshot);
     const payload = buildPayload(data, { ...payloadOptions(token), requestKey: keys.current() });
     const outcome = await sendPublicRequest(endpoint, payload);
+    // Un reintento que el servidor ya tenía guardado (duplicate): qué datos guardó. Antes de settle,
+    // que olvida los envíos anteriores.
+    const view = doneViewFor(
+      outcome.kind === "created" && outcome.duplicate ? keys.replayed(snapshot) : { kind: "sent" },
+      data,
+    );
     keys.settle(outcome.kind, snapshot);
     phase = "editing";
     setSending(false);
-    // El servidor guarda el email en minúsculas: se muestra igual.
-    handleOutcome(outcome, data, payload.email.toLowerCase());
+    handleOutcome(outcome, data, view);
   };
 
   const onTurnstileChange = (): void => {

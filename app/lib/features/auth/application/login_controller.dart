@@ -1,4 +1,5 @@
-// Login con código por email en dos pasos: email → código de 6 cifras.
+// Login con código por email en dos pasos: email → código (8 cifras en
+// producción; se aceptan de 6 a 10).
 // Al verificar el código, Supabase abre la sesión y SessionController (que
 // escucha los cambios de sesión) lleva a la cocinera a su área.
 import 'package:flutter_riverpod/flutter_riverpod.dart';

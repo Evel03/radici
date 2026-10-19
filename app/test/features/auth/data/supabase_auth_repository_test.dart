@@ -27,7 +27,7 @@ void main() {
 
   tearDown(() => server.dispose());
 
-  test('sendEmailCode pide el código por email y crea el usuario si no existe', () async {
+  test('sendEmailCode pide el código por email sin crear usuarios', () async {
     await repository.sendEmailCode('evelyn@example.test', locale: 'es');
 
     final request = server.last;
@@ -35,7 +35,9 @@ void main() {
     expect(request.url.path, '/auth/v1/otp');
     final body = jsonBodyOf(request);
     expect(body['email'], 'evelyn@example.test');
-    expect(body['create_user'], isTrue);
+    // Hasta el área de clientes (M2) solo entra quien ya tiene usuario (Evelyn,
+    // creada desde el panel): un email desconocido no crea una cuenta.
+    expect(body['create_user'], isFalse);
     // user_metadata.locale: idioma del email del código y del perfil.
     expect(body['data'], {'locale': 'es'});
   });

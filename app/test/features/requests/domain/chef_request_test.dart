@@ -109,6 +109,54 @@ void main() {
     expect(request.client.phoneE164, isNull);
   });
 
+  group('contacto del pedido (requests.contact)', () {
+    const snapshot = {
+      'name': 'Marco B.',
+      'zone': 'Borgo Palazzo',
+      'phone': '+393409998877',
+      'email': 'marco@example.test',
+    };
+
+    test('un pedido de la web muestra el contacto con el que llegó, no el de la ficha', () {
+      // La ficha puede tener otros datos (Evelyn los corrigió, o es de otro pedido): cada pedido
+      // muestra los suyos, y WhatsApp y llamar usan ese teléfono.
+      final request = ChefRequest.fromJson(requestRow(contact: snapshot));
+      expect(request.client.displayName, 'Marco B.');
+      expect(request.client.zone, 'Borgo Palazzo');
+      expect(request.client.contactPhone, '+393409998877');
+      expect(request.client.phoneE164, '+393409998877');
+      expect(request.client.contactEmail, 'marco@example.test');
+      expect(request.client.status, ClientStatus.prospect, reason: 'el estado sale de la ficha');
+    });
+
+    test('lo que falta en la copia sale de la ficha; un pedido de la app no tiene copia', () {
+      final partial = ChefRequest.fromJson(
+        requestRow(contact: {'phone': '+393409998877', 'name': 5, 'zone': '  '}),
+      );
+      expect(partial.client.contactPhone, '+393409998877');
+      expect(partial.client.displayName, 'Giulia Rossi');
+      expect(partial.client.zone, 'Città Alta');
+      expect(partial.client.contactEmail, 'giulia@example.test');
+
+      final fromApp = ChefRequest.fromJson(requestRow());
+      expect(fromApp.client.contactPhone, '+39 333 123 4567');
+      expect(ChefRequest.fromJson(requestRow(contact: 'x')).client.displayName, 'Giulia Rossi');
+    });
+
+    test('sin ficha embebida alcanza la copia', () {
+      final request = ChefRequest.fromJson(requestRow(contact: snapshot)..remove('client'));
+      expect(request.client.displayName, 'Marco B.');
+      expect(request.client.status, isNull);
+    });
+  });
+
+  test('estado de la ficha del cliente; uno desconocido queda en null', () {
+    expect(ChefRequest.fromJson(requestRow()).client.status, ClientStatus.prospect);
+    expect(ChefRequest.fromJson(requestRow(clientStatus: 'trial')).client.status, ClientStatus.trial);
+    expect(ChefRequest.fromJson(requestRow(clientStatus: 'vip')).client.status, isNull);
+    expect(ChefRequest.fromJson(requestRow(clientStatus: null)).client.status, isNull);
+  });
+
   test('seen_at con zona se lee como instante', () {
     final request = ChefRequest.fromJson(
       requestRow(seenAt: '2026-10-19T14:00:00+02:00'),
@@ -128,6 +176,13 @@ void main() {
       expect(buildRequest(seenAt: testNow).canReject, isTrue);
       for (final status in RequestStatus.values.skip(1)) {
         expect(buildRequest(status: status).canReject, isFalse, reason: '$status');
+      }
+    });
+
+    test('solo un prospecto se puede marcar como cliente', () {
+      expect(buildRequest().canMarkClient, isTrue);
+      for (final status in [...ClientStatus.values.skip(1), null]) {
+        expect(buildRequest(clientStatus: status).canMarkClient, isFalse, reason: '$status');
       }
     });
 
@@ -153,7 +208,9 @@ void main() {
     });
 
     test('toString no muestra datos personales ni de salud', () {
-      final request = ChefRequest.fromJson(requestRow());
+      final request = ChefRequest.fromJson(
+        requestRow(contact: {'name': 'Giulia R.', 'phone': '+393331234567'}),
+      );
       final text = '$request ${request.client} ${request.restrictions}';
       expect(text, isNot(contains('Giulia')));
       expect(text, isNot(contains('333')));

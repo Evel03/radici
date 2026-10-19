@@ -12,14 +12,20 @@
 # - variables: SUPABASE_PROJECT_REF, CHEF_NOTIFY_EMAIL, MAIL_FROM, MAIL_REPLY_TO, ALLOWED_ORIGINS,
 #   INBOX_URL, PUBLIC_SITE_URL
 #   (opcionales: CHEF_ID, CHEF_LOCALE, EMAIL_TRANSPORT, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE)
-#   · CHEF_ID: sin él la función usa la única cocinera de public.chefs, así el primer despliegue
-#     anda antes de correr promote_to_chef. Fijarlo solo si hay más de una cocinera.
+#   · CHEF_ID: sin él no hace falta conocer el id al desplegar: la función usa la única cocinera de
+#     public.chefs. Hasta correr promote_to_chef responde 500 (chef_id_unresolved, no_chef). Fijarlo
+#     solo si hay más de una cocinera.
 #   · CHEF_LOCALE: idioma de los avisos a Evelyn; por defecto es (español).
 #   · ALLOWED_ORIGINS: https://radici.sepusola10.com, sin las vistas previas *.pages.dev (se
 #     construyen con este mismo backend y crearían pedidos reales; contrato §4).
+# Orden del primer despliegue (contrato §10): antes de publicar la web (o una vista previa), crear el
+# usuario de Evelyn ya confirmado desde el panel, correr promote_to_chef y dejar las altas apagadas.
 # Sin SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD o SUPABASE_PROJECT_REF corre los tests y no despliega.
 # Los secretos vacíos no se cargan (no pisan los que ya estén); para borrar uno (por ejemplo
 # CHEF_ID, para volver a la cocinera automática): supabase secrets unset <NOMBRE>.
+# Corta antes de cargar valores de desarrollo (la clave de prueba de Turnstile, URLs de localhost) y
+# después comprueba que en Supabase estén las obligatorias (TURNSTILE_SECRET_KEY, IP_HASH_SALT).
+# Las actions de terceros van fijadas por SHA (Dependabot las actualiza: .github/dependabot.yml).
 name: Deploy Supabase
 
 on:
@@ -51,16 +57,16 @@ jobs:
       # Los secretos no se pueden usar en "if"; esto deja un "true"/"false".
       HAS_SUPABASE: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_DB_PASSWORD != '' && vars.SUPABASE_PROJECT_REF != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
 
       - name: Tests de TypeScript (presupuesto, contrato y Edge Function)
         run: npm test
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1.7.3
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
 
@@ -111,6 +117,25 @@ jobs:
           WHATSAPP_TEMPLATE: ${{ vars.WHATSAPP_TEMPLATE }}
         run: |
           set -euo pipefail
+          # Valores de desarrollo (supabase/functions/.env.example) en producción: se corta antes de cargarlos.
+          # La clave de prueba de Turnstile rechaza los tokens reales (y acepta el de prueba).
+          if [[ "${TURNSTILE_SECRET_KEY:-}" =~ ^[123]x0+AA$ ]]; then
+            echo "::error::TURNSTILE_SECRET_KEY es una clave de prueba de Turnstile: cargar la secreta del widget de producción."
+            exit 1
+          fi
+          for name in ALLOWED_ORIGINS INBOX_URL PUBLIC_SITE_URL; do
+            if [[ "${!name:-}" =~ (localhost|127\.0\.0\.1) ]]; then
+              echo "::error::${name} apunta a localhost: es un valor de desarrollo."
+              exit 1
+            fi
+          done
+          if [ "${EMAIL_TRANSPORT:-}" = "log" ]; then
+            echo "::warning::EMAIL_TRANSPORT=log: la función no manda ningún email (solo los registra). En producción, borrar la variable."
+          fi
+          if [[ "${CHEF_ID:-}" == cef00000-* ]]; then
+            echo "::warning::CHEF_ID es el de la cocinera del seed de desarrollo: la función respondería 500 (chef_not_found). Borrar la variable para usar la única cocinera."
+          fi
+
           # Cada valor viaja como un argumento NOMBRE=valor (sin pasar por un .env ni por echo).
           pairs=()
           for name in RESEND_API_KEY TURNSTILE_SECRET_KEY IP_HASH_SALT WHATSAPP_TOKEN \
@@ -136,6 +161,23 @@ jobs:
           fi
           if [ "${#pairs[@]}" -gt 0 ]; then
             supabase secrets set --project-ref "${SUPABASE_PROJECT_REF}" "${pairs[@]}"
+          fi
+
+          # Las obligatorias tienen que estar en Supabase (cargadas acá o antes, a mano): sin ellas la
+          # función responde 500 a todos los pedidos. Solo se leen los nombres, nunca los valores.
+          names=$(supabase secrets list --project-ref "${SUPABASE_PROJECT_REF}" -o json \
+            | jq -r '.. | objects | select(has("name")) | .name' 2>/dev/null || true)
+          if [ -z "${names}" ]; then
+            echo "::warning::No se pudo leer la lista de secretos de la función: comprobar a mano que estén TURNSTILE_SECRET_KEY e IP_HASH_SALT."
+          else
+            absent=()
+            for name in TURNSTILE_SECRET_KEY IP_HASH_SALT; do
+              grep -qx "${name}" <<< "${names}" || absent+=("${name}")
+            done
+            if [ "${#absent[@]}" -gt 0 ]; then
+              echo "::error::Faltan en Supabase los secretos ${absent[*]}: la función respondería 500 a todos los pedidos."
+              exit 1
+            fi
           fi
 
       - name: Desplegar public-request

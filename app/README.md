@@ -87,9 +87,12 @@ repositorios falsos (`test/support/fakes.dart`).
 
 ## Qué hace
 
-- **Login** con código por email (Supabase Auth, OTP de 6 cifras): email → código → sesión. La sesión
-  la guarda supabase_flutter (SharedPreferences en el teléfono, localStorage en la web). El email del
-  código llega en el idioma de la interfaz (`user_metadata.locale`).
+- **Login** con código por email (Supabase Auth, OTP de 8 cifras que vale 10 minutos; la app acepta de
+  6 a 10): email → código → sesión. No crea usuarios (`shouldCreateUser: false`): hasta el área de
+  clientes (M2) solo entra quien ya tiene uno; un email desconocido ve "non è abilitato all'accesso".
+  La sesión la guarda supabase_flutter (SharedPreferences en el teléfono, localStorage en la web). El
+  email del código llega en el idioma de `user_metadata.locale` (italiano si no hay; cambiar el idioma
+  en Impostazioni también lo cambia).
 - Después del login se lee el perfil (`profiles.role` y `profiles.locale`): `chef` → área de la
   cocinera (con su fila de `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz
   pasa al idioma del perfil (ver [Idioma](#idioma)).
@@ -102,6 +105,12 @@ repositorios falsos (`test/support/fakes.dart`).
   WhatsApp (`https://wa.me/<número sin +>?text=…` en el idioma del cliente), llamar (`tel:`),
   email (`mailto:`), rechazar (`new` → `rejected`) y deshacer el rechazo (`rejected` → `new`;
   como ya estaba visto, vuelve a Viste), las dos con confirmación. Al abrirlo se marca visto.
+  Si la persona es todavía un prospecto, avisa que sus datos se borran 90 días después de su último
+  pedido y ofrece **Segna come cliente** (con confirmación): la ficha pasa a `trial` y se conserva
+  (contrato §9).
+- **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
+  todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
+  que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
 - **Impostazioni** (menú de la cuenta): idioma de la app (Español, Italiano, English) y salir.
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
   emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Al reconectar
@@ -115,15 +124,30 @@ Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace de
 
 ### Requisitos en Supabase
 
+El orden completo del primer despliegue está en el contrato (§10.1).
+
 - Migración `supabase/migrations/20261019120000_public_requests.sql` (columnas nuevas de `requests`,
   permisos de update solo de `status` y `seen_at`, `requests` en la publicación `supabase_realtime`).
-  Su guarda `requests_guard_update` deja a la app pasar `new` → `rejected` y `rejected` → `new`.
+  Su guarda `requests_guard_update` deja a la app pasar `new` → `rejected` y `rejected` → `new`, y
+  desde `20261019160000_public_request_hardening.sql` también vale en el alta (un pedido nace en `new`).
+  Esa migración agrega `requests.contact` (el contacto con que llegó cada pedido).
+- `clients.status`: la cocinera lo cambia (privilegio por columna y `clients_guard_update`); la app lo
+  pasa de `prospect` a `trial` con "Segna come cliente".
 - `profiles.locale`: el usuario lo puede cambiar en su propio perfil (`grant update (full_name,
   phone, locale)` y la política "el usuario edita el suyo", `20261019100200_rls.sql`).
-- Plantillas de email "Magic link" y "Confirm signup" con el código (`{{ .Token }}`) y "Email OTP
-  length" = 6 (en local: `supabase/config.toml` y `supabase/templates/login_code.html`).
-- Evelyn entra una vez con su email (queda como cliente) y después se corre
-  `select public.promote_to_chef('<email>', 'Evelyn');` en el SQL editor.
+- Authentication → Sign In / Providers: "Allow new users to sign up" **apagado** (la app tampoco crea
+  usuarios), "Email OTP Length" = 8 y "Email OTP Expiration" = 600 (en local: `supabase/config.toml`).
+- Authentication → Emails → SMTP Settings: **SMTP propio** con Resend (`smtp.resend.com`, puerto 465,
+  usuario `resend`, contraseña = una clave de Resend solo de envío para `radici.sepusola10.com`). Sin
+  él, Supabase solo manda a los miembros del equipo (2 por hora) y Evelyn no recibe el código.
+- Plantillas de email "Magic link" y "Confirm signup" con el código (`{{ .Token }}`): el asunto de
+  `supabase/config.toml` y el HTML de `supabase/templates/login_code.html`.
+- Usuario de Evelyn **antes de publicar** la web o una vista previa: Authentication → Users → Add user
+  → Create new user, con "Auto Confirm User" y una contraseña al azar que no se guarda. Después, en el
+  SQL editor: `select public.promote_to_chef('<email>', 'Evelyn');`. La función exige el email
+  confirmado, le cambia la contraseña por una al azar y le cierra las sesiones (nadie que haya
+  registrado antes ese email entra como cocinera). Si Evelyn ya tenía la app abierta, tiene que salir y
+  volver a entrar con el código.
 
 ## Web `/gestione/`
 
@@ -138,6 +162,10 @@ flutter build web --release --base-href /gestione/ --no-web-resources-cdn --csp 
 ```
 
 En Git Bash (Windows) anteponer `MSYS_NO_PATHCONV=1`: si no, `/gestione/` se convierte en una ruta de Windows.
+
+`deploy-web.yml` la compila con el backend de producción solo en `main`. En las vistas previas de los
+PR (código sin revisar en una URL pública) va con `APP_ENV=dev` y sin Supabase: muestra "Backend non
+configurato" y no se conecta a los datos de producción.
 
 - **Autocontenida**: `--no-web-resources-cdn` copia CanvasKit a `canvaskit/` y `web/flutter_bootstrap.js`
   fija `canvasKitBaseUrl` (nada de `www.gstatic.com`). Roboto va empaquetada (`assets/fonts/`, familia

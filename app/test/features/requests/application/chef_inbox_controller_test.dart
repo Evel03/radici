@@ -299,6 +299,66 @@ void main() {
     });
   });
 
+  group('marcar como cliente', () {
+    // Dos pedidos de la misma persona y uno de otra.
+    final second = buildRequest(id: 'second', createdAt: DateTime.utc(2026, 10, 17, 9));
+    final other = buildRequest(
+      id: 'other',
+      clientId: '33333333-3333-4333-8333-333333333333',
+      createdAt: DateTime.utc(2026, 10, 16, 9),
+    );
+
+    setUp(() => repository = FakeChefRequestsRepository([fresh, second, other]));
+
+    test('pasa la ficha a cliente y lo refleja en todos sus pedidos', () async {
+      await start();
+      await controller().markClientAsCustomer('fresh');
+      expect(repository.markedClients, [testClientId]);
+      final byId = {for (final r in requests()) r.id: r};
+      expect(byId['fresh']!.client.status, ClientStatus.trial);
+      expect(byId['second']!.client.status, ClientStatus.trial);
+      expect(byId['other']!.client.status, ClientStatus.prospect, reason: 'otra persona');
+      expect(byId['fresh']!.canMarkClient, isFalse);
+    });
+
+    test('si la ficha ya no era un prospecto, se relee y se avisa el conflicto', () async {
+      await start();
+      // Otro dispositivo ya la marcó (la ficha es una sola: cambia en todos sus pedidos).
+      for (final request in [fresh, second]) {
+        repository.requests[request.id] = request.copyWith(
+          client: request.client.copyWith(status: ClientStatus.active),
+        );
+      }
+      await expectLater(
+        controller().markClientAsCustomer('fresh'),
+        throwsA(
+          isA<RequestsFailure>().having(
+            (f) => f.kind,
+            'kind',
+            RequestsFailureKind.conflict,
+          ),
+        ),
+      );
+      expect(
+        requests().firstWhere((r) => r.id == 'fresh').client.status,
+        ClientStatus.active,
+      );
+    });
+
+    test('error de red: la lista no cambia', () async {
+      repository.failMarkClient = true;
+      await start();
+      await expectLater(
+        controller().markClientAsCustomer('fresh'),
+        throwsA(isA<RequestsFailure>()),
+      );
+      expect(
+        requests().map((r) => r.client.status).toSet(),
+        {ClientStatus.prospect},
+      );
+    });
+  });
+
   test('refresh relee y, si falla, deja la lista como estaba', () async {
     await start();
     repository.insertSilently(buildRequest(id: 'new-one', createdAt: DateTime.utc(2026, 10, 19, 13)));

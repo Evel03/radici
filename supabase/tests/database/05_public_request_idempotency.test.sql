@@ -8,7 +8,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(33);
+select plan(34);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres): C1 recibe los pedidos de la web; C2 es otra cocinera.
@@ -291,8 +291,13 @@ select is(
 select is(
   (select display_name from public.clients
    where chef_id = '7e591000-0000-4000-8000-000000000001' and lower(contact_email) = 'anna@idem.test'),
+  'Anna Verdi',
+  'sin cambiarle el nombre (un envío sin login nunca modifica a una persona que ya existe)'
+);
+select is(
+  (select contact ->> 'name' from public.requests where id = (select (r ->> 'request_id')::uuid from results where k = 'second_key')),
   'Anna V.',
-  'y lo actualiza (eso sí, porque es un pedido nuevo)'
+  'el nombre que llegó queda en la copia del contacto del pedido nuevo'
 );
 
 select finish();

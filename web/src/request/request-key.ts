@@ -12,6 +12,11 @@
 //   cliente cambia el formulario: los datos nuevos son otro pedido.
 //   Excepción: si con esta clave ya hubo un error de red o 5xx, se conserva hasta el 2xx. Ese primer
 //   envío pudo haber quedado guardado y una clave nueva lo duplicaría.
+//
+// Si el reintento recibe `duplicate: true`, lo guardado es lo de un envío anterior (uno que terminó en
+// error de red o 5xx), no lo que se acaba de mandar: `replayed` dice cuál, si se puede saber, para que
+// la pantalla de gracias no muestre como enviado lo que se cambió después.
+import type { RequestData } from "./model.ts";
 import type { SubmitOutcome } from "./submit.ts";
 
 /** La parte de `crypto` que se usa (en los tests, una simulada). */
@@ -45,6 +50,15 @@ const MAYBE_SAVED: ReadonlySet<AttemptOutcome> = new Set<AttemptOutcome>(["netwo
 /** Rechazo seguro por los datos o la verificación: el servidor no lo guardó. */
 const REJECTED: ReadonlySet<AttemptOutcome> = new Set<AttemptOutcome>(["invalid", "turnstile", "tooLarge"]);
 
+/** Qué tiene guardado el servidor cuando contesta un reintento con `duplicate: true`. */
+export type SavedData =
+  /** Lo mismo que se acaba de mandar: el formulario no cambió desde el envío que quedó guardado. */
+  | { kind: "sent" }
+  /** Lo de un envío anterior, con otros datos (los cambios de después no se guardaron). */
+  | { kind: "earlier"; formSnapshot: string }
+  /** Hubo varios envíos sin respuesta con datos distintos: no se sabe cuál llegó. */
+  | { kind: "unknown" };
+
 export interface RequestKeys {
   /** Clave para el envío que empieza: la misma mientras no haga falta una nueva. */
   current(): string;
@@ -58,12 +72,17 @@ export interface RequestKeys {
    * mientras se enviaba el anterior). Después de un rechazo seguro, datos distintos llevan clave nueva.
    */
   edited(formSnapshot: string): void;
+  /**
+   * El envío de `formSnapshot` recibió un 2xx con `duplicate: true`: qué datos tiene guardados el
+   * servidor. Llamarlo antes de settle("created"), que olvida los envíos anteriores.
+   */
+  replayed(formSnapshot: string): SavedData;
 }
 
 export function createRequestKeys(generate: () => string = newRequestKey): RequestKeys {
   let key: string | null = null;
-  /** Con esta clave hubo un error de red o 5xx: puede estar guardada en el servidor. */
-  let maybeSaved = false;
+  /** Datos de los envíos con esta clave que terminaron en error de red o 5xx: pueden estar guardados. */
+  let maybeSaved: string[] = [];
   /** Datos que el servidor rechazó con certeza con esta clave (null si el último envío no fue un rechazo). */
   let rejected: string | null = null;
 
@@ -75,17 +94,46 @@ export function createRequestKeys(generate: () => string = newRequestKey): Reque
     settle(outcome, formSnapshot) {
       if (outcome === "created") {
         key = null;
-        maybeSaved = false;
+        maybeSaved = [];
         rejected = null;
         return;
       }
-      if (MAYBE_SAVED.has(outcome)) maybeSaved = true;
+      if (MAYBE_SAVED.has(outcome) && !maybeSaved.includes(formSnapshot)) maybeSaved.push(formSnapshot);
       rejected = REJECTED.has(outcome) ? formSnapshot : null;
     },
     edited(formSnapshot) {
       if (rejected === null || formSnapshot === rejected) return;
       rejected = null;
-      if (!maybeSaved) key = null;
+      if (maybeSaved.length === 0) key = null;
+    },
+    replayed(formSnapshot) {
+      // Se guardó uno solo de los envíos sin respuesta (el primero que llegó a la base).
+      const [only, ...others] = maybeSaved;
+      if (only === undefined || others.length > 0) return { kind: "unknown" };
+      return only === formSnapshot ? { kind: "sent" } : { kind: "earlier", formSnapshot: only };
     },
   };
+}
+
+/** Pantalla de gracias: con qué datos (null: no se sabe) y qué aviso de reintento mostrar. */
+export interface DoneView {
+  data: RequestData | null;
+  replay: "earlier" | "unknown" | null;
+}
+
+/** Qué muestra la pantalla de gracias según lo guardado: nunca como enviado algo que no se guardó. */
+export function doneViewFor(saved: SavedData, sent: RequestData): DoneView {
+  switch (saved.kind) {
+    case "sent":
+      return { data: sent, replay: null };
+    case "earlier":
+      try {
+        // Lo serializó la propia página (JSON.stringify de readForm): misma forma que RequestData.
+        return { data: JSON.parse(saved.formSnapshot) as RequestData, replay: "earlier" };
+      } catch {
+        return { data: null, replay: "unknown" };
+      }
+    case "unknown":
+      return { data: null, replay: "unknown" };
+  }
 }

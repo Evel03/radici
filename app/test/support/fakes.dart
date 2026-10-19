@@ -130,10 +130,14 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
   bool failMarkSeen = false;
   bool failReject = false;
   bool failUndoReject = false;
+  bool failMarkClient = false;
   int fetchCalls = 0;
   final List<String> markedSeen = [];
   final List<String> rejected = [];
   final List<String> undoneRejects = [];
+
+  /// Fichas (client_id) marcadas como clientes.
+  final List<String> markedClients = [];
 
   final _realtime = StreamController<RequestsRealtimeEvent>.broadcast();
   int realtimeListeners = 0;
@@ -198,6 +202,24 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
     }
     undoneRejects.add(id);
     requests[id] = request.copyWith(status: RequestStatus.newRequest);
+  }
+
+  @override
+  Future<void> markClientAsCustomer(String clientId) async {
+    if (failMarkClient) {
+      throw const RequestsFailure(RequestsFailureKind.unavailable);
+    }
+    final ofClient = requests.values.where((r) => r.clientId == clientId);
+    if (ofClient.isEmpty ||
+        ofClient.any((r) => r.client.status != ClientStatus.prospect)) {
+      throw const RequestsFailure(RequestsFailureKind.conflict);
+    }
+    markedClients.add(clientId);
+    for (final request in ofClient.toList()) {
+      requests[request.id] = request.copyWith(
+        client: request.client.copyWith(status: ClientStatus.trial),
+      );
+    }
   }
 
   @override

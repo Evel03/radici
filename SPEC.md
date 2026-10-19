@@ -149,7 +149,7 @@ create type diet            as enum ('vegetarian','vegan');
 | `recurring_plans` (F2) | id, client_id, freq ('weekly','biweekly'), dow, start_time, days, meals text[], active |
 | `recipes` | id, chef_id, name_it, name_es, fridge_days, freezable, freezer_days (60), diet null, notes, active |
 | `recipe_allergens` | recipe_id, allergen |
-| `requests` | id, chef_id, client_id (siempre, también para prospectos), type, status, adults, kids, days, meals text[], restrictions jsonb, wishes uuid[], notes, preferred_date, preferred_start, pay_mode, target_session_id null (para 'change'), text (para 'change'), created_at |
+| `requests` | id, chef_id, client_id (siempre, también para prospectos), type, status, adults, kids, days, meals text[], restrictions jsonb, wishes uuid[], notes, preferred_date, preferred_start, pay_mode, target_session_id null (para 'change'), text (para 'change'), created_at; del pedido de la web además preferred_slot, locale, whatsapp_opt_in, estimate, source, seen_at, request_key y contact jsonb (el contacto con que llegó; contrato §3) |
 | `quotes` | id, request_id, session_id (la sesión `held` que reserva el horario), version, menu uuid[], cook_minutes, portions, service_cents, groceries_est_cents, preauth_cents, pricing_snapshot jsonb, allergen_override text null, slot_date, slot_start, hold_until, sent_at, accepted_at |
 | `sessions` | id, chef_id, client_id, request_id, quote_id, date, start_time, cook_minutes, shop_minutes, gap_minutes, portions, status, hold_until null (solo `held`), pay_mode, service_cents, groceries_est_cents, preauth_cents, groceries_actual_cents null, service_paid_at, groceries_paid_at, cancelled_at, cancel_reason, **busy tstzrange** (generada) |
 | `session_menu` | session_id, recipe_id, portions |
@@ -312,7 +312,9 @@ Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automá
 - Mínimo necesario: guardar la restricción ("sin lactosa"), no diagnósticos ni historia clínica.
 - Solo la cocinera ve restricciones y direcciones. Nunca se escriben en logs, Sentry ni analytics.
 - Derecho de acceso y borrado: exportar los datos del cliente (JSON) y borrar su cuenta desde la app. Incluye las copias de restricciones en `requests.restrictions` y `quotes.pricing_snapshot`.
-- Conservación: los prospectos que no se convierten se borran a los `prospect_retention_days` (90) con un cron.
+- Conservación: los prospectos que no se convierten se borran con un cron cuando pasan `prospect_retention_days` (90) desde su último pedido. Si la persona pasa a ser clienta (en Fase 0, por WhatsApp), la cocinera la marca como cliente desde el detalle del pedido (ficha en `trial`) y se conserva.
+- Un envío del formulario público (sin login, email sin verificar) nunca modifica a una persona que ya existe: cada pedido guarda el contacto con que llegó (`requests.contact`) y las restricciones del hogar solo se suman, desde pedidos semanales.
+- Las altas de usuarios van apagadas hasta el área de clientes (M2): la cuenta de la cocinera se crea confirmada desde el panel antes de publicar nada, y `promote_to_chef` le cambia la contraseña por una al azar y le cierra las sesiones.
 - Las notificaciones push y los emails nunca llevan restricciones ni direcciones.
 - La política de privacidad lista los subencargados: Supabase, Stripe, el proveedor de email, Firebase (push), Sentry y el hosting de la web.
 - Supabase en región UE; DPA firmado con Supabase y Stripe; política de privacidad en italiano.
@@ -477,7 +479,7 @@ Verificar con el commercialista antes de cobrar a clientes reales:
 - Identificador de la app y dominio definitivo. El nombre ya está decidido (Radici) y el dominio temporal es `radici.sepusola10.com`. Falta elegir el bundle id antes de la primera subida a las tiendas: no se puede cambiar después de publicar. Hoy sigue el provisorio (`com.sepusola10.mestolo`); los lugares a cambiar están en `app/README.md`.
 - Sesión mínima: hoy es 150 min (67 € de servicio) aunque sea 1 porción. ¿Se mantiene, se baja la base de 60 min o se fija un pedido mínimo?
 - ¿Se pide tarjeta guardada también a los clientes `pay_after` (para poder cobrar la penalidad por cancelación)?
-- Al revocar el consentimiento de salud se borran las restricciones del cliente. ¿Se borran también las copias en pedidos y presupuestos pasados? Pueden servir como prueba de que Evelyn fue informada de una alergia: decidir con quien asesore en privacidad.
+- Al revocar el consentimiento de salud se borran las restricciones del cliente. ¿Se borran también las copias en pedidos y presupuestos pasados? Pueden servir como prueba de que Evelyn fue informada de una alergia: decidir con quien asesore en privacidad. Mientras tanto se hace lo que dice la privacy: el retiro se procesa con `private.revoke_health_consent`, que borra también las copias de los pedidos (contrato §10.2). Si se decide conservarlas, cambiar la privacy (finalidad y plazo) y esa función.
 - Tarifas reales. Con los valores de ejemplo, una sesión de 3 h para 4 personas deja 78 € por unas 4,5 h reales (compra + traslados + cocina): unos 17–18 €/h brutos.
 - Zona de cobertura (¿solo Bergamo y primer cinturón?).
 - Pedido mínimo (ej.: 10 porciones) y recargo por zona lejana.

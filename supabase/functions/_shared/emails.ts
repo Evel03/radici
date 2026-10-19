@@ -3,8 +3,9 @@
 // Sin datos de salud (alergias, dietas, nota de restricciones), sin dirección y sin las notas
 // libres (SPEC §6): las funciones solo reciben lo que pueden mostrar. Al cliente se le dice que
 // Evelyn tendrá en cuenta sus restricciones; a Evelyn, que las vea en la app.
-// Todo texto del usuario se escapa. En el asunto, del usuario solo va el nombre de pila, y solo
-// si parece un nombre (subjectFirstName): nunca un teléfono o un email escrito en ese campo.
+// Todo texto del usuario se escapa. En el asunto y en el saludo al cliente, del usuario solo va el
+// nombre de pila, y solo si parece un nombre (safeFirstName): nunca un teléfono, un email ni un
+// link escrito en ese campo. El mailto: del aviso a Evelyn lleva la dirección codificada.
 // HTML simple con estilos en línea, sin imágenes remotas ni seguimiento, más texto plano.
 // Importes con aritmética entera; fechas sin zona horaria (son días de calendario).
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
@@ -37,7 +38,7 @@ export interface RequestSummary {
 export interface ClientConfirmationInput {
   brand: string;
   chefName: string;
-  /** Se usa solo el nombre de pila. */
+  /** Se usa solo el nombre de pila, si parece un nombre (safeFirstName); si no, el saludo genérico. */
   customerName: string;
   summary: RequestSummary;
   privacyUrl: string | null;
@@ -309,22 +310,37 @@ export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char);
 }
 
-/** Primera palabra del nombre, con tope de 40 caracteres (saludo del email y WhatsApp). */
+/** Primera palabra del nombre, con tope de 40 caracteres. */
 export function firstName(fullName: string): string {
   return (fullName.trim().split(/\s+/)[0] ?? "").slice(0, 40);
 }
 
-/** Letras (cualquier alfabeto, con acentos) y, entre ellas, apóstrofo, guion o punto: "José", "D'Angelo", "Jean-Luc". */
-const NAME_WORD = /^\p{L}[\p{L}\p{M}'’.-]*$/u;
+/**
+ * Una palabra que parece un nombre: letras (cualquier alfabeto, con acentos) y, entre ellas,
+ * apóstrofo o guion ("José", "D'Angelo", "Jean-Luc"), hasta 30 caracteres. Sin puntos, dígitos,
+ * "@", "/" ni ":": ni un teléfono, ni un email, ni un dominio o link ("bit.ly/…", "x.com").
+ */
+const NAME_WORD = /^\p{L}[\p{L}\p{M}'’-]{0,29}$/u;
 
 /**
- * Nombre de pila para un asunto, o "" si la primera palabra no parece un nombre. Cualquiera
- * escribe lo que quiere en "nombre": si trae dígitos, "@", "+" u otros signos (un teléfono, un
- * email) no va al asunto, que se ve en la bandeja y en las notificaciones del celular.
+ * Nombre de pila para lo que sale hacia afuera, o "" si la primera palabra no parece un nombre:
+ * el asunto del aviso a Evelyn (se ve en la bandeja y en las notificaciones del celular), el saludo
+ * de la confirmación al cliente y el parámetro del WhatsApp. Esos dos últimos llegan a un email o
+ * a un número que nadie verificó: no pueden llevar un link escrito en el formulario.
  */
-export function subjectFirstName(fullName: string): string {
+export function safeFirstName(fullName: string): string {
   const first = firstName(fullName);
   return NAME_WORD.test(first) ? first : "";
+}
+
+/**
+ * href mailto: con la dirección codificada (sin el "@"): así ningún "?", "&" o "#" escrito en el
+ * campo del email agrega destinatarios ocultos (bcc), cc ni un cuerpo armado al responder.
+ */
+export function mailtoHref(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at < 0) return `mailto:${encodeURIComponent(email)}`;
+  return `mailto:${encodeURIComponent(email.slice(0, at))}@${encodeURIComponent(email.slice(at + 1))}`;
 }
 
 /** Importe en centavos enteros: "1.234,56 €" (it, es) o "€1,234.56" (en). Sin pasar por decimales. */
@@ -560,7 +576,7 @@ export function renderClientConfirmation(input: ClientConfirmationInput, locale:
     subject: messages.client.subject(input.brand),
     preheader: messages.client.preheader(input.chefName),
     brand: input.brand,
-    heading: messages.client.greeting(firstName(input.customerName)),
+    heading: messages.client.greeting(safeFirstName(input.customerName)),
     blocks,
     footer: messages.client.footer(input.brand),
   });
@@ -582,7 +598,7 @@ export function renderChefNotification(input: ChefNotificationInput, locale: Loc
     {
       label: messages.chef.email,
       value: input.email,
-      valueHtml: `<a href="${escapeHtml(`mailto:${input.email}`)}" style="color:${COLOR.accent};">${escapeHtml(input.email)}</a>`,
+      valueHtml: `<a href="${escapeHtml(mailtoHref(input.email))}" style="color:${COLOR.accent};">${escapeHtml(input.email)}</a>`,
     },
     { label: messages.chef.whatsapp, value: input.whatsappOptIn ? messages.chef.yes : messages.chef.no },
   ];
@@ -600,7 +616,7 @@ export function renderChefNotification(input: ChefNotificationInput, locale: Loc
 
   return render({
     locale,
-    subject: messages.chef.subject(subjectFirstName(input.customerName)),
+    subject: messages.chef.subject(safeFirstName(input.customerName)),
     preheader: messages.chef.preheader,
     brand: input.brand,
     heading: messages.chef.heading,

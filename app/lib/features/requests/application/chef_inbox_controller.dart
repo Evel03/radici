@@ -1,7 +1,8 @@
 // Pedidos de la cocinera: una sola lista para la bandeja, la agenda y el
 // detalle. Se carga al entrar, se mantiene al día con Realtime (INSERT en
 // requests filtrado por su chef_id) y se vuelve a leer al reconectar, por si
-// se perdió algún aviso mientras no había conexión.
+// se perdió algún aviso mientras no había conexión. Desde acá también se
+// rechaza (o se deshace) y se marca a la persona como clienta.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -196,6 +197,33 @@ class ChefInboxController extends AsyncNotifier<List<ChefRequest>> {
       requestId,
       (r) => r.copyWith(status: RequestStatus.newRequest),
     );
+  }
+
+  /// La persona del pedido pasó a ser clienta (su ficha deja de ser un
+  /// prospecto y no se borra a los 90 días). Se refleja en todos sus pedidos.
+  /// Lanza [RequestsFailure] si no se pudo; si la ficha ya había cambiado,
+  /// antes se actualiza el pedido con lo del servidor.
+  Future<void> markClientAsCustomer(String requestId) async {
+    final request = state.value?.where((r) => r.id == requestId).firstOrNull;
+    if (request == null) return;
+    final clientId = request.clientId;
+    try {
+      await _repository.markClientAsCustomer(clientId);
+    } on RequestsFailure catch (failure) {
+      if (failure.kind == RequestsFailureKind.conflict) {
+        await _reload(requestId);
+      }
+      rethrow;
+    }
+    if (!ref.mounted) return;
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncData([
+      for (final r in current)
+        r.clientId == clientId
+            ? r.copyWith(client: r.client.copyWith(status: ClientStatus.trial))
+            : r,
+    ]);
   }
 
   Future<void> _changeStatus(

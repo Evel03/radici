@@ -31,6 +31,9 @@ Map<String, dynamic> requestRow({
   String phone = '+39 333 123 4567',
   String email = 'giulia@example.test',
   String locale = 'it',
+  String? clientStatus = 'prospect',
+  // Copia del contacto con que llegó el pedido (requests.contact); null en los de la app.
+  Object? contact,
   Object? restrictions = const {
     'allergens': ['milk', 'gluten'],
     'diets': ['vegetarian'],
@@ -69,11 +72,13 @@ Map<String, dynamic> requestRow({
   'source': 'web',
   'seen_at': seenAt,
   'created_at': createdAt,
+  'contact': contact,
   'client': {
     'display_name': name,
     'contact_email': email,
     'contact_phone': phone,
     'zone': 'Città Alta',
+    'status': clientStatus,
   },
 };
 
@@ -100,10 +105,12 @@ ChefRequest buildRequest({
     totalCents: 14100,
   ),
   String chefId = testChefId,
+  String clientId = testClientId,
+  ClientStatus? clientStatus = ClientStatus.prospect,
 }) => ChefRequest(
   id: id,
   chefId: chefId,
-  clientId: testClientId,
+  clientId: clientId,
   type: RequestType.week,
   status: status,
   adults: 2,
@@ -125,5 +132,6 @@ ChefRequest buildRequest({
     contactEmail: email,
     contactPhone: phone,
     zone: 'Città Alta',
+    status: clientStatus,
   ),
 );

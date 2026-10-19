@@ -174,9 +174,9 @@
   "@loginCodeLabel": {
     "description": "Etiqueta del campo del código de acceso."
   },
-  "loginCodeHint": "6 cifre",
+  "loginCodeHint": "Il codice dell'email",
   "@loginCodeHint": {
-    "description": "Ayuda dentro del campo del código (Supabase manda 6 cifras)."
+    "description": "Ayuda dentro del campo del código. Sin el número de cifras: lo fija el proyecto (Email OTP length, 8 en producción; la app acepta de 6 a 10)."
   },
   "loginVerify": "Entra",
   "@loginVerify": {
@@ -622,6 +622,46 @@
   "undoRejectConflict": "La richiesta è cambiata nel frattempo: controlla il suo stato.",
   "@undoRejectConflict": {
     "description": "El pedido ya no estaba rechazado."
+  },
+
+  "detailProspectNotice": "Non è ancora cliente: se non diventa un servizio, i suoi dati si cancellano 90 giorni dopo la sua ultima richiesta.",
+  "@detailProspectNotice": {
+    "description": "Detalle, sección de contacto, si la ficha es un prospecto: el borrado automático (contrato §9)."
+  },
+  "detailClientKept": "Cliente: i suoi dati restano.",
+  "@detailClientKept": {
+    "description": "Detalle, sección de contacto, si la ficha ya es de un cliente (no se borra a los 90 días)."
+  },
+  "actionMarkClient": "Segna come cliente",
+  "@actionMarkClient": {
+    "description": "Botón del detalle si la persona es un prospecto: la ficha pasa a cliente (trial) y deja de borrarse a los 90 días."
+  },
+  "markClientConfirmTitle": "Segnare {name} come cliente?",
+  "@markClientConfirmTitle": {
+    "description": "Título del diálogo de confirmación de marcar como cliente.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "markClientConfirmBody": "Fallo quando avete concordato almeno un servizio. Da cliente i suoi dati restano, anche allergie e diete; se no, si cancellano 90 giorni dopo la sua ultima richiesta.",
+  "@markClientConfirmBody": {
+    "description": "Explicación de marcar como cliente."
+  },
+  "markClientConfirmAction": "Segna come cliente",
+  "@markClientConfirmAction": {
+    "description": "Botón que confirma marcar como cliente."
+  },
+  "markClientDone": "Fatto: ora è tra i clienti e i suoi dati restano.",
+  "@markClientDone": {
+    "description": "Confirmación de que la ficha pasó a cliente."
+  },
+  "markClientFailed": "Non è stato possibile segnarlo come cliente. Riprova.",
+  "@markClientFailed": {
+    "description": "Error al marcar como cliente."
+  },
+  "markClientConflict": "La scheda è cambiata nel frattempo: controlla i dati aggiornati.",
+  "@markClientConflict": {
+    "description": "La ficha ya no era un prospecto (por ejemplo, se marcó desde otro dispositivo)."
   },
 
   "newRequestBanner": "Nuova richiesta da {name}",

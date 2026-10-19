@@ -54,8 +54,8 @@ void main() {
         query['select'],
         'id,chef_id,client_id,type,status,adults,kids,days,meals,'
         'restrictions,notes,preferred_date,preferred_slot,locale,'
-        'whatsapp_opt_in,estimate,source,seen_at,created_at,'
-        'client:clients(display_name,contact_email,contact_phone,zone)',
+        'whatsapp_opt_in,estimate,source,seen_at,created_at,contact,'
+        'client:clients(display_name,contact_email,contact_phone,zone,status)',
       );
       expect(query['chef_id'], 'eq.$testChefId');
       expect(query['order'], startsWith('created_at.desc'));
@@ -235,6 +235,54 @@ void main() {
       );
       await expectLater(
         repository.undoReject('req-1'),
+        throwsA(
+          isA<RequestsFailure>().having(
+            (f) => f.kind,
+            'kind',
+            RequestsFailureKind.unavailable,
+          ),
+        ),
+      );
+    });
+  });
+
+  group('markClientAsCustomer', () {
+    test('PATCH clients status=trial solo si la ficha todavía es un prospecto', () async {
+      server.handler = (_) async => jsonResponse([{'id': testClientId}]);
+
+      await repository.markClientAsCustomer(testClientId);
+
+      final request = server.last;
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/rest/v1/clients');
+      expect(request.url.queryParameters['id'], 'eq.$testClientId');
+      expect(request.url.queryParameters['status'], 'eq.prospect');
+      expect(request.url.queryParameters['select'], 'id');
+      // Solo el estado: la ficha no se toca.
+      expect(jsonBodyOf(request), {'status': 'trial'});
+    });
+
+    test('si ya no era un prospecto (o no existe) → conflict', () async {
+      server.handler = (_) async => jsonResponse(<Object>[]);
+      await expectLater(
+        repository.markClientAsCustomer(testClientId),
+        throwsA(
+          isA<RequestsFailure>().having(
+            (f) => f.kind,
+            'kind',
+            RequestsFailureKind.conflict,
+          ),
+        ),
+      );
+    });
+
+    test('error de permisos o del servidor → unavailable', () async {
+      server.handler = (_) async => jsonResponse(
+        {'message': 'only_chef_can_change_client_status', 'code': '42501'},
+        status: 403,
+      );
+      await expectLater(
+        repository.markClientAsCustomer(testClientId),
         throwsA(
           isA<RequestsFailure>().having(
             (f) => f.kind,

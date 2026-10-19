@@ -6,7 +6,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(84);
+select plan(101);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
@@ -70,8 +70,9 @@ select is(
                     order by c.column_name)
    from information_schema.columns c
    where c.table_schema = 'public' and c.table_name = 'requests'
-     and c.column_name in ('preferred_slot', 'locale', 'whatsapp_opt_in', 'estimate', 'source', 'seen_at')),
+     and c.column_name in ('preferred_slot', 'locale', 'whatsapp_opt_in', 'estimate', 'source', 'seen_at', 'contact')),
   array[
+    'contact jsonb YES -',
     'estimate jsonb YES -',
     'locale text NO ''it''::text',
     'preferred_slot text YES -',
@@ -213,12 +214,14 @@ select is(
   'por día: con 19 intentos de hace 3 horas pasa el 20.º y no el 21.º (los de hace más de una hora no cuentan para la hora)'
 );
 
-insert into private.public_request_hits (ip_hash, created_at) values (repeat('d', 64), now() - interval '3 days');
+insert into private.public_request_hits (ip_hash, created_at) values
+  (repeat('d', 64), now() - interval '3 days'),
+  (repeat('d', 64), now() - interval '25 hours');
 select ok(public.hit_public_request_rate(repeat('e', 64), 5, 20), 'un intento de otra IP pasa');
 select is(
   (select count(*)::int from private.public_request_hits where ip_hash = repeat('d', 64)),
   0,
-  'cada llamada borra los registros de más de 2 días'
+  'cada llamada borra los registros de más de 1 día (ya no cuentan para ninguna ventana)'
 );
 select throws_ok(
   $$ select public.hit_public_request_rate('203.0.113.7', 5, 20) $$,
@@ -283,6 +286,15 @@ select results_eq(
   'el pedido queda new, con origen web, idioma, WhatsApp, franja y la estimación del servidor; sin restricciones'
 );
 select is(
+  (select r.contact from public.requests r where r.id = (select v from ids where k = 'r_giulia')),
+  '{"name": "Giulia Rossi", "zone": "Città Alta", "phone": "+393331234567", "email": "giulia@public.test"}'::jsonb,
+  'el pedido guarda la copia del contacto tal como llegó (la app la muestra en lugar de la ficha)'
+);
+select throws_ok(
+  $$ insert into public.requests (chef_id, client_id, type, adults, kids, days, meals, contact)
+     values ('7e581000-0000-4000-8000-000000000001', '7e582000-0000-4000-8000-00000000000a', 'week', 1, 0, 1, '{dinner}', '"x"') $$,
+  '23514', null, 'contact, si está, es un objeto JSON');
+select is(
   (select array_agg(kind::text || ':' || text_version order by kind) from public.consents
    where client_id = (select v from ids where k = 'giulia') and revoked_at is null),
   array['privacy:2026-10-19'],
@@ -337,10 +349,9 @@ select is(
   'se guardan los consentimientos de salud y de privacidad'
 );
 select is(
-  (select array_agg(coalesce(allergen::text, diet::text) order by coalesce(allergen::text, diet::text))
-   from public.client_restrictions where client_id = (select v from ids where k = 'marco')),
-  array['gluten', 'milk', 'vegan'],
-  'las restricciones del cliente quedan cargadas (alérgenos y dietas)'
+  (select count(*)::int from public.client_restrictions where client_id = (select v from ids where k = 'marco')),
+  0,
+  'un evento: las restricciones son de los invitados y quedan solo en la copia del pedido, no en el hogar'
 );
 select results_eq(
   $$ select restrictions, type::text, locale, whatsapp_opt_in, preferred_date, preferred_slot, meals, notes
@@ -366,16 +377,30 @@ select is(
   array[(select v from ids where k = 'marco')],
   'reutiliza el prospecto: no crea otro'
 );
+insert into ids (k, v)
+select 'r_marco2', r.id from public.requests r
+where r.client_id = (select v from ids where k = 'marco') and r.id <> (select v from ids where k = 'r_marco1');
+
 select results_eq(
   $$ select display_name, contact_phone, zone from public.clients where id = (select v from ids where k = 'marco') $$,
-  $$ values ('Marco B.'::text, '+393409998877'::text, 'Borgo Palazzo'::text) $$,
-  'actualiza nombre, teléfono y zona'
+  $$ values ('Marco Bianchi'::text, '+393401112233'::text, 'Redona'::text) $$,
+  'no le cambia nombre, teléfono ni zona: un envío sin login no modifica a una persona que ya existe'
+);
+select is(
+  (select contact from public.requests where id = (select v from ids where k = 'r_marco2')),
+  '{"name": "Marco B.", "zone": "Borgo Palazzo", "phone": "+393409998877", "email": "marco@public.test"}'::jsonb,
+  'lo que llegó con el pedido nuevo queda en su copia del contacto'
+);
+select is(
+  (select contact from public.requests where id = (select v from ids where k = 'r_marco1')),
+  '{"name": "Marco Bianchi", "zone": "Redona", "phone": "+393401112233", "email": "marco@public.test"}'::jsonb,
+  'y el pedido anterior conserva el suyo (Evelyn lo contacta con los datos de ese pedido)'
 );
 select is(
   (select array_agg(coalesce(allergen::text, diet::text)) from public.client_restrictions
    where client_id = (select v from ids where k = 'marco')),
   array['eggs'],
-  'reemplaza sus restricciones por las del pedido nuevo'
+  'un pedido semanal suma sus restricciones a las del hogar'
 );
 select is(
   (select count(*)::int from public.consents
@@ -395,8 +420,8 @@ select lives_ok(
 );
 select is(
   (select count(*)::int from public.client_restrictions where client_id = (select v from ids where k = 'marco')),
-  0,
-  'el pedido nuevo no trae restricciones: el prospecto queda sin restricciones'
+  1,
+  'un pedido sin restricciones no borra las del hogar (desde la web nunca se borran)'
 );
 select is(
   (select count(*)::int from public.consents
@@ -409,6 +434,19 @@ select is(
    where client_id = (select v from ids where k = 'marco') and restrictions is null),
   1,
   'y el pedido nuevo no lleva restricciones'
+);
+
+select lives_ok(
+  $$ select public.submit_public_request(pg_temp.payload(
+       '{"email": "marco@public.test", "name": "Marco B.", "allergens": ["eggs", "gluten"], "diets": ["vegan"],
+         "health_consent_version": "2026-10-19"}')) $$,
+  'cuarto pedido semanal, con otras restricciones'
+);
+select is(
+  (select array_agg(coalesce(allergen::text, diet::text) order by coalesce(allergen::text, diet::text))
+   from public.client_restrictions where client_id = (select v from ids where k = 'marco')),
+  array['eggs', 'gluten', 'vegan'],
+  'se suman a las que ya tenía el hogar, sin repetir'
 );
 
 select lives_ok(
@@ -450,7 +488,50 @@ select throws_ok(
   $$ select public.promote_to_chef('nadie@public.test', 'Nadie') $$,
   'P0002', 'user_not_found', 'email sin usuario de auth: error claro');
 
+-- Alguien registró antes ese email con una contraseña suya (contrato §8).
+update auth.users set encrypted_password = extensions.crypt('clave-de-otra-persona', extensions.gen_salt('bf'))
+where id = '7e580000-0000-4000-8000-00000000e001';
+select throws_ok(
+  $$ select public.promote_to_chef('nuova.cuoca@public.test', 'Nuova Cuoca') $$,
+  'P0001', 'user_not_confirmed',
+  'email sin confirmar: no se promueve (que entre una vez con el código o crearlo confirmado)');
+select is(
+  (select role::text from public.profiles where id = '7e580000-0000-4000-8000-00000000e001'),
+  'client',
+  'y el perfil sigue siendo de cliente'
+);
+
+-- Ya confirmado (entró con el código), pero con la sesión, los refresh tokens y un factor MFA de la otra persona.
+update auth.users set email_confirmed_at = now() where id = '7e580000-0000-4000-8000-00000000e001';
+insert into auth.sessions (id, user_id) values ('7e589000-0000-4000-8000-000000000001', '7e580000-0000-4000-8000-00000000e001');
+insert into auth.refresh_tokens (token, user_id, session_id, revoked) values
+  ('rt-de-la-sesion', '7e580000-0000-4000-8000-00000000e001', '7e589000-0000-4000-8000-000000000001', false),
+  ('rt-sin-sesion',   '7e580000-0000-4000-8000-00000000e001', null, false);
+insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, created_at, updated_at)
+values ('7e589100-0000-4000-8000-000000000001', '7e580000-0000-4000-8000-00000000e001', 'otra persona', 'totp', 'verified', now(), now());
+
 insert into ids (k, v) values ('chef3', public.promote_to_chef('  nuova.cuoca@public.test ', 'Nuova Cuoca'));
+
+select ok(
+  (select u.encrypted_password <> extensions.crypt('clave-de-otra-persona', u.encrypted_password)
+   from auth.users u where u.id = '7e580000-0000-4000-8000-00000000e001'),
+  'la contraseña que había puesto otra persona ya no sirve (queda una al azar: se entra con el código)'
+);
+select is(
+  (select count(*)::int from auth.sessions where user_id = '7e580000-0000-4000-8000-00000000e001'),
+  0,
+  'sus sesiones se cierran'
+);
+select is(
+  (select count(*)::int from auth.refresh_tokens where user_id = '7e580000-0000-4000-8000-00000000e001'),
+  0,
+  'y se borran sus refresh tokens, también los que no tenían sesión'
+);
+select is(
+  (select count(*)::int from auth.mfa_factors where user_id = '7e580000-0000-4000-8000-00000000e001'),
+  0,
+  'y sus factores MFA'
+);
 
 select is(
   (select role::text from public.profiles where id = '7e580000-0000-4000-8000-00000000e001'),
@@ -526,6 +607,34 @@ select throws_ok(
   $$ update public.requests set estimate = '{"totalCents": 1}' where id = (select v from ids where k = 'r_marco1') $$,
   '42501', null,
   'C1: no puede modificar la estimación del servidor'
+);
+select throws_ok(
+  $$ insert into public.requests (chef_id, client_id, type, status, adults, kids, days, meals)
+     values ('7e581000-0000-4000-8000-000000000001', (select v from ids where k = 'giulia'), 'week', 'accepted', 1, 0, 1, '{dinner}') $$,
+  '42501', 'request_status_change_not_allowed',
+  'C1: tampoco crea un pedido ya aceptado (la guarda vale también en el alta)'
+);
+select throws_ok(
+  $$ insert into public.requests (chef_id, client_id, type, status, adults, kids, days, meals)
+     values ('7e581000-0000-4000-8000-000000000001', (select v from ids where k = 'giulia'), 'week', 'quoted', 1, 0, 1, '{dinner}') $$,
+  '42501', 'request_status_change_not_allowed',
+  'C1: ni uno ya presupuestado'
+);
+select lives_ok(
+  $$ insert into public.requests (chef_id, client_id, type, status, adults, kids, days, meals, preferred_slot)
+     values ('7e581000-0000-4000-8000-000000000001', (select v from ids where k = 'giulia'), 'week', 'new', 1, 0, 1, '{dinner}', 'afternoon') $$,
+  'C1: un pedido en new sí lo puede crear (por ejemplo, uno que le llegó por teléfono)'
+);
+select throws_ok(
+  $$ insert into public.requests (chef_id, client_id, type, adults, kids, days, meals, contact)
+     values ('7e581000-0000-4000-8000-000000000001', (select v from ids where k = 'giulia'), 'week', 1, 0, 1, '{dinner}', '{"name": "x"}') $$,
+  '42501', null,
+  'C1: no escribe la copia del contacto (solo la escribe submit_public_request)'
+);
+select throws_ok(
+  $$ update public.requests set contact = '{"phone": "+390000000000"}' where id = (select v from ids where k = 'r_giulia') $$,
+  '42501', null,
+  'C1: ni la cambia'
 );
 select is(
   (select count(*)::int from public.notifications

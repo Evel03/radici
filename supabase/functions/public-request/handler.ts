@@ -6,8 +6,8 @@
 // configuración (500) → límite por IP (429) → Turnstile (403) → cocinera (CHEF_ID o la única
 // de public.chefs) y sus tarifas → guardado en una transacción (submit_public_request) → 201.
 // Los emails y el WhatsApp salen después, en segundo plano (waitUntil): un fallo de envío no
-// rompe el pedido. Un reintento con la misma requestKey recibe el mismo 201 que el original
-// (mismo id y la estimación guardada) y no repite ningún aviso.
+// rompe el pedido. Un reintento con la misma requestKey recibe un 201 con el mismo id y la
+// estimación guardada, más duplicate: true, y no repite ningún aviso.
 //
 // Los logs nunca llevan datos personales, de salud ni la IP: solo ids, códigos y contadores.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
@@ -15,10 +15,10 @@ import { clientIp, hashSubject, rateLimitSubject } from "../_shared/client_ip.ts
 import { corsHeaders, parseAllowedOrigins, type OriginRule } from "../_shared/cors.ts";
 import {
   brandFromMailFrom,
-  firstName,
   privacyPageUrl,
   renderChefNotification,
   renderClientConfirmation,
+  safeFirstName,
   type RequestSummary,
 } from "../_shared/emails.ts";
 import {
@@ -534,11 +534,12 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
       const requestId = saved.requestId;
 
       if (saved.duplicate) {
-        // Reintento de un pedido ya guardado: la misma respuesta que la primera vez y ningún aviso.
+        // Reintento de un pedido ya guardado: el mismo id y la estimación guardada, ningún aviso, y
+        // duplicate: true para que la web no muestre como enviado lo que se cambió después (contrato §2).
         log("info", "request_duplicate", { requestId });
         const stored = responseEstimateFromStored(saved.storedEstimate);
         if (!stored) log("warn", "stored_estimate_invalid", { requestId });
-        return reply(201, { requestId, estimate: stored ?? responseEstimate(estimate) });
+        return reply(201, { requestId, estimate: stored ?? responseEstimate(estimate), duplicate: true });
       }
       log("info", "request_saved", { requestId });
 
@@ -691,9 +692,11 @@ async function notifyWhatsApp(deps: HandlerDeps, context: NotifyContext): Promis
     log("info", "whatsapp_skipped", { requestId, reason: "not_configured" });
     return;
   }
+  // Solo un nombre que parece un nombre (si no, "-"): el número no está verificado y el mensaje
+  // sale del número de Evelyn, así que no puede llevar un link escrito en el formulario.
   const outcome = await sendWhatsAppTemplate(
     config.whatsapp,
-    { to: value.phoneE164, locale: value.locale, firstName: firstName(value.name) },
+    { to: value.phoneE164, locale: value.locale, firstName: safeFirstName(value.name) },
     { fetch: deps.fetch },
   );
   if (outcome.ok) log("info", "whatsapp_sent", { requestId });

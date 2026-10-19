@@ -6,11 +6,18 @@ import type { PublicRequestErrors, PublicRequestPayload } from "./model.ts";
 
 export const PUBLIC_REQUEST_PATH = "/functions/v1/public-request";
 
+/**
+ * Región en la que corre la función: la del proyecto (Frankfurt, como dice la privacy). Sin esto,
+ * Supabase la corre en la región más cercana a quien envía: fuera de la UE si escribe desde afuera.
+ * Va como parámetro de la URL (forceFunctionRegion): la cabecera x-region necesitaría CORS.
+ */
+export const FUNCTION_REGION = "eu-central-1";
+
 /** Sin respuesta en este tiempo se corta: se trata como error de red y se puede reintentar. */
 export const REQUEST_TIMEOUT_MS = 20_000;
 
 export function publicRequestUrl(supabaseUrl: string): string {
-  return `${supabaseUrl.replace(/\/+$/, "")}${PUBLIC_REQUEST_PATH}`;
+  return `${supabaseUrl.replace(/\/+$/, "")}${PUBLIC_REQUEST_PATH}?forceFunctionRegion=${FUNCTION_REGION}`;
 }
 
 /** Estimación que guarda y devuelve el servidor (calcQuote con las tarifas de la cocinera), en centavos. */
@@ -24,8 +31,11 @@ export interface ServerEstimate {
 }
 
 export type SubmitOutcome =
-  /** 2xx: el pedido quedó guardado (aunque el cuerpo no se pueda leer). */
-  | { kind: "created"; requestId: string | null; estimate: ServerEstimate | null }
+  /**
+   * 2xx: el pedido quedó guardado (aunque el cuerpo no se pueda leer). `duplicate`: ya estaba guardado
+   * de un envío anterior con la misma clave y este no cambió nada (la estimación es la guardada).
+   */
+  | { kind: "created"; requestId: string | null; estimate: ServerEstimate | null; duplicate: boolean }
   /** 400: errores por campo (códigos del contrato). */
   | { kind: "invalid"; errors: PublicRequestErrors }
   /** 403: Turnstile rechazado. */
@@ -89,7 +99,7 @@ export function rateLimitMessage(seconds: number | null): { key: MessageKey; par
 export function interpretResponse(status: number, body: unknown, retryAfter: string | null, now?: Date): SubmitOutcome {
   if (status >= 200 && status < 300) {
     const data = isRecord(body) ? body : {};
-    return { kind: "created", requestId: readRequestId(data), estimate: readEstimate(data) };
+    return { kind: "created", requestId: readRequestId(data), estimate: readEstimate(data), duplicate: data["duplicate"] === true };
   }
   if (status === 400) {
     const errors = readErrors(body);

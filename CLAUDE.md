@@ -20,6 +20,9 @@ Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y est
 - Presupuestos enviados = sesiones `held` con `hold_until`, protegidas por `no_overlap`.
 - Estados de sesión y pagos solo cambian vía Edge Functions o webhooks de Stripe, nunca desde la app.
 - Nunca loguear ni mandar por push/email restricciones, alergias, direcciones ni datos de tarjeta.
+- Formulario público (sin login, email sin verificar): nunca modifica a una persona que ya existe; lo que llega queda en el pedido (`requests.contact`). Nada de lo escrito en el formulario sale hacia direcciones o números no verificados salvo un nombre de pila que parezca un nombre (`safeFirstName`).
+- Altas de usuarios apagadas hasta M2: la cuenta de la cocinera se crea confirmada desde el panel antes de publicar nada (contrato §10).
+- Workflows: actions fijadas por SHA con `# vX.Y.Z` (Dependabot las actualiza).
 - Textos de UI: ARB en la app, JSON por idioma en la web (it por defecto, es, en). Nada hardcodeado.
 - App: lógica fuera de los widgets (repositorios + providers Riverpod). Widgets sin llamadas a Supabase.
 - TS de `_shared/`: solo sintaxis borrable (sin enum, namespace ni parameter properties), imports con extensión `.ts`; así corre en Node, Deno y Vite sin compilar.

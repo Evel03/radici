@@ -3,7 +3,7 @@ import { isUuid } from "../../../supabase/functions/_shared/public_request.ts";
 import { TEST_TOKEN, TODAY, validRequest } from "./fixtures.ts";
 import { parsePublicRequest, type PublicRequestPayload, type RequestData } from "./model.ts";
 import { buildPayload } from "./payload.ts";
-import { createRequestKeys, newRequestKey, type AttemptOutcome } from "./request-key.ts";
+import { createRequestKeys, doneViewFor, newRequestKey, type AttemptOutcome } from "./request-key.ts";
 import { sendPublicRequest } from "./submit.ts";
 
 afterEach(() => {
@@ -104,6 +104,82 @@ describe("createRequestKeys: cuándo se reutiliza y cuándo cambia la clave", ()
   });
 });
 
+describe("replayed: qué tiene guardado el servidor cuando contesta duplicate (contrato §2)", () => {
+  const A = JSON.stringify(validRequest());
+  const B = JSON.stringify(validRequest({ email: "giulia.corretta@example.test", adults: 4 }));
+  const keysFor = () => createRequestKeys(() => "key-1");
+
+  it("el mismo formulario que el envío que quedó sin respuesta: es lo que se acaba de mandar", () => {
+    const keys = keysFor();
+    keys.current();
+    keys.settle("network", A);
+    expect(keys.replayed(A)).toEqual({ kind: "sent" });
+  });
+
+  it("el formulario cambió después del error de red: lo guardado es lo del envío anterior", () => {
+    const keys = keysFor();
+    keys.current();
+    keys.settle("network", A);
+    keys.settle("network", A);
+    keys.edited(B);
+    keys.settle("rateLimited", B); // un 429 no guarda nada
+    expect(keys.replayed(B)).toEqual({ kind: "earlier", formSnapshot: A });
+  });
+
+  it("un rechazo seguro (400, 403, 413) no cuenta como envío que pudo quedar guardado", () => {
+    const keys = keysFor();
+    keys.current();
+    keys.settle("server", A);
+    keys.settle("invalid", B);
+    keys.settle("turnstile", B);
+    expect(keys.replayed(B)).toEqual({ kind: "earlier", formSnapshot: A });
+  });
+
+  it("dos envíos sin respuesta con datos distintos: no se sabe cuál llegó", () => {
+    const keys = keysFor();
+    keys.current();
+    keys.settle("server", A);
+    keys.settle("network", B);
+    expect(keys.replayed(B)).toEqual({ kind: "unknown" });
+    expect(keys.replayed(A)).toEqual({ kind: "unknown" });
+  });
+
+  it("sin un envío anterior sin respuesta (no debería pasar): desconocido, nunca 'lo que se mandó'", () => {
+    const keys = keysFor();
+    keys.current();
+    expect(keys.replayed(A)).toEqual({ kind: "unknown" });
+  });
+
+  it("después de un pedido guardado se olvidan los envíos anteriores", () => {
+    const keys = keysFor();
+    keys.current();
+    keys.settle("network", A);
+    keys.settle("created", A);
+    expect(keys.replayed(B)).toEqual({ kind: "unknown" });
+  });
+});
+
+describe("doneViewFor: qué muestra la pantalla de gracias", () => {
+  const sent = validRequest({ email: "giulia.corretta@example.test", adults: 4 });
+  const earlier = validRequest({ email: "giulai@example.test", adults: 2 });
+
+  it("pedido nuevo o reintento sin cambios: lo que se mandó, sin aviso", () => {
+    expect(doneViewFor({ kind: "sent" }, sent)).toEqual({ data: sent, replay: null });
+  });
+
+  it("reintento con cambios: los datos (y el email) del envío que se guardó, con aviso", () => {
+    expect(doneViewFor({ kind: "earlier", formSnapshot: JSON.stringify(earlier) }, sent)).toEqual({ data: earlier, replay: "earlier" });
+  });
+
+  it("no se sabe qué se guardó: sin resumen ni email, con aviso", () => {
+    expect(doneViewFor({ kind: "unknown" }, sent)).toEqual({ data: null, replay: "unknown" });
+  });
+
+  it("un snapshot ilegible cuenta como desconocido", () => {
+    expect(doneViewFor({ kind: "earlier", formSnapshot: "{roto" }, sent)).toEqual({ data: null, replay: "unknown" });
+  });
+});
+
 describe("la clave en el payload", () => {
   it("viaja en el JSON y el servidor la acepta (normalizada a minúsculas)", () => {
     const key = newRequestKey();
@@ -168,6 +244,32 @@ describe("secuencia de la página (richiesta.ts): reintentos con la misma clave"
     expect(rest.slice(0, 3)).toEqual([first, first, first]);
     expect(rest[3]).not.toBe(first);
     expect(isUuidV4(rest[3] ?? "")).toBe(true);
+  });
+
+  it("red caída, el cliente corrige el email y reintenta: misma clave, duplicate y la página muestra lo del primer envío", async () => {
+    const { fetchFn, received } = scripted([
+      () => {
+        throw new TypeError("Failed to fetch");
+      },
+      () => Response.json({ ...CREATED, duplicate: true }, { status: 201 }),
+    ]);
+    const keys = createRequestKeys();
+    const typo = validRequest({ email: "giulai@example.test", adults: 2 });
+    const fixed = validRequest({ email: "giulia@example.test", adults: 4 });
+    expect(await submit(keys, typo, fetchFn)).toBe("network");
+
+    // Lo mismo que submitRequest en la página: replayed antes de settle.
+    const snapshot = JSON.stringify(fixed);
+    keys.edited(snapshot);
+    const payload = buildPayload(fixed, { locale: "it", turnstileToken: TEST_TOKEN, requestKey: keys.current() });
+    const outcome = await sendPublicRequest(URL_, payload, { fetch: fetchFn });
+    expect(outcome).toMatchObject({ kind: "created", duplicate: true });
+    const view = doneViewFor(keys.replayed(snapshot), fixed);
+    keys.settle(outcome.kind, snapshot);
+
+    expect(received[1]).toBe(received[0]);
+    expect(view).toEqual({ data: typo, replay: "earlier" });
+    expect(view.data?.email).toBe("giulai@example.test");
   });
 
   it("400 y el cliente corrige el teléfono: el envío corregido lleva clave nueva", async () => {

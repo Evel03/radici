@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TEST_TOKEN, validRequest } from "./fixtures.ts";
 import { buildPayload } from "./payload.ts";
 import {
+  FUNCTION_REGION,
   PUBLIC_REQUEST_PATH,
   interpretResponse,
   parseRetryAfter,
@@ -19,9 +20,19 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
 }
 
 describe("publicRequestUrl", () => {
-  it("arma la URL de la Edge Function", () => {
-    expect(publicRequestUrl("https://abcdefgh.supabase.co")).toBe(URL_);
-    expect(publicRequestUrl("http://127.0.0.1:54321/")).toBe(`http://127.0.0.1:54321${PUBLIC_REQUEST_PATH}`);
+  it("arma la URL de la Edge Function, fijada a la región del proyecto (Frankfurt)", () => {
+    expect(FUNCTION_REGION).toBe("eu-central-1");
+    expect(publicRequestUrl("https://abcdefgh.supabase.co")).toBe(`${URL_}?forceFunctionRegion=eu-central-1`);
+    expect(publicRequestUrl("http://127.0.0.1:54321/")).toBe(
+      `http://127.0.0.1:54321${PUBLIC_REQUEST_PATH}?forceFunctionRegion=eu-central-1`,
+    );
+  });
+
+  it("la región va en la URL y no en una cabecera (x-region necesitaría CORS)", () => {
+    const url = new URL(publicRequestUrl("https://abcdefgh.supabase.co"));
+    expect(url.origin).toBe("https://abcdefgh.supabase.co");
+    expect(url.pathname).toBe(PUBLIC_REQUEST_PATH);
+    expect(url.searchParams.get("forceFunctionRegion")).toBe("eu-central-1");
   });
 });
 
@@ -31,15 +42,25 @@ describe("interpretResponse (contrato §2)", () => {
       kind: "created",
       requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10",
       estimate: ESTIMATE,
+      duplicate: false,
     });
   });
 
+  it("201 con duplicate: true: el servidor ya tenía el pedido de un envío anterior con la misma clave", () => {
+    expect(
+      interpretResponse(201, { requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE, duplicate: true }, null),
+    ).toEqual({ kind: "created", requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE, duplicate: true });
+    // Solo cuenta el booleano true.
+    expect(interpretResponse(201, { requestId: "x", estimate: ESTIMATE, duplicate: "true" }, null)).toMatchObject({ duplicate: false });
+  });
+
   it("201 con un cuerpo raro igual es éxito (el pedido ya está guardado)", () => {
-    expect(interpretResponse(201, null, null)).toEqual({ kind: "created", requestId: null, estimate: null });
+    expect(interpretResponse(201, null, null)).toEqual({ kind: "created", requestId: null, estimate: null, duplicate: false });
     expect(interpretResponse(201, { requestId: 5, estimate: { ...ESTIMATE, totalCents: 141.5 } }, null)).toEqual({
       kind: "created",
       requestId: null,
       estimate: null,
+      duplicate: false,
     });
   });
 
@@ -105,7 +126,7 @@ describe("sendPublicRequest", () => {
   it("POST JSON a la función, sin cookies ni apikey, y devuelve el resultado", async () => {
     const fetchFn = vi.fn(async () => jsonResponse(201, { requestId: "abc-123", estimate: ESTIMATE }));
     const outcome = await sendPublicRequest(URL_, payload, { fetch: fetchFn });
-    expect(outcome).toEqual({ kind: "created", requestId: "abc-123", estimate: ESTIMATE });
+    expect(outcome).toEqual({ kind: "created", requestId: "abc-123", estimate: ESTIMATE, duplicate: false });
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(URL_);

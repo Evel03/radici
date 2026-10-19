@@ -1,6 +1,6 @@
-// Pedidos de la cocinera en Supabase: lectura, "visto", rechazo (y deshacerlo)
-// y aviso en tiempo real de pedidos nuevos (contrato
-// docs/contracts/public-request.md §7).
+// Pedidos de la cocinera en Supabase: lectura, "visto", rechazo (y deshacerlo),
+// marcar a la persona como clienta y aviso en tiempo real de pedidos nuevos
+// (contrato docs/contracts/public-request.md §7).
 // RLS (M1) ya limita las filas a las de su chef_id; el filtro explícito por
 // chef_id es para el índice y para cuando haya más de una cocinera.
 import 'dart:async';
@@ -35,6 +35,13 @@ abstract interface class ChefRequestsRepository {
   /// permite desde la app). Lanza [RequestsFailure]
   /// ([RequestsFailureKind.conflict] si ya no estaba en `rejected`).
   Future<void> undoReject(String id);
+
+  /// La persona pasó a ser clienta: su ficha pasa de `prospect` a `trial`
+  /// (solo la cocinera cambia el estado: clients_guard_update). Así el borrado
+  /// de prospectos a los 90 días ya no la alcanza (contrato §9). Lanza
+  /// [RequestsFailure] ([RequestsFailureKind.conflict] si ya no era un
+  /// prospecto o la ficha no existe).
+  Future<void> markClientAsCustomer(String clientId);
 
   /// Eventos en tiempo real: pedidos insertados para [chefId] y estado de la
   /// conexión. Al cancelar la suscripción se cierra el canal.
@@ -78,8 +85,8 @@ enum RequestsFailureKind {
   /// El pedido no existe o no se puede ver.
   notFound,
 
-  /// El pedido cambió de estado mientras tanto (no se pudo rechazar ni
-  /// deshacer el rechazo).
+  /// El pedido (o la ficha) cambió de estado mientras tanto (no se pudo
+  /// rechazar, deshacer el rechazo ni marcar como cliente).
   conflict,
 }
 
@@ -171,6 +178,19 @@ class SupabaseChefRequestsRepository implements ChefRequestsRepository {
   Future<void> undoReject(String id) =>
       _changeStatus(id, from: 'rejected', to: 'new');
 
+  @override
+  Future<void> markClientAsCustomer(String clientId) => _guard(() async {
+    final updated = await _client
+        .from('clients')
+        .update({'status': 'trial'})
+        .eq('id', clientId)
+        .eq('status', 'prospect')
+        .select('id');
+    if (updated.isEmpty) {
+      throw const RequestsFailure(RequestsFailureKind.conflict);
+    }
+  });
+
   /// Cambia el estado solo si todavía es [from]; si no, conflicto.
   Future<void> _changeStatus(
     String id, {
@@ -260,6 +280,9 @@ class _NoBackendRequestsRepository implements ChefRequestsRepository {
 
   @override
   Future<void> undoReject(String id) => Future.error(_failure);
+
+  @override
+  Future<void> markClientAsCustomer(String clientId) => Future.error(_failure);
 
   @override
   Stream<RequestsRealtimeEvent> watchNewRequests({required String chefId}) =>

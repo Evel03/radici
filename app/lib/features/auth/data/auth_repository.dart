@@ -14,10 +14,10 @@ abstract interface class AuthRepository {
   /// repetir el mismo usuario (por ejemplo al renovar el token).
   Stream<AppUser?> userChanges();
 
-  /// Manda el código de acceso a [email]. [locale] (it, es, en) es el idioma
-  /// de la interfaz: si el usuario es nuevo queda en `user_metadata.locale`,
-  /// que usan la plantilla del email del código y el perfil. Lanza
-  /// [AuthFailure].
+  /// Manda el código de acceso a [email], solo si ya tiene usuario (no crea
+  /// cuentas). [locale] (it, es, en) es el idioma de la interfaz: si alguna
+  /// vez se crea el usuario así, queda en `user_metadata.locale`, que usan la
+  /// plantilla del email del código y el perfil. Lanza [AuthFailure].
   Future<void> sendEmailCode(String email, {String? locale});
 
   /// Verifica el código y abre la sesión. Lanza [AuthFailure].
@@ -48,10 +48,14 @@ class SupabaseAuthRepository implements AuthRepository {
   @override
   Future<void> sendEmailCode(String email, {String? locale}) async {
     try {
-      // Crea el usuario si no existe: queda como `client` (trigger de M1) y
-      // ve el área de clientes. A Evelyn se la promueve con promote_to_chef.
+      // No crea usuarios: hasta el área de clientes (M2) solo entra quien ya
+      // tiene uno (Evelyn, creada confirmada desde el panel y promovida con
+      // promote_to_chef; contrato §8). Un email desconocido da otp_disabled
+      // (notAllowed). En el proyecto también van apagadas las altas.
+      // `data` (user_metadata.locale) solo se guarda al crear un usuario.
       await _auth.signInWithOtp(
         email: email,
+        shouldCreateUser: false,
         data: {if (_supportedLocales.contains(locale)) 'locale': locale},
       );
     } on Object catch (error) {

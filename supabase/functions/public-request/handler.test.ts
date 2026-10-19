@@ -520,8 +520,32 @@ test("segundo plano: aviso a Evelyn en su idioma, confirmación al cliente en el
   assert.equal(whatsapp.length, 1);
   assert.equal(whatsapp[0]?.url, "https://graph.facebook.com/v26.0/106540352242922/messages");
   assert.equal((whatsapp[0]?.body as { to: string }).to, "+393337654321");
+  assert.deepEqual(whatsAppFirstName(whatsapp[0]?.body), "Giuliaxyz");
 
   assert.deepEqual(store.marked, [REQUEST_ID]);
+});
+
+/** Texto del parámetro {{first_name}} de la plantilla de WhatsApp. */
+function whatsAppFirstName(body: unknown): string | undefined {
+  const template = (body as { template?: { components?: Array<{ parameters?: Array<{ text?: string }> }> } }).template;
+  return template?.components?.[0]?.parameters?.[0]?.text;
+}
+
+test("saludo y WhatsApp: un link (o algo que no parece un nombre) en el nombre no sale hacia el cliente", async () => {
+  for (const name of ["https://bit.ly/3xYzAbC Rossiqwe", "paypal-verify.com", "+39 333 765 4321"]) {
+    const run = harness();
+    await run.handle(post(payload({ name })));
+    await run.settle();
+    const whatsapp = whatsAppCalls(run);
+    assert.equal(whatsapp.length, 1, name);
+    assert.equal(whatsAppFirstName(whatsapp[0]?.body), "-", `${name}: el parámetro va genérico`);
+    const toClient = resendCalls(run).find((call) => (call.body as { to: string[] }).to[0] === "giulia.pii@example.test");
+    const text = String((toClient?.body as Record<string, unknown>)["text"]);
+    assert.ok(text.startsWith("Grazie!\n"), `${name}: saludo genérico`);
+    for (const leak of ["bit.ly", "paypal", "765"]) {
+      assert.ok(!JSON.stringify(toClient?.body).includes(leak), `${name}: el email al cliente lleva ${leak}`);
+    }
+  }
 });
 
 test("sin MAIL_REPLY_TO, las respuestas del cliente van a CHEF_NOTIFY_EMAIL", async () => {
@@ -664,7 +688,12 @@ test("reintento con la misma requestKey: el mismo 201, un solo pedido y los avis
   assert.equal(first.status, 201);
   assert.equal(second.status, 201);
   const firstBody = await json(first);
-  assert.deepEqual(await json(second), firstBody, "mismo cuerpo: mismo requestId y la estimación guardada");
+  assert.equal((firstBody as Record<string, unknown>)["duplicate"], undefined, "un pedido nuevo no lleva la marca");
+  assert.deepEqual(
+    await json(second),
+    { ...(firstBody as object), duplicate: true },
+    "mismo requestId y la estimación guardada, con duplicate: true (la web avisa si el formulario cambió)",
+  );
   assert.equal((firstBody as { requestId: string }).requestId, REQUEST_ID);
 
   assert.equal(run.store.calls.length, 2, "los dos llegan a submit_public_request");
@@ -685,7 +714,10 @@ test("dos envíos simultáneos con la misma requestKey: los dos 201 iguales, un 
   ]);
   await run.settle();
   assert.deepEqual([a.status, b.status], [201, 201]);
-  assert.deepEqual(await json(a), await json(b));
+  const bodies = [(await json(a)) as Record<string, unknown>, (await json(b)) as Record<string, unknown>];
+  assert.deepEqual(bodies[0]?.["requestId"], bodies[1]?.["requestId"]);
+  assert.deepEqual(bodies[0]?.["estimate"], bodies[1]?.["estimate"]);
+  assert.deepEqual(bodies.map((body) => body["duplicate"] === true).sort(), [false, true], "uno guardó, el otro es el reintento");
   assert.equal(run.store.submitted.length, 1);
   assert.deepEqual(
     run.logs.filter((entry) => entry.event === "email_logged").map((entry) => entry.fields["recipient"]).sort(),
@@ -706,6 +738,7 @@ test("duplicado: responde con la estimación guardada aunque hoy las tarifas den
   assert.deepEqual(await json(response), {
     requestId: REQUEST_ID,
     estimate: { portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300, totalCents: 14100 },
+    duplicate: true,
   });
   assert.notEqual(calcQuote({ adults: 2, kids: 2, days: 5, meals: 1 }, CHEF.pricing).serviceCents, 7800, "la de hoy sería otra");
   assert.equal(run.fetchCalls.filter((call) => call.url !== TURNSTILE_VERIFY_URL).length, 0, "ni emails ni WhatsApp");

@@ -1,7 +1,7 @@
 // Detalle de un pedido: todos los datos (incluidas las restricciones, que
 // solo ve la cocinera), la estimación guardada y las acciones: WhatsApp,
-// llamar, email, rechazar y deshacer el rechazo. Al abrirlo se marca como
-// visto.
+// llamar, email, rechazar, deshacer el rechazo y marcar a la persona como
+// clienta (así no se borra a los 90 días). Al abrirlo se marca como visto.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -139,6 +139,35 @@ class _RequestDetail extends ConsumerWidget {
             failure.kind == RequestsFailureKind.conflict
                 ? l10n.undoRejectConflict
                 : l10n.undoRejectFailed,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _markClient(BuildContext context, WidgetRef ref) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await _confirm(
+      context,
+      keyPrefix: 'mark-client',
+      title: l10n.markClientConfirmTitle(request.client.displayName),
+      body: l10n.markClientConfirmBody,
+      confirmLabel: l10n.markClientConfirmAction,
+    );
+    if (!confirmed) return;
+    try {
+      await ref
+          .read(chefInboxProvider.notifier)
+          .markClientAsCustomer(request.id);
+      messenger.showSnackBar(SnackBar(content: Text(l10n.markClientDone)));
+    } on RequestsFailure catch (failure) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            failure.kind == RequestsFailureKind.conflict
+                ? l10n.markClientConflict
+                : l10n.markClientFailed,
           ),
         ),
       );
@@ -358,6 +387,38 @@ class _RequestDetail extends ConsumerWidget {
               label: l10n.detailLanguage,
               value: l10n.language(request.locale),
             ),
+            // Prospecto: se borra a los 90 días si no pasa a cliente (contrato §9).
+            if (request.canMarkClient) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 8),
+                child: Text(
+                  l10n.detailProspectNotice,
+                  key: const ValueKey('detail-prospect-notice'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('action-mark-client'),
+                  onPressed: () => _markClient(context, ref),
+                  icon: const Icon(Icons.how_to_reg_outlined),
+                  label: Text(l10n.actionMarkClient),
+                ),
+              ),
+            ] else if (client.status != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  l10n.detailClientKept,
+                  key: const ValueKey('detail-client-kept'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
 
             if (request.canReject) ...[
               const SizedBox(height: 32),

@@ -13,8 +13,8 @@ import {
   privacyPageUrl,
   renderChefNotification,
   renderClientConfirmation,
+  safeFirstName,
   safeHttpUrl,
-  subjectFirstName,
   type ChefNotificationInput,
   type ClientConfirmationInput,
   type RequestSummary,
@@ -100,7 +100,7 @@ test("nombre de pila: la primera palabra, con tope de largo", () => {
   assert.equal(firstName("x".repeat(60)).length, 40);
 });
 
-test("nombre para el asunto: solo si parece un nombre (nunca un teléfono o un email)", () => {
+test("nombre de pila seguro: solo si parece un nombre (nunca un teléfono, un email ni un link)", () => {
   for (const [input, expected] of [
     ["Giulia Rossi", "Giulia"],
     ["José Pérez", "José"],
@@ -114,10 +114,30 @@ test("nombre para el asunto: solo si parece un nombre (nunca un teléfono o un e
     ["Giulia2", ""],
     ["-Giulia", ""],
     ["<b>Giulia</b>", ""],
+    // Ni links ni dominios: el saludo y el WhatsApp llegan a direcciones que nadie verificó.
+    ["https://bit.ly/3xYzAbC Rossi", ""],
+    ["paypal-verify.com", ""],
+    ["bit.ly/abc", ""],
+    ["J.R.", ""],
+    ["x".repeat(30), "x".repeat(30)],
+    ["x".repeat(31), ""],
     ["", ""],
   ] as const) {
-    assert.equal(subjectFirstName(input), expected, input);
+    assert.equal(safeFirstName(input), expected, input);
   }
+});
+
+test("cliente: si el nombre no parece un nombre, el saludo es el genérico (sin el texto del formulario)", () => {
+  for (const customerName of ["https://bit.ly/3xYzAbC Rossi", "paypal-verify.com", "+39 333 123 4567"]) {
+    const email = renderClientConfirmation(clientInput({ customerName }), "it");
+    assert.ok(email.text.startsWith("Grazie!\n"), email.text.slice(0, 40));
+    assert.ok(email.html.includes(">Grazie!</h1>"));
+    for (const leak of ["bit.ly", "paypal", "333"]) {
+      assert.ok(!email.text.includes(leak) && !email.html.includes(leak), `${customerName}: se coló ${leak}`);
+    }
+  }
+  assert.ok(renderClientConfirmation(clientInput({ customerName: "paypal-verify.com" }), "es").text.startsWith("¡Gracias!\n"));
+  assert.ok(renderClientConfirmation(clientInput({ customerName: "paypal-verify.com" }), "en").text.startsWith("Thank you!\n"));
 });
 
 test("Evelyn: si el nombre es un teléfono o un email, el asunto es el genérico", () => {
@@ -204,7 +224,9 @@ for (const locale of LOCALES) {
 
 test("los textos del usuario se escapan y no hay imágenes remotas ni scripts", () => {
   const client = renderClientConfirmation(clientInput({ customerName: "<b>Giulia</b> Rossi", chefName: `Eve "<i>"` }), "it");
-  assert.ok(client.html.includes("Grazie, &lt;b&gt;Giulia&lt;/b&gt;!"));
+  // "<b>Giulia</b>" no parece un nombre: saludo genérico, y nada del HTML del formulario.
+  assert.ok(client.html.includes(">Grazie!</h1>"));
+  assert.ok(!client.html.includes("Giulia&lt;"));
   assert.ok(client.html.includes("Eve &quot;&lt;i&gt;&quot;"));
   assert.ok(!/<b>Giulia|<i>/.test(client.html));
 
@@ -274,7 +296,23 @@ test("Evelyn: sin INBOX_URL (o con una no http) no hay botón", () => {
 test("Evelyn: un email con caracteres raros no rompe el atributo href", () => {
   const email = renderChefNotification(chefInput({ email: `a"><script>x@example.test` }), "it");
   assert.ok(!email.html.includes("<script>"));
-  assert.ok(email.html.includes('href="mailto:a&quot;&gt;&lt;script&gt;x@example.test"'));
+  assert.ok(email.html.includes('href="mailto:a%22%3E%3Cscript%3Ex@example.test"'));
+  assert.ok(email.html.includes("a&quot;&gt;&lt;script&gt;x@example.test</a>"), "el texto visible es la dirección tal cual, escapada");
+});
+
+test("Evelyn: el link mailto codifica la dirección (no se le pueden colar bcc, cc ni body)", () => {
+  for (const address of ["?bcc=spy%40evil.example&body=hola@evil.example", "victim%40example.com?bcc=spy@evil.example", "a@b.com?cc=x"]) {
+    const email = renderChefNotification(chefInput({ email: address }), "it");
+    const href = /href="(mailto:[^"]*)"/.exec(email.html)?.[1] ?? "";
+    assert.ok(href.startsWith("mailto:"), address);
+    // Lo que queda después de "mailto:" no tiene separadores de campos sin codificar.
+    assert.ok(!/[?&#]/.test(href.slice("mailto:".length).replaceAll("&amp;", "&")), `${address} → ${href}`);
+    const url = new URL(href.replaceAll("&amp;", "&"));
+    assert.equal(url.search, "", `${address}: sin parámetros`);
+    assert.equal(decodeURIComponent(url.pathname), address, "el destinatario es la dirección completa");
+  }
+  assert.ok(renderChefNotification(chefInput(), "it").html.includes('href="mailto:giulia@example.test"'));
+  assert.ok(renderChefNotification(chefInput({ email: "giulia+tag@example.test" }), "it").html.includes('href="mailto:giulia%2Btag@example.test"'));
 });
 
 test("ningún email copia datos de salud ni la dirección aunque el llamador los pase de más", () => {

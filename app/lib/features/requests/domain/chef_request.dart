@@ -1,6 +1,7 @@
 // Pedido tal como lo ve la cocinera en la bandeja y la agenda.
-// Una fila de `public.requests` con los datos de contacto de su cliente
-// (`public.clients`) embebidos. Los nombres de columna son los de la base
+// Una fila de `public.requests` con la copia del contacto con que llegó
+// (`requests.contact`, pedidos de la web) y la ficha de su cliente
+// (`public.clients`) embebida. Los nombres de columna son los de la base
 // (M1 + contrato docs/contracts/public-request.md §3).
 //
 // Contiene datos de salud (restricciones) y de contacto: nunca se loguea ni se
@@ -159,8 +160,15 @@ abstract class RequestEstimate with _$RequestEstimate {
       totalCents == null;
 }
 
-/// Datos de contacto del cliente (`public.clients`). El teléfono se guarda tal
-/// como lo escribió el cliente: para WhatsApp y llamadas usar [phoneE164].
+/// `client_status` de la ficha (`public.clients.status`).
+enum ClientStatus { prospect, trial, active, paused, churned }
+
+/// Datos de contacto de un pedido. En un pedido de la web son los que llegaron
+/// con él (`requests.contact`): un envío sin login no cambia la ficha de una
+/// persona que ya existe, así que cada pedido muestra los suyos. Lo que falte
+/// (y todo en un pedido de la app) sale de la ficha (`public.clients`), igual
+/// que [status]. El teléfono se guarda tal como lo escribió el cliente: para
+/// WhatsApp y llamadas usar [phoneE164].
 @Freezed(toJson: false, toStringOverride: false)
 abstract class RequestClient with _$RequestClient {
   const factory RequestClient({
@@ -168,6 +176,10 @@ abstract class RequestClient with _$RequestClient {
     @JsonKey(name: 'contact_email') String? contactEmail,
     @JsonKey(name: 'contact_phone') String? contactPhone,
     String? zone,
+
+    /// Estado de la ficha; null si no vino o es uno que esta versión no conoce.
+    @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)
+    ClientStatus? status,
   }) = _RequestClient;
 
   const RequestClient._();
@@ -192,13 +204,35 @@ abstract class RequestClient with _$RequestClient {
   String toString() => 'RequestClient(<oculto>)';
 }
 
-/// Columnas que la app lee de `requests`, con el cliente embebido
+/// Columnas que la app lee de `requests`, con la copia del contacto del pedido
+/// y la ficha del cliente embebida
 /// (FK `requests (client_id, chef_id) → clients (id, chef_id)`).
 const String chefRequestColumns =
     'id, chef_id, client_id, type, status, adults, kids, days, meals, '
     'restrictions, notes, preferred_date, preferred_slot, locale, '
-    'whatsapp_opt_in, estimate, source, seen_at, created_at, '
-    'client:clients(display_name, contact_email, contact_phone, zone)';
+    'whatsapp_opt_in, estimate, source, seen_at, created_at, contact, '
+    'client:clients(display_name, contact_email, contact_phone, zone, status)';
+
+/// Pasa la copia del contacto del pedido (`contact`: name, zone, phone,
+/// email) por encima de la ficha embebida (`client`), campo por campo.
+Map<String, dynamic> _withRequestContact(Map<String, dynamic> json) {
+  final contact = json['contact'];
+  if (contact is! Map) return json;
+  final client = json['client'];
+  final merged = <String, dynamic>{
+    if (client is Map) ...client.cast<String, dynamic>(),
+  };
+  void take(String from, String to) {
+    final value = contact[from];
+    if (value is String && value.trim().isNotEmpty) merged[to] = value;
+  }
+
+  take('name', 'display_name');
+  take('zone', 'zone');
+  take('phone', 'contact_phone');
+  take('email', 'contact_email');
+  return {...json, 'client': merged};
+}
 
 @Freezed(toJson: false, toStringOverride: false)
 abstract class ChefRequest with _$ChefRequest {
@@ -237,9 +271,10 @@ abstract class ChefRequest with _$ChefRequest {
 
   const ChefRequest._();
 
-  /// Una fila de PostgREST seleccionada con [chefRequestColumns].
+  /// Una fila de PostgREST seleccionada con [chefRequestColumns]. El contacto
+  /// ([client]) es el que llegó con el pedido, si lo trae (ver [RequestClient]).
   factory ChefRequest.fromJson(Map<String, dynamic> json) =>
-      _$ChefRequestFromJson(json);
+      _$ChefRequestFromJson(_withRequestContact(json));
 
   /// Nueva para la bandeja: Evelyn todavía no la abrió.
   bool get isNew => seenAt == null && status != RequestStatus.rejected;
@@ -251,6 +286,11 @@ abstract class ChefRequest with _$ChefRequest {
 
   /// Un rechazo de la cocinera se puede deshacer (vuelve a `new`).
   bool get canUndoReject => status == RequestStatus.rejected;
+
+  /// La persona es todavía un prospecto: la cocinera la puede marcar como
+  /// cliente (ficha en `trial`), así sus datos no se borran a los 90 días
+  /// (contrato §9).
+  bool get canMarkClient => client.status == ClientStatus.prospect;
 
   /// Cuenta para la agenda: pedidos en curso (no rechazados, vencidos ni
   /// cerrados).

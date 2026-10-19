@@ -236,6 +236,53 @@ void main() {
     });
   });
 
+  group('marcar como cliente', () {
+    testWidgets('un prospecto: aviso de los 90 días; pide confirmación y lo marca', (tester) async {
+      final app = await openDetail(tester, buildRequest());
+      expect(find.byKey(const ValueKey('detail-prospect-notice')), findsOneWidget);
+
+      await tapAction(tester, 'action-mark-client');
+      expect(find.text('Segnare Giulia Rossi come cliente?'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('mark-client-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(app.requests.markedClients, [testClientId]);
+      expect(find.text('Fatto: ora è tra i clienti e i suoi dati restano.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('action-mark-client')), findsNothing);
+      expect(find.byKey(const ValueKey('detail-prospect-notice')), findsNothing);
+      expect(find.byKey(const ValueKey('detail-client-kept')), findsOneWidget);
+    });
+
+    testWidgets('cancelar no cambia nada', (tester) async {
+      final app = await openDetail(tester, buildRequest());
+      await tapAction(tester, 'action-mark-client');
+      await tester.tap(find.byKey(const ValueKey('mark-client-cancel')));
+      await tester.pumpAndSettle();
+      expect(app.requests.markedClients, isEmpty);
+      expect(find.byKey(const ValueKey('action-mark-client')), findsOneWidget);
+    });
+
+    testWidgets('error: avisa y sigue como prospecto', (tester) async {
+      final app = await openDetail(tester, buildRequest());
+      app.requests.failMarkClient = true;
+      await tapAction(tester, 'action-mark-client');
+      await tester.tap(find.byKey(const ValueKey('mark-client-confirm')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Non è stato possibile segnarlo come cliente. Riprova.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('action-mark-client')), findsOneWidget);
+    });
+
+    testWidgets('un cliente no lo ofrece', (tester) async {
+      await openDetail(tester, buildRequest(clientStatus: ClientStatus.active));
+      expect(find.byKey(const ValueKey('action-mark-client')), findsNothing);
+      expect(find.byKey(const ValueKey('detail-prospect-notice')), findsNothing);
+      expect(find.byKey(const ValueKey('detail-client-kept')), findsOneWidget);
+    });
+  });
+
   testWidgets('sin restricciones, sin notas, sin estimación y sin fecha', (
     tester,
   ) async {
