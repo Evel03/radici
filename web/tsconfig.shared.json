@@ -1,0 +1,27 @@
+{
+  // Contrato y motor compartidos (supabase/functions/_shared), chequeados con sus propias opciones:
+  // la web es más estricta (noUncheckedIndexedAccess, noPropertyAccessFromIndexSignature) y ese código
+  // no se toca desde acá. tsconfig.json lo referencia y usa los .d.ts que genera en node_modules/.tmp.
+  // Solo los archivos que importa la web: los helpers de Deno de las funciones quedan fuera.
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "types": [],
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "rootDir": "../supabase/functions/_shared",
+    "outDir": "node_modules/.tmp/shared",
+    "tsBuildInfoFile": "node_modules/.tmp/shared.tsbuildinfo"
+  },
+  "files": ["../supabase/functions/_shared/public_request.ts", "../supabase/functions/_shared/quote.ts"]
+}

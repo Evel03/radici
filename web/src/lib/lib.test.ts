@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { romeToday } from "../../../supabase/functions/_shared/public_request.ts";
 import { createI18n } from "../i18n/core.ts";
 import { addDays, isIsoDate, todayInRome } from "./dates.ts";
 import { formatCents, formatDuration, formatIsoDate } from "./format.ts";
@@ -9,6 +10,12 @@ describe("fechas en Europe/Rome", () => {
     expect(todayInRome(new Date("2026-10-19T23:30:00Z"))).toBe("2026-10-20");
     // 22:30 UTC del 31/12 = 23:30 del 31/12 en Roma (invierno, UTC+1).
     expect(todayInRome(new Date("2026-12-31T22:30:00Z"))).toBe("2026-12-31");
+  });
+
+  it("coincide con el 'hoy' del servidor (romeToday), también en los cambios de hora", () => {
+    for (const instant of ["2026-03-28T23:30:00Z", "2026-03-29T00:59:00Z", "2026-10-24T22:30:00Z", "2026-10-25T01:30:00Z", "2026-07-14T21:59:59Z"]) {
+      expect(todayInRome(new Date(instant)), instant).toBe(romeToday(new Date(instant)));
+    }
   });
 
   it("suma días cruzando meses y años", () => {

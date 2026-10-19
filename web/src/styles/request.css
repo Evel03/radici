@@ -371,6 +371,12 @@ input[type="radio"] {
   flex-shrink: 0;
 }
 
+/* Opción secundaria dentro de un campo (confirmación por WhatsApp junto al teléfono) */
+.check--option {
+  margin-top: 0.45rem;
+  font-weight: 500;
+}
+
 .panel--submit {
   display: grid;
   gap: 1rem;
@@ -383,6 +389,76 @@ input[type="radio"] {
 .panel--submit .btn .icon {
   width: 1.3rem;
   height: 1.3rem;
+}
+
+/* Cloudflare Turnstile: se reserva el alto del widget (65 px) para que el botón no salte al cargar. */
+.field--turnstile {
+  margin-top: 0;
+}
+
+.turnstile {
+  min-height: 65px;
+  border-radius: var(--radius-sm);
+}
+
+.turnstile[data-status="unavailable"],
+.turnstile[data-status="misconfigured"] {
+  min-height: 0;
+}
+
+.turnstile:focus {
+  outline: none;
+}
+
+.turnstile:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.btn--sm {
+  min-height: 2.75rem;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.95rem;
+}
+
+.field--turnstile .btn--sm {
+  justify-self: start;
+  margin-top: 0.25rem;
+}
+
+/* Error del envío con botón de reintento */
+.notice--actions {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+}
+
+.notice--actions p {
+  margin: 0;
+}
+
+.notice--actions:focus {
+  outline: none;
+}
+
+.notice--actions:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.form-status {
+  margin: 0;
+  color: var(--text);
+  font-weight: 650;
+  text-align: center;
+}
+
+.form-status:not(:empty) + .field__hint--center {
+  margin-top: 0.35rem;
+}
+
+.submit-meta .field__hint--center {
+  margin-top: 0;
 }
 
 /* Panel de presupuesto: fijo abajo en mobile */
@@ -569,4 +645,54 @@ input[type="radio"] {
 
 .done__title {
   font-size: 1.8rem;
+}
+
+.done__lead {
+  font-size: 1.08rem;
+}
+
+.done__email {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.done__subtitle {
+  margin: 1.5rem 0 0.6rem;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* Resumen del pedido: filas etiqueta / valor */
+.summary {
+  display: grid;
+  margin: 0 0 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.summary__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  justify-content: space-between;
+  padding-block: 0.55rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.summary__row dt {
+  color: var(--muted);
+}
+
+.summary__row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  text-align: right;
+}
+
+.summary__row--total dd {
+  color: var(--accent);
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  font-weight: 800;
 }

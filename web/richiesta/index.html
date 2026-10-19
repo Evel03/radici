@@ -34,10 +34,14 @@
         <section id="done" class="done" tabindex="-1" aria-labelledby="done-title" hidden>
           <svg class="icon done__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
           <h2 id="done-title" class="done__title" data-i18n="request.done.title"></h2>
-          <p data-i18n="request.done.text"></p>
+          <p class="done__lead" data-i18n="request.done.lead"></p>
+          <p id="done-email" class="done__email"></p>
+          <p class="small" data-i18n="request.done.spam"></p>
+          <h3 class="done__subtitle" data-i18n="request.done.summaryTitle"></h3>
+          <dl id="done-summary" class="summary"></dl>
+          <p class="small" data-i18n="request.quote.note"></p>
           <div class="actions">
-            <a id="done-retry" class="btn btn--primary" href="#" target="_blank" rel="noopener noreferrer" data-i18n="request.done.retry"></a>
-            <button id="done-edit" class="btn btn--ghost" type="button" data-i18n="request.done.edit"></button>
+            <a class="btn btn--ghost" href="/" data-i18n="request.done.home"></a>
           </div>
         </section>
 
@@ -61,6 +65,7 @@
                   </span>
                 </label>
               </div>
+              <p class="field__error" id="err-type" hidden></p>
             </fieldset>
 
             <fieldset class="panel" aria-describedby="err-people">
@@ -155,6 +160,7 @@
                   <label class="chip"><input type="checkbox" name="allergens" value="lupin" /><span data-i18n="allergens.lupin"></span></label>
                   <label class="chip"><input type="checkbox" name="allergens" value="molluscs" /><span data-i18n="allergens.molluscs"></span></label>
                 </div>
+                <p class="field__error" id="err-allergens" hidden></p>
                 <p id="celiac-note" class="note" data-i18n="request.celiacNote"></p>
               </fieldset>
 
@@ -164,6 +170,7 @@
                   <label class="chip"><input type="checkbox" name="diets" value="vegetarian" /><span data-i18n="diets.vegetarian"></span></label>
                   <label class="chip"><input type="checkbox" name="diets" value="vegan" /><span data-i18n="diets.vegan"></span></label>
                 </div>
+                <p class="field__error" id="err-diets" hidden></p>
               </fieldset>
 
               <div class="field">
@@ -175,21 +182,21 @@
 
               <div id="health-consent" class="consent consent--health" hidden>
                 <label class="check">
-                  <input id="healthConsent" name="healthConsent" type="checkbox" aria-describedby="hint-healthConsent" />
+                  <input id="consentHealth" name="consentHealth" type="checkbox" aria-describedby="hint-consentHealth" />
                   <span data-i18n="request.healthConsentLabel"></span>
                 </label>
-                <p class="field__hint" id="hint-healthConsent" data-i18n="request.healthConsentHint"></p>
-                <p class="field__error" id="err-healthConsent" hidden></p>
+                <p class="field__hint" id="hint-consentHealth" data-i18n="request.healthConsentHint"></p>
+                <p class="field__error" id="err-consentHealth" hidden></p>
               </div>
             </fieldset>
 
             <fieldset class="panel">
               <legend class="panel__title" data-i18n="request.whenLegend"></legend>
               <div class="field">
-                <label class="field__label" for="date" data-i18n="request.dateLabel"></label>
-                <input class="input input--date" id="date" name="date" type="date" aria-describedby="hint-date" />
-                <p class="field__hint" id="hint-date" data-i18n="request.dateHint"></p>
-                <p class="field__error" id="err-date" hidden></p>
+                <label class="field__label" for="preferredDate" data-i18n="request.dateLabel"></label>
+                <input class="input input--date" id="preferredDate" name="preferredDate" type="date" aria-describedby="hint-preferredDate" />
+                <p class="field__hint" id="hint-preferredDate" data-i18n="request.dateHint"></p>
+                <p class="field__error" id="err-preferredDate" hidden></p>
               </div>
               <fieldset class="subgroup">
                 <legend class="subgroup__title" data-i18n="request.slotLegend"></legend>
@@ -207,6 +214,7 @@
                     <span class="choice__body"><span class="choice__title" data-i18n="request.slot.any"></span></span>
                   </label>
                 </div>
+                <p class="field__error" id="err-slot" hidden></p>
               </fieldset>
             </fieldset>
 
@@ -228,10 +236,16 @@
                 <input class="input" id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required aria-describedby="hint-phone" />
                 <p class="field__hint" id="hint-phone" data-i18n="request.phoneHint"></p>
                 <p class="field__error" id="err-phone" hidden></p>
+                <label class="check check--option">
+                  <input id="whatsappOptIn" name="whatsappOptIn" type="checkbox" />
+                  <span data-i18n="request.whatsappOptIn"></span>
+                </label>
+                <p class="field__error" id="err-whatsappOptIn" hidden></p>
               </div>
               <div class="field">
                 <label class="field__label" for="email" data-i18n="request.emailLabel"></label>
-                <input class="input" id="email" name="email" type="email" inputmode="email" autocomplete="email" />
+                <input class="input" id="email" name="email" type="email" inputmode="email" autocomplete="email" required aria-describedby="hint-email" />
+                <p class="field__hint" id="hint-email" data-i18n="request.emailHint"></p>
                 <p class="field__error" id="err-email" hidden></p>
               </div>
               <div class="field">
@@ -245,20 +259,34 @@
             <div class="panel panel--submit">
               <div class="consent">
                 <label class="check">
-                  <input id="privacyConsent" name="privacyConsent" type="checkbox" required />
+                  <input id="consentPrivacy" name="consentPrivacy" type="checkbox" required />
                   <span data-i18n-html="request.privacyConsentLabel"></span>
                 </label>
-                <p class="field__error" id="err-privacyConsent" hidden></p>
+                <p class="field__error" id="err-consentPrivacy" hidden></p>
               </div>
-              <p id="config-warning" class="notice notice--error" data-i18n="request.missingNumber" hidden></p>
-              <p id="form-error" class="notice notice--error" role="alert" hidden></p>
+              <div class="field field--turnstile">
+                <p class="field__label" id="turnstile-label" data-i18n="request.turnstileLabel"></p>
+                <div id="turnstile-widget" class="turnstile" tabindex="-1" role="group" aria-labelledby="turnstile-label" aria-describedby="hint-turnstile"></div>
+                <p class="field__hint" id="hint-turnstile" data-i18n="request.turnstileHint"></p>
+                <p class="field__error" id="err-turnstileToken" hidden></p>
+                <button id="turnstile-retry" class="btn btn--ghost btn--sm" type="button" data-i18n="request.turnstileRetry" hidden></button>
+              </div>
+              <p id="config-warning" class="notice notice--error" data-i18n="request.configMissing" hidden></p>
+              <div id="form-error" class="notice notice--error notice--actions" role="alert" tabindex="-1" hidden>
+                <p id="form-error-text"></p>
+                <button id="form-retry" class="btn btn--ghost btn--sm" type="button" data-i18n="request.retry" hidden></button>
+              </div>
               <button id="submit" class="btn btn--primary btn--lg btn--block" type="submit" disabled>
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                  <path d="M4 20l1.3-3.9A8 8 0 1 1 8 18.8z" />
+                  <path d="M21 3 10.5 13.5" />
+                  <path d="m21 3-6.5 18-4-7.5L3 9.5z" />
                 </svg>
-                <span data-i18n="request.submit"></span>
+                <span id="submit-label" data-i18n="request.submit"></span>
               </button>
-              <p class="field__hint field__hint--center" data-i18n="request.submitHint"></p>
+              <div class="submit-meta">
+                <p id="form-status" class="form-status" role="status" aria-live="polite"></p>
+                <p class="field__hint field__hint--center" data-i18n="request.submitHint"></p>
+              </div>
             </div>
           </form>
 

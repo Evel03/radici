@@ -5,13 +5,14 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import { defineConfig } from "vitest/config";
+import { headersFor, parseHeadersFile, renderHeadersFile } from "./src/build/headers.ts";
 import { pagePathFromHtmlPath, renderPage } from "./src/build/html.ts";
-import { resolveConfig, type AppConfig } from "./src/config.ts";
+import { isTurnstileTestKey, resolveConfig, type AppConfig } from "./src/config.ts";
 import { flatten } from "./src/i18n/core.ts";
 import { createSiteI18n } from "./src/i18n/site.ts";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
-// Motor de presupuesto compartido (solo lectura): supabase/functions/_shared/quote.ts
+// Motor de presupuesto y contrato del pedido, compartidos (solo lectura): supabase/functions/_shared/
 const sharedDir = resolve(root, "../supabase/functions/_shared");
 const PAGES = ["richiesta", "privacy"];
 
@@ -28,8 +29,20 @@ const trailingSlash: Connect.NextHandleFunction = (req, res, next) => {
   next();
 };
 
+/** Aplica dist/_headers como Cloudflare Pages: `npm run preview` sirve la CSP real (con su cabecera). */
+function pagesHeaders(outDir: string): Connect.NextHandleFunction {
+  const file = resolve(outDir, "_headers");
+  const rules = existsSync(file) ? parseHeadersFile(readFileSync(file, "utf8")) : [];
+  return (req, res, next) => {
+    const path = (req.url ?? "/").split("?")[0] ?? "/";
+    for (const [name, value] of headersFor(rules, path)) res.setHeader(name, value);
+    next();
+  };
+}
+
 function mestoloHtml(): Plugin {
   let appConfig: AppConfig;
+  let production = false;
   let outDir = resolve(root, "dist");
   const read = (file: string): string => readFileSync(resolve(root, file), "utf8");
 
@@ -37,6 +50,7 @@ function mestoloHtml(): Plugin {
     name: "mestolo-html",
     configResolved(resolved) {
       appConfig = resolveConfig(resolved.env);
+      production = resolved.mode === "production";
       outDir = resolve(resolved.root, resolved.build.outDir);
     },
     transformIndexHtml: {
@@ -63,8 +77,20 @@ function mestoloHtml(): Plugin {
     },
     configurePreviewServer(server) {
       server.middlewares.use(trailingSlash);
+      server.middlewares.use(pagesHeaders(outDir));
     },
     writeBundle() {
+      // Marcadores del origen de Supabase en _headers (connect-src de /richiesta/; sin él, el formulario no puede enviar).
+      const headers = resolve(outDir, "_headers");
+      if (existsSync(headers)) {
+        writeFileSync(headers, renderHeadersFile(readFileSync(headers, "utf8"), appConfig.supabaseUrl));
+      }
+      if (!appConfig.supabaseUrl || !appConfig.turnstileSiteKey) {
+        this.warn("Faltan VITE_SUPABASE_URL o VITE_TURNSTILE_SITE_KEY: el formulario de /richiesta/ no podrá enviar pedidos.");
+      } else if (production && isTurnstileTestKey(appConfig.turnstileSiteKey)) {
+        this.warn("VITE_TURNSTILE_SITE_KEY es una sitekey de prueba: en producción el servidor rechaza su token.");
+      }
+
       const robots = resolve(outDir, "robots.txt");
       const sitemap = resolve(outDir, "sitemap.xml");
       const url = appConfig.siteUrl;

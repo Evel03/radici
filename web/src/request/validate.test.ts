@@ -1,94 +1,160 @@
 import { describe, expect, it } from "vitest";
-import { validRequest } from "./fixtures.ts";
-import { firstErrorField, isValidPhone, validateRequest } from "./validate.ts";
+import { flatten } from "../i18n/core.ts";
+import itJson from "../i18n/it.json";
+import { TEST_TOKEN, TODAY, validRequest } from "./fixtures.ts";
+import type { ErrorCode, PublicRequestField, RequestData } from "./model.ts";
+import { FIELD_ORDER, PAGE_FIELDS, fieldError, firstErrorField, translateErrors, validateRequest } from "./validate.ts";
 
-const TODAY = "2026-10-19";
+const ALL_FIELDS: readonly PublicRequestField[] = [
+  "payload", "version", "type", "adults", "kids", "people", "days", "meals", "allergens", "diets",
+  "restrictionsNote", "preferredDate", "slot", "name", "zone", "phone", "email", "whatsappOptIn", "notes",
+  "locale", "consentPrivacy", "consentHealth", "turnstileToken",
+];
+const ALL_CODES: readonly ErrorCode[] = [
+  "required", "invalid", "range", "tooLong", "dateOutOfRange", "consentRequired", "healthConsentRequired",
+];
 
-describe("validateRequest", () => {
-  it("un pedido completo no tiene errores", () => {
-    expect(validateRequest(validRequest(), TODAY)).toEqual({});
+function validate(overrides: Partial<RequestData> = {}, token = TEST_TOKEN) {
+  return validateRequest(validRequest(overrides), TODAY, { locale: "it", turnstileToken: token });
+}
+
+describe("validateRequest (la misma validación del servidor)", () => {
+  it("un pedido completo, con token, no tiene errores", () => {
+    expect(validate()).toEqual({});
+  });
+
+  it("sin token de Turnstile solo falta la verificación", () => {
+    expect(validate({}, "")).toEqual({ turnstileToken: { key: "errors.turnstileRequired" } });
   });
 
   describe("consentimientos", () => {
     it("la privacy es obligatoria", () => {
-      const errors = validateRequest(validRequest({ privacyConsent: false }), TODAY);
-      expect(errors.privacyConsent?.key).toBe("errors.privacyRequired");
+      expect(validate({ consentPrivacy: false }).consentPrivacy?.key).toBe("errors.privacyRequired");
     });
 
     it("el consentimiento de salud es obligatorio solo si hay restricciones", () => {
-      expect(validateRequest(validRequest({ healthConsent: false }), TODAY).healthConsent).toBeUndefined();
+      expect(validate({ consentHealth: false }).consentHealth).toBeUndefined();
       for (const restriction of [{ allergens: ["eggs" as const] }, { diets: ["vegan" as const] }, { restrictionsNote: "no maiale" }]) {
-        const without = validateRequest(validRequest({ ...restriction, healthConsent: false }), TODAY);
-        expect(without.healthConsent?.key).toBe("errors.healthRequired");
-        const withConsent = validateRequest(validRequest({ ...restriction, healthConsent: true }), TODAY);
-        expect(withConsent.healthConsent).toBeUndefined();
+        expect(validate({ ...restriction, consentHealth: false }).consentHealth?.key).toBe("errors.healthRequired");
+        expect(validate({ ...restriction, consentHealth: true }).consentHealth).toBeUndefined();
       }
     });
 
     it("un texto de restricciones con solo espacios no cuenta como restricción", () => {
-      expect(validateRequest(validRequest({ restrictionsNote: "   " }), TODAY).healthConsent).toBeUndefined();
+      expect(validate({ restrictionsNote: "   " }).consentHealth).toBeUndefined();
     });
   });
 
   describe("rangos (LIMITS del motor)", () => {
     it("adultos y niños de 0 a 30, al menos una persona", () => {
-      expect(validateRequest(validRequest({ adults: 31 }), TODAY).adults).toEqual({ key: "errors.range", params: { min: 0, max: 30 } });
-      expect(validateRequest(validRequest({ kids: -1 }), TODAY).kids?.key).toBe("errors.range");
-      expect(validateRequest(validRequest({ adults: 1.5 }), TODAY).adults?.key).toBe("errors.range");
-      expect(validateRequest(validRequest({ adults: Number.NaN }), TODAY).adults?.key).toBe("errors.range");
-      expect(validateRequest(validRequest({ adults: 0, kids: 0 }), TODAY).people?.key).toBe("errors.people");
-      expect(validateRequest(validRequest({ adults: 0, kids: 1 }), TODAY)).toEqual({});
-      expect(validateRequest(validRequest({ adults: 30, kids: 30 }), TODAY)).toEqual({});
+      expect(validate({ adults: 31 }).adults).toEqual({ key: "errors.range", params: { min: 0, max: 30 } });
+      expect(validate({ kids: -1 }).kids?.key).toBe("errors.range");
+      expect(validate({ adults: 1.5 }).adults?.key).toBe("errors.range");
+      expect(validate({ adults: Number.NaN }).adults?.key).toBe("errors.range");
+      expect(validate({ adults: 0, kids: 0 }).people?.key).toBe("errors.people");
+      expect(validate({ adults: 0, kids: 1 })).toEqual({});
+      expect(validate({ adults: 30, kids: 30 })).toEqual({});
     });
 
     it("días de 1 a 7", () => {
-      expect(validateRequest(validRequest({ days: 0 }), TODAY).days?.params).toEqual({ min: 1, max: 7 });
-      expect(validateRequest(validRequest({ days: 8 }), TODAY).days?.key).toBe("errors.range");
-      expect(validateRequest(validRequest({ days: 7 }), TODAY)).toEqual({});
+      expect(validate({ days: 0 }).days).toEqual({ key: "errors.range", params: { min: 1, max: 7 } });
+      expect(validate({ days: 8 }).days?.key).toBe("errors.range");
+      expect(validate({ days: 7 })).toEqual({});
     });
 
-    it("fecha opcional, de mañana a +14 días", () => {
-      expect(validateRequest(validRequest({ date: "" }), TODAY).date).toBeUndefined();
-      expect(validateRequest(validRequest({ date: "2026-10-20" }), TODAY).date).toBeUndefined();
-      expect(validateRequest(validRequest({ date: "2026-11-02" }), TODAY).date).toBeUndefined();
-      expect(validateRequest(validRequest({ date: "2026-10-19" }), TODAY).date?.key).toBe("errors.date");
-      expect(validateRequest(validRequest({ date: "2026-11-03" }), TODAY).date?.key).toBe("errors.date");
-      expect(validateRequest(validRequest({ date: "2026-02-30" }), TODAY).date?.key).toBe("errors.date");
+    it("fecha opcional, de mañana a +14 días (Europe/Rome)", () => {
+      expect(validate({ preferredDate: "" }).preferredDate).toBeUndefined();
+      expect(validate({ preferredDate: "2026-10-20" }).preferredDate).toBeUndefined();
+      expect(validate({ preferredDate: "2026-11-02" }).preferredDate).toBeUndefined();
+      expect(validate({ preferredDate: "2026-10-19" }).preferredDate).toEqual({ key: "errors.date", params: { days: 14 } });
+      expect(validate({ preferredDate: "2026-11-03" }).preferredDate?.key).toBe("errors.date");
+      expect(validate({ preferredDate: "2026-02-30" }).preferredDate?.key).toBe("errors.date");
     });
 
     it("largo máximo de los textos", () => {
-      expect(validateRequest(validRequest({ notes: "x".repeat(501) }), TODAY).notes).toEqual({ key: "errors.tooLong", params: { max: 500 } });
-      expect(validateRequest(validRequest({ restrictionsNote: "x".repeat(201), healthConsent: true }), TODAY).restrictionsNote?.key).toBe("errors.tooLong");
+      expect(validate({ notes: "x".repeat(501) }).notes).toEqual({ key: "errors.tooLong", params: { max: 500 } });
+      expect(validate({ restrictionsNote: "x".repeat(201), consentHealth: true }).restrictionsNote?.key).toBe("errors.tooLong");
+      expect(validate({ name: "x".repeat(81) }).name).toEqual({ key: "errors.tooLong", params: { max: 80 } });
     });
   });
 
   describe("contacto", () => {
-    it("nombre, zona y teléfono obligatorios", () => {
-      const errors = validateRequest(validRequest({ name: " ", zone: "", phone: "" }), TODAY);
+    it("nombre, zona, teléfono y email obligatorios", () => {
+      const errors = validate({ name: " ", zone: "", phone: "", email: "" });
       expect(errors.name?.key).toBe("errors.nameRequired");
       expect(errors.zone?.key).toBe("errors.zoneRequired");
       expect(errors.phone?.key).toBe("errors.phoneRequired");
+      expect(errors.email?.key).toBe("errors.emailRequired");
     });
 
-    it("teléfono: acepta formatos habituales y rechaza basura", () => {
-      for (const ok of ["3331234567", "+39 333 123 4567", "0039 035-123456", "(035) 21.34.56", "+34 600 123 456"]) {
-        expect(isValidPhone(ok), ok).toBe(true);
+    it("teléfono: italianos sin prefijo o internacionales con +/00; el resto pide el prefijo", () => {
+      for (const ok of ["3331234567", "+39 333 123 4567", "0039 035-123456", "035 21.34.56", "+34 600 123 456", "(+54) 9 11 2345-6789"]) {
+        expect(validate({ phone: ok }).phone, ok).toBeUndefined();
       }
-      for (const bad of ["12345", "333-abc-4567", "+39 333 123 4567 890 123", "++39333123456"]) {
-        expect(isValidPhone(bad), bad).toBe(false);
+      for (const bad of ["612 345 678", "12345", "333-abc-4567", "telefono"]) {
+        expect(validate({ phone: bad }).phone?.key, bad).toBe("errors.phoneInvalid");
       }
-      expect(validateRequest(validRequest({ phone: "telefono" }), TODAY).phone?.key).toBe("errors.phoneInvalid");
     });
 
-    it("email opcional pero válido si se escribe", () => {
-      expect(validateRequest(validRequest({ email: "" }), TODAY).email).toBeUndefined();
-      expect(validateRequest(validRequest({ email: "giulia@example.it" }), TODAY).email).toBeUndefined();
-      expect(validateRequest(validRequest({ email: "giulia@" }), TODAY).email?.key).toBe("errors.emailInvalid");
+    it("email válido (se acepta con mayúsculas y espacios alrededor)", () => {
+      expect(validate({ email: " Giulia@Example.IT " }).email).toBeUndefined();
+      expect(validate({ email: "giulia@" }).email?.key).toBe("errors.emailInvalid");
+      expect(validate({ email: "giulia@example" }).email?.key).toBe("errors.emailInvalid");
+    });
+
+    it("la casilla de WhatsApp es opcional", () => {
+      expect(validate({ whatsappOptIn: true })).toEqual({});
+      expect(validate({ whatsappOptIn: false })).toEqual({});
     });
   });
 
   it("el primer error sigue el orden de la página", () => {
-    const errors = validateRequest(validRequest({ privacyConsent: false, phone: "", adults: 0, kids: 0 }), TODAY);
+    const errors = validate({ consentPrivacy: false, phone: "", adults: 0, kids: 0 });
     expect(firstErrorField(errors)).toBe("people");
+    expect(firstErrorField({})).toBeUndefined();
+  });
+});
+
+describe("translateErrors (respuesta 400 del servidor)", () => {
+  it("traduce cada campo a su mensaje", () => {
+    const { fields, outdated } = translateErrors({ phone: "invalid", email: "required", consentHealth: "healthConsentRequired" });
+    expect(outdated).toBe(false);
+    expect(fields).toEqual({
+      phone: { key: "errors.phoneInvalid" },
+      email: { key: "errors.emailRequired" },
+      consentHealth: { key: "errors.healthRequired" },
+    });
+  });
+
+  it("versión, payload o idioma rechazados: la página está desactualizada", () => {
+    expect(translateErrors({ version: "invalid" })).toEqual({ fields: {}, outdated: true });
+    expect(translateErrors({ payload: "invalid" }).outdated).toBe(true);
+    expect(translateErrors({ locale: "invalid", name: "required" })).toEqual({
+      fields: { name: { key: "errors.nameRequired" } },
+      outdated: true,
+    });
+  });
+
+  it("campos o códigos que no conoce (otra versión del servidor): no se rompe y pide recargar", () => {
+    const unknown = { nuevoCampo: "required", phone: "otroCodigo" } as unknown as Parameters<typeof translateErrors>[0];
+    expect(translateErrors(unknown)).toEqual({ fields: { phone: { key: "errors.phoneInvalid" } }, outdated: true });
+    expect(translateErrors({ slot: "invalid" }).fields).toEqual({ slot: { key: "errors.invalid" } });
+  });
+});
+
+describe("fieldError: cada campo y código del contrato tiene un mensaje que existe en it.json", () => {
+  const it_ = flatten(itJson);
+  it("todas las combinaciones", () => {
+    for (const field of FIELD_ORDER) {
+      for (const code of ALL_CODES) {
+        const { key } = fieldError(field, code);
+        expect(key in it_, `${field}/${code} → ${key}`).toBe(true);
+      }
+    }
+  });
+
+  it("FIELD_ORDER cubre todos los campos del contrato salvo los de la página entera", () => {
+    const formLevel = ALL_FIELDS.filter((f) => !(FIELD_ORDER as readonly string[]).includes(f));
+    expect(formLevel.sort()).toEqual(Object.keys(PAGE_FIELDS).sort());
   });
 });

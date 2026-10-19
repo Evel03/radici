@@ -91,6 +91,13 @@ describe("claves usadas por la web", () => {
       expect(filled.map((m) => m[0]), file).toEqual([]);
     }
   });
+
+  it("no queda ningún link a WhatsApp en la web pública (el pedido va al servidor)", () => {
+    const sources = { ...htmlFiles, it: JSON.stringify(itJson), es: JSON.stringify(es), en: JSON.stringify(en) };
+    for (const [file, text] of Object.entries(sources)) {
+      expect(text, file).not.toMatch(/wa\.me|api\.whatsapp\.com|whatsapp:\/\//i);
+    }
+  });
 });
 
 describe("núcleo de i18n", () => {

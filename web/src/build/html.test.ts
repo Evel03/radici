@@ -10,7 +10,14 @@ import footer from "../partials/footer.html?raw";
 import header from "../partials/header.html?raw";
 import { buildJsonLd, fillTranslations, pagePathFromHtmlPath, renderPage } from "./html.ts";
 
-const baseConfig: AppConfig = { whatsappNumber: null, brandName: "Mestolo", noindex: true, siteUrl: null };
+const baseConfig: AppConfig = {
+  brandName: "Mestolo",
+  noindex: true,
+  siteUrl: null,
+  supabaseUrl: null,
+  supabasePublishableKey: null,
+  turnstileSiteKey: null,
+};
 const i18n = createSiteI18n("it", flatten(itJson), "Mestolo");
 const partials = { header, footer };
 
@@ -71,6 +78,27 @@ describe("renderPage con las páginas reales", () => {
   it("sin JS el formulario no se puede enviar (los datos irían en la URL)", () => {
     expect(requestHtml).toMatch(/<button id="submit"[^>]*type="submit"[^>]*\sdisabled>/);
     expect(requestHtml).toMatch(/<form id="request-form"[^>]*novalidate>/);
+    expect(requestHtml).not.toMatch(/<form[^>]*\saction=/);
+  });
+
+  it("formulario: email obligatorio, casilla de WhatsApp junto al teléfono y lugar para Turnstile", () => {
+    expect(requestHtml).toMatch(/<input[^>]*id="email"[^>]*\srequired/);
+    const phoneField = requestHtml.slice(requestHtml.indexOf('id="phone"'), requestHtml.indexOf('for="email"'));
+    expect(phoneField).toContain('id="whatsappOptIn"');
+    expect(requestHtml).toContain('<div id="turnstile-widget"');
+    // Un elemento con id="turnstile" (o name en form/img/iframe) aparece como window.turnstile y tapa la
+    // API de Cloudflare: el script no carga ("Turnstile already has been loaded") y render no existe.
+    for (const html of [indexHtml, requestHtml, privacyHtml]) {
+      expect(html).not.toMatch(/\s(id|name)="turnstile"/);
+    }
+    // El script de Turnstile lo carga el JS solo en esta página: ninguna página lo trae en el HTML.
+    for (const html of [indexHtml, requestHtml, privacyHtml]) expect(html).not.toContain("challenges.cloudflare.com");
+  });
+
+  it("los estados del envío se anuncian (aria-live) y los errores con role=alert", () => {
+    expect(requestHtml).toMatch(/<p id="form-status"[^>]*role="status"[^>]*aria-live="polite"/);
+    expect(requestHtml).toMatch(/<div id="form-error"[^>]*role="alert"/);
+    expect(requestHtml).toMatch(/<section id="done"[^>]*tabindex="-1"[^>]*aria-labelledby="done-title"/);
   });
 
   it("solo la landing lleva JSON-LD", () => {

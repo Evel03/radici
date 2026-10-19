@@ -1,52 +1,58 @@
-// Modelo del pedido de la web (Fase 0). Los valores coinciden con los enums de SPEC.md §4.
+// Modelo del pedido de la web. Tipos, constantes y reglas vienen del contrato compartido con la
+// Edge Function (supabase/functions/_shared/public_request.ts): un solo origen, nada copiado acá.
+// Este archivo agrega solo lo propio del formulario (la opción "pranzo e cena" y su estado).
+import {
+  MEALS,
+  cleanOneLine,
+  hasRestrictions,
+  type Allergen,
+  type Diet,
+  type Meal,
+  type RequestType,
+  type Slot,
+} from "../../../supabase/functions/_shared/public_request.ts";
 
-/** Los 14 alérgenos del Reg. UE 1169/2011, en el orden del enum `allergen`. */
-export const ALLERGENS = [
-  "gluten",
-  "crustaceans",
-  "eggs",
-  "fish",
-  "peanuts",
-  "soy",
-  "milk",
-  "nuts",
-  "celery",
-  "mustard",
-  "sesame",
-  "sulphites",
-  "lupin",
-  "molluscs",
-] as const;
-export type Allergen = (typeof ALLERGENS)[number];
+export {
+  ALLERGENS,
+  CONSENT_VERSION,
+  DATE_WINDOW,
+  DIETS,
+  LOCALES,
+  MAX_PAYLOAD_BYTES,
+  MEALS,
+  PUBLIC_REQUEST_VERSION,
+  REQUEST_TYPES,
+  SLOTS,
+  TEXT_LIMITS,
+  cleanMultiLine,
+  cleanOneLine,
+  hasRestrictions,
+  isOneOf,
+  isValidEmail,
+  normalizePhone,
+  parsePublicRequest,
+} from "../../../supabase/functions/_shared/public_request.ts";
+export type {
+  Allergen,
+  Diet,
+  ErrorCode,
+  Locale,
+  Meal,
+  PublicRequestErrors,
+  PublicRequestField,
+  PublicRequestPayload,
+  RequestType,
+  Slot,
+} from "../../../supabase/functions/_shared/public_request.ts";
 
-export const DIETS = ["vegetarian", "vegan"] as const;
-export type Diet = (typeof DIETS)[number];
-
-/** 'week' y 'extra' de `request_type` ('change' es solo para clientes con cuenta). */
-export const REQUEST_TYPES = ["week", "extra"] as const;
-export type RequestType = (typeof REQUEST_TYPES)[number];
-
+/** El formulario ofrece almuerzo, cena o los dos; el contrato recibe la lista de comidas. */
 export const MEAL_OPTIONS = ["lunch", "dinner", "both"] as const;
 export type MealOption = (typeof MEAL_OPTIONS)[number];
 
-export const SLOTS = ["morning", "afternoon", "any"] as const;
-export type Slot = (typeof SLOTS)[number];
-
-/** Largo máximo de los campos de texto (también como maxlength en el HTML). */
-export const TEXT_LIMITS = {
-  name: 80,
-  zone: 80,
-  phone: 30,
-  email: 120,
-  restrictionsNote: 200,
-  notes: 500,
-} as const;
-
-/** Ventana de fechas: de mañana a +14 días (booking_horizon_days). */
-export const DATE_WINDOW = { minDaysAhead: 1, maxDaysAhead: 14 } as const;
-
+/** Estado del formulario tal como lo escribió el cliente (el servidor limpia y valida). */
 export interface RequestData {
   type: RequestType;
+  /** NaN si el campo quedó vacío. */
   adults: number;
   kids: number;
   days: number;
@@ -55,26 +61,31 @@ export interface RequestData {
   diets: Diet[];
   restrictionsNote: string;
   /** "" si no eligió fecha; si no, "AAAA-MM-DD". */
-  date: string;
+  preferredDate: string;
   slot: Slot;
   name: string;
   zone: string;
   phone: string;
   email: string;
+  /** Quiere la confirmación también por WhatsApp (al teléfono indicado). */
+  whatsappOptIn: boolean;
   notes: string;
-  privacyConsent: boolean;
-  healthConsent: boolean;
+  consentPrivacy: boolean;
+  consentHealth: boolean;
+}
+
+export function mealsOf(option: MealOption): Meal[] {
+  return option === "both" ? [...MEALS] : [option];
 }
 
 export function mealsPerDay(option: MealOption): number {
-  return option === "both" ? 2 : 1;
+  return mealsOf(option).length;
 }
 
-/** Hay datos de salud si marcó algún alérgeno o dieta o escribió algo en "otros". */
-export function hasRestrictions(data: Pick<RequestData, "allergens" | "diets" | "restrictionsNote">): boolean {
-  return data.allergens.length > 0 || data.diets.length > 0 || data.restrictionsNote.trim() !== "";
-}
-
-export function isOneOf<T extends string>(list: readonly T[], value: unknown): value is T {
-  return typeof value === "string" && (list as readonly string[]).includes(value);
+/**
+ * Hay datos de salud (alérgenos, dietas o una nota) y hace falta el consentimiento explícito.
+ * La nota se limpia igual que en el servidor: un texto con solo espacios no cuenta.
+ */
+export function hasHealthData(data: Pick<RequestData, "allergens" | "diets" | "restrictionsNote">): boolean {
+  return hasRestrictions({ ...data, restrictionsNote: cleanOneLine(data.restrictionsNote) });
 }
