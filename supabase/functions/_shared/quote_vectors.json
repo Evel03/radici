@@ -1,0 +1,77 @@
+{
+  "description": "Vectores de SPEC.md §5.1. Los pasan quote.ts (TS) y la copia en Dart de la app. Montos en centavos.",
+  "defaultSettings": {
+    "hourlyRateCents": 2200,
+    "travelFeeCents": 1200,
+    "adultPortionCents": 380,
+    "kidPortionCents": 250,
+    "preauthBufferPct": 15,
+    "minCookMinutes": 90
+  },
+  "vectors": [
+    {
+      "id": 1,
+      "label": "2 ad · 2 niños · 5 días · cena",
+      "input": { "adults": 2, "kids": 2, "days": 5, "meals": 1 },
+      "expected": { "portions": 20, "recipes": 3, "cookMinutes": 180, "serviceCents": 7800, "groceriesEstCents": 6300, "preauthCents": 7245, "holdCents": 15045, "totalCents": 14100 }
+    },
+    {
+      "id": 2,
+      "label": "1 ad · 5 días · almuerzo",
+      "input": { "adults": 1, "kids": 0, "days": 5, "meals": 1 },
+      "expected": { "portions": 5, "recipes": 2, "cookMinutes": 150, "serviceCents": 6700, "groceriesEstCents": 1900, "preauthCents": 2185, "holdCents": 8885, "totalCents": 8600 }
+    },
+    {
+      "id": 3,
+      "label": "10 ad · 6 niños · 1 día · cena",
+      "input": { "adults": 10, "kids": 6, "days": 1, "meals": 1 },
+      "expected": { "portions": 16, "recipes": 2, "cookMinutes": 150, "serviceCents": 6700, "groceriesEstCents": 5300, "preauthCents": 6095, "holdCents": 12795, "totalCents": 12000 }
+    },
+    {
+      "id": 4,
+      "label": "2 ad · 3 niños · 4 días · cena",
+      "input": { "adults": 2, "kids": 3, "days": 4, "meals": 1 },
+      "expected": { "portions": 20, "recipes": 2, "cookMinutes": 150, "serviceCents": 6700, "groceriesEstCents": 6040, "preauthCents": 6946, "holdCents": 13646, "totalCents": 12740 }
+    },
+    {
+      "id": 5,
+      "label": "2 ad · 1 niño · 5 días · cena",
+      "input": { "adults": 2, "kids": 1, "days": 5, "meals": 1 },
+      "expected": { "portions": 15, "recipes": 3, "cookMinutes": 180, "serviceCents": 7800, "groceriesEstCents": 5050, "preauthCents": 5808, "holdCents": 13608, "totalCents": 12850 }
+    },
+    {
+      "id": 6,
+      "label": "2 ad · 2 niños · 5 días · almuerzo y cena",
+      "input": { "adults": 2, "kids": 2, "days": 5, "meals": 2 },
+      "expected": { "portions": 40, "recipes": 5, "cookMinutes": 270, "serviceCents": 11100, "groceriesEstCents": 12600, "preauthCents": 14490, "holdCents": 25590, "totalCents": 23700 }
+    },
+    {
+      "id": 7,
+      "label": "4 ad · 7 días · almuerzo y cena (tope de 6 recetas)",
+      "input": { "adults": 4, "kids": 0, "days": 7, "meals": 2 },
+      "expected": { "portions": 56, "recipes": 6, "cookMinutes": 330, "serviceCents": 13300, "groceriesEstCents": 21280, "preauthCents": 24472, "holdCents": 37772, "totalCents": 34580 }
+    },
+    {
+      "id": 8,
+      "label": "1 ad · 1 día · cena (mínimo)",
+      "input": { "adults": 1, "kids": 0, "days": 1, "meals": 1 },
+      "expected": { "portions": 1, "recipes": 2, "cookMinutes": 150, "serviceCents": 6700, "groceriesEstCents": 380, "preauthCents": 437, "holdCents": 7137, "totalCents": 7080 }
+    },
+    {
+      "id": 9,
+      "label": "Como el 2, con tarifa 21,55 €/h (redondeo mitad hacia arriba)",
+      "settings": { "hourlyRateCents": 2155 },
+      "input": { "adults": 1, "kids": 0, "days": 5, "meals": 1 },
+      "expected": { "portions": 5, "recipes": 2, "cookMinutes": 150, "serviceCents": 6588, "groceriesEstCents": 1900, "preauthCents": 2185, "holdCents": 8773, "totalCents": 8488 }
+    }
+  ],
+  "invalid": [
+    { "label": "sin personas", "input": { "adults": 0, "kids": 0, "days": 5, "meals": 1 } },
+    { "label": "0 días", "input": { "adults": 2, "kids": 0, "days": 0, "meals": 1 } },
+    { "label": "8 días", "input": { "adults": 2, "kids": 0, "days": 8, "meals": 1 } },
+    { "label": "3 comidas", "input": { "adults": 2, "kids": 0, "days": 5, "meals": 3 } },
+    { "label": "adultos decimales", "input": { "adults": 1.5, "kids": 0, "days": 5, "meals": 1 } },
+    { "label": "niños negativos", "input": { "adults": 2, "kids": -1, "days": 5, "meals": 1 } },
+    { "label": "31 adultos", "input": { "adults": 31, "kids": 0, "days": 1, "meals": 1 } }
+  ]
+}

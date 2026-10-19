@@ -1,0 +1,24 @@
+# Node / web
+node_modules/
+web/dist/
+*.log
+
+# Secretos y entornos locales
+.env
+.env.*
+!.env.example
+app/env/*.json
+!app/env/*.example.json
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# Editor / SO
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
