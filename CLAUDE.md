@@ -4,8 +4,8 @@ Cocina casera a domicilio en Bergamo (Evelyn). "Mestolo" es nombre provisorio.
 Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y este archivo en el mismo PR.
 
 ## Estructura
-- `app/` Flutter (iOS, Android). SDK: `C:\Users\NicolasMansillaBened\dev\flutter-3.47.7\bin\flutter` (el `flutter` del PATH es 3.27, viejo).
-- `web/` web pública estática: Vite + TypeScript, sin framework. Italiano por defecto.
+- `app/` Flutter (iOS, Android y la bandeja web de Evelyn en `/gestione/`). SDK: `C:\Users\NicolasMansillaBened\dev\flutter-3.47.7\bin\flutter` (el `flutter` del PATH es 3.27, viejo).
+- `web/` web pública estática: Vite + TypeScript, sin framework. Italiano por defecto. El formulario manda el pedido a la Edge Function `public-request` (contrato: `docs/contracts/public-request.md`); `deploy-web.yml` publica la web y `/gestione/` juntas.
 - `supabase/migrations/` esquema y RLS · `supabase/tests/database/` pgTAP · `supabase/functions/` Edge Functions (Deno).
 - `supabase/functions/_shared/quote.ts` motor de presupuesto: fuente única de verdad, compartido por Edge Functions y web.
   `quote_vectors.json` al lado: lo leen los tests de TS y de Dart.
@@ -25,7 +25,8 @@ Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y est
 - Una feature = un PR chico con tests en verde.
 
 ## Comandos
-- Raíz: `npm test` (motor de presupuesto, node --test)
+- Raíz: `npm test` (contrato, motor de presupuesto y Edge Functions, node --test)
 - Web: `cd web && npm run dev | npm run build | npm test`
 - App: `cd app && flutter analyze && flutter test` (con el SDK 3.47.7)
 - Base: `npx supabase start` · `npx supabase db reset` · `npx supabase test db` (necesita Docker)
+- Edge Function local: copiar `supabase/functions/.env.example` y `npx supabase functions serve --env-file <archivo>` (con `EMAIL_TRANSPORT=log` no sale ningún email)

@@ -53,10 +53,10 @@ Evelyn cocina **en la casa del cliente**: hace las compras, cocina para varios d
 
 ### Fase 0 — Validación (web liviana, sin app)
 - Web pública en italiano (`web/`): cómo funciona, calculadora de presupuesto (misma fórmula 5.1, mismo `quote.ts`) y formulario de pedido con consentimiento de datos de salud.
-- El pedido llega a Evelyn como mensaje de WhatsApp ya armado (`wa.me`): sin backend ni cuentas.
+- El pedido se guarda en Supabase (Edge Function `public-request`, contrato `docs/contracts/public-request.md`, aprobado el 19/10/2026; reemplaza el envío por WhatsApp). Evelyn recibe un email y un aviso emergente en la app, y lo revisa en la bandeja y la agenda (app y `/gestione/`); el cliente recibe la confirmación por email y, si la pidió, por WhatsApp. El cliente no necesita cuenta.
 - Cobro manual: efectivo, transferencia, Satispay o Stripe Payment Links.
 - Meta: 10–20 sesiones reales para calibrar tiempos de cocina, costo por porción y política de cancelación **antes** de congelarlos en los vectores.
-- En paralelo se construyen M0 y M1. En M3 el formulario pasa a enviar el pedido a la Edge Function `public-request`.
+- En paralelo se construyen M0 y M1. La parte de `public-request` de M3 (formulario conectado al backend) se adelantó a esta fase.
 
 ### Fase 1 — MVP (lo que valida el negocio)
 - Registro e inicio de sesión (email con código OTP o magic link).
@@ -111,7 +111,7 @@ Se reutiliza lo que ya conocés de Se Puso La 10, sin servidor propio.
 | Errores | Sentry | |
 | CI | GitHub Actions: `flutter analyze`, `flutter test`, tests de base de datos | |
 
-**Web pública:** Flutter web es pesado para la primera carga y no posiciona; el cliente nuevo llega desde un link de WhatsApp en el celular. Por eso la web pública (landing, `/richiesta`, seguimiento y aceptación del presupuesto) es estática y aparte. Flutter web no está en el MVP.
+**Web pública:** Flutter web es pesado para la primera carga y no posiciona; el cliente nuevo llega desde un link de WhatsApp en el celular. Por eso la web pública (landing, `/richiesta`, seguimiento y aceptación del presupuesto) es estática y aparte. Flutter web solo se usa para la bandeja de Evelyn en `/gestione/` (la misma app, publicada dentro del sitio; contrato public-request §7).
 
 **Analítica:** sin Google Analytics (Garante). Si hace falta, una sin cookies (Plausible, Umami): así no se necesita banner de cookies.
 
@@ -406,7 +406,7 @@ Sin notificaciones entre las 21:00 y las 8:00 (hora de Roma), salvo fallos de pa
 
 | # | Milestone | Entregable verificable |
 |---|---|---|
-| F0 | Web de validación | `web/`: landing en italiano, calculadora con `quote.ts`, formulario → WhatsApp, privacidad. Deploy en subdominio de prueba |
+| F0 | Web de validación | `web/`: landing en italiano, calculadora con `quote.ts`, formulario → Edge Function `public-request` (emails a Evelyn y al cliente), bandeja y agenda en `/gestione/`, privacidad. Deploy en subdominio de prueba |
 | M0 | Setup | Repo, Flutter con entornos dev/prod, proyecto Supabase UE, CI en verde, `CLAUDE.md`, `quote.ts` + vectores en TS y Dart |
 | M1 | Esquema y RLS | Migraciones de la sección 4, seeds del prototipo, tests de políticas RLS y de `no_overlap` (incluidas sesiones `held` y margen de un lado) |
 | M2 | Auth y perfil | Login OTP, roles, perfil del hogar, restricciones con consentimiento, borrado de cuenta |
