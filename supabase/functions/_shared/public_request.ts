@@ -6,9 +6,10 @@ import { calcQuote, LIMITS, type Quote, type QuoteInput } from "./quote.ts";
 
 export const PUBLIC_REQUEST_VERSION = 1;
 
-/** Versiones aceptadas del texto de los consentimientos (privacy y datos de salud). La última es la vigente. */
-export const CONSENT_VERSIONS = ["2026-10-19"] as const;
-export const CONSENT_VERSION: string = CONSENT_VERSIONS[CONSENT_VERSIONS.length - 1];
+/** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
+export const CONSENT_VERSION = "2026-10-19";
+/** Versiones aceptadas: al cambiar el texto, agregar la nueva y dejar las anteriores mientras haya páginas en caché. */
+export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION];
 
 /** Los 14 alérgenos del Reg. UE 1169/2011, en el orden del enum `allergen` de la base. */
 export const ALLERGENS = [
@@ -90,6 +91,12 @@ export interface PublicRequestPayload {
   consents: { privacy: string; health: string | null };
   /** Token de Cloudflare Turnstile; lo verifica la Edge Function. */
   turnstileToken: string;
+  /**
+   * Clave de idempotencia (UUID) generada por la web una vez por pedido y reutilizada en los reintentos.
+   * Si llega otra vez la misma clave, el servidor devuelve el pedido ya guardado y no repite los avisos.
+   * Opcional para no romper clientes viejos.
+   */
+  requestKey?: string;
 }
 
 export type ErrorCode =
@@ -124,7 +131,8 @@ export type PublicRequestField =
   | "locale"
   | "consentPrivacy"
   | "consentHealth"
-  | "turnstileToken";
+  | "turnstileToken"
+  | "requestKey";
 
 export type PublicRequestErrors = Partial<Record<PublicRequestField, ErrorCode>>;
 
@@ -155,6 +163,8 @@ export interface NormalizedPublicRequest {
   /** `health` es null si no hay restricciones. */
   consents: { privacy: string; health: string | null };
   turnstileToken: string;
+  /** UUID en minúsculas, o null si la web no mandó clave. */
+  requestKey: string | null;
   quoteInput: QuoteInput;
 }
 
@@ -211,28 +221,45 @@ export function normalizePhone(raw: string): string | null {
   return /^[1-9]\d{7,14}$/.test(digits) ? `+${digits}` : null;
 }
 
-/** Fecha de hoy en Europe/Rome como "AAAA-MM-DD". */
+/** Fecha de hoy en Europe/Rome como "AAAA-MM-DD" (por partes, sin depender del formato de un idioma). */
 export function romeToday(now: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Rome",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(now);
+  }).formatToParts(now);
+  const part = (type: "year" | "month" | "day"): string => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+/** Año, mes (1–12) y día de "AAAA-MM-DD", o null si el formato no es ese. */
+function isoParts(value: string): { y: number; m: number; d: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) };
 }
 
 /** true si es una fecha de calendario real con formato "AAAA-MM-DD". */
 export function isIsoDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [y, m, d] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d));
-  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+  const p = isoParts(value);
+  if (!p) return false;
+  const date = new Date(Date.UTC(p.y, p.m - 1, p.d));
+  return date.getUTCFullYear() === p.y && date.getUTCMonth() === p.m - 1 && date.getUTCDate() === p.d;
 }
 
-/** Suma días a una fecha "AAAA-MM-DD" (sin zonas horarias). */
+/** Suma días a una fecha "AAAA-MM-DD" (sin zonas horarias). Lanza RangeError si la fecha no tiene ese formato. */
 export function addDays(iso: string, days: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+  const p = isoParts(iso);
+  if (!p) throw new RangeError(`Fecha inválida: ${iso}`);
+  return new Date(Date.UTC(p.y, p.m - 1, p.d + days)).toISOString().slice(0, 10);
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** true si es un UUID (cualquier versión) en formato canónico. */
+export function isUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
 }
 
 export function hasRestrictions(data: { allergens: readonly string[]; diets: readonly string[]; restrictionsNote: string }): boolean {
@@ -246,6 +273,10 @@ export function hasRestrictions(data: { allergens: readonly string[]; diets: rea
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+/** El JSON recibido, con las claves del contrato declaradas (valores sin validar). */
+type RawPayload = { [K in keyof PublicRequestPayload]?: unknown };
+type RawConsents = { privacy?: unknown; health?: unknown };
 
 /** Lista de valores válidos y sin repetir, devuelta en el orden canónico de `list`. */
 function parseSet<T extends string>(list: readonly T[], value: unknown, max: number): T[] | null {
@@ -261,15 +292,16 @@ function parseSet<T extends string>(list: readonly T[], value: unknown, max: num
  */
 export function parsePublicRequest(input: unknown, opts: { today: string }): ParseResult {
   if (!isRecord(input)) return { ok: false, errors: { payload: "invalid" } };
+  const raw: RawPayload = input;
   const errors: PublicRequestErrors = {};
 
-  if (input.version !== PUBLIC_REQUEST_VERSION) errors.version = "invalid";
+  if (raw.version !== PUBLIC_REQUEST_VERSION) errors.version = "invalid";
 
-  const type = isOneOf(REQUEST_TYPES, input.type) ? input.type : null;
-  if (!type) errors.type = input.type === undefined ? "required" : "invalid";
+  const type = isOneOf(REQUEST_TYPES, raw.type) ? raw.type : null;
+  if (!type) errors.type = raw.type === undefined ? "required" : "invalid";
 
   const intField = (field: "adults" | "kids" | "days", min: number, max: number): number => {
-    const value = input[field];
+    const value = raw[field];
     if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
       errors[field] = value === undefined ? "required" : "range";
       return min;
@@ -281,24 +313,24 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
   const days = intField("days", 1, LIMITS.maxDays);
   if (!errors.adults && !errors.kids && adults + kids < 1) errors.people = "range";
 
-  const meals = parseSet(MEALS, input.meals, MEALS.length);
-  if (!meals || meals.length === 0) errors.meals = input.meals === undefined ? "required" : "invalid";
+  const meals = parseSet(MEALS, raw.meals, MEALS.length);
+  if (!meals || meals.length === 0) errors.meals = raw.meals === undefined ? "required" : "invalid";
 
-  const allergens = parseSet(ALLERGENS, input.allergens ?? [], ALLERGENS.length);
+  const allergens = parseSet(ALLERGENS, raw.allergens ?? [], ALLERGENS.length);
   if (!allergens) errors.allergens = "invalid";
-  const diets = parseSet(DIETS, input.diets ?? [], DIETS.length);
+  const diets = parseSet(DIETS, raw.diets ?? [], DIETS.length);
   if (!diets) errors.diets = "invalid";
 
   const text = (
     field: "restrictionsNote" | "name" | "zone" | "phone" | "email" | "notes",
     { required, multiLine = false }: { required: boolean; multiLine?: boolean },
   ): string => {
-    const raw = input[field] ?? "";
-    if (typeof raw !== "string") {
+    const received = raw[field] ?? "";
+    if (typeof received !== "string") {
       errors[field] = "invalid";
       return "";
     }
-    const value = multiLine ? cleanMultiLine(raw) : cleanOneLine(raw);
+    const value = multiLine ? cleanMultiLine(received) : cleanOneLine(received);
     if (required && value === "") errors[field] = "required";
     else if (value.length > TEXT_LIMITS[field]) errors[field] = "tooLong";
     return value;
@@ -315,26 +347,27 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
   if (!errors.email && !isValidEmail(email)) errors.email = "invalid";
 
   let preferredDate: string | null = null;
-  if (input.preferredDate !== null && input.preferredDate !== undefined && input.preferredDate !== "") {
-    if (typeof input.preferredDate !== "string" || !isIsoDate(input.preferredDate)) {
+  const dateRaw = raw.preferredDate;
+  if (dateRaw !== null && dateRaw !== undefined && dateRaw !== "") {
+    if (typeof dateRaw !== "string" || !isIsoDate(dateRaw)) {
       errors.preferredDate = "invalid";
     } else {
       const min = addDays(opts.today, DATE_WINDOW.minDaysAhead);
       const max = addDays(opts.today, DATE_WINDOW.maxDaysAhead);
-      if (input.preferredDate < min || input.preferredDate > max) errors.preferredDate = "dateOutOfRange";
-      else preferredDate = input.preferredDate;
+      if (dateRaw < min || dateRaw > max) errors.preferredDate = "dateOutOfRange";
+      else preferredDate = dateRaw;
     }
   }
 
-  const slot = isOneOf(SLOTS, input.slot) ? input.slot : null;
-  if (!slot) errors.slot = input.slot === undefined ? "required" : "invalid";
+  const slot = isOneOf(SLOTS, raw.slot) ? raw.slot : null;
+  if (!slot) errors.slot = raw.slot === undefined ? "required" : "invalid";
 
-  const whatsappOptIn = input.whatsappOptIn ?? false;
+  const whatsappOptIn = raw.whatsappOptIn ?? false;
   if (typeof whatsappOptIn !== "boolean") errors.whatsappOptIn = "invalid";
 
-  const locale: Locale = isOneOf(LOCALES, input.locale) ? input.locale : "it";
+  const locale: Locale = isOneOf(LOCALES, raw.locale) ? raw.locale : "it";
 
-  const consents = isRecord(input.consents) ? input.consents : {};
+  const consents: RawConsents = isRecord(raw.consents) ? raw.consents : {};
   const privacy = isOneOf(CONSENT_VERSIONS, consents.privacy) ? consents.privacy : null;
   if (!privacy) errors.consentPrivacy = "consentRequired";
 
@@ -349,9 +382,15 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     if (!health) errors.consentHealth = "healthConsentRequired";
   }
 
-  const turnstileToken = input.turnstileToken;
+  const turnstileToken = raw.turnstileToken;
   if (typeof turnstileToken !== "string" || turnstileToken === "" || turnstileToken.length > 2048) {
     errors.turnstileToken = "required";
+  }
+
+  let requestKey: string | null = null;
+  if (raw.requestKey !== undefined && raw.requestKey !== null) {
+    if (typeof raw.requestKey === "string" && isUuid(raw.requestKey)) requestKey = raw.requestKey.toLowerCase();
+    else errors.requestKey = "invalid";
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
@@ -379,6 +418,7 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     locale,
     consents: { privacy: privacy as string, health },
     turnstileToken: turnstileToken as string,
+    requestKey,
     quoteInput,
   };
   return { ok: true, value, estimate: calcQuote(quoteInput) };

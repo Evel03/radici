@@ -1,7 +1,6 @@
 {
-  // Contrato y motor compartidos (supabase/functions/_shared), chequeados con sus propias opciones:
-  // la web es más estricta (noUncheckedIndexedAccess, noPropertyAccessFromIndexSignature) y ese código
-  // no se toca desde acá. tsconfig.json lo referencia y usa los .d.ts que genera en node_modules/.tmp.
+  // Contrato y motor compartidos (supabase/functions/_shared), con las mismas reglas estrictas que la web.
+  // tsconfig.json lo referencia y usa los .d.ts que genera en node_modules/.tmp.
   // Solo los archivos que importa la web: los helpers de Deno de las funciones quedan fuera.
   "compilerOptions": {
     "composite": true,
@@ -13,6 +12,14 @@
     "lib": ["ES2022"],
     "types": [],
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": true,
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,

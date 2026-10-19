@@ -44,7 +44,7 @@ export type FieldName = (typeof FIELD_ORDER)[number];
  * Errores que no son de un campo: la página quedó desactualizada respecto del servidor.
  * Si el contrato suma un campo y el formulario no lo muestra, esto deja de compilar.
  */
-export const PAGE_FIELDS = { payload: true, version: true, locale: true } as const satisfies Record<
+export const PAGE_FIELDS = { payload: true, version: true, locale: true, requestKey: true } as const satisfies Record<
   Exclude<PublicRequestField, FieldName>,
   true
 >;

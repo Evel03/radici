@@ -172,6 +172,21 @@ test("payload que no es un objeto, versión distinta, campos faltantes y token",
   assert.equal(errorsOf(payload({ whatsappOptIn: "sí" as unknown as boolean })).whatsappOptIn, "invalid");
 });
 
+test("clave de idempotencia: opcional, UUID, normalizada a minúsculas", () => {
+  const sin = parsePublicRequest(payload(), { today: TODAY });
+  assert.ok(sin.ok);
+  if (sin.ok) assert.equal(sin.value.requestKey, null);
+
+  const key = "3F2B8C1E-9A4D-4C7B-8E2F-0123456789AB";
+  const con = parsePublicRequest(payload({ requestKey: key }), { today: TODAY });
+  assert.ok(con.ok);
+  if (con.ok) assert.equal(con.value.requestKey, key.toLowerCase());
+
+  assert.equal(errorsOf(payload({ requestKey: "no-es-un-uuid" })).requestKey, "invalid");
+  assert.equal(errorsOf(payload({ requestKey: 123 as unknown as string })).requestKey, "invalid");
+  assert.ok(parsePublicRequest({ ...payload(), requestKey: null }, { today: TODAY }).ok);
+});
+
 test("idioma desconocido: italiano por defecto", () => {
   const result = parsePublicRequest(payload({ locale: "fr" as "it" }), { today: TODAY });
   assert.ok(result.ok);
@@ -188,6 +203,9 @@ test("helpers de fechas y texto", () => {
   // Verano (UTC+2): 2026-07-14 22:30 UTC ya es 15 de julio en Roma.
   assert.equal(romeToday(new Date("2026-07-14T22:30:00Z")), "2026-07-15");
   assert.equal(romeToday(new Date("2026-07-14T21:30:00Z")), "2026-07-14");
+  // Fin de año: 31/12 23:30 UTC ya es 1 de enero en Roma.
+  assert.equal(romeToday(new Date("2026-12-31T23:30:00Z")), "2027-01-01");
+  assert.throws(() => addDays("19/10/2026", 1), RangeError);
   assert.equal(cleanOneLine(" a \n b\t c "), "a b c");
   assert.equal(cleanMultiLine("x\n\n\n\ny"), "x\n\ny");
 });
