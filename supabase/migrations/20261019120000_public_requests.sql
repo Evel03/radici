@@ -1,5 +1,5 @@
 -- =====================================================================
--- Mestolo · Pedido desde la web, bandeja de Evelyn y notificaciones
+-- Radici · Pedido desde la web, bandeja de Evelyn y notificaciones
 -- Contrato: docs/contracts/public-request.md §3 (aprobado el 19/10/2026).
 --
 --   1. requests: franja, idioma, WhatsApp, estimación, origen y "visto".

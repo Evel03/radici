@@ -2,7 +2,7 @@
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the
 # working directory name when running `supabase init`.
-project_id = "mestolo"
+project_id = "radici"
 
 [api]
 enabled = true
@@ -20,7 +20,7 @@ max_rows = 1000
 # `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
 # without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
 # instead. Left unset, a fresh project falls back to `true`.
-# Mestolo: false, igual que los proyectos nuevos de Supabase desde el 30/05/2026 (y todos desde el
+# Radici: false, igual que los proyectos nuevos de Supabase desde el 30/05/2026 (y todos desde el
 # 30/10/2026). Así la base local y el CI fallan si una migración crea una tabla sin sus GRANT
 # (ver 20261019130000_api_grants.sql).
 auto_expose_new_tables = false

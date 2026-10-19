@@ -1,5 +1,5 @@
 -- =====================================================================
--- Mestolo · M1 · Funciones helper y triggers
+-- Radici · M1 · Funciones helper y triggers
 --
 -- Helpers de RLS: security definer + search_path vacío + nombres calificados.
 -- Son security definer para poder leer chefs/clients sin pasar por RLS (si no,

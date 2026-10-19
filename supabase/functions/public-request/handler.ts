@@ -3,9 +3,11 @@
 // (handler.test.ts, en Node) las simulan.
 //
 // Orden: CORS → método (405) → tipo (415) → tamaño (413) → JSON y validación (400) →
-// configuración (500) → límite por IP (429) → Turnstile (403) → tarifas de la cocinera →
-// guardado en una transacción (submit_public_request) → 201. Los emails y el WhatsApp salen
-// después, en segundo plano (waitUntil): un fallo de envío no rompe el pedido.
+// configuración (500) → límite por IP (429) → Turnstile (403) → cocinera (CHEF_ID o la única
+// de public.chefs) y sus tarifas → guardado en una transacción (submit_public_request) → 201.
+// Los emails y el WhatsApp salen después, en segundo plano (waitUntil): un fallo de envío no
+// rompe el pedido. Un reintento con la misma requestKey recibe el mismo 201 que el original
+// (mismo id y la estimación guardada) y no repite ningún aviso.
 //
 // Los logs nunca llevan datos personales, de salud ni la IP: solo ids, códigos y contadores.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
@@ -48,7 +50,10 @@ export const RETRY_AFTER_SECONDS = 3600;
 // ---------------------------------------------------------------------------
 
 export interface PublicRequestConfig {
+  /** CHEF_ID en minúsculas, o null si no está: entonces se usa la única fila de public.chefs. */
   chefId: string | null;
+  /** Variables con un valor que no sirve (ej. CHEF_ID que no es uuid): la función responde 500. */
+  invalid: string[];
   turnstileSecret: string | null;
   ipHashSalt: string | null;
   allowedOrigins: OriginRule[];
@@ -65,15 +70,21 @@ export interface PublicRequestConfig {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/** Idioma de los avisos a Evelyn si CHEF_LOCALE falta o no es it, es ni en: lee en español. */
+export const DEFAULT_CHEF_LOCALE: Locale = "es";
+
 export function readConfig(get: (name: string) => string | undefined): PublicRequestConfig {
   const value = (name: string): string | null => {
     const raw = get(name)?.trim();
     return raw ? raw : null;
   };
   const chefId = value("CHEF_ID")?.toLowerCase() ?? null;
+  const chefIdValid = chefId !== null && UUID_PATTERN.test(chefId);
   const chefLocale = value("CHEF_LOCALE")?.toLowerCase();
   return {
-    chefId: chefId !== null && UUID_PATTERN.test(chefId) ? chefId : null,
+    chefId: chefIdValid ? chefId : null,
+    // Un CHEF_ID mal escrito no cae en la cocinera por defecto: mejor un 500 claro que adivinar.
+    invalid: chefId !== null && !chefIdValid ? ["CHEF_ID"] : [],
     turnstileSecret: value("TURNSTILE_SECRET_KEY"),
     ipHashSalt: value("IP_HASH_SALT"),
     allowedOrigins: parseAllowedOrigins(value("ALLOWED_ORIGINS")),
@@ -82,17 +93,19 @@ export function readConfig(get: (name: string) => string | undefined): PublicReq
     mailFrom: value("MAIL_FROM"),
     mailReplyTo: value("MAIL_REPLY_TO"),
     chefNotifyEmail: value("CHEF_NOTIFY_EMAIL"),
-    chefLocale: isOneOf(LOCALES, chefLocale) ? chefLocale : "it",
+    chefLocale: isOneOf(LOCALES, chefLocale) ? chefLocale : DEFAULT_CHEF_LOCALE,
     inboxUrl: value("INBOX_URL"),
     publicSiteUrl: value("PUBLIC_SITE_URL"),
     whatsapp: whatsAppConfigFrom(get),
   };
 }
 
-/** Sin estas no se puede atender ningún pedido (→ 500). */
+/**
+ * Sin estas no se puede atender ningún pedido (→ 500). CHEF_ID no está: si falta, se usa la
+ * única cocinera de public.chefs (así el primer despliegue funciona antes de conocer su id).
+ */
 export function missingRequiredConfig(config: PublicRequestConfig): string[] {
   const missing: string[] = [];
-  if (!config.chefId) missing.push("CHEF_ID");
   if (!config.turnstileSecret) missing.push("TURNSTILE_SECRET_KEY");
   if (!config.ipHashSalt) missing.push("IP_HASH_SALT");
   return missing;
@@ -183,15 +196,31 @@ export interface SubmitPublicRequestParams {
   privacy_consent_version: string;
   health_consent_version: string | null;
   estimate: StoredEstimate;
+  /** requestKey de la web (uuid en minúsculas) o null: idempotencia por (chef_id, request_key). */
+  request_key: string | null;
 }
+
+/** Lo que devuelve public.submit_public_request. */
+export interface SubmitResult {
+  requestId: string;
+  /** true: la clave ya existía y es el pedido guardado antes (la base no cambió nada). */
+  duplicate: boolean;
+  /** requests.estimate tal como quedó guardado (en un duplicado, la del pedido original). */
+  storedEstimate: unknown;
+}
+
+/** Si no hay CHEF_ID: la única cocinera de public.chefs, o por qué no se puede elegir una. */
+export type DefaultChef = { ok: true; chefId: string } | { ok: false; reason: "no_chef" | "multiple_chefs" };
 
 export interface PublicRequestStore {
   /** public.hit_public_request_rate: registra el intento y dice si está dentro del límite. */
   hitRateLimit(ipHash: string, maxPerHour: number, maxPerDay: number): Promise<boolean>;
+  /** Sin CHEF_ID: el id de la única fila de public.chefs (sin filas o con más de una, no hay). */
+  resolveDefaultChef(): Promise<DefaultChef>;
   /** Tarifas (chef_settings) y nombre de la cocinera, o null si no existe. */
   loadChef(chefId: string): Promise<ChefInfo | null>;
-  /** public.submit_public_request: devuelve el id del pedido. */
-  submit(params: SubmitPublicRequestParams): Promise<string>;
+  /** public.submit_public_request. */
+  submit(params: SubmitPublicRequestParams): Promise<SubmitResult>;
   /** Completa notifications.sent_at del aviso 'new_request' de ese pedido. */
   markChefNotificationSent(requestId: string): Promise<void>;
 }
@@ -242,6 +271,16 @@ export function chefFromRow(row: Readonly<Record<string, unknown>>): ChefInfo {
   };
 }
 
+/** Resultado de public.submit_public_request ({request_id, duplicate, estimate}), o null si no tiene esa forma. */
+export function submitResultFromRpc(data: unknown): SubmitResult | null {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+  const record = data as Record<string, unknown>;
+  const requestId = record["request_id"];
+  const duplicate = record["duplicate"];
+  if (typeof requestId !== "string" || !UUID_PATTERN.test(requestId) || typeof duplicate !== "boolean") return null;
+  return { requestId, duplicate, storedEstimate: record["estimate"] ?? null };
+}
+
 export function toSubmitParams(chefId: string, value: NormalizedPublicRequest, estimate: StoredEstimate): SubmitPublicRequestParams {
   return {
     chef_id: chefId,
@@ -265,7 +304,44 @@ export function toSubmitParams(chefId: string, value: NormalizedPublicRequest, e
     privacy_consent_version: value.consents.privacy,
     health_consent_version: value.consents.health,
     estimate,
+    request_key: value.requestKey,
   };
+}
+
+/** Estimación del cuerpo del 201 (contrato §2). */
+export interface ResponseEstimate {
+  portions: number;
+  recipes: number;
+  cookMinutes: number;
+  serviceCents: number;
+  groceriesEstCents: number;
+  totalCents: number;
+}
+
+const RESPONSE_ESTIMATE_KEYS = ["portions", "recipes", "cookMinutes", "serviceCents", "groceriesEstCents", "totalCents"] as const;
+
+export function responseEstimate(quote: Quote): ResponseEstimate {
+  return {
+    portions: quote.portions,
+    recipes: quote.recipes,
+    cookMinutes: quote.cookMinutes,
+    serviceCents: quote.serviceCents,
+    groceriesEstCents: quote.groceriesEstCents,
+    totalCents: quote.totalCents,
+  };
+}
+
+/** La estimación guardada en requests.estimate, o null si le falta algo (enteros ≥ 0). */
+export function responseEstimateFromStored(stored: unknown): ResponseEstimate | null {
+  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return null;
+  const record = stored as Record<string, unknown>;
+  const result: Partial<Record<(typeof RESPONSE_ESTIMATE_KEYS)[number], number>> = {};
+  for (const key of RESPONSE_ESTIMATE_KEYS) {
+    const value = record[key];
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return null;
+    result[key] = value;
+  }
+  return result as ResponseEstimate;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,8 +448,9 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
       const value = parsed.value;
 
       const missing = missingRequiredConfig(config);
-      if (missing.length > 0 || !config.chefId || !config.turnstileSecret || !config.ipHashSalt) {
-        log("error", "config_missing", { missing });
+      if (missing.length > 0) log("error", "config_missing", { missing });
+      if (config.invalid.length > 0) log("error", "config_invalid", { invalid: config.invalid });
+      if (missing.length > 0 || config.invalid.length > 0 || !config.turnstileSecret || !config.ipHashSalt) {
         return reply(500, { error: "server" });
       }
 
@@ -409,10 +486,28 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
         return reply(500, { error: "server" });
       }
 
+      // Cocinera: CHEF_ID o, si no está configurado, la única de public.chefs.
+      let chefId = config.chefId;
+      if (!chefId) {
+        let resolved: DefaultChef;
+        try {
+          resolved = await deps.store.resolveDefaultChef();
+        } catch (error) {
+          logStoreError(log, error, "resolve_chef");
+          return reply(500, { error: "server" });
+        }
+        if (!resolved.ok) {
+          // no_chef: falta promote_to_chef. multiple_chefs: hay que fijar CHEF_ID.
+          log("error", "chef_id_unresolved", { reason: resolved.reason });
+          return reply(500, { error: "server" });
+        }
+        chefId = resolved.chefId;
+      }
+
       // Estimación con las tarifas actuales de la cocinera (no las de la web).
       let chef: ChefInfo | null;
       try {
-        chef = await deps.store.loadChef(config.chefId);
+        chef = await deps.store.loadChef(chefId);
       } catch (error) {
         logStoreError(log, error, "load_chef");
         return reply(500, { error: "server" });
@@ -429,12 +524,21 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
         return reply(500, { error: "server" });
       }
 
-      let requestId: string;
+      let saved: SubmitResult;
       try {
-        requestId = await deps.store.submit(toSubmitParams(config.chefId, value, { ...estimate, pricing: chef.pricing }));
+        saved = await deps.store.submit(toSubmitParams(chefId, value, { ...estimate, pricing: chef.pricing }));
       } catch (error) {
         logStoreError(log, error, "submit");
         return reply(500, { error: "server" });
+      }
+      const requestId = saved.requestId;
+
+      if (saved.duplicate) {
+        // Reintento de un pedido ya guardado: la misma respuesta que la primera vez y ningún aviso.
+        log("info", "request_duplicate", { requestId });
+        const stored = responseEstimateFromStored(saved.storedEstimate);
+        if (!stored) log("warn", "stored_estimate_invalid", { requestId });
+        return reply(201, { requestId, estimate: stored ?? responseEstimate(estimate) });
       }
       log("info", "request_saved", { requestId });
 
@@ -444,17 +548,7 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
         }),
       );
 
-      return reply(201, {
-        requestId,
-        estimate: {
-          portions: estimate.portions,
-          recipes: estimate.recipes,
-          cookMinutes: estimate.cookMinutes,
-          serviceCents: estimate.serviceCents,
-          groceriesEstCents: estimate.groceriesEstCents,
-          totalCents: estimate.totalCents,
-        },
-      });
+      return reply(201, { requestId, estimate: responseEstimate(estimate) });
     } catch (error) {
       // Solo el tipo de error: el mensaje podría traer datos del pedido.
       log("error", "unexpected_error", { error: error instanceof Error ? error.name : "unknown" });

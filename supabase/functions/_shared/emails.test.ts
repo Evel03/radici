@@ -14,6 +14,7 @@ import {
   renderChefNotification,
   renderClientConfirmation,
   safeHttpUrl,
+  subjectFirstName,
   type ChefNotificationInput,
   type ClientConfirmationInput,
   type RequestSummary,
@@ -36,18 +37,18 @@ const SUMMARY: RequestSummary = {
 
 function clientInput(overrides: Partial<ClientConfirmationInput> = {}): ClientConfirmationInput {
   return {
-    brand: "Mestolo",
+    brand: "Radici",
     chefName: "Evelyn",
     customerName: "Giulia Rossi",
     summary: SUMMARY,
-    privacyUrl: "https://mestolo.sepusola10.com/privacy/",
+    privacyUrl: "https://radici.sepusola10.com/privacy/",
     ...overrides,
   };
 }
 
 function chefInput(overrides: Partial<ChefNotificationInput> = {}): ChefNotificationInput {
   return {
-    brand: "Mestolo",
+    brand: "Radici",
     customerName: "Giulia Rossi",
     zone: "Città Alta",
     phoneE164: "+393331234567",
@@ -55,7 +56,7 @@ function chefInput(overrides: Partial<ChefNotificationInput> = {}): ChefNotifica
     whatsappOptIn: true,
     hasNotes: true,
     summary: SUMMARY,
-    inboxUrl: "https://mestolo.sepusola10.com/gestione/",
+    inboxUrl: "https://radici.sepusola10.com/gestione/",
     ...overrides,
   };
 }
@@ -99,11 +100,55 @@ test("nombre de pila: la primera palabra, con tope de largo", () => {
   assert.equal(firstName("x".repeat(60)).length, 40);
 });
 
+test("nombre para el asunto: solo si parece un nombre (nunca un teléfono o un email)", () => {
+  for (const [input, expected] of [
+    ["Giulia Rossi", "Giulia"],
+    ["José Pérez", "José"],
+    ["D'Angelo", "D'Angelo"],
+    ["Jean-Luc Picard", "Jean-Luc"],
+    ["Zoë", "Zoë"],
+    ["Ἀθηνᾶ", "Ἀθηνᾶ"],
+    ["+39 333 123 4567", ""],
+    ["3331234567 Rossi", ""],
+    ["giulia@example.test", ""],
+    ["Giulia2", ""],
+    ["-Giulia", ""],
+    ["<b>Giulia</b>", ""],
+    ["", ""],
+  ] as const) {
+    assert.equal(subjectFirstName(input), expected, input);
+  }
+});
+
+test("Evelyn: si el nombre es un teléfono o un email, el asunto es el genérico", () => {
+  for (const customerName of ["+39 333 123 4567", "giulia@example.test"]) {
+    assert.equal(renderChefNotification(chefInput({ customerName }), "es").subject, "Nueva solicitud desde la web");
+    assert.equal(renderChefNotification(chefInput({ customerName }), "it").subject, "Nuova richiesta dal sito");
+    assert.equal(renderChefNotification(chefInput({ customerName }), "en").subject, "New request from the website");
+  }
+});
+
+test("ningún asunto lleva teléfono, email, zona ni datos de salud", () => {
+  const leaky = { ...SUMMARY, allergens: ["milk"], restrictionsNote: "NOTA-DE-SALUD", address: "Via Gombito 12" } as unknown as RequestSummary;
+  for (const locale of LOCALES) {
+    const subjects = [
+      renderClientConfirmation(clientInput({ summary: leaky }), locale).subject,
+      renderChefNotification(chefInput({ summary: leaky }), locale).subject,
+      renderChefNotification(chefInput({ summary: leaky, customerName: "+393331234567" }), locale).subject,
+    ];
+    for (const subject of subjects) {
+      for (const secret of ["3331234567", "giulia@example.test", "Città Alta", "NOTA-DE-SALUD", "milk", "Gombito", "Rossi"]) {
+        assert.ok(!subject.includes(secret), `${locale}: "${subject}" lleva ${secret}`);
+      }
+    }
+  }
+});
+
 test("marca a partir de MAIL_FROM", () => {
-  assert.equal(brandFromMailFrom("Mestolo <ciao@mestolo.sepusola10.com>"), "Mestolo");
+  assert.equal(brandFromMailFrom("Radici <ciao@radici.sepusola10.com>"), "Radici");
   assert.equal(brandFromMailFrom('"Cucina di Eve" <ciao@example.test>'), "Cucina di Eve");
-  assert.equal(brandFromMailFrom("ciao@example.test"), "Mestolo");
-  assert.equal(brandFromMailFrom(null), "Mestolo");
+  assert.equal(brandFromMailFrom("ciao@example.test"), "Radici");
+  assert.equal(brandFromMailFrom(null), "Radici");
 });
 
 test("URLs: bandeja con el id del pedido, privacy en el idioma, solo http(s)", () => {
@@ -120,19 +165,19 @@ test("URLs: bandeja con el id del pedido, privacy en el idioma, solo http(s)", (
 
 const EXPECTED_CLIENT = {
   it: {
-    subject: "Mestolo: abbiamo ricevuto la tua richiesta",
+    subject: "Radici: abbiamo ricevuto la tua richiesta",
     lines: ["Grazie, Giulia!", "Evelyn ti contatterà al più presto", "Settimana di pasti", "2 adulti e 2 bambini",
       "Cena", "domenica 25 ottobre 2026", "Pomeriggio", "Hai indicato restrizioni alimentari: Evelyn ne terrà conto.",
       "78,00 €", "63,00 €", "141,00 €", "La spesa si paga al costo reale dello scontrino"],
   },
   es: {
-    subject: "Mestolo: hemos recibido tu solicitud",
+    subject: "Radici: hemos recibido tu solicitud",
     lines: ["¡Gracias, Giulia!", "Evelyn te contactará lo antes posible", "Semana de comidas", "2 adultos y 2 niños",
       "Cena", "domingo, 25 de octubre de 2026", "Tarde", "Indicaste restricciones alimentarias: Evelyn las tendrá en cuenta.",
       "78,00 €", "63,00 €", "141,00 €", "La compra se paga al precio real del ticket"],
   },
   en: {
-    subject: "Mestolo: we've received your request",
+    subject: "Radici: we've received your request",
     lines: ["Thank you, Giulia!", "Evelyn will contact you as soon as possible", "A week of meals", "2 adults and 2 children",
       "Dinner", "Sunday 25 October 2026", "Afternoon", "You mentioned dietary restrictions: Evelyn will take them into account.",
       "€78.00", "€63.00", "€141.00", "Groceries are charged at the actual receipt cost"],
@@ -150,8 +195,8 @@ for (const locale of LOCALES) {
     }
     assert.ok(email.html.startsWith("<!doctype html>"));
     assert.ok(email.html.includes(`<html lang="${locale}">`));
-    assert.ok(email.html.includes('href="https://mestolo.sepusola10.com/privacy/"'));
-    assert.ok(email.text.includes("https://mestolo.sepusola10.com/privacy/"));
+    assert.ok(email.html.includes('href="https://radici.sepusola10.com/privacy/"'));
+    assert.ok(email.text.includes("https://radici.sepusola10.com/privacy/"));
     assert.ok(email.text.includes(REQUEST_ID.slice(0, 8)), "referencia corta del pedido");
     assert.ok(!email.text.includes("Rossi") && !email.html.includes("Rossi"), "solo el nombre de pila");
   });
@@ -198,7 +243,7 @@ test("Evelyn (it): asunto con el nombre de pila, contacto con links, botón a la
     assert.ok(email.text.includes(line), `falta en el texto: ${line}`);
     assert.ok(email.html.includes(escapeHtml(line)), `falta en el HTML: ${line}`);
   }
-  const inbox = `https://mestolo.sepusola10.com/gestione/#/richieste/${REQUEST_ID}`;
+  const inbox = `https://radici.sepusola10.com/gestione/#/richieste/${REQUEST_ID}`;
   assert.ok(email.html.includes(`href="${inbox}"`));
   assert.ok(email.text.includes(inbox));
   assert.ok(email.html.includes('href="tel:+393331234567"'));

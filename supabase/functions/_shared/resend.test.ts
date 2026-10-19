@@ -20,10 +20,10 @@ function scriptedFetch(responses: Array<() => Response | Promise<Response>>): { 
 }
 
 const MESSAGE: EmailMessage = {
-  from: "Mestolo <ciao@mestolo.sepusola10.com>",
+  from: "Radici <ciao@radici.sepusola10.com>",
   to: "giulia@example.test",
   replyTo: "evelyn@example.test",
-  subject: "Mestolo: abbiamo ricevuto la tua richiesta",
+  subject: "Radici: abbiamo ricevuto la tua richiesta",
   html: "<p>Ciao</p>",
   text: "Ciao",
   idempotencyKey: "request-1b4e28ba-2fa1-41d2-883f-0016d3cca427-client",

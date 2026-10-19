@@ -7,6 +7,7 @@ import { DEFAULT_PRICING, calcQuote } from "../_shared/quote.ts";
 import { RESEND_API_URL } from "../_shared/resend.ts";
 import { TURNSTILE_VERIFY_URL } from "../_shared/turnstile.ts";
 import {
+  DEFAULT_CHEF_LOCALE,
   RATE_LIMITS,
   StoreError,
   chefFromRow,
@@ -15,31 +16,40 @@ import {
   missingRequiredConfig,
   readConfig,
   resolveServiceKey,
+  responseEstimateFromStored,
   safeDbMessage,
+  submitResultFromRpc,
   type ChefInfo,
+  type DefaultChef,
   type HandlerDeps,
   type LogFields,
   type PublicRequestStore,
   type SubmitPublicRequestParams,
+  type SubmitResult,
 } from "./handler.ts";
 
 const CHEF_ID = "cef00000-0000-4000-8000-000000000001";
+const OTHER_CHEF_ID = "cef00000-0000-4000-8000-000000000002";
 const REQUEST_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427";
+const REQUEST_KEY = "3f2b8c1e-9a4d-4c7b-8e2f-0123456789ab";
 const NOW = new Date("2026-10-19T10:00:00Z");
 const ENDPOINT = "http://127.0.0.1:54321/functions/v1/public-request";
+// MARCADOR: el subdominio real de Pages del proyecto "radici" todavía no se conoce (ver cors.test.ts).
+const PAGES = "radici-placeholder.pages.dev";
 
+// Como en producción: sin vistas previas de Pages (crearían pedidos reales, contrato §4).
 const ENV: Record<string, string> = {
   CHEF_ID,
   TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA",
   IP_HASH_SALT: "sal-de-prueba",
   RESEND_API_KEY: "re_prueba",
-  MAIL_FROM: "Mestolo <ciao@mestolo.sepusola10.com>",
+  MAIL_FROM: "Radici <ciao@radici.sepusola10.com>",
   MAIL_REPLY_TO: "evelyn.respuestas@example.test",
   CHEF_NOTIFY_EMAIL: "evelyn@example.test",
   CHEF_LOCALE: "es",
-  ALLOWED_ORIGINS: "https://mestolo.sepusola10.com,https://*.mestolo-dsa.pages.dev,http://localhost:5173",
-  INBOX_URL: "https://mestolo.sepusola10.com/gestione/",
-  PUBLIC_SITE_URL: "https://mestolo.sepusola10.com",
+  ALLOWED_ORIGINS: "https://radici.sepusola10.com,http://localhost:5173",
+  INBOX_URL: "https://radici.sepusola10.com/gestione/",
+  PUBLIC_SITE_URL: "https://radici.sepusola10.com",
   WHATSAPP_TOKEN: "EAAprueba",
   WHATSAPP_PHONE_NUMBER_ID: "106540352242922",
   WHATSAPP_TEMPLATE: "richiesta_ricevuta",
@@ -74,12 +84,29 @@ function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPa
 
 const CHEF: ChefInfo = { displayName: "Evelyn", pricing: { ...DEFAULT_PRICING, hourlyRateCents: 2500 } };
 
+/** Id del n-ésimo pedido guardado (el primero, REQUEST_ID). */
+function requestIdFor(n: number): string {
+  return n === 0 ? REQUEST_ID : `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}
+
+/**
+ * Base simulada. submit se comporta como public.submit_public_request: con una request_key ya
+ * guardada devuelve ese pedido (duplicate) con la estimación guardada y no guarda nada.
+ */
 class FakeStore implements PublicRequestStore {
   allow = true;
   chef: ChefInfo | null = CHEF;
-  failOn: "rate" | "chef" | "submit" | "mark" | null = null;
+  /** Filas de public.chefs (para resolveDefaultChef sin CHEF_ID). */
+  chefIds: string[] = [CHEF_ID];
+  failOn: "rate" | "resolve" | "chef" | "submit" | "mark" | null = null;
   hits: Array<{ ipHash: string; maxHour: number; maxDay: number }> = [];
+  resolveCalls = 0;
+  loadedChefIds: string[] = [];
+  /** Lo que llegó a submit (también los duplicados). */
+  calls: SubmitPublicRequestParams[] = [];
+  /** Lo que se guardó de verdad (sin los duplicados). */
   submitted: SubmitPublicRequestParams[] = [];
+  byKey = new Map<string, SubmitResult>();
   marked: string[] = [];
 
   async hitRateLimit(ipHash: string, maxHour: number, maxDay: number): Promise<boolean> {
@@ -88,15 +115,30 @@ class FakeStore implements PublicRequestStore {
     return this.allow;
   }
 
-  async loadChef(chefId: string): Promise<ChefInfo | null> {
-    if (this.failOn === "chef") throw new StoreError("load_chef", "PGRST301", null);
-    return chefId === CHEF_ID ? this.chef : null;
+  async resolveDefaultChef(): Promise<DefaultChef> {
+    this.resolveCalls++;
+    if (this.failOn === "resolve") throw new StoreError("resolve_chef", "PGRST301", null);
+    const [first, second] = this.chefIds;
+    if (first === undefined) return { ok: false, reason: "no_chef" };
+    if (second !== undefined) return { ok: false, reason: "multiple_chefs" };
+    return { ok: true, chefId: first };
   }
 
-  async submit(params: SubmitPublicRequestParams): Promise<string> {
+  async loadChef(chefId: string): Promise<ChefInfo | null> {
+    if (this.failOn === "chef") throw new StoreError("load_chef", "PGRST301", null);
+    this.loadedChefIds.push(chefId);
+    return this.chefIds.includes(chefId) ? this.chef : null;
+  }
+
+  async submit(params: SubmitPublicRequestParams): Promise<SubmitResult> {
     if (this.failOn === "submit") throw new StoreError("submit", "23514", null);
+    this.calls.push(params);
+    const existing = params.request_key ? this.byKey.get(`${params.chef_id}:${params.request_key}`) : undefined;
+    if (existing) return { ...existing, duplicate: true };
+    const saved: SubmitResult = { requestId: requestIdFor(this.submitted.length), duplicate: false, storedEstimate: params.estimate };
     this.submitted.push(params);
-    return REQUEST_ID;
+    if (params.request_key) this.byKey.set(`${params.chef_id}:${params.request_key}`, saved);
+    return saved;
   }
 
   async markChefNotificationSent(requestId: string): Promise<void> {
@@ -171,7 +213,7 @@ function post(body: unknown, headers: Record<string, string> = {}, rawBody?: str
     method: "POST",
     headers: {
       "content-type": "application/json",
-      origin: "https://mestolo.sepusola10.com",
+      origin: "https://radici.sepusola10.com",
       "cf-connecting-ip": "203.0.113.7",
       ...headers,
     },
@@ -187,11 +229,11 @@ async function json(response: Response): Promise<unknown> {
 // HTTP: método, tipo, tamaño, CORS
 // ---------------------------------------------------------------------------
 
-test("OPTIONS: CORS para un origen permitido (también comodín) y nada para otros", async () => {
+test("OPTIONS: CORS para un origen permitido y nada para otros", async () => {
   const { handle } = harness();
-  const allowed = await handle(new Request(ENDPOINT, { method: "OPTIONS", headers: { origin: "https://pr-12.mestolo-dsa.pages.dev" } }));
+  const allowed = await handle(new Request(ENDPOINT, { method: "OPTIONS", headers: { origin: "https://radici.sepusola10.com" } }));
   assert.equal(allowed.status, 204);
-  assert.equal(allowed.headers.get("access-control-allow-origin"), "https://pr-12.mestolo-dsa.pages.dev");
+  assert.equal(allowed.headers.get("access-control-allow-origin"), "https://radici.sepusola10.com");
   assert.equal(allowed.headers.get("access-control-allow-methods"), "POST, OPTIONS");
   assert.match(allowed.headers.get("access-control-allow-headers") ?? "", /content-type/);
 
@@ -201,14 +243,28 @@ test("OPTIONS: CORS para un origen permitido (también comodín) y nada para otr
   assert.equal(other.headers.get("access-control-allow-methods"), null);
 });
 
+test("vistas previas de Pages: fuera por defecto; se habilitan a mano agregando su origen", async () => {
+  // Con la lista de producción el navegador no pasa del preflight: la vista previa no crea pedidos.
+  const prod = harness();
+  const blocked = await prod.handle(new Request(ENDPOINT, { method: "OPTIONS", headers: { origin: `https://pr-12.${PAGES}` } }));
+  assert.equal(blocked.headers.get("access-control-allow-origin"), null);
+
+  // Habilitada temporalmente (contrato §4): el origen exacto de esa vista previa, o el comodín.
+  for (const extra of [`https://pr-12.${PAGES}`, `https://*.${PAGES}`]) {
+    const preview = harness({ env: { ALLOWED_ORIGINS: `${ENV["ALLOWED_ORIGINS"]},${extra}` } });
+    const response = await preview.handle(new Request(ENDPOINT, { method: "OPTIONS", headers: { origin: `https://pr-12.${PAGES}` } }));
+    assert.equal(response.headers.get("access-control-allow-origin"), `https://pr-12.${PAGES}`, extra);
+  }
+});
+
 test("método distinto de POST: 405 con Allow", async () => {
   const { handle } = harness();
   for (const method of ["GET", "PUT", "DELETE"]) {
-    const response = await handle(new Request(ENDPOINT, { method, headers: { origin: "https://mestolo.sepusola10.com" } }));
+    const response = await handle(new Request(ENDPOINT, { method, headers: { origin: "https://radici.sepusola10.com" } }));
     assert.equal(response.status, 405);
     assert.deepEqual(await json(response), { error: "method" });
     assert.equal(response.headers.get("allow"), "POST, OPTIONS");
-    assert.equal(response.headers.get("access-control-allow-origin"), "https://mestolo.sepusola10.com");
+    assert.equal(response.headers.get("access-control-allow-origin"), "https://radici.sepusola10.com");
   }
 });
 
@@ -337,14 +393,20 @@ test("Turnstile caído o con el secreto mal configurado: 500", async () => {
 // Configuración y errores internos
 // ---------------------------------------------------------------------------
 
-test("falta configuración obligatoria: 500 sin consultar la base, y el log dice qué falta", async () => {
+test("falta configuración obligatoria o CHEF_ID mal escrito: 500 sin consultar la base, y el log dice qué", async () => {
   const { handle, store, logs } = harness({ env: { TURNSTILE_SECRET_KEY: undefined, CHEF_ID: "no-es-uuid" } });
   const response = await handle(post(payload()));
   assert.equal(response.status, 500);
   assert.deepEqual(await json(response), { error: "server" });
   assert.equal(store.hits.length, 0);
-  const entry = logs.find((item) => item.event === "config_missing");
-  assert.deepEqual(entry?.fields["missing"], ["CHEF_ID", "TURNSTILE_SECRET_KEY"]);
+  assert.equal(store.resolveCalls, 0, "un CHEF_ID inválido no cae en la cocinera por defecto");
+  assert.deepEqual(logs.find((item) => item.event === "config_missing")?.fields["missing"], ["TURNSTILE_SECRET_KEY"]);
+  assert.deepEqual(logs.find((item) => item.event === "config_invalid")?.fields["invalid"], ["CHEF_ID"]);
+
+  const onlyInvalid = harness({ env: { CHEF_ID: "no-es-uuid" } });
+  assert.equal((await onlyInvalid.handle(post(payload()))).status, 500);
+  assert.equal(onlyInvalid.store.hits.length, 0);
+  assert.ok(!onlyInvalid.logs.some((item) => item.event === "config_missing"));
 });
 
 test("errores de la base: 500 sin detalles; el log lleva solo la operación y el código", async () => {
@@ -377,7 +439,7 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
   const { handle, store, background } = harness();
   const response = await handle(post(payload()));
   assert.equal(response.status, 201);
-  assert.equal(response.headers.get("access-control-allow-origin"), "https://mestolo.sepusola10.com");
+  assert.equal(response.headers.get("access-control-allow-origin"), "https://radici.sepusola10.com");
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.match(response.headers.get("content-type") ?? "", /^application\/json/);
 
@@ -417,6 +479,7 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
     privacy_consent_version: CONSENT_VERSION,
     health_consent_version: CONSENT_VERSION,
     estimate: { ...quote, pricing: CHEF.pricing },
+    request_key: null,
   });
   assert.equal(background.length, 1, "los envíos van en segundo plano");
 });
@@ -434,17 +497,17 @@ test("segundo plano: aviso a Evelyn en su idioma, confirmación al cliente en el
 
   const chefBody = toChef.body as Record<string, unknown>;
   assert.equal(chefBody["subject"], "Nueva solicitud de Giuliaxyz");
-  assert.equal(chefBody["from"], "Mestolo <ciao@mestolo.sepusola10.com>");
+  assert.equal(chefBody["from"], "Radici <ciao@radici.sepusola10.com>");
   assert.equal(chefBody["reply_to"], "giulia.pii@example.test", "Evelyn responde directo al cliente");
   assert.equal(toChef.headers.get("idempotency-key"), `request-${REQUEST_ID}-chef`);
-  assert.ok(String(chefBody["html"]).includes(`https://mestolo.sepusola10.com/gestione/#/richieste/${REQUEST_ID}`));
+  assert.ok(String(chefBody["html"]).includes(`https://radici.sepusola10.com/gestione/#/richieste/${REQUEST_ID}`));
 
   const clientBody = toClient.body as Record<string, unknown>;
-  assert.equal(clientBody["subject"], "Mestolo: abbiamo ricevuto la tua richiesta");
+  assert.equal(clientBody["subject"], "Radici: abbiamo ricevuto la tua richiesta");
   assert.equal(clientBody["reply_to"], "evelyn.respuestas@example.test");
   assert.equal(toClient.headers.get("idempotency-key"), `request-${REQUEST_ID}-client`);
   assert.ok(String(clientBody["text"]).includes("Evelyn ti contatterà al più presto"));
-  assert.ok(String(clientBody["html"]).includes('href="https://mestolo.sepusola10.com/privacy/"'));
+  assert.ok(String(clientBody["html"]).includes('href="https://radici.sepusola10.com/privacy/"'));
 
   for (const call of emails) {
     const body = JSON.stringify(call.body);
@@ -544,9 +607,12 @@ test("los logs nunca llevan datos personales, de salud ni la IP", async () => {
     harness({ env: { EMAIL_TRANSPORT: "log" } }),
     harness({ resend: () => Response.json({ name: "x", message: "giulia.pii@example.test" }, { status: 500 }) }),
     harness({ whatsapp: () => Response.json({ error: { code: 1, message: "+393337654321" } }, { status: 400 }) }),
+    harness({ env: { CHEF_ID: undefined } }),
   ];
   for (const run of runs) {
-    await run.handle(post(payload()));
+    await run.handle(post(payload({ requestKey: REQUEST_KEY })));
+    // Y el reintento (duplicado).
+    await run.handle(post(payload({ requestKey: REQUEST_KEY })));
     await run.settle();
     const text = JSON.stringify(run.logs);
     for (const secret of ["Giuliaxyz", "Rossiqwe", "giulia.pii", "765", "ZonaPrivadaKkk", "NOTA-SALUD", "NOTA-LIBRE", "203.0.113", "milk"]) {
@@ -555,6 +621,7 @@ test("los logs nunca llevan datos personales, de salud ni la IP", async () => {
   }
   const ok = runs[0];
   assert.ok(ok?.logs.some((entry) => entry.event === "request_saved" && entry.fields["requestId"] === REQUEST_ID));
+  assert.ok(ok?.logs.some((entry) => entry.event === "request_duplicate" && entry.fields["requestId"] === REQUEST_ID));
 });
 
 test("sin IP en las cabeceras: se avisa y se usa un contador compartido", async () => {
@@ -570,13 +637,204 @@ test("sin IP en las cabeceras: se avisa y se usa un contador compartido", async 
 });
 
 // ---------------------------------------------------------------------------
+// Idempotencia (requestKey)
+// ---------------------------------------------------------------------------
+
+function resendCalls(run: Harness): Array<{ url: string; body: unknown; headers: Headers }> {
+  return run.fetchCalls.filter((call) => call.url === RESEND_API_URL);
+}
+
+function whatsAppCalls(run: Harness): Array<{ url: string; body: unknown; headers: Headers }> {
+  return run.fetchCalls.filter((call) => call.url.startsWith("https://graph.facebook.com/"));
+}
+
+test("requestKey: viaja a la base en minúsculas como request_key", async () => {
+  const { handle, store } = harness();
+  assert.equal((await handle(post(payload({ requestKey: REQUEST_KEY.toUpperCase() })))).status, 201);
+  assert.equal(store.submitted[0]?.request_key, REQUEST_KEY);
+});
+
+test("reintento con la misma requestKey: el mismo 201, un solo pedido y los avisos una sola vez", async () => {
+  const run = harness();
+  const first = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
+  await run.settle();
+  const second = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
+  await run.settle();
+
+  assert.equal(first.status, 201);
+  assert.equal(second.status, 201);
+  const firstBody = await json(first);
+  assert.deepEqual(await json(second), firstBody, "mismo cuerpo: mismo requestId y la estimación guardada");
+  assert.equal((firstBody as { requestId: string }).requestId, REQUEST_ID);
+
+  assert.equal(run.store.calls.length, 2, "los dos llegan a submit_public_request");
+  assert.equal(run.store.submitted.length, 1, "pero se guarda uno");
+  assert.equal(resendCalls(run).length, 2, "un email a Evelyn y uno al cliente, no cuatro");
+  assert.equal(whatsAppCalls(run).length, 1, "un solo WhatsApp");
+  assert.deepEqual(run.store.marked, [REQUEST_ID], "la notificación se marca una vez");
+  assert.equal(run.background.length, 1, "el duplicado no deja tareas en segundo plano");
+  assert.ok(run.logs.some((entry) => entry.event === "request_duplicate" && entry.fields["requestId"] === REQUEST_ID));
+  assert.equal(run.logs.filter((entry) => entry.event === "request_saved").length, 1);
+});
+
+test("dos envíos simultáneos con la misma requestKey: los dos 201 iguales, un pedido, un aviso", async () => {
+  const run = harness({ env: { EMAIL_TRANSPORT: "log" } });
+  const [a, b] = await Promise.all([
+    run.handle(post(payload({ requestKey: REQUEST_KEY }))),
+    run.handle(post(payload({ requestKey: REQUEST_KEY }))),
+  ]);
+  await run.settle();
+  assert.deepEqual([a.status, b.status], [201, 201]);
+  assert.deepEqual(await json(a), await json(b));
+  assert.equal(run.store.submitted.length, 1);
+  assert.deepEqual(
+    run.logs.filter((entry) => entry.event === "email_logged").map((entry) => entry.fields["recipient"]).sort(),
+    ["chef", "client"],
+    "cada email una sola vez",
+  );
+  assert.equal(whatsAppCalls(run).length, 1);
+});
+
+test("duplicado: responde con la estimación guardada aunque hoy las tarifas den otra", async () => {
+  const run = harness();
+  // El original se guardó con otras tarifas (o la cocinera las cambió después).
+  const stored = { portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300, totalCents: 14100, pricing: DEFAULT_PRICING };
+  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: stored });
+  const response = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
+  await run.settle();
+  assert.equal(response.status, 201);
+  assert.deepEqual(await json(response), {
+    requestId: REQUEST_ID,
+    estimate: { portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300, totalCents: 14100 },
+  });
+  assert.notEqual(calcQuote({ adults: 2, kids: 2, days: 5, meals: 1 }, CHEF.pricing).serviceCents, 7800, "la de hoy sería otra");
+  assert.equal(run.fetchCalls.filter((call) => call.url !== TURNSTILE_VERIFY_URL).length, 0, "ni emails ni WhatsApp");
+  assert.deepEqual(run.store.marked, []);
+});
+
+test("duplicado con una estimación guardada rota: responde con la calculada y lo avisa en el log", async () => {
+  const run = harness();
+  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: { totalCents: "x" } });
+  const response = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
+  assert.equal(response.status, 201);
+  const quote = calcQuote({ adults: 2, kids: 2, days: 5, meals: 1 }, CHEF.pricing);
+  assert.equal((await json(response) as { estimate: { totalCents: number } }).estimate.totalCents, quote.totalCents);
+  assert.ok(run.logs.some((entry) => entry.event === "stored_estimate_invalid" && entry.level === "warn"));
+});
+
+test("otra requestKey (u otra vez sin clave) es otro pedido", async () => {
+  const run = harness({ env: { EMAIL_TRANSPORT: "log" } });
+  await run.handle(post(payload({ requestKey: REQUEST_KEY })));
+  await run.handle(post(payload({ requestKey: "7d0e1c55-2b1a-4f7e-9c3d-aabbccddeeff" })));
+  await run.handle(post(payload()));
+  await run.handle(post(payload()));
+  await run.settle();
+  assert.equal(run.store.submitted.length, 4);
+  assert.equal(run.logs.filter((entry) => entry.event === "email_logged").length, 8);
+});
+
+test("submitResultFromRpc: solo acepta {request_id uuid, duplicate bool, estimate}", () => {
+  assert.deepEqual(submitResultFromRpc({ request_id: REQUEST_ID, duplicate: true, estimate: { totalCents: 1 } }), {
+    requestId: REQUEST_ID,
+    duplicate: true,
+    storedEstimate: { totalCents: 1 },
+  });
+  assert.deepEqual(submitResultFromRpc({ request_id: REQUEST_ID, duplicate: false }), { requestId: REQUEST_ID, duplicate: false, storedEstimate: null });
+  for (const bad of [REQUEST_ID, null, [], { request_id: "x", duplicate: false }, { request_id: REQUEST_ID }, { request_id: REQUEST_ID, duplicate: "no" }]) {
+    assert.equal(submitResultFromRpc(bad), null, JSON.stringify(bad));
+  }
+});
+
+test("responseEstimateFromStored: los seis enteros del 201, sin pricing", () => {
+  const stored = { portions: 5, recipes: 2, cookMinutes: 150, serviceCents: 6700, groceriesEstCents: 1900, totalCents: 8600, pricing: DEFAULT_PRICING };
+  assert.deepEqual(responseEstimateFromStored(stored), { portions: 5, recipes: 2, cookMinutes: 150, serviceCents: 6700, groceriesEstCents: 1900, totalCents: 8600 });
+  for (const bad of [null, "x", [], { ...stored, totalCents: 1.5 }, { ...stored, recipes: undefined }, { ...stored, portions: -1 }]) {
+    assert.equal(responseEstimateFromStored(bad), null, JSON.stringify(bad));
+  }
+});
+
+// ---------------------------------------------------------------------------
+// CHEF_ID opcional: la única cocinera de public.chefs
+// ---------------------------------------------------------------------------
+
+test("sin CHEF_ID y con una sola cocinera: se usa esa", async () => {
+  const run = harness({ env: { CHEF_ID: undefined } });
+  run.store.chefIds = [OTHER_CHEF_ID];
+  const response = await run.handle(post(payload()));
+  assert.equal(response.status, 201);
+  assert.equal(run.store.resolveCalls, 1);
+  assert.deepEqual(run.store.loadedChefIds, [OTHER_CHEF_ID]);
+  assert.equal(run.store.submitted[0]?.chef_id, OTHER_CHEF_ID);
+});
+
+test("sin CHEF_ID y sin cocineras (antes de promote_to_chef) o con varias: 500 con un código claro", async () => {
+  for (const [chefIds, reason] of [[[], "no_chef"], [[CHEF_ID, OTHER_CHEF_ID], "multiple_chefs"]] as const) {
+    const run = harness({ env: { CHEF_ID: undefined } });
+    run.store.chefIds = [...chefIds];
+    const response = await run.handle(post(payload()));
+    assert.equal(response.status, 500, reason);
+    assert.deepEqual(await json(response), { error: "server" });
+    assert.deepEqual(run.logs.find((entry) => entry.event === "chef_id_unresolved")?.fields, { reason });
+    assert.equal(run.store.loadedChefIds.length, 0);
+    assert.equal(run.store.submitted.length, 0);
+  }
+});
+
+test("con CHEF_ID no se busca la cocinera por defecto (aunque haya varias)", async () => {
+  const run = harness();
+  run.store.chefIds = [CHEF_ID, OTHER_CHEF_ID];
+  assert.equal((await run.handle(post(payload()))).status, 201);
+  assert.equal(run.store.resolveCalls, 0);
+  assert.equal(run.store.submitted[0]?.chef_id, CHEF_ID);
+});
+
+test("sin CHEF_ID, si la búsqueda falla: 500 y db_error con la operación", async () => {
+  const run = harness({ env: { CHEF_ID: undefined } });
+  run.store.failOn = "resolve";
+  assert.equal((await run.handle(post(payload()))).status, 500);
+  assert.deepEqual(run.logs.find((entry) => entry.event === "db_error")?.fields, { op: "resolve_chef", code: "PGRST301" });
+});
+
+// ---------------------------------------------------------------------------
+// Emails: idioma de Evelyn y asuntos
+// ---------------------------------------------------------------------------
+
+test("sin CHEF_LOCALE, el aviso a Evelyn sale en español (Radici)", async () => {
+  const run = harness({ env: { CHEF_LOCALE: undefined } });
+  await run.handle(post(payload()));
+  await run.settle();
+  const toChef = resendCalls(run).find((call) => (call.body as { to: string[] }).to[0] === "evelyn@example.test");
+  const body = toChef?.body as Record<string, unknown>;
+  assert.equal(body["subject"], "Nueva solicitud de Giuliaxyz");
+  assert.ok(String(body["text"]).includes("Abrir en la bandeja"));
+  assert.ok(String(body["text"]).includes("Aviso automático de Radici."));
+});
+
+test("ningún asunto lleva teléfono, email, zona ni datos de salud, aunque el cliente los escriba en el nombre", async () => {
+  for (const name of ["+39 333 765 4321", "3337654321 Rossiqwe", "giulia.pii@example.test", "Giuliaxyz"]) {
+    const run = harness();
+    await run.handle(post(payload({ name, restrictionsNote: "NOTA-SALUD-zzz" })));
+    await run.settle();
+    const subjects = resendCalls(run).map((call) => String((call.body as Record<string, unknown>)["subject"]));
+    assert.equal(subjects.length, 2);
+    for (const subject of subjects) {
+      for (const secret of ["765", "@", "ZonaPrivadaKkk", "NOTA-SALUD", "milk", "Rossiqwe"]) {
+        assert.ok(!subject.includes(secret), `el asunto "${subject}" lleva ${secret}`);
+      }
+    }
+    if (name !== "Giuliaxyz") assert.ok(subjects.includes("Nueva solicitud desde la web"), name);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Configuración y adaptadores
 // ---------------------------------------------------------------------------
 
 test("readConfig: valores por defecto y validaciones", () => {
   const config = readConfig((name) => ({ CHEF_ID: ` ${CHEF_ID.toUpperCase()} `, CHEF_LOCALE: "fr", EMAIL_TRANSPORT: "LOG" })[name]);
   assert.equal(config.chefId, CHEF_ID);
-  assert.equal(config.chefLocale, "it");
+  assert.deepEqual(config.invalid, []);
+  assert.equal(config.chefLocale, "es", "un idioma desconocido: el de Evelyn por defecto");
   assert.equal(config.emailTransport, "log");
   assert.equal(config.allowedOrigins.length, 0);
   assert.equal(config.whatsapp, null);
@@ -584,9 +842,18 @@ test("readConfig: valores por defecto y validaciones", () => {
 
   const defaults = readConfig(() => undefined);
   assert.equal(defaults.emailTransport, "resend");
-  assert.deepEqual(missingRequiredConfig(defaults), ["CHEF_ID", "TURNSTILE_SECRET_KEY", "IP_HASH_SALT"]);
+  assert.equal(defaults.chefId, null, "sin CHEF_ID: la única cocinera de public.chefs");
+  assert.deepEqual(defaults.invalid, []);
+  assert.equal(defaults.chefLocale, "es");
+  assert.equal(DEFAULT_CHEF_LOCALE, "es", "Evelyn lee los avisos en español salvo que CHEF_LOCALE diga otra cosa");
+  assert.deepEqual(missingRequiredConfig(defaults), ["TURNSTILE_SECRET_KEY", "IP_HASH_SALT"], "CHEF_ID ya no es obligatorio");
   assert.deepEqual(configWarnings(defaults), ["ALLOWED_ORIGINS", "CHEF_NOTIFY_EMAIL", "RESEND_API_KEY", "MAIL_FROM", "INBOX_URL", "PUBLIC_SITE_URL"]);
   assert.deepEqual(configWarnings(readConfig((name) => ENV[name])), []);
+
+  assert.deepEqual(readConfig((name) => ({ CHEF_ID: "cef00000" })[name]).invalid, ["CHEF_ID"]);
+  assert.equal(readConfig((name) => ({ CHEF_ID: "   " })[name]).chefId, null, "vacío = no configurado");
+  assert.deepEqual(readConfig((name) => ({ CHEF_ID: "   " })[name]).invalid, []);
+  assert.equal(readConfig((name) => ({ CHEF_LOCALE: "IT" })[name]).chefLocale, "it");
 });
 
 test("resolveServiceKey: clave secreta nueva (default), después las variables de compatibilidad", () => {

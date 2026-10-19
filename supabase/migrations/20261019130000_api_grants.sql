@@ -1,5 +1,5 @@
 -- =====================================================================
--- Mestolo · Privilegios explícitos de la API (Data API, Realtime)
+-- Radici · Privilegios explícitos de la API (Data API, Realtime)
 --
 -- Supabase dejó de dar privilegios implícitos sobre las tablas nuevas de
 -- public a anon, authenticated y service_role: es lo predeterminado en los

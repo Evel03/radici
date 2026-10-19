@@ -1,5 +1,5 @@
 -- =====================================================================
--- Mestolo · M1 · Storage: fotos de tickets (SPEC §6)
+-- Radici · M1 · Storage: fotos de tickets (SPEC §6)
 --
 -- Bucket privado 'receipts'. Ruta: {chef_id}/{session_id}/{archivo}.
 -- La app muestra las fotos con URL firmadas de corta duración (createSignedUrl),

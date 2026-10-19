@@ -3,7 +3,8 @@
 // Sin datos de salud (alergias, dietas, nota de restricciones), sin dirección y sin las notas
 // libres (SPEC §6): las funciones solo reciben lo que pueden mostrar. Al cliente se le dice que
 // Evelyn tendrá en cuenta sus restricciones; a Evelyn, que las vea en la app.
-// Todo texto del usuario se escapa. En el asunto, del usuario solo va el nombre de pila.
+// Todo texto del usuario se escapa. En el asunto, del usuario solo va el nombre de pila, y solo
+// si parece un nombre (subjectFirstName): nunca un teléfono o un email escrito en ese campo.
 // HTML simple con estilos en línea, sin imágenes remotas ni seguimiento, más texto plano.
 // Importes con aritmética entera; fechas sin zona horaria (son días de calendario).
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
@@ -308,9 +309,22 @@ export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char);
 }
 
-/** Primera palabra del nombre, con tope de 40 caracteres (va en asuntos). */
+/** Primera palabra del nombre, con tope de 40 caracteres (saludo del email y WhatsApp). */
 export function firstName(fullName: string): string {
   return (fullName.trim().split(/\s+/)[0] ?? "").slice(0, 40);
+}
+
+/** Letras (cualquier alfabeto, con acentos) y, entre ellas, apóstrofo, guion o punto: "José", "D'Angelo", "Jean-Luc". */
+const NAME_WORD = /^\p{L}[\p{L}\p{M}'’.-]*$/u;
+
+/**
+ * Nombre de pila para un asunto, o "" si la primera palabra no parece un nombre. Cualquiera
+ * escribe lo que quiere en "nombre": si trae dígitos, "@", "+" u otros signos (un teléfono, un
+ * email) no va al asunto, que se ve en la bandeja y en las notificaciones del celular.
+ */
+export function subjectFirstName(fullName: string): string {
+  const first = firstName(fullName);
+  return NAME_WORD.test(first) ? first : "";
 }
 
 /** Importe en centavos enteros: "1.234,56 €" (it, es) o "€1,234.56" (en). Sin pasar por decimales. */
@@ -345,8 +359,8 @@ export function formatPeople(adults: number, kids: number, locale: Locale): stri
   return first ?? messages.adults(0);
 }
 
-/** Nombre a mostrar de MAIL_FROM ("Mestolo <ciao@…>" → "Mestolo"). */
-export function brandFromMailFrom(mailFrom: string | null | undefined, fallback = "Mestolo"): string {
+/** Nombre a mostrar de MAIL_FROM ("Radici <ciao@…>" → "Radici"). */
+export function brandFromMailFrom(mailFrom: string | null | undefined, fallback = "Radici"): string {
   const match = mailFrom ? /^\s*"?([^"<]*?)"?\s*<[^<>]+>\s*$/.exec(mailFrom) : null;
   const name = match?.[1]?.trim();
   return name ? name : fallback;
@@ -586,7 +600,7 @@ export function renderChefNotification(input: ChefNotificationInput, locale: Loc
 
   return render({
     locale,
-    subject: messages.chef.subject(firstName(input.customerName)),
+    subject: messages.chef.subject(subjectFirstName(input.customerName)),
     preheader: messages.chef.preheader,
     brand: input.brand,
     heading: messages.chef.heading,

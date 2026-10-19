@@ -16,6 +16,7 @@ import {
   readConfig,
   resolveServiceKey,
   safeDbMessage,
+  submitResultFromRpc,
   type PublicRequestStore,
 } from "./handler.ts";
 
@@ -25,6 +26,8 @@ const config = readConfig(env);
 // Un aviso por arranque, solo con nombres de variables.
 const missing = missingRequiredConfig(config);
 if (missing.length > 0) consoleLogger("error", "config_missing", { missing });
+if (config.invalid.length > 0) consoleLogger("error", "config_invalid", { invalid: config.invalid });
+else if (!config.chefId) consoleLogger("info", "chef_id_auto");
 const incomplete = configWarnings(config);
 if (incomplete.length > 0) consoleLogger("warn", "config_incomplete", { missing: incomplete });
 
@@ -46,6 +49,7 @@ function createStore(): PublicRequestStore {
     const fail = (op: string) => Promise.reject(new StoreError(op, null, "supabase_not_configured"));
     return {
       hitRateLimit: () => fail("rate_limit"),
+      resolveDefaultChef: () => fail("resolve_chef"),
       loadChef: () => fail("load_chef"),
       submit: () => fail("submit"),
       markChefNotificationSent: () => fail("mark_sent"),
@@ -68,6 +72,18 @@ function createStore(): PublicRequestStore {
       return data === true;
     },
 
+    async resolveDefaultChef() {
+      // Con dos filas ya se sabe que no hay una sola: no hace falta contar todas.
+      const { data, error } = await supabase.from("chefs").select("id").order("id").limit(2);
+      if (error) throw storeError("resolve_chef", error);
+      const rows = (data ?? []) as Array<{ id?: unknown }>;
+      if (rows.length === 0) return { ok: false, reason: "no_chef" };
+      if (rows.length > 1) return { ok: false, reason: "multiple_chefs" };
+      const id = rows[0]?.id;
+      if (typeof id !== "string") throw new StoreError("resolve_chef", null, "unexpected_result");
+      return { ok: true, chefId: id };
+    },
+
     async loadChef(chefId) {
       const { data, error } = await supabase
         .from("chef_settings")
@@ -83,8 +99,9 @@ function createStore(): PublicRequestStore {
     async submit(params) {
       const { data, error } = await supabase.rpc("submit_public_request", { p: params });
       if (error) throw storeError("submit", error);
-      if (typeof data !== "string") throw new StoreError("submit", null, "unexpected_result");
-      return data;
+      const result = submitResultFromRpc(data);
+      if (!result) throw new StoreError("submit", null, "unexpected_result");
+      return result;
     },
 
     async markChefNotificationSent(requestId) {

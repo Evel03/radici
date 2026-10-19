@@ -1,7 +1,11 @@
 // CORS con lista de orígenes permitidos (contrato §2, ALLOWED_ORIGINS).
-// Admite comodín de subdominio: "https://*.mestolo-dsa.pages.dev" acepta
-// "https://abc.mestolo-dsa.pages.dev" (una sola etiqueta: así son las vistas
+// Admite comodín de subdominio: "https://*.<pages>.pages.dev" acepta
+// "https://abc.<pages>.pages.dev" (una sola etiqueta: así son las vistas
 // previas de Cloudflare Pages), pero no el dominio pelado ni niveles más profundos.
+// <pages> es el subdominio que Cloudflare asigna al proyecto de Pages "radici"
+// (puede llevar un sufijo si "radici" ya está tomado). Por defecto la lista NO
+// incluye las vistas previas: usan el backend de producción y crearían pedidos
+// reales; se suma una a mano y por un rato (contrato §4).
 // Un origen que no está en la lista no recibe ninguna cabecera CORS.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 

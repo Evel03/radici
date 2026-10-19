@@ -3,16 +3,23 @@
 # - push a main que toque supabase/** (o este archivo) → producción
 # - workflow_dispatch → a mano, desde la pestaña Actions
 # Antes de tocar producción corre los tests de TypeScript y los de la base (pgTAP, base local).
+# Las migraciones también programan el borrado diario de prospectos vencidos (pg_cron, contrato §9).
 #
 # Necesita, en Settings → Secrets and variables → Actions del repo:
 # - secretos: SUPABASE_ACCESS_TOKEN (token personal de supabase.com/dashboard/account/tokens),
 #   SUPABASE_DB_PASSWORD, RESEND_API_KEY, TURNSTILE_SECRET_KEY, IP_HASH_SALT
 #   (opcional: WHATSAPP_TOKEN)
-# - variables: SUPABASE_PROJECT_REF, CHEF_ID, CHEF_NOTIFY_EMAIL, CHEF_LOCALE, MAIL_FROM,
-#   MAIL_REPLY_TO, ALLOWED_ORIGINS, INBOX_URL, PUBLIC_SITE_URL
-#   (opcionales: EMAIL_TRANSPORT, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE)
+# - variables: SUPABASE_PROJECT_REF, CHEF_NOTIFY_EMAIL, MAIL_FROM, MAIL_REPLY_TO, ALLOWED_ORIGINS,
+#   INBOX_URL, PUBLIC_SITE_URL
+#   (opcionales: CHEF_ID, CHEF_LOCALE, EMAIL_TRANSPORT, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE)
+#   · CHEF_ID: sin él la función usa la única cocinera de public.chefs, así el primer despliegue
+#     anda antes de correr promote_to_chef. Fijarlo solo si hay más de una cocinera.
+#   · CHEF_LOCALE: idioma de los avisos a Evelyn; por defecto es (español).
+#   · ALLOWED_ORIGINS: https://radici.sepusola10.com, sin las vistas previas *.pages.dev (se
+#     construyen con este mismo backend y crearían pedidos reales; contrato §4).
 # Sin SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD o SUPABASE_PROJECT_REF corre los tests y no despliega.
-# Los secretos vacíos no se cargan (no pisan los que ya estén); para borrar uno: supabase secrets unset.
+# Los secretos vacíos no se cargan (no pisan los que ya estén); para borrar uno (por ejemplo
+# CHEF_ID, para volver a la cocinera automática): supabase secrets unset <NOMBRE>.
 name: Deploy Supabase
 
 on:
@@ -114,14 +121,18 @@ jobs:
               pairs+=("${name}=${value}")
             fi
           done
+          # CHEF_ID no está: es opcional (sin él, la única cocinera de public.chefs).
           missing=()
-          for name in CHEF_ID TURNSTILE_SECRET_KEY IP_HASH_SALT RESEND_API_KEY MAIL_FROM CHEF_NOTIFY_EMAIL ALLOWED_ORIGINS; do
+          for name in TURNSTILE_SECRET_KEY IP_HASH_SALT RESEND_API_KEY MAIL_FROM CHEF_NOTIFY_EMAIL ALLOWED_ORIGINS; do
             if [ -z "${!name:-}" ]; then
               missing+=("${name}")
             fi
           done
           if [ "${#missing[@]}" -gt 0 ]; then
             echo "::warning::Faltan ${missing[*]}: sin ellos la función no atiende pedidos o no manda los emails."
+          fi
+          if [[ "${ALLOWED_ORIGINS:-}" == *".pages.dev"* ]]; then
+            echo "::warning::ALLOWED_ORIGINS incluye una vista previa *.pages.dev: desde ahí se crean pedidos reales. Sacarla al terminar la prueba."
           fi
           if [ "${#pairs[@]}" -gt 0 ]; then
             supabase secrets set --project-ref "${SUPABASE_PROJECT_REF}" "${pairs[@]}"

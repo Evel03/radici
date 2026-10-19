@@ -1,7 +1,7 @@
 -- =====================================================================
--- Mestolo · datos de desarrollo (solo local; nunca en producción)
+-- Radici · datos de desarrollo (solo local; nunca en producción)
 --
--- Usuarios (contraseña de desarrollo para todos: mestolo-dev-2026; también
+-- Usuarios (contraseña de desarrollo para todos: radici-dev-2026; también
 -- sirve el login por OTP con Mailpit en http://127.0.0.1:54324):
 --   evelyn@example.test   cocinera (Bergamo)
 --   giulia@example.test   segunda cocinera, para probar aislamiento entre chefs
@@ -26,7 +26,7 @@ insert into auth.users (
 )
 select
   '00000000-0000-0000-0000-000000000000', u.id, 'authenticated', 'authenticated', u.email,
-  extensions.crypt('mestolo-dev-2026', extensions.gen_salt('bf')), now(),
+  extensions.crypt('radici-dev-2026', extensions.gen_salt('bf')), now(),
   '{"provider":"email","providers":["email"]}'::jsonb,
   jsonb_build_object('full_name', u.full_name, 'locale', u.locale),
   now(), now(), '', '', '', ''
