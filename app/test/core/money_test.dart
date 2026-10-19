@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/core/money.dart';
+import 'package:radici/core/money.dart';
 
 // intl separa número y símbolo con un espacio duro (U+00A0).
 const _nbsp = ' ';

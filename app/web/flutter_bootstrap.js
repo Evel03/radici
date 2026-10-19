@@ -1,7 +1,7 @@
 {{flutter_js}}
 {{flutter_build_config}}
 
-// Arranque de Mestolo · gestione (/gestione/). Todo se sirve desde el mismo
+// Arranque de Radici · gestione (/gestione/). Todo se sirve desde el mismo
 // origen: la CSP solo permite 'self' (más Supabase en connect-src).
 // - CanvasKit local: el build usa --no-web-resources-cdn y, por las dudas,
 //   canvasKitBaseUrl apunta a la carpeta propia (nunca a www.gstatic.com).

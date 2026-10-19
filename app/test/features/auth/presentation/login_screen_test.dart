@@ -2,14 +2,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/core/router.dart';
-import 'package:mestolo/features/auth/data/account_repository.dart';
-import 'package:mestolo/features/auth/data/auth_repository.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
-import 'package:mestolo/features/auth/presentation/login_screen.dart';
-import 'package:mestolo/features/requests/data/chef_requests_repository.dart';
-import 'package:mestolo/features/requests/presentation/inbox_screen.dart';
-import 'package:mestolo/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/core/brand_mark.dart';
+import 'package:radici/core/router.dart';
+import 'package:radici/features/auth/data/account_repository.dart';
+import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
+import 'package:radici/features/auth/presentation/login_screen.dart';
+import 'package:radici/features/requests/data/chef_requests_repository.dart';
+import 'package:radici/features/requests/presentation/inbox_screen.dart';
+import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';
@@ -25,7 +26,7 @@ void main() {
   }) {
     setSurfaceSize(tester, const Size(400, 900));
     auth = FakeAuthRepository();
-    return pumpMestoloApp(
+    return pumpRadiciApp(
       tester,
       isWeb: isWeb,
       deviceLocales: [locale],
@@ -51,6 +52,15 @@ void main() {
   testWidgets('email → código → entra a Richieste', (tester) async {
     await pumpLogin(tester);
     expect(find.byType(LoginScreen), findsOneWidget);
+    // La marca arriba: en la web es la primera pantalla.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('login-brand')),
+        matching: find.text('Radici'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(RadiciMark), findsOneWidget);
 
     await enterEmail(tester, 'Evelyn@Example.test');
     expect(auth.sentTo, ['evelyn@example.test']);

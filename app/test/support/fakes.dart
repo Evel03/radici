@@ -2,13 +2,14 @@
 // Para verificar llamadas puntuales se usan mocks de mocktail en cada test.
 import 'dart:async';
 
-import 'package:mestolo/core/link_launcher.dart';
-import 'package:mestolo/features/auth/data/account_repository.dart';
-import 'package:mestolo/features/auth/data/auth_repository.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
-import 'package:mestolo/features/requests/data/chef_requests_repository.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:radici/core/app_language.dart';
+import 'package:radici/core/link_launcher.dart';
+import 'package:radici/features/auth/data/account_repository.dart';
+import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
+import 'package:radici/features/requests/data/chef_requests_repository.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 
 class MockAuthRepository extends Mock implements AuthRepository {}
 
@@ -69,7 +70,8 @@ class FakeAuthRepository implements AuthRepository {
   Future<void> signOut() async => emit(null);
 }
 
-/// Cuenta fija (o error) para cualquier usuario.
+/// Cuenta fija (o error) para cualquier usuario. El idioma que se guarda
+/// queda en la cuenta, como en el perfil del servidor.
 class FakeAccountRepository implements AccountRepository {
   FakeAccountRepository(this.account);
 
@@ -77,12 +79,39 @@ class FakeAccountRepository implements AccountRepository {
   AccountFailureKind? failure;
   int calls = 0;
 
+  /// Si no es null, [fetchAccount] espera a que se complete (cuenta lenta).
+  Completer<void>? pendingFetch;
+
+  /// Si no es null, [updateLanguage] falla con este error.
+  AccountFailureKind? updateFailure;
+
+  /// Si no es null, [updateLanguage] espera a que se complete.
+  Completer<void>? pendingUpdate;
+
+  /// Idiomas guardados con [updateLanguage], en orden.
+  final List<({String userId, AppLanguage language})> savedLanguages = [];
+
   @override
   Future<Account> fetchAccount(String userId) async {
     calls++;
+    final pending = pendingFetch;
+    if (pending != null) await pending.future;
     final failure = this.failure;
     if (failure != null) throw AccountFailure(failure);
     return account!;
+  }
+
+  @override
+  Future<void> updateLanguage({
+    required String userId,
+    required AppLanguage language,
+  }) async {
+    final pending = pendingUpdate;
+    if (pending != null) await pending.future;
+    final failure = updateFailure;
+    if (failure != null) throw AccountFailure(failure);
+    savedLanguages.add((userId: userId, language: language));
+    account = account?.copyWith(language: language);
   }
 }
 
@@ -100,9 +129,11 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
   bool failFetch = false;
   bool failMarkSeen = false;
   bool failReject = false;
+  bool failUndoReject = false;
   int fetchCalls = 0;
   final List<String> markedSeen = [];
   final List<String> rejected = [];
+  final List<String> undoneRejects = [];
 
   final _realtime = StreamController<RequestsRealtimeEvent>.broadcast();
   int realtimeListeners = 0;
@@ -154,6 +185,19 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
     }
     rejected.add(id);
     requests[id] = request.copyWith(status: RequestStatus.rejected);
+  }
+
+  @override
+  Future<void> undoReject(String id) async {
+    if (failUndoReject) {
+      throw const RequestsFailure(RequestsFailureKind.unavailable);
+    }
+    final request = requests[id]!;
+    if (request.status != RequestStatus.rejected) {
+      throw const RequestsFailure(RequestsFailureKind.conflict);
+    }
+    undoneRejects.add(id);
+    requests[id] = request.copyWith(status: RequestStatus.newRequest);
   }
 
   @override

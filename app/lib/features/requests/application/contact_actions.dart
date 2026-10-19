@@ -3,11 +3,11 @@
 import 'dart:ui' show Locale;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/features/auth/application/session_controller.dart';
-import 'package:mestolo/features/requests/application/chef_inbox_controller.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
-import 'package:mestolo/features/requests/domain/contact_links.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/contact_links.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 /// Links para contactar al cliente; null si no hay teléfono o email válido.
 class ContactLinks {

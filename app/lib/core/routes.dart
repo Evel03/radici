@@ -4,7 +4,7 @@
 // En la web (/gestione/) las rutas van en el fragmento: /gestione/#/richieste.
 // Así un enlace directo (el botón del email a Evelyn: INBOX_URL#/richieste/<id>)
 // funciona sin reglas de reescritura en Cloudflare Pages.
-import 'package:mestolo/features/auth/application/session_controller.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
 
 /// Rutas (en italiano, como las de la web).
 abstract final class AppRoutes {
@@ -18,6 +18,9 @@ abstract final class AppRoutes {
   static const String requests = '/richieste';
   static const String agenda = '/agenda';
 
+  /// Impostazioni de la cocinera (idioma de la app y cuenta).
+  static const String settings = '/impostazioni';
+
   static String requestDetail(String id) =>
       '$requests/${Uri.encodeComponent(id)}';
 
@@ -29,7 +32,8 @@ abstract final class AppRoutes {
 bool isChefPath(String path) =>
     path == AppRoutes.requests ||
     path.startsWith('${AppRoutes.requests}/') ||
-    path == AppRoutes.agenda;
+    path == AppRoutes.agenda ||
+    path == AppRoutes.settings;
 
 /// A dónde redirigir [location] según [session], o null para quedarse.
 ///

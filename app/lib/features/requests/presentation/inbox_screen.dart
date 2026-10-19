@@ -2,14 +2,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mestolo/core/routes.dart';
-import 'package:mestolo/features/requests/application/chef_inbox_controller.dart';
-import 'package:mestolo/features/requests/data/chef_requests_repository.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
-import 'package:mestolo/features/requests/domain/inbox.dart';
-import 'package:mestolo/features/requests/presentation/chef_shell.dart';
-import 'package:mestolo/features/requests/presentation/request_labels.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/routes.dart';
+import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/data/chef_requests_repository.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/inbox.dart';
+import 'package:radici/features/requests/presentation/chef_shell.dart';
+import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 class InboxScreen extends ConsumerWidget {
   const InboxScreen({super.key});

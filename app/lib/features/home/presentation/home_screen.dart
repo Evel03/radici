@@ -1,8 +1,9 @@
 // Inicio (M0): bienvenida y accesos a la calculadora y al login.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mestolo/core/routes.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/brand_mark.dart';
+import 'package:radici/core/routes.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -23,13 +24,7 @@ class HomeScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ExcludeSemantics(
-                    child: Icon(
-                      Icons.soup_kitchen_outlined,
-                      size: 72,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
+                  const Center(child: RadiciMark(size: 88)),
                   const SizedBox(height: 24),
                   Semantics(
                     header: true,

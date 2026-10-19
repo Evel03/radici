@@ -1,43 +1,11 @@
 // Login con código por email contra la API de Supabase Auth simulada.
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:mestolo/features/auth/data/auth_repository.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
+import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../support/supabase_http_fake.dart';
-
-/// JWT con la forma de los de Supabase (firma falsa, vence en 2100).
-String _fakeJwt(String userId) {
-  String part(Map<String, Object> json) =>
-      base64Url.encode(utf8.encode(jsonEncode(json))).replaceAll('=', '');
-  final header = part({'alg': 'HS256', 'typ': 'JWT'});
-  final payload = part({
-    'sub': userId,
-    'role': 'authenticated',
-    'aud': 'authenticated',
-    'exp': 4102444800,
-  });
-  return '$header.$payload.firma';
-}
-
-Map<String, Object?> _session(String userId, String email) => {
-  'access_token': _fakeJwt(userId),
-  'token_type': 'bearer',
-  'expires_in': 3600,
-  'refresh_token': 'refresh',
-  'user': {
-    'id': userId,
-    'aud': 'authenticated',
-    'role': 'authenticated',
-    'email': email,
-    'app_metadata': <String, Object>{},
-    'user_metadata': <String, Object>{},
-    'created_at': '2026-10-19T10:00:00Z',
-  },
-};
 
 /// Error de GoTrue (formato sin cabecera de versión: el código va en
 /// `error_code`).
@@ -81,7 +49,7 @@ void main() {
 
   test('verifyEmailCode verifica con type=email y abre la sesión', () async {
     server.handler = (request) async => request.url.path == '/auth/v1/verify'
-        ? jsonResponse(_session('user-1', 'evelyn@example.test'))
+        ? jsonResponse(fakeSessionJson('user-1', 'evelyn@example.test'))
         : jsonResponse(<String, Object>{});
     final changes = <AppUser?>[];
     final subscription = repository.userChanges().listen(changes.add);

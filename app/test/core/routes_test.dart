@@ -1,8 +1,8 @@
 // Redirecciones según la sesión (core/routes.dart).
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/core/routes.dart';
-import 'package:mestolo/features/auth/application/session_controller.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
+import 'package:radici/core/routes.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
 
 import '../support/request_fixtures.dart';
 
@@ -24,6 +24,10 @@ void main() {
         '/accedi?from=%2Frichieste%2Fabc',
       );
       expect(_redirect(signedOut, '/agenda'), '/accedi?from=%2Fagenda');
+      expect(
+        _redirect(signedOut, '/impostazioni'),
+        '/accedi?from=%2Fimpostazioni',
+      );
     });
 
     test('móvil: el inicio y la calculadora son públicos', () {
@@ -63,6 +67,8 @@ void main() {
       expect(_redirect(chef, '/richieste'), isNull);
       expect(_redirect(chef, '/richieste/abc'), isNull);
       expect(_redirect(chef, '/agenda'), isNull);
+      expect(_redirect(chef, '/impostazioni'), isNull);
+      expect(_redirect(chef, '/accedi?from=%2Fimpostazioni'), '/impostazioni');
     });
 
     test('desde el inicio, el login o la carga va a la bandeja (o a donde iba)', () {
@@ -91,6 +97,7 @@ void main() {
       expect(_redirect(client, '/area-clienti'), isNull);
       expect(_redirect(client, '/'), '/area-clienti');
       expect(_redirect(client, '/richieste'), '/area-clienti');
+      expect(_redirect(client, '/impostazioni'), '/area-clienti');
       expect(_redirect(client, '/accedi'), '/area-clienti');
       expect(_redirect(client, '/preventivo'), isNull);
     });

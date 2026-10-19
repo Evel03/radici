@@ -1,6 +1,7 @@
 // Modelos de sesión y cuenta, sin dependencias de Supabase: los repositorios
 // traducen sus tipos y errores a estos.
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:radici/core/app_language.dart';
 
 part 'auth_models.freezed.dart';
 
@@ -31,8 +32,14 @@ abstract class ChefAccount with _$ChefAccount {
 /// Lo que la app necesita saber del usuario después del login.
 @freezed
 abstract class Account with _$Account {
-  const factory Account({required AccountRole role, ChefAccount? chef}) =
-      _Account;
+  const factory Account({
+    required AccountRole role,
+    ChefAccount? chef,
+
+    /// Idioma de la interfaz (`profiles.locale`); null si el perfil no trae
+    /// uno que esta versión conozca: entonces manda el dispositivo.
+    AppLanguage? language,
+  }) = _Account;
 }
 
 /// Por qué falló una operación de autenticación.

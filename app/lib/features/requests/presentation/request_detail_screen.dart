@@ -1,19 +1,20 @@
 // Detalle de un pedido: todos los datos (incluidas las restricciones, que
 // solo ve la cocinera), la estimación guardada y las acciones: WhatsApp,
-// llamar, email y rechazar. Al abrirlo se marca como visto.
+// llamar, email, rechazar y deshacer el rechazo. Al abrirlo se marca como
+// visto.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/core/link_launcher.dart';
-import 'package:mestolo/core/money.dart';
-import 'package:mestolo/features/requests/application/chef_inbox_controller.dart';
-import 'package:mestolo/features/requests/application/contact_actions.dart';
-import 'package:mestolo/features/requests/data/chef_requests_repository.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
-import 'package:mestolo/features/requests/presentation/inbox_screen.dart';
-import 'package:mestolo/features/requests/presentation/request_labels.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/link_launcher.dart';
+import 'package:radici/core/money.dart';
+import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/application/contact_actions.dart';
+import 'package:radici/features/requests/data/chef_requests_repository.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/inbox_screen.dart';
+import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 class RequestDetailScreen extends ConsumerStatefulWidget {
   const RequestDetailScreen({super.key, required this.requestId});
@@ -92,31 +93,15 @@ class _RequestDetail extends ConsumerWidget {
   Future<void> _reject(BuildContext context, WidgetRef ref) async {
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        key: const ValueKey('reject-dialog'),
-        title: Text(l10n.rejectConfirmTitle(request.client.displayName)),
-        content: Text(l10n.rejectConfirmBody),
-        actions: [
-          TextButton(
-            key: const ValueKey('reject-cancel'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(l10n.actionCancel),
-          ),
-          FilledButton(
-            key: const ValueKey('reject-confirm'),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(l10n.actionReject),
-          ),
-        ],
-      ),
+    final confirmed = await _confirm(
+      context,
+      keyPrefix: 'reject',
+      title: l10n.rejectConfirmTitle(request.client.displayName),
+      body: l10n.rejectConfirmBody,
+      confirmLabel: l10n.actionReject,
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await ref.read(chefInboxProvider.notifier).reject(request.id);
       messenger.showSnackBar(SnackBar(content: Text(l10n.rejectDone)));
@@ -131,6 +116,76 @@ class _RequestDetail extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  Future<void> _undoReject(BuildContext context, WidgetRef ref) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await _confirm(
+      context,
+      keyPrefix: 'undo-reject',
+      title: l10n.undoRejectConfirmTitle(request.client.displayName),
+      body: l10n.undoRejectConfirmBody,
+      confirmLabel: l10n.undoRejectConfirmAction,
+    );
+    if (!confirmed) return;
+    try {
+      await ref.read(chefInboxProvider.notifier).undoReject(request.id);
+      messenger.showSnackBar(SnackBar(content: Text(l10n.undoRejectDone)));
+    } on RequestsFailure catch (failure) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            failure.kind == RequestsFailureKind.conflict
+                ? l10n.undoRejectConflict
+                : l10n.undoRejectFailed,
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Diálogo de confirmación (claves `<keyPrefix>-dialog`, `-cancel` y
+  /// `-confirm`). Devuelve true solo si se confirmó.
+  Future<bool> _confirm(
+    BuildContext context, {
+    required String keyPrefix,
+    required String title,
+    required String body,
+    required String confirmLabel,
+    bool destructive = false,
+  }) async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final colors = Theme.of(context).colorScheme;
+        return AlertDialog(
+          key: ValueKey('$keyPrefix-dialog'),
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              key: ValueKey('$keyPrefix-cancel'),
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.actionCancel),
+            ),
+            FilledButton(
+              key: ValueKey('$keyPrefix-confirm'),
+              style: destructive
+                  ? FilledButton.styleFrom(
+                      backgroundColor: colors.error,
+                      foregroundColor: colors.onError,
+                    )
+                  : null,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(confirmLabel),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
   }
 
   @override
@@ -316,6 +371,18 @@ class _RequestDetail extends ConsumerWidget {
                   onPressed: () => _reject(context, ref),
                   icon: const Icon(Icons.block),
                   label: Text(l10n.actionReject),
+                ),
+              ),
+            ],
+            if (request.canUndoReject) ...[
+              const SizedBox(height: 32),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('action-undo-reject'),
+                  onPressed: () => _undoReject(context, ref),
+                  icon: const Icon(Icons.undo),
+                  label: Text(l10n.actionUndoReject),
                 ),
               ),
             ],

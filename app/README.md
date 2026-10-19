@@ -1,7 +1,8 @@
-# Mestolo · app Flutter
+# Radici · app Flutter
 
 App de Evelyn (cocinera) y sus clientes, para iOS y Android, y la misma app como web en `/gestione/`.
-"Mestolo" es un nombre provisorio. Reglas del proyecto: `../SPEC.md` y `../CLAUDE.md`.
+Paquete Dart: `radici`. Reglas del proyecto: `../SPEC.md` y `../CLAUDE.md`.
+El bundle id nativo todavía es el provisorio: ver [TODO: bundle id definitivo](#todo-bundle-id-definitivo).
 Pedidos de la web, bandeja y avisos: `../docs/contracts/public-request.md` (§7 es esta app).
 
 ## SDK
@@ -47,7 +48,28 @@ Los valores se inyectan al compilar con `--dart-define-from-file` y se leen en `
 
 - `env/dev.example.json` y `env/prod.example.json` se versionan como plantilla; los `env/*.json` reales están ignorados.
 - Si falta la URL o la clave, no se inicializa Supabase. En `dev` aparece un aviso discreto al pie: "Backend non configurato".
-- Por ahora no hay flavors nativos: dev y prod comparten el bundle id `com.sepusola10.mestolo`. Los flavors con bundle id propio llegan en M8.
+- Por ahora no hay flavors nativos: dev y prod comparten el bundle id (hoy el provisorio, ver abajo). Los flavors con bundle id propio llegan en M8.
+
+## TODO: bundle id definitivo
+
+El nombre visible ya es **Radici** (`android:label` en `android/app/src/main/AndroidManifest.xml`,
+`CFBundleDisplayName` y `CFBundleName` en `ios/Runner/Info.plist`, `appTitle` en los ARB). El
+identificador nativo sigue siendo el provisorio `com.sepusola10.mestolo` hasta que se elija el
+definitivo, **antes de la primera subida a las tiendas** (después no se puede cambiar; SPEC §14).
+Lugares a cambiar, todos en `app/`:
+
+1. `android/app/build.gradle.kts`: `namespace` y `applicationId` (`"com.sepusola10.mestolo"`).
+2. `android/app/src/main/kotlin/com/sepusola10/mestolo/MainActivity.kt`: la línea
+   `package com.sepusola10.mestolo` y la carpeta, que se mueve a la del paquete nuevo
+   (`kotlin/<id con / en lugar de .>/MainActivity.kt`). `android:name=".MainActivity"` del
+   manifiesto es relativo al `namespace`: no cambia.
+3. `ios/Runner.xcodeproj/project.pbxproj`: `PRODUCT_BUNDLE_IDENTIFIER` en 6 configuraciones:
+   Runner (Debug, Release, Profile) = `com.sepusola10.mestolo` y RunnerTests (Debug, Release,
+   Profile) = `com.sepusola10.mestolo.RunnerTests`.
+4. Documentación: esta sección, SPEC.md §14 y `CLAUDE.md`.
+
+Fuera del repo, cuando existan: App ID en Apple Developer / App Store Connect, la app en Play
+Console y Firebase (FCM). Para comprobar que no quedó nada: `git grep -n -i mestolo` (desde la raíz).
 
 ## Verificar (lo mismo que el CI)
 
@@ -68,13 +90,19 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Login** con código por email (Supabase Auth, OTP de 6 cifras): email → código → sesión. La sesión
   la guarda supabase_flutter (SharedPreferences en el teléfono, localStorage en la web). El email del
   código llega en el idioma de la interfaz (`user_metadata.locale`).
-- Después del login se lee `profiles.role`: `chef` → área de la cocinera (con su fila de `chefs`);
-  cualquier otro → "Area clienti in preparazione".
+- Después del login se lee el perfil (`profiles.role` y `profiles.locale`): `chef` → área de la
+  cocinera (con su fila de `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz
+  pasa al idioma del perfil (ver [Idioma](#idioma)).
 - **Richieste**: pestañas Nuove (sin `seen_at`), Viste y Rifiutate, con contador de nuevas.
-- **Agenda**: mes y semana por `preferred_date` con la franja, más la lista "Senza data".
+- **Agenda**: mes y semana por `preferred_date` con la franja, más la lista "Senza data". "Hoy"
+  (Europe/Rome) cambia a la medianoche sin reabrir la app: se vuelve a mirar la fecha a la
+  medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
+  Si estaba elegido "hoy", la agenda pasa al día nuevo; si no, respeta el día elegido.
 - **Detalle**: todos los datos (también las restricciones), la estimación guardada y las acciones:
   WhatsApp (`https://wa.me/<número sin +>?text=…` en el idioma del cliente), llamar (`tel:`),
-  email (`mailto:`) y rechazar (`new` → `rejected`, con confirmación). Al abrirlo se marca visto.
+  email (`mailto:`), rechazar (`new` → `rejected`) y deshacer el rechazo (`rejected` → `new`;
+  como ya estaba visto, vuelve a Viste), las dos con confirmación. Al abrirlo se marca visto.
+- **Impostazioni** (menú de la cuenta): idioma de la app (Español, Italiano, English) y salir.
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
   emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Al reconectar
   (corte de red, app que vuelve del segundo plano) se relee la lista y se avisa lo que llegó.
@@ -82,13 +110,16 @@ repositorios falsos (`test/support/fakes.dart`).
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
 
 Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace del email a Evelyn):
-`/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`, `/agenda`, más `/` y
-`/preventivo` (públicas). En la web `/` lleva al login.
+`/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`, `/agenda`,
+`/impostazioni`, más `/` y `/preventivo` (públicas). En la web `/` lleva al login.
 
 ### Requisitos en Supabase
 
 - Migración `supabase/migrations/20261019120000_public_requests.sql` (columnas nuevas de `requests`,
   permisos de update solo de `status` y `seen_at`, `requests` en la publicación `supabase_realtime`).
+  Su guarda `requests_guard_update` deja a la app pasar `new` → `rejected` y `rejected` → `new`.
+- `profiles.locale`: el usuario lo puede cambiar en su propio perfil (`grant update (full_name,
+  phone, locale)` y la política "el usuario edita el suyo", `20261019100200_rls.sql`).
 - Plantillas de email "Magic link" y "Confirm signup" con el código (`{{ .Token }}`) y "Email OTP
   length" = 6 (en local: `supabase/config.toml` y `supabase/templates/login_code.html`).
 - Evelyn entra una vez con su email (queda como cliente) y después se corre
@@ -156,7 +187,8 @@ lib/
     presentation/      pantallas y widgets: solo leen providers, nunca llaman a Supabase ni calculan
   l10n/                app_it.arb (plantilla), app_es.arb, app_en.arb
 web/                   index.html, flutter_bootstrap.js y manifest para /gestione/
-test/                  espejo de lib/, más support/ con utilidades
+tool/                  generate_icons.dart (íconos a partir de la marca)
+test/                  espejo de lib/ y tool/, más support/ con utilidades
 ```
 
 ## Presupuesto
@@ -169,5 +201,42 @@ Si cambia la fórmula, se cambian `quote.ts`, los vectores y esta copia en el mi
 
 Ningún texto de UI va hardcodeado: todo sale de `lib/l10n/*.arb`. La plantilla es italiano (`app_it.arb`), que también es el idioma de respaldo.
 `test/l10n/arb_keys_test.dart` falla si `es` o `en` no tienen exactamente las mismas claves.
-La interfaz sigue el idioma del dispositivo; los mensajes al cliente (WhatsApp, email) van en el idioma
-del pedido (`requests.locale`).
+Los mensajes al cliente (WhatsApp, email) van en el idioma del pedido (`requests.locale`), no en el
+de la interfaz.
+
+### Idioma
+
+- **Sin sesión** (inicio, login): el idioma del dispositivo; si no es it, es ni en, italiano.
+- **Con sesión**: el del perfil (`profiles.locale`), en cualquier dispositivo. Se cambia en
+  Impostazioni (cocinera) o en el área de clientes; las opciones van escritas en su propio idioma.
+  El cambio se ve enseguida y se guarda en el perfil; si no se puede guardar, vuelve al anterior y
+  avisa. También se copia a `user_metadata.locale`, que decide el idioma del email del código
+  (si eso falla, el perfil igual queda guardado).
+- **Arranque en frío**: el idioma elegido se guarda también en el dispositivo (SharedPreferences;
+  localStorage en la web) junto con el id del usuario, y `main.dart` lo lee antes del primer cuadro:
+  la app arranca ya en ese idioma y el perfil, al cargarse, lo confirma o lo corrige. Al salir se
+  borra (el login vuelve al idioma del dispositivo).
+- `profiles.locale` es `not null default 'it'`: no hay forma de distinguir "eligió italiano" de "no
+  eligió", así que no se fuerza el español para la cocinera. El perfil nace con el idioma de la
+  interfaz al pedir el primer código (`user_metadata.locale`); si Evelyn lo tiene en italiano, lo
+  cambia una vez en Impostazioni.
+- Lógica: `features/settings/` (`LanguageController`, `LanguageCache`) y
+  `AccountRepository.updateLanguage`.
+
+## Íconos
+
+La marca (un brote con raíces, crema sobre terracota) está en `lib/core/brand_mark_geometry.dart`,
+en Dart puro. De ahí salen el dibujo de la app (`RadiciMark`, en el login y el inicio) y todos los
+íconos: favicon y `web/icons/*` (`/gestione/`), `android/.../mipmap-*/ic_launcher.png` y
+`ios/Runner/Assets.xcassets/AppIcon.appiconset/*`. Mismos nombres y tamaños que la plantilla de
+Flutter: no cambia nada de los proyectos nativos (ni el bundle id).
+
+```bash
+dart run tool/generate_icons.dart    # desde app/: vuelve a escribir los PNG
+```
+
+El script no usa dependencias (rasteriza y escribe PNG con dart:io) y da siempre el mismo
+resultado. `test/tool/app_icons_test.dart` falla si algún PNG no coincide con lo que genera o si
+falta alguno de los que piden `Contents.json` (iOS), `manifest.json` (web) o los `mipmap-*`.
+Android usa el ícono clásico (redondo), sin ícono adaptativo: en Android 8+ el sistema lo muestra
+dentro de su forma.

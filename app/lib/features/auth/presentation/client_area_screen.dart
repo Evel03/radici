@@ -1,9 +1,11 @@
 // Área de clientes: todavía en preparación (contrato §7). Cualquier usuario
-// que no sea la cocinera llega acá.
+// que no sea la cocinera llega acá. Como en Impostazioni, el idioma de la
+// interfaz sale del perfil y se puede cambiar.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/features/auth/application/session_controller.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/settings/presentation/language_selector.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 class ClientAreaScreen extends ConsumerWidget {
   const ClientAreaScreen({super.key});
@@ -60,6 +62,21 @@ class ClientAreaScreen extends ConsumerWidget {
                       style: theme.textTheme.bodySmall,
                     ),
                   ],
+                  const SizedBox(height: 24),
+                  // Con el mismo margen que las opciones del selector.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Semantics(
+                      header: true,
+                      child: Text(
+                        l10n.settingsLanguageSection,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const LanguageSelector(),
                   const SizedBox(height: 16),
                   OutlinedButton.icon(
                     key: const ValueKey('client-area-logout'),

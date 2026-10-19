@@ -1,9 +1,9 @@
 // Estado de la calculadora: límites del notifier y resultado derivado.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/features/quote/application/quote_draft.dart';
-import 'package:mestolo/features/quote/application/quote_providers.dart';
-import 'package:mestolo/features/quote/domain/quote.dart';
+import 'package:radici/features/quote/application/quote_draft.dart';
+import 'package:radici/features/quote/application/quote_providers.dart';
+import 'package:radici/features/quote/domain/quote.dart';
 
 void main() {
   late ProviderContainer container;

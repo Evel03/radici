@@ -6,19 +6,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mestolo/core/platform.dart';
-import 'package:mestolo/core/routes.dart';
-import 'package:mestolo/features/auth/application/session_controller.dart';
-import 'package:mestolo/features/auth/presentation/client_area_screen.dart';
-import 'package:mestolo/features/auth/presentation/login_screen.dart';
-import 'package:mestolo/features/auth/presentation/session_screen.dart';
-import 'package:mestolo/features/home/presentation/home_screen.dart';
-import 'package:mestolo/features/quote/presentation/quote_calculator_screen.dart';
-import 'package:mestolo/features/requests/presentation/agenda_screen.dart';
-import 'package:mestolo/features/requests/presentation/chef_shell.dart';
-import 'package:mestolo/features/requests/presentation/inbox_screen.dart';
-import 'package:mestolo/features/requests/presentation/request_detail_screen.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/platform.dart';
+import 'package:radici/core/routes.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/auth/presentation/client_area_screen.dart';
+import 'package:radici/features/auth/presentation/login_screen.dart';
+import 'package:radici/features/auth/presentation/session_screen.dart';
+import 'package:radici/features/home/presentation/home_screen.dart';
+import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
+import 'package:radici/features/requests/presentation/agenda_screen.dart';
+import 'package:radici/features/requests/presentation/chef_shell.dart';
+import 'package:radici/features/requests/presentation/inbox_screen.dart';
+import 'package:radici/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/features/settings/presentation/settings_screen.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
@@ -63,6 +64,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientArea,
         pageBuilder: (context, state) =>
             _page(state, const ClientAreaScreen()),
+      ),
+      // Fuera de la estructura con pestañas: tapa la barra de navegación y
+      // se abre con push desde el menú de la cuenta.
+      GoRoute(
+        path: AppRoutes.settings,
+        pageBuilder: (context, state) => _page(state, const SettingsScreen()),
       ),
       StatefulShellRoute.indexedStack(
         pageBuilder: (context, state, navigationShell) =>

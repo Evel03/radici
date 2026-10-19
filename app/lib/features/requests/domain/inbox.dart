@@ -1,6 +1,6 @@
 // Reglas de la bandeja "Richieste": qué pedido va en cada pestaña y en qué
 // orden. Dart puro, sin Flutter.
-import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 
 /// Pestañas de la bandeja (contrato §7).
 enum InboxTab {

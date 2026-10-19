@@ -5,12 +5,12 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/core/clock.dart';
-import 'package:mestolo/features/auth/application/session_controller.dart';
-import 'package:mestolo/features/requests/application/new_request_alert.dart';
-import 'package:mestolo/features/requests/data/chef_requests_repository.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
-import 'package:mestolo/features/requests/domain/inbox.dart';
+import 'package:radici/core/clock.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/requests/application/new_request_alert.dart';
+import 'package:radici/features/requests/data/chef_requests_repository.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/inbox.dart';
 
 final chefInboxProvider =
     AsyncNotifierProvider<ChefInboxController, List<ChefRequest>>(
@@ -178,20 +178,38 @@ class ChefInboxController extends AsyncNotifier<List<ChefRequest>> {
   /// Rechaza un pedido nuevo. Lanza [RequestsFailure] si no se pudo; si el
   /// pedido había cambiado de estado, antes se actualiza con lo del servidor.
   Future<void> reject(String requestId) async {
-    try {
-      await _repository.reject(requestId);
-    } on RequestsFailure catch (failure) {
-      if (failure.kind == RequestsFailureKind.conflict) {
-        await _reload(requestId);
-      }
-      rethrow;
-    }
+    await _changeStatus(requestId, _repository.reject);
     if (!ref.mounted) return;
     final now = ref.read(clockProvider)().toUtc();
     _update(
       requestId,
       (r) => r.copyWith(status: RequestStatus.rejected, seenAt: r.seenAt ?? now),
     );
+  }
+
+  /// Deshace el rechazo: el pedido vuelve a `new` y, como ya se había abierto,
+  /// queda en "Viste". Errores como en [reject].
+  Future<void> undoReject(String requestId) async {
+    await _changeStatus(requestId, _repository.undoReject);
+    if (!ref.mounted) return;
+    _update(
+      requestId,
+      (r) => r.copyWith(status: RequestStatus.newRequest),
+    );
+  }
+
+  Future<void> _changeStatus(
+    String requestId,
+    Future<void> Function(String id) change,
+  ) async {
+    try {
+      await change(requestId);
+    } on RequestsFailure catch (failure) {
+      if (failure.kind == RequestsFailureKind.conflict) {
+        await _reload(requestId);
+      }
+      rethrow;
+    }
   }
 
   Future<void> _reload(String requestId) async {

@@ -77,3 +77,56 @@ class InMemoryAsyncStorage extends GotrueAsyncStorage {
 /// Cuerpo JSON de un pedido HTTP.
 Map<String, dynamic> jsonBodyOf(http.Request request) =>
     jsonDecode(request.body) as Map<String, dynamic>;
+
+/// JWT con la forma de los de Supabase (firma falsa, vence en 2100).
+String fakeJwt(String userId) {
+  String part(Map<String, Object> json) =>
+      base64Url.encode(utf8.encode(jsonEncode(json))).replaceAll('=', '');
+  final header = part({'alg': 'HS256', 'typ': 'JWT'});
+  final payload = part({
+    'sub': userId,
+    'role': 'authenticated',
+    'aud': 'authenticated',
+    'exp': 4102444800,
+  });
+  return '$header.$payload.firma';
+}
+
+/// Usuario de GoTrue (como lo devuelven /auth/v1/verify y /auth/v1/user).
+Map<String, Object?> fakeUserJson(String userId, String email) => {
+  'id': userId,
+  'aud': 'authenticated',
+  'role': 'authenticated',
+  'email': email,
+  'app_metadata': <String, Object>{},
+  'user_metadata': <String, Object>{},
+  'created_at': '2026-10-19T10:00:00Z',
+};
+
+/// Sesión de GoTrue (respuesta de /auth/v1/verify).
+Map<String, Object?> fakeSessionJson(String userId, String email) => {
+  'access_token': fakeJwt(userId),
+  'token_type': 'bearer',
+  'expires_in': 3600,
+  'refresh_token': 'refresh',
+  'user': fakeUserJson(userId, email),
+};
+
+/// Abre una sesión en el cliente de [server] verificando un código simulado
+/// y olvida esos pedidos (los tests ven solo los suyos).
+Future<void> signInFake(
+  FakeSupabaseHttp server, {
+  String userId = 'user-1',
+  String email = 'evelyn@example.test',
+}) async {
+  final handler = server.handler;
+  server.handler = (_) async => jsonResponse(fakeSessionJson(userId, email));
+  await server.client.auth.verifyOTP(
+    email: email,
+    token: '123456',
+    type: OtpType.email,
+  );
+  server
+    ..handler = handler
+    ..requests.clear();
+}

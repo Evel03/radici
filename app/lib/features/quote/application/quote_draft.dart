@@ -2,7 +2,7 @@
 // distingue pranzo de cena, algo que el motor no necesita (solo cuenta comidas
 // por día) pero el pedido sí (`requests.meals text[]`, SPEC.md §4).
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:mestolo/features/quote/domain/quote.dart';
+import 'package:radici/features/quote/domain/quote.dart';
 
 part 'quote_draft.freezed.dart';
 

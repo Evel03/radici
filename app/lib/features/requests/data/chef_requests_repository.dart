@@ -1,12 +1,13 @@
-// Pedidos de la cocinera en Supabase: lectura, "visto", rechazo y aviso en
-// tiempo real de pedidos nuevos (contrato docs/contracts/public-request.md §7).
+// Pedidos de la cocinera en Supabase: lectura, "visto", rechazo (y deshacerlo)
+// y aviso en tiempo real de pedidos nuevos (contrato
+// docs/contracts/public-request.md §7).
 // RLS (M1) ya limita las filas a las de su chef_id; el filtro explícito por
 // chef_id es para el índice y para cuando haya más de una cocinera.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/core/supabase_client.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:radici/core/supabase_client.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Cuántos pedidos se cargan (los más recientes). Sobra para la bandeja y la
@@ -29,6 +30,11 @@ abstract interface class ChefRequestsRepository {
   /// Pasa el pedido de `new` a `rejected`. Lanza [RequestsFailure]
   /// ([RequestsFailureKind.conflict] si ya no estaba en `new`).
   Future<void> reject(String id);
+
+  /// Deshace el rechazo: pasa el pedido de `rejected` a `new` (la base lo
+  /// permite desde la app). Lanza [RequestsFailure]
+  /// ([RequestsFailureKind.conflict] si ya no estaba en `rejected`).
+  Future<void> undoReject(String id);
 
   /// Eventos en tiempo real: pedidos insertados para [chefId] y estado de la
   /// conexión. Al cancelar la suscripción se cierra el canal.
@@ -72,7 +78,8 @@ enum RequestsFailureKind {
   /// El pedido no existe o no se puede ver.
   notFound,
 
-  /// El pedido cambió de estado mientras tanto (no se pudo rechazar).
+  /// El pedido cambió de estado mientras tanto (no se pudo rechazar ni
+  /// deshacer el rechazo).
   conflict,
 }
 
@@ -157,12 +164,24 @@ class SupabaseChefRequestsRepository implements ChefRequestsRepository {
   });
 
   @override
-  Future<void> reject(String id) => _guard(() async {
+  Future<void> reject(String id) =>
+      _changeStatus(id, from: 'new', to: 'rejected');
+
+  @override
+  Future<void> undoReject(String id) =>
+      _changeStatus(id, from: 'rejected', to: 'new');
+
+  /// Cambia el estado solo si todavía es [from]; si no, conflicto.
+  Future<void> _changeStatus(
+    String id, {
+    required String from,
+    required String to,
+  }) => _guard(() async {
     final updated = await _client
         .from('requests')
-        .update({'status': 'rejected'})
+        .update({'status': to})
         .eq('id', id)
-        .eq('status', 'new')
+        .eq('status', from)
         .select('id');
     if (updated.isEmpty) {
       throw const RequestsFailure(RequestsFailureKind.conflict);
@@ -238,6 +257,9 @@ class _NoBackendRequestsRepository implements ChefRequestsRepository {
 
   @override
   Future<void> reject(String id) => Future.error(_failure);
+
+  @override
+  Future<void> undoReject(String id) => Future.error(_failure);
 
   @override
   Stream<RequestsRealtimeEvent> watchNewRequests({required String chefId}) =>

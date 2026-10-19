@@ -3,9 +3,9 @@
 // reconectar) y lo muestra NewRequestAlertListener.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:mestolo/features/auth/application/session_controller.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
-import 'package:mestolo/features/requests/domain/inbox.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/inbox.dart';
 
 part 'new_request_alert.freezed.dart';
 

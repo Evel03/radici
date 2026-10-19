@@ -1,4 +1,4 @@
-name: mestolo
+name: radici
 description: "Cucina di casa a domicilio"
 # Paquete privado: nunca se publica en pub.dev.
 publish_to: 'none'
@@ -19,6 +19,10 @@ dependencies:
   go_router: ^18.1.0
   intl: ^0.20.3
   json_annotation: ^4.12.0
+  # Idioma de la interfaz guardado en el dispositivo: un arranque en frío lo
+  # muestra desde el primer cuadro, antes de leer el perfil. Ya venía con
+  # supabase_flutter (guarda ahí la sesión).
+  shared_preferences: ^2.5.6
   supabase_flutter: ^2.18.3
   # WhatsApp (wa.me), llamada (tel:) y email (mailto:) desde el detalle del pedido.
   url_launcher: ^6.3.3
@@ -33,6 +37,8 @@ dev_dependencies:
   http: ^1.6.0
   json_serializable: ^6.14.1
   mocktail: ^1.0.5
+  # InMemorySharedPreferencesAsync: prueba la caché del idioma sin plugin.
+  shared_preferences_platform_interface: ^2.4.2
   # WebSocket falso: prueba el canal de Realtime (suscripción, avisos y
   # reconexión) con el cliente real de Supabase, sin servidor.
   web_socket: ^1.0.1

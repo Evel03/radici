@@ -2,15 +2,15 @@
 // franja (mañana, tarde, indistinto), y la lista "senza data".
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/core/rome_time.dart';
-import 'package:mestolo/features/requests/application/agenda_controller.dart';
-import 'package:mestolo/features/requests/application/chef_inbox_controller.dart';
-import 'package:mestolo/features/requests/domain/agenda.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
-import 'package:mestolo/features/requests/presentation/chef_shell.dart';
-import 'package:mestolo/features/requests/presentation/inbox_screen.dart';
-import 'package:mestolo/features/requests/presentation/request_labels.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/requests/application/agenda_controller.dart';
+import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/domain/agenda.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/chef_shell.dart';
+import 'package:radici/features/requests/presentation/inbox_screen.dart';
+import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 class AgendaScreen extends ConsumerWidget {
   const AgendaScreen({super.key});

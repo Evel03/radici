@@ -2,8 +2,8 @@
 // La sesión la persiste supabase_flutter (SharedPreferences en móvil,
 // localStorage en la web) y se recupera sola al arrancar.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/core/supabase_client.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
+import 'package:radici/core/supabase_client.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 abstract interface class AuthRepository {

@@ -1,8 +1,8 @@
 // Los mensajes al cliente van en SU idioma (requests.locale), no en el del
 // dispositivo de Evelyn.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/features/requests/application/contact_actions.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/application/contact_actions.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 
 import '../../../support/request_fixtures.dart';
 
@@ -14,12 +14,12 @@ void main() {
     expect(links.whatsApp!.path, '/393331234567');
     expect(
       links.whatsApp!.queryParameters['text'],
-      'Ciao Giulia, sono Evelyn di Mestolo. Ho ricevuto la tua richiesta e ti '
+      'Ciao Giulia, sono Evelyn di Radici. Ho ricevuto la tua richiesta e ti '
       'scrivo per organizzarci.',
     );
     expect(links.call.toString(), 'tel:+393331234567');
     expect(links.email!.path, 'giulia@example.test');
-    expect(links.email!.queryParameters['subject'], 'La tua richiesta a Mestolo');
+    expect(links.email!.queryParameters['subject'], 'La tua richiesta a Radici');
     expect(links.email!.queryParameters['body'], 'Ciao Giulia,\n\n');
   });
 
@@ -35,10 +35,10 @@ void main() {
     expect(links.whatsApp!.path, '/34612345678');
     expect(
       links.whatsApp!.queryParameters['text'],
-      'Hola Lucía, soy Evelyn de Mestolo. Recibí tu solicitud y te escribo '
+      'Hola Lucía, soy Evelyn de Radici. Recibí tu solicitud y te escribo '
       'para organizarnos.',
     );
-    expect(links.email!.queryParameters['subject'], 'Tu solicitud a Mestolo');
+    expect(links.email!.queryParameters['subject'], 'Tu solicitud a Radici');
     expect(links.email!.queryParameters['body'], 'Hola Lucía:\n\n');
   });
 
@@ -49,9 +49,9 @@ void main() {
     );
     expect(
       links.whatsApp!.queryParameters['text'],
-      startsWith('Hi John, this is Evelyn from Mestolo.'),
+      startsWith('Hi John, this is Evelyn from Radici.'),
     );
-    expect(links.email!.queryParameters['subject'], 'Your request to Mestolo');
+    expect(links.email!.queryParameters['subject'], 'Your request to Radici');
   });
 
   test('sin teléfono válido no hay WhatsApp ni llamada; sin email, no hay email', () {

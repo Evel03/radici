@@ -1,10 +1,10 @@
 // Login en dos pasos (email → código) con el repositorio simulado (mocktail).
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/features/auth/application/login_controller.dart';
-import 'package:mestolo/features/auth/data/auth_repository.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:radici/features/auth/application/login_controller.dart';
+import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
 
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';

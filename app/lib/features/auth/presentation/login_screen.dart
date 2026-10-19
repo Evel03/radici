@@ -1,12 +1,14 @@
 // Login con código por email (dos pasos). Solo muestra el estado de
 // LoginController y le pasa lo que escribe el usuario: no llama a Supabase.
+// Arriba, la marca: en la web (/gestione/) es la primera pantalla.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/core/platform.dart';
-import 'package:mestolo/features/auth/application/login_controller.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/brand_mark.dart';
+import 'package:radici/core/platform.dart';
+import 'package:radici/features/auth/application/login_controller.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
@@ -30,16 +32,48 @@ class LoginScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 480),
-              child: AutofillGroup(
-                child: switch (step) {
-                  LoginStep.email => const _EmailStep(),
-                  LoginStep.code => const _CodeStep(),
-                },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _BrandHeader(),
+                  const SizedBox(height: 32),
+                  AutofillGroup(
+                    child: switch (step) {
+                      LoginStep.email => const _EmailStep(),
+                      LoginStep.code => const _CodeStep(),
+                    },
+                  ),
+                ],
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Marca y nombre de la app.
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      key: const ValueKey('login-brand'),
+      children: [
+        const RadiciMark(size: 72),
+        const SizedBox(height: 12),
+        Text(
+          AppLocalizations.of(context).appTitle,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.headlineMedium?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }

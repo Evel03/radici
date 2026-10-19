@@ -2,9 +2,9 @@
 // abrirla, desde cualquier pantalla de la cocinera.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/features/requests/data/chef_requests_repository.dart';
-import 'package:mestolo/features/requests/presentation/agenda_screen.dart';
-import 'package:mestolo/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/features/requests/data/chef_requests_repository.dart';
+import 'package:radici/features/requests/presentation/agenda_screen.dart';
+import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';

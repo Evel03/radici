@@ -1,8 +1,8 @@
 // Lectura de una fila de `requests` (con el cliente embebido) tal como la
 // devuelve PostgREST.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/core/rome_time.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 
 import '../../../support/request_fixtures.dart';
 

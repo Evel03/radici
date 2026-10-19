@@ -7,8 +7,8 @@
 // manda a analytics (SPEC §6). Por eso los modelos no imprimen su contenido en
 // toString (ver `@Freezed(toStringOverride: false)` más abajo).
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:mestolo/core/phone.dart';
-import 'package:mestolo/core/rome_time.dart';
+import 'package:radici/core/phone.dart';
+import 'package:radici/core/rome_time.dart';
 
 part 'chef_request.freezed.dart';
 part 'chef_request.g.dart';
@@ -17,7 +17,8 @@ part 'chef_request.g.dart';
 enum RequestType { week, extra, change }
 
 /// `request_status` (SPEC §5.3). En la app la cocinera solo pasa de `new` a
-/// `rejected`; el resto lo cambian las Edge Functions.
+/// `rejected` y deshace ese rechazo (`rejected` → `new`); el resto lo cambian
+/// las Edge Functions (la base lo controla en requests_guard_update).
 enum RequestStatus {
   @JsonValue('new')
   newRequest,
@@ -247,6 +248,9 @@ abstract class ChefRequest with _$ChefRequest {
 
   /// Solo un pedido nuevo se puede rechazar desde la app (contrato §3).
   bool get canReject => status == RequestStatus.newRequest;
+
+  /// Un rechazo de la cocinera se puede deshacer (vuelve a `new`).
+  bool get canUndoReject => status == RequestStatus.rejected;
 
   /// Cuenta para la agenda: pedidos en curso (no rechazados, vencidos ni
   /// cerrados).

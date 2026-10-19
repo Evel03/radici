@@ -4,12 +4,16 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:mestolo/features/auth/data/account_repository.dart';
-import 'package:mestolo/features/auth/data/auth_repository.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
+import 'package:radici/core/app_language.dart';
+import 'package:radici/features/auth/data/account_repository.dart';
+import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
 
 part 'session_controller.freezed.dart';
 
+// En las sesiones con cuenta cargada, `language` es el idioma del perfil al
+// cargarla. El idioma vigente (que la cocinera puede cambiar después) lo
+// lleva languageControllerProvider.
 @freezed
 sealed class SessionState with _$SessionState {
   /// Sin sesión.
@@ -19,11 +23,15 @@ sealed class SessionState with _$SessionState {
   const factory SessionState.loading(AppUser user) = SessionLoading;
 
   /// Cocinera: ve la bandeja y la agenda.
-  const factory SessionState.chef(AppUser user, ChefAccount chef) =
-      ChefSession;
+  const factory SessionState.chef(
+    AppUser user,
+    ChefAccount chef, {
+    AppLanguage? language,
+  }) = ChefSession;
 
   /// Cualquier otro usuario: área de clientes (en preparación).
-  const factory SessionState.client(AppUser user) = ClientSession;
+  const factory SessionState.client(AppUser user, {AppLanguage? language}) =
+      ClientSession;
 
   /// Hay sesión pero no se pudo leer la cuenta.
   const factory SessionState.failed(AppUser user, AccountFailureKind kind) =
@@ -40,6 +48,15 @@ final currentChefProvider = Provider<ChefAccount?>(
     _ => null,
   },
 );
+
+/// Usuario de [session], o null sin sesión.
+AppUser? sessionUserOf(SessionState session) => switch (session) {
+  SignedOut() => null,
+  SessionLoading(:final user) ||
+  ChefSession(:final user) ||
+  ClientSession(:final user) ||
+  SessionFailed(:final user) => user,
+};
 
 class SessionController extends Notifier<SessionState> {
   /// Cada lectura de cuenta lleva un número: si el usuario cambia mientras
@@ -68,13 +85,7 @@ class SessionController extends Notifier<SessionState> {
   }
 
   /// Usuario de la sesión actual, o null.
-  AppUser? get _currentUser => switch (state) {
-    SignedOut() => null,
-    SessionLoading(:final user) ||
-    ChefSession(:final user) ||
-    ClientSession(:final user) ||
-    SessionFailed(:final user) => user,
-  };
+  AppUser? get _currentUser => sessionUserOf(state);
 
   void _onUserChanged(AppUser? user) {
     if (!ref.mounted) return;
@@ -97,8 +108,8 @@ class SessionController extends Notifier<SessionState> {
           .fetchAccount(user.id);
       final chef = account.chef;
       next = account.role == AccountRole.chef && chef != null
-          ? SessionState.chef(user, chef)
-          : SessionState.client(user);
+          ? SessionState.chef(user, chef, language: account.language)
+          : SessionState.client(user, language: account.language);
     } on AccountFailure catch (failure) {
       next = SessionState.failed(user, failure.kind);
     } on Object {

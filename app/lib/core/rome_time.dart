@@ -118,3 +118,13 @@ DateTime romeWallClock(DateTime instant) {
 /// Fecha de hoy en Europe/Rome.
 CalendarDate romeToday(DateTime now) =>
     CalendarDate.fromDateTime(romeWallClock(now));
+
+/// Instante (UTC) en que empieza [date] en Roma: su medianoche.
+///
+/// El cambio de hora es a la 01:00 UTC (las 2:00 o 3:00 en Roma), nunca a
+/// medianoche: el desfase de las 00:00 UTC de ese día es el de la medianoche
+/// de Roma.
+DateTime romeStartOfDay(CalendarDate date) {
+  final utcMidnight = DateTime.utc(date.year, date.month, date.day);
+  return utcMidnight.subtract(romeUtcOffset(utcMidnight));
+}

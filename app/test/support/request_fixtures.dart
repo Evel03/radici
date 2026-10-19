@@ -1,7 +1,7 @@
 // Pedidos y filas de ejemplo para los tests. Datos inventados.
-import 'package:mestolo/core/rome_time.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 
 const String testChefId = '11111111-1111-4111-8111-111111111111';
 const String testClientId = '22222222-2222-4222-8222-222222222222';

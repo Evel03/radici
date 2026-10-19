@@ -2,8 +2,8 @@
 // columnas, filtros, orden y manejo de errores.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:mestolo/features/requests/data/chef_requests_repository.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/data/chef_requests_repository.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../support/request_fixtures.dart';
@@ -187,6 +187,54 @@ void main() {
       );
       await expectLater(
         repository.reject('req-1'),
+        throwsA(
+          isA<RequestsFailure>().having(
+            (f) => f.kind,
+            'kind',
+            RequestsFailureKind.unavailable,
+          ),
+        ),
+      );
+    });
+  });
+
+  group('undoReject', () {
+    test('PATCH status=new solo desde rejected', () async {
+      server.handler = (_) async => jsonResponse([{'id': 'req-1'}]);
+
+      await repository.undoReject('req-1');
+
+      final request = server.last;
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/rest/v1/requests');
+      expect(request.url.queryParameters['id'], 'eq.req-1');
+      expect(request.url.queryParameters['status'], 'eq.rejected');
+      expect(request.url.queryParameters['select'], 'id');
+      // Solo el estado: "visto" y los datos del pedido no se tocan.
+      expect(jsonBodyOf(request), {'status': 'new'});
+    });
+
+    test('si ya no estaba rechazado → conflict', () async {
+      server.handler = (_) async => jsonResponse(<Object>[]);
+      await expectLater(
+        repository.undoReject('req-1'),
+        throwsA(
+          isA<RequestsFailure>().having(
+            (f) => f.kind,
+            'kind',
+            RequestsFailureKind.conflict,
+          ),
+        ),
+      );
+    });
+
+    test('la base no lo permite (42501) → unavailable', () async {
+      server.handler = (_) async => jsonResponse(
+        {'message': 'request_status_change_not_allowed', 'code': '42501'},
+        status: 403,
+      );
+      await expectLater(
+        repository.undoReject('req-1'),
         throwsA(
           isA<RequestsFailure>().having(
             (f) => f.kind,

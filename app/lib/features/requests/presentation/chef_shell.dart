@@ -4,9 +4,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mestolo/features/auth/application/session_controller.dart';
-import 'package:mestolo/features/requests/application/chef_inbox_controller.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/routes.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 /// Ancho desde el que se usa el riel lateral en lugar de la barra inferior.
 const double wideLayoutBreakpoint = 840;
@@ -111,7 +112,7 @@ class _CountBadge extends StatelessWidget {
   }
 }
 
-/// Menú de la cuenta en la barra superior: email y "Esci".
+/// Menú de la cuenta en la barra superior: email, Impostazioni y "Esci".
 class ChefAccountMenuButton extends ConsumerWidget {
   const ChefAccountMenuButton({super.key});
 
@@ -132,7 +133,8 @@ class ChefAccountMenuButton extends ConsumerWidget {
       key: const ValueKey('account-menu'),
       tooltip: l10n.accountMenu,
       icon: const Icon(Icons.account_circle_outlined),
-      itemBuilder: (context) => [
+      // `context` es el del botón (sigue montado al cerrarse el menú).
+      itemBuilder: (_) => [
         if (email != null || chefName != null)
           PopupMenuItem<void>(
             enabled: false,
@@ -142,6 +144,16 @@ class ChefAccountMenuButton extends ConsumerWidget {
               subtitle: email == null ? null : Text(l10n.signedInAs(email)),
             ),
           ),
+        // El menú se cierra antes de onTap: se puede abrir otra ruta.
+        PopupMenuItem<void>(
+          key: const ValueKey('account-settings'),
+          onTap: () => context.push(AppRoutes.settings),
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.settings_outlined),
+            title: Text(l10n.settingsTitle),
+          ),
+        ),
         PopupMenuItem<void>(
           key: const ValueKey('account-logout'),
           onTap: () =>

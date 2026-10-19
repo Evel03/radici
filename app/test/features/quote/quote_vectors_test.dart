@@ -1,7 +1,7 @@
 // La copia Dart del motor tiene que pasar los mismos vectores que quote.ts
 // (supabase/functions/_shared/quote_vectors.json, SPEC.md §5.1).
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/features/quote/domain/quote.dart';
+import 'package:radici/features/quote/domain/quote.dart';
 
 import '../../support/repo_files.dart';
 

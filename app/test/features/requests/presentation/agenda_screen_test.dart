@@ -2,10 +2,10 @@
 // "Hoy" en los tests: lunes 19/10/2026 (testNow).
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/core/rome_time.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
-import 'package:mestolo/features/requests/presentation/agenda_screen.dart';
-import 'package:mestolo/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/agenda_screen.dart';
+import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
@@ -132,6 +132,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('2 nov – 8 nov 2026'), findsOneWidget);
     expect(tile('november'), findsOneWidget);
+  });
+
+  testWidgets('a la medianoche de Roma "hoy" pasa al día siguiente sin reabrir', (
+    tester,
+  ) async {
+    // 23:59:30 del lunes 19/10 en Roma.
+    var now = DateTime.utc(2026, 10, 19, 21, 59, 30);
+    await pumpChefApp(
+      tester,
+      requests: sample(),
+      location: '/agenda',
+      size: const Size(400, 2000),
+      clock: () => now,
+    );
+    FontWeight? weightOfDay(String iso, String number) => tester
+        .widget<Text>(
+          find.descendant(of: day(iso), matching: find.text(number)),
+        )
+        .style
+        ?.fontWeight;
+
+    expect(find.text('lunedì 19 ottobre 2026'), findsOneWidget);
+    expect(weightOfDay('2026-10-19', '19'), FontWeight.w700);
+
+    now = now.add(const Duration(seconds: 30));
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pumpAndSettle();
+
+    expect(find.text('martedì 20 ottobre 2026'), findsOneWidget);
+    expect(weightOfDay('2026-10-20', '20'), FontWeight.w700);
+    expect(weightOfDay('2026-10-19', '19'), isNot(FontWeight.w700));
   });
 
   testWidgets('"senza data" lista los pedidos sin fecha', (tester) async {

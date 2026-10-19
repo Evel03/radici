@@ -2,14 +2,15 @@
 // y rechazo, con repositorios falsos.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/core/clock.dart';
-import 'package:mestolo/features/auth/application/session_controller.dart';
-import 'package:mestolo/features/auth/data/account_repository.dart';
-import 'package:mestolo/features/auth/data/auth_repository.dart';
-import 'package:mestolo/features/requests/application/chef_inbox_controller.dart';
-import 'package:mestolo/features/requests/application/new_request_alert.dart';
-import 'package:mestolo/features/requests/data/chef_requests_repository.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:radici/core/clock.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/auth/data/account_repository.dart';
+import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/application/new_request_alert.dart';
+import 'package:radici/features/requests/data/chef_requests_repository.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/inbox.dart';
 
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';
@@ -231,6 +232,70 @@ void main() {
       await start();
       await expectLater(controller().reject('fresh'), throwsA(isA<RequestsFailure>()));
       expect(requests().firstWhere((r) => r.id == 'fresh').status, RequestStatus.newRequest);
+    });
+  });
+
+  group('deshacer el rechazo', () {
+    final rejected = buildRequest(
+      id: 'rejected',
+      status: RequestStatus.rejected,
+      seenAt: DateTime.utc(2026, 10, 18, 10),
+      createdAt: DateTime.utc(2026, 10, 18, 9),
+    );
+
+    setUp(() => repository = FakeChefRequestsRepository([older, fresh, rejected]));
+
+    test('vuelve a new y, como ya se había abierto, queda en Viste', () async {
+      await start();
+      await controller().undoReject('rejected');
+      final restored = requests().firstWhere((r) => r.id == 'rejected');
+      expect(restored.status, RequestStatus.newRequest);
+      expect(restored.seenAt, DateTime.utc(2026, 10, 18, 10));
+      expect(inboxTabOf(restored), InboxTab.seen);
+      expect(repository.undoneRejects, ['rejected']);
+      expect(alert(), isNull, reason: 'no es un pedido que acaba de llegar');
+    });
+
+    test('rechazar y deshacer deja el pedido como estaba (visto)', () async {
+      await start();
+      await controller().reject('fresh');
+      await controller().undoReject('fresh');
+      final request = requests().firstWhere((r) => r.id == 'fresh');
+      expect(request.status, RequestStatus.newRequest);
+      expect(request.seenAt, testNow);
+      expect(container.read(newRequestsCountProvider), 0);
+    });
+
+    test('si ya no estaba rechazado, se actualiza y se avisa el conflicto', () async {
+      await start();
+      repository.requests['rejected'] = rejected.copyWith(status: RequestStatus.newRequest);
+      await expectLater(
+        controller().undoReject('rejected'),
+        throwsA(
+          isA<RequestsFailure>().having(
+            (f) => f.kind,
+            'kind',
+            RequestsFailureKind.conflict,
+          ),
+        ),
+      );
+      expect(
+        requests().firstWhere((r) => r.id == 'rejected').status,
+        RequestStatus.newRequest,
+      );
+    });
+
+    test('error de red: sigue rechazado', () async {
+      repository.failUndoReject = true;
+      await start();
+      await expectLater(
+        controller().undoReject('rejected'),
+        throwsA(isA<RequestsFailure>()),
+      );
+      expect(
+        requests().firstWhere((r) => r.id == 'rejected').status,
+        RequestStatus.rejected,
+      );
     });
   });
 

@@ -1,7 +1,7 @@
 // Cálculos de la agenda: cuadrícula del mes, días de la semana y pedidos por
 // fecha preferida. Dart puro. Las semanas empiezan el lunes (Italia).
-import 'package:mestolo/core/rome_time.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 
 /// Semanas (lunes a domingo) que cubren el mes de [month]. Incluye los días
 /// del mes anterior y del siguiente que completan la primera y la última

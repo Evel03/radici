@@ -2,9 +2,9 @@
 // error si no se pudo (con reintentar y salir).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/features/auth/application/session_controller.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 class SessionScreen extends ConsumerWidget {
   const SessionScreen({super.key});

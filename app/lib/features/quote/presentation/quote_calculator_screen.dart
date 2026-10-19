@@ -2,10 +2,10 @@
 // Solo muestra lo que dan los providers; el cálculo vive en el motor.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/core/money.dart';
-import 'package:mestolo/features/quote/application/quote_draft.dart';
-import 'package:mestolo/features/quote/application/quote_providers.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/money.dart';
+import 'package:radici/features/quote/application/quote_draft.dart';
+import 'package:radici/features/quote/application/quote_providers.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 class QuoteCalculatorScreen extends StatelessWidget {
   const QuoteCalculatorScreen({super.key});

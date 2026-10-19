@@ -6,11 +6,11 @@
 // tapadas quedan en pausa y sus providers no reciben avisos).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/core/router.dart';
-import 'package:mestolo/core/routes.dart';
-import 'package:mestolo/features/requests/application/chef_inbox_controller.dart';
-import 'package:mestolo/features/requests/application/new_request_alert.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/router.dart';
+import 'package:radici/core/routes.dart';
+import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/application/new_request_alert.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 class NewRequestAlertListener extends ConsumerWidget {
   const NewRequestAlertListener({super.key, required this.child});

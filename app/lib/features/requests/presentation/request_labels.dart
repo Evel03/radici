@@ -2,9 +2,9 @@
 // formatos de fecha y hora de Roma. Solo presentación: los textos salen del ARB.
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:mestolo/core/rome_time.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 extension RequestLabels on AppLocalizations {
   String requestType(RequestType type) => switch (type) {

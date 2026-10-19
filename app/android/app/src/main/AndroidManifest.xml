@@ -2,7 +2,7 @@
     <!-- Supabase: el build release también necesita acceso a internet. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="Mestolo"
+        android:label="Radici"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

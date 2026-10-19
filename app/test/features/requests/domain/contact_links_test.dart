@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/features/requests/domain/contact_links.dart';
+import 'package:radici/features/requests/domain/contact_links.dart';
 
 void main() {
   group('WhatsApp (wa.me)', () {
@@ -47,13 +47,13 @@ void main() {
     test('mailto con asunto y cuerpo codificados (sin "+" por espacios)', () {
       final uri = emailUri(
         email: 'giulia@example.test',
-        subject: 'La tua richiesta a Mestolo',
+        subject: 'La tua richiesta a Radici',
         body: 'Ciao Giulia,\n\n',
       );
       expect(
         uri.toString(),
         'mailto:giulia@example.test'
-        '?subject=La%20tua%20richiesta%20a%20Mestolo'
+        '?subject=La%20tua%20richiesta%20a%20Radici'
         '&body=Ciao%20Giulia%2C%0A%0A',
       );
     });

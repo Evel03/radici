@@ -1,9 +1,9 @@
 // Bandeja: pestañas, contador, lista y navegación al detalle.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
-import 'package:mestolo/features/requests/presentation/inbox_screen.dart';
-import 'package:mestolo/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/inbox_screen.dart';
+import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';

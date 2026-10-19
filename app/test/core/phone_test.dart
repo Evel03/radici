@@ -1,7 +1,7 @@
 // La copia Dart de normalizePhone tiene que dar lo mismo que la de TS
 // (supabase/functions/_shared/public_request.ts).
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/core/phone.dart';
+import 'package:radici/core/phone.dart';
 
 import '../support/repo_files.dart';
 

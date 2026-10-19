@@ -1,11 +1,13 @@
-// Arranque: entorno, Supabase (si está configurado), licencias y ProviderScope.
+// Arranque: entorno, Supabase (si está configurado), idioma guardado,
+// licencias y ProviderScope.
 // Correr con: flutter run --dart-define-from-file=env/dev.json
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/app.dart';
-import 'package:mestolo/core/env.dart';
+import 'package:radici/app.dart';
+import 'package:radici/core/env.dart';
+import 'package:radici/features/settings/data/language_cache.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 Future<void> main() async {
@@ -31,8 +33,22 @@ Future<void> main() async {
 
   runApp(
     ProviderScope(
-      overrides: [appEnvProvider.overrideWithValue(env)],
-      child: const MestoloApp(),
+      overrides: [
+        appEnvProvider.overrideWithValue(env),
+        languageCacheProvider.overrideWithValue(await _loadLanguageCache()),
+      ],
+      child: const RadiciApp(),
     ),
   );
+}
+
+/// Idioma guardado de quien tiene la sesión: se lee antes del primer cuadro
+/// para que la app arranque ya en ese idioma. Si el almacenamiento falla, la
+/// app sigue con la caché en memoria (el idioma llega con el perfil).
+Future<LanguageCache> _loadLanguageCache() async {
+  try {
+    return await SharedPreferencesLanguageCache.load();
+  } on Object {
+    return MemoryLanguageCache();
+  }
 }

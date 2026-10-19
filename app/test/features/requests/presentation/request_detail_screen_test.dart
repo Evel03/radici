@@ -2,8 +2,8 @@
 // rechazo). Verifica los links exactos que se abren.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/features/requests/domain/chef_request.dart';
-import 'package:mestolo/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
@@ -79,7 +79,7 @@ void main() {
 
     expect(app.launcher.launched.single.toString(),
       'https://wa.me/34612345678?text='
-      'Hola%20Luc%C3%ADa%2C%20soy%20Evelyn%20de%20Mestolo.%20Recib%C3%AD%20tu%20'
+      'Hola%20Luc%C3%ADa%2C%20soy%20Evelyn%20de%20Radici.%20Recib%C3%AD%20tu%20'
       'solicitud%20y%20te%20escribo%20para%20organizarnos.',
     );
   });
@@ -98,7 +98,7 @@ void main() {
     expect(
       app.launcher.launched.single.toString(),
       'mailto:giulia@example.test'
-      '?subject=La%20tua%20richiesta%20a%20Mestolo'
+      '?subject=La%20tua%20richiesta%20a%20Radici'
       '&body=Ciao%20Giulia%2C%0A%0A',
     );
   });
@@ -168,6 +168,71 @@ void main() {
         buildRequest(status: RequestStatus.rejected, seenAt: testNow),
       );
       expect(find.byKey(const ValueKey('action-reject')), findsNothing);
+    });
+  });
+
+  group('deshacer el rechazo', () {
+    ChefRequest rejected() =>
+        buildRequest(status: RequestStatus.rejected, seenAt: testNow);
+
+    testWidgets('pide confirmación y vuelve a Vista', (tester) async {
+      final app = await openDetail(tester, rejected());
+      expect(find.text('Rifiutata'), findsOneWidget);
+
+      await tapAction(tester, 'action-undo-reject');
+      expect(find.text('Ripristinare la richiesta di Giulia Rossi?'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('undo-reject-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(app.requests.undoneRejects, ['req-1']);
+      expect(find.text('Richiesta ripristinata: è tra le viste.'), findsOneWidget);
+      expect(find.text('Vista'), findsOneWidget);
+      expect(find.byKey(const ValueKey('action-undo-reject')), findsNothing);
+      expect(find.byKey(const ValueKey('action-reject')), findsOneWidget);
+    });
+
+    testWidgets('cancelar no cambia nada', (tester) async {
+      final app = await openDetail(tester, rejected());
+      await tapAction(tester, 'action-undo-reject');
+      await tester.tap(find.byKey(const ValueKey('undo-reject-cancel')));
+      await tester.pumpAndSettle();
+      expect(app.requests.undoneRejects, isEmpty);
+      expect(find.text('Rifiutata'), findsOneWidget);
+    });
+
+    testWidgets('error: avisa y sigue rechazada', (tester) async {
+      final app = await openDetail(tester, rejected());
+      app.requests.failUndoReject = true;
+      await tapAction(tester, 'action-undo-reject');
+      await tester.tap(find.byKey(const ValueKey('undo-reject-confirm')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Non è stato possibile ripristinare la richiesta. Riprova.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('action-undo-reject')), findsOneWidget);
+    });
+
+    testWidgets('rechazar por error y deshacerlo desde el mismo detalle', (
+      tester,
+    ) async {
+      final app = await openDetail(tester, buildRequest());
+      await tapAction(tester, 'action-reject');
+      await tester.tap(find.byKey(const ValueKey('reject-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.text('Rifiutata'), findsOneWidget);
+
+      await tapAction(tester, 'action-undo-reject');
+      await tester.tap(find.byKey(const ValueKey('undo-reject-confirm')));
+      await tester.pumpAndSettle();
+      expect(app.requests.rejected, ['req-1']);
+      expect(app.requests.undoneRejects, ['req-1']);
+      expect(find.text('Vista'), findsOneWidget);
+    });
+
+    testWidgets('un pedido nuevo no lo ofrece', (tester) async {
+      await openDetail(tester, buildRequest());
+      expect(find.byKey(const ValueKey('action-undo-reject')), findsNothing);
     });
   });
 

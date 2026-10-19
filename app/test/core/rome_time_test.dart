@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/core/rome_time.dart';
+import 'package:radici/core/rome_time.dart';
 
 void main() {
   group('romeToday (mismos casos que public_request.test.ts)', () {
@@ -35,6 +35,23 @@ void main() {
         romeUtcOffset(DateTime.utc(2026, 10, 25, 1)),
         const Duration(hours: 1),
       );
+    });
+
+    test('romeStartOfDay: medianoche de Roma, también los días del cambio de hora', () {
+      // Verano (UTC+2) e invierno (UTC+1).
+      expect(romeStartOfDay(CalendarDate(2026, 10, 20)), DateTime.utc(2026, 10, 19, 22));
+      expect(romeStartOfDay(CalendarDate(2026, 12, 25)), DateTime.utc(2026, 12, 24, 23));
+      // El domingo del cambio empieza con el desfase de antes; el lunes, con el nuevo.
+      expect(romeStartOfDay(CalendarDate(2026, 3, 29)), DateTime.utc(2026, 3, 28, 23));
+      expect(romeStartOfDay(CalendarDate(2026, 3, 30)), DateTime.utc(2026, 3, 29, 22));
+      expect(romeStartOfDay(CalendarDate(2026, 10, 25)), DateTime.utc(2026, 10, 24, 22));
+      expect(romeStartOfDay(CalendarDate(2026, 10, 26)), DateTime.utc(2026, 10, 25, 23));
+      // Coherente con romeToday: justo antes es el día anterior.
+      for (final date in [CalendarDate(2026, 3, 29), CalendarDate(2026, 10, 26)]) {
+        final start = romeStartOfDay(date);
+        expect(romeToday(start), date);
+        expect(romeToday(start.subtract(const Duration(milliseconds: 1))), date.addDays(-1));
+      }
     });
 
     test('la hora de pared respeta el desfase', () {

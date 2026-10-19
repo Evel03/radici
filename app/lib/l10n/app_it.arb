@@ -1,9 +1,9 @@
 {
   "@@locale": "it",
 
-  "appTitle": "Mestolo",
+  "appTitle": "Radici",
   "@appTitle": {
-    "description": "Nombre de la app (provisorio). Igual en todos los idiomas."
+    "description": "Nombre de la app (marca). Igual en todos los idiomas."
   },
 
   "backendNotConfigured": "Backend non configurato",
@@ -277,7 +277,40 @@
   },
   "accountMenu": "Account",
   "@accountMenu": {
-    "description": "Tooltip del menú de la cuenta (salir)."
+    "description": "Tooltip del menú de la cuenta (impostazioni y salir)."
+  },
+
+  "settingsTitle": "Impostazioni",
+  "@settingsTitle": {
+    "description": "Pantalla de ajustes de la cocinera (y su entrada en el menú de la cuenta)."
+  },
+  "settingsLanguageSection": "Lingua dell'app",
+  "@settingsLanguageSection": {
+    "description": "Sección del selector de idioma de la interfaz."
+  },
+  "settingsLanguageHelp": "Vale per il tuo account, anche sugli altri dispositivi.",
+  "@settingsLanguageHelp": {
+    "description": "El idioma se guarda en el perfil (profiles.locale), no solo en este dispositivo."
+  },
+  "settingsAccountSection": "Account",
+  "@settingsAccountSection": {
+    "description": "Sección con la cuenta y el botón para salir."
+  },
+  "languageOptionEs": "Español",
+  "@languageOptionEs": {
+    "description": "Opción del selector de idioma, escrita en ese idioma: igual en todos los ARB."
+  },
+  "languageOptionIt": "Italiano",
+  "@languageOptionIt": {
+    "description": "Opción del selector de idioma, escrita en ese idioma: igual en todos los ARB."
+  },
+  "languageOptionEn": "English",
+  "@languageOptionEn": {
+    "description": "Opción del selector de idioma, escrita en ese idioma: igual en todos los ARB."
+  },
+  "languageSaveFailed": "Non è stato possibile cambiare la lingua. Controlla la connessione e riprova.",
+  "@languageSaveFailed": {
+    "description": "No se pudo guardar el idioma en el perfil: la interfaz vuelve al anterior."
   },
 
   "inboxTabNew": "Nuove",
@@ -559,6 +592,37 @@
   "@rejectConflict": {
     "description": "El pedido ya no estaba en estado nuevo."
   },
+  "actionUndoReject": "Ripristina richiesta",
+  "@actionUndoReject": {
+    "description": "Botón del detalle de un pedido rechazado: deshace el rechazo (rejected → new). En italiano se evita «Annulla», que es el botón de cancelar."
+  },
+  "undoRejectConfirmTitle": "Ripristinare la richiesta di {name}?",
+  "@undoRejectConfirmTitle": {
+    "description": "Título del diálogo de confirmación para deshacer el rechazo.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "undoRejectConfirmBody": "Tornerà tra le richieste viste e potrai gestirla di nuovo. Il cliente non riceve nessun avviso.",
+  "@undoRejectConfirmBody": {
+    "description": "Explicación de deshacer el rechazo."
+  },
+  "undoRejectConfirmAction": "Ripristina",
+  "@undoRejectConfirmAction": {
+    "description": "Botón que confirma deshacer el rechazo."
+  },
+  "undoRejectDone": "Richiesta ripristinata: è tra le viste.",
+  "@undoRejectDone": {
+    "description": "Confirmación de que se deshizo el rechazo."
+  },
+  "undoRejectFailed": "Non è stato possibile ripristinare la richiesta. Riprova.",
+  "@undoRejectFailed": {
+    "description": "Error al deshacer el rechazo."
+  },
+  "undoRejectConflict": "La richiesta è cambiata nel frattempo: controlla il suo stato.",
+  "@undoRejectConflict": {
+    "description": "El pedido ya no estaba rechazado."
+  },
 
   "newRequestBanner": "Nuova richiesta da {name}",
   "@newRequestBanner": {
@@ -690,14 +754,14 @@
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },
-      "brand": { "type": "String", "example": "Mestolo" }
+      "brand": { "type": "String", "example": "Radici" }
     }
   },
   "contactEmailSubject": "La tua richiesta a {brand}",
   "@contactEmailSubject": {
     "description": "Asunto del email al cliente, en SU idioma.",
     "placeholders": {
-      "brand": { "type": "String", "example": "Mestolo" }
+      "brand": { "type": "String", "example": "Radici" }
     }
   },
   "contactEmailGreeting": "Ciao {name},",

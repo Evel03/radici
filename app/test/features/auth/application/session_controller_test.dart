@@ -3,10 +3,11 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/features/auth/application/session_controller.dart';
-import 'package:mestolo/features/auth/data/account_repository.dart';
-import 'package:mestolo/features/auth/data/auth_repository.dart';
-import 'package:mestolo/features/auth/domain/auth_models.dart';
+import 'package:radici/core/app_language.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/auth/data/account_repository.dart';
+import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
 
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';
@@ -46,6 +47,18 @@ void main() {
       const SessionState.chef(chefUser, chefAccount),
     );
     expect(c.read(currentChefProvider), chefAccount);
+  });
+
+  test('la sesión trae el idioma del perfil', () async {
+    accounts.account = chefAccountData.copyWith(language: AppLanguage.es);
+    auth.user = chefUser;
+    final c = container();
+    c.listen(sessionControllerProvider, (_, _) {});
+    await pumpEventQueue();
+    expect(
+      c.read(sessionControllerProvider),
+      const SessionState.chef(chefUser, chefAccount, language: AppLanguage.es),
+    );
   });
 
   test('cualquier otro rol va al área de clientes', () async {
@@ -151,4 +164,10 @@ class _SlowAccounts implements AccountRepository {
   @override
   Future<Account> fetchAccount(String userId) =>
       (_pending[userId] = Completer<Account>()).future;
+
+  @override
+  Future<void> updateLanguage({
+    required String userId,
+    required AppLanguage language,
+  }) => throw UnimplementedError();
 }
