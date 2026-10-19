@@ -1,0 +1,385 @@
+// Contrato del pedido público: web → Edge Function `public-request`.
+// Fuente única de verdad: la web arma el payload con estos tipos y el servidor lo valida
+// con `parsePublicRequest`. Si cambia el contrato, subir PUBLIC_REQUEST_VERSION.
+// Solo sintaxis borrable: corre en Node (tests), Deno (Edge Functions) y Vite (web).
+import { calcQuote, LIMITS, type Quote, type QuoteInput } from "./quote.ts";
+
+export const PUBLIC_REQUEST_VERSION = 1;
+
+/** Versiones aceptadas del texto de los consentimientos (privacy y datos de salud). La última es la vigente. */
+export const CONSENT_VERSIONS = ["2026-10-19"] as const;
+export const CONSENT_VERSION: string = CONSENT_VERSIONS[CONSENT_VERSIONS.length - 1];
+
+/** Los 14 alérgenos del Reg. UE 1169/2011, en el orden del enum `allergen` de la base. */
+export const ALLERGENS = [
+  "gluten",
+  "crustaceans",
+  "eggs",
+  "fish",
+  "peanuts",
+  "soy",
+  "milk",
+  "nuts",
+  "celery",
+  "mustard",
+  "sesame",
+  "sulphites",
+  "lupin",
+  "molluscs",
+] as const;
+export type Allergen = (typeof ALLERGENS)[number];
+
+export const DIETS = ["vegetarian", "vegan"] as const;
+export type Diet = (typeof DIETS)[number];
+
+/** 'week' y 'extra' de `request_type` ('change' es solo para clientes con cuenta). */
+export const REQUEST_TYPES = ["week", "extra"] as const;
+export type RequestType = (typeof REQUEST_TYPES)[number];
+
+/** Valores de `requests.meals`, en este orden. */
+export const MEALS = ["lunch", "dinner"] as const;
+export type Meal = (typeof MEALS)[number];
+
+export const SLOTS = ["morning", "afternoon", "any"] as const;
+export type Slot = (typeof SLOTS)[number];
+
+export const LOCALES = ["it", "es", "en"] as const;
+export type Locale = (typeof LOCALES)[number];
+
+/** Largo máximo de los textos (también maxlength en el HTML). */
+export const TEXT_LIMITS = {
+  name: 80,
+  zone: 80,
+  phone: 30,
+  email: 120,
+  restrictionsNote: 200,
+  notes: 500,
+} as const;
+
+/** Fecha preferida: de mañana a +14 días (booking_horizon_days), en Europe/Rome. */
+export const DATE_WINDOW = { minDaysAhead: 1, maxDaysAhead: 14 } as const;
+
+/** El servidor rechaza cuerpos más grandes (413). */
+export const MAX_PAYLOAD_BYTES = 8192;
+
+/** Lo que manda la web (JSON, camelCase). */
+export interface PublicRequestPayload {
+  version: number;
+  type: RequestType;
+  adults: number;
+  kids: number;
+  days: number;
+  /** 1 o 2 valores distintos. */
+  meals: Meal[];
+  allergens: Allergen[];
+  diets: Diet[];
+  restrictionsNote: string;
+  /** "AAAA-MM-DD" o null si no eligió fecha. */
+  preferredDate: string | null;
+  slot: Slot;
+  name: string;
+  zone: string;
+  phone: string;
+  /** Obligatorio: ahí llega la confirmación. */
+  email: string;
+  /** Acepta recibir la confirmación por WhatsApp en `phone`. */
+  whatsappOptIn: boolean;
+  notes: string;
+  locale: Locale;
+  /** Versión del texto aceptado; `health` solo si hay restricciones (si no, null). */
+  consents: { privacy: string; health: string | null };
+  /** Token de Cloudflare Turnstile; lo verifica la Edge Function. */
+  turnstileToken: string;
+}
+
+export type ErrorCode =
+  | "required"
+  | "invalid"
+  | "range"
+  | "tooLong"
+  | "dateOutOfRange"
+  | "consentRequired"
+  | "healthConsentRequired";
+
+export type PublicRequestField =
+  | "payload"
+  | "version"
+  | "type"
+  | "adults"
+  | "kids"
+  | "people"
+  | "days"
+  | "meals"
+  | "allergens"
+  | "diets"
+  | "restrictionsNote"
+  | "preferredDate"
+  | "slot"
+  | "name"
+  | "zone"
+  | "phone"
+  | "email"
+  | "whatsappOptIn"
+  | "notes"
+  | "locale"
+  | "consentPrivacy"
+  | "consentHealth"
+  | "turnstileToken";
+
+export type PublicRequestErrors = Partial<Record<PublicRequestField, ErrorCode>>;
+
+/** Pedido validado y normalizado, listo para guardar. */
+export interface NormalizedPublicRequest {
+  type: RequestType;
+  adults: number;
+  kids: number;
+  days: number;
+  meals: Meal[];
+  allergens: Allergen[];
+  diets: Diet[];
+  restrictionsNote: string;
+  /** true si hay alérgenos, dietas o nota de restricciones (datos de salud, art. 9 RGPD). */
+  hasRestrictions: boolean;
+  preferredDate: string | null;
+  slot: Slot;
+  name: string;
+  zone: string;
+  /** Como lo escribió el cliente (limpio). */
+  phone: string;
+  /** "+<código país><número>", sin espacios; sirve para wa.me (sin el "+"). */
+  phoneE164: string;
+  email: string;
+  whatsappOptIn: boolean;
+  notes: string;
+  locale: Locale;
+  /** `health` es null si no hay restricciones. */
+  consents: { privacy: string; health: string | null };
+  turnstileToken: string;
+  quoteInput: QuoteInput;
+}
+
+export type ParseResult =
+  | { ok: true; value: NormalizedPublicRequest; estimate: Quote }
+  | { ok: false; errors: PublicRequestErrors };
+
+// ---------------------------------------------------------------------------
+// Helpers puros (también los usa la web)
+// ---------------------------------------------------------------------------
+
+export function isOneOf<T extends string>(list: readonly T[], value: unknown): value is T {
+  return typeof value === "string" && (list as readonly string[]).includes(value);
+}
+
+/** Saca caracteres de control (y los de dirección bidi) y colapsa espacios: para campos de una línea. */
+export function cleanOneLine(raw: string): string {
+  return raw
+    .replace(/[\u0000-\u001F\u007F‪-‮⁦-⁩]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Para notas: conserva saltos de línea, máximo una línea en blanco seguida. */
+export function cleanMultiLine(raw: string): string {
+  return raw
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u0000-\u0009\u000B-\u001F\u007F‪-‮⁦-⁩]/g, " ")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function isValidEmail(raw: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(raw);
+}
+
+/**
+ * Normaliza un teléfono a "+<dígitos>". Sin prefijo internacional se asume Italia solo para
+ * formatos italianos inequívocos: móvil de 9–10 cifras que empieza con 3, o fijo que empieza con 0.
+ * Cualquier otro número sin "+" o "00" es inválido (pedir el prefijo, ej. +34).
+ */
+export function normalizePhone(raw: string): string | null {
+  const compact = raw.trim().replace(/[\s().\/-]/g, "");
+  let digits: string;
+  if (compact.startsWith("+")) digits = compact.slice(1);
+  else if (compact.startsWith("00")) digits = compact.slice(2);
+  else if (/^3\d{8,9}$/.test(compact)) digits = `39${compact}`;
+  else if (/^0\d{5,10}$/.test(compact)) digits = `39${compact}`;
+  else if (/^39\d{9,11}$/.test(compact)) digits = compact; // ya trae el 39, sin "+"
+  else return null;
+  return /^[1-9]\d{7,14}$/.test(digits) ? `+${digits}` : null;
+}
+
+/** Fecha de hoy en Europe/Rome como "AAAA-MM-DD". */
+export function romeToday(now: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+/** true si es una fecha de calendario real con formato "AAAA-MM-DD". */
+export function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+}
+
+/** Suma días a una fecha "AAAA-MM-DD" (sin zonas horarias). */
+export function addDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+export function hasRestrictions(data: { allergens: readonly string[]; diets: readonly string[]; restrictionsNote: string }): boolean {
+  return data.allergens.length > 0 || data.diets.length > 0 || data.restrictionsNote.trim() !== "";
+}
+
+// ---------------------------------------------------------------------------
+// Validación del servidor
+// ---------------------------------------------------------------------------
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Lista de valores válidos y sin repetir, devuelta en el orden canónico de `list`. */
+function parseSet<T extends string>(list: readonly T[], value: unknown, max: number): T[] | null {
+  if (!Array.isArray(value) || value.length > max) return null;
+  if (!value.every((v) => isOneOf(list, v))) return null;
+  if (new Set(value).size !== value.length) return null;
+  return list.filter((item) => (value as unknown[]).includes(item));
+}
+
+/**
+ * Valida y normaliza el payload de la web. Pura: `today` es la fecha de hoy en Europe/Rome
+ * (usar `romeToday(new Date())`). No verifica Turnstile: eso lo hace la Edge Function.
+ */
+export function parsePublicRequest(input: unknown, opts: { today: string }): ParseResult {
+  if (!isRecord(input)) return { ok: false, errors: { payload: "invalid" } };
+  const errors: PublicRequestErrors = {};
+
+  if (input.version !== PUBLIC_REQUEST_VERSION) errors.version = "invalid";
+
+  const type = isOneOf(REQUEST_TYPES, input.type) ? input.type : null;
+  if (!type) errors.type = input.type === undefined ? "required" : "invalid";
+
+  const intField = (field: "adults" | "kids" | "days", min: number, max: number): number => {
+    const value = input[field];
+    if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
+      errors[field] = value === undefined ? "required" : "range";
+      return min;
+    }
+    return value;
+  };
+  const adults = intField("adults", 0, LIMITS.maxPeople);
+  const kids = intField("kids", 0, LIMITS.maxPeople);
+  const days = intField("days", 1, LIMITS.maxDays);
+  if (!errors.adults && !errors.kids && adults + kids < 1) errors.people = "range";
+
+  const meals = parseSet(MEALS, input.meals, MEALS.length);
+  if (!meals || meals.length === 0) errors.meals = input.meals === undefined ? "required" : "invalid";
+
+  const allergens = parseSet(ALLERGENS, input.allergens ?? [], ALLERGENS.length);
+  if (!allergens) errors.allergens = "invalid";
+  const diets = parseSet(DIETS, input.diets ?? [], DIETS.length);
+  if (!diets) errors.diets = "invalid";
+
+  const text = (
+    field: "restrictionsNote" | "name" | "zone" | "phone" | "email" | "notes",
+    { required, multiLine = false }: { required: boolean; multiLine?: boolean },
+  ): string => {
+    const raw = input[field] ?? "";
+    if (typeof raw !== "string") {
+      errors[field] = "invalid";
+      return "";
+    }
+    const value = multiLine ? cleanMultiLine(raw) : cleanOneLine(raw);
+    if (required && value === "") errors[field] = "required";
+    else if (value.length > TEXT_LIMITS[field]) errors[field] = "tooLong";
+    return value;
+  };
+  const restrictionsNote = text("restrictionsNote", { required: false });
+  const name = text("name", { required: true });
+  const zone = text("zone", { required: true });
+  const phone = text("phone", { required: true });
+  const email = text("email", { required: true }).toLowerCase();
+  const notes = text("notes", { required: false, multiLine: true });
+
+  const phoneE164 = phone ? normalizePhone(phone) : null;
+  if (!errors.phone && !phoneE164) errors.phone = "invalid";
+  if (!errors.email && !isValidEmail(email)) errors.email = "invalid";
+
+  let preferredDate: string | null = null;
+  if (input.preferredDate !== null && input.preferredDate !== undefined && input.preferredDate !== "") {
+    if (typeof input.preferredDate !== "string" || !isIsoDate(input.preferredDate)) {
+      errors.preferredDate = "invalid";
+    } else {
+      const min = addDays(opts.today, DATE_WINDOW.minDaysAhead);
+      const max = addDays(opts.today, DATE_WINDOW.maxDaysAhead);
+      if (input.preferredDate < min || input.preferredDate > max) errors.preferredDate = "dateOutOfRange";
+      else preferredDate = input.preferredDate;
+    }
+  }
+
+  const slot = isOneOf(SLOTS, input.slot) ? input.slot : null;
+  if (!slot) errors.slot = input.slot === undefined ? "required" : "invalid";
+
+  const whatsappOptIn = input.whatsappOptIn ?? false;
+  if (typeof whatsappOptIn !== "boolean") errors.whatsappOptIn = "invalid";
+
+  const locale: Locale = isOneOf(LOCALES, input.locale) ? input.locale : "it";
+
+  const consents = isRecord(input.consents) ? input.consents : {};
+  const privacy = isOneOf(CONSENT_VERSIONS, consents.privacy) ? consents.privacy : null;
+  if (!privacy) errors.consentPrivacy = "consentRequired";
+
+  const restricted = hasRestrictions({
+    allergens: allergens ?? [],
+    diets: diets ?? [],
+    restrictionsNote,
+  });
+  let health: string | null = null;
+  if (restricted) {
+    health = isOneOf(CONSENT_VERSIONS, consents.health) ? consents.health : null;
+    if (!health) errors.consentHealth = "healthConsentRequired";
+  }
+
+  const turnstileToken = input.turnstileToken;
+  if (typeof turnstileToken !== "string" || turnstileToken === "" || turnstileToken.length > 2048) {
+    errors.turnstileToken = "required";
+  }
+
+  if (Object.keys(errors).length > 0) return { ok: false, errors };
+
+  const quoteInput: QuoteInput = { adults, kids, days, meals: (meals as Meal[]).length };
+  const value: NormalizedPublicRequest = {
+    type: type as RequestType,
+    adults,
+    kids,
+    days,
+    meals: meals as Meal[],
+    allergens: allergens as Allergen[],
+    diets: diets as Diet[],
+    restrictionsNote,
+    hasRestrictions: restricted,
+    preferredDate,
+    slot: slot as Slot,
+    name,
+    zone,
+    phone,
+    phoneE164: phoneE164 as string,
+    email,
+    whatsappOptIn: whatsappOptIn as boolean,
+    notes,
+    locale,
+    consents: { privacy: privacy as string, health },
+    turnstileToken: turnstileToken as string,
+    quoteInput,
+  };
+  return { ok: true, value, estimate: calcQuote(quoteInput) };
+}
