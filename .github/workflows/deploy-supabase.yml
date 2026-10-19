@@ -1,0 +1,148 @@
+# Despliega el backend de Supabase a producción: migraciones (db push), secretos de la Edge
+# Function y la función public-request. Contrato: docs/contracts/public-request.md §8.
+# - push a main que toque supabase/** (o este archivo) → producción
+# - workflow_dispatch → a mano, desde la pestaña Actions
+# Antes de tocar producción corre los tests de TypeScript y los de la base (pgTAP, base local).
+#
+# Necesita, en Settings → Secrets and variables → Actions del repo:
+# - secretos: SUPABASE_ACCESS_TOKEN (token personal de supabase.com/dashboard/account/tokens),
+#   SUPABASE_DB_PASSWORD, RESEND_API_KEY, TURNSTILE_SECRET_KEY, IP_HASH_SALT
+#   (opcional: WHATSAPP_TOKEN)
+# - variables: SUPABASE_PROJECT_REF, CHEF_ID, CHEF_NOTIFY_EMAIL, CHEF_LOCALE, MAIL_FROM,
+#   MAIL_REPLY_TO, ALLOWED_ORIGINS, INBOX_URL, PUBLIC_SITE_URL
+#   (opcionales: EMAIL_TRANSPORT, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE)
+# Sin SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD o SUPABASE_PROJECT_REF corre los tests y no despliega.
+# Los secretos vacíos no se cargan (no pisan los que ya estén); para borrar uno: supabase secrets unset.
+name: Deploy Supabase
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - ".github/workflows/deploy-supabase.yml"
+  workflow_dispatch:
+
+# Un despliegue a la vez, y nunca se corta uno a la mitad (db push).
+concurrency:
+  group: deploy-supabase
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Versión fija del CLI, la misma que CI: se actualiza a propósito, con un PR.
+  SUPABASE_CLI_VERSION: "2.121.0"
+
+jobs:
+  deploy:
+    name: Migraciones, secretos y Edge Function
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Los secretos no se pueden usar en "if"; esto deja un "true"/"false".
+      HAS_SUPABASE: ${{ secrets.SUPABASE_ACCESS_TOKEN != '' && secrets.SUPABASE_DB_PASSWORD != '' && vars.SUPABASE_PROJECT_REF != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Tests de TypeScript (presupuesto, contrato y Edge Function)
+        run: npm test
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Tests de la base (pgTAP)
+        run: |
+          supabase db start
+          supabase test db
+
+      - name: Sin credenciales, no se despliega
+        if: env.HAS_SUPABASE != 'true'
+        run: echo "::notice::Faltan SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD o la variable SUPABASE_PROJECT_REF. Los tests pasaron, pero no se despliega."
+
+      - name: Vincular el proyecto
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: supabase link --project-ref "${SUPABASE_PROJECT_REF}"
+
+      - name: Migraciones (db push)
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        # Solo migraciones: nunca el seed (son datos de desarrollo).
+        run: supabase db push --yes
+
+      - name: Secretos de la función
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          IP_HASH_SALT: ${{ secrets.IP_HASH_SALT }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          CHEF_ID: ${{ vars.CHEF_ID }}
+          CHEF_NOTIFY_EMAIL: ${{ vars.CHEF_NOTIFY_EMAIL }}
+          CHEF_LOCALE: ${{ vars.CHEF_LOCALE }}
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          MAIL_REPLY_TO: ${{ vars.MAIL_REPLY_TO }}
+          EMAIL_TRANSPORT: ${{ vars.EMAIL_TRANSPORT }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          INBOX_URL: ${{ vars.INBOX_URL }}
+          PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL }}
+          WHATSAPP_PHONE_NUMBER_ID: ${{ vars.WHATSAPP_PHONE_NUMBER_ID }}
+          WHATSAPP_TEMPLATE: ${{ vars.WHATSAPP_TEMPLATE }}
+        run: |
+          set -euo pipefail
+          # Cada valor viaja como un argumento NOMBRE=valor (sin pasar por un .env ni por echo).
+          pairs=()
+          for name in RESEND_API_KEY TURNSTILE_SECRET_KEY IP_HASH_SALT WHATSAPP_TOKEN \
+                      CHEF_ID CHEF_NOTIFY_EMAIL CHEF_LOCALE MAIL_FROM MAIL_REPLY_TO EMAIL_TRANSPORT \
+                      ALLOWED_ORIGINS INBOX_URL PUBLIC_SITE_URL WHATSAPP_PHONE_NUMBER_ID WHATSAPP_TEMPLATE; do
+            value="${!name:-}"
+            if [ -n "${value}" ]; then
+              pairs+=("${name}=${value}")
+            fi
+          done
+          missing=()
+          for name in CHEF_ID TURNSTILE_SECRET_KEY IP_HASH_SALT RESEND_API_KEY MAIL_FROM CHEF_NOTIFY_EMAIL ALLOWED_ORIGINS; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("${name}")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::warning::Faltan ${missing[*]}: sin ellos la función no atiende pedidos o no manda los emails."
+          fi
+          if [ "${#pairs[@]}" -gt 0 ]; then
+            supabase secrets set --project-ref "${SUPABASE_PROJECT_REF}" "${pairs[@]}"
+          fi
+
+      - name: Desplegar public-request
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        # verify_jwt = false sale de supabase/config.toml ([functions.public-request]).
+        # --use-api: el bundle lo arma Supabase, sin Docker.
+        run: supabase functions deploy public-request --project-ref "${SUPABASE_PROJECT_REF}" --use-api
+
+      - name: Resumen
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          {
+            echo "### Backend desplegado"
+            echo "- Migraciones aplicadas con db push"
+            echo "- Función: https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/public-request"
+          } >> "${GITHUB_STEP_SUMMARY}"

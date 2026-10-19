@@ -20,7 +20,10 @@ max_rows = 1000
 # `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
 # without explicit GRANTs, matching the cloud default. Set to `false` to require explicit GRANTs
 # instead. Left unset, a fresh project falls back to `true`.
-# auto_expose_new_tables = true
+# Mestolo: false, igual que los proyectos nuevos de Supabase desde el 30/05/2026 (y todos desde el
+# 30/10/2026). Así la base local y el CI fallan si una migración crea una tabla sin sus GRANT
+# (ver 20261019130000_api_grants.sql).
+auto_expose_new_tables = false
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
@@ -249,6 +252,19 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+# Login con código (OTP) de la app: el email lleva el código de 6 cifras ({{ .Token }}), sin link.
+# signInWithOtp manda "magic_link" a un usuario existente y "confirmation" al que entra por
+# primera vez; los dos usan la misma plantilla. En producción el asunto y el HTML se copian a mano
+# en el panel (Authentication → Emails → Templates: "Magic link" y "Confirm signup"), con SMTP
+# propio (Resend) y "Email OTP length" = 6.
+[auth.email.template.magic_link]
+subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Tu código de acceso{{ else if and .Data.locale (eq .Data.locale \"en\") }}Your sign-in code{{ else }}Il tuo codice di accesso{{ end }}"
+content_path = "./supabase/templates/login_code.html"
+
+[auth.email.template.confirmation]
+subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Tu código de acceso{{ else if and .Data.locale (eq .Data.locale \"en\") }}Your sign-in code{{ else }}Il tuo codice di accesso{{ end }}"
+content_path = "./supabase/templates/login_code.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true
@@ -385,6 +401,14 @@ deno_version = 2
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
+
+# Formulario público de la web (docs/contracts/public-request.md §2). Sin JWT: lo llama gente sin
+# cuenta, y las claves nuevas (sb_publishable_…) no son JWT. La protección es Turnstile + límite
+# por IP + validación dentro de la función. Variables locales: supabase/functions/.env
+# (copiar de .env.example).
+[functions.public-request]
+enabled = true
+verify_jwt = false
 
 [analytics]
 enabled = true
