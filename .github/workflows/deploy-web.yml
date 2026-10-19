@@ -1,8 +1,11 @@
 # Publica en Cloudflare Pages (Direct Upload) la web pública (web/) y, dentro del mismo sitio, la
 # bandeja de Evelyn en /gestione/ (la app Flutter compilada para la web). Contrato:
 # docs/contracts/public-request.md §6–§8.
-# - push a main  → producción (rama de producción del proyecto: main)
-# - pull request → vista previa en <rama>.<proyecto>.pages.dev (con X-Robots-Tag: noindex)
+# - push a main  → producción (rama de producción del proyecto: main). Se sirve en el dominio
+#   propio https://radici.sepusola10.com (dominio personalizado del proyecto, se agrega una vez
+#   en Cloudflare).
+# - pull request → vista previa en <rama>.<subdominio>.pages.dev (con X-Robots-Tag: noindex).
+#   <subdominio> lo asigna Cloudflare al crear el proyecto: "radici", o con un sufijo si ya está tomado.
 # Antes de publicar corre los tests de la web (npm test) y de la app (flutter analyze + flutter test).
 #
 # Necesita, en Settings → Secrets and variables → Actions del repo:
@@ -42,7 +45,9 @@ permissions:
   deployments: write
 
 env:
-  PAGES_PROJECT: mestolo
+  # Nombre del proyecto de Pages (si no existe, el paso "Crear el proyecto" lo crea). No es el
+  # subdominio *.pages.dev: ese lo elige Cloudflare.
+  PAGES_PROJECT: radici
   # Versiones fijas y no las del día: se actualizan a propósito, con un PR.
   WRANGLER_VERSION: "4.149.0"
   # La misma que el CI (ci.yml) y que app/README.md.

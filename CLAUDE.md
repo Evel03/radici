@@ -1,6 +1,8 @@
-# Mestolo
+# Radici
 
-Cocina casera a domicilio en Bergamo (Evelyn). "Mestolo" es nombre provisorio.
+Cocina casera a domicilio en Bergamo (Evelyn). Nombre definitivo: Radici.
+Repo: `Evel03/radici` (GitHub). Dominio temporal: https://radici.sepusola10.com (web pública y bandeja en `/gestione/`).
+Los identificadores nativos de la app (bundle id) todavía no se eligieron: no cambiarlos sin pedido explícito (lista de lugares en `app/README.md`).
 Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y este archivo en el mismo PR.
 
 ## Estructura
