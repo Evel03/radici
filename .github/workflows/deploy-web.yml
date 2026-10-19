@@ -1,0 +1,128 @@
+# Publica la web pública (web/) en Cloudflare Pages (Direct Upload).
+# - push a main  → producción (rama de producción del proyecto: main)
+# - pull request → vista previa en <rama>.<proyecto>.pages.dev (con X-Robots-Tag: noindex)
+#
+# Necesita, en Settings → Secrets and variables → Actions del repo:
+# - secreto  CLOUDFLARE_API_TOKEN   token con solo "Account > Cloudflare Pages > Edit"
+# - variable CLOUDFLARE_ACCOUNT_ID  (no es secreta)
+# - variables VITE_WHATSAPP_NUMBER, VITE_SITE_URL, VITE_NOINDEX (opcional VITE_BRAND_NAME)
+# Sin el secreto, la web se construye y testea pero no se publica.
+name: Deploy web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "supabase/functions/_shared/**"
+      - ".github/workflows/deploy-web.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - "supabase/functions/_shared/**"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-web-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: write
+
+env:
+  PAGES_PROJECT: mestolo
+  # Versión fija y no la del día: se actualiza a propósito, con un PR.
+  WRANGLER_VERSION: "4.149.0"
+
+jobs:
+  deploy:
+    name: Publicar en Cloudflare Pages
+    runs-on: ubuntu-latest
+    env:
+      # Los secretos no se pueden usar en "if"; esto deja un "true"/"false".
+      HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Build
+        env:
+          VITE_WHATSAPP_NUMBER: ${{ vars.VITE_WHATSAPP_NUMBER }}
+          VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
+          VITE_NOINDEX: ${{ vars.VITE_NOINDEX }}
+          VITE_BRAND_NAME: ${{ vars.VITE_BRAND_NAME }}
+        run: npm run build
+
+      - name: Sin token, no se publica
+        if: env.HAS_CF_TOKEN != 'true'
+        run: echo "::notice::Falta el secreto CLOUDFLARE_API_TOKEN (o es un PR desde un fork). La web se construyó pero no se publica."
+
+      # wrangler pages deploy no crea proyectos en CI: hay que crearlo una vez.
+      # El token viaja por stdin (curl -H @-), nunca en la línea de comandos.
+      - name: Crear el proyecto de Pages si no existe
+        if: env.HAS_CF_TOKEN == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID}" ]; then
+            echo "::error::Falta la variable CLOUDFLARE_ACCOUNT_ID en el repo."
+            exit 1
+          fi
+          url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${PAGES_PROJECT}"
+          code=$(printf 'Authorization: Bearer %s\n' "${CLOUDFLARE_API_TOKEN}" \
+            | curl -sS -o "${RUNNER_TEMP}/project.json" -w '%{http_code}' -H @- "${url}")
+          case "${code}" in
+            200)
+              echo "El proyecto ${PAGES_PROJECT} ya existe." ;;
+            404)
+              echo "Creando el proyecto ${PAGES_PROJECT}..."
+              npx --yes "wrangler@${WRANGLER_VERSION}" pages project create "${PAGES_PROJECT}" --production-branch main ;;
+            *)
+              echo "::error::Cloudflare respondió HTTP ${code} al consultar el proyecto."
+              jq -r '.errors[]? | "\(.code): \(.message)"' "${RUNNER_TEMP}/project.json" || true
+              exit 1 ;;
+          esac
+
+      - name: Publicar
+        id: deploy
+        if: env.HAS_CF_TOKEN == 'true'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          # accountId siempre como input: la action sobrescribe CLOUDFLARE_ACCOUNT_ID con él.
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: ${{ env.WRANGLER_VERSION }}
+          workingDirectory: web
+          # En un PR el checkout es "HEAD" suelto: la rama se pasa explícita para que el alias sea el de la rama.
+          command: >-
+            pages deploy dist
+            --project-name=${{ env.PAGES_PROJECT }}
+            --branch=${{ github.head_ref || github.ref_name }}
+            --commit-hash=${{ github.event.pull_request.head.sha || github.sha }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resumen
+        if: env.HAS_CF_TOKEN == 'true'
+        run: |
+          {
+            echo "### Web publicada"
+            echo "- Entorno: ${{ steps.deploy.outputs.pages-environment }}"
+            echo "- Deploy: ${{ steps.deploy.outputs.deployment-url }}"
+            echo "- Alias: ${{ steps.deploy.outputs.pages-deployment-alias-url }}"
+          } >> "${GITHUB_STEP_SUMMARY}"
