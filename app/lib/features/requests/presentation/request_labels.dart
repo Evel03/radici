@@ -1,0 +1,119 @@
+// Textos de los valores de un pedido (tipo, estado, franja, alérgenos…) y
+// formatos de fecha y hora de Roma. Solo presentación: los textos salen del ARB.
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:mestolo/core/rome_time.dart';
+import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:mestolo/l10n/app_localizations.dart';
+
+extension RequestLabels on AppLocalizations {
+  String requestType(RequestType type) => switch (type) {
+    RequestType.week => requestTypeWeek,
+    RequestType.extra => requestTypeExtra,
+    RequestType.change => requestTypeChange,
+  };
+
+  /// Estado como lo ve la cocinera: un pedido nuevo ya abierto es "Vista".
+  String requestStatus(ChefRequest request) => switch (request.status) {
+    RequestStatus.newRequest =>
+      request.seenAt == null ? requestStatusNew : requestStatusSeen,
+    RequestStatus.quoted => requestStatusQuoted,
+    RequestStatus.accepted => requestStatusAccepted,
+    RequestStatus.declined => requestStatusDeclined,
+    RequestStatus.rejected => requestStatusRejected,
+    RequestStatus.expired => requestStatusExpired,
+    RequestStatus.resolved => requestStatusResolved,
+  };
+
+  String slot(PreferredSlot slot) => switch (slot) {
+    PreferredSlot.morning => slotMorning,
+    PreferredSlot.afternoon => slotAfternoon,
+    PreferredSlot.any => slotAny,
+  };
+
+  /// "Pranzo", "Cena" o "Pranzo e cena".
+  String meals(List<Meal> meals) {
+    final lunch = meals.contains(Meal.lunch);
+    final dinner = meals.contains(Meal.dinner);
+    if (lunch && dinner) return mealLunchAndDinner;
+    if (lunch) return mealLunch;
+    return mealDinner;
+  }
+
+  String allergen(Allergen allergen) => switch (allergen) {
+    Allergen.gluten => allergenGluten,
+    Allergen.crustaceans => allergenCrustaceans,
+    Allergen.eggs => allergenEggs,
+    Allergen.fish => allergenFish,
+    Allergen.peanuts => allergenPeanuts,
+    Allergen.soy => allergenSoy,
+    Allergen.milk => allergenMilk,
+    Allergen.nuts => allergenNuts,
+    Allergen.celery => allergenCelery,
+    Allergen.mustard => allergenMustard,
+    Allergen.sesame => allergenSesame,
+    Allergen.sulphites => allergenSulphites,
+    Allergen.lupin => allergenLupin,
+    Allergen.molluscs => allergenMolluscs,
+  };
+
+  String diet(Diet diet) => switch (diet) {
+    Diet.vegetarian => dietVegetarian,
+    Diet.vegan => dietVegan,
+  };
+
+  String language(ClientLocale locale) => switch (locale) {
+    ClientLocale.it => languageIt,
+    ClientLocale.es => languageEs,
+    ClientLocale.en => languageEn,
+  };
+
+  /// Resumen de una línea: "Settimana di pasti · 4 persone · 5 giorni · Cena".
+  String requestSummary(ChefRequest request) => [
+    requestType(request.type),
+    if (request.people case final people?) requestPeopleCount(people),
+    if (request.days case final days?) requestDaysCount(days),
+    if (request.meals.isNotEmpty) meals(request.meals),
+  ].join(' · ');
+}
+
+/// Formatos de fecha y hora en el idioma de la interfaz. Las horas se
+/// muestran siempre en hora de Roma.
+class RequestFormats {
+  RequestFormats(BuildContext context)
+    : _locale = Localizations.localeOf(context).toLanguageTag();
+
+  final String _locale;
+
+  /// "mar 20 ott" (fecha corta con día de la semana).
+  String shortDate(CalendarDate date) =>
+      DateFormat.MMMEd(_locale).format(date.toDateTime());
+
+  /// "martedì 20 ottobre 2026".
+  String longDate(CalendarDate date) =>
+      DateFormat.yMMMMEEEEd(_locale).format(date.toDateTime());
+
+  /// "ottobre 2026".
+  String monthTitle(CalendarDate date) =>
+      DateFormat.yMMMM(_locale).format(date.toDateTime());
+
+  /// "20 ott".
+  String dayMonth(CalendarDate date) =>
+      DateFormat.MMMd(_locale).format(date.toDateTime());
+
+  /// "20 ott 2026".
+  String dayMonthYear(CalendarDate date) =>
+      DateFormat.yMMMd(_locale).format(date.toDateTime());
+
+  /// "lun" (nombre corto del día).
+  String weekdayShort(CalendarDate date) =>
+      DateFormat.E(_locale).format(date.toDateTime());
+
+  /// Fecha numérica de un instante, en hora de Roma ("19/10/2026").
+  String instantDate(DateTime instant) =>
+      DateFormat.yMd(_locale).format(romeWallClock(instant));
+
+  /// Hora de un instante, en hora de Roma ("14:32").
+  String instantTime(DateTime instant) =>
+      DateFormat.Hm(_locale).format(romeWallClock(instant));
+}

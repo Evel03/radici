@@ -1,0 +1,102 @@
+// Modelos de sesión y cuenta, sin dependencias de Supabase: los repositorios
+// traducen sus tipos y errores a estos.
+import 'package:freezed_annotation/freezed_annotation.dart';
+
+part 'auth_models.freezed.dart';
+
+/// Usuario autenticado (auth.users).
+@Freezed(toStringOverride: false)
+abstract class AppUser with _$AppUser {
+  const factory AppUser({required String id, String? email}) = _AppUser;
+
+  const AppUser._();
+
+  // Sin el email: nunca se loguean datos personales.
+  @override
+  String toString() => 'AppUser($id)';
+}
+
+/// `profiles.role`.
+enum AccountRole { chef, client }
+
+/// Ficha de la cocinera (`public.chefs`).
+@freezed
+abstract class ChefAccount with _$ChefAccount {
+  const factory ChefAccount({
+    required String chefId,
+    required String displayName,
+  }) = _ChefAccount;
+}
+
+/// Lo que la app necesita saber del usuario después del login.
+@freezed
+abstract class Account with _$Account {
+  const factory Account({required AccountRole role, ChefAccount? chef}) =
+      _Account;
+}
+
+/// Por qué falló una operación de autenticación.
+enum AuthFailureKind {
+  /// El email no tiene un formato válido.
+  invalidEmail,
+
+  /// El código es incorrecto o venció.
+  invalidCode,
+
+  /// Demasiados pedidos de código seguidos.
+  rateLimited,
+
+  /// Sin conexión o el servidor no respondió.
+  network,
+
+  /// El proyecto no permite entrar con ese email (altas desactivadas, etc.).
+  notAllowed,
+
+  /// La app se compiló sin SUPABASE_URL ni clave.
+  noBackend,
+
+  /// Cualquier otro error.
+  unknown,
+}
+
+class AuthFailure implements Exception {
+  const AuthFailure(this.kind);
+
+  final AuthFailureKind kind;
+
+  @override
+  String toString() => 'AuthFailure(${kind.name})';
+}
+
+/// Por qué no se pudo cargar la cuenta después del login.
+enum AccountFailureKind {
+  /// Sin conexión o error del servidor: se puede reintentar.
+  unavailable,
+
+  /// Rol `chef` sin fila en `chefs` (falta correr promote_to_chef completo).
+  chefNotConfigured,
+}
+
+class AccountFailure implements Exception {
+  const AccountFailure(this.kind);
+
+  final AccountFailureKind kind;
+
+  @override
+  String toString() => 'AccountFailure(${kind.name})';
+}
+
+/// Misma regla que `isValidEmail` de public_request.ts.
+bool isValidEmail(String email) =>
+    RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$').hasMatch(email);
+
+/// Largo del código que manda Supabase Auth (`otp_length`, 6 por defecto).
+/// Se aceptan hasta 10 cifras por si se cambia la configuración del proyecto.
+const int otpMinLength = 6;
+const int otpMaxLength = 10;
+
+/// Saca espacios y guiones que se cuelan al copiar el código del email.
+String normalizeOtp(String raw) => raw.replaceAll(RegExp(r'[\s-]'), '');
+
+bool isValidOtp(String code) =>
+    RegExp('^\\d{$otpMinLength,$otpMaxLength}\$').hasMatch(code);

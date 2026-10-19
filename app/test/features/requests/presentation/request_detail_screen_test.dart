@@ -1,0 +1,201 @@
+// Detalle del pedido: datos completos y acciones (WhatsApp, llamada, email,
+// rechazo). Verifica los links exactos que se abren.
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:mestolo/features/requests/presentation/request_detail_screen.dart';
+
+import '../../../support/chef_app.dart';
+import '../../../support/fakes.dart';
+import '../../../support/request_fixtures.dart';
+
+void main() {
+  const restrictions = RequestRestrictions(
+    allergens: [Allergen.gluten, Allergen.milk],
+    diets: [Diet.vegetarian],
+    note: 'niente funghi',
+  );
+
+  Future<ChefApp> openDetail(
+    WidgetTester tester,
+    ChefRequest request, {
+    Locale deviceLocale = const Locale('it', 'IT'),
+  }) => pumpChefApp(
+    tester,
+    requests: FakeChefRequestsRepository([request]),
+    location: '/richieste/${request.id}',
+    size: const Size(400, 1800),
+    deviceLocales: [deviceLocale],
+  );
+
+  Future<void> tapAction(WidgetTester tester, String key) async {
+    await tester.ensureVisible(find.byKey(ValueKey(key)));
+    await tester.tap(find.byKey(ValueKey(key)));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('muestra todos los datos, incluidas las restricciones', (tester) async {
+    await openDetail(tester, buildRequest(restrictions: restrictions));
+
+    expect(find.byType(RequestDetailScreen), findsOneWidget);
+    expect(find.text('Giulia Rossi'), findsWidgets);
+    expect(find.text('Settimana di pasti'), findsOneWidget);
+    expect(find.text('mercoledì 21 ottobre 2026'), findsOneWidget);
+    expect(find.text('Mattina'), findsOneWidget);
+    expect(find.text('Glutine'), findsOneWidget);
+    expect(find.text('Latte e derivati'), findsOneWidget);
+    expect(find.text('Vegetariana'), findsOneWidget);
+    expect(find.text('niente funghi'), findsOneWidget);
+    expect(find.text('Citofono: Rossi'), findsOneWidget);
+    expect(find.text('+39 333 123 4567'), findsOneWidget);
+    expect(find.text('giulia@example.test'), findsOneWidget);
+    expect(find.text('Città Alta'), findsOneWidget);
+    expect(find.text("Sì, l'ha chiesta"), findsOneWidget);
+    expect(find.text('Italiano'), findsOneWidget);
+    // Estimación guardada en centavos → euros.
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('detail-estimate-total'))).data,
+      '141,00 €',
+    );
+    // Llegó a las 09:15 UTC = 11:15 en Roma.
+    expect(find.text('Ricevuta il 19/10/2026 alle 11:15'), findsOneWidget);
+  });
+
+  testWidgets('al abrirlo se marca visto', (tester) async {
+    final app = await openDetail(tester, buildRequest());
+    expect(app.requests.markedSeen, ['req-1']);
+    expect(find.text('Vista'), findsOneWidget);
+  });
+
+  testWidgets('WhatsApp abre wa.me con el mensaje en el idioma del cliente', (
+    tester,
+  ) async {
+    final app = await openDetail(
+      tester,
+      buildRequest(name: 'Lucía Fernández', phone: '+34 612 345 678', locale: ClientLocale.es),
+    );
+
+    await tapAction(tester, 'action-whatsapp');
+
+    expect(app.launcher.launched.single.toString(),
+      'https://wa.me/34612345678?text='
+      'Hola%20Luc%C3%ADa%2C%20soy%20Evelyn%20de%20Mestolo.%20Recib%C3%AD%20tu%20'
+      'solicitud%20y%20te%20escribo%20para%20organizarnos.',
+    );
+  });
+
+  testWidgets('llamar abre tel: con el número normalizado', (tester) async {
+    final app = await openDetail(tester, buildRequest(phone: '333 1234567'));
+    await tapAction(tester, 'action-call');
+    expect(app.launcher.launched.single.toString(), 'tel:+393331234567');
+  });
+
+  testWidgets('email abre mailto: con asunto y saludo en el idioma del cliente', (
+    tester,
+  ) async {
+    final app = await openDetail(tester, buildRequest());
+    await tapAction(tester, 'action-email');
+    expect(
+      app.launcher.launched.single.toString(),
+      'mailto:giulia@example.test'
+      '?subject=La%20tua%20richiesta%20a%20Mestolo'
+      '&body=Ciao%20Giulia%2C%0A%0A',
+    );
+  });
+
+  testWidgets('teléfono no normalizable: sin WhatsApp ni llamada, con aviso', (
+    tester,
+  ) async {
+    await openDetail(tester, buildRequest(phone: '612 345 678'));
+    final whatsApp = tester.widget<ButtonStyleButton>(
+      find.byKey(const ValueKey('action-whatsapp')),
+    );
+    final call = tester.widget<ButtonStyleButton>(
+      find.byKey(const ValueKey('action-call')),
+    );
+    expect(whatsApp.onPressed, isNull);
+    expect(call.onPressed, isNull);
+    expect(find.text('Numero non valido per WhatsApp e chiamate.'), findsOneWidget);
+  });
+
+  testWidgets('si no se puede abrir el link, avisa', (tester) async {
+    final app = await openDetail(tester, buildRequest());
+    app.launcher.result = false;
+    await tapAction(tester, 'action-call');
+    expect(find.text('Impossibile aprire il link.'), findsOneWidget);
+  });
+
+  group('rechazo', () {
+    testWidgets('pide confirmación y pasa a Rifiutata', (tester) async {
+      final app = await openDetail(tester, buildRequest());
+
+      await tapAction(tester, 'action-reject');
+      expect(find.text('Rifiutare la richiesta di Giulia Rossi?'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('reject-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(app.requests.rejected, ['req-1']);
+      expect(find.text('Richiesta rifiutata.'), findsOneWidget);
+      expect(find.text('Rifiutata'), findsOneWidget);
+      expect(find.byKey(const ValueKey('action-reject')), findsNothing);
+    });
+
+    testWidgets('cancelar no rechaza', (tester) async {
+      final app = await openDetail(tester, buildRequest());
+      await tapAction(tester, 'action-reject');
+      await tester.tap(find.byKey(const ValueKey('reject-cancel')));
+      await tester.pumpAndSettle();
+      expect(app.requests.rejected, isEmpty);
+      expect(find.byKey(const ValueKey('action-reject')), findsOneWidget);
+    });
+
+    testWidgets('error: avisa y sigue nueva', (tester) async {
+      final app = await openDetail(tester, buildRequest());
+      app.requests.failReject = true;
+      await tapAction(tester, 'action-reject');
+      await tester.tap(find.byKey(const ValueKey('reject-confirm')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Non è stato possibile rifiutare la richiesta. Riprova.'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('action-reject')), findsOneWidget);
+    });
+
+    testWidgets('un pedido ya rechazado no muestra el botón', (tester) async {
+      await openDetail(
+        tester,
+        buildRequest(status: RequestStatus.rejected, seenAt: testNow),
+      );
+      expect(find.byKey(const ValueKey('action-reject')), findsNothing);
+    });
+  });
+
+  testWidgets('sin restricciones, sin notas, sin estimación y sin fecha', (
+    tester,
+  ) async {
+    await openDetail(
+      tester,
+      buildRequest(estimate: null, noDate: true, preferredSlot: null).copyWith(notes: null),
+    );
+    expect(find.byKey(const ValueKey('detail-no-restrictions')), findsOneWidget);
+    expect(find.text('Nessuna nota.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('detail-no-estimate')), findsOneWidget);
+    expect(find.text('Senza data'), findsOneWidget);
+  });
+
+  testWidgets('pedido inexistente', (tester) async {
+    await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository(const []),
+      location: '/richieste/missing',
+    );
+    expect(find.byKey(const ValueKey('request-not-found')), findsOneWidget);
+  });
+
+  testWidgets('la interfaz sigue el idioma del dispositivo (inglés)', (tester) async {
+    await openDetail(tester, buildRequest(), deviceLocale: const Locale('en', 'GB'));
+    expect(find.text('Dietary restrictions'), findsOneWidget);
+    expect(find.text('Call'), findsOneWidget);
+  });
+}

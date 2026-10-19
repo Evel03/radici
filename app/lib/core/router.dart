@@ -1,43 +1,147 @@
-// Rutas de la app. Las rutas hijas de `/` apilan sobre el inicio, así
-// `context.go` deja el botón de volver.
+// Router (go_router). Las redirecciones según la sesión están en routes.dart.
+//
+// go_router 18 detecta MaterialApp de package:material_ui, no el de
+// package:flutter/material.dart que usa esta app: sin un pageBuilder propio
+// armaría páginas sin transición. Por eso cada ruta construye su MaterialPage.
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mestolo/core/platform.dart';
+import 'package:mestolo/core/routes.dart';
+import 'package:mestolo/features/auth/application/session_controller.dart';
+import 'package:mestolo/features/auth/presentation/client_area_screen.dart';
 import 'package:mestolo/features/auth/presentation/login_screen.dart';
+import 'package:mestolo/features/auth/presentation/session_screen.dart';
 import 'package:mestolo/features/home/presentation/home_screen.dart';
 import 'package:mestolo/features/quote/presentation/quote_calculator_screen.dart';
+import 'package:mestolo/features/requests/presentation/agenda_screen.dart';
+import 'package:mestolo/features/requests/presentation/chef_shell.dart';
+import 'package:mestolo/features/requests/presentation/inbox_screen.dart';
+import 'package:mestolo/features/requests/presentation/request_detail_screen.dart';
+import 'package:mestolo/l10n/app_localizations.dart';
 
-/// Rutas públicas (en italiano, como las de la web).
-abstract final class AppRoutes {
-  static const String home = '/';
-  static const String quote = '/$_quoteSegment';
-  static const String login = '/$_loginSegment';
-
-  static const String _quoteSegment = 'preventivo';
-  static const String _loginSegment = 'accedi';
-}
-
-/// Router como provider: en M2 la redirección según la sesión leerá auth
-/// desde acá.
 final routerProvider = Provider<GoRouter>((ref) {
+  final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+  final refresh = _RouterRefresh();
+  // El router no se reconstruye con la sesión: se le avisa que reevalúe.
+  ref.listen(sessionControllerProvider, (_, _) => refresh.notify());
+  final isWeb = ref.watch(isWebProvider);
+
   final router = GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: AppRoutes.home,
+    refreshListenable: refresh,
+    redirect: (context, state) => resolveRedirect(
+      session: ref.read(sessionControllerProvider),
+      location: state.uri,
+      isWeb: isWeb,
+    ),
+    errorPageBuilder: (context, state) =>
+        _page(state, const NotFoundScreen()),
     routes: [
       GoRoute(
         path: AppRoutes.home,
-        builder: (context, state) => const HomeScreen(),
+        pageBuilder: (context, state) => _page(state, const HomeScreen()),
         routes: [
+          // Hijas de `/`: apilan sobre el inicio y dejan el botón de volver.
           GoRoute(
-            path: AppRoutes._quoteSegment,
-            builder: (context, state) => const QuoteCalculatorScreen(),
+            path: AppRoutes.quote.substring(1),
+            pageBuilder: (context, state) =>
+                _page(state, const QuoteCalculatorScreen()),
           ),
           GoRoute(
-            path: AppRoutes._loginSegment,
-            builder: (context, state) => const LoginScreen(),
+            path: AppRoutes.login.substring(1),
+            pageBuilder: (context, state) => _page(state, const LoginScreen()),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: AppRoutes.session,
+        pageBuilder: (context, state) => _page(state, const SessionScreen()),
+      ),
+      GoRoute(
+        path: AppRoutes.clientArea,
+        pageBuilder: (context, state) =>
+            _page(state, const ClientAreaScreen()),
+      ),
+      StatefulShellRoute.indexedStack(
+        pageBuilder: (context, state, navigationShell) =>
+            _page(state, ChefShell(navigationShell: navigationShell)),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.requests,
+                pageBuilder: (context, state) =>
+                    _page(state, const InboxScreen()),
+                routes: [
+                  // El detalle tapa la barra de navegación.
+                  GoRoute(
+                    path: ':id',
+                    parentNavigatorKey: rootNavigatorKey,
+                    pageBuilder: (context, state) => _page(
+                      state,
+                      RequestDetailScreen(
+                        requestId: state.pathParameters['id']!,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.agenda,
+                pageBuilder: (context, state) =>
+                    _page(state, const AgendaScreen()),
+              ),
+            ],
           ),
         ],
       ),
     ],
   );
-  ref.onDispose(router.dispose);
+  ref.onDispose(() {
+    router.dispose();
+    refresh.dispose();
+  });
   return router;
 });
+
+Page<void> _page(GoRouterState state, Widget child) =>
+    MaterialPage<void>(key: state.pageKey, child: child);
+
+class _RouterRefresh extends ChangeNotifier {
+  void notify() => notifyListeners();
+}
+
+/// Ruta desconocida.
+class NotFoundScreen extends StatelessWidget {
+  const NotFoundScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.appTitle)),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(l10n.routeNotFound, key: const ValueKey('route-not-found')),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => context.go(AppRoutes.home),
+                child: Text(l10n.routeGoHome),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

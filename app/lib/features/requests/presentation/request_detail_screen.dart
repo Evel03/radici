@@ -1,0 +1,488 @@
+// Detalle de un pedido: todos los datos (incluidas las restricciones, que
+// solo ve la cocinera), la estimación guardada y las acciones: WhatsApp,
+// llamar, email y rechazar. Al abrirlo se marca como visto.
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mestolo/core/link_launcher.dart';
+import 'package:mestolo/core/money.dart';
+import 'package:mestolo/features/requests/application/chef_inbox_controller.dart';
+import 'package:mestolo/features/requests/application/contact_actions.dart';
+import 'package:mestolo/features/requests/data/chef_requests_repository.dart';
+import 'package:mestolo/features/requests/domain/chef_request.dart';
+import 'package:mestolo/features/requests/presentation/inbox_screen.dart';
+import 'package:mestolo/features/requests/presentation/request_labels.dart';
+import 'package:mestolo/l10n/app_localizations.dart';
+
+class RequestDetailScreen extends ConsumerStatefulWidget {
+  const RequestDetailScreen({super.key, required this.requestId});
+
+  final String requestId;
+
+  @override
+  ConsumerState<RequestDetailScreen> createState() =>
+      _RequestDetailScreenState();
+}
+
+class _RequestDetailScreenState extends ConsumerState<RequestDetailScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Marcar como visto después del primer frame: no se cambia el estado de
+    // un provider mientras se construye la pantalla.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(ref.read(chefInboxProvider.notifier).open(widget.requestId));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final detail = ref.watch(chefRequestProvider(widget.requestId));
+    final request = detail.value;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          request?.client.displayName ?? l10n.requestDetailTitle,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      body: detail.when(
+        data: (request) => request == null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    l10n.requestNotFound,
+                    key: const ValueKey('request-not-found'),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              )
+            : _RequestDetail(request: request),
+        error: (_, _) => LoadErrorView(
+          message: l10n.inboxLoadError,
+          onRetry: () => ref.invalidate(chefRequestProvider(widget.requestId)),
+        ),
+        loading: () => const Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+}
+
+class _RequestDetail extends ConsumerWidget {
+  const _RequestDetail({required this.request});
+
+  final ChefRequest request;
+
+  Future<void> _launch(BuildContext context, WidgetRef ref, Uri uri) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final message = AppLocalizations.of(context).launchFailed;
+    // Se llama directo desde el toque: en la web, esperar algo antes haría
+    // que el navegador bloquee la ventana nueva.
+    final opened = await ref.read(linkLauncherProvider).launch(uri);
+    if (!opened) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _reject(BuildContext context, WidgetRef ref) async {
+    final l10n = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const ValueKey('reject-dialog'),
+        title: Text(l10n.rejectConfirmTitle(request.client.displayName)),
+        content: Text(l10n.rejectConfirmBody),
+        actions: [
+          TextButton(
+            key: const ValueKey('reject-cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(l10n.actionCancel),
+          ),
+          FilledButton(
+            key: const ValueKey('reject-confirm'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(l10n.actionReject),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(chefInboxProvider.notifier).reject(request.id);
+      messenger.showSnackBar(SnackBar(content: Text(l10n.rejectDone)));
+    } on RequestsFailure catch (failure) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            failure.kind == RequestsFailureKind.conflict
+                ? l10n.rejectConflict
+                : l10n.rejectFailed,
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final formats = RequestFormats(context);
+    final links = ref.watch(contactLinksProvider(request.id));
+    final whatsApp = links?.whatsApp;
+    final call = links?.call;
+    final email = links?.email;
+
+    final date = request.preferredDate;
+    final slot = request.preferredSlot;
+    final restrictions = request.restrictions;
+    final notes = request.notes?.trim() ?? '';
+    final client = request.client;
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ListView(
+          key: const ValueKey('request-detail'),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: [
+            // Encabezado: estado, cuándo llegó y de dónde.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Chip(
+                  key: const ValueKey('request-status'),
+                  label: Text(l10n.requestStatus(request)),
+                  backgroundColor: request.isNew
+                      ? theme.colorScheme.primaryContainer
+                      : null,
+                ),
+                Text(
+                  l10n.requestReceivedAt(
+                    formats.instantDate(request.createdAt),
+                    formats.instantTime(request.createdAt),
+                  ),
+                  style: theme.textTheme.bodyMedium,
+                ),
+                Text(
+                  switch (request.source) {
+                    RequestSource.web => l10n.requestSourceWeb,
+                    RequestSource.app => l10n.requestSourceApp,
+                  },
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Contactar.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  key: const ValueKey('action-whatsapp'),
+                  onPressed: whatsApp == null
+                      ? null
+                      : () => _launch(context, ref, whatsApp),
+                  icon: const Icon(Icons.chat_outlined),
+                  label: Text(l10n.actionWhatsApp),
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('action-call'),
+                  onPressed: call == null
+                      ? null
+                      : () => _launch(context, ref, call),
+                  icon: const Icon(Icons.call_outlined),
+                  label: Text(l10n.actionCall),
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('action-email'),
+                  onPressed: email == null
+                      ? null
+                      : () => _launch(context, ref, email),
+                  icon: const Icon(Icons.mail_outline),
+                  label: Text(l10n.actionEmail),
+                ),
+              ],
+            ),
+
+            _Section(title: l10n.detailSectionRequest),
+            _InfoRow(label: l10n.detailType, value: l10n.requestType(request.type)),
+            if (request.adults != null)
+              _InfoRow(label: l10n.quoteAdults, value: '${request.adults}'),
+            if (request.kids != null)
+              _InfoRow(label: l10n.quoteKids, value: '${request.kids}'),
+            if (request.days != null)
+              _InfoRow(label: l10n.quoteDays, value: '${request.days}'),
+            if (request.meals.isNotEmpty)
+              _InfoRow(
+                label: l10n.quoteMealsSection,
+                value: l10n.meals(request.meals),
+              ),
+            _InfoRow(
+              label: l10n.detailPreferredDate,
+              value: date == null ? l10n.requestNoDate : formats.longDate(date),
+            ),
+            if (slot != null)
+              _InfoRow(label: l10n.detailPreferredSlot, value: l10n.slot(slot)),
+
+            _Section(title: l10n.detailSectionRestrictions),
+            if (restrictions == null || restrictions.isEmpty)
+              Text(
+                l10n.detailNoRestrictions,
+                key: const ValueKey('detail-no-restrictions'),
+              )
+            else ...[
+              if (restrictions.allergens.isNotEmpty)
+                _ChipsRow(
+                  label: l10n.detailAllergens,
+                  values: [for (final a in restrictions.allergens) l10n.allergen(a)],
+                ),
+              if (restrictions.diets.isNotEmpty)
+                _ChipsRow(
+                  label: l10n.detailDiets,
+                  values: [for (final d in restrictions.diets) l10n.diet(d)],
+                ),
+              if (restrictions.note.isNotEmpty)
+                _InfoRow(
+                  label: l10n.detailRestrictionsNote,
+                  value: restrictions.note,
+                ),
+            ],
+
+            _Section(title: l10n.detailSectionNotes),
+            SelectableText(
+              notes.isEmpty ? l10n.detailNoNotes : notes,
+              key: const ValueKey('detail-notes'),
+            ),
+
+            _Section(title: l10n.detailSectionEstimate),
+            _Estimate(estimate: request.estimate),
+
+            _Section(title: l10n.detailSectionContact),
+            if (client.contactPhone case final phone?) ...[
+              _InfoRow(label: l10n.detailPhone, value: phone, selectable: true),
+              if (client.phoneE164 == null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    l10n.detailPhoneInvalid,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
+            ],
+            if (client.contactEmail case final address?)
+              _InfoRow(label: l10n.detailEmail, value: address, selectable: true),
+            if (client.zone case final zone? when zone.isNotEmpty)
+              _InfoRow(label: l10n.detailZone, value: zone),
+            _InfoRow(
+              label: l10n.detailWhatsAppOptIn,
+              value: request.whatsappOptIn
+                  ? l10n.detailWhatsAppOptInYes
+                  : l10n.detailWhatsAppOptInNo,
+            ),
+            _InfoRow(
+              label: l10n.detailLanguage,
+              value: l10n.language(request.locale),
+            ),
+
+            if (request.canReject) ...[
+              const SizedBox(height: 32),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('action-reject'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.colorScheme.error,
+                  ),
+                  onPressed: () => _reject(context, ref),
+                  icon: const Icon(Icons.block),
+                  label: Text(l10n.actionReject),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Estimate extends StatelessWidget {
+  const _Estimate({required this.estimate});
+
+  final RequestEstimate? estimate;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final estimate = this.estimate;
+    if (estimate == null || estimate.isEmpty) {
+      return Text(l10n.detailNoEstimate, key: const ValueKey('detail-no-estimate'));
+    }
+    final locale = Localizations.localeOf(context).toString();
+    String money(int cents) => formatCents(cents, locale: locale);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (estimate.portions case final portions?)
+          _InfoRow(label: l10n.quotePortions, value: '$portions'),
+        if (estimate.recipes case final recipes?)
+          _InfoRow(label: l10n.quoteRecipes, value: '$recipes'),
+        if (estimate.cookMinutes case final minutes?)
+          _InfoRow(label: l10n.quoteCookTime, value: l10n.quoteMinutes(minutes)),
+        if (estimate.serviceCents case final cents?)
+          _InfoRow(label: l10n.quoteService, value: money(cents)),
+        if (estimate.groceriesEstCents case final cents?)
+          _InfoRow(label: l10n.quoteGroceries, value: money(cents)),
+        if (estimate.totalCents case final cents?)
+          _InfoRow(
+            label: l10n.quoteTotal,
+            value: money(cents),
+            valueKey: const ValueKey('detail-estimate-total'),
+            emphasized: true,
+          ),
+        const SizedBox(height: 4),
+        Text(
+          l10n.detailEstimateFootnote,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Section extends StatelessWidget {
+  const _Section({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 24, bottom: 8),
+      child: Semantics(
+        header: true,
+        child: Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: theme.colorScheme.primary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Etiqueta y valor en una fila (o uno debajo del otro si no entran).
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    this.selectable = false,
+    this.emphasized = false,
+    this.valueKey,
+  });
+
+  final String label;
+  final String value;
+  final bool selectable;
+  final bool emphasized;
+  final Key? valueKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final valueStyle = emphasized
+        ? theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)
+        : theme.textTheme.bodyLarge;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: MergeSemantics(
+        child: Wrap(
+          spacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 160),
+              child: Text(
+                label,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            if (selectable)
+              SelectableText(value, key: valueKey, style: valueStyle)
+            else
+              Text(value, key: valueKey, style: valueStyle),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChipsRow extends StatelessWidget {
+  const _ChipsRow({required this.label, required this.values});
+
+  final String label;
+  final List<String> values;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final value in values)
+                Chip(
+                  label: Text(value),
+                  backgroundColor: theme.colorScheme.tertiaryContainer,
+                  labelStyle: TextStyle(
+                    color: theme.colorScheme.onTertiaryContainer,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

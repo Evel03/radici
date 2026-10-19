@@ -1,7 +1,7 @@
 // Inicio (M0): bienvenida y accesos a la calculadora y al login.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mestolo/core/router.dart';
+import 'package:mestolo/core/routes.dart';
 import 'package:mestolo/l10n/app_localizations.dart';
 
 class HomeScreen extends StatelessWidget {

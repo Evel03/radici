@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mestolo/core/env.dart';
 import 'package:mestolo/core/router.dart';
 import 'package:mestolo/core/theme.dart';
+import 'package:mestolo/features/requests/presentation/new_request_alert_listener.dart';
 import 'package:mestolo/l10n/app_localizations.dart';
 
 /// Idiomas soportados. El primero es el de respaldo cuando el idioma del
@@ -30,7 +31,11 @@ class MestoloApp extends ConsumerWidget {
       supportedLocales: appSupportedLocales,
       routerConfig: ref.watch(routerProvider),
       builder: (context, child) {
-        final content = child ?? const SizedBox.shrink();
+        // El aviso de pedidos nuevos escucha desde acá, encima de todas las
+        // rutas (ver NewRequestAlertListener).
+        final content = NewRequestAlertListener(
+          child: child ?? const SizedBox.shrink(),
+        );
         if (!showBackendNotice) return content;
         return Column(
           children: [
