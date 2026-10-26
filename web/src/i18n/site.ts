@@ -1,10 +1,9 @@
 // Traductor de la web con los valores globales que pueden aparecer en cualquier texto:
 // {brand}, {version}, límites del motor y del formulario, y el ejemplo de precios de la landing
 // ({exService}, {exGroceries}, {exTotal}, {exTime}). Así los textos no repiten números del motor.
-import { CONSENT_VERSION } from "../config.ts";
 import { LIMITS } from "../engine.ts";
 import { formatCents, formatDuration } from "../lib/format.ts";
-import { DATE_WINDOW, TEXT_LIMITS } from "../request/model.ts";
+import { CONSENT_VERSION, DATE_WINDOW, TEXT_LIMITS } from "../request/model.ts";
 import { exampleQuote } from "../request/quote.ts";
 import { createI18n, type Dict, type I18n, type Lang } from "./core.ts";
 

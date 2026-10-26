@@ -1,9 +1,9 @@
 {
   "@@locale": "it",
 
-  "appTitle": "Mestolo",
+  "appTitle": "Radici",
   "@appTitle": {
-    "description": "Nombre de la app (provisorio). Igual en todos los idiomas."
+    "description": "Nombre de la app (marca). Igual en todos los idiomas."
   },
 
   "backendNotConfigured": "Backend non configurato",
@@ -38,19 +38,19 @@
   },
   "quoteAdults": "Adulti",
   "@quoteAdults": {
-    "description": "Etiqueta del contador de adultos."
+    "description": "Etiqueta del contador de adultos (también en el detalle del pedido)."
   },
   "quoteKids": "Bambini",
   "@quoteKids": {
-    "description": "Etiqueta del contador de niños."
+    "description": "Etiqueta del contador de niños (también en el detalle del pedido)."
   },
   "quoteDays": "Giorni",
   "@quoteDays": {
-    "description": "Etiqueta del contador de días cubiertos por la sesión."
+    "description": "Etiqueta del contador de días cubiertos por la sesión (también en el detalle del pedido)."
   },
   "quoteMealsSection": "Pasti",
   "@quoteMealsSection": {
-    "description": "Encabezado del selector de comidas por día."
+    "description": "Encabezado del selector de comidas por día (también en el detalle del pedido)."
   },
   "mealLunch": "Pranzo",
   "@mealLunch": {
@@ -122,6 +122,27 @@
     "description": "Nota bajo el desglose."
   },
 
+  "actionRetry": "Riprova",
+  "@actionRetry": {
+    "description": "Botón para reintentar una carga que falló."
+  },
+  "actionCancel": "Annulla",
+  "@actionCancel": {
+    "description": "Botón para cancelar un diálogo."
+  },
+  "actionClose": "Chiudi",
+  "@actionClose": {
+    "description": "Botón para cerrar un aviso."
+  },
+  "actionOpen": "Apri",
+  "@actionOpen": {
+    "description": "Botón del aviso de pedido nuevo: abre el pedido (o la bandeja)."
+  },
+  "actionLogout": "Esci",
+  "@actionLogout": {
+    "description": "Cierra la sesión."
+  },
+
   "loginTitle": "Accedi",
   "@loginTitle": {
     "description": "Título de la pantalla de inicio de sesión."
@@ -142,8 +163,661 @@
   "@loginSendCode": {
     "description": "Botón que pide el código de acceso."
   },
-  "loginComingSoon": "L'accesso sarà disponibile a breve.",
-  "@loginComingSoon": {
-    "description": "Aviso temporal: el inicio de sesión todavía no está conectado (M2)."
+  "loginCodeSentTo": "Ti abbiamo inviato un codice a {email}. Scrivilo qui sotto.",
+  "@loginCodeSentTo": {
+    "description": "Paso 2 del login: a qué email se mandó el código.",
+    "placeholders": {
+      "email": { "type": "String", "example": "evelyn@esempio.it" }
+    }
+  },
+  "loginCodeLabel": "Codice",
+  "@loginCodeLabel": {
+    "description": "Etiqueta del campo del código de acceso."
+  },
+  "loginCodeHint": "Il codice dell'email",
+  "@loginCodeHint": {
+    "description": "Ayuda dentro del campo del código. Sin el número de cifras: lo fija el proyecto (Email OTP length, 8 en producción; la app acepta de 6 a 10)."
+  },
+  "loginVerify": "Entra",
+  "@loginVerify": {
+    "description": "Botón que verifica el código y entra."
+  },
+  "loginResendCode": "Inviami un nuovo codice",
+  "@loginResendCode": {
+    "description": "Pide otro código al mismo email."
+  },
+  "loginChangeEmail": "Cambia email",
+  "@loginChangeEmail": {
+    "description": "Vuelve al paso del email."
+  },
+  "loginCodeResent": "Ti abbiamo inviato un nuovo codice.",
+  "@loginCodeResent": {
+    "description": "Confirmación de que se mandó otro código."
+  },
+  "loginSpamHint": "Non lo trovi? Guarda anche nella cartella spam.",
+  "@loginSpamHint": {
+    "description": "Ayuda bajo el campo del código."
+  },
+  "authErrorInvalidEmail": "Scrivi un indirizzo email valido.",
+  "@authErrorInvalidEmail": {
+    "description": "Error: email con formato inválido."
+  },
+  "authErrorInvalidCode": "Il codice non è corretto o è scaduto.",
+  "@authErrorInvalidCode": {
+    "description": "Error: código incorrecto o vencido."
+  },
+  "authErrorRateLimited": "Hai chiesto troppi codici. Aspetta un minuto e riprova.",
+  "@authErrorRateLimited": {
+    "description": "Error: límite de pedidos de código (Supabase permite uno por minuto)."
+  },
+  "authErrorNetwork": "Non riusciamo a collegarci. Controlla la connessione e riprova.",
+  "@authErrorNetwork": {
+    "description": "Error de red al pedir o verificar el código."
+  },
+  "authErrorNotAllowed": "Questo indirizzo email non è abilitato all'accesso.",
+  "@authErrorNotAllowed": {
+    "description": "Error: el proyecto no deja entrar con ese email (altas desactivadas)."
+  },
+  "authErrorNoBackend": "Il servizio non è configurato in questa versione dell'app.",
+  "@authErrorNoBackend": {
+    "description": "Error: la app se compiló sin Supabase."
+  },
+  "authErrorUnknown": "Qualcosa è andato storto. Riprova.",
+  "@authErrorUnknown": {
+    "description": "Error genérico de autenticación."
+  },
+
+  "sessionLoading": "Un attimo…",
+  "@sessionLoading": {
+    "description": "Mientras se carga la cuenta después de entrar."
+  },
+  "sessionErrorUnavailable": "Non riusciamo a caricare il tuo account. Controlla la connessione e riprova.",
+  "@sessionErrorUnavailable": {
+    "description": "Error al leer el rol de la cuenta."
+  },
+  "sessionErrorChefNotConfigured": "Il tuo account da cuoca non è ancora configurato del tutto. Chiedi a chi gestisce l'app di completarlo.",
+  "@sessionErrorChefNotConfigured": {
+    "description": "Rol chef sin ficha en chefs (promote_to_chef incompleto)."
+  },
+  "signedInAs": "Hai effettuato l'accesso come {email}",
+  "@signedInAs": {
+    "description": "Con qué email se entró.",
+    "placeholders": {
+      "email": { "type": "String", "example": "evelyn@esempio.it" }
+    }
+  },
+
+  "clientAreaTitle": "Area clienti",
+  "@clientAreaTitle": {
+    "description": "Título del área de clientes (todavía en preparación)."
+  },
+  "clientAreaHeadline": "L'area clienti è in preparazione",
+  "@clientAreaHeadline": {
+    "description": "Título del aviso para usuarios que no son la cocinera."
+  },
+  "clientAreaBody": "Presto da qui potrai seguire le tue richieste e i preventivi. Intanto, per qualsiasi cosa, rispondi all'email di conferma: arriva direttamente a Evelyn.",
+  "@clientAreaBody": {
+    "description": "Explicación del área de clientes en preparación."
+  },
+
+  "navRequests": "Richieste",
+  "@navRequests": {
+    "description": "Pestaña de la bandeja de pedidos."
+  },
+  "navRequestsWithNew": "{count, plural, =1{Richieste, 1 nuova} other{Richieste, {count} nuove}}",
+  "@navRequestsWithNew": {
+    "description": "Texto accesible de la pestaña con el contador de pedidos nuevos.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "navAgenda": "Agenda",
+  "@navAgenda": {
+    "description": "Pestaña de la agenda."
+  },
+  "accountMenu": "Account",
+  "@accountMenu": {
+    "description": "Tooltip del menú de la cuenta (impostazioni y salir)."
+  },
+
+  "settingsTitle": "Impostazioni",
+  "@settingsTitle": {
+    "description": "Pantalla de ajustes de la cocinera (y su entrada en el menú de la cuenta)."
+  },
+  "settingsLanguageSection": "Lingua dell'app",
+  "@settingsLanguageSection": {
+    "description": "Sección del selector de idioma de la interfaz."
+  },
+  "settingsLanguageHelp": "Vale per il tuo account, anche sugli altri dispositivi.",
+  "@settingsLanguageHelp": {
+    "description": "El idioma se guarda en el perfil (profiles.locale), no solo en este dispositivo."
+  },
+  "settingsAccountSection": "Account",
+  "@settingsAccountSection": {
+    "description": "Sección con la cuenta y el botón para salir."
+  },
+  "languageOptionEs": "Español",
+  "@languageOptionEs": {
+    "description": "Opción del selector de idioma, escrita en ese idioma: igual en todos los ARB."
+  },
+  "languageOptionIt": "Italiano",
+  "@languageOptionIt": {
+    "description": "Opción del selector de idioma, escrita en ese idioma: igual en todos los ARB."
+  },
+  "languageOptionEn": "English",
+  "@languageOptionEn": {
+    "description": "Opción del selector de idioma, escrita en ese idioma: igual en todos los ARB."
+  },
+  "languageSaveFailed": "Non è stato possibile cambiare la lingua. Controlla la connessione e riprova.",
+  "@languageSaveFailed": {
+    "description": "No se pudo guardar el idioma en el perfil: la interfaz vuelve al anterior."
+  },
+
+  "inboxTabNew": "Nuove",
+  "@inboxTabNew": {
+    "description": "Pestaña de pedidos sin abrir."
+  },
+  "inboxTabSeen": "Viste",
+  "@inboxTabSeen": {
+    "description": "Pestaña de pedidos ya abiertos."
+  },
+  "inboxTabRejected": "Rifiutate",
+  "@inboxTabRejected": {
+    "description": "Pestaña de pedidos rechazados."
+  },
+  "inboxEmptyNew": "Nessuna richiesta nuova.",
+  "@inboxEmptyNew": {
+    "description": "Pestaña Nuove vacía."
+  },
+  "inboxEmptySeen": "Nessuna richiesta vista.",
+  "@inboxEmptySeen": {
+    "description": "Pestaña Viste vacía."
+  },
+  "inboxEmptyRejected": "Nessuna richiesta rifiutata.",
+  "@inboxEmptyRejected": {
+    "description": "Pestaña Rifiutate vacía."
+  },
+  "inboxLoadError": "Impossibile caricare le richieste. Controlla la connessione e riprova.",
+  "@inboxLoadError": {
+    "description": "Error al cargar los pedidos."
+  },
+  "inboxRefreshError": "Aggiornamento non riuscito. Controlla la connessione.",
+  "@inboxRefreshError": {
+    "description": "Error al actualizar deslizando hacia abajo."
+  },
+
+  "requestReceivedAt": "Ricevuta il {date} alle {time}",
+  "@requestReceivedAt": {
+    "description": "Cuándo llegó el pedido (hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "19/10/2026" },
+      "time": { "type": "String", "example": "14:32" }
+    }
+  },
+  "requestNoDate": "Senza data",
+  "@requestNoDate": {
+    "description": "El pedido no indica fecha preferida (también título de la lista de la agenda)."
+  },
+  "requestPeopleCount": "{count, plural, =1{1 persona} other{{count} persone}}",
+  "@requestPeopleCount": {
+    "description": "Resumen: cantidad de personas.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" }
+    }
+  },
+  "requestDaysCount": "{count, plural, =1{1 giorno} other{{count} giorni}}",
+  "@requestDaysCount": {
+    "description": "Resumen: cantidad de días.",
+    "placeholders": {
+      "count": { "type": "int", "example": "5" }
+    }
+  },
+  "requestTypeWeek": "Settimana di pasti",
+  "@requestTypeWeek": {
+    "description": "Tipo de pedido week (igual que en la web)."
+  },
+  "requestTypeExtra": "Evento o sessione extra",
+  "@requestTypeExtra": {
+    "description": "Tipo de pedido extra (igual que en la web)."
+  },
+  "requestTypeChange": "Modifica di una sessione",
+  "@requestTypeChange": {
+    "description": "Tipo de pedido change (clientes con cuenta)."
+  },
+  "requestStatusNew": "Nuova",
+  "@requestStatusNew": {
+    "description": "Estado: nuevo y sin abrir."
+  },
+  "requestStatusSeen": "Vista",
+  "@requestStatusSeen": {
+    "description": "Estado: nuevo, ya abierto."
+  },
+  "requestStatusQuoted": "Preventivo inviato",
+  "@requestStatusQuoted": {
+    "description": "Estado quoted."
+  },
+  "requestStatusAccepted": "Accettata",
+  "@requestStatusAccepted": {
+    "description": "Estado accepted."
+  },
+  "requestStatusDeclined": "Rifiutata dal cliente",
+  "@requestStatusDeclined": {
+    "description": "Estado declined: el cliente rechazó el presupuesto."
+  },
+  "requestStatusRejected": "Rifiutata",
+  "@requestStatusRejected": {
+    "description": "Estado rejected: Evelyn rechazó el pedido."
+  },
+  "requestStatusExpired": "Scaduta",
+  "@requestStatusExpired": {
+    "description": "Estado expired."
+  },
+  "requestStatusResolved": "Risolta",
+  "@requestStatusResolved": {
+    "description": "Estado resolved (pedidos de cambio)."
+  },
+  "slotMorning": "Mattina",
+  "@slotMorning": {
+    "description": "Franja preferida: mañana."
+  },
+  "slotAfternoon": "Pomeriggio",
+  "@slotAfternoon": {
+    "description": "Franja preferida: tarde."
+  },
+  "slotAny": "Indifferente",
+  "@slotAny": {
+    "description": "Franja preferida: cualquiera."
+  },
+  "requestSourceWeb": "Dal sito",
+  "@requestSourceWeb": {
+    "description": "Origen del pedido: formulario de la web."
+  },
+  "requestSourceApp": "Dall'app",
+  "@requestSourceApp": {
+    "description": "Origen del pedido: la app."
+  },
+
+  "requestDetailTitle": "Richiesta",
+  "@requestDetailTitle": {
+    "description": "Título del detalle mientras carga."
+  },
+  "requestNotFound": "Questa richiesta non esiste o non è più disponibile.",
+  "@requestNotFound": {
+    "description": "El pedido del enlace no existe."
+  },
+  "detailSectionRequest": "Richiesta",
+  "@detailSectionRequest": {
+    "description": "Sección con tipo, personas, días, comidas y fecha."
+  },
+  "detailSectionRestrictions": "Restrizioni alimentari",
+  "@detailSectionRestrictions": {
+    "description": "Sección de alergias y dietas (dato de salud, solo la cocinera la ve)."
+  },
+  "detailSectionNotes": "Note del cliente",
+  "@detailSectionNotes": {
+    "description": "Sección de notas libres."
+  },
+  "detailSectionEstimate": "Stima",
+  "@detailSectionEstimate": {
+    "description": "Sección de la estimación guardada."
+  },
+  "detailSectionContact": "Contatto",
+  "@detailSectionContact": {
+    "description": "Sección de datos de contacto."
+  },
+  "detailType": "Tipo",
+  "@detailType": {
+    "description": "Fila: tipo de pedido."
+  },
+  "detailPreferredDate": "Data preferita",
+  "@detailPreferredDate": {
+    "description": "Fila: fecha preferida."
+  },
+  "detailPreferredSlot": "Fascia oraria",
+  "@detailPreferredSlot": {
+    "description": "Fila: franja preferida."
+  },
+  "detailNoRestrictions": "Nessuna restrizione indicata.",
+  "@detailNoRestrictions": {
+    "description": "El pedido no trae restricciones."
+  },
+  "detailAllergens": "Allergeni da evitare",
+  "@detailAllergens": {
+    "description": "Fila: alérgenos (igual que en la web)."
+  },
+  "detailDiets": "Diete",
+  "@detailDiets": {
+    "description": "Fila: dietas."
+  },
+  "detailRestrictionsNote": "Nota",
+  "@detailRestrictionsNote": {
+    "description": "Fila: nota de restricciones."
+  },
+  "detailNoNotes": "Nessuna nota.",
+  "@detailNoNotes": {
+    "description": "El pedido no trae notas."
+  },
+  "detailNoEstimate": "Nessuna stima salvata.",
+  "@detailNoEstimate": {
+    "description": "El pedido no trae estimación."
+  },
+  "detailEstimateFootnote": "Calcolata con le tue tariffe al momento della richiesta. La spesa si paga in base allo scontrino.",
+  "@detailEstimateFootnote": {
+    "description": "Nota bajo la estimación guardada."
+  },
+  "detailPhone": "Telefono",
+  "@detailPhone": {
+    "description": "Fila: teléfono."
+  },
+  "detailPhoneInvalid": "Numero non valido per WhatsApp e chiamate.",
+  "@detailPhoneInvalid": {
+    "description": "El teléfono no se pudo normalizar."
+  },
+  "detailEmail": "Email",
+  "@detailEmail": {
+    "description": "Fila: email."
+  },
+  "detailZone": "Zona",
+  "@detailZone": {
+    "description": "Fila: zona."
+  },
+  "detailWhatsAppOptIn": "Conferma su WhatsApp",
+  "@detailWhatsAppOptIn": {
+    "description": "Fila: si aceptó recibir la confirmación por WhatsApp."
+  },
+  "detailWhatsAppOptInYes": "Sì, l'ha chiesta",
+  "@detailWhatsAppOptInYes": {
+    "description": "Aceptó la confirmación por WhatsApp."
+  },
+  "detailWhatsAppOptInNo": "No",
+  "@detailWhatsAppOptInNo": {
+    "description": "No aceptó la confirmación por WhatsApp."
+  },
+  "detailLanguage": "Lingua del cliente",
+  "@detailLanguage": {
+    "description": "Fila: idioma del cliente (el de los mensajes)."
+  },
+  "languageIt": "Italiano",
+  "@languageIt": {
+    "description": "Nombre del idioma italiano."
+  },
+  "languageEs": "Spagnolo",
+  "@languageEs": {
+    "description": "Nombre del idioma español."
+  },
+  "languageEn": "Inglese",
+  "@languageEn": {
+    "description": "Nombre del idioma inglés."
+  },
+  "actionWhatsApp": "WhatsApp",
+  "@actionWhatsApp": {
+    "description": "Botón: escribir al cliente por WhatsApp."
+  },
+  "actionCall": "Chiama",
+  "@actionCall": {
+    "description": "Botón: llamar al cliente."
+  },
+  "actionEmail": "Email",
+  "@actionEmail": {
+    "description": "Botón: escribir un email al cliente."
+  },
+  "actionReject": "Rifiuta",
+  "@actionReject": {
+    "description": "Botón: rechazar el pedido."
+  },
+  "launchFailed": "Impossibile aprire il link.",
+  "@launchFailed": {
+    "description": "No se pudo abrir WhatsApp, el teléfono o el email."
+  },
+  "rejectConfirmTitle": "Rifiutare la richiesta di {name}?",
+  "@rejectConfirmTitle": {
+    "description": "Título del diálogo de confirmación del rechazo.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "rejectConfirmBody": "Passerà tra le rifiutate. Il cliente non riceve nessun avviso automatico: se vuoi, scrivigli tu.",
+  "@rejectConfirmBody": {
+    "description": "Explicación del rechazo."
+  },
+  "rejectDone": "Richiesta rifiutata.",
+  "@rejectDone": {
+    "description": "Confirmación del rechazo."
+  },
+  "rejectFailed": "Non è stato possibile rifiutare la richiesta. Riprova.",
+  "@rejectFailed": {
+    "description": "Error al rechazar."
+  },
+  "rejectConflict": "La richiesta è cambiata nel frattempo: controlla il suo stato.",
+  "@rejectConflict": {
+    "description": "El pedido ya no estaba en estado nuevo."
+  },
+  "actionUndoReject": "Ripristina richiesta",
+  "@actionUndoReject": {
+    "description": "Botón del detalle de un pedido rechazado: deshace el rechazo (rejected → new). En italiano se evita «Annulla», que es el botón de cancelar."
+  },
+  "undoRejectConfirmTitle": "Ripristinare la richiesta di {name}?",
+  "@undoRejectConfirmTitle": {
+    "description": "Título del diálogo de confirmación para deshacer el rechazo.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "undoRejectConfirmBody": "Tornerà tra le richieste viste e potrai gestirla di nuovo. Il cliente non riceve nessun avviso.",
+  "@undoRejectConfirmBody": {
+    "description": "Explicación de deshacer el rechazo."
+  },
+  "undoRejectConfirmAction": "Ripristina",
+  "@undoRejectConfirmAction": {
+    "description": "Botón que confirma deshacer el rechazo."
+  },
+  "undoRejectDone": "Richiesta ripristinata: è tra le viste.",
+  "@undoRejectDone": {
+    "description": "Confirmación de que se deshizo el rechazo."
+  },
+  "undoRejectFailed": "Non è stato possibile ripristinare la richiesta. Riprova.",
+  "@undoRejectFailed": {
+    "description": "Error al deshacer el rechazo."
+  },
+  "undoRejectConflict": "La richiesta è cambiata nel frattempo: controlla il suo stato.",
+  "@undoRejectConflict": {
+    "description": "El pedido ya no estaba rechazado."
+  },
+
+  "detailProspectNotice": "Non è ancora cliente: se non diventa un servizio, i suoi dati si cancellano 90 giorni dopo la sua ultima richiesta.",
+  "@detailProspectNotice": {
+    "description": "Detalle, sección de contacto, si la ficha es un prospecto: el borrado automático (contrato §9)."
+  },
+  "detailClientKept": "Cliente: i suoi dati restano.",
+  "@detailClientKept": {
+    "description": "Detalle, sección de contacto, si la ficha ya es de un cliente (no se borra a los 90 días)."
+  },
+  "actionMarkClient": "Segna come cliente",
+  "@actionMarkClient": {
+    "description": "Botón del detalle si la persona es un prospecto: la ficha pasa a cliente (trial) y deja de borrarse a los 90 días."
+  },
+  "markClientConfirmTitle": "Segnare {name} come cliente?",
+  "@markClientConfirmTitle": {
+    "description": "Título del diálogo de confirmación de marcar como cliente.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "markClientConfirmBody": "Fallo quando avete concordato almeno un servizio. Da cliente i suoi dati restano, anche allergie e diete; se no, si cancellano 90 giorni dopo la sua ultima richiesta.",
+  "@markClientConfirmBody": {
+    "description": "Explicación de marcar como cliente."
+  },
+  "markClientConfirmAction": "Segna come cliente",
+  "@markClientConfirmAction": {
+    "description": "Botón que confirma marcar como cliente."
+  },
+  "markClientDone": "Fatto: ora è tra i clienti e i suoi dati restano.",
+  "@markClientDone": {
+    "description": "Confirmación de que la ficha pasó a cliente."
+  },
+  "markClientFailed": "Non è stato possibile segnarlo come cliente. Riprova.",
+  "@markClientFailed": {
+    "description": "Error al marcar como cliente."
+  },
+  "markClientConflict": "La scheda è cambiata nel frattempo: controlla i dati aggiornati.",
+  "@markClientConflict": {
+    "description": "La ficha ya no era un prospecto (por ejemplo, se marcó desde otro dispositivo)."
+  },
+
+  "newRequestBanner": "Nuova richiesta da {name}",
+  "@newRequestBanner": {
+    "description": "Aviso emergente de un pedido nuevo.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "newRequestsBanner": "{count} nuove richieste",
+  "@newRequestsBanner": {
+    "description": "Aviso emergente de varios pedidos nuevos (2 o más).",
+    "placeholders": {
+      "count": { "type": "int", "example": "3" }
+    }
+  },
+
+  "agendaViewMonth": "Mese",
+  "@agendaViewMonth": {
+    "description": "Vista mensual de la agenda."
+  },
+  "agendaViewWeek": "Settimana",
+  "@agendaViewWeek": {
+    "description": "Vista semanal de la agenda."
+  },
+  "agendaPrevious": "Precedente",
+  "@agendaPrevious": {
+    "description": "Ir al mes o semana anterior."
+  },
+  "agendaNext": "Successivo",
+  "@agendaNext": {
+    "description": "Ir al mes o semana siguiente."
+  },
+  "agendaToday": "Oggi",
+  "@agendaToday": {
+    "description": "Volver a hoy."
+  },
+  "agendaWeekRange": "{start} – {end}",
+  "@agendaWeekRange": {
+    "description": "Rango de la semana visible.",
+    "placeholders": {
+      "start": { "type": "String", "example": "19 ott" },
+      "end": { "type": "String", "example": "25 ott 2026" }
+    }
+  },
+  "agendaNoRequestsDay": "Nessuna richiesta per questo giorno.",
+  "@agendaNoRequestsDay": {
+    "description": "Día sin pedidos."
+  },
+  "agendaWithoutDateEmpty": "Nessuna richiesta senza data.",
+  "@agendaWithoutDateEmpty": {
+    "description": "Lista senza data vacía."
+  },
+  "agendaDayCount": "{count, plural, =0{nessuna richiesta} =1{1 richiesta} other{{count} richieste}}",
+  "@agendaDayCount": {
+    "description": "Texto accesible de un día del calendario.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+
+  "dietVegetarian": "Vegetariana",
+  "@dietVegetarian": {
+    "description": "Dieta vegetariana."
+  },
+  "dietVegan": "Vegana",
+  "@dietVegan": {
+    "description": "Dieta vegana."
+  },
+  "allergenGluten": "Glutine",
+  "@allergenGluten": {
+    "description": "Alérgeno UE (igual que en la web)."
+  },
+  "allergenCrustaceans": "Crostacei",
+  "@allergenCrustaceans": {
+    "description": "Alérgeno UE."
+  },
+  "allergenEggs": "Uova",
+  "@allergenEggs": {
+    "description": "Alérgeno UE."
+  },
+  "allergenFish": "Pesce",
+  "@allergenFish": {
+    "description": "Alérgeno UE."
+  },
+  "allergenPeanuts": "Arachidi",
+  "@allergenPeanuts": {
+    "description": "Alérgeno UE."
+  },
+  "allergenSoy": "Soia",
+  "@allergenSoy": {
+    "description": "Alérgeno UE."
+  },
+  "allergenMilk": "Latte e derivati",
+  "@allergenMilk": {
+    "description": "Alérgeno UE."
+  },
+  "allergenNuts": "Frutta a guscio",
+  "@allergenNuts": {
+    "description": "Alérgeno UE."
+  },
+  "allergenCelery": "Sedano",
+  "@allergenCelery": {
+    "description": "Alérgeno UE."
+  },
+  "allergenMustard": "Senape",
+  "@allergenMustard": {
+    "description": "Alérgeno UE."
+  },
+  "allergenSesame": "Sesamo",
+  "@allergenSesame": {
+    "description": "Alérgeno UE."
+  },
+  "allergenSulphites": "Solfiti",
+  "@allergenSulphites": {
+    "description": "Alérgeno UE."
+  },
+  "allergenLupin": "Lupini",
+  "@allergenLupin": {
+    "description": "Alérgeno UE."
+  },
+  "allergenMolluscs": "Molluschi",
+  "@allergenMolluscs": {
+    "description": "Alérgeno UE."
+  },
+
+  "contactWhatsAppMessage": "Ciao {name}, sono {chef} di {brand}. Ho ricevuto la tua richiesta e ti scrivo per organizzarci.",
+  "@contactWhatsAppMessage": {
+    "description": "Mensaje de WhatsApp al cliente, en SU idioma (requests.locale).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" }
+    }
+  },
+  "contactEmailSubject": "La tua richiesta a {brand}",
+  "@contactEmailSubject": {
+    "description": "Asunto del email al cliente, en SU idioma.",
+    "placeholders": {
+      "brand": { "type": "String", "example": "Radici" }
+    }
+  },
+  "contactEmailGreeting": "Ciao {name},",
+  "@contactEmailGreeting": {
+    "description": "Saludo al comienzo del email al cliente, en SU idioma.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" }
+    }
+  },
+
+  "routeNotFound": "Pagina non trovata.",
+  "@routeNotFound": {
+    "description": "Ruta desconocida."
+  },
+  "routeGoHome": "Torna all'inizio",
+  "@routeGoHome": {
+    "description": "Botón de la página no encontrada."
   }
 }

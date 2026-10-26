@@ -6,10 +6,16 @@ import it from "../i18n/it.json";
 import { createSiteI18n } from "../i18n/site.ts";
 import type { RequestData } from "./model.ts";
 
+/** Hoy en Europe/Rome para los tests: la fecha preferida va del 20/10 al 02/11/2026. */
+export const TODAY = "2026-10-19";
+
+/** Token que generan las sitekeys de prueba de Turnstile. */
+export const TEST_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
+
 const dicts = { it: flatten(it), es: flatten(es), en: flatten(en) };
 
 export function i18nFor(lang: Lang) {
-  return createSiteI18n(lang, dicts[lang], "Mestolo");
+  return createSiteI18n(lang, dicts[lang], "Radici");
 }
 
 /** Pedido válido: vector 1 de SPEC.md §5.1 (2 adultos, 2 niños, 5 días, cena). */
@@ -23,15 +29,16 @@ export function validRequest(overrides: Partial<RequestData> = {}): RequestData 
     allergens: [],
     diets: [],
     restrictionsNote: "",
-    date: "",
+    preferredDate: "",
     slot: "any",
     name: "Giulia Rossi",
     zone: "Città Alta",
     phone: "+39 333 123 4567",
-    email: "",
+    email: "giulia@example.test",
+    whatsappOptIn: false,
     notes: "",
-    privacyConsent: true,
-    healthConsent: false,
+    consentPrivacy: true,
+    consentHealth: false,
     ...overrides,
   };
 }

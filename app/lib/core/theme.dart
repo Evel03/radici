@@ -1,8 +1,9 @@
 // Tema Material 3 con semilla cálida (terracota) y tipografía del sistema.
 import 'package:flutter/material.dart';
+import 'package:radici/core/brand_mark_geometry.dart';
 
-/// Terracota: color semilla de la marca (provisorio, como el nombre).
-const Color brandSeedColor = Color(0xFFC0583A);
+/// Terracota: color semilla del tema, el mismo de la marca y los íconos.
+const Color brandSeedColor = Color(brandTerracotta);
 
 /// Tamaño mínimo de los objetivos táctiles (pautas de Android e iOS).
 const double minTapTarget = 48;

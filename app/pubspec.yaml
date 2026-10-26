@@ -1,4 +1,4 @@
-name: mestolo
+name: radici
 description: "Cucina di casa a domicilio"
 # Paquete privado: nunca se publica en pub.dev.
 publish_to: 'none'
@@ -19,7 +19,13 @@ dependencies:
   go_router: ^18.1.0
   intl: ^0.20.3
   json_annotation: ^4.12.0
+  # Idioma de la interfaz guardado en el dispositivo: un arranque en frío lo
+  # muestra desde el primer cuadro, antes de leer el perfil. Ya venía con
+  # supabase_flutter (guarda ahí la sesión).
+  shared_preferences: ^2.5.6
   supabase_flutter: ^2.18.3
+  # WhatsApp (wa.me), llamada (tel:) y email (mailto:) desde el detalle del pedido.
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:
@@ -27,10 +33,35 @@ dev_dependencies:
   build_runner: ^2.16.2
   flutter_lints: ^6.0.0
   freezed: ^4.0.3
+  # MockClient: prueba los repositorios de Supabase sin servidor.
+  http: ^1.6.0
   json_serializable: ^6.14.1
   mocktail: ^1.0.5
+  # InMemorySharedPreferencesAsync: prueba la caché del idioma sin plugin.
+  shared_preferences_platform_interface: ^2.4.2
+  # WebSocket falso: prueba el canal de Realtime (suscripción, avisos y
+  # reconexión) con el cliente real de Supabase, sin servidor.
+  web_socket: ^1.0.1
+  web_socket_channel: ^3.0.3
 
 flutter:
   # Genera AppLocalizations a partir de lib/l10n/*.arb (ver l10n.yaml).
   generate: true
   uses-material-design: true
+
+  assets:
+    # Se muestra en la pantalla de licencias (main.dart la registra).
+    - assets/fonts/LICENSE-Roboto.txt
+
+  # Roboto empaquetada: en la web (/gestione/) evita que el motor la descargue
+  # de fonts.gstatic.com. El nombre de la familia tiene que ser exactamente
+  # "Roboto" (es la que el motor busca en FontManifest.json). En Android
+  # reemplaza a la Roboto del sistema; en iOS el tema sigue usando la del sistema.
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+        - asset: assets/fonts/Roboto-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 700

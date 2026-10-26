@@ -1,9 +1,9 @@
 {
-  "name": "mestolo",
+  "name": "radici",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test \"supabase/functions/_shared/**/*.test.ts\""
+    "test": "node --test \"supabase/functions/**/*.test.ts\""
   },
   "engines": {
     "node": ">=24"

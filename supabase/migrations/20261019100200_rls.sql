@@ -1,5 +1,5 @@
 -- =====================================================================
--- Mestolo · M1 · Privilegios y Row Level Security (SPEC §6, "RLS (resumen)")
+-- Radici · M1 · Privilegios y Row Level Security (SPEC §6, "RLS (resumen)")
 --
 -- Dos capas:
 --   1. Privilegios (GRANT/REVOKE): qué comandos y qué columnas puede tocar

@@ -2,8 +2,8 @@
 // plantilla italiana, y los mismos placeholders.
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/app.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/app.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 import '../support/repo_files.dart';
 

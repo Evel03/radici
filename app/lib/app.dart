@@ -1,10 +1,12 @@
 // Raíz de la UI: router, tema y localizaciones.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/core/env.dart';
-import 'package:mestolo/core/router.dart';
-import 'package:mestolo/core/theme.dart';
-import 'package:mestolo/l10n/app_localizations.dart';
+import 'package:radici/core/env.dart';
+import 'package:radici/core/router.dart';
+import 'package:radici/core/theme.dart';
+import 'package:radici/features/requests/presentation/new_request_alert_listener.dart';
+import 'package:radici/features/settings/application/language_controller.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 /// Idiomas soportados. El primero es el de respaldo cuando el idioma del
 /// dispositivo no está soportado: italiano (clientes de Bergamo).
@@ -15,8 +17,8 @@ const List<Locale> appSupportedLocales = [
   Locale('en'),
 ];
 
-class MestoloApp extends ConsumerWidget {
-  const MestoloApp({super.key});
+class RadiciApp extends ConsumerWidget {
+  const RadiciApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -26,11 +28,18 @@ class MestoloApp extends ConsumerWidget {
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
+      // Con sesión, el idioma del perfil; sin sesión (null), el del
+      // dispositivo, o italiano si no está soportado.
+      locale: ref.watch(appLocaleProvider),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: appSupportedLocales,
       routerConfig: ref.watch(routerProvider),
       builder: (context, child) {
-        final content = child ?? const SizedBox.shrink();
+        // El aviso de pedidos nuevos escucha desde acá, encima de todas las
+        // rutas (ver NewRequestAlertListener).
+        final content = NewRequestAlertListener(
+          child: child ?? const SizedBox.shrink(),
+        );
         if (!showBackendNotice) return content;
         return Column(
           children: [

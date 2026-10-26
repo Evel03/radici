@@ -1,5 +1,5 @@
 -- =====================================================================
--- Mestolo · M1 · Esquema base (SPEC.md §4)
+-- Radici · M1 · Esquema base (SPEC.md §4)
 -- Extensiones, enums, tablas de Fase 1 y Fase 2, claves, checks e índices.
 --
 -- Convenciones:

@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Plantilla de public/og-image.png (1200 × 630), la vista previa al compartir un link.
+      La dibuja scripts/render-images.mjs con Chrome sin ventana; no se publica. Los marcadores entre llaves
+      dobles salen de src/i18n/it.json (textos de la landing) y de la marca (VITE_BRAND_NAME, por defecto Radici).
+      Composición centrada: si una app recorta la imagen al cuadrado, la marca y el título quedan enteros.
+      Colores y fuentes: los del sitio (src/styles/base.css, modo claro).
+    -->
+    <style>
+      :root {
+        --bg: #fbf6ee;
+        --text: #2a1f18;
+        --muted: #5f5047;
+        --border: #e2d4c1;
+        --accent: #a3431c;
+        --accent-soft: #f7e2d6;
+        --olive: #4f5c22;
+        --olive-soft: #e8ead2;
+        --label-bg: #fffaf2;
+        --label-tape: #e9c9a8;
+        --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --font-serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Noto Serif", serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      .canvas {
+        position: relative;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+
+      .glow {
+        position: absolute;
+        top: -420px;
+        right: -300px;
+        width: 760px;
+        height: 760px;
+        border-radius: 50%;
+        background: var(--accent-soft);
+      }
+
+      .glow--olive {
+        top: auto;
+        right: auto;
+        bottom: -470px;
+        left: -330px;
+        width: 700px;
+        height: 700px;
+        background: var(--olive-soft);
+      }
+
+      .center {
+        position: absolute;
+        inset: 0 0 14px;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        text-align: center;
+      }
+
+      .brand {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .brand__mark {
+        width: 108px;
+        height: 108px;
+        color: var(--accent);
+      }
+
+      .brand span {
+        font-family: var(--font-serif);
+        font-size: 128px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: -0.01em;
+      }
+
+      /* Vapor sobre el bol del logo (el bol ocupa el tercio izquierdo de la marca). */
+      .steam {
+        position: absolute;
+        top: 12px;
+        left: 9px;
+        width: 52px;
+        height: 44px;
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 3.2;
+        stroke-linecap: round;
+        opacity: 0.45;
+      }
+
+      .title {
+        max-width: 600px;
+        margin: 30px 0 0;
+        font-family: var(--font-serif);
+        font-size: 50px;
+        font-weight: 700;
+        line-height: 1.12;
+        text-wrap: balance;
+      }
+
+      .eyebrow {
+        margin: 28px 0 0;
+        color: var(--olive);
+        font-family: var(--font-sans);
+        font-size: 25px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .label {
+        position: absolute;
+        display: grid;
+        gap: 6px;
+        width: 262px;
+        padding: 18px 20px 18px 26px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--label-bg);
+        box-shadow: 0 1px 2px rgb(42 31 24 / 8%), 0 10px 24px rgb(42 31 24 / 10%);
+      }
+
+      .label::before {
+        position: absolute;
+        top: -12px;
+        left: 20px;
+        width: 70px;
+        height: 24px;
+        background: var(--label-tape);
+        opacity: 0.85;
+        transform: rotate(-4deg);
+        content: "";
+      }
+
+      .label b {
+        font-family: var(--font-serif);
+        font-size: 25px;
+        line-height: 1.15;
+      }
+
+      .label small {
+        color: var(--muted);
+        font-family: var(--font-sans);
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .label--1 {
+        top: 46px;
+        left: 34px;
+        transform: rotate(-6deg);
+      }
+
+      .label--2 {
+        bottom: 70px;
+        left: 52px;
+        transform: rotate(3deg);
+      }
+
+      .label--3 {
+        right: 40px;
+        bottom: 92px;
+        transform: rotate(-3.5deg);
+      }
+
+      .band {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: 14px;
+        background: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="canvas">
+      <div class="glow"></div>
+      <div class="glow glow--olive"></div>
+
+      <div class="label label--1"><b>{{label1Dish}}</b><small>{{label1Meta}}</small></div>
+      <div class="label label--2"><b>{{label2Dish}}</b><small>{{label2Meta}}</small></div>
+      <div class="label label--3"><b>{{label3Dish}}</b><small>{{label3Meta}}</small></div>
+
+      <div class="center">
+        <div class="brand">
+          <svg class="steam" viewBox="0 0 52 44" aria-hidden="true">
+            <path d="M10 42c-7-8 7-13 0-22s7-13 0-19" />
+            <path d="M26 42c-7-8 7-13 0-22s7-13 0-19" />
+            <path d="M42 42c-7-8 7-13 0-22s7-13 0-19" />
+          </svg>
+          <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M3 16h15a7.5 7.5 0 0 1-15 0z" fill="currentColor" />
+            <path d="M17 16 27.5 4.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+          </svg>
+          <span>{{brand}}</span>
+        </div>
+        <p class="title">{{title}}</p>
+        <p class="eyebrow">{{eyebrow}}</p>
+      </div>
+
+      <div class="band"></div>
+    </div>
+  </body>
+</html>

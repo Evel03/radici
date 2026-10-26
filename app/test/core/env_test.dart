@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/core/env.dart';
+import 'package:radici/core/env.dart';
 
 void main() {
   test('sin defines: dev sin backend y con aviso', () {

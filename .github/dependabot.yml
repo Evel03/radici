@@ -1,0 +1,13 @@
+# Las actions de los workflows van fijadas por SHA (un tag se puede mover y una action comprometida
+# vería los tokens de Supabase y Cloudflare). Dependabot propone las versiones nuevas con un PR:
+# actualiza el SHA y el comentario "# vX.Y.Z". Revisar el changelog de cada una antes de unir.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"

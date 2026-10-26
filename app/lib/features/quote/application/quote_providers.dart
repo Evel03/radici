@@ -1,8 +1,8 @@
 // Providers de la calculadora de presupuesto. Los widgets solo leen estos
 // providers y llaman a los métodos del notifier: no calculan nada.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mestolo/features/quote/application/quote_draft.dart';
-import 'package:mestolo/features/quote/domain/quote.dart';
+import 'package:radici/features/quote/application/quote_draft.dart';
+import 'package:radici/features/quote/domain/quote.dart';
 
 /// Tarifas vigentes. En M0 son las por defecto; desde M2/M3 se leerán de
 /// `chef_settings` en Supabase (a través de un repositorio).

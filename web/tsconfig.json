@@ -23,7 +23,10 @@
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "tsBuildInfoFile": "node_modules/.tmp/web.tsbuildinfo"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // El código de supabase/functions/_shared se chequea con sus propias opciones (ver tsconfig.shared.json).
+  "references": [{ "path": "./tsconfig.shared.json" }]
 }

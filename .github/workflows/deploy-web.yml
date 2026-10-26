@@ -1,12 +1,30 @@
-# Publica la web pública (web/) en Cloudflare Pages (Direct Upload).
-# - push a main  → producción (rama de producción del proyecto: main)
-# - pull request → vista previa en <rama>.<proyecto>.pages.dev (con X-Robots-Tag: noindex)
+# Publica en Cloudflare Pages (Direct Upload) la web pública (web/) y, dentro del mismo sitio, la
+# bandeja de Evelyn en /gestione/ (la app Flutter compilada para la web). Contrato:
+# docs/contracts/public-request.md §6–§8.
+# - push a main  → producción (rama de producción del proyecto: main). Se sirve en el dominio
+#   propio https://radici.sepusola10.com (dominio personalizado del proyecto, se agrega una vez
+#   en Cloudflare).
+# - pull request → vista previa en <rama>.<subdominio>.pages.dev (con X-Robots-Tag: noindex).
+#   <subdominio> lo asigna Cloudflare al crear el proyecto: "radici", o con un sufijo si ya está tomado.
+#   En una vista previa /gestione/ se compila sin backend (modo dev): es código sin revisar en una URL
+#   pública y no se conecta a los datos de producción (contrato §8).
+# Antes de publicar corre los tests de la web (npm test) y de la app (flutter analyze + flutter test).
 #
 # Necesita, en Settings → Secrets and variables → Actions del repo:
 # - secreto  CLOUDFLARE_API_TOKEN   token con solo "Account > Cloudflare Pages > Edit"
 # - variable CLOUDFLARE_ACCOUNT_ID  (no es secreta)
-# - variables VITE_WHATSAPP_NUMBER, VITE_SITE_URL, VITE_NOINDEX (opcional VITE_BRAND_NAME)
-# Sin el secreto, la web se construye y testea pero no se publica.
+# - variables SUPABASE_URL (https://<ref>.supabase.co) y SUPABASE_PUBLISHABLE_KEY (sb_publishable_...):
+#   un solo valor para la web (VITE_SUPABASE_URL, CSP de _headers) y para /gestione/ (dart-define),
+#   así la CSP siempre deja pasar al backend de la app
+# - variables VITE_TURNSTILE_SITE_KEY, VITE_SITE_URL, VITE_NOINDEX (opcional VITE_BRAND_NAME)
+# - lee también ALLOWED_ORIGINS (la de deploy-supabase.yml), para comprobar que incluya VITE_SITE_URL, y
+#   la opcional ALLOW_DRAFT_PRIVACY (ver abajo)
+# Sin el secreto, todo se construye y testea pero no se publica. Con el secreto, si falta la
+# configuración de Supabase o Turnstile: en producción falla antes de publicar (el formulario y la
+# bandeja quedarían rotos); en una vista previa solo avisa. Una SUPABASE_PUBLISHABLE_KEY que no sea
+# publicable corta siempre. En producción también corta si la privacy sigue en borrador (marcadores
+# [...] o el aviso de borrador): solo para pruebas internas, ALLOW_DRAFT_PRIVACY=true lo deja pasar.
+# Las actions de terceros van fijadas por SHA (Dependabot las actualiza: .github/dependabot.yml).
 name: Deploy web
 
 on:
@@ -14,42 +32,157 @@ on:
     branches: [main]
     paths:
       - "web/**"
+      - "app/**"
       - "supabase/functions/_shared/**"
       - ".github/workflows/deploy-web.yml"
   pull_request:
     paths:
       - "web/**"
+      - "app/**"
       - "supabase/functions/_shared/**"
       - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
 
+# Un grupo por PR y otro por rama: un PR (también desde un fork, cuya rama suele llamarse main) nunca
+# cae en el grupo de producción. Los PR se cancelan entre sí; producción no se corta: hace cola.
 concurrency:
-  group: deploy-web-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  group: deploy-web-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
   deployments: write
 
 env:
-  PAGES_PROJECT: mestolo
-  # Versión fija y no la del día: se actualiza a propósito, con un PR.
+  # Nombre del proyecto de Pages (si no existe, el paso "Crear el proyecto" lo crea). No es el
+  # subdominio *.pages.dev: ese lo elige Cloudflare.
+  PAGES_PROJECT: radici
+  # Versiones fijas y no las del día: se actualizan a propósito, con un PR.
   WRANGLER_VERSION: "4.149.0"
+  # La misma que el CI (ci.yml) y que app/README.md.
+  FLUTTER_VERSION: "3.47.7"
 
 jobs:
   deploy:
     name: Publicar en Cloudflare Pages
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # Los secretos no se pueden usar en "if"; esto deja un "true"/"false".
       HAS_CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+      TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
     defaults:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      # Con el token se va a publicar. La clave de Supabase termina en el JS público: solo una
+      # publicable. Sin la configuración, en producción se corta acá; en una vista previa se avisa.
+      - name: Revisar la configuración (Supabase, Turnstile y privacy)
+        if: env.HAS_CF_TOKEN == 'true'
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          SITE_URL: ${{ vars.VITE_SITE_URL }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          ALLOW_DRAFT_PRIVACY: ${{ vars.ALLOW_DRAFT_PRIVACY }}
+        run: |
+          set -euo pipefail
+          # Lista de permitidas, no de prohibidas, y sin espacios: la app hace trim() de la clave, así
+          # que " sb_secret_..." (con un espacio delante) pasaría una lista de prohibidas.
+          if [ -n "${SUPABASE_PUBLISHABLE_KEY}" ]; then
+            if [[ "${SUPABASE_PUBLISHABLE_KEY}" =~ [[:space:]] ]]; then
+              echo "::error::SUPABASE_PUBLISHABLE_KEY tiene espacios o saltos de línea: dejar solo la clave (sb_publishable_...)."
+              exit 1
+            fi
+            role=""
+            if [[ "${SUPABASE_PUBLISHABLE_KEY}" =~ ^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]]; then
+              # Clave vieja (JWT): el rol va en el payload. Solo vale la anon.
+              payload=$(printf '%s' "${SUPABASE_PUBLISHABLE_KEY}" | cut -d. -f2 | tr '_-' '/+')
+              while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="${payload}="; done
+              role=$(printf '%s' "${payload}" | base64 -d 2>/dev/null | jq -r '.role // empty' 2>/dev/null || true)
+            fi
+            if ! [[ "${SUPABASE_PUBLISHABLE_KEY}" =~ ^sb_publishable_[A-Za-z0-9_-]+$ || "${role}" == "anon" ]]; then
+              echo "::error::SUPABASE_PUBLISHABLE_KEY no es una clave publicable (sb_publishable_... o la anon vieja) y quedaría en el JS público. Nunca una secreta ni la service_role."
+              exit 1
+            fi
+          fi
+
+          problems=()
+          if [ -z "${SUPABASE_URL}" ]; then
+            problems+=("Falta la variable SUPABASE_URL (https://<ref>.supabase.co).")
+          elif ! [[ "${SUPABASE_URL}" =~ ^https://[A-Za-z0-9.-]+$ ]]; then
+            problems+=("SUPABASE_URL tiene que ser solo el origen, sin ruta ni barra final: https://<ref>.supabase.co")
+          fi
+          if [ -z "${SUPABASE_PUBLISHABLE_KEY}" ]; then
+            problems+=("Falta la variable SUPABASE_PUBLISHABLE_KEY (sb_publishable_...).")
+          fi
+          if [ -z "${TURNSTILE_SITE_KEY}" ]; then
+            problems+=("Falta la variable VITE_TURNSTILE_SITE_KEY.")
+          elif [[ "${TURNSTILE_SITE_KEY}" =~ ^[123]x0{20}[A-Z]{2}$ ]]; then
+            problems+=("VITE_TURNSTILE_SITE_KEY es una sitekey de prueba: el servidor rechaza su token.")
+          fi
+
+          if [ "${#problems[@]}" -eq 0 ]; then
+            echo "Configuración completa."
+          elif [ "${BRANCH}" = "main" ]; then
+            for p in "${problems[@]}"; do echo "::error::${p}"; done
+            echo "::error::No se publica producción: el formulario de /richiesta/ y /gestione/ no funcionarían."
+            exit 1
+          else
+            for p in "${problems[@]}"; do echo "::warning::${p} Es una vista previa: se publica igual."; done
+          fi
+
+          if [ "${BRANCH}" != "main" ]; then
+            exit 0
+          fi
+
+          # Producción: la función tiene que aceptar pedidos desde el sitio (CORS). ALLOWED_ORIGINS es la
+          # variable que deploy-supabase.yml carga como secreto de la función.
+          site="${SITE_URL%/}"
+          if [ -z "${ALLOWED_ORIGINS}" ]; then
+            echo "::warning::La variable ALLOWED_ORIGINS no está en el repo (puede estar cargada directo en Supabase): no se comprueba que incluya ${site:-el sitio}."
+          elif [ -n "${site}" ]; then
+            match=false
+            IFS=',' read -ra origins <<< "${ALLOWED_ORIGINS}"
+            for raw in "${origins[@]}"; do
+              origin="$(printf '%s' "${raw}" | tr -d '[:space:]')"
+              origin="${origin%/}"
+              if [ "${origin}" = "${site}" ]; then match=true; break; fi
+              # Comodín de una etiqueta (contrato §2): https://*.example.com
+              if [[ "${origin}" == *'://*.'* ]]; then
+                scheme="${origin%%://*}"
+                rest="${origin#*://\*.}"
+                if [[ "${site}" =~ ^([a-z]+)://[^./]+\.(.+)$ ]] && [ "${BASH_REMATCH[1]}" = "${scheme}" ] && [ "${BASH_REMATCH[2]}" = "${rest}" ]; then
+                  match=true
+                  break
+                fi
+              fi
+            done
+            if [ "${match}" != true ]; then
+              echo "::error::ALLOWED_ORIGINS (${ALLOWED_ORIGINS}) no incluye el origen del sitio (${site}): el formulario no podría mandar pedidos. Corregir la variable y volver a correr Deploy Supabase."
+              exit 1
+            fi
+          fi
+
+          # Producción: la privacy no puede salir en borrador (datos del titular y de los proveedores entre
+          # corchetes, o el aviso de borrador de privacy/index.html). Completarla y hacerla revisar.
+          draft=$(jq -r '.privacy | to_entries[] | select((.value | type) == "string" and (.value | test("\\[[^\\]]+\\]"))) | .key' \
+            src/i18n/it.json src/i18n/es.json src/i18n/en.json | sort -u | tr '\n' ' ')
+          if grep -q 'class="draft"' privacy/index.html; then draft="${draft}aviso-de-borrador "; fi
+          if [ -n "${draft}" ]; then
+            if [ "${ALLOW_DRAFT_PRIVACY}" = "true" ]; then
+              echo "::warning::La privacy sigue en borrador (${draft}). Se publica porque ALLOW_DRAFT_PRIVACY=true: solo para pruebas internas, no compartir el sitio."
+            else
+              echo "::error::La privacy sigue en borrador (${draft}): completar los datos entre corchetes en web/src/i18n/*.json, hacerla revisar y sacar el aviso de borrador de web/privacy/index.html. Para una prueba interna antes de eso, la variable ALLOW_DRAFT_PRIVACY=true."
+              exit 1
+            fi
+          fi
+
+      # ---- Web pública -------------------------------------------------------------------------
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: web/.nvmrc
           cache: npm
@@ -61,12 +194,104 @@ jobs:
 
       - name: Build
         env:
-          VITE_WHATSAPP_NUMBER: ${{ vars.VITE_WHATSAPP_NUMBER }}
+          VITE_SUPABASE_URL: ${{ env.SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ env.SUPABASE_PUBLISHABLE_KEY }}
+          VITE_TURNSTILE_SITE_KEY: ${{ env.TURNSTILE_SITE_KEY }}
           VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
           VITE_NOINDEX: ${{ vars.VITE_NOINDEX }}
           VITE_BRAND_NAME: ${{ vars.VITE_BRAND_NAME }}
         run: npm run build
 
+      # ---- Bandeja de Evelyn (/gestione/) --------------------------------------------------------
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # El código generado (freezed, json, l10n) no se versiona.
+      - name: App - dependencias y código generado
+        working-directory: app
+        run: |
+          flutter pub get
+          dart run build_runner build
+
+      - name: App - análisis y tests
+        working-directory: app
+        run: |
+          flutter analyze
+          flutter test
+
+      # La misma app de Android/iOS compilada para la web (app/README.md, "Web /gestione/"):
+      # --no-web-resources-cdn: CanvasKit sale del propio sitio (la CSP de /gestione/* solo permite 'self').
+      # --csp: main.dart.js sin código generado en tiempo de ejecución.
+      # Solo producción (main) conecta la bandeja al Supabase de producción. Una vista previa es código
+      # sin revisar en una URL pública: va en modo dev y sin backend (muestra "Backend non configurato").
+      - name: App - build web para /gestione/
+        working-directory: app
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "${BRANCH}" = "main" ]; then
+            defines=(--dart-define=APP_ENV=prod
+                     "--dart-define=SUPABASE_URL=${SUPABASE_URL}"
+                     "--dart-define=SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}")
+          else
+            defines=(--dart-define=APP_ENV=dev)
+            echo "::notice::Vista previa: /gestione/ se compila sin backend (no se conecta a los datos de producción)."
+          fi
+          flutter build web --release --base-href /gestione/ --no-web-resources-cdn --csp "${defines[@]}"
+
+      # A dist/gestione/, sin lo que un build JS con CanvasKit nunca carga (42 MB → ~18 MB): los
+      # renderers skwasm, wimp y webparagraph, los símbolos de depuración y el service worker (no se
+      # registra). Se conservan canvaskit/ (Safari, Firefox) y canvaskit/chromium/ (Chrome, Edge).
+      - name: Copiar /gestione/ al sitio
+        run: |
+          set -euo pipefail
+          src=../app/build/web
+          out=dist/gestione
+          if grep -q '"renderer":"skwasm"' "${src}/flutter_bootstrap.js"; then
+            echo "::error::El build de la app usa skwasm (--wasm): revisar qué archivos se descartan en este paso."
+            exit 1
+          fi
+          # vite build vacía dist/: gestione/ no puede existir todavía.
+          if [ -e "${out}" ]; then
+            echo "::error::${out} ya existe: el build de la web tendría que haberlo vaciado."
+            exit 1
+          fi
+          mkdir -p "${out}"
+          tar -C "${src}" -cf - \
+            --exclude='./canvaskit/skwasm*' --exclude='./canvaskit/wimp*' --exclude='./canvaskit/webparagraph' \
+            --exclude='*.symbols' --exclude='./.last_build_id' --exclude='./flutter_service_worker.js' \
+            . | tar -C "${out}" -xf -
+          if find "${out}" \( -name '*.symbols' -o -name 'skwasm*' -o -name 'wimp*' -o -name webparagraph \) | grep -q .; then
+            echo "::error::Se copiaron archivos que se tenían que descartar (revisar los --exclude de tar)."
+            exit 1
+          fi
+
+          for f in index.html flutter_bootstrap.js main.dart.js canvaskit/canvaskit.js canvaskit/canvaskit.wasm \
+                   canvaskit/chromium/canvaskit.js canvaskit/chromium/canvaskit.wasm; do
+            if [ ! -s "${out}/${f}" ]; then
+              echo "::error::Falta dist/gestione/${f}"
+              exit 1
+            fi
+          done
+          if ! grep -q '<base href="/gestione/">' "${out}/index.html"; then
+            echo "::error::dist/gestione/index.html no tiene <base href=\"/gestione/\">"
+            exit 1
+          fi
+          if ! grep -q '"useLocalCanvasKit":true' "${out}/flutter_bootstrap.js"; then
+            echo "::error::CanvasKit no es local (falta --no-web-resources-cdn): la CSP lo bloquearía."
+            exit 1
+          fi
+          if grep -q '__SUPABASE' dist/_headers; then
+            echo "::error::dist/_headers tiene marcadores de Supabase sin completar."
+            exit 1
+          fi
+          echo "dist/gestione: $(du -sh "${out}" | cut -f1) en $(find "${out}" -type f | wc -l) archivos"
+
+      # ---- Publicación ----------------------------------------------------------------------------
       - name: Sin token, no se publica
         if: env.HAS_CF_TOKEN != 'true'
         run: echo "::notice::Falta el secreto CLOUDFLARE_API_TOKEN (o es un PR desde un fork). La web se construyó pero no se publica."
@@ -102,7 +327,7 @@ jobs:
       - name: Publicar
         id: deploy
         if: env.HAS_CF_TOKEN == 'true'
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:
           # accountId siempre como input: la action sobrescribe CLOUDFLARE_ACCOUNT_ID con él.
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -117,6 +342,28 @@ jobs:
             --commit-hash=${{ github.event.pull_request.head.sha || github.sha }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
+      # Producción: ¿la función acepta pedidos desde el sitio? Solo avisa (el backend lo despliega otro
+      # workflow, que puede estar todavía corriendo). OPTIONS no pasa por el límite por IP ni por la base.
+      - name: Comprobar CORS de public-request desde el sitio
+        if: env.HAS_CF_TOKEN == 'true' && (github.head_ref || github.ref_name) == 'main'
+        env:
+          SITE_URL: ${{ vars.VITE_SITE_URL }}
+        run: |
+          set -uo pipefail
+          site="${SITE_URL%/}"
+          if [ -z "${site}" ] || [ -z "${SUPABASE_URL}" ]; then
+            echo "::notice::Sin VITE_SITE_URL o SUPABASE_URL: no se comprueba CORS."
+            exit 0
+          fi
+          allow=$(curl -sS -m 20 -o /dev/null -D - -X OPTIONS "${SUPABASE_URL}/functions/v1/public-request" \
+            -H "Origin: ${site}" -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type' \
+            | tr -d '\r' | awk 'tolower($1) == "access-control-allow-origin:" { print $2 }')
+          if [ "${allow}" = "${site}" ]; then
+            echo "CORS: public-request acepta pedidos desde ${site}."
+          else
+            echo "::warning::public-request no respondió Access-Control-Allow-Origin: ${site} (respondió '${allow:-nada}'). Revisar ALLOWED_ORIGINS y que Deploy Supabase haya terminado bien antes de compartir el sitio."
+          fi
+
       - name: Resumen
         if: env.HAS_CF_TOKEN == 'true'
         run: |
@@ -125,4 +372,5 @@ jobs:
             echo "- Entorno: ${{ steps.deploy.outputs.pages-environment }}"
             echo "- Deploy: ${{ steps.deploy.outputs.deployment-url }}"
             echo "- Alias: ${{ steps.deploy.outputs.pages-deployment-alias-url }}"
+            echo "- Bandeja de Evelyn: ${{ steps.deploy.outputs.deployment-url }}/gestione/"
           } >> "${GITHUB_STEP_SUMMARY}"

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mestolo/features/quote/presentation/quote_calculator_screen.dart';
+import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
 
 import '../../support/pump_app.dart';
 

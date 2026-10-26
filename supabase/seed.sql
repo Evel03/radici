@@ -1,7 +1,7 @@
 -- =====================================================================
--- Mestolo · datos de desarrollo (solo local; nunca en producción)
+-- Radici · datos de desarrollo (solo local; nunca en producción)
 --
--- Usuarios (contraseña de desarrollo para todos: mestolo-dev-2026; también
+-- Usuarios (contraseña de desarrollo para todos: radici-dev-2026; también
 -- sirve el login por OTP con Mailpit en http://127.0.0.1:54324):
 --   evelyn@example.test   cocinera (Bergamo)
 --   giulia@example.test   segunda cocinera, para probar aislamiento entre chefs
@@ -26,7 +26,7 @@ insert into auth.users (
 )
 select
   '00000000-0000-0000-0000-000000000000', u.id, 'authenticated', 'authenticated', u.email,
-  extensions.crypt('mestolo-dev-2026', extensions.gen_salt('bf')), now(),
+  extensions.crypt('radici-dev-2026', extensions.gen_salt('bf')), now(),
   '{"provider":"email","providers":["email"]}'::jsonb,
   jsonb_build_object('full_name', u.full_name, 'locale', u.locale),
   now(), now(), '', '', '', ''
@@ -164,37 +164,39 @@ from (values
 
 -- ---------------------------------------------------------------------
 -- Pedidos
+-- restrictions: {"allergens": [...], "diets": [...], "note": "..."} como los guarda
+-- submit_public_request (docs/contracts/public-request.md §3); null sin restricciones.
 -- ---------------------------------------------------------------------
 insert into public.requests (id, chef_id, client_id, type, status, adults, kids, days, meals, restrictions, wishes,
                              notes, preferred_date, preferred_start, pay_mode, target_session_id, text, created_at) values
   -- Chiara, semana pasada (ya cobrada)
   ('b0000000-0000-4000-8000-000000000001', 'cef00000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
-   'week', 'accepted', 2, 0, 5, array['dinner'], '[{"allergen":"milk"}]',
+   'week', 'accepted', 2, 0, 5, array['dinner'], '{"allergens": ["milk"], "diets": [], "note": ""}',
    array['a0000000-0000-4000-8000-000000000003'::uuid], null,
    date_trunc('week', current_date)::date - 5, '10:00', 'preauth', null, null, now() - interval '14 days'),
   -- Bonetti, semana pasada (cocinada, paga en efectivo)
   ('b0000000-0000-4000-8000-000000000002', 'cef00000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000002',
-   'week', 'accepted', 2, 1, 5, array['dinner'], '[{"allergen":"gluten"}]',
+   'week', 'accepted', 2, 1, 5, array['dinner'], '{"allergens": ["gluten"], "diets": [], "note": ""}',
    array['a0000000-0000-4000-8000-000000000005'::uuid], 'Primo servizio, siamo curiosi!',
    date_trunc('week', current_date)::date - 3, '14:00', 'pay_after', null, null, now() - interval '12 days'),
   -- Chiara, semana que viene (confirmada)
   ('b0000000-0000-4000-8000-000000000003', 'cef00000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
-   'week', 'accepted', 2, 0, 5, array['dinner'], '[{"allergen":"milk"}]',
+   'week', 'accepted', 2, 0, 5, array['dinner'], '{"allergens": ["milk"], "diets": [], "note": ""}',
    '{}', null,
    date_trunc('week', current_date)::date + 8, '10:00', 'preauth', null, null, now() - interval '4 days'),
   -- Sara (prospecto), presupuesto enviado y horario retenido
   ('b0000000-0000-4000-8000-000000000004', 'cef00000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000003',
-   'week', 'quoted', 2, 2, 5, array['dinner'], '[]',
+   'week', 'quoted', 2, 2, 5, array['dinner'], null,
    array['a0000000-0000-4000-8000-000000000001'::uuid, 'a0000000-0000-4000-8000-000000000008'::uuid], 'Ci hanno consigliato i casoncelli!',
    date_trunc('week', current_date)::date + 10, '15:00', 'preauth', null, null, now() - interval '1 day'),
   -- Bonetti, evento: compleanno (bandeja de entrada de Evelyn)
   ('b0000000-0000-4000-8000-000000000005', 'cef00000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000002',
-   'extra', 'new', 10, 6, 1, array['dinner'], '[{"allergen":"gluten"}]',
+   'extra', 'new', 10, 6, 1, array['dinner'], '{"allergens": ["gluten"], "diets": [], "note": ""}',
    '{}', 'Festa di compleanno di Tommaso: tutto senza glutine, per favore.',
    date_trunc('week', current_date)::date + 12, '16:00', 'pay_after', null, null, now() - interval '3 hours'),
   -- Paolo (cliente de Giulia)
   ('b0000000-0000-4000-8000-000000000007', 'cef00000-0000-4000-8000-000000000002', 'c1000000-0000-4000-8000-000000000004',
-   'week', 'accepted', 1, 0, 5, array['lunch'], '[]',
+   'week', 'accepted', 1, 0, 5, array['lunch'], null,
    '{}', null,
    date_trunc('week', current_date)::date + 8, '10:00', 'preauth', null, null, now() - interval '5 days');
 
