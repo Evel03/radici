@@ -31,12 +31,16 @@ class RadiciLogo extends StatelessWidget {
     );
 
     // Un solo nodo para los lectores de pantalla. Es un logotipo: no crece con
-    // el tamaño de letra del sistema (el nombre ya es grande).
+    // el tamaño de letra del sistema (el nombre ya es grande) ni se engrosa con
+    // el texto en negrita del sistema (Cinzel va solo en 500: sería una
+    // negrita falsa).
     return Semantics(
       container: true,
       label: '${l10n.appTitle}, ${l10n.brandTagline}',
       child: ExcludeSemantics(
-        child: MediaQuery.withNoTextScaling(
+        child: MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.noScaling, boldText: false),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -56,6 +56,27 @@ void main() {
     expect(rule - name, closeTo(40 * 0.12 * 2 + 40 * 0.07, 0.01));
   });
 
+  testWidgets('no se engrosa con el texto en negrita del sistema', (
+    tester,
+  ) async {
+    await pumpLocalized(
+      tester,
+      const MediaQuery(
+        data: MediaQueryData(boldText: true),
+        child: Scaffold(body: Center(child: RadiciLogo())),
+      ),
+    );
+    for (final key in ['logo-name', 'logo-tagline']) {
+      final text = tester.widget<RichText>(
+        find.descendant(
+          of: find.byKey(ValueKey(key)),
+          matching: find.byType(RichText),
+        ),
+      );
+      expect(text.text.style?.fontWeight, FontWeight.w500, reason: key);
+    }
+  });
+
   testWidgets('no crece con el tamaño de letra del sistema', (tester) async {
     await pumpLocalized(
       tester,

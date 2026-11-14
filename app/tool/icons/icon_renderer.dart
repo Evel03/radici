@@ -209,6 +209,7 @@ Uint8List renderIcon(IconSpec spec, MarkOutline mark) {
   final shapes = [
     for (final contour in mark.contours) _Polygon(_flatten(contour, toPx)),
   ]..sort((a, b) => a.points.length.compareTo(b.points.length));
+  final outline = _unionOutline(shapes);
 
   final background = switch (spec.background) {
     IconBackground.square => (double x, double y) => -double.infinity,
@@ -239,6 +240,13 @@ Uint8List renderIcon(IconSpec spec, MarkOutline mark) {
       for (final shape in shapes) {
         distance = math.min(distance, shape.distance(x, y, reach));
         if (distance <= full) break;
+      }
+      // Afuera, el mínimo por contorno es la distancia a la unión. Adentro solo
+      // acota la profundidad: cerca de un borde interno (las serifas pisan el
+      // asta apenas 3 unidades) quedaría una línea más oscura. Ahí se mide
+      // hasta el contorno de la unión.
+      if (distance > full && distance < 0) {
+        distance = -_distanceToOutline(outline, x, y);
       }
       // La R nunca sale del fondo.
       final markCoverage = math.min(
@@ -317,6 +325,75 @@ List<int> _rgb(int argb) => [
   (argb >> 8) & 0xFF,
   argb & 0xFF,
 ];
+
+/// Tramo recto del contorno de la unión.
+typedef _Piece = ({GlyphPoint a, GlyphPoint b});
+
+/// Contorno de la unión de [shapes]: cada borde se corta donde cruza los de
+/// los otros contornos y quedan los tramos que no están estrictamente adentro
+/// de otro (los compartidos o alineados quedan).
+List<_Piece> _unionOutline(List<_Polygon> shapes) {
+  final pieces = <_Piece>[];
+  for (var i = 0; i < shapes.length; i++) {
+    final points = shapes[i].points;
+    var a = points.last;
+    for (final b in points) {
+      final rx = b.x - a.x;
+      final ry = b.y - a.y;
+      final cuts = <double>[0, 1];
+      for (var j = 0; j < shapes.length; j++) {
+        if (j == i) continue;
+        final other = shapes[j].points;
+        var c = other.last;
+        for (final d in other) {
+          final sx = d.x - c.x;
+          final sy = d.y - c.y;
+          final denominator = rx * sy - ry * sx;
+          if (denominator != 0) {
+            final qx = c.x - a.x;
+            final qy = c.y - a.y;
+            final t = (qx * sy - qy * sx) / denominator;
+            final u = (qx * ry - qy * rx) / denominator;
+            if (t > 0 && t < 1 && u >= 0 && u <= 1) cuts.add(t);
+          }
+          c = d;
+        }
+      }
+      cuts.sort();
+      for (var k = 0; k + 1 < cuts.length; k++) {
+        if (cuts[k + 1] - cuts[k] < 1e-12) continue;
+        final from = GlyphPoint(a.x + rx * cuts[k], a.y + ry * cuts[k]);
+        final to = GlyphPoint(a.x + rx * cuts[k + 1], a.y + ry * cuts[k + 1]);
+        final midX = (from.x + to.x) / 2;
+        final midY = (from.y + to.y) / 2;
+        var inside = false;
+        for (var j = 0; j < shapes.length && !inside; j++) {
+          inside = j != i && shapes[j].distance(midX, midY, 0) < -1e-9;
+        }
+        if (!inside) pieces.add((a: from, b: to));
+      }
+      a = b;
+    }
+  }
+  return pieces;
+}
+
+/// Distancia desde (x, y) al tramo más cercano de [outline].
+double _distanceToOutline(List<_Piece> outline, double x, double y) {
+  var nearest = double.infinity; // al cuadrado
+  for (final (:a, :b) in outline) {
+    final abx = b.x - a.x;
+    final aby = b.y - a.y;
+    final lengthSquared = abx * abx + aby * aby;
+    final t = lengthSquared == 0
+        ? 0.0
+        : (((x - a.x) * abx + (y - a.y) * aby) / lengthSquared).clamp(0.0, 1.0);
+    final dx = x - (a.x + t * abx);
+    final dy = y - (a.y + t * aby);
+    nearest = math.min(nearest, dx * dx + dy * dy);
+  }
+  return math.sqrt(nearest);
+}
 
 /// Contorno cerrado (polígono simple) con su caja.
 final class _Polygon {

@@ -101,36 +101,53 @@ void main() {
     });
   });
 
-  test('contornos superpuestos: la unión, sin costura en el borde interno', () {
-    // Dos rectángulos que se pisan en el medio: su unión es un cuadrado. Los
-    // bordes internos (x = ±0,2) no tienen que dejar una línea más clara.
-    GlyphSegment line(double x0, double y0, double x1, double y1) =>
-        GlyphSegment(GlyphPoint(x0, y0), GlyphPoint(x1, y1));
-    List<GlyphSegment> rect(double left, double right) => [
-      line(left, -1, right, -1),
-      line(right, -1, right, 1),
-      line(right, 1, left, 1),
-      line(left, 1, left, -1),
-    ];
-    final square = MarkOutline([rect(-1, 0.2), rect(-0.2, 1)]);
-    const spec = IconSpec('x.png', 40, IconBackground.square, 0.25);
-    final pixels = renderIcon(spec, square);
-    // El cuadrado va de 10 a 30 px: adentro (con un píxel de margen), crema.
-    final cream = [
-      (brandCream >> 16) & 0xFF,
-      (brandCream >> 8) & 0xFF,
-      brandCream & 0xFF,
-    ];
-    for (var row = 11; row < 29; row++) {
-      for (var column = 11; column < 29; column++) {
-        final i = (row * 40 + column) * 3;
-        expect(
-          pixels.sublist(i, i + 3),
-          cream,
-          reason: 'píxel ($column, $row)',
-        );
+  GlyphSegment line(double x0, double y0, double x1, double y1) =>
+      GlyphSegment(GlyphPoint(x0, y0), GlyphPoint(x1, y1));
+  List<GlyphSegment> rect(double left, double right) => [
+    line(left, -1, right, -1),
+    line(right, -1, right, 1),
+    line(right, 1, left, 1),
+    line(left, 1, left, -1),
+  ];
+  final cream = [
+    (brandCream >> 16) & 0xFF,
+    (brandCream >> 8) & 0xFF,
+    brandCream & 0xFF,
+  ];
+
+  // Dos rectángulos que se pisan: su unión es un cuadrado de 10 a 30 px. Los
+  // bordes internos no tienen que dejar una línea más oscura, ni con una
+  // superposición grande ni con una de menos de un píxel (como las serifas de
+  // la R con el asta: 3 unidades de la fuente).
+  for (final (name, left, right) in [
+    ('4 px', rect(-1, 0.2), rect(-0.2, 1)),
+    ('0,2 px', rect(-1, 0.06), rect(0.04, 1)),
+    ('0,02 px', rect(-1, 0.051), rect(0.049, 1)),
+  ]) {
+    test('contornos superpuestos ($name): la unión, sin costura', () {
+      final pixels = renderIcon(
+        const IconSpec('x.png', 40, IconBackground.square, 0.25),
+        MarkOutline([left, right]),
+      );
+      // Adentro, con un píxel de margen, todo crema.
+      for (var row = 11; row < 29; row++) {
+        for (var column = 11; column < 29; column++) {
+          final i = (row * 40 + column) * 3;
+          expect(
+            pixels.sublist(i, i + 3),
+            cream,
+            reason: 'píxel ($column, $row)',
+          );
+        }
       }
-    }
+    });
+  }
+
+  test('contornos superpuestos: afuera, oliva', () {
+    final pixels = renderIcon(
+      const IconSpec('x.png', 40, IconBackground.square, 0.25),
+      MarkOutline([rect(-1, 0.2), rect(-0.2, 1)]),
+    );
     // Afuera, oliva.
     expect(pixels.sublist(0, 3), [
       (brandOlive >> 16) & 0xFF,

@@ -64,7 +64,11 @@ void main() {
         ('links y botones de texto', s.primary, s.surface),
         ('botón principal', s.onPrimary, s.primary),
         ('pedido nuevo', s.onPrimaryContainer, s.primaryContainer),
-        ('día de hoy', s.onSecondaryContainer, s.secondaryContainer),
+        // La tarjeta del día de hoy (agenda) pinta texto, secundario y el
+        // ícono de restricciones sobre secondaryContainer.
+        ('día de hoy: texto', s.onSurface, s.secondaryContainer),
+        ('día de hoy: secundario', s.onSurfaceVariant, s.secondaryContainer),
+        ('día de hoy: restricciones', s.tertiary, s.secondaryContainer),
         ('restricciones', s.tertiary, s.surface),
         (
           'etiquetas de restricciones',
@@ -75,7 +79,12 @@ void main() {
         ('sobre error', s.onError, s.error),
         ('aviso de error', s.onErrorContainer, s.errorContainer),
         ('snackbar', s.onInverseSurface, s.inverseSurface),
-        ('texto en tarjetas', s.onSurface, s.surfaceContainerLowest),
+        ('texto en tarjetas', s.onSurface, build().cardTheme.color!),
+        (
+          'secundario en tarjetas',
+          s.onSurfaceVariant,
+          build().cardTheme.color!,
+        ),
       ]) {
         expect(
           _contrast(fg, bg),
