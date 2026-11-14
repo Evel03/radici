@@ -138,9 +138,9 @@ El orden completo del primer despliegue está en el contrato (§10.1).
 - Auth de producción, desde el repo: `deploy-supabase.yml` aplica en cada despliegue lo de
   `supabase/config.toml` (`supabase/scripts/auth-config.ts`): altas **apagadas** (la app tampoco crea
   usuarios), código de 8 cifras que vale 600 s, las plantillas "Magic link" y "Confirm signup" con el
-  código (`{{ .Token }}`, HTML de `supabase/templates/login_code.html`) y, con `RESEND_SMTP_KEY`,
-  **SMTP propio** con Resend. Sin él, Supabase solo manda a los miembros del equipo (muy pocos por
-  hora) y Evelyn podría no recibir el código.
+  código (`{{ .Token }}`, HTML de `supabase/templates/login_code.html`) y **SMTP propio** con Resend
+  (`RESEND_SMTP_KEY`). En un proyecto Free, Supabase no deja cambiar las plantillas sin SMTP propio:
+  sin la clave, el email trae un link en lugar del código y Evelyn no puede entrar.
 - Usuario de Evelyn **antes de publicar** la web o una vista previa: lo crea el mismo workflow
   (variables `CHEF_LOGIN_EMAIL` y `CHEF_DISPLAY_NAME`) mientras no haya ninguna cocinera: confirmado,
   con una contraseña al azar que nadie conoce, y después `promote_to_chef`. La función exige el email

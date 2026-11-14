@@ -221,8 +221,9 @@ web3 = 30
 
 # Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
 # Radici: apagado (la app no manda captchaToken y con las altas apagadas nadie crea usuarios). Antes
-# de abrir las altas para el área de clientes (M2): Turnstile acá y en el panel (Attack Protection),
-# y captchaToken en el login de la app (web y nativa).
+# de abrir las altas para el área de clientes (M2): Turnstile acá, su proveedor y su secreto en
+# supabase/scripts/auth-config.ts (que hoy falla si esto está prendido; prenderlo solo en el panel lo
+# apagaría el próximo despliegue) y captchaToken en el login de la app (web y nativa).
 # [auth.captcha]
 # enabled = true
 # provider = "hcaptcha"

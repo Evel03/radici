@@ -9,7 +9,9 @@
 # Necesita, en Settings → Secrets and variables → Actions del repo:
 # - secretos: SUPABASE_ACCESS_TOKEN (token personal de supabase.com/dashboard/account/tokens),
 #   SUPABASE_DB_PASSWORD, RESEND_API_KEY, TURNSTILE_SECRET_KEY, IP_HASH_SALT
-#   (opcionales: RESEND_SMTP_KEY, la segunda clave de Resend, para el SMTP de Auth; WHATSAPP_TOKEN)
+#   y RESEND_SMTP_KEY (la segunda clave de Resend: SMTP de Auth; en Free, sin SMTP propio Supabase no deja
+#   poner la plantilla del código y Evelyn no puede entrar; sin ella el despliegue sigue y avisa)
+#   (opcional: WHATSAPP_TOKEN)
 # - variables: SUPABASE_PROJECT_REF, CHEF_NOTIFY_EMAIL, MAIL_FROM, MAIL_REPLY_TO, ALLOWED_ORIGINS,
 #   INBOX_URL, PUBLIC_SITE_URL
 #   (opcionales: CHEF_LOGIN_EMAIL y CHEF_DISPLAY_NAME para crear la cuenta de la cocinera; CHEF_ID,
@@ -90,10 +92,12 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
         run: supabase link --project-ref "${SUPABASE_PROJECT_REF}"
 
-      # Antes que nada, las altas apagadas. El cuerpo lleva la plantilla y, con RESEND_SMTP_KEY, la
-      # clave del SMTP: va directo del script al curl; ni el cuerpo ni la respuesta (que devuelve la
-      # configuración entera) se imprimen.
-      - name: Auth desde el repo (altas, código, plantilla y SMTP)
+      # Antes que nada, las altas apagadas. Tres PATCH (supabase/scripts/auth-config.ts): security
+      # siempre; smtp y templates solo con RESEND_SMTP_KEY, porque en un proyecto Free Supabase no deja
+      # cambiar las plantillas sin SMTP propio (el email traería un link y no el código). Los cuerpos
+      # van directo del script al curl, y la respuesta (la configuración entera, con la clave del
+      # SMTP) queda en un archivo que solo lee jq: nada de eso se imprime.
+      - name: Auth desde el repo (altas, código, SMTP y plantilla)
         if: env.HAS_SUPABASE == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -103,19 +107,37 @@ jobs:
         run: |
           set -euo pipefail
           response="$(mktemp)"
-          status=$(node supabase/scripts/auth-config.ts | curl -sS -o "${response}" -w '%{http_code}' \
-            -X PATCH "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth" \
-            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data-binary @-)
-          if [ "${status}" != "200" ]; then
-            echo "::error::La Management API respondió ${status} al configurar Auth: $(jq -r '.message // .error // "sin mensaje"' "${response}" 2>/dev/null || echo "sin mensaje")"
-            rm -f "${response}"
+          trap 'rm -f "${response}"' EXIT
+          patch() {
+            local body status
+            body=$(node supabase/scripts/auth-config.ts "$1")
+            status=$(curl -sS -o "${response}" -w '%{http_code}' \
+              -X PATCH "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth" \
+              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data-binary @- <<< "${body}")
+            if [ "${status}" != "200" ]; then
+              echo "::error::La Management API respondió ${status} al configurar Auth (${1}): $(jq -r '.message // .error // "sin mensaje"' "${response}" 2>/dev/null || echo "sin mensaje")"
+              exit 1
+            fi
+          }
+          patch security
+          if ! jq -e '.disable_signup == true' "${response}" > /dev/null; then
+            echo "::error::Auth no quedó con las altas apagadas."
             exit 1
           fi
-          rm -f "${response}"
           if [ -z "${RESEND_SMTP_KEY:-}" ]; then
-            echo "::warning::Sin RESEND_SMTP_KEY: Auth manda los códigos con el correo de Supabase, que solo llega a los miembros del equipo y muy pocos por hora."
+            echo "::warning::Sin RESEND_SMTP_KEY no hay SMTP propio: en un proyecto Free Supabase no deja cambiar la plantilla y el email trae un link en lugar del código, así que Evelyn todavía no puede entrar a la app. Cargar la segunda clave de Resend y volver a desplegar."
+            exit 0
+          fi
+          patch smtp
+          patch templates
+          # Si Supabase ignorara la plantilla (plan o SMTP), el despliegue tiene que fallar, no quedar verde.
+          if ! jq -e --rawfile template supabase/templates/login_code.html \
+            '.mailer_templates_magic_link_content == $template and .mailer_templates_confirmation_content == $template' \
+            "${response}" > /dev/null; then
+            echo "::error::Supabase no guardó la plantilla del código: el email traería un link en lugar del código."
+            exit 1
           fi
 
       - name: Migraciones (db push)
@@ -141,13 +163,19 @@ jobs:
         run: |
           set -euo pipefail
           api="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}"
-          # SQL como postgres por la Management API: imprime las filas en JSON.
+          # SQL como postgres por la Management API: imprime las filas en JSON. Si falla, muestra solo
+          # el mensaje de error (las respuestas de error no traen claves).
           sql() {
-            jq -n --arg query "$1" '{query: $query}' \
+            local out
+            if ! out=$(jq -n --arg query "$1" '{query: $query}' \
               | curl -sS --fail-with-body -X POST "${api}/database/query" \
                   -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
                   -H "Content-Type: application/json" \
-                  --data-binary @-
+                  --data-binary @-); then
+              echo "::error::Falló una consulta a la base: $(jq -r '.message // .error // "sin mensaje"' <<< "${out}" 2>/dev/null || echo "sin mensaje")" >&2
+              return 1
+            fi
+            printf '%s' "${out}"
           }
           chefs=$(sql "select count(*)::int as n from public.chefs" | jq -r '.[0].n')
           if [ "${chefs}" != "0" ]; then
@@ -187,10 +215,24 @@ jobs:
               echo "::error::No se pudo leer la clave secreta del proyecto."
               exit 1
             fi
-            jq -n --arg email "${CHEF_LOGIN_EMAIL}" --arg password "$(openssl rand -hex 32)" --arg locale "${CHEF_LOCALE:-es}" \
+            created="$(mktemp)"
+            status=$(jq -n --arg email "${CHEF_LOGIN_EMAIL}" --arg password "$(openssl rand -hex 32)" --arg locale "${CHEF_LOCALE:-es}" \
               '{email: $email, password: $password, email_confirm: true, user_metadata: {locale: $locale}}' \
-              | curl -sS --fail-with-body -o /dev/null -X POST "https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/admin/users" \
-                  "${headers[@]}" --data-binary @-
+              | curl -sS -o "${created}" -w '%{http_code}' -X POST "https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/admin/users" \
+                  "${headers[@]}" --data-binary @-)
+            if [ "${status}" != "200" ] && [ "${status}" != "201" ]; then
+              echo "::error::No se pudo crear la cuenta de la cocinera (${status}): $(jq -r '.msg // .message // .error_code // "sin mensaje"' "${created}" 2>/dev/null || echo "sin mensaje")"
+              rm -f "${created}"
+              exit 1
+            fi
+            rm -f "${created}"
+          fi
+          # Una cuenta con ese email sin confirmar la registró otro (antes de apagar las altas) o se creó
+          # en el panel sin "Auto Confirm User": promote_to_chef la rechaza. Hay que borrarla a mano.
+          unconfirmed=$(sql "select count(*)::int as n from auth.users where lower(email) = lower('${CHEF_LOGIN_EMAIL}') and email_confirmed_at is null" | jq -r '.[0].n')
+          if [ "${unconfirmed}" != "0" ]; then
+            echo "::error::Ya hay una cuenta con ${CHEF_LOGIN_EMAIL} sin confirmar (no la creó este workflow). Borrarla en Authentication → Users y volver a desplegar."
+            exit 1
           fi
           sql "select public.promote_to_chef('${CHEF_LOGIN_EMAIL}', '${CHEF_DISPLAY_NAME}')" > /dev/null
           total=$(sql "select count(*)::int as n from auth.users" | jq -r '.[0].n')
