@@ -1,7 +1,7 @@
 /* 404: mensaje corto y centrado, con las dos salidas principales. */
 
 .not-found {
-  padding-block: 3rem 4.5rem;
+  padding-block: 3.5rem 5rem;
 }
 
 .not-found__inner {
@@ -13,45 +13,46 @@
 .not-found__art {
   width: 9rem;
   height: 6rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
   fill: none;
-  stroke: var(--accent);
-  stroke-width: 3;
+  stroke: var(--olive);
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .not-found__plate {
-  fill: var(--accent-soft);
+  fill: var(--lino);
 }
 
 .not-found__eyebrow {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
   color: var(--olive);
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.26em;
   text-transform: uppercase;
 }
 
 .not-found__title {
-  font-size: clamp(2rem, 7vw, 3rem);
+  font-size: clamp(2.4rem, 7.5vw, 3.4rem);
 }
 
 .not-found__text {
   max-width: 32rem;
   color: var(--muted);
-  font-size: 1.1rem;
+  font-size: 1.3rem;
   text-wrap: balance;
 }
 
 .not-found .actions {
   justify-content: center;
-  margin-top: 0.75rem;
+  margin-top: 1rem;
 }
 
 @media (min-width: 56rem) {
   .not-found {
-    padding-block: 5rem 6rem;
+    padding-block: 5.5rem 6.5rem;
   }
 }

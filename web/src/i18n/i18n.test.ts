@@ -118,6 +118,12 @@ describe("SEO y accesibilidad de los textos", () => {
       }
     });
 
+    it(`${lang}: el nombre accesible del logotipo empieza con su texto visible, marca y rótulo (WCAG 2.5.3)`, () => {
+      const visible = `{brand} · ${dicts[lang]["common.brandTagline"] ?? ""}`;
+      expect(dicts[lang]["common.brandTagline"]).toBeTruthy();
+      expect(dicts[lang]["common.homeLink"]?.startsWith(visible), dicts[lang]["common.homeLink"]).toBe(true);
+    });
+
     it(`${lang}: el nombre accesible de cada idioma empieza con su texto visible (WCAG 2.5.3)`, () => {
       for (const code of LANGS) {
         const visible = dicts[lang][`common.langCodes.${code}`] ?? "";

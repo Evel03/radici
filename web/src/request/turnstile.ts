@@ -147,7 +147,8 @@ export function mountTurnstile(
         api.render(container, {
           sitekey: opts.siteKey,
           action: TURNSTILE_ACTION,
-          theme: "auto",
+          // Claro siempre, como el sitio (solo modo claro): en "auto" saldría oscuro sobre el crema.
+          theme: "light",
           language,
           size: widgetSize(container.clientWidth),
           // El token se lee de los callbacks: sin input oculto dentro del formulario.

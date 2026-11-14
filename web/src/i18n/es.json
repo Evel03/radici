@@ -1,7 +1,7 @@
 {
   "common": {
     "skipToContent": "Ir al contenido",
-    "homeLink": "{brand}: página de inicio",
+    "homeLink": "{brand} · Cucina privata: página de inicio",
     "langLabel": "Elige el idioma",
     "langLinks": {
       "it": "IT – Italiano",
@@ -13,13 +13,15 @@
       "es": "ES",
       "en": "EN"
     },
+    "brandTagline": "Cucina privata",
+    "slogan": "Cocina auténtica, en tu casa.",
     "footerTagline": "Cocina casera a domicilio, en Bérgamo y alrededores.",
     "footerRequest": "Pide un presupuesto",
     "footerPrivacy": "Política de privacidad",
     "footerNoCookies": "Sin cookies de perfilado ni analítica.",
     "loadError": "No pudimos cargar una parte de la página, así que algo podría no funcionar. Revisa la conexión y vuelve a cargar la página.",
     "reload": "Volver a cargar la página",
-    "ogImageAlt": "{brand}, cocinera a domicilio en Bérgamo: «La cena ya está lista. Toda la semana.» Porciones etiquetadas en la nevera.",
+    "ogImageAlt": "{brand} · Cucina privata: «Cucina autentica, a casa tua.» Cocinera a domicilio en Bérgamo.",
     "durationHours": "{h} h",
     "durationHoursMinutes": "{h} h {m} min",
     "durationMinutes": "{m} min"
@@ -28,7 +30,7 @@
     "metaTitle": "{brand} · Cocinera a domicilio en Bérgamo: comidas listas",
     "metaDescription": "Evelyn hace la compra, cocina en tu casa en Bérgamo y te deja en la nevera porciones etiquetadas para varios días. La compra, al precio del ticket.",
     "hero": {
-      "eyebrow": "Cocinera a domicilio · Bérgamo",
+      "eyebrow": "Cocinera a domicilio · Bérgamo",
       "title": "La cena ya está lista. Toda la semana.",
       "lead": "Evelyn hace la compra, cocina en tu casa y te deja en la nevera porciones listas, cada una con el nombre del plato y la fecha. Llegas a casa y solo tienes que calentar.",
       "cta": "Calcula tu presupuesto",
@@ -40,6 +42,12 @@
       "label2Meta": "Mar · 4 porciones",
       "label3Dish": "Minestrone de temporada",
       "label3Meta": "Mié · 4 porciones"
+    },
+    "services": {
+      "title": "Servicios",
+      "weekly": "Cocina semanal",
+      "dinners": "Cenas privadas",
+      "events": "Eventos familiares"
     },
     "how": {
       "title": "Cómo funciona",
@@ -109,6 +117,13 @@
       "a5": "No. La calculadora da una estimación; el presupuesto real te lo prepara Evelyn cuando te contacta, y solo confirmas si te parece bien.",
       "q6": "¿Y si tengo que cancelar?",
       "a6": "Las condiciones de cancelación te las indicamos junto con el presupuesto, antes de que confirmes."
+    },
+    "values": {
+      "label": "Nuestros valores",
+      "v1": "Tradición",
+      "v2": "Temporada",
+      "v3": "Calidad",
+      "v4": "Convivialidad"
     },
     "final": {
       "title": "Noches libres, nevera llena.",

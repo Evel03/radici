@@ -1,56 +1,56 @@
-/* Base compartida: tokens de color (claro y oscuro), tipografía, layout, cabecera, pie y botones.
-   Contrastes verificados (WCAG AA): texto ≥ 4.5:1 y bordes de controles ≥ 3:1 en ambos modos. */
+/* Base compartida: identidad de Radici (manual de marca: paleta, Cinzel + Cormorant Garamond, filetes
+   finos, versalitas espaciadas), layout, cabecera, pie y botones.
+   Solo modo claro, como el manual: el sitio se ve igual con el teléfono en modo oscuro.
+   Contrastes verificados (WCAG AA): texto ≥ 4.5:1 y bordes de controles ≥ 3:1. */
+@import "./fonts.css";
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
-  --bg: #fbf6ee;
-  --bg-alt: #f3e9da;
-  --surface: #fffdf9;
-  --text: #2a1f18;
-  --muted: #5f5047;
-  --border: #e2d4c1;
-  --line: #857261;
-  --accent: #a3431c;
-  --accent-hover: #8a3815;
-  --on-accent: #ffffff;
-  --accent-soft: #f7e2d6;
-  --olive: #4f5c22;
-  --olive-soft: #e8ead2;
-  --error: #a12a1d;
-  --error-soft: #fbe5e1;
-  --focus: #1f4f8a;
-  --shadow: 0 1px 2px rgb(42 31 24 / 6%), 0 8px 24px rgb(42 31 24 / 8%);
+  /* Paleta del manual de marca */
+  --oliva: #4a5a3c;
+  --crema: #f5ede1;
+  --terra: #8b6b4f;
+  --lino: #dbc9b4;
+  --salvia: #9a9f87;
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Noto Serif", serif;
+  /* Derivados de la paleta */
+  --ink: #2c2b20; /* texto: oliva casi negro, 13:1 sobre crema */
+  --oliva-dark: #3a4730; /* hover de botones */
+  --oliva-tint: #e6e4d3; /* fondos de selección y avisos */
+  --terra-tint: #efe0d0; /* avisos de atención */
+  --crema-light: #fbf7f1; /* tarjetas y campos */
+  --crema-dark: #ede2d2; /* secciones alternas */
 
-  --radius: 14px;
-  --radius-sm: 10px;
+  /* Roles */
+  --bg: var(--crema);
+  --bg-alt: var(--crema-dark);
+  --surface: var(--crema-light);
+  --text: var(--ink);
+  --muted: #5b5847; /* 6.2:1 sobre crema, 5.6:1 sobre crema-dark */
+  --terra-ink: #7a5c43; /* terra para texto: 5.3:1 sobre crema, 4.8:1 sobre crema-dark (terra da 4.2) */
+  --border: var(--lino); /* bordes decorativos */
+  --rule: #cdb9a1; /* filetes finos */
+  --line: var(--terra); /* bordes de controles: 4.2:1 sobre crema */
+  --accent: var(--oliva);
+  --accent-hover: var(--oliva-dark);
+  --on-accent: var(--crema);
+  --accent-soft: var(--oliva-tint);
+  --olive: var(--oliva);
+  --olive-soft: var(--oliva-tint);
+  --warn: var(--terra);
+  --warn-soft: var(--terra-tint);
+  --error: #9a3b26; /* 6:1 sobre crema */
+  --error-soft: #f6e2da;
+  --focus: var(--ink);
+  --shadow: 0 1px 2px rgb(44 43 32 / 6%), 0 10px 28px rgb(44 43 32 / 8%);
+
+  --font-display: "Cinzel Variable", "Cinzel", "Trajan Pro", "Times New Roman", serif;
+  --font-serif: "Cormorant Garamond Variable", "Cormorant Garamond", Garamond, "Palatino Linotype", Palatino, Georgia, serif;
+
+  --radius: 2px;
   --gutter: 1rem;
-  --max: 68rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1c1713;
-    --bg-alt: #241d18;
-    --surface: #2b231d;
-    --text: #f4ebe1;
-    --muted: #cdbfb0;
-    --border: #3e332b;
-    --line: #97877a;
-    --accent: #ee9a72;
-    --accent-hover: #f5b08f;
-    --on-accent: #1c1713;
-    --accent-soft: #3d271b;
-    --olive: #b9c97f;
-    --olive-soft: #2e3320;
-    --error: #ff9c8f;
-    --error-soft: #3b201c;
-    --focus: #9cc4ff;
-    --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
-  }
+  --max: 70rem;
 }
 
 *,
@@ -70,14 +70,26 @@ html {
   }
 }
 
+/* Cormorant tiene el ojo chico: el cuerpo va a 19-20 px para leerse como un texto de 16. */
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-sans);
-  font-size: 1.0625rem;
-  line-height: 1.6;
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  font-weight: 500;
+  line-height: 1.55;
+  /* Cormorant trae números de estilo antiguo, donde el 1 parece una i y el 0 una o: en teléfonos,
+     fechas y precios confunden. Números de caja alta en todo el sitio, como en el manual. */
+  font-variant-numeric: lining-nums;
   -webkit-font-smoothing: antialiased;
+  font-kerning: normal;
+}
+
+@media (min-width: 40rem) {
+  body {
+    font-size: 1.25rem;
+  }
 }
 
 h1,
@@ -85,22 +97,24 @@ h2,
 h3 {
   margin: 0 0 0.5em;
   font-family: var(--font-serif);
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  line-height: 1.1;
   text-wrap: balance;
 }
 
 h1 {
-  font-size: clamp(2.1rem, 7vw, 3.6rem);
+  font-size: clamp(2.6rem, 8.5vw, 4.25rem);
+  letter-spacing: -0.005em;
 }
 
 h2 {
-  font-size: clamp(1.7rem, 5vw, 2.4rem);
+  font-size: clamp(2.1rem, 5.5vw, 3rem);
 }
 
 h3 {
-  font-size: 1.2rem;
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 p {
@@ -109,7 +123,8 @@ p {
 
 a {
   color: var(--accent);
-  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
 }
 
 a:hover {
@@ -125,15 +140,15 @@ svg {
   height: 1.5rem;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 :focus-visible {
-  outline: 3px solid var(--focus);
+  outline: 2px solid var(--focus);
   outline-offset: 3px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 [hidden] {
@@ -157,6 +172,57 @@ svg {
   }
 }
 
+@media (min-width: 64rem) {
+  :root {
+    --gutter: 2rem;
+  }
+}
+
+/* Rótulo en versalitas espaciadas (como "Tradizione", "Servizi" o "Paleta de colores" en el manual). */
+.eyebrow,
+.label {
+  margin: 0 0 1rem;
+  color: var(--olive);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+}
+
+/* Logotipo: RADICI sobre un filete fino y CUCINA PRIVATA debajo. Cinzel dibuja las minúsculas como
+   versalitas: "Radici" sale con la R grande y el resto en versalitas, como en el manual. */
+.logo {
+  display: inline-grid;
+  justify-items: center;
+  gap: 0.3em;
+  color: var(--text);
+  line-height: 1;
+  text-decoration: none;
+}
+
+.logo__name {
+  padding: 0 0.12em 0.16em;
+  border-bottom: 1px solid currentColor;
+  font-family: var(--font-display);
+  font-size: 2.05rem;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+}
+
+/* Como en el manual, el rótulo queda más angosto que el filete (alrededor del 78 %). El margen negativo
+   compensa el espacio que deja el último carácter: así queda centrado. */
+.logo__tag {
+  margin-right: -0.26em;
+  font-family: var(--font-display);
+  font-size: 0.55rem;
+  font-weight: 500;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 /* Saltar al contenido */
 .skip-link {
   position: absolute;
@@ -164,7 +230,7 @@ svg {
   left: 0.5rem;
   z-index: 100;
   padding: 0.6rem 1rem;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   background: var(--text);
   color: var(--bg);
   font-weight: 600;
@@ -175,46 +241,40 @@ svg {
   transform: none;
 }
 
+/* a:hover pesa más que .skip-link: sin esto el texto quedaba oliva sobre tinta (1.4:1). */
+.skip-link:hover {
+  color: var(--bg);
+}
+
 /* Cabecera */
 .site-header {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rule);
   background: var(--bg);
 }
 
+/* Con letra agrandada o pantallas muy angostas, el selector de idioma baja de línea en vez de desbordar. */
 .site-header__inner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  min-height: 4rem;
+  gap: 0 1rem;
+  min-height: 4.75rem;
 }
 
 /* Links de la cabecera y del pie: al menos 44 px de alto para el dedo (WCAG 2.5.8 pide 24). */
 .brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
   min-height: 2.75rem;
-  color: var(--text);
-  font-family: var(--font-serif);
-  font-size: 1.4rem;
-  font-weight: 700;
-  text-decoration: none;
+  padding-block: 0.35rem;
 }
 
 .brand:hover {
   color: var(--text);
 }
 
-.brand__mark {
-  width: 1.75rem;
-  height: 1.75rem;
-  color: var(--accent);
-}
-
 .lang-switch {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.15rem;
 }
 
 .lang-switch a {
@@ -222,37 +282,43 @@ svg {
   place-items: center;
   min-width: 2.75rem;
   min-height: 2.75rem;
-  border-radius: 999px;
   color: var(--muted);
-  font-size: 0.9rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   text-decoration: none;
 }
 
 .lang-switch a:hover {
-  background: var(--bg-alt);
   color: var(--text);
 }
 
 .lang-switch a[aria-current="true"] {
-  background: var(--text);
-  color: var(--bg);
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--terra);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.45em;
 }
 
-/* Botones */
+/* Botones: rectos y en versalitas espaciadas, como la papelería del manual. Sin text-transform: Cinzel
+   dibuja las minúsculas como versalitas (igual que en el logotipo), y así el texto que llega a los
+   lectores de pantalla no queda en mayúsculas (algunas voces deletrean "IL" o "UN" como siglas). */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
   min-height: 3rem;
-  padding: 0.75rem 1.4rem;
-  border: 2px solid transparent;
-  border-radius: 999px;
-  font: inherit;
-  font-weight: 650;
-  line-height: 1.2;
+  padding: 0.8rem 1.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.1em;
   text-align: center;
   text-decoration: none;
   cursor: pointer;
@@ -261,7 +327,7 @@ svg {
 .btn--lg {
   min-height: 3.4rem;
   padding-inline: 1.75rem;
-  font-size: 1.08rem;
+  font-size: 1rem;
 }
 
 .btn--block {
@@ -271,7 +337,18 @@ svg {
 .btn--sm {
   min-height: 2.75rem;
   padding: 0.5rem 1.1rem;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
+}
+
+/* Pantallas de 320-360 px: menos espaciado para que los textos de los botones no se partan. */
+@media (max-width: 22.5rem) {
+  .btn {
+    letter-spacing: 0.05em;
+  }
+
+  .btn--lg {
+    padding-inline: 1rem;
+  }
 }
 
 .btn--primary {
@@ -290,29 +367,29 @@ svg {
 }
 
 .btn--ghost {
-  border-color: var(--line);
+  border-color: var(--olive);
   background: transparent;
-  color: var(--text);
+  color: var(--olive);
 }
 
 .btn--ghost:hover {
-  background: var(--bg-alt);
-  color: var(--text);
+  background: var(--olive-soft);
+  color: var(--oliva-dark);
 }
 
 .btn--light {
-  background: var(--bg);
-  color: var(--accent-hover);
+  background: var(--crema);
+  color: var(--oliva-dark);
 }
 
 .btn--light:hover {
-  background: var(--surface);
-  color: var(--accent-hover);
+  background: var(--crema-light);
+  color: var(--oliva-dark);
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .btn {
-    transition: background-color 0.15s ease, transform 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
   }
 
   .btn:active {
@@ -326,8 +403,15 @@ svg {
   gap: 0.75rem;
 }
 
+/* Link con flecha: 44 px de alto para el dedo, como los del pie. */
 .link-arrow {
-  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
 }
 
 /* Flecha decorativa: con el texto alternativo vacío no se lee ("flecha derecha"). Los navegadores sin
@@ -337,22 +421,37 @@ svg {
   content: " \2192" / "";
 }
 
+/* Mínimo de texto chico: 1.15rem de Cormorant se lee como unos 14 px de una letra común. */
 .small {
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 1.15rem;
+}
+
+/* Foto enmarcada como una lámina: fondo crema claro y filete. */
+.photo {
+  margin: 0;
+  padding: 0.45rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.photo img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .notice {
   margin: 0 0 1rem;
   padding: 0.85rem 1rem;
-  border-left: 4px solid var(--olive);
-  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--olive);
+  border-radius: var(--radius);
   background: var(--olive-soft);
 }
 
 .notice--warn {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
 }
 
 .notice--error {
@@ -385,35 +484,49 @@ svg {
 
 /* Pie */
 .site-footer {
-  border-top: 1px solid var(--border);
-  background: var(--bg-alt);
-  font-size: 0.95rem;
+  border-top: 1px solid var(--rule);
+  background: var(--bg);
 }
 
 .site-footer__inner {
-  padding-block: 2.5rem;
+  display: grid;
+  gap: 2rem;
+  padding-block: 3rem;
+  text-align: center;
 }
 
 .site-footer__brand {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
-  font-family: var(--font-serif);
-  font-size: 1.3rem;
-  font-weight: 700;
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+}
+
+.site-footer__brand .logo__name {
+  font-size: 2.5rem;
+}
+
+.site-footer__brand .logo__tag {
+  font-size: 0.62rem;
+}
+
+.site-footer__slogan {
+  margin: 0.5rem 0 0;
+  font-size: 1.35rem;
+  font-style: italic;
 }
 
 .site-footer__tagline,
 .site-footer__note {
+  margin: 0;
   color: var(--muted);
 }
 
 .site-footer__links {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 1.5rem;
-  margin: 0 0 1rem;
+  justify-content: center;
+  gap: 0 2rem;
+  margin: 0 0 0.75rem;
   padding: 0;
   list-style: none;
 }
@@ -422,10 +535,33 @@ svg {
   display: inline-flex;
   align-items: center;
   min-height: 2.75rem;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
 }
 
 .site-footer__note {
-  margin: 0;
-  font-size: 0.88rem;
+  font-size: 1.12rem;
+}
+
+@media (min-width: 48rem) {
+  .site-footer__inner {
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    text-align: left;
+  }
+
+  .site-footer__brand {
+    justify-items: start;
+  }
+
+  .site-footer__meta {
+    padding-left: 2rem;
+    border-left: 1px solid var(--rule);
+  }
+
+  .site-footer__links {
+    justify-content: flex-start;
+  }
 }

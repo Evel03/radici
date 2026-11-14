@@ -1,37 +1,48 @@
-/* /richiesta: formulario y panel de presupuesto (fijo abajo en mobile, lateral en escritorio). */
+/* /richiesta: formulario y panel de presupuesto (fijo abajo en mobile, lateral en escritorio).
+   Identidad del manual: paneles como papel crema con filete, controles con borde terra (≥ 3:1),
+   selección en oliva y el presupuesto como una carta de menú. */
 
 .request-page {
-  padding-block: 2rem 0;
+  padding-block: 2.5rem 0;
 }
 
 .page-head {
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .page-head__title {
-  font-size: clamp(2rem, 6vw, 3rem);
+  font-size: clamp(2.4rem, 7vw, 3.4rem);
+}
+
+.page-head__title::after {
+  display: block;
+  width: 3rem;
+  height: 1px;
+  margin-top: 1.1rem;
+  background: var(--terra);
+  content: "";
 }
 
 .page-head__intro {
   max-width: 40rem;
   color: var(--muted);
-  font-size: 1.08rem;
+  font-size: 1.3rem;
 }
 
 .request-layout {
-  padding-bottom: 3rem;
+  padding-bottom: 3.5rem;
 }
 
 .request-form {
   display: grid;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 /* Bloques */
 .panel {
   min-width: 0;
   margin: 0;
-  padding: 1.25rem 1rem 1.4rem;
+  padding: 1.4rem 1.1rem 1.5rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -40,11 +51,12 @@
 .panel__title {
   float: left;
   width: 100%;
-  margin: 0 0 0.9rem;
-  padding: 0;
+  margin: 0 0 1rem;
+  padding: 0 0 0.6rem;
+  border-bottom: 1px solid var(--border);
   font-family: var(--font-serif);
-  font-size: 1.3rem;
-  font-weight: 700;
+  font-size: 1.5rem;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -54,25 +66,25 @@
 
 .panel__intro {
   color: var(--muted);
-  font-size: 0.95rem;
+  font-size: 1.15rem;
 }
 
 .subgroup {
   min-width: 0;
-  margin: 1.25rem 0 0;
+  margin: 1.4rem 0 0;
   padding: 0;
   border: 0;
 }
 
 .subgroup__title {
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.65rem;
   padding: 0;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 @media (min-width: 40rem) {
   .panel {
-    padding: 1.5rem 1.5rem 1.6rem;
+    padding: 1.75rem 1.75rem 1.9rem;
   }
 }
 
@@ -81,7 +93,7 @@
   display: grid;
   gap: 0.35rem;
   align-content: start;
-  margin-top: 1rem;
+  margin-top: 1.1rem;
 }
 
 .field:first-child,
@@ -90,13 +102,14 @@
 }
 
 .field__label {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .field__hint {
   margin: 0;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 1.15rem;
+  line-height: 1.4;
 }
 
 .field__hint--center {
@@ -107,23 +120,23 @@
 .field__error {
   margin: 0.15rem 0 0;
   color: var(--error);
-  font-size: 0.95rem;
-  font-weight: 650;
+  font-size: 1.1rem;
+  font-weight: 600;
 }
 
 /* El "!" es solo visual: con el texto alternativo vacío los lectores de pantalla no lo leen al anunciar
    el error. Los navegadores sin esa sintaxis (Safari < 17.4) ignoran la regla: sin "!", nunca leído. */
 .field__error::before {
   content: "! " / "";
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .input {
   width: 100%;
   min-height: 3rem;
-  padding: 0.65rem 0.85rem;
-  border: 1.5px solid var(--line);
-  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--text);
   font: inherit;
@@ -155,13 +168,15 @@ input[type="radio"] {
   gap: 0.6rem;
 }
 
+/* Tres columnas solo donde entran ("Indifferente" necesita unos 10rem): si no, quedan dos y una abajo,
+   en vez de salirse del panel (pasaba entre 480 y 510 px y entre 896 y 950 px). */
 @media (min-width: 30rem) {
   .choices--2 {
     grid-template-columns: repeat(2, 1fr);
   }
 
   .choices--3 {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
   }
 }
 
@@ -172,8 +187,8 @@ input[type="radio"] {
   align-items: flex-start;
   min-height: 3rem;
   padding: 0.85rem 0.9rem;
-  border: 1.5px solid var(--line);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--bg);
   cursor: pointer;
 }
@@ -181,7 +196,7 @@ input[type="radio"] {
 .choice input {
   width: 1.25rem;
   height: 1.25rem;
-  margin: 0.15rem 0 0;
+  margin: 0.2rem 0 0;
   flex-shrink: 0;
 }
 
@@ -199,12 +214,13 @@ input[type="radio"] {
 }
 
 .choice__title {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .choice__hint {
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 1.12rem;
+  line-height: 1.35;
 }
 
 .choice:has(input:checked) {
@@ -214,7 +230,7 @@ input[type="radio"] {
 }
 
 .choice:has(input:focus-visible) {
-  outline: 3px solid var(--focus);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -247,8 +263,8 @@ input[type="radio"] {
   width: 3.25rem;
   height: 3.25rem;
   padding: 0;
-  border: 1.5px solid var(--line);
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--accent);
   cursor: pointer;
@@ -256,7 +272,7 @@ input[type="radio"] {
 }
 
 .stepper__btn .icon {
-  stroke-width: 2.4;
+  stroke-width: 1.8;
 }
 
 .stepper__btn:hover {
@@ -274,14 +290,14 @@ input[type="radio"] {
   width: 100%;
   min-height: 3.25rem;
   padding: 0.25rem;
-  border: 1.5px solid var(--line);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--text);
   font: inherit;
-  font-size: 1.35rem;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
+  font-size: 1.6rem;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-weight: 600;
   text-align: center;
   appearance: textfield;
   -moz-appearance: textfield;
@@ -293,7 +309,7 @@ input[type="radio"] {
   -webkit-appearance: none;
 }
 
-/* Chips de alérgenos y dietas */
+/* Chips de alérgenos y dietas: rectos, como etiquetas. */
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -305,9 +321,9 @@ input[type="radio"] {
   gap: 0.5rem;
   align-items: center;
   min-height: 2.75rem;
-  padding: 0.4rem 0.9rem 0.4rem 0.7rem;
-  border: 1.5px solid var(--line);
-  border-radius: 999px;
+  padding: 0.35rem 0.9rem 0.35rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--bg);
   cursor: pointer;
 }
@@ -321,26 +337,28 @@ input[type="radio"] {
 .chip:has(input:checked) {
   border-color: var(--accent);
   background: var(--accent-soft);
-  font-weight: 650;
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 600;
 }
 
 .chip:has(input:focus-visible) {
-  outline: 3px solid var(--focus);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
 .note {
   margin: 0.9rem 0 0;
   padding: 0.75rem 0.9rem;
-  border-left: 4px solid var(--olive);
-  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--olive);
+  border-radius: var(--radius);
   background: var(--olive-soft);
-  font-size: 0.93rem;
+  font-size: 1.15rem;
+  line-height: 1.45;
 }
 
 .note--active {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
   font-weight: 600;
 }
 
@@ -353,8 +371,8 @@ input[type="radio"] {
 .consent--health {
   margin-top: 1.25rem;
   padding: 1rem;
-  border: 1.5px solid var(--accent);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
   background: var(--accent-soft);
 }
 
@@ -363,6 +381,7 @@ input[type="radio"] {
   gap: 0.75rem;
   align-items: flex-start;
   font-weight: 600;
+  line-height: 1.4;
   cursor: pointer;
 }
 
@@ -400,7 +419,7 @@ input[type="radio"] {
 
 .turnstile {
   min-height: 65px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
 }
 
 .turnstile[data-status="unavailable"],
@@ -413,7 +432,7 @@ input[type="radio"] {
 }
 
 .turnstile:focus-visible {
-  outline: 3px solid var(--focus);
+  outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
 
@@ -438,14 +457,14 @@ input[type="radio"] {
 }
 
 .notice--actions:focus-visible {
-  outline: 3px solid var(--focus);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
 .form-status {
   margin: 0;
   color: var(--text);
-  font-weight: 650;
+  font-weight: 600;
   text-align: center;
 }
 
@@ -483,18 +502,18 @@ input[type="radio"] {
   z-index: 10;
   margin: 1rem calc(var(--gutter) * -1) 0;
   padding: 0.85rem var(--gutter) calc(0.85rem + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--rule);
   background: var(--surface);
-  box-shadow: 0 -8px 24px rgb(42 31 24 / 12%);
+  box-shadow: 0 -8px 24px rgb(44 43 32 / 12%);
 }
 
 .quote__title {
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.3rem;
   color: var(--olive);
-  font-family: var(--font-sans);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
 }
 
@@ -513,13 +532,14 @@ input[type="radio"] {
 
 .quote__row dt {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 1.05rem;
+  line-height: 1.3;
 }
 
 .quote__row dd {
   margin: 0;
-  font-variant-numeric: tabular-nums;
-  font-weight: 650;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-weight: 600;
 }
 
 .quote__row--total {
@@ -532,15 +552,16 @@ input[type="radio"] {
 
 .quote__row--total dt {
   color: var(--text);
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 1.15rem;
+  font-weight: 600;
 }
 
 .quote__row--total dd {
   color: var(--accent);
   font-family: var(--font-serif);
-  font-size: 1.6rem;
-  font-weight: 800;
+  font-size: 1.8rem;
+  font-weight: 600;
+  line-height: 1.1;
 }
 
 .quote__row--portions {
@@ -550,8 +571,8 @@ input[type="radio"] {
 .quote__note {
   margin: 0.4rem 0 0;
   color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.4;
+  font-size: 1.05rem;
+  line-height: 1.35;
 }
 
 .quote__invalid {
@@ -567,26 +588,30 @@ input[type="radio"] {
 @media (min-width: 56rem) {
   .request-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 21rem;
-    gap: 2rem;
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    gap: 2.5rem;
     align-items: start;
   }
 
+  /* En escritorio, una carta de menú: crema clara, doble filete y el título centrado. */
   .quote,
   .request-layout:has(:is(input[type="text"], input[type="tel"], input[type="email"], textarea):focus) .quote {
     position: sticky;
     top: 1.5rem;
     bottom: auto;
     margin: 0;
-    padding: 1.5rem;
+    padding: 1.75rem 1.6rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
+    outline: 1px solid var(--border);
+    outline-offset: -0.45rem;
     box-shadow: var(--shadow);
   }
 
   .quote__title {
-    margin-bottom: 1rem;
-    font-size: 0.85rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.8rem;
+    text-align: center;
   }
 
   .quote__list {
@@ -598,28 +623,29 @@ input[type="radio"] {
     display: flex;
     justify-content: space-between;
     gap: 1rem;
-    padding-block: 0.5rem;
+    padding-block: 0.55rem;
     border-bottom: 1px solid var(--border);
   }
 
   .quote__row dt {
-    font-size: 0.95rem;
+    font-size: 1.1rem;
   }
 
   .quote__row--total {
     order: -1;
     flex-direction: column;
+    align-items: center;
     gap: 0.1rem;
-    padding-block: 0 1rem;
+    padding-block: 0 1.1rem;
   }
 
   .quote__row--total dd {
-    font-size: 2.4rem;
+    font-size: 2.8rem;
   }
 
   .quote__note {
     margin-top: 1rem;
-    font-size: 0.88rem;
+    font-size: 1.12rem;
   }
 }
 
@@ -627,7 +653,7 @@ input[type="radio"] {
 .done {
   margin-bottom: 3rem;
   padding: 2rem 1.25rem;
-  border: 2px solid var(--olive);
+  border: 1px solid var(--olive);
   border-radius: var(--radius);
   background: var(--olive-soft);
 }
@@ -637,45 +663,48 @@ input[type="radio"] {
 }
 
 .done:focus-visible {
-  outline: 3px solid var(--focus);
+  outline: 2px solid var(--focus);
 }
 
 .done__icon {
   width: 3rem;
   height: 3rem;
   margin-bottom: 0.5rem;
-  padding: 0.5rem;
+  padding: 0.55rem;
   border-radius: 999px;
   background: var(--olive);
-  color: var(--olive-soft);
-  stroke-width: 2.6;
+  color: var(--crema);
+  stroke-width: 2;
 }
 
 .done__title {
-  font-size: 1.8rem;
+  font-size: 2rem;
 }
 
 .done__lead {
-  font-size: 1.08rem;
+  font-size: 1.25rem;
 }
 
 .done__email {
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .done__subtitle {
-  margin: 1.5rem 0 0.6rem;
-  font-family: var(--font-sans);
-  font-size: 1rem;
-  font-weight: 700;
+  margin: 1.5rem 0 0.75rem;
+  color: var(--olive);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
 }
 
 /* Resumen del pedido: filas etiqueta / valor */
 .summary {
   display: grid;
   margin: 0 0 1rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--rule);
 }
 
 .summary__row {
@@ -684,7 +713,7 @@ input[type="radio"] {
   gap: 0.15rem 1rem;
   justify-content: space-between;
   padding-block: 0.55rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--rule);
 }
 
 .summary__row dt {
@@ -693,14 +722,14 @@ input[type="radio"] {
 
 .summary__row dd {
   margin: 0;
-  font-variant-numeric: tabular-nums;
-  font-weight: 650;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-weight: 600;
   text-align: right;
 }
 
 .summary__row--total dd {
   color: var(--accent);
   font-family: var(--font-serif);
-  font-size: 1.25rem;
-  font-weight: 800;
+  font-size: 1.45rem;
+  font-weight: 600;
 }

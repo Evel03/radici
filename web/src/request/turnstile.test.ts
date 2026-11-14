@@ -75,7 +75,7 @@ describe("script y opciones", () => {
       sitekey: "1x00000000000000000000AA",
       action: TURNSTILE_ACTION,
       language: "it",
-      theme: "auto",
+      theme: "light",
       size: "flexible",
       "response-field": false,
     });
