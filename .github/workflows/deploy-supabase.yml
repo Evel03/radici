@@ -84,6 +84,27 @@ jobs:
         if: env.HAS_SUPABASE != 'true'
         run: echo "::notice::Faltan SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD o la variable SUPABASE_PROJECT_REF. Los tests pasaron, pero no se despliega."
 
+      # El CLI exige el formato de los tokens personales (sbp_ y 40 caracteres en hexadecimal). Si el
+      # secreto se cargó mal (otra cosa, espacios o un salto de línea), se dice qué tiene de raro sin
+      # mostrarlo.
+      - name: Comprobar el token de Supabase
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${SUPABASE_ACCESS_TOKEN}"
+          if [[ "${token}" =~ ^sbp_[0-9a-f]{40}$ ]]; then
+            echo "El token tiene el formato esperado."
+            exit 0
+          fi
+          details="${#token} caracteres"
+          if [[ "${token}" == sbp_* ]]; then details+=", empieza con sbp_"; else details+=", no empieza con sbp_"; fi
+          if [[ "${token}" =~ [[:space:]] ]]; then details+=", tiene espacios o saltos de línea"; fi
+          if [[ "${token}" =~ [A-Z] ]]; then details+=", tiene mayúsculas"; fi
+          echo "::error::SUPABASE_ACCESS_TOKEN no tiene el formato de un token de Supabase (sbp_ y 40 caracteres): ${details}. Volver a cargarlo con gh secret set SUPABASE_ACCESS_TOKEN y pegar solo el token."
+          exit 1
+
       - name: Vincular el proyecto
         if: env.HAS_SUPABASE == 'true'
         env:
