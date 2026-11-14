@@ -1,9 +1,11 @@
 // Tests de los emails del pedido (contrato §5). Correr con: npm test.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { LOCALES } from "./public_request.ts";
+import { readFileSync } from "node:fs";
+import { LOCALES, type Locale } from "./public_request.ts";
 import {
   brandFromMailFrom,
+  emailWithBreaks,
   escapeHtml,
   firstName,
   formatCents,
@@ -91,6 +93,12 @@ test("personas en cada idioma", () => {
 
 test("escapeHtml escapa los cinco caracteres especiales", () => {
   assert.equal(escapeHtml(`<b>"Tom" & 'Jerry'</b>`), "&lt;b&gt;&quot;Tom&quot; &amp; &#39;Jerry&#39;&lt;/b&gt;");
+});
+
+test("emailWithBreaks: escapa primero y después agrega los cortes (después de la @, antes de cada punto)", () => {
+  assert.equal(emailWithBreaks("giulia.rossi@gmail.com"), "giulia<wbr>.rossi@<wbr>gmail<wbr>.com");
+  assert.equal(emailWithBreaks(`a"<b>'&@x.it`), "a&quot;&lt;b&gt;&#39;&amp;@<wbr>x<wbr>.it");
+  assert.equal(emailWithBreaks("sin-arroba"), "sin-arroba");
 });
 
 test("nombre de pila: la primera palabra, con tope de largo", () => {
@@ -297,7 +305,8 @@ test("Evelyn: un email con caracteres raros no rompe el atributo href", () => {
   const email = renderChefNotification(chefInput({ email: `a"><script>x@example.test` }), "it");
   assert.ok(!email.html.includes("<script>"));
   assert.ok(email.html.includes('href="mailto:a%22%3E%3Cscript%3Ex@example.test"'));
-  assert.ok(email.html.includes("a&quot;&gt;&lt;script&gt;x@example.test</a>"), "el texto visible es la dirección tal cual, escapada");
+  // El texto visible es la dirección tal cual, escapada (con puntos de corte, que no se ven).
+  assert.ok(email.html.includes("a&quot;&gt;&lt;script&gt;x@<wbr>example<wbr>.test</a>"));
 });
 
 test("Evelyn: el link mailto codifica la dirección (no se le pueden colar bcc, cc ni body)", () => {
@@ -333,4 +342,84 @@ test("ningún email copia datos de salud ni la dirección aunque el llamador los
       assert.ok(!email.html.includes(secret) && !email.text.includes(secret), `se filtró ${secret}`);
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// Identidad de la marca (la misma de la web)
+// ---------------------------------------------------------------------------
+
+/** Textos de la web (web/src/i18n/*.json) que los emails repiten. */
+function webCommon(locale: Locale): { slogan: string; brandTagline: string } {
+  const json = JSON.parse(readFileSync(new URL(`../../../web/src/i18n/${locale}.json`, import.meta.url), "utf8")) as {
+    common: { slogan: string; brandTagline: string };
+  };
+  return json.common;
+}
+
+/** El logotipo en texto: la tabla del nombre sobre el filete y el rótulo. */
+const LOGO = /<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;">[\s\S]*?<\/table>/;
+const OLD_COLORS = ["#a3431c", "#fbf6ee", "#1c1713", "#6b5d52", "#e2d4c1"];
+
+test("los dos emails llevan el logotipo en texto y la paleta del manual, sin la terracota de antes", () => {
+  for (const email of [renderClientConfirmation(clientInput(), "it"), renderChefNotification(chefInput(), "es")]) {
+    const logo = LOGO.exec(email.html)?.[0] ?? "";
+    assert.match(logo, /font-variant:small-caps;[^"]*">Radici<\/td>/, "el nombre, en versalitas");
+    assert.match(logo, /<td align="center" lang="it" [^>]*>Cucina privata<\/td>/, "el rótulo, en italiano");
+    for (const color of ["#f5ede1", "#fbf7f1", "#dbc9b4", "#2c2b20", "#4a5a3c"]) assert.ok(email.html.includes(color), `falta ${color}`);
+    for (const old of [...OLD_COLORS, "sans-serif"]) assert.ok(!email.html.includes(old), `queda ${old}`);
+  }
+  assert.ok(LOGO.exec(renderChefNotification(chefInput({ brand: "Cucina di Eve" }), "it").html)?.[0].includes(">Cucina di Eve</td>"));
+});
+
+test("logotipo: espaciado en px (Outlook resuelve los em contra 12 pt) y filete del color del texto (modo oscuro)", () => {
+  const logo = LOGO.exec(renderClientConfirmation(clientInput(), "it").html)?.[0] ?? "";
+  assert.doesNotMatch(logo, /letter-spacing:[\d.]+em/);
+  // Outlook en modo oscuro aclara el texto pero no los bordes: el filete sigue al color del texto.
+  assert.match(logo, /border-bottom:1px solid #2c2b20;border-bottom-color:currentColor;/);
+});
+
+test("Evelyn: un email largo se parte dentro de su columna y no ensancha la tarjeta en el teléfono", () => {
+  const email = renderChefNotification(chefInput({ email: "mariagiovanna.bianchi@outlook.it" }), "es");
+  assert.ok(email.html.includes(">mariagiovanna<wbr>.bianchi@<wbr>outlook<wbr>.it</a>"), "cortes después de la @ y antes de cada punto");
+  assert.ok(email.text.includes("Email: mariagiovanna.bianchi@outlook.it\n"), "el texto plano, entero");
+  // Las celdas de valor pueden partir una palabra que no entra (nombre, zona y email son texto libre).
+  const valueCells = email.html.match(/<td style="padding:7px 0;[^"]*">/g) ?? [];
+  assert.ok(valueCells.length >= 10);
+  for (const cell of valueCells) assert.match(cell, /word-break:break-word;overflow-wrap:anywhere;/);
+});
+
+test("Outlook (Word) no hereda letra ni color en tablas anidadas: las tablas de filas los declaran", () => {
+  for (const email of [renderClientConfirmation(clientInput(), "it"), renderChefNotification(chefInput(), "es")]) {
+    const tables = email.html.match(/<table [^>]*border-collapse:collapse[^>]*>/g) ?? [];
+    assert.ok(tables.length >= 2);
+    for (const table of tables) assert.match(table, /font-family:'Palatino Linotype',[^;]*;color:#2c2b20;/);
+  }
+});
+
+for (const locale of LOCALES) {
+  test(`cliente (${locale}): el eslogan y el rótulo son los de la web; el aviso a Evelyn no lleva eslogan`, () => {
+    const common = webCommon(locale);
+    const email = renderClientConfirmation(clientInput(), locale);
+    assert.ok(email.html.includes(`>${escapeHtml(common.slogan)}</p>`), "eslogan en el HTML");
+    assert.ok(email.text.includes(`\n--\n${common.slogan}\n`), "eslogan en el texto, arriba del pie");
+    assert.ok(email.html.includes(`>${escapeHtml(common.brandTagline)}</td>`), "rótulo del logotipo");
+    const chef = renderChefNotification(chefInput(), locale);
+    assert.ok(!chef.html.includes(common.slogan) && !chef.text.includes(common.slogan));
+  });
+}
+
+test("la plantilla del código de acceso (Supabase Auth) tiene el mismo logotipo y colores", () => {
+  const template = readFileSync(new URL("../../templates/login_code.html", import.meta.url), "utf8");
+  const email = renderClientConfirmation(clientInput(), "it").html;
+  assert.equal(LOGO.exec(template)?.[0].replaceAll("\n", ""), LOGO.exec(email)?.[0]);
+  for (const color of ["#f5ede1", "#fbf7f1", "#dbc9b4", "#2c2b20", "#5b5847"]) assert.ok(template.includes(color), `falta ${color}`);
+  for (const old of OLD_COLORS) assert.ok(!template.includes(old), `queda ${old}`);
+  // El idioma del documento es el del texto, como en los emails (lectores de pantalla), y sale de
+  // valores fijos: nunca el user_metadata.locale crudo, que escribe el usuario.
+  assert.ok(
+    template.includes(
+      '<html lang="{{ if and .Data.locale (eq .Data.locale "es") }}es{{ else if and .Data.locale (eq .Data.locale "en") }}en{{ else }}it{{ end }}">',
+    ),
+  );
+  assert.ok(!template.includes("{{ .Data.locale }}"));
 });

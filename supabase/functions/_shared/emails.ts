@@ -6,7 +6,8 @@
 // Todo texto del usuario se escapa. En el asunto y en el saludo al cliente, del usuario solo va el
 // nombre de pila, y solo si parece un nombre (safeFirstName): nunca un teléfono, un email ni un
 // link escrito en ese campo. El mailto: del aviso a Evelyn lleva la dirección codificada.
-// HTML simple con estilos en línea, sin imágenes remotas ni seguimiento, más texto plano.
+// HTML simple con estilos en línea, sin imágenes remotas ni seguimiento, más texto plano. Con la
+// identidad de la web (logotipo en texto, paleta del manual de marca) y sin fuentes remotas.
 // Importes con aritmética entera; fechas sin zona horaria (son días de calendario).
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import type { Locale, Meal, RequestType, Slot } from "./public_request.ts";
@@ -102,6 +103,8 @@ interface Messages {
     restrictions: (chef: string) => string;
     reply: string;
     privacy: string;
+    /** El eslogan de la marca, el mismo de la web (common.slogan). */
+    slogan: string;
     footer: (brand: string) => string;
   };
   chef: {
@@ -161,6 +164,7 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       restrictions: (chef) => `Hai indicato restrizioni alimentari: ${chef} ne terrà conto.`,
       reply: "Vuoi aggiungere o cambiare qualcosa? Rispondi a questa email.",
       privacy: "Informativa privacy",
+      slogan: "Cucina autentica, a casa tua.",
       footer: (brand) => `Ricevi questa email perché hai inviato una richiesta dal sito di ${brand}.`,
     },
     chef: {
@@ -218,6 +222,7 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       restrictions: (chef) => `Indicaste restricciones alimentarias: ${chef} las tendrá en cuenta.`,
       reply: "¿Quieres añadir o cambiar algo? Responde a este email.",
       privacy: "Política de privacidad",
+      slogan: "Cocina auténtica, en tu casa.",
       footer: (brand) => `Recibes este email porque enviaste una solicitud desde la web de ${brand}.`,
     },
     chef: {
@@ -275,6 +280,7 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       restrictions: (chef) => `You mentioned dietary restrictions: ${chef} will take them into account.`,
       reply: "Want to add or change something? Just reply to this email.",
       privacy: "Privacy policy",
+      slogan: "Authentic cooking, in your home.",
       footer: (brand) => `You're receiving this email because you sent a request through the ${brand} website.`,
     },
     chef: {
@@ -343,6 +349,16 @@ export function mailtoHref(email: string): string {
   return `mailto:${encodeURIComponent(email.slice(0, at))}@${encodeURIComponent(email.slice(at + 1))}`;
 }
 
+/**
+ * Dirección escapada para mostrar, con puntos de corte después de la "@" y antes de cada punto (como
+ * se parte una dirección en un texto): en el teléfono, una dirección larga baja de línea por ahí y no
+ * en medio de una palabra. Se escapa primero: las entidades no tienen "@" ni ".", y el texto ya no
+ * tiene "<" con que armar etiquetas.
+ */
+export function emailWithBreaks(email: string): string {
+  return escapeHtml(email).replaceAll("@", "@<wbr>").replaceAll(".", "<wbr>.");
+}
+
 /** Importe en centavos enteros: "1.234,56 €" (it, es) o "€1,234.56" (en). Sin pasar por decimales. */
 export function formatCents(cents: number, locale: Locale): string {
   if (!Number.isInteger(cents) || cents < 0) throw new RangeError(`Importe inválido en centavos: ${cents}`);
@@ -408,8 +424,24 @@ export function privacyPageUrl(siteUrl: string, locale: Locale): string {
 // Armado del HTML y del texto
 // ---------------------------------------------------------------------------
 
-const COLOR = { page: "#fbf6ee", card: "#ffffff", border: "#e2d4c1", text: "#1c1713", muted: "#6b5d52", accent: "#a3431c" };
-const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+// Paleta de la web (web/src/styles/base.css), con el contraste verificado (WCAG AA) sobre la tarjeta.
+const COLOR = {
+  page: "#f5ede1", // crema
+  card: "#fbf7f1", // crema clara
+  border: "#dbc9b4", // lino
+  rule: "#cdb9a1", // líneas entre filas
+  text: "#2c2b20", // tinta
+  muted: "#5b5847",
+  accent: "#4a5a3c", // oliva
+  onAccent: "#f5ede1", // crema sobre oliva
+};
+// Sin fuentes web: en un email serían un recurso remoto y casi ningún cliente las carga. Palatino y
+// sus parecidas tienen números de caja alta (Georgia no) y se acercan a Cormorant; Cinzel solo si
+// quien lee la tiene instalada.
+const FONT = "'Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif";
+const FONT_DISPLAY = `Cinzel,'Trajan Pro',${FONT}`;
+/** Rótulo del logotipo: parte de la marca, en italiano en todos los idiomas (como en la web). */
+const BRAND_TAGLINE = "Cucina privata";
 
 /** Fila etiqueta / valor. `valueHtml` ya viene escapado (puede traer un link). */
 interface Row {
@@ -433,41 +465,53 @@ interface EmailDocument {
   brand: string;
   heading: string;
   blocks: Block[];
+  /** Eslogan arriba del pie (solo en la confirmación al cliente). */
+  slogan: string | null;
   footer: string;
 }
 
 function blockHtml(block: Block): string {
   switch (block.kind) {
     case "paragraph":
-      return `<p style="margin:0 0 16px;font-size:16px;line-height:1.5;">${escapeHtml(block.text)}</p>`;
+      return `<p style="margin:0 0 16px;font-size:17px;line-height:1.55;">${escapeHtml(block.text)}</p>`;
     case "title":
-      return `<h2 style="margin:24px 0 8px;font-size:17px;line-height:1.3;color:${COLOR.text};">${escapeHtml(block.text)}</h2>`;
-    case "note":
-      return `<p style="margin:8px 0 16px;font-size:14px;line-height:1.5;color:${COLOR.muted};">${escapeHtml(block.text)}</p>`;
-    case "rows":
+      // Rótulo como los de la web: mayúsculas espaciadas en oliva.
       return (
-        `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:15px;line-height:1.4;">` +
+        `<h2 style="margin:28px 0 8px;font-family:${FONT_DISPLAY};font-size:13px;font-weight:normal;line-height:1.3;` +
+        `letter-spacing:0.16em;text-transform:uppercase;color:${COLOR.accent};">${escapeHtml(block.text)}</h2>`
+      );
+    case "note":
+      return `<p style="margin:8px 0 16px;font-size:15px;line-height:1.5;font-style:italic;color:${COLOR.muted};">${escapeHtml(block.text)}</p>`;
+    case "rows":
+      // Letra y color también en esta tabla: Outlook de Windows no los hereda en tablas anidadas
+      // (salía Times New Roman). El valor puede partir una palabra que no entra (un email largo,
+      // nombre y zona son texto libre): si no, la tabla ensancha la tarjeta más allá del teléfono.
+      return (
+        `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;` +
+        `font-family:${FONT};color:${COLOR.text};font-size:16px;line-height:1.45;">` +
         block.rows
           .map(
             (row) =>
-              `<tr><td style="padding:6px 12px 6px 0;border-top:1px solid ${COLOR.border};color:${COLOR.muted};vertical-align:top;width:45%;">` +
-              `${escapeHtml(row.label)}</td><td style="padding:6px 0;border-top:1px solid ${COLOR.border};vertical-align:top;">` +
-              `${row.valueHtml ?? escapeHtml(row.value)}</td></tr>`,
+              `<tr><td style="padding:7px 12px 7px 0;border-top:1px solid ${COLOR.rule};color:${COLOR.muted};vertical-align:top;width:45%;">` +
+              `${escapeHtml(row.label)}</td><td style="padding:7px 0;border-top:1px solid ${COLOR.rule};vertical-align:top;` +
+              `word-break:break-word;overflow-wrap:anywhere;">${row.valueHtml ?? escapeHtml(row.value)}</td></tr>`,
           )
           .join("") +
         `</table>`
       );
     case "button":
+      // Como los botones de la web: oliva y crema, esquinas casi rectas, versalitas.
       return (
-        `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 8px;"><tr>` +
-        `<td style="border-radius:8px;background:${COLOR.accent};">` +
-        `<a href="${escapeHtml(block.href)}" style="display:inline-block;padding:12px 22px;font-size:16px;font-weight:600;` +
-        `color:#ffffff;text-decoration:none;border-radius:8px;">${escapeHtml(block.label)}</a></td></tr></table>`
+        `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:28px 0 8px;"><tr>` +
+        `<td style="border-radius:2px;background:${COLOR.accent};">` +
+        `<a href="${escapeHtml(block.href)}" style="display:inline-block;padding:13px 26px;font-family:${FONT_DISPLAY};font-size:17px;` +
+        `letter-spacing:0.06em;font-variant:small-caps;color:${COLOR.onAccent};text-decoration:none;border-radius:2px;">` +
+        `${escapeHtml(block.label)}</a></td></tr></table>`
       );
     case "link":
       return (
-        `<p style="margin:16px 0 0;font-size:14px;line-height:1.5;">` +
-        `<a href="${escapeHtml(block.href)}" style="color:${COLOR.accent};">${escapeHtml(block.label)}</a></p>`
+        `<p style="margin:16px 0 0;font-size:15px;line-height:1.5;">` +
+        `<a href="${escapeHtml(block.href)}" style="color:${COLOR.accent};text-decoration:underline;">${escapeHtml(block.label)}</a></p>`
       );
   }
 }
@@ -495,10 +539,37 @@ function plainText(doc: EmailDocument): string {
     text += (previous === "title" ? "\n" : "\n\n") + blockText(block);
     previous = block.kind;
   }
-  return `${text}\n\n--\n${doc.footer}\n`;
+  return `${text}\n\n--\n${doc.slogan ? `${doc.slogan}\n` : ""}${doc.footer}\n`;
+}
+
+/**
+ * Logotipo en texto, sin imágenes: el nombre en versalitas sobre el filete y el rótulo debajo, como en
+ * el manual de marca. El filete es el borde de la celda del nombre: mide lo que mide el nombre. En las
+ * dos celdas, el padding izquierdo compensa el espaciado que queda después de la última letra (así el
+ * filete sobresale lo mismo a cada lado y el rótulo queda centrado).
+ * - Espaciado en px: Outlook de Windows (Word) resuelve los em contra 12 pt y no contra la letra de
+ *   la celda, y el rótulo terminaba casi tan ancho como el filete.
+ * - El filete toma el color del texto (currentColor, con la tinta de respaldo): Outlook en modo oscuro
+ *   aclara el texto pero no los bordes, y un filete tinta desaparecía sobre el fondo oscuro.
+ */
+function logoHtml(brand: string): string {
+  return (
+    `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;"><tr>` +
+    `<td align="center" style="padding:0 3px 8px 6px;border-bottom:1px solid ${COLOR.text};border-bottom-color:currentColor;` +
+    `font-family:${FONT_DISPLAY};font-size:40px;line-height:1;letter-spacing:3.2px;font-variant:small-caps;color:${COLOR.text};">` +
+    `${escapeHtml(brand)}</td>` +
+    `</tr><tr>` +
+    // El rótulo, más angosto que el nombre (entre 70 y 80 % del filete según la letra; en el manual, 79 %).
+    `<td align="center" lang="it" style="padding:9px 0 0 2px;font-family:${FONT_DISPLAY};font-size:9px;line-height:1.2;` +
+    `letter-spacing:2.3px;text-transform:uppercase;color:${COLOR.text};">${escapeHtml(BRAND_TAGLINE)}</td>` +
+    `</tr></table>`
+  );
 }
 
 function render(doc: EmailDocument): RenderedEmail {
+  const slogan = doc.slogan
+    ? `<p style="margin:0 0 10px;font-size:17px;line-height:1.4;font-style:italic;color:${COLOR.text};">${escapeHtml(doc.slogan)}</p>`
+    : "";
   const html =
     `<!doctype html>` +
     `<html lang="${doc.locale}"><head><meta charset="utf-8">` +
@@ -510,15 +581,14 @@ function render(doc: EmailDocument): RenderedEmail {
     `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:${COLOR.page};">` +
     `<tr><td align="center" style="padding:24px 12px;">` +
     `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:${COLOR.card};` +
-    `border:1px solid ${COLOR.border};border-radius:12px;font-family:${FONT};color:${COLOR.text};">` +
-    `<tr><td style="padding:24px 24px 0;font-size:14px;font-weight:700;letter-spacing:0.02em;color:${COLOR.accent};">` +
-    `${escapeHtml(doc.brand)}</td></tr>` +
-    `<tr><td style="padding:12px 24px 24px;">` +
-    `<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">${escapeHtml(doc.heading)}</h1>` +
+    `border:1px solid ${COLOR.border};border-radius:2px;font-family:${FONT};font-variant-numeric:lining-nums;color:${COLOR.text};">` +
+    `<tr><td align="center" style="padding:32px 24px 8px;">${logoHtml(doc.brand)}</td></tr>` +
+    `<tr><td style="padding:20px 24px 24px;">` +
+    `<h1 style="margin:0 0 16px;font-size:26px;font-weight:normal;line-height:1.25;">${escapeHtml(doc.heading)}</h1>` +
     doc.blocks.map(blockHtml).join("") +
     `</td></tr>` +
-    `<tr><td style="padding:16px 24px 24px;border-top:1px solid ${COLOR.border};font-size:12px;line-height:1.5;color:${COLOR.muted};">` +
-    `${escapeHtml(doc.footer)}</td></tr>` +
+    `<tr><td align="center" style="padding:20px 24px 28px;border-top:1px solid ${COLOR.border};font-size:13px;line-height:1.5;color:${COLOR.muted};">` +
+    `${slogan}${escapeHtml(doc.footer)}</td></tr>` +
     `</table></td></tr></table></body></html>`;
   return { subject: doc.subject, html, text: plainText(doc) };
 }
@@ -578,6 +648,7 @@ export function renderClientConfirmation(input: ClientConfirmationInput, locale:
     brand: input.brand,
     heading: messages.client.greeting(safeFirstName(input.customerName)),
     blocks,
+    slogan: messages.client.slogan,
     footer: messages.client.footer(input.brand),
   });
 }
@@ -598,7 +669,7 @@ export function renderChefNotification(input: ChefNotificationInput, locale: Loc
     {
       label: messages.chef.email,
       value: input.email,
-      valueHtml: `<a href="${escapeHtml(mailtoHref(input.email))}" style="color:${COLOR.accent};">${escapeHtml(input.email)}</a>`,
+      valueHtml: `<a href="${escapeHtml(mailtoHref(input.email))}" style="color:${COLOR.accent};">${emailWithBreaks(input.email)}</a>`,
     },
     { label: messages.chef.whatsapp, value: input.whatsappOptIn ? messages.chef.yes : messages.chef.no },
   ];
@@ -621,6 +692,7 @@ export function renderChefNotification(input: ChefNotificationInput, locale: Loc
     brand: input.brand,
     heading: messages.chef.heading,
     blocks,
+    slogan: null,
     footer: messages.chef.footer(input.brand),
   });
 }
