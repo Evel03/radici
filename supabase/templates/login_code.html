@@ -2,8 +2,8 @@
 <!-- Código de acceso (OTP) de Supabase Auth: plantillas "Magic link" y "Confirm signup".
      Solo el código (variable Token: 8 cifras, vale 10 minutos; config.toml otp_length y
      otp_expiry, y lo mismo en el panel), sin link: la app lo pide en pantalla.
-     Idioma: user_metadata.locale (it por defecto; es, en). En producción se copia tal cual en
-     Authentication → Emails del panel de Supabase.
+     Idioma: user_metadata.locale (it por defecto; es, en). En producción la aplica
+     deploy-supabase.yml en cada despliegue (supabase/scripts/auth-config.ts).
      Identidad: la misma de los emails del pedido (logotipo en texto, colores y letras de
      supabase/functions/_shared/emails.ts); si cambia allá, cambia acá. -->
 <html lang="{{ if and .Data.locale (eq .Data.locale "es") }}es{{ else if and .Data.locale (eq .Data.locale "en") }}en{{ else }}it{{ end }}">

@@ -135,19 +135,18 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   pasa de `prospect` a `trial` con "Segna come cliente".
 - `profiles.locale`: el usuario lo puede cambiar en su propio perfil (`grant update (full_name,
   phone, locale)` y la política "el usuario edita el suyo", `20261019100200_rls.sql`).
-- Authentication → Sign In / Providers: "Allow new users to sign up" **apagado** (la app tampoco crea
-  usuarios), "Email OTP Length" = 8 y "Email OTP Expiration" = 600 (en local: `supabase/config.toml`).
-- Authentication → Emails → SMTP Settings: **SMTP propio** con Resend (`smtp.resend.com`, puerto 465,
-  usuario `resend`, contraseña = una clave de Resend solo de envío para `radici.sepusola10.com`). Sin
-  él, Supabase solo manda a los miembros del equipo (2 por hora) y Evelyn no recibe el código.
-- Plantillas de email "Magic link" y "Confirm signup" con el código (`{{ .Token }}`): el asunto de
-  `supabase/config.toml` y el HTML de `supabase/templates/login_code.html`.
-- Usuario de Evelyn **antes de publicar** la web o una vista previa: Authentication → Users → Add user
-  → Create new user, con "Auto Confirm User" y una contraseña al azar que no se guarda. Después, en el
-  SQL editor: `select public.promote_to_chef('<email>', 'Evelyn');`. La función exige el email
+- Auth de producción, desde el repo: `deploy-supabase.yml` aplica en cada despliegue lo de
+  `supabase/config.toml` (`supabase/scripts/auth-config.ts`): altas **apagadas** (la app tampoco crea
+  usuarios), código de 8 cifras que vale 600 s, las plantillas "Magic link" y "Confirm signup" con el
+  código (`{{ .Token }}`, HTML de `supabase/templates/login_code.html`) y, con `RESEND_SMTP_KEY`,
+  **SMTP propio** con Resend. Sin él, Supabase solo manda a los miembros del equipo (muy pocos por
+  hora) y Evelyn podría no recibir el código.
+- Usuario de Evelyn **antes de publicar** la web o una vista previa: lo crea el mismo workflow
+  (variables `CHEF_LOGIN_EMAIL` y `CHEF_DISPLAY_NAME`) mientras no haya ninguna cocinera: confirmado,
+  con una contraseña al azar que nadie conoce, y después `promote_to_chef`. La función exige el email
   confirmado, le cambia la contraseña por una al azar y le cierra las sesiones (nadie que haya
-  registrado antes ese email entra como cocinera). Si Evelyn ya tenía la app abierta, tiene que salir y
-  volver a entrar con el código.
+  registrado antes ese email entra como cocinera); por eso el workflow no la vuelve a correr. Si
+  Evelyn ya tenía la app abierta cuando se corrió, tiene que salir y volver a entrar con el código.
 
 ## Web `/gestione/`
 
