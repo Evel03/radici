@@ -180,7 +180,7 @@ refresh_token_reuse_interval = 10
 # Radici: apagadas, como en producción ("Allow new users to sign up" OFF), hasta el área de clientes
 # (M2). Con altas abiertas cualquiera podía registrar antes el email de Evelyn con una contraseña suya
 # (contrato §8). Solo entran usuarios ya creados: los del seed en local; en producción, el de Evelyn,
-# creado confirmado desde el panel. [auth.email] enable_signup sigue en true: apagarlo desactiva el
+# creado confirmado por deploy-supabase.yml. [auth.email] enable_signup sigue en true: apagarlo desactiva el
 # login por email entero.
 enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
@@ -221,8 +221,9 @@ web3 = 30
 
 # Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
 # Radici: apagado (la app no manda captchaToken y con las altas apagadas nadie crea usuarios). Antes
-# de abrir las altas para el área de clientes (M2): Turnstile acá y en el panel (Attack Protection),
-# y captchaToken en el login de la app (web y nativa).
+# de abrir las altas para el área de clientes (M2): Turnstile acá, su proveedor y su secreto en
+# supabase/scripts/auth-config.ts (que hoy falla si esto está prendido; prenderlo solo en el panel lo
+# apagaría el próximo despliegue) y captchaToken en el login de la app (web y nativa).
 # [auth.captcha]
 # enabled = true
 # provider = "hcaptcha"
@@ -265,9 +266,8 @@ otp_expiry = 600
 # Login con código (OTP) de la app: el email lleva el código de 8 cifras ({{ .Token }}), sin link.
 # signInWithOtp manda "magic_link" a un usuario existente y "confirmation" al que entra por
 # primera vez (con las altas apagadas, solo "magic_link"); los dos usan la misma plantilla. En
-# producción el asunto y el HTML se copian a mano en el panel (Authentication → Emails → Templates:
-# "Magic link" y "Confirm signup"), con SMTP propio (Resend), "Email OTP length" = 8 y
-# "Email OTP Expiration" = 600 (contrato §10).
+# producción los aplica deploy-supabase.yml desde este archivo (supabase/scripts/auth-config.ts):
+# asuntos, HTML, altas apagadas, OTP de 8 cifras por 600 s y SMTP propio (Resend) (contrato §10).
 [auth.email.template.magic_link]
 subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Tu código de acceso{{ else if and .Data.locale (eq .Data.locale \"en\") }}Your sign-in code{{ else }}Il tuo codice di accesso{{ end }}"
 content_path = "./supabase/templates/login_code.html"

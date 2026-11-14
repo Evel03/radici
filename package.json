@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test \"supabase/functions/**/*.test.ts\""
+    "test": "node --test \"supabase/functions/**/*.test.ts\" \"supabase/scripts/*.test.ts\""
   },
   "engines": {
     "node": ">=24"

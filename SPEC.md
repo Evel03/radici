@@ -314,7 +314,7 @@ Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automá
 - Derecho de acceso y borrado: exportar los datos del cliente (JSON) y borrar su cuenta desde la app. Incluye las copias de restricciones en `requests.restrictions` y `quotes.pricing_snapshot`.
 - Conservación: los prospectos que no se convierten se borran con un cron cuando pasan `prospect_retention_days` (90) desde su último pedido. Si la persona pasa a ser clienta (en Fase 0, por WhatsApp), la cocinera la marca como cliente desde el detalle del pedido (ficha en `trial`) y se conserva.
 - Un envío del formulario público (sin login, email sin verificar) nunca modifica a una persona que ya existe: cada pedido guarda el contacto con que llegó (`requests.contact`) y las restricciones del hogar solo se suman, desde pedidos semanales.
-- Las altas de usuarios van apagadas hasta el área de clientes (M2): la cuenta de la cocinera se crea confirmada desde el panel antes de publicar nada, y `promote_to_chef` le cambia la contraseña por una al azar y le cierra las sesiones.
+- Las altas de usuarios van apagadas hasta el área de clientes (M2): la cuenta de la cocinera la crea confirmada el despliegue de Supabase (o el panel) antes de publicar nada, y `promote_to_chef` le cambia la contraseña por una al azar y le cierra las sesiones.
 - Las notificaciones push y los emails nunca llevan restricciones ni direcciones.
 - La política de privacidad lista los subencargados: Supabase, Stripe, el proveedor de email, Firebase (push), Sentry y el hosting de la web.
 - Supabase en región UE; DPA firmado con Supabase y Stripe; política de privacidad en italiano.
