@@ -1,155 +1,228 @@
-/* Landing: composición tipográfica, etiquetas de táper y secciones. */
-
-:root {
-  --band-bg: #8a3815;
-  --band-text: #fbf6ee;
-  --label-bg: #fffaf2;
-  --label-tape: #e9c9a8;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --band-bg: #ee9a72;
-    --band-text: #1c1713;
-    --label-bg: #f4ebe1;
-    --label-tape: #c99a74;
-  }
-}
-
-.eyebrow {
-  margin-bottom: 0.75rem;
-  color: var(--olive);
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
+/* Landing: composición editorial del manual de marca (filetes finos, versalitas, fotos enmarcadas,
+   bloques en oliva) y etiquetas de las porciones. */
 
 /* Hero */
 .hero {
   overflow: hidden;
-  padding-block: 2.5rem 3rem;
-  background:
-    radial-gradient(60rem 30rem at 110% -10%, var(--accent-soft), transparent 60%),
-    var(--bg);
+  padding-block: 2.75rem 3.5rem;
 }
 
 .hero__inner {
   display: grid;
-  gap: 2.5rem;
+  gap: 3rem;
   align-items: center;
 }
 
 .hero__title {
-  max-width: 16ch;
-  margin-bottom: 1rem;
+  max-width: 15ch;
+  margin-bottom: 1.25rem;
 }
 
-.hero__lead {
-  max-width: 38rem;
-  color: var(--muted);
-  font-size: 1.15rem;
-}
-
-.hero .actions {
-  margin-top: 1.5rem;
-}
-
-.hero__note {
-  margin: 1rem 0 0;
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.hero__art {
-  position: relative;
-  display: grid;
-  gap: 0.9rem;
-  max-width: 22rem;
-  padding-top: 2rem;
-}
-
-.hero__steam {
-  position: absolute;
-  top: -0.5rem;
-  left: 2.5rem;
-  width: 6rem;
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 3;
-  stroke-linecap: round;
-  opacity: 0.45;
-}
-
-.fridge-label {
-  position: relative;
-  display: grid;
-  gap: 0.15rem;
-  padding: 0.9rem 1.1rem 0.9rem 1.4rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--label-bg);
-  box-shadow: var(--shadow);
-  color: #2a1f18;
-}
-
-.fridge-label::before {
-  position: absolute;
-  top: -0.55rem;
-  left: 1rem;
-  width: 3.2rem;
-  height: 1.1rem;
-  background: var(--label-tape);
-  opacity: 0.85;
-  transform: rotate(-4deg);
+/* Filete corto bajo el título, como el del manual entre los valores y el texto. */
+.hero__title::after {
+  display: block;
+  width: 3rem;
+  height: 1px;
+  margin-top: 1.4rem;
+  background: var(--terra);
   content: "";
 }
 
-.fridge-label__dish {
-  font-family: var(--font-serif);
+.hero__lead {
+  max-width: 34rem;
+  color: var(--muted);
+  font-size: 1.3rem;
+}
+
+.hero .actions {
+  margin-top: 1.75rem;
+}
+
+.hero__note {
+  margin: 1.1rem 0 0;
+  color: var(--muted);
   font-size: 1.15rem;
-  font-weight: 700;
+  font-style: italic;
+}
+
+/* Foto con una lámina de lino corrida detrás (todo dentro del margen de la página) y las etiquetas de
+   las porciones: en mobile, montadas sobre el borde de abajo de la foto; en escritorio, encima. */
+.hero__art {
+  position: relative;
+  isolation: isolate;
+  width: calc(100% - 1rem);
+  max-width: 30rem;
+  justify-self: start;
+}
+
+.hero__photo {
+  position: relative;
+}
+
+.hero__photo::before {
+  position: absolute;
+  inset: 1.25rem -1rem -1rem 1.25rem;
+  z-index: -1;
+  background: var(--lino);
+  content: "";
+}
+
+.hero__labels {
+  position: relative;
+  display: grid;
+  gap: 0.5rem;
+  width: min(85%, 17rem);
+  margin: -2.25rem 0 0 0.75rem;
+}
+
+/* Planas, como el manual: filete lino y una línea oliva arriba, sin sombra. */
+.fridge-label {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.55rem 0.9rem 0.6rem;
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--olive);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.fridge-label:nth-child(2) {
+  margin-left: 1.25rem;
+}
+
+.fridge-label:nth-child(3) {
+  margin-left: 0.5rem;
+}
+
+.fridge-label__dish {
+  font-size: 1.15rem;
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .fridge-label__meta {
-  color: #5f5047;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-}
-
-.fridge-label--1 {
-  transform: rotate(-2deg);
-}
-
-.fridge-label--2 {
-  margin-left: 1.5rem;
-  transform: rotate(1.5deg);
-}
-
-.fridge-label--3 {
-  margin-left: 0.5rem;
-  transform: rotate(-1deg);
 }
 
 @media (min-width: 56rem) {
   .hero {
-    padding-block: 4.5rem 5rem;
+    padding-block: 4.5rem 6rem;
   }
 
   .hero__inner {
-    grid-template-columns: 1.3fr 1fr;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 4rem;
   }
 
   .hero__art {
     justify-self: end;
+    width: 100%;
+    margin-bottom: 3rem;
+  }
+
+  /* 2rem dentro del espacio de 4rem entre columnas: queda aire entre las etiquetas y el texto. */
+  .hero__labels {
+    position: absolute;
+    bottom: -3rem;
+    left: -2rem;
+    margin: 0;
+  }
+}
+
+/* Servicios: como el panel "Servizi" del manual, el rótulo arriba y tres columnas con íconos de línea
+   separadas por filetes verticales. Donde no entran las tres (pantalla muy angosta o letra agrandada:
+   la consulta es en rem), los servicios bajan de línea en vez de pisarse. */
+.services {
+  border-block: 1px solid var(--rule);
+  background: var(--bg-alt);
+}
+
+.services__inner {
+  display: grid;
+  gap: 1.25rem;
+  justify-items: center;
+  padding-block: 2rem 2.25rem;
+  container-type: inline-size;
+}
+
+.services__title {
+  margin: 0;
+}
+
+.services__list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.5rem 0;
+  width: 100%;
+  max-width: 48rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.service {
+  display: grid;
+  flex: 1 1 8rem;
+  grid-template-rows: auto 1fr auto;
+  gap: 0.65rem;
+  justify-items: center;
+  padding: 0.25rem 0.5rem;
+  text-align: center;
+}
+
+/* Filete corto al pie de cada servicio, como en el manual: alineado entre columnas aunque un nombre
+   ocupe dos líneas y otro una. */
+.service::after {
+  width: 1.75rem;
+  height: 1px;
+  background: var(--terra);
+  content: "";
+}
+
+.service__icon {
+  width: 2.4rem;
+  height: 2.4rem;
+  color: var(--olive);
+  stroke-width: 1.2;
+}
+
+.service__name {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+@container (min-width: 22rem) {
+  .services__list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .service + .service {
+    border-left: 1px solid var(--rule);
+  }
+}
+
+@container (min-width: 40rem) {
+  .service__name {
+    font-size: 0.8rem;
   }
 }
 
 /* Secciones */
 .section {
-  padding-block: 3.5rem;
+  padding-block: 4rem;
 }
 
 .section--alt {
@@ -157,59 +230,92 @@
 }
 
 .section__title {
-  max-width: 24ch;
+  max-width: 22ch;
+}
+
+.section__title::after {
+  display: block;
+  width: 3rem;
+  height: 1px;
+  margin-top: 1.1rem;
+  background: var(--terra);
+  content: "";
 }
 
 .section__intro {
-  max-width: 40rem;
-  margin-bottom: 2rem;
+  max-width: 38rem;
+  margin-bottom: 2.5rem;
   color: var(--muted);
-  font-size: 1.1rem;
+  font-size: 1.3rem;
+}
+
+.section__head--media {
+  display: grid;
+  gap: 0 3rem;
+  align-items: end;
+  margin-bottom: 2.5rem;
+}
+
+.section__head--media .section__intro {
+  margin-bottom: 1.5rem;
+}
+
+.section__photo {
+  max-width: 28rem;
 }
 
 @media (min-width: 56rem) {
   .section {
-    padding-block: 5rem;
+    padding-block: 6rem;
+  }
+
+  .section__head--media {
+    grid-template-columns: 1fr minmax(0, 27rem);
+  }
+
+  .section__head--media .section__intro {
+    margin-bottom: 0.5rem;
   }
 }
 
-/* Cómo funciona */
+/* Cómo funciona: cuatro columnas con filetes, numeradas en romanos. */
 .steps {
   display: grid;
-  gap: 1rem;
   margin: 0;
   padding: 0;
+  border-top: 1px solid var(--rule);
   list-style: none;
   counter-reset: step;
 }
 
 .step {
   position: relative;
-  padding: 1.5rem 1.25rem 1.25rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
+  padding: 1.75rem 3rem 1.75rem 0;
+  border-bottom: 1px solid var(--rule);
   counter-increment: step;
 }
 
+/* Número romano decorativo (la lista ya es ordenada): texto alternativo vacío para que no se lea. Los
+   navegadores sin esa sintaxis usan la primera línea. */
 .step::before {
   position: absolute;
-  top: 1.1rem;
-  right: 1.25rem;
-  color: var(--accent);
-  font-family: var(--font-serif);
-  font-size: 2.4rem;
-  font-weight: 700;
-  line-height: 1;
-  opacity: 0.35;
-  content: counter(step);
+  top: 1.75rem;
+  right: 0;
+  color: var(--terra-ink);
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  content: counter(step, upper-roman);
+  content: counter(step, upper-roman) / "";
 }
 
 .step__icon {
   width: 2.25rem;
   height: 2.25rem;
-  margin-bottom: 0.75rem;
-  color: var(--accent);
+  margin-bottom: 0.9rem;
+  color: var(--olive);
+  stroke-width: 1.3;
 }
 
 .step__title {
@@ -224,42 +330,73 @@
 @media (min-width: 40rem) {
   .steps {
     grid-template-columns: repeat(2, 1fr);
+    column-gap: 2.5rem;
   }
 }
 
 @media (min-width: 64rem) {
   .steps {
     grid-template-columns: repeat(4, 1fr);
+    column-gap: 0;
+    border-top: 0;
+  }
+
+  .step {
+    padding: 0.5rem 1.75rem 0.5rem;
+    border-bottom: 0;
+  }
+
+  .step:first-child {
+    padding-left: 0;
+  }
+
+  .step + .step {
+    border-left: 1px solid var(--rule);
+  }
+
+  .step::before {
+    top: 0.5rem;
+    right: 1.75rem;
   }
 }
 
-/* Qué incluye */
+/* Qué incluye: la foto del menú y la lista. */
+.included {
+  display: grid;
+  gap: 3rem;
+  align-items: center;
+}
+
+.included__photo {
+  max-width: 26rem;
+}
+
 .checklist {
   display: grid;
-  gap: 1.25rem 2.5rem;
   margin: 1.5rem 0 0;
   padding: 0;
+  border-top: 1px solid var(--rule);
   list-style: none;
 }
 
 .checklist li {
   display: flex;
-  gap: 0.9rem;
+  gap: 1rem;
+  padding-block: 1.1rem;
+  border-bottom: 1px solid var(--rule);
 }
 
 .checklist__icon {
-  width: 2rem;
-  height: 2rem;
-  padding: 0.3rem;
-  border-radius: 999px;
-  background: var(--olive-soft);
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-top: 0.15rem;
   color: var(--olive);
-  stroke-width: 2.4;
+  stroke-width: 1.6;
 }
 
 .checklist h3 {
-  margin-bottom: 0.25rem;
-  font-size: 1.12rem;
+  margin-bottom: 0.2rem;
+  font-size: 1.3rem;
 }
 
 .checklist p {
@@ -267,20 +404,21 @@
   color: var(--muted);
 }
 
-@media (min-width: 48rem) {
-  .checklist {
-    grid-template-columns: repeat(2, 1fr);
+@media (min-width: 56rem) {
+  .included {
+    grid-template-columns: minmax(0, 26rem) 1fr;
+    gap: 5rem;
   }
 }
 
 /* Cómo se paga */
 .price-grid {
   display: grid;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 .card {
-  padding: 1.5rem 1.25rem;
+  padding: 1.75rem 1.5rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -291,11 +429,16 @@
 }
 
 .card__title {
-  font-size: 1.3rem;
+  font-size: 1.55rem;
+  font-weight: 500;
+}
+
+.card p {
+  color: var(--muted);
 }
 
 .card--olive {
-  border-color: transparent;
+  border-color: var(--salvia);
   background: var(--olive-soft);
 }
 
@@ -303,45 +446,64 @@
   color: var(--olive);
 }
 
+/* El ejemplo, en oliva como la tarjeta verde del manual. */
 .card--example {
-  border: 2px dashed var(--line);
+  border-color: var(--olive);
+  background: var(--olive);
+  color: var(--crema);
+}
+
+.card--example .card__title {
+  color: var(--crema);
+}
+
+/* Crema al 85 % sobre oliva: 5.2:1. */
+.card--example p,
+.card--example .small,
+.card--example .example__row dt {
+  color: rgb(245 237 225 / 85%);
+}
+
+.card--example a {
+  color: var(--crema);
+}
+
+.card--example a:focus-visible {
+  outline-color: var(--crema);
 }
 
 .example {
-  margin: 1rem 0;
+  margin: 1.25rem 0;
 }
 
 .example__row {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  padding-block: 0.45rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.example__row dt {
-  color: var(--muted);
+  padding-block: 0.5rem;
+  border-bottom: 1px solid rgb(245 237 225 / 30%);
 }
 
 .example__row dd {
   margin: 0;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
   font-weight: 600;
 }
 
 .example__row--total {
   border-bottom: 0;
-  font-size: 1.15rem;
+  font-size: 1.3rem;
 }
 
-.example__row--total dt {
-  color: var(--text);
-  font-weight: 700;
+.card--example .example__row--total dt {
+  color: var(--crema);
+  font-weight: 600;
 }
 
 .example__row--total dd {
-  color: var(--accent);
-  font-weight: 800;
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.1;
 }
 
 @media (min-width: 48rem) {
@@ -352,54 +514,76 @@
 
 @media (min-width: 64rem) {
   .price-grid {
-    grid-template-columns: 1fr 1fr 1fr 1.2fr;
+    grid-template-columns: 1fr 1fr 1fr 1.25fr;
   }
 }
 
-/* Para quién */
+/* Para quién: tres columnas centradas con filetes, como los servicios. */
 .who-grid {
   display: grid;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  margin-top: 2rem;
+  border-top: 1px solid var(--rule);
 }
 
 .who {
-  padding: 1.5rem 1.25rem;
-  border-radius: var(--radius);
-  background: var(--surface);
+  padding: 2rem 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: center;
 }
 
 .who__icon {
   width: 2.5rem;
   height: 2.5rem;
-  margin-bottom: 0.75rem;
-  color: var(--accent);
+  margin-bottom: 0.9rem;
+  color: var(--olive);
+  stroke-width: 1.3;
+}
+
+.who h3 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 .who p {
-  margin: 0;
+  max-width: 22rem;
+  margin: 0 auto;
   color: var(--muted);
 }
 
 @media (min-width: 48rem) {
   .who-grid {
     grid-template-columns: repeat(3, 1fr);
+    border-top: 0;
+  }
+
+  .who {
+    padding: 0.5rem 2rem;
+    border-bottom: 0;
+  }
+
+  .who + .who {
+    border-left: 1px solid var(--rule);
   }
 }
 
 /* Preguntas */
 .faq {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--rule);
 }
 
 .faq details {
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--rule);
 }
 
 .faq summary {
   position: relative;
-  padding: 1.1rem 2.5rem 1.1rem 0;
-  font-weight: 650;
+  padding: 1.15rem 2.5rem 1.15rem 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.3;
   list-style: none;
   cursor: pointer;
 }
@@ -414,8 +598,8 @@
   position: absolute;
   top: 50%;
   right: 0.25rem;
-  color: var(--accent);
-  font-size: 1.5rem;
+  color: var(--terra);
+  font-size: 1.6rem;
   font-weight: 400;
   line-height: 1;
   transform: translateY(-50%);
@@ -430,32 +614,88 @@
 
 .faq details p {
   margin: 0;
-  padding-bottom: 1.1rem;
+  padding-bottom: 1.25rem;
   color: var(--muted);
 }
 
-/* CTA final */
+/* CTA final: bloque oliva, como el logotipo sobre verde del manual. */
 .final-cta {
-  padding-block: 3.5rem;
-  background: var(--band-bg);
-  color: var(--band-text);
-  text-align: center;
+  padding-block: 4rem;
+  background: var(--olive);
+  color: var(--crema);
 }
 
 .final-cta__inner {
   display: grid;
-  justify-items: center;
+  gap: 3rem;
+  align-items: center;
+}
+
+.final-cta__text {
+  display: grid;
+  justify-items: start;
+}
+
+/* Valores del manual, apilados como en el manual: entran a cualquier ancho y en cualquier idioma.
+   Crema al 85 %: 5.2:1 sobre oliva. */
+.values {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 1.75rem;
+  padding: 0;
+  color: rgb(245 237 225 / 85%);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  list-style: none;
+  text-transform: uppercase;
 }
 
 .final-cta__title {
-  max-width: 20ch;
+  max-width: 18ch;
+  color: var(--crema);
+  font-style: italic;
+}
+
+.final-cta__title::after {
+  display: block;
+  width: 3rem;
+  height: 1px;
+  margin-top: 1.1rem;
+  background: rgb(245 237 225 / 60%);
+  content: "";
 }
 
 .final-cta p {
-  max-width: 34rem;
-  font-size: 1.1rem;
+  max-width: 32rem;
+  font-size: 1.3rem;
+}
+
+.final-cta .btn--light {
+  margin-top: 0.5rem;
 }
 
 .final-cta .btn--light:focus-visible {
-  outline-color: var(--band-text);
+  outline-color: var(--crema);
+}
+
+.final-cta__photo {
+  max-width: 34rem;
+  border-color: rgb(245 237 225 / 25%);
+  background: rgb(245 237 225 / 10%);
+}
+
+@media (min-width: 56rem) {
+  .final-cta {
+    padding-block: 5.5rem;
+  }
+}
+
+/* Dos columnas recién cuando el texto tiene lugar: la foto es decorativa y no le quita ancho. */
+@media (min-width: 64rem) {
+  .final-cta__inner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 30rem);
+    gap: 4rem;
+  }
 }

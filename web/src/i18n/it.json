@@ -1,7 +1,7 @@
 {
   "common": {
     "skipToContent": "Vai al contenuto",
-    "homeLink": "{brand}: pagina iniziale",
+    "homeLink": "{brand} · Cucina privata: pagina iniziale",
     "langLabel": "Scegli la lingua",
     "langLinks": {
       "it": "IT – Italiano",
@@ -13,13 +13,15 @@
       "es": "ES",
       "en": "EN"
     },
+    "brandTagline": "Cucina privata",
+    "slogan": "Cucina autentica, a casa tua.",
     "footerTagline": "Cucina di casa a domicilio, a Bergamo e dintorni.",
     "footerRequest": "Richiedi un preventivo",
     "footerPrivacy": "Informativa privacy",
     "footerNoCookies": "Niente cookie di profilazione, niente analytics.",
     "loadError": "Non siamo riusciti a caricare una parte della pagina, quindi qualcosa potrebbe non funzionare. Controlla la connessione e ricarica la pagina.",
     "reload": "Ricarica la pagina",
-    "ogImageAlt": "{brand}, cuoca a domicilio a Bergamo: «La cena è già pronta. Per tutta la settimana.» Porzioni etichettate in frigo.",
+    "ogImageAlt": "{brand} · Cucina privata: «Cucina autentica, a casa tua.» Cuoca a domicilio a Bergamo.",
     "durationHours": "{h} h",
     "durationHoursMinutes": "{h} h {m} min",
     "durationMinutes": "{m} min"
@@ -28,7 +30,7 @@
     "metaTitle": "{brand} · Cuoca a domicilio a Bergamo, pasti pronti in frigo",
     "metaDescription": "Evelyn fa la spesa e cucina a casa tua a Bergamo: porzioni etichettate in frigo per più giorni. Spesa al costo dello scontrino. Preventivo subito.",
     "hero": {
-      "eyebrow": "Cuoca a domicilio · Bergamo",
+      "eyebrow": "Cuoca a domicilio · Bergamo",
       "title": "La cena è già pronta. Per tutta la settimana.",
       "lead": "Evelyn fa la spesa, cucina a casa tua e ti lascia in frigo porzioni pronte, ognuna con il nome del piatto e la data. Tu torni a casa e devi solo scaldare.",
       "cta": "Calcola il preventivo",
@@ -40,6 +42,12 @@
       "label2Meta": "Mar · 4 porzioni",
       "label3Dish": "Minestrone di stagione",
       "label3Meta": "Mer · 4 porzioni"
+    },
+    "services": {
+      "title": "Servizi",
+      "weekly": "Cucina settimanale",
+      "dinners": "Cene private",
+      "events": "Eventi familiari"
     },
     "how": {
       "title": "Come funziona",
@@ -109,6 +117,13 @@
       "a5": "No. Il calcolatore dà una stima; il preventivo vero te lo prepara Evelyn quando ti contatta, e confermi solo se ti va bene.",
       "q6": "E se devo disdire?",
       "a6": "Le condizioni di disdetta te le indichiamo insieme al preventivo, prima che tu confermi."
+    },
+    "values": {
+      "label": "I nostri valori",
+      "v1": "Tradizione",
+      "v2": "Stagionalità",
+      "v3": "Qualità",
+      "v4": "Convivialità"
     },
     "final": {
       "title": "Serate libere, frigo pieno.",

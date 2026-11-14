@@ -1,15 +1,18 @@
 // Genera las imágenes de web/public/ con Chrome sin ventana, por el protocolo de DevTools (CDP) y sin
-// dependencias: Node 24 trae WebSocket y quita los tipos de los .ts que se importan.
+// bibliotecas: Node 24 trae WebSocket y quita los tipos de los .ts que se importan. Sí necesita las
+// fuentes de la marca instaladas (devDependencies @fontsource-variable/*: correr `npm ci` antes).
 //   public/og-image.png          1200 × 630   vista previa al compartir un link (og:image)
 //   public/apple-touch-icon.png   180 × 180   ícono de iOS (cuadrado y opaco)
 //   public/favicon.ico            16, 32, 48  para quien pide /favicon.ico (PNG dentro de un ICO)
 // Plantillas: scripts/images/*.html. Textos: src/i18n/it.json. Marca: VITE_BRAND_NAME (por defecto Radici).
-// Nombres y tamaños: src/build/images.ts. Dibujo de los íconos: public/favicon.svg.
-// Uso: `npm run images` (CHROME_PATH=<ruta> si Chrome no está en el lugar habitual).
+// Nombres y tamaños: src/build/images.ts. Dibujo de los íconos: public/favicon.svg (la R de Cinzel ya
+// convertida en trazo: no depende de ninguna fuente).
+// Uso: `npm run images` (CHROME_PATH=<ruta> si Chrome o Edge no están en el lugar habitual).
 //
 // Cada imagen se dibuja al tamaño exacto con Emulation.setDeviceMetricsOverride (escala 1) y se captura
-// con Page.captureScreenshot. El resultado depende de las fuentes instaladas (usa las mismas pilas del
-// sitio, sin fuentes web): los archivos versionados son la referencia; regenerar solo si cambia el diseño.
+// con Page.captureScreenshot. La imagen para compartir usa las fuentes de la marca (Cinzel y Cormorant
+// Garamond, las mismas del sitio), embebidas en la plantilla: no depende de las fuentes instaladas.
+// Los archivos versionados son la referencia; regenerar solo si cambia el diseño.
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,6 +32,9 @@ function chromePath() {
     process.env.CHROME_PATH,
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    // Edge también es Chromium y habla el mismo protocolo (viene con Windows).
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/usr/bin/google-chrome",
     "/usr/bin/google-chrome-stable",
@@ -36,7 +42,7 @@ function chromePath() {
     "/usr/bin/chromium-browser",
   ].filter(Boolean);
   const found = candidates.find((path) => existsSync(path));
-  if (!found) throw new Error("No se encontró Chrome: definir CHROME_PATH con la ruta del ejecutable.");
+  if (!found) throw new Error("No se encontró Chrome ni Edge: definir CHROME_PATH con la ruta del ejecutable.");
   return found;
 }
 
@@ -119,6 +125,25 @@ function fill(template, values) {
   });
 }
 
+/**
+ * @font-face de Cinzel y Cormorant Garamond (redonda e itálica) con los woff2 embebidos como data: URL:
+ * la plantilla se abre como file:// y Chrome no carga fuentes de otros archivos locales (CORS).
+ * Solo el subconjunto latino, que alcanza para los textos en italiano.
+ */
+function brandFontFaces() {
+  const faces = [
+    ["Cinzel Variable", "normal", "400 900", "@fontsource-variable/cinzel/files/cinzel-latin-wght-normal.woff2"],
+    ["Cormorant Garamond Variable", "normal", "300 700", "@fontsource-variable/cormorant-garamond/files/cormorant-garamond-latin-wght-normal.woff2"],
+    ["Cormorant Garamond Variable", "italic", "300 700", "@fontsource-variable/cormorant-garamond/files/cormorant-garamond-latin-wght-italic.woff2"],
+  ];
+  return faces
+    .map(([family, style, weight, specifier]) => {
+      const data = readFileSync(fileURLToPath(import.meta.resolve(specifier))).toString("base64");
+      return `@font-face { font-family: "${family}"; font-style: ${style}; font-weight: ${weight}; src: url(data:font/woff2;base64,${data}) format("woff2"); }`;
+    })
+    .join("\n");
+}
+
 /** Ancho y alto de un PNG (cabecera IHDR). */
 function pngSize(data) {
   if (data.readUInt32BE(0) !== 0x89504e47) throw new Error("No es un PNG");
@@ -150,18 +175,13 @@ function buildIco(images) {
 async function main() {
   const brand = resolveConfig(process.env).brandName;
   const it = JSON.parse(readFileSync(join(webDir, "src", "i18n", "it.json"), "utf8"));
-  const hero = it.landing.hero;
   const text = (value) => escapeHtml(value.replaceAll("{brand}", brand));
   const ogHtml = fill(readFileSync(join(templatesDir, "og-image.html"), "utf8"), {
+    fontFaces: brandFontFaces(),
     brand: text(brand),
-    title: text(hero.title),
-    eyebrow: text(hero.eyebrow),
-    label1Dish: text(hero.label1Dish),
-    label1Meta: text(hero.label1Meta),
-    label2Dish: text(hero.label2Dish),
-    label2Meta: text(hero.label2Meta),
-    label3Dish: text(hero.label3Dish),
-    label3Meta: text(hero.label3Meta),
+    tagline: text(it.common.brandTagline),
+    slogan: text(it.common.slogan),
+    eyebrow: text(it.landing.hero.eyebrow),
   });
   const iconTemplate = readFileSync(join(templatesDir, "icon.html"), "utf8");
   const roundedSvg = readFileSync(join(publicDir, "favicon.svg"), "utf8").trim();

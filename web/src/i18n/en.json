@@ -1,7 +1,7 @@
 {
   "common": {
     "skipToContent": "Skip to content",
-    "homeLink": "{brand}: home page",
+    "homeLink": "{brand} · Cucina privata: home page",
     "langLabel": "Choose language",
     "langLinks": {
       "it": "IT – Italiano",
@@ -13,13 +13,15 @@
       "es": "ES",
       "en": "EN"
     },
+    "brandTagline": "Cucina privata",
+    "slogan": "Authentic cooking, in your home.",
     "footerTagline": "Home cooking at your place, in Bergamo and the surrounding area.",
     "footerRequest": "Ask for a quote",
     "footerPrivacy": "Privacy notice",
     "footerNoCookies": "No profiling cookies, no analytics.",
     "loadError": "We couldn't load part of this page, so some things may not work. Check your connection and reload the page.",
     "reload": "Reload the page",
-    "ogImageAlt": "{brand}, home cook in Bergamo: “Dinner is already done. All week long.” Labelled portions in the fridge.",
+    "ogImageAlt": "{brand} · Cucina privata: “Cucina autentica, a casa tua.” Home cook in Bergamo.",
     "durationHours": "{h} h",
     "durationHoursMinutes": "{h} h {m} min",
     "durationMinutes": "{m} min"
@@ -28,7 +30,7 @@
     "metaTitle": "{brand} · Home cook in Bergamo: ready meals for the week",
     "metaDescription": "Evelyn does the shopping, cooks in your kitchen in Bergamo and leaves labelled portions in your fridge for several days. Groceries at receipt cost.",
     "hero": {
-      "eyebrow": "Home cook · Bergamo",
+      "eyebrow": "Home cook · Bergamo",
       "title": "Dinner is already done. All week long.",
       "lead": "Evelyn does the shopping, cooks in your kitchen and leaves ready portions in your fridge, each labelled with the dish and the date. You get home and just heat it up.",
       "cta": "Get a quote",
@@ -40,6 +42,12 @@
       "label2Meta": "Tue · 4 portions",
       "label3Dish": "Seasonal minestrone",
       "label3Meta": "Wed · 4 portions"
+    },
+    "services": {
+      "title": "Services",
+      "weekly": "Weekly cooking",
+      "dinners": "Private dinners",
+      "events": "Family events"
     },
     "how": {
       "title": "How it works",
@@ -109,6 +117,13 @@
       "a5": "No. The calculator gives an estimate; Evelyn prepares the actual quote when she gets in touch, and you only confirm if you're happy with it.",
       "q6": "What if I need to cancel?",
       "a6": "We'll give you the cancellation terms together with the quote, before you confirm."
+    },
+    "values": {
+      "label": "Our values",
+      "v1": "Tradition",
+      "v2": "Seasonality",
+      "v3": "Quality",
+      "v4": "Conviviality"
     },
     "final": {
       "title": "Free evenings, full fridge.",

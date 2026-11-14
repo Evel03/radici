@@ -5,9 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title data-i18n="landing.metaTitle"></title>
     <meta name="description" data-i18n-attr="content:landing.metaDescription" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#fbf6ee" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#1c1713" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f5ede1" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="__BRAND_NAME__" />
     <meta property="og:locale" content="it_IT" />
@@ -38,31 +37,78 @@
           </div>
 
           <div class="hero__art" aria-hidden="true">
-            <svg class="hero__steam" viewBox="0 0 120 60" focusable="false">
-              <path d="M30 55c-8-10 8-16 0-28s8-18 0-26" />
-              <path d="M60 55c-8-10 8-16 0-28s8-18 0-26" />
-              <path d="M90 55c-8-10 8-16 0-28s8-18 0-26" />
-            </svg>
-            <div class="fridge-label fridge-label--1">
-              <span class="fridge-label__dish" data-i18n="landing.hero.label1Dish"></span>
-              <span class="fridge-label__meta" data-i18n="landing.hero.label1Meta"></span>
-            </div>
-            <div class="fridge-label fridge-label--2">
-              <span class="fridge-label__dish" data-i18n="landing.hero.label2Dish"></span>
-              <span class="fridge-label__meta" data-i18n="landing.hero.label2Meta"></span>
-            </div>
-            <div class="fridge-label fridge-label--3">
-              <span class="fridge-label__dish" data-i18n="landing.hero.label3Dish"></span>
-              <span class="fridge-label__meta" data-i18n="landing.hero.label3Meta"></span>
+            <figure class="photo hero__photo">
+              <img src="/src/images/cocina.jpg" width="452" height="372" alt="" fetchpriority="high" decoding="async" />
+            </figure>
+            <div class="hero__labels">
+              <div class="fridge-label">
+                <span class="fridge-label__dish" data-i18n="landing.hero.label1Dish"></span>
+                <span class="fridge-label__meta" data-i18n="landing.hero.label1Meta"></span>
+              </div>
+              <div class="fridge-label">
+                <span class="fridge-label__dish" data-i18n="landing.hero.label2Dish"></span>
+                <span class="fridge-label__meta" data-i18n="landing.hero.label2Meta"></span>
+              </div>
+              <div class="fridge-label">
+                <span class="fridge-label__dish" data-i18n="landing.hero.label3Dish"></span>
+                <span class="fridge-label__meta" data-i18n="landing.hero.label3Meta"></span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
+      <section class="services" aria-labelledby="services-title">
+        <div class="container services__inner">
+          <h2 id="services-title" class="label services__title" data-i18n="landing.services.title"></h2>
+          <ul class="services__list">
+            <li class="service">
+              <svg class="icon service__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 11h16" />
+                <path d="M5.5 11v5.5A3.5 3.5 0 0 0 9 20h6a3.5 3.5 0 0 0 3.5-3.5V11" />
+                <path d="M2.5 13h3M18.5 13h3" />
+                <path d="M6.5 11a5.5 3 0 0 1 11 0" />
+                <path d="M12 8V6.5M10.8 6.5h2.4" />
+              </svg>
+              <span class="service__name" data-i18n="landing.services.weekly"></span>
+            </li>
+            <li class="service">
+              <svg class="icon service__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M3 17.5h18" />
+                <path d="M4.5 17.5a7.5 7.5 0 0 1 15 0" />
+                <path d="M12 10V8.3M10.5 8.3h3" />
+                <path d="M4 20.5h16" />
+              </svg>
+              <span class="service__name" data-i18n="landing.services.dinners"></span>
+            </li>
+            <li class="service">
+              <svg class="icon service__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <g transform="rotate(8 7.5 17.5)">
+                  <path d="M5 4h5l-.4 4.2a2.1 2.1 0 0 1-4.2 0z" />
+                  <path d="M7.5 10.3v7.2M5.5 17.5h4" />
+                </g>
+                <g transform="rotate(-8 16.5 17.5)">
+                  <path d="M14 4h5l-.4 4.2a2.1 2.1 0 0 1-4.2 0z" />
+                  <path d="M16.5 10.3v7.2M14.5 17.5h4" />
+                </g>
+              </svg>
+              <span class="service__name" data-i18n="landing.services.events"></span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
       <section id="how" class="section" aria-labelledby="how-title">
         <div class="container">
-          <h2 id="how-title" class="section__title" data-i18n="landing.how.title"></h2>
-          <p class="section__intro" data-i18n="landing.how.intro"></p>
+          <div class="section__head section__head--media">
+            <div>
+              <h2 id="how-title" class="section__title" data-i18n="landing.how.title"></h2>
+              <p class="section__intro" data-i18n="landing.how.intro"></p>
+            </div>
+            <figure class="photo section__photo" aria-hidden="true">
+              <img src="/src/images/delantal.jpg" width="438" height="174" alt="" loading="lazy" decoding="async" />
+            </figure>
+          </div>
           <ol class="steps">
             <li class="step">
               <svg class="icon step__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -103,45 +149,50 @@
       </section>
 
       <section class="section section--alt" aria-labelledby="included-title">
-        <div class="container">
-          <h2 id="included-title" class="section__title" data-i18n="landing.included.title"></h2>
-          <ul class="checklist">
-            <li>
-              <svg class="icon checklist__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
-              <div>
-                <h3 data-i18n="landing.included.item1Title"></h3>
-                <p data-i18n="landing.included.item1Text"></p>
-              </div>
-            </li>
-            <li>
-              <svg class="icon checklist__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
-              <div>
-                <h3 data-i18n="landing.included.item2Title"></h3>
-                <p data-i18n="landing.included.item2Text"></p>
-              </div>
-            </li>
-            <li>
-              <svg class="icon checklist__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
-              <div>
-                <h3 data-i18n="landing.included.item3Title"></h3>
-                <p data-i18n="landing.included.item3Text"></p>
-              </div>
-            </li>
-            <li>
-              <svg class="icon checklist__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
-              <div>
-                <h3 data-i18n="landing.included.item4Title"></h3>
-                <p data-i18n="landing.included.item4Text"></p>
-              </div>
-            </li>
-            <li>
-              <svg class="icon checklist__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
-              <div>
-                <h3 data-i18n="landing.included.item5Title"></h3>
-                <p data-i18n="landing.included.item5Text"></p>
-              </div>
-            </li>
-          </ul>
+        <div class="container included">
+          <figure class="photo included__photo" aria-hidden="true">
+            <img src="/src/images/menu.jpg" width="390" height="288" alt="" loading="lazy" decoding="async" />
+          </figure>
+          <div class="included__body">
+            <h2 id="included-title" class="section__title" data-i18n="landing.included.title"></h2>
+            <ul class="checklist">
+              <li>
+                <svg class="icon checklist__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
+                <div>
+                  <h3 data-i18n="landing.included.item1Title"></h3>
+                  <p data-i18n="landing.included.item1Text"></p>
+                </div>
+              </li>
+              <li>
+                <svg class="icon checklist__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
+                <div>
+                  <h3 data-i18n="landing.included.item2Title"></h3>
+                  <p data-i18n="landing.included.item2Text"></p>
+                </div>
+              </li>
+              <li>
+                <svg class="icon checklist__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
+                <div>
+                  <h3 data-i18n="landing.included.item3Title"></h3>
+                  <p data-i18n="landing.included.item3Text"></p>
+                </div>
+              </li>
+              <li>
+                <svg class="icon checklist__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
+                <div>
+                  <h3 data-i18n="landing.included.item4Title"></h3>
+                  <p data-i18n="landing.included.item4Text"></p>
+                </div>
+              </li>
+              <li>
+                <svg class="icon checklist__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5 9.5 17 19 7.5" /></svg>
+                <div>
+                  <h3 data-i18n="landing.included.item5Title"></h3>
+                  <p data-i18n="landing.included.item5Text"></p>
+                </div>
+              </li>
+            </ul>
+          </div>
         </div>
       </section>
 
@@ -253,9 +304,20 @@
 
       <section class="final-cta" aria-labelledby="final-title">
         <div class="container final-cta__inner">
-          <h2 id="final-title" class="final-cta__title" data-i18n="landing.final.title"></h2>
-          <p data-i18n="landing.final.text"></p>
-          <a class="btn btn--light btn--lg" href="/richiesta/" data-i18n="landing.final.cta"></a>
+          <div class="final-cta__text">
+            <ul class="values" data-i18n-attr="aria-label:landing.values.label">
+              <li data-i18n="landing.values.v1"></li>
+              <li data-i18n="landing.values.v2"></li>
+              <li data-i18n="landing.values.v3"></li>
+              <li data-i18n="landing.values.v4"></li>
+            </ul>
+            <h2 id="final-title" class="final-cta__title" data-i18n="landing.final.title"></h2>
+            <p data-i18n="landing.final.text"></p>
+            <a class="btn btn--light btn--lg" href="/richiesta/" data-i18n="landing.final.cta"></a>
+          </div>
+          <figure class="photo final-cta__photo" aria-hidden="true">
+            <img src="/src/images/tarjeta.jpg" width="562" height="174" alt="" loading="lazy" decoding="async" />
+          </figure>
         </div>
       </section>
     </main>

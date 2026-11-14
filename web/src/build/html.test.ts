@@ -134,7 +134,7 @@ describe("vista previa al compartir (Open Graph y X)", () => {
       expect(out).toContain('<meta property="og:image:type" content="image/png">');
       expect(out).toContain('<meta property="og:image:width" content="1200">');
       expect(out).toContain('<meta property="og:image:height" content="630">');
-      expect(out).toMatch(/<meta property="og:image:alt" content="Radici, cuoca a domicilio a Bergamo[^"]+">/);
+      expect(out).toMatch(/<meta property="og:image:alt" content="Radici · Cucina privata[^"]+Cuoca a domicilio a Bergamo\.">/);
       expect(out).toContain('<meta name="twitter:card" content="summary_large_image">');
       expect(out.match(/name="twitter:card"/g), path).toHaveLength(1);
     }
