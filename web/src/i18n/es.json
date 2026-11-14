@@ -95,13 +95,6 @@
       "kidsTitle": "Niños",
       "kidsText": "Platos sencillos y sanos, con porciones pensadas para ellos y una compra más ligera."
     },
-    "allergies": {
-      "title": "Alergias y dietas, con cuidado",
-      "text1": "En la solicitud puedes indicar los 14 alérgenos principales del Reglamento UE 1169/2011 y las dietas vegetariana o vegana. Evelyn elige las recetas en consecuencia y revisa la etiqueta de cada ingrediente.",
-      "text2": "Con la celiaquía la atención es doble, sobre todo a la contaminación cruzada: utensilios y superficies, ingredientes certificados sin gluten, orden de las preparaciones. Se cocina en tu cocina, así que para alergias graves es mejor hablarlo antes.",
-      "text3": "Las alergias y las dietas son datos de salud: solo te los pedimos con tu consentimiento explícito y sirven únicamente para cocinar para ti.",
-      "listLabel": "Los 14 alérgenos del Reglamento UE 1169/2011"
-    },
     "faq": {
       "title": "Preguntas frecuentes",
       "q1": "¿A qué zonas llega el servicio?",

@@ -387,49 +387,6 @@
   }
 }
 
-/* Alergias */
-.allergy {
-  display: grid;
-  gap: 2rem;
-}
-
-.allergy__text p {
-  max-width: 40rem;
-}
-
-.allergy__label {
-  color: var(--olive);
-  font-family: var(--font-sans);
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.tags li {
-  padding: 0.35rem 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  font-size: 0.95rem;
-}
-
-@media (min-width: 56rem) {
-  .allergy {
-    grid-template-columns: 1.4fr 1fr;
-    align-items: start;
-  }
-}
-
 /* Preguntas */
 .faq {
   border-top: 1px solid var(--line);
