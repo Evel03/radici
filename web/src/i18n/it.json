@@ -95,13 +95,6 @@
       "kidsTitle": "Bambini",
       "kidsText": "Piatti semplici e genuini, con porzioni pensate per loro e una spesa più leggera."
     },
-    "allergies": {
-      "title": "Allergie e diete, con cura",
-      "text1": "Nella richiesta puoi indicare i 14 allergeni principali previsti dal Regolamento UE 1169/2011 e le diete vegetariana o vegana. Evelyn sceglie le ricette di conseguenza e controlla l'etichetta di ogni ingrediente.",
-      "text2": "Con la celiachia l'attenzione è doppia, soprattutto alla contaminazione crociata: utensili e superfici, ingredienti certificati senza glutine, ordine delle preparazioni. Si cucina nella tua cucina, quindi per le allergie gravi è meglio parlarne prima.",
-      "text3": "Allergie e diete sono dati sulla salute: li chiediamo solo con il tuo consenso esplicito e servono solo a cucinare per te.",
-      "listLabel": "I 14 allergeni del Regolamento UE 1169/2011"
-    },
     "faq": {
       "title": "Domande frequenti",
       "q1": "In quali zone lavorate?",

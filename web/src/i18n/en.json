@@ -95,13 +95,6 @@
       "kidsTitle": "Children",
       "kidsText": "Simple, wholesome dishes, with portions sized for them and a lighter grocery bill."
     },
-    "allergies": {
-      "title": "Allergies and diets, handled with care",
-      "text1": "In your request you can flag the 14 main allergens listed in EU Regulation 1169/2011 and vegetarian or vegan diets. Evelyn chooses recipes accordingly and checks the label of every ingredient.",
-      "text2": "With coeliac disease we take extra care, especially about cross-contamination: utensils and surfaces, certified gluten-free ingredients, the order things are prepared in. Cooking happens in your kitchen, so for severe allergies it's best to talk first.",
-      "text3": "Allergies and diets are health data: we only ask for them with your explicit consent, and use them only to cook for you.",
-      "listLabel": "The 14 allergens in EU Regulation 1169/2011"
-    },
     "faq": {
       "title": "Frequently asked questions",
       "q1": "Which areas do you cover?",
