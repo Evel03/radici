@@ -5,6 +5,10 @@
   "@appTitle": {
     "description": "Nombre de la app (marca). Igual en todos los idiomas."
   },
+  "brandTagline": "Cucina privata",
+  "@brandTagline": {
+    "description": "Rótulo del logotipo, debajo del nombre (va en mayúsculas). Es parte de la marca: en italiano en todos los idiomas, como en la web."
+  },
 
   "backendNotConfigured": "Backend non configurato",
   "@backendNotConfigured": {

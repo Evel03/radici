@@ -1,8 +1,9 @@
-// Íconos de Radici (web, Android e iOS) dibujados a partir de la marca
-// (lib/core/brand_mark_geometry.dart), sin dependencias ni herramientas
-// externas: se rasteriza con distancias con signo (antialias de un píxel) y
-// se codifica PNG con el zlib de dart:io. El resultado es determinista: las
-// mismas cuentas en cualquier máquina.
+// Íconos de Radici (web, Android e iOS): la R de Cinzel en crema sobre oliva,
+// como el favicon de la web. La R sale de la misma fuente que usa la app
+// (lib/core/brand.dart, leída con glyph_outline.dart), sin dependencias ni
+// herramientas externas: se rasteriza con distancias con signo (antialias de
+// un píxel) y se codifica PNG con el zlib de dart:io. El resultado es
+// determinista: las mismas cuentas en cualquier máquina.
 //
 // Lo usan tool/generate_icons.dart (escribe los archivos) y
 // test/tool/app_icons_test.dart (verifica que los del repo estén al día).
@@ -10,9 +11,11 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:radici/core/brand_mark_geometry.dart';
+import 'package:radici/core/brand.dart';
 
-/// Forma del fondo terracota.
+import 'glyph_outline.dart';
+
+/// Forma del fondo oliva.
 enum IconBackground {
   /// Cuadrado entero y opaco: el sistema recorta la forma (iOS, PWA).
   square,
@@ -30,7 +33,7 @@ final class IconSpec {
     this.size,
     this.background,
     this.markScale, {
-    this.minStrokePx = 0,
+    this.emboldenPx = 0,
   });
 
   /// Ruta del PNG desde app/, con "/".
@@ -41,12 +44,14 @@ final class IconSpec {
 
   final IconBackground background;
 
-  /// Radio del dibujo como fracción del lado.
+  /// Media altura de la R como fracción del lado (la caja de la R va
+  /// centrada).
   final double markScale;
 
-  /// Grosor mínimo de los trazos, en píxeles: en tamaños chicos un trazo
-  /// proporcional quedaría de menos de un píxel.
-  final double minStrokePx;
+  /// Cuánto se engrosa la R, en píxeles por lado: en tamaños chicos los trazos
+  /// finos de Cinzel quedarían de menos de un píxel (el favicon de la web hace
+  /// lo mismo con un trazo de 0,7 en 32 px).
+  final double emboldenPx;
 
   /// Opaco (RGB) o con transparencia (RGBA).
   bool get opaque => background == IconBackground.square;
@@ -58,30 +63,33 @@ const double androidCircleRadius = 22 / 48;
 
 /// Todos los íconos de la app. Los nombres y tamaños son los de la plantilla
 /// de Flutter, así no cambia nada en los proyectos nativos (ni manifest.json).
+/// La R mide 0,95 de ancho por 1 de alto: con media altura h, su caja llega
+/// hasta 1,38·h del centro (la zona segura de los "maskable" es 0,4).
 final List<IconSpec> appIcons = [
   // Web (/gestione/). Icon-192 también es el apple-touch-icon de index.html:
   // por eso los "any" son opacos (iOS pinta de negro la transparencia).
+  // El favicon, con las medidas del de la web (la R de 21 px en 32).
   const IconSpec(
     'web/favicon.png',
     32,
     IconBackground.roundedSquare,
-    0.42,
-    minStrokePx: 2,
+    0.33,
+    emboldenPx: 0.35,
   ),
-  const IconSpec('web/icons/Icon-192.png', 192, IconBackground.square, 0.40),
-  const IconSpec('web/icons/Icon-512.png', 512, IconBackground.square, 0.40),
-  // Maskable: el dibujo dentro de la zona segura (círculo de radio 0,4).
+  const IconSpec('web/icons/Icon-192.png', 192, IconBackground.square, 0.31),
+  const IconSpec('web/icons/Icon-512.png', 512, IconBackground.square, 0.31),
+  // Maskable: la R entera dentro de la zona segura.
   const IconSpec(
     'web/icons/Icon-maskable-192.png',
     192,
     IconBackground.square,
-    0.33,
+    0.26,
   ),
   const IconSpec(
     'web/icons/Icon-maskable-512.png',
     512,
     IconBackground.square,
-    0.33,
+    0.26,
   ),
   // Android: ícono clásico por densidad (sin ícono adaptativo).
   for (final (density, size) in const [
@@ -95,8 +103,8 @@ final List<IconSpec> appIcons = [
       'android/app/src/main/res/mipmap-$density/ic_launcher.png',
       size,
       IconBackground.circle,
-      androidCircleRadius * markScaleInBadge,
-      minStrokePx: 1.5,
+      0.27,
+      emboldenPx: 0.25,
     ),
   // iOS: opacos y a sangre (iOS redondea las esquinas). El de 1024 es el de
   // la App Store, que no admite transparencia.
@@ -121,39 +129,87 @@ final List<IconSpec> appIcons = [
       'ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-$name.png',
       size,
       IconBackground.square,
-      0.38,
-      minStrokePx: 1.5,
+      0.30,
+      emboldenPx: 0.25,
     ),
 ];
 
+typedef Bounds = ({double minX, double minY, double maxX, double maxY});
+
+/// La R de la marca: contornos de la fuente, en sus unidades (y hacia arriba).
+/// En Cinzel son contornos que se superponen (el arco con la pierna, el asta y
+/// las serifas), sin huecos: la R es la unión.
+final class MarkOutline {
+  MarkOutline(this.contours) : bounds = _boundsOf(contours);
+
+  factory MarkOutline.fromFont(Uint8List font) =>
+      MarkOutline(readGlyphContours(font, brandMarkCodePoint));
+
+  /// Lee la fuente de la marca ([path] desde app/).
+  factory MarkOutline.load([String path = brandMarkFontAsset]) =>
+      MarkOutline.fromFont(File(path).readAsBytesSync());
+
+  final List<List<GlyphSegment>> contours;
+
+  /// Caja exacta de la letra (incluye los extremos de las curvas).
+  final Bounds bounds;
+}
+
+Bounds _boundsOf(List<List<GlyphSegment>> contours) {
+  var minX = double.infinity;
+  var minY = double.infinity;
+  var maxX = double.negativeInfinity;
+  var maxY = double.negativeInfinity;
+  void include(GlyphPoint p) {
+    minX = math.min(minX, p.x);
+    minY = math.min(minY, p.y);
+    maxX = math.max(maxX, p.x);
+    maxY = math.max(maxY, p.y);
+  }
+
+  for (final contour in contours) {
+    for (final segment in contour) {
+      include(segment.from);
+      include(segment.to);
+      final c = segment.control;
+      if (c == null) continue;
+      // Extremos de la cuadrática en cada eje: t = (p0 − c) / (p0 − 2c + p1).
+      for (final (p0, p1, pc) in [
+        (segment.from.x, segment.to.x, c.x),
+        (segment.from.y, segment.to.y, c.y),
+      ]) {
+        final denominator = p0 - 2 * pc + p1;
+        if (denominator == 0) continue;
+        final t = (p0 - pc) / denominator;
+        if (t > 0 && t < 1) include(segment.at(t));
+      }
+    }
+  }
+  return (minX: minX, minY: minY, maxX: maxX, maxY: maxY);
+}
+
 /// Píxeles de [spec], fila por fila: RGB si es opaco, RGBA si no.
-Uint8List renderIcon(IconSpec spec) {
+Uint8List renderIcon(IconSpec spec, MarkOutline mark) {
   final size = spec.size;
   final channels = spec.opaque ? 3 : 4;
   final pixels = Uint8List(size * size * channels);
   final center = size / 2;
-  final scale = spec.markScale * size;
-  MarkPoint toPx(MarkPoint p) =>
-      MarkPoint(center + p.x * scale, center + p.y * scale);
 
-  final shapes = <_Shape>[
-    for (final stroke in markStrokes)
-      if (stroke.bulge == 0)
-        _Capsule(
-          toPx(stroke.from),
-          toPx(stroke.to),
-          math.max(stroke.width * scale, spec.minStrokePx) / 2,
-        )
-      else
-        _ArcStroke(
-          toPx(stroke.from),
-          toPx(stroke.to),
-          stroke.bulge * scale,
-          math.max(stroke.width * scale, spec.minStrokePx) / 2,
-        ),
-    for (final leaf in markLeaves)
-      _Lens(toPx(leaf.base), toPx(leaf.tip), leaf.width * scale / 2),
-  ];
+  // De unidades de la fuente (y hacia arriba) a píxeles (y hacia abajo), con
+  // la caja de la R centrada. Una transformación afín no cambia las curvas:
+  // alcanza con transformar sus puntos.
+  final b = mark.bounds;
+  final scale = spec.markScale * size / ((b.maxY - b.minY) / 2);
+  final midX = (b.minX + b.maxX) / 2;
+  final midY = (b.minY + b.maxY) / 2;
+  GlyphPoint toPx(GlyphPoint p) =>
+      GlyphPoint(center + (p.x - midX) * scale, center - (p.y - midY) * scale);
+  // Primero los contornos chicos (el asta es un rectángulo): si uno ya cubre
+  // el píxel entero, no hace falta mirar el resto.
+  final shapes = [
+    for (final contour in mark.contours) _Polygon(_flatten(contour, toPx)),
+  ]..sort((a, b) => a.points.length.compareTo(b.points.length));
+
   final background = switch (spec.background) {
     IconBackground.square => (double x, double y) => -double.infinity,
     IconBackground.roundedSquare => (
@@ -166,8 +222,13 @@ Uint8List renderIcon(IconSpec spec) {
     ) => _length(x - center, y - center) - androidCircleRadius * size,
   };
 
+  // Con la R engrosada, el píxel queda cubierto del todo desde una distancia
+  // de (engrosado − 0,5) hacia adentro y nada desde (engrosado + 0,5) hacia
+  // afuera.
+  final full = spec.emboldenPx - 0.5;
+  final reach = spec.emboldenPx + 1;
   final cream = _rgb(brandCream);
-  final terracotta = _rgb(brandTerracotta);
+  final olive = _rgb(brandOlive);
   var i = 0;
   for (var row = 0; row < size; row++) {
     final y = row + 0.5;
@@ -176,16 +237,20 @@ Uint8List renderIcon(IconSpec spec) {
       final backgroundCoverage = _coverage(background(x, y));
       var distance = double.infinity;
       for (final shape in shapes) {
-        distance = math.min(distance, shape.distance(x, y));
+        distance = math.min(distance, shape.distance(x, y, reach));
+        if (distance <= full) break;
       }
-      // El dibujo nunca sale del fondo.
-      final markCoverage = math.min(_coverage(distance), backgroundCoverage);
-      // Crema sobre terracota (alfa premultiplicado y después sin premultiplicar).
+      // La R nunca sale del fondo.
+      final markCoverage = math.min(
+        _coverage(distance - spec.emboldenPx),
+        backgroundCoverage,
+      );
+      // Crema sobre oliva (alfa premultiplicado y después sin premultiplicar).
       final alpha = markCoverage + backgroundCoverage * (1 - markCoverage);
       for (var c = 0; c < 3; c++) {
         final premultiplied =
             cream[c] * markCoverage +
-            terracotta[c] * backgroundCoverage * (1 - markCoverage);
+            olive[c] * backgroundCoverage * (1 - markCoverage);
         pixels[i++] = alpha == 0 ? 0 : (premultiplied / alpha).round();
       }
       if (channels == 4) pixels[i++] = (alpha * 255).round();
@@ -195,12 +260,41 @@ Uint8List renderIcon(IconSpec spec) {
 }
 
 /// El PNG de [spec].
-Uint8List encodeIcon(IconSpec spec) => encodePng(
+Uint8List encodeIcon(IconSpec spec, MarkOutline mark) => encodePng(
   width: spec.size,
   height: spec.size,
   channels: spec.opaque ? 3 : 4,
-  pixels: renderIcon(spec),
+  pixels: renderIcon(spec, mark),
 );
+
+/// Polígono que aproxima [contour], ya en píxeles, con un error menor a
+/// 0,1 px: cada cuadrática en n tramos, con n según su flecha.
+List<GlyphPoint> _flatten(
+  List<GlyphSegment> contour,
+  GlyphPoint Function(GlyphPoint) toPx,
+) {
+  final points = <GlyphPoint>[];
+  for (final segment in contour) {
+    final from = toPx(segment.from);
+    final to = toPx(segment.to);
+    final c = segment.control;
+    if (c == null) {
+      points.add(to);
+      continue;
+    }
+    final control = toPx(c);
+    // Flecha: |from − 2·control + to| / 4; con n tramos el error es flecha / n².
+    final sagitta =
+        _length(from.x - 2 * control.x + to.x, from.y - 2 * control.y + to.y) /
+        4;
+    final n = math.max(1, math.sqrt(sagitta / 0.1).ceil());
+    final curve = GlyphSegment(from, to, control);
+    for (var k = 1; k <= n; k++) {
+      points.add(curve.at(k / n));
+    }
+  }
+  return points;
+}
 
 /// Cuánto cubre la figura al píxel según la distancia de su centro al borde
 /// (negativa adentro): rampa lineal de un píxel.
@@ -224,111 +318,54 @@ List<int> _rgb(int argb) => [
   argb & 0xFF,
 ];
 
-sealed class _Shape {
-  /// Distancia con signo desde (x, y) al borde (negativa adentro).
-  double distance(double x, double y);
-}
+/// Contorno cerrado (polígono simple) con su caja.
+final class _Polygon {
+  _Polygon(this.points)
+    : minX = points.map((p) => p.x).reduce(math.min),
+      minY = points.map((p) => p.y).reduce(math.min),
+      maxX = points.map((p) => p.x).reduce(math.max),
+      maxY = points.map((p) => p.y).reduce(math.max);
 
-/// Segmento con puntas redondeadas.
-final class _Capsule extends _Shape {
-  _Capsule(this.a, this.b, this.radius);
+  final List<GlyphPoint> points;
+  final double minX;
+  final double minY;
+  final double maxX;
+  final double maxY;
 
-  final MarkPoint a;
-  final MarkPoint b;
-  final double radius;
-
-  @override
-  double distance(double x, double y) {
-    final abx = b.x - a.x;
-    final aby = b.y - a.y;
-    final lengthSquared = abx * abx + aby * aby;
-    final t = lengthSquared == 0
-        ? 0.0
-        : (((x - a.x) * abx + (y - a.y) * aby) / lengthSquared).clamp(0.0, 1.0);
-    return _length(x - (a.x + t * abx), y - (a.y + t * aby)) - radius;
-  }
-}
-
-/// Arco de circunferencia de [a] a [b] con puntas redondeadas. [bulge] es la
-/// flecha: positiva hacia la derecha de quien va de a a b (y hacia abajo).
-final class _ArcStroke extends _Shape {
-  _ArcStroke(this.a, this.b, double bulge, this.halfWidth) {
-    final dx = b.x - a.x;
-    final dy = b.y - a.y;
-    final chord = _length(dx, dy);
-    // Normal unitaria a la derecha de quien va de a a b.
-    nx = -dy / chord;
-    ny = dx / chord;
-    side = bulge.sign;
-    final sagitta = bulge.abs();
-    radius = arcRadius(chord, sagitta);
-    // El centro queda del otro lado del punto medio del arco.
-    final toCenter = side * (sagitta - radius);
-    cx = (a.x + b.x) / 2 + nx * toCenter;
-    cy = (a.y + b.y) / 2 + ny * toCenter;
-  }
-
-  final MarkPoint a;
-  final MarkPoint b;
-  final double halfWidth;
-  late final double nx;
-  late final double ny;
-  late final double side;
-  late final double radius;
-  late final double cx;
-  late final double cy;
-
-  @override
-  double distance(double x, double y) {
-    final px = x - cx;
-    final py = y - cy;
-    final r = _length(px, py);
-    if (r > 0) {
-      // El punto de la circunferencia en la dirección de (x, y): si cae del
-      // lado del arco respecto de la cuerda, la distancia es al arco.
-      final qx = cx + px * radius / r;
-      final qy = cy + py * radius / r;
-      if (((qx - a.x) * nx + (qy - a.y) * ny) * side >= 0) {
-        return (r - radius).abs() - halfWidth;
-      }
+  /// Distancia con signo desde (x, y) al borde (negativa adentro). A más de
+  /// [reach] de la caja devuelve infinito: el contorno no toca ese píxel.
+  double distance(double x, double y, double reach) {
+    if (x < minX - reach ||
+        x > maxX + reach ||
+        y < minY - reach ||
+        y > maxY + reach) {
+      return double.infinity;
     }
-    // Si no, a la punta más cercana.
-    return math.min(_length(x - a.x, y - a.y), _length(x - b.x, y - b.y)) -
-        halfWidth;
+    var nearest = double.infinity; // al cuadrado
+    var inside = false;
+    var a = points.last;
+    for (final b in points) {
+      final abx = b.x - a.x;
+      final aby = b.y - a.y;
+      final lengthSquared = abx * abx + aby * aby;
+      final t = lengthSquared == 0
+          ? 0.0
+          : (((x - a.x) * abx + (y - a.y) * aby) / lengthSquared).clamp(
+              0.0,
+              1.0,
+            );
+      final dx = x - (a.x + t * abx);
+      final dy = y - (a.y + t * aby);
+      nearest = math.min(nearest, dx * dx + dy * dy);
+      // Regla par-impar con un rayo hacia la derecha.
+      if ((a.y > y) != (b.y > y) && x < a.x + (y - a.y) * abx / aby) {
+        inside = !inside;
+      }
+      a = b;
+    }
+    final d = math.sqrt(nearest);
+    return inside ? -d : d;
   }
-}
-
-/// Lente entre [base] y [tip]: intersección de dos círculos iguales cuyos
-/// bordes pasan por los dos puntos; [halfWidth] es la mitad del ancho máximo.
-final class _Lens extends _Shape {
-  _Lens(MarkPoint base, MarkPoint tip, double halfWidth) {
-    final dx = tip.x - base.x;
-    final dy = tip.y - base.y;
-    final chord = _length(dx, dy);
-    radius = arcRadius(chord, halfWidth);
-    final offset = radius - halfWidth;
-    final midX = (base.x + tip.x) / 2;
-    final midY = (base.y + tip.y) / 2;
-    // Normal unitaria a la cuerda.
-    final nx = -dy / chord;
-    final ny = dx / chord;
-    c1x = midX + nx * offset;
-    c1y = midY + ny * offset;
-    c2x = midX - nx * offset;
-    c2y = midY - ny * offset;
-  }
-
-  late final double radius;
-  late final double c1x;
-  late final double c1y;
-  late final double c2x;
-  late final double c2y;
-
-  @override
-  double distance(double x, double y) => math.max(
-    _length(x - c1x, y - c1y) - radius,
-    _length(x - c2x, y - c2y) - radius,
-  );
 }
 
 // ---------------------------------------------------------------------------

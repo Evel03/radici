@@ -13,11 +13,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Roboto va empaquetada (pubspec.yaml): su licencia Apache 2.0 se muestra
-  // en la pantalla de licencias.
+  // Las fuentes van empaquetadas (pubspec.yaml): sus licencias (Apache 2.0 y
+  // OFL) se muestran en la pantalla de licencias.
   LicenseRegistry.addLicense(() async* {
-    final license = await rootBundle.loadString('assets/fonts/LICENSE-Roboto.txt');
-    yield LicenseEntryWithLineBreaks(const ['Roboto'], license);
+    for (final (family, file) in const [
+      ('Roboto', 'LICENSE-Roboto.txt'),
+      ('Cinzel', 'LICENSE-Cinzel.txt'),
+      ('Cormorant Garamond', 'LICENSE-CormorantGaramond.txt'),
+    ]) {
+      final license = await rootBundle.loadString('assets/fonts/$file');
+      yield LicenseEntryWithLineBreaks([family], license);
+    }
   });
 
   final env = AppEnv.fromDefines();

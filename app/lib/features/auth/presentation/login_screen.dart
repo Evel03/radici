@@ -1,11 +1,11 @@
 // Login con código por email (dos pasos). Solo muestra el estado de
 // LoginController y le pasa lo que escribe el usuario: no llama a Supabase.
-// Arriba, la marca: en la web (/gestione/) es la primera pantalla.
+// Arriba, el logotipo: en la web (/gestione/) es la primera pantalla.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:radici/core/brand_mark.dart';
 import 'package:radici/core/platform.dart';
+import 'package:radici/core/radici_logo.dart';
 import 'package:radici/features/auth/application/login_controller.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:radici/l10n/app_localizations.dart';
@@ -53,28 +53,13 @@ class LoginScreen extends ConsumerWidget {
   }
 }
 
-/// Marca y nombre de la app.
+/// Logotipo de la marca (nombre y rótulo).
 class _BrandHeader extends StatelessWidget {
   const _BrandHeader();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      key: const ValueKey('login-brand'),
-      children: [
-        const RadiciMark(size: 72),
-        const SizedBox(height: 12),
-        Text(
-          AppLocalizations.of(context).appTitle,
-          textAlign: TextAlign.center,
-          style: theme.textTheme.headlineMedium?.copyWith(
-            color: theme.colorScheme.primary,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
+    return const Center(key: ValueKey('login-brand'), child: RadiciLogo());
   }
 }
 

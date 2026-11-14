@@ -1,16 +1,18 @@
 /* Indicador de carga mientras se descarga el motor de Flutter (archivo propio:
-   la CSP de /gestione/ no permite estilos inline en el HTML). */
+   la CSP de /gestione/ no permite estilos inline en el HTML). Mismos colores
+   que el tema (core/theme.dart): fondo y oliva, en claro y en oscuro; lo
+   verifica test/web/gestione_shell_test.dart. */
 html,
 body {
   margin: 0;
   height: 100%;
-  background: #fffbff;
+  background: #f5ede1;
 }
 
 @media (prefers-color-scheme: dark) {
   html,
   body {
-    background: #1a110f;
+    background: #11140e;
   }
 }
 
@@ -25,8 +27,8 @@ body {
 .loading__spinner {
   width: 40px;
   height: 40px;
-  border: 4px solid rgba(192, 88, 58, 0.25);
-  border-top-color: #c0583a;
+  border: 4px solid rgba(74, 90, 60, 0.25);
+  border-top-color: #4a5a3c;
   border-radius: 50%;
   animation: loading-spin 0.9s linear infinite;
 }
@@ -34,6 +36,13 @@ body {
 @keyframes loading-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .loading__spinner {
+    border-color: rgba(173, 210, 142, 0.25);
+    border-top-color: #add28e;
   }
 }
 

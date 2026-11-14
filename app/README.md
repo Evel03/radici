@@ -172,6 +172,7 @@ configurato" y no se conecta a los datos de producción.
   "Roboto"), así el motor no la descarga de `fonts.gstatic.com`; las fuentes de respaldo (glifos que
   Roboto no tiene, como emoji) apuntan a `fonts-fallback/`, que no existe: se ve un recuadro en lugar
   del glifo y no se pide nada a Google. `--csp` evita código generado dinámicamente en `main.dart.js`.
+  También van empaquetadas las de la marca (ver "Identidad").
 - **Rutas con `#`** (estrategia por defecto de Flutter web): los enlaces directos funcionan sin reglas
   de reescritura. Con rutas sin `#` habría que reescribir `/gestione/*` a `/gestione/index.html`, y en
   Pages un `_redirects` 200 también taparía `main.dart.js`, `canvaskit/` y `assets/` (los redirects
@@ -215,7 +216,7 @@ lib/
     presentation/      pantallas y widgets: solo leen providers, nunca llaman a Supabase ni calculan
   l10n/                app_it.arb (plantilla), app_es.arb, app_en.arb
 web/                   index.html, flutter_bootstrap.js y manifest para /gestione/
-tool/                  generate_icons.dart (íconos a partir de la marca)
+tool/                  generate_icons.dart (íconos con la R de la marca), fonts/ (fuentes de la marca)
 test/                  espejo de lib/ y tool/, más support/ con utilidades
 ```
 
@@ -251,11 +252,29 @@ de la interfaz.
 - Lógica: `features/settings/` (`LanguageController`, `LanguageCache`) y
   `AccountRepository.updateLanguage`.
 
+## Identidad
+
+La misma de la web y de los emails (manual de marca). Colores y nombres de fuentes en
+`lib/core/brand.dart` (Dart puro):
+
+- **Tema** (`lib/core/theme.dart`): en claro, los colores de la web (fondo crema, tarjetas crema clara
+  con borde lino, texto tinta, oliva para lo principal, terra para restricciones); en oscuro, los
+  tonos que Material deriva del oliva. Títulos en Cormorant Garamond con números de caja alta; el texto
+  chico (listas, formularios, botones) sigue en la letra del sistema, que se lee mejor en el teléfono.
+  Esquinas casi rectas. `test/core/theme_test.dart` verifica el contraste (AA) de los pares de colores.
+- **Logotipo** (`lib/core/radici_logo.dart`, en el login y el inicio): RADICI en Cinzel sobre el
+  filete y CUCINA PRIVATA debajo, en texto (nada que cargar).
+- **Fuentes**: Cinzel 500 y Cormorant Garamond 600, estáticas y solo con letras latinas (~190 KB en
+  total), generadas desde las variables de Google Fonts con `tool/fonts/make_brand_fonts.py`
+  (Python con fontTools). Licencia OFL, en la pantalla de licencias.
+- **Pantalla de carga de `/gestione/`** (`web/loading.css`, `index.html`, `manifest.json`): los colores
+  del tema, en claro y en oscuro (`test/web/gestione_shell_test.dart`).
+
 ## Íconos
 
-La marca (un brote con raíces, crema sobre terracota) está en `lib/core/brand_mark_geometry.dart`,
-en Dart puro. De ahí salen el dibujo de la app (`RadiciMark`, en el login y el inicio) y todos los
-íconos: favicon y `web/icons/*` (`/gestione/`), `android/.../mipmap-*/ic_launcher.png` y
+La R de Cinzel en crema sobre oliva, como el favicon de la web. La R sale de la fuente que usa la app
+(`assets/fonts/Cinzel-Medium.ttf`, leída por `tool/icons/glyph_outline.dart`): favicon y
+`web/icons/*` (`/gestione/`), `android/.../mipmap-*/ic_launcher.png` y
 `ios/Runner/Assets.xcassets/AppIcon.appiconset/*`. Mismos nombres y tamaños que la plantilla de
 Flutter: no cambia nada de los proyectos nativos (ni el bundle id).
 
@@ -263,8 +282,8 @@ Flutter: no cambia nada de los proyectos nativos (ni el bundle id).
 dart run tool/generate_icons.dart    # desde app/: vuelve a escribir los PNG
 ```
 
-El script no usa dependencias (rasteriza y escribe PNG con dart:io) y da siempre el mismo
-resultado. `test/tool/app_icons_test.dart` falla si algún PNG no coincide con lo que genera o si
+El script no usa dependencias (lee la fuente, rasteriza y escribe PNG con dart:io) y da siempre el
+mismo resultado. `test/tool/app_icons_test.dart` falla si algún PNG no coincide con lo que genera o si
 falta alguno de los que piden `Contents.json` (iOS), `manifest.json` (web) o los `mipmap-*`.
 Android usa el ícono clásico (redondo), sin ícono adaptativo: en Android 8+ el sistema lo muestra
 dentro de su forma.
