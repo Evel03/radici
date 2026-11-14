@@ -116,6 +116,63 @@ jobs:
           fi
           echo "SUPABASE_ACCESS_TOKEN=${token}" >> "${GITHUB_ENV}"
 
+      # Antes de guardar nada en Supabase, se le pregunta a cada servicio si la clave sirve, sin mandar
+      # ningún email ni mostrarla: una clave pegada mal (otro texto, un carácter de más) se detecta acá
+      # y no cuando Evelyn no recibe el código o el formulario rechaza a todos.
+      # - Resend: GET /domains con la clave. Una clave válida "solo de envío" responde 401
+      #   restricted_api_key; una de acceso completo, 200; una inválida, 400 o 401 "API key is invalid".
+      # - Turnstile: siteverify con un token inventado. Con la secreta correcta responde
+      #   invalid-input-response; con una incorrecta, invalid-input-secret.
+      - name: Comprobar las claves de Resend y Turnstile
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_SMTP_KEY: ${{ secrets.RESEND_SMTP_KEY }}
+          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          problems=0
+          response="$(mktemp)"
+          trap 'rm -f "${response}"' EXIT
+          for name in RESEND_API_KEY RESEND_SMTP_KEY; do
+            key="${!name:-}"
+            if [ -z "${key}" ]; then
+              echo "${name}: no está cargada."
+              continue
+            fi
+            if ! [[ "${key}" =~ ^re_[A-Za-z0-9_]{10,}$ ]]; then
+              echo "::error::${name} no parece una clave de Resend (${#key} caracteres; tiene que empezar con re_ y no tener espacios). Volver a cargarla."
+              problems=$((problems + 1))
+              continue
+            fi
+            status=$(curl -sS -o "${response}" -w '%{http_code}' https://api.resend.com/domains -H "Authorization: Bearer ${key}")
+            name_field=$(jq -r '.name // empty' "${response}" 2>/dev/null || true)
+            message=$(jq -r '.message // empty' "${response}" 2>/dev/null || true)
+            if [ "${status}" = "200" ] || [ "${name_field}" = "restricted_api_key" ]; then
+              echo "${name}: Resend la acepta."
+            else
+              echo "::error::${name}: Resend no la acepta (${status}: ${message:-sin mensaje}). Crear otra clave y volver a cargarla."
+              problems=$((problems + 1))
+            fi
+          done
+          if [ -n "${TURNSTILE_SECRET_KEY:-}" ]; then
+            curl -sS -o "${response}" https://challenges.cloudflare.com/turnstile/v0/siteverify \
+              --data-urlencode "secret=${TURNSTILE_SECRET_KEY}" \
+              --data-urlencode "response=token-de-prueba-del-despliegue"
+            codes=$(jq -r '(."error-codes" // []) | join(",")' "${response}" 2>/dev/null || echo "sin respuesta")
+            if [[ ",${codes}," == *",invalid-input-secret,"* ]] || [[ ",${codes}," == *",missing-input-secret,"* ]]; then
+              echo "::error::TURNSTILE_SECRET_KEY: Cloudflare no la reconoce (${codes}). Volver a cargar la Secret Key del widget."
+              problems=$((problems + 1))
+            else
+              echo "TURNSTILE_SECRET_KEY: Cloudflare la reconoce (${codes:-sin códigos})."
+            fi
+          else
+            echo "TURNSTILE_SECRET_KEY: no está cargada."
+          fi
+          if [ "${problems}" -gt 0 ]; then
+            exit 1
+          fi
+
       - name: Vincular el proyecto
         if: env.HAS_SUPABASE == 'true'
         env:
