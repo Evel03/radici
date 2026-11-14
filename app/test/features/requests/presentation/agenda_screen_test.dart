@@ -71,6 +71,19 @@ void main() {
     expect(find.text('Nessuna richiesta per questo giorno.'), findsOneWidget);
   });
 
+  testWidgets('los días de los meses vecinos van en el color secundario, sin transparencia (contraste AA)', (
+    tester,
+  ) async {
+    await openAgenda(tester);
+
+    // 28/09 aparece en la grilla de octubre.
+    final number = tester.widget<Text>(
+      find.descendant(of: day('2026-09-28'), matching: find.text('28')),
+    );
+    final colors = Theme.of(tester.element(day('2026-09-28'))).colorScheme;
+    expect(number.style?.color, colors.onSurfaceVariant);
+  });
+
   testWidgets('elegir un día muestra sus pedidos con la franja', (tester) async {
     await openAgenda(tester);
 

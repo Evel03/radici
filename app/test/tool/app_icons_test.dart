@@ -1,12 +1,15 @@
 // Los íconos del repo (web, Android, iOS) son exactamente los que dibuja
-// tool/generate_icons.dart a partir de la marca, y no queda ninguno de la
-// plantilla de Flutter. Si se cambia la marca o la lista:
+// tool/generate_icons.dart con la marca (la R de Cinzel de la fuente de la
+// app), y no queda ninguno de la plantilla de Flutter. Si se cambia la marca,
+// la fuente o la lista:
 //   cd app && dart run tool/generate_icons.dart
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/brand.dart';
 
+import '../../tool/icons/glyph_outline.dart';
 import '../../tool/icons/icon_renderer.dart';
 import '../support/repo_files.dart';
 
@@ -16,6 +19,10 @@ const String _regenerate =
 File _appFile(String path) => findRepoFile('app/$path');
 
 void main() {
+  final mark = MarkOutline.fromFont(
+    _appFile(brandMarkFontAsset).readAsBytesSync(),
+  );
+
   group('cada PNG coincide con lo que genera el script', () {
     for (final spec in appIcons) {
       test(spec.path, () {
@@ -28,7 +35,7 @@ void main() {
         // iOS y los "any" de la web, opacos: sin canal alfa.
         expect(png.channels, spec.opaque ? 3 : 4, reason: _regenerate);
 
-        final expected = renderIcon(spec);
+        final expected = renderIcon(spec, mark);
         var maxDifference = 0;
         for (var i = 0; i < expected.length; i++) {
           final difference = (expected[i] - png.pixels[i]).abs();
@@ -39,10 +46,120 @@ void main() {
     }
   });
 
+  group('la R de la fuente', () {
+    test(
+      'Cinzel: cinco contornos cerrados y encadenados, en la caja de la R',
+      () {
+        final contours = readGlyphContours(
+          _appFile(brandMarkFontAsset).readAsBytesSync(),
+          brandMarkCodePoint,
+        );
+        // El arco con la pierna, el asta y tres serifas (se superponen).
+        expect(contours, hasLength(5));
+        for (final contour in contours) {
+          for (var i = 0; i < contour.length; i++) {
+            final next = contour[(i + 1) % contour.length];
+            expect(
+              (contour[i].to.x, contour[i].to.y),
+              (next.from.x, next.from.y),
+            );
+          }
+        }
+        expect(mark.bounds.minY, closeTo(0, 0.5));
+        expect(mark.bounds.maxY, closeTo(700, 0.5));
+        expect(
+          (mark.bounds.maxX - mark.bounds.minX) /
+              (mark.bounds.maxY - mark.bounds.minY),
+          closeTo(0.95, 0.01),
+        );
+      },
+    );
+
+    test('una letra con curvas seguidas (la O) también queda cerrada', () {
+      final contours = readGlyphContours(
+        _appFile(brandMarkFontAsset).readAsBytesSync(),
+        0x4F,
+      );
+      expect(contours, isNotEmpty);
+      for (final contour in contours) {
+        expect(contour.where((s) => s.control != null), isNotEmpty);
+        expect(
+          (contour.last.to.x, contour.last.to.y),
+          (contour.first.from.x, contour.first.from.y),
+        );
+      }
+    });
+
+    test('una letra que la fuente no tiene: error claro', () {
+      expect(
+        () => readGlyphContours(
+          _appFile(brandMarkFontAsset).readAsBytesSync(),
+          0x4E2D, // 中
+        ),
+        throwsFormatException,
+      );
+    });
+  });
+
+  GlyphSegment line(double x0, double y0, double x1, double y1) =>
+      GlyphSegment(GlyphPoint(x0, y0), GlyphPoint(x1, y1));
+  List<GlyphSegment> rect(double left, double right) => [
+    line(left, -1, right, -1),
+    line(right, -1, right, 1),
+    line(right, 1, left, 1),
+    line(left, 1, left, -1),
+  ];
+  final cream = [
+    (brandCream >> 16) & 0xFF,
+    (brandCream >> 8) & 0xFF,
+    brandCream & 0xFF,
+  ];
+
+  // Dos rectángulos que se pisan: su unión es un cuadrado de 10 a 30 px. Los
+  // bordes internos no tienen que dejar una línea más oscura, ni con una
+  // superposición grande ni con una de menos de un píxel (como las serifas de
+  // la R con el asta: 3 unidades de la fuente).
+  for (final (name, left, right) in [
+    ('4 px', rect(-1, 0.2), rect(-0.2, 1)),
+    ('0,2 px', rect(-1, 0.06), rect(0.04, 1)),
+    ('0,02 px', rect(-1, 0.051), rect(0.049, 1)),
+  ]) {
+    test('contornos superpuestos ($name): la unión, sin costura', () {
+      final pixels = renderIcon(
+        const IconSpec('x.png', 40, IconBackground.square, 0.25),
+        MarkOutline([left, right]),
+      );
+      // Adentro, con un píxel de margen, todo crema.
+      for (var row = 11; row < 29; row++) {
+        for (var column = 11; column < 29; column++) {
+          final i = (row * 40 + column) * 3;
+          expect(
+            pixels.sublist(i, i + 3),
+            cream,
+            reason: 'píxel ($column, $row)',
+          );
+        }
+      }
+    });
+  }
+
+  test('contornos superpuestos: afuera, oliva', () {
+    final pixels = renderIcon(
+      const IconSpec('x.png', 40, IconBackground.square, 0.25),
+      MarkOutline([rect(-1, 0.2), rect(-0.2, 1)]),
+    );
+    // Afuera, oliva.
+    expect(pixels.sublist(0, 3), [
+      (brandOlive >> 16) & 0xFF,
+      (brandOlive >> 8) & 0xFF,
+      brandOlive & 0xFF,
+    ]);
+  });
+
   test('PNG: codificar y decodificar no cambia los píxeles', () {
     const spec = IconSpec('x.png', 24, IconBackground.circle, 0.3);
-    final pixels = renderIcon(spec);
-    final decoded = decodePng(encodeIcon(spec));
+    final pixels = renderIcon(spec, mark);
+    final decoded = decodePng(encodeIcon(spec, mark));
     expect(decoded.channels, 4);
     expect(decoded.pixels, pixels);
   });

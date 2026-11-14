@@ -229,7 +229,10 @@ class _DayCell extends ConsumerWidget {
     if (isSelected) {
       numberColor = colors.onPrimary;
     } else if (!inMonth) {
-      numberColor = colors.onSurfaceVariant.withValues(alpha: 0.6);
+      // Sin transparencia: con alfa, sobre la crema del tema quedaba por
+      // debajo del contraste mínimo (2,6:1). Igual se distinguen: los días del
+      // mes van en onSurface.
+      numberColor = colors.onSurfaceVariant;
     } else {
       numberColor = colors.onSurface;
     }

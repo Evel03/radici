@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:radici/core/brand_mark.dart';
+import 'package:radici/core/radici_logo.dart';
 import 'package:radici/core/router.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
@@ -52,7 +52,7 @@ void main() {
   testWidgets('email → código → entra a Richieste', (tester) async {
     await pumpLogin(tester);
     expect(find.byType(LoginScreen), findsOneWidget);
-    // La marca arriba: en la web es la primera pantalla.
+    // El logotipo arriba: en la web es la primera pantalla.
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('login-brand')),
@@ -60,7 +60,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.byType(RadiciMark), findsOneWidget);
+    expect(find.byType(RadiciLogo), findsOneWidget);
 
     await enterEmail(tester, 'Evelyn@Example.test');
     expect(auth.sentTo, ['evelyn@example.test']);
