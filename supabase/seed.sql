@@ -200,6 +200,11 @@ insert into public.requests (id, chef_id, client_id, type, status, adults, kids,
    '{}', null,
    date_trunc('week', current_date)::date + 8, '10:00', 'preauth', null, null, now() - interval '5 days');
 
+-- Respuesta a la pregunta de alergias (requests.no_allergies): Sara confirmó en el formulario que
+-- nadie tiene. Los demás quedan sin respuesta (null, como los pedidos anteriores a la pregunta): así
+-- la bandeja local muestra los tres casos (ninguna, alergias indicadas y sin datos).
+update public.requests set no_allergies = true where id = 'b0000000-0000-4000-8000-000000000004';
+
 -- ---------------------------------------------------------------------
 -- Sesiones (busy se calcula sola; compra y margen se copian de chef_settings)
 -- ---------------------------------------------------------------------
