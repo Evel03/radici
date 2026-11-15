@@ -23,10 +23,6 @@ export const FIELD_ORDER = [
   "people",
   "days",
   "meals",
-  "allergens",
-  "diets",
-  "restrictionsNote",
-  "consentHealth",
   "preferredDate",
   "slot",
   "name",
@@ -43,11 +39,19 @@ export type FieldName = (typeof FIELD_ORDER)[number];
 /**
  * Errores que no son de un campo: la página quedó desactualizada respecto del servidor.
  * Si el contrato suma un campo y el formulario no lo muestra, esto deja de compilar.
+ * Los datos de salud (alérgenos, dietas, nota y su consentimiento) también: el formulario no los
+ * pide y los manda vacíos, así que un error ahí solo puede venir de otra versión del servidor.
  */
-export const PAGE_FIELDS = { payload: true, version: true, locale: true, requestKey: true } as const satisfies Record<
-  Exclude<PublicRequestField, FieldName>,
-  true
->;
+export const PAGE_FIELDS = {
+  payload: true,
+  version: true,
+  locale: true,
+  requestKey: true,
+  allergens: true,
+  diets: true,
+  restrictionsNote: true,
+  consentHealth: true,
+} as const satisfies Record<Exclude<PublicRequestField, FieldName>, true>;
 
 const ERROR_CODES: readonly ErrorCode[] = [
   "required",
@@ -93,11 +97,8 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
       return { key: "errors.date", params: { days: DATE_WINDOW.maxDaysAhead } };
     case "consentPrivacy":
       return { key: "errors.privacyRequired" };
-    case "consentHealth":
-      return { key: "errors.healthRequired" };
     case "turnstileToken":
       return { key: "errors.turnstileRequired" };
-    case "restrictionsNote":
     case "name":
     case "zone":
     case "phone":
@@ -107,8 +108,6 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
       if (code === "required") return { key: REQUIRED_KEYS[field] ?? "errors.invalid" };
       return { key: INVALID_KEYS[field] ?? "errors.invalid" };
     case "type":
-    case "allergens":
-    case "diets":
     case "slot":
     case "whatsappOptIn":
       // El formulario no puede producir estos errores: solo con un HTML viejo o alterado.

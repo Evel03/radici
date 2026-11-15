@@ -7,9 +7,13 @@ import { calcQuote, LIMITS, type Quote, type QuoteInput } from "./quote.ts";
 export const PUBLIC_REQUEST_VERSION = 1;
 
 /** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
-export const CONSENT_VERSION = "2026-10-19";
-/** Versiones aceptadas: al cambiar el texto, agregar la nueva y dejar las anteriores mientras haya páginas en caché. */
-export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION];
+export const CONSENT_VERSION = "2026-11-15";
+/**
+ * Versiones aceptadas: al cambiar el texto, agregar la nueva y dejar las anteriores mientras haya
+ * páginas en caché (y mientras la web y la función se despliegan, que corren por separado).
+ * 2026-10-19: el borrador, publicado solo como prueba interna.
+ */
+export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-10-19"];
 
 /** Los 14 alérgenos del Reg. UE 1169/2011, en el orden del enum `allergen` de la base. */
 export const ALLERGENS = [

@@ -1,22 +1,13 @@
 // Modelo del pedido de la web. Tipos, constantes y reglas vienen del contrato compartido con la
 // Edge Function (supabase/functions/_shared/public_request.ts): un solo origen, nada copiado acá.
 // Este archivo agrega solo lo propio del formulario (la opción "pranzo e cena" y su estado).
-import {
-  MEALS,
-  cleanOneLine,
-  hasRestrictions,
-  type Allergen,
-  type Diet,
-  type Meal,
-  type RequestType,
-  type Slot,
-} from "../../../supabase/functions/_shared/public_request.ts";
+// El formulario no pide alergias, intolerancias ni dietas (datos de salud): Evelyn las ve con el
+// cliente cuando lo contacta. El contrato sigue teniendo esos campos y la web los manda vacíos.
+import { MEALS, type Meal, type RequestType, type Slot } from "../../../supabase/functions/_shared/public_request.ts";
 
 export {
-  ALLERGENS,
   CONSENT_VERSION,
   DATE_WINDOW,
-  DIETS,
   LOCALES,
   MAX_PAYLOAD_BYTES,
   MEALS,
@@ -26,15 +17,12 @@ export {
   TEXT_LIMITS,
   cleanMultiLine,
   cleanOneLine,
-  hasRestrictions,
   isOneOf,
   isValidEmail,
   normalizePhone,
   parsePublicRequest,
 } from "../../../supabase/functions/_shared/public_request.ts";
 export type {
-  Allergen,
-  Diet,
   ErrorCode,
   Locale,
   Meal,
@@ -57,9 +45,6 @@ export interface RequestData {
   kids: number;
   days: number;
   meals: MealOption;
-  allergens: Allergen[];
-  diets: Diet[];
-  restrictionsNote: string;
   /** "" si no eligió fecha; si no, "AAAA-MM-DD". */
   preferredDate: string;
   slot: Slot;
@@ -71,7 +56,6 @@ export interface RequestData {
   whatsappOptIn: boolean;
   notes: string;
   consentPrivacy: boolean;
-  consentHealth: boolean;
 }
 
 export function mealsOf(option: MealOption): Meal[] {
@@ -80,12 +64,4 @@ export function mealsOf(option: MealOption): Meal[] {
 
 export function mealsPerDay(option: MealOption): number {
   return mealsOf(option).length;
-}
-
-/**
- * Hay datos de salud (alérgenos, dietas o una nota) y hace falta el consentimiento explícito.
- * La nota se limpia igual que en el servidor: un texto con solo espacios no cuenta.
- */
-export function hasHealthData(data: Pick<RequestData, "allergens" | "diets" | "restrictionsNote">): boolean {
-  return hasRestrictions({ ...data, restrictionsNote: cleanOneLine(data.restrictionsNote) });
 }

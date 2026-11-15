@@ -52,7 +52,7 @@ Evelyn cocina **en la casa del cliente**: hace las compras, cocina para varios d
 ## 2. Alcance por fases
 
 ### Fase 0 — Validación (web liviana, sin app)
-- Web pública en italiano (`web/`): cómo funciona, calculadora de presupuesto (misma fórmula 5.1, mismo `quote.ts`) y formulario de pedido con consentimiento de datos de salud.
+- Web pública en italiano (`web/`): cómo funciona, calculadora de presupuesto (misma fórmula 5.1, mismo `quote.ts`) y formulario de pedido, sin datos de salud: las alergias las ve Evelyn con el cliente cuando lo contacta.
 - El pedido se guarda en Supabase (Edge Function `public-request`, contrato `docs/contracts/public-request.md`, aprobado el 19/10/2026; reemplaza el envío por WhatsApp). Evelyn recibe un email y un aviso emergente en la app, y lo revisa en la bandeja y la agenda (app y `/gestione/`); el cliente recibe la confirmación por email y, si la pidió, por WhatsApp. El cliente no necesita cuenta.
 - Cobro manual: efectivo, transferencia, Satispay o Stripe Payment Links.
 - Meta: 10–20 sesiones reales para calibrar tiempos de cocina, costo por porción y política de cancelación **antes** de congelarlos en los vectores.
@@ -63,7 +63,7 @@ Evelyn cocina **en la casa del cliente**: hace las compras, cocina para varios d
 - Perfil del hogar: adultos, niños, zona, dirección, restricciones, preferencias, notas de cocina.
 - **Pedir**: semana de comidas, sesión extra/evento, o cambio en la próxima sesión.
 - **Presupuesto estimado instantáneo** al pedir (fórmula 5.1) y horarios libres reales (5.2).
-- Formulario público para clientes nuevos (web), con consentimiento para datos de salud.
+- Formulario público para clientes nuevos (web), sin datos de salud (desde el 15/11/2026: alergias, intolerancias y dietas se hablan con Evelyn).
 - **Bandeja de pedidos** de Evelyn: armar menú con control de alérgenos, ajustar precio, enviar presupuesto.
 - Aceptación del presupuesto → sesión agendada (con protección contra doble reserva).
 - **Agenda** (semana + día con línea de tiempo), **disponibilidad** semanal, **bloqueo de días**.
@@ -390,7 +390,7 @@ Sin notificaciones entre las 21:00 y las 8:00 (hora de Roma), salvo fallos de pa
 
 ## 9. Criterios de aceptación del MVP
 
-1. Un prospecto pide desde la web sin cuenta, ve precio y horarios reales, y no puede enviar sin consentimiento de datos de salud.
+1. Un prospecto pide desde la web sin cuenta y ve precio y horarios reales; el formulario no le pide datos de salud.
 2. El presupuesto mostrado coincide con los 9 vectores de la sección 5.1 en la app, en la web y en el servidor.
 3. Dos clientes no pueden reservar horarios superpuestos aunque acepten al mismo tiempo (la restricción `no_overlap` lo impide y la app muestra un error claro). Un horario ofrecido por `get_free_slots` nunca es rechazado por `no_overlap`.
 4. Un presupuesto enviado bloquea el horario 48 h (sesión `held`) y se libera al vencer o al ser rechazado.

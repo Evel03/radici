@@ -4,6 +4,7 @@ Estado: aprobado por Nicolas el 19/10/2026 (reemplaza el envío por WhatsApp de 
 Actualizado el 19/10/2026 para reflejar lo implementado: idempotencia con `requestKey`, `CHEF_ID` opcional, borrado diario de prospectos vencidos (§9), avisos a Evelyn en español por defecto y vistas previas fuera de `ALLOWED_ORIGINS`.
 Actualizado el 19/10/2026 después de la revisión de seguridad y privacidad: un envío sin login nunca modifica a una persona existente (copia del contacto en cada pedido, §3), `duplicate: true` en los reintentos (§2), Evelyn creada confirmada antes de publicar y altas apagadas (§8, §10), "Segna come cliente" en la app (§7, §9) y procedimientos de arranque y de derechos (§10).
 Código del contrato: `supabase/functions/_shared/public_request.ts` (tipos, validación y normalización; tests en `public_request.test.ts`). Si este documento y ese archivo difieren, manda el archivo.
+Actualizado el 15/11/2026: el formulario de la web ya no pide alergias, intolerancias ni dietas (datos de salud); Evelyn las ve con el cliente cuando lo contacta. El contrato conserva `allergens`, `diets`, `restrictionsNote` y `consents.health`: la web los manda vacíos (`consents.health` en `null`) y la función los sigue aceptando.
 
 ## 1. Flujo
 
@@ -161,12 +162,12 @@ Logs de configuración, solo con nombres de variables: al arrancar, `config_miss
 - Turnstile (render explícito, modo "managed"); el token va en el payload y se pide uno nuevo después de cada intento fallido (sirve una sola vez).
 - `requestKey`: una por pedido, la misma en todos los reintentos hasta el `201` (§2). Con `duplicate: true`, la pantalla de gracias muestra lo que se guardó, no lo que se cambió después (§2).
 - La URL de la función lleva `?forceFunctionRegion=eu-central-1` (§2).
-- Las notas libres piden no escribir datos de salud (para eso está la sección de alergias, con su consentimiento); la privacy lo repite (§5).
-- Tipos y constantes desde `_shared/public_request.ts`: `ALLERGENS`, `DIETS`, `TEXT_LIMITS`, `DATE_WINDOW`, `CONSENT_VERSION`, `normalizePhone`, etc. Un solo origen; nada duplicado en `web/src/request/model.ts`.
+- El formulario no pide datos de salud, y las notas libres piden no escribirlos: las alergias las ve Evelyn con el cliente cuando lo contacta. La privacy lo repite (§5).
+- Tipos y constantes desde `_shared/public_request.ts`: `TEXT_LIMITS`, `DATE_WINDOW`, `CONSENT_VERSION`, `normalizePhone`, etc. Un solo origen; nada duplicado en `web/src/request/model.ts`.
 - Estados: enviando (botón deshabilitado), éxito (pantalla de gracias con resumen y "te mandamos un email a …"), errores por campo (códigos del servidor), 429, Turnstile fallido y error de red, con opción de reintentar sin perder lo cargado.
 - Config (`web/.env.example`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_TURNSTILE_SITE_KEY` (en local, `1x00000000000000000000AA`), `VITE_SITE_URL`, `VITE_NOINDEX` y `VITE_BRAND_NAME` (si falta, Radici). `VITE_WHATSAPP_NUMBER` ya no se usa.
 - CSP: sumar Turnstile (`script-src` y `frame-src` `https://challenges.cloudflare.com`) y la URL de Supabase en `connect-src`. Verificar en un servidor local con la cabecera real.
-- Privacy: datos en Supabase (UE, Frankfurt), emails con Resend, Turnstile de Cloudflare, WhatsApp solo con aceptación, borrado 90 días después del último pedido para los que no avanzan (§9), emails y chats dentro de los 30 días siguientes (§10.3), quién más ve los datos de salud (la asistencia técnica) y que no van en las notas libres. Sigue en borrador: §10.1, paso 1.
+- Privacy: datos en Supabase (UE, Frankfurt), emails con Resend, Turnstile de Cloudflare, WhatsApp solo con aceptación, borrado 90 días después del último pedido para los que no avanzan (§9), emails y chats dentro de los 30 días siguientes (§10.3), quién más ve los datos de salud (la asistencia técnica) y que no van en las notas libres. Completada el 15/11/2026 (versión del texto `2026-11-15`, `CONSENT_VERSION`); la de `2026-10-19` era el borrador.
 
 ## 7. App y bandeja web (`app/`, Flutter)
 

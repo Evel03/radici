@@ -31,18 +31,6 @@ describe("validateRequest (la misma validación del servidor)", () => {
     it("la privacy es obligatoria", () => {
       expect(validate({ consentPrivacy: false }).consentPrivacy?.key).toBe("errors.privacyRequired");
     });
-
-    it("el consentimiento de salud es obligatorio solo si hay restricciones", () => {
-      expect(validate({ consentHealth: false }).consentHealth).toBeUndefined();
-      for (const restriction of [{ allergens: ["eggs" as const] }, { diets: ["vegan" as const] }, { restrictionsNote: "no maiale" }]) {
-        expect(validate({ ...restriction, consentHealth: false }).consentHealth?.key).toBe("errors.healthRequired");
-        expect(validate({ ...restriction, consentHealth: true }).consentHealth).toBeUndefined();
-      }
-    });
-
-    it("un texto de restricciones con solo espacios no cuenta como restricción", () => {
-      expect(validate({ restrictionsNote: "   " }).consentHealth).toBeUndefined();
-    });
   });
 
   describe("rangos (LIMITS del motor)", () => {
@@ -73,7 +61,6 @@ describe("validateRequest (la misma validación del servidor)", () => {
 
     it("largo máximo de los textos", () => {
       expect(validate({ notes: "x".repeat(501) }).notes).toEqual({ key: "errors.tooLong", params: { max: 500 } });
-      expect(validate({ restrictionsNote: "x".repeat(201), consentHealth: true }).restrictionsNote?.key).toBe("errors.tooLong");
       expect(validate({ name: "x".repeat(81) }).name).toEqual({ key: "errors.tooLong", params: { max: 80 } });
     });
   });
@@ -117,12 +104,19 @@ describe("validateRequest (la misma validación del servidor)", () => {
 
 describe("translateErrors (respuesta 400 del servidor)", () => {
   it("traduce cada campo a su mensaje", () => {
-    const { fields, outdated } = translateErrors({ phone: "invalid", email: "required", consentHealth: "healthConsentRequired" });
+    const { fields, outdated } = translateErrors({ phone: "invalid", email: "required" });
     expect(outdated).toBe(false);
     expect(fields).toEqual({
       phone: { key: "errors.phoneInvalid" },
       email: { key: "errors.emailRequired" },
-      consentHealth: { key: "errors.healthRequired" },
+    });
+  });
+
+  it("un error en los datos de salud (que la web manda vacíos) es de otra versión del servidor: pide recargar", () => {
+    expect(translateErrors({ consentHealth: "healthConsentRequired" })).toEqual({ fields: {}, outdated: true });
+    expect(translateErrors({ allergens: "invalid", name: "required" })).toEqual({
+      fields: { name: { key: "errors.nameRequired" } },
+      outdated: true,
     });
   });
 

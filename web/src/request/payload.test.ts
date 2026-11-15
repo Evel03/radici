@@ -60,42 +60,17 @@ describe("buildPayload", () => {
     }
   });
 
-  it("con restricciones y consentimiento de salud manda la versión del texto y el servidor las acepta", () => {
-    const data = validRequest({
-      allergens: ["milk", "gluten"],
-      diets: ["vegetarian"],
-      restrictionsNote: "niente piccante",
-      consentHealth: true,
-    });
-    expect(buildPayload(data, { locale: "it", turnstileToken: TEST_TOKEN }).consents.health).toBe(CONSENT_VERSION);
-    const result = serverParse(data);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.allergens).toEqual(["gluten", "milk"]);
-      expect(result.value.hasRestrictions).toBe(true);
-    }
-  });
-
-  it("sin restricciones no manda consentimiento de salud aunque esté marcado", () => {
-    const payload = buildPayload(validRequest({ consentHealth: true }), { locale: "it", turnstileToken: TEST_TOKEN });
+  it("no manda datos de salud: alérgenos, dietas y nota vacíos, sin consentimiento de salud", () => {
+    const payload = buildPayload(validRequest(), { locale: "it", turnstileToken: TEST_TOKEN });
+    expect(payload).toMatchObject({ allergens: [], diets: [], restrictionsNote: "" });
     expect(payload.consents.health).toBeNull();
+    const result = serverParse(validRequest());
+    expect(result.ok && result.value.hasRestrictions).toBe(false);
   });
 
-  it("una nota de restricciones con solo espacios no cuenta como dato de salud", () => {
-    const payload = buildPayload(validRequest({ restrictionsNote: "   ", consentHealth: true }), {
-      locale: "it",
-      turnstileToken: TEST_TOKEN,
-    });
-    expect(payload.consents.health).toBeNull();
-    expect(serverParse(validRequest({ restrictionsNote: "   " })).ok).toBe(true);
-  });
-
-  it("sin privacy, sin consentimiento de salud o sin token el servidor lo rechaza con el código del contrato", () => {
+  it("sin privacy o sin token el servidor lo rechaza con el código del contrato", () => {
     const noPrivacy = serverParse(validRequest({ consentPrivacy: false }));
     expect(noPrivacy.ok ? {} : noPrivacy.errors).toEqual({ consentPrivacy: "consentRequired" });
-
-    const noHealth = serverParse(validRequest({ allergens: ["eggs"], consentHealth: false }));
-    expect(noHealth.ok ? {} : noHealth.errors).toEqual({ consentHealth: "healthConsentRequired" });
 
     const noToken = serverParse(validRequest(), "");
     expect(noToken.ok ? {} : noToken.errors).toEqual({ turnstileToken: "required" });
@@ -125,11 +100,7 @@ describe("buildPayload", () => {
       zone: fill(TEXT_LIMITS.zone),
       phone: "+39 333 123 4567",
       email: `${"a".repeat(TEXT_LIMITS.email - 13)}@example.test`,
-      restrictionsNote: fill(TEXT_LIMITS.restrictionsNote),
       notes: fill(TEXT_LIMITS.notes, "\u0001") + fill(TEXT_LIMITS.notes),
-      allergens: ["gluten", "crustaceans", "eggs", "fish", "peanuts", "soy", "milk", "nuts", "celery", "mustard", "sesame", "sulphites", "lupin", "molluscs"],
-      diets: ["vegetarian", "vegan"],
-      consentHealth: true,
     });
     const body = JSON.stringify(buildPayload(data, { locale: "it", turnstileToken: "x".repeat(2048) }));
     expect(new TextEncoder().encode(body).length).toBeLessThan(MAX_PAYLOAD_BYTES);

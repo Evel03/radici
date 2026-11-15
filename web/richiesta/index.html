@@ -145,58 +145,6 @@
             </fieldset>
 
             <fieldset class="panel">
-              <legend class="panel__title" data-i18n="request.restrictionsLegend"></legend>
-              <p class="panel__intro" data-i18n="request.restrictionsIntro"></p>
-
-              <fieldset class="subgroup">
-                <legend class="subgroup__title" data-i18n="request.allergensTitle"></legend>
-                <div class="chips">
-                  <label class="chip"><input type="checkbox" name="allergens" value="gluten" /><span data-i18n="allergens.gluten"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="crustaceans" /><span data-i18n="allergens.crustaceans"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="eggs" /><span data-i18n="allergens.eggs"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="fish" /><span data-i18n="allergens.fish"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="peanuts" /><span data-i18n="allergens.peanuts"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="soy" /><span data-i18n="allergens.soy"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="milk" /><span data-i18n="allergens.milk"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="nuts" /><span data-i18n="allergens.nuts"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="celery" /><span data-i18n="allergens.celery"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="mustard" /><span data-i18n="allergens.mustard"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="sesame" /><span data-i18n="allergens.sesame"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="sulphites" /><span data-i18n="allergens.sulphites"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="lupin" /><span data-i18n="allergens.lupin"></span></label>
-                  <label class="chip"><input type="checkbox" name="allergens" value="molluscs" /><span data-i18n="allergens.molluscs"></span></label>
-                </div>
-                <p class="field__error" id="err-allergens" hidden></p>
-                <p id="celiac-note" class="note" data-i18n="request.celiacNote"></p>
-              </fieldset>
-
-              <fieldset class="subgroup">
-                <legend class="subgroup__title" data-i18n="request.dietsTitle"></legend>
-                <div class="chips">
-                  <label class="chip"><input type="checkbox" name="diets" value="vegetarian" /><span data-i18n="diets.vegetarian"></span></label>
-                  <label class="chip"><input type="checkbox" name="diets" value="vegan" /><span data-i18n="diets.vegan"></span></label>
-                </div>
-                <p class="field__error" id="err-diets" hidden></p>
-              </fieldset>
-
-              <div class="field">
-                <label class="field__label" for="restrictionsNote" data-i18n="request.restrictionsNoteLabel"></label>
-                <input class="input" id="restrictionsNote" name="restrictionsNote" type="text" autocomplete="off" aria-describedby="hint-restrictionsNote" />
-                <p class="field__hint" id="hint-restrictionsNote" data-i18n="request.restrictionsNoteHint"></p>
-                <p class="field__error" id="err-restrictionsNote" hidden></p>
-              </div>
-
-              <div id="health-consent" class="consent consent--health" hidden>
-                <label class="check">
-                  <input id="consentHealth" name="consentHealth" type="checkbox" aria-describedby="hint-consentHealth" />
-                  <span data-i18n="request.healthConsentLabel"></span>
-                </label>
-                <p class="field__hint" id="hint-consentHealth" data-i18n="request.healthConsentHint"></p>
-                <p class="field__error" id="err-consentHealth" hidden></p>
-              </div>
-            </fieldset>
-
-            <fieldset class="panel">
               <legend class="panel__title" data-i18n="request.whenLegend"></legend>
               <div class="field">
                 <label class="field__label" for="preferredDate" data-i18n="request.dateLabel"></label>
