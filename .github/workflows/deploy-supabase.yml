@@ -20,7 +20,7 @@
 #     public.chefs. Hasta correr promote_to_chef responde 500 (chef_id_unresolved, no_chef). Fijarlo
 #     solo si hay más de una cocinera.
 #   · CHEF_LOCALE: idioma de los avisos a Evelyn; por defecto es (español).
-#   · ALLOWED_ORIGINS: https://radici.sepusola10.com, sin las vistas previas *.pages.dev (se
+#   · ALLOWED_ORIGINS: https://radicicucina.app, sin las vistas previas *.pages.dev (se
 #     construyen con este mismo backend y crearían pedidos reales; contrato §4).
 # Orden del primer despliegue (contrato §10): antes de publicar la web (o una vista previa), las altas
 # apagadas y la cuenta de Evelyn creada y confirmada. Lo hace este workflow: Auth en cada despliegue,

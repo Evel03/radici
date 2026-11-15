@@ -43,7 +43,7 @@ function clientInput(overrides: Partial<ClientConfirmationInput> = {}): ClientCo
     chefName: "Evelyn",
     customerName: "Giulia Rossi",
     summary: SUMMARY,
-    privacyUrl: "https://radici.sepusola10.com/privacy/",
+    privacyUrl: "https://radicicucina.app/privacy/",
     ...overrides,
   };
 }
@@ -58,7 +58,7 @@ function chefInput(overrides: Partial<ChefNotificationInput> = {}): ChefNotifica
     whatsappOptIn: true,
     hasNotes: true,
     summary: SUMMARY,
-    inboxUrl: "https://radici.sepusola10.com/gestione/",
+    inboxUrl: "https://radicicucina.app/gestione/",
     ...overrides,
   };
 }
@@ -173,7 +173,7 @@ test("ningún asunto lleva teléfono, email, zona ni datos de salud", () => {
 });
 
 test("marca a partir de MAIL_FROM", () => {
-  assert.equal(brandFromMailFrom("Radici <ciao@radici.sepusola10.com>"), "Radici");
+  assert.equal(brandFromMailFrom("Radici <ciao@radicicucina.app>"), "Radici");
   assert.equal(brandFromMailFrom('"Cucina di Eve" <ciao@example.test>'), "Cucina di Eve");
   assert.equal(brandFromMailFrom("ciao@example.test"), "Radici");
   assert.equal(brandFromMailFrom(null), "Radici");
@@ -223,8 +223,8 @@ for (const locale of LOCALES) {
     }
     assert.ok(email.html.startsWith("<!doctype html>"));
     assert.ok(email.html.includes(`<html lang="${locale}">`));
-    assert.ok(email.html.includes('href="https://radici.sepusola10.com/privacy/"'));
-    assert.ok(email.text.includes("https://radici.sepusola10.com/privacy/"));
+    assert.ok(email.html.includes('href="https://radicicucina.app/privacy/"'));
+    assert.ok(email.text.includes("https://radicicucina.app/privacy/"));
     assert.ok(email.text.includes(REQUEST_ID.slice(0, 8)), "referencia corta del pedido");
     assert.ok(!email.text.includes("Rossi") && !email.html.includes("Rossi"), "solo el nombre de pila");
   });
@@ -273,7 +273,7 @@ test("Evelyn (it): asunto con el nombre de pila, contacto con links, botón a la
     assert.ok(email.text.includes(line), `falta en el texto: ${line}`);
     assert.ok(email.html.includes(escapeHtml(line)), `falta en el HTML: ${line}`);
   }
-  const inbox = `https://radici.sepusola10.com/gestione/#/richieste/${REQUEST_ID}`;
+  const inbox = `https://radicicucina.app/gestione/#/richieste/${REQUEST_ID}`;
   assert.ok(email.html.includes(`href="${inbox}"`));
   assert.ok(email.text.includes(inbox));
   assert.ok(email.html.includes('href="tel:+393331234567"'));

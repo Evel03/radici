@@ -1,7 +1,7 @@
 # Radici
 
 Cocina casera a domicilio en Bergamo (Evelyn). Nombre definitivo: Radici.
-Repo: `Evel03/radici` (GitHub). Dominio temporal: https://radici.sepusola10.com (web pública y bandeja en `/gestione/`).
+Repo: `Evel03/radici` (GitHub). Dominio: https://radicicucina.app (web pública y bandeja en `/gestione/`), comprado el 15/11/2026 en Cloudflare Registrar, en la misma cuenta que Pages. El anterior, radici.sepusola10.com, se da de baja.
 Los identificadores nativos de la app (bundle id) todavía no se eligieron: no cambiarlos sin pedido explícito (lista de lugares en `app/README.md`).
 Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y este archivo en el mismo PR.
 
