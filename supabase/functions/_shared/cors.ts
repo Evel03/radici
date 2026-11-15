@@ -1,4 +1,4 @@
-// CORS con lista de orígenes permitidos (contrato §2, ALLOWED_ORIGINS).
+// CORS con lista de orígenes permitidos (contrato §2 y §11, ALLOWED_ORIGINS).
 // Admite comodín de subdominio: "https://*.<pages>.pages.dev" acepta
 // "https://abc.<pages>.pages.dev" (una sola etiqueta: así son las vistas
 // previas de Cloudflare Pages), pero no el dominio pelado ni niveles más profundos.
@@ -21,7 +21,8 @@ export interface OriginRule {
 /** Las cabeceras que manda supabase-js (lista de @supabase/supabase-js/cors) más las de un fetch simple. */
 export const CORS_ALLOWED_HEADERS =
   "authorization, x-client-info, apikey, content-type, x-retry-count, traceparent, tracestate, baggage";
-export const CORS_ALLOWED_METHODS = "POST, OPTIONS";
+/** POST: el pedido. GET: la disponibilidad por día del calendario (…/availability, contrato §11). */
+export const CORS_ALLOWED_METHODS = "GET, POST, OPTIONS";
 /** Firefox respeta 24 h; Chrome recorta a 2 h. */
 export const CORS_MAX_AGE_SECONDS = 86400;
 
