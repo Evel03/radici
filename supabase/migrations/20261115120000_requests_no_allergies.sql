@@ -30,7 +30,7 @@ alter table public.requests
     check (not (no_allergies and restrictions is not null));
 
 comment on column public.requests.no_allergies is
-  'Respuesta del formulario web a la pregunta de alergias: true = el cliente confirmó que nadie de quienes van a comer (niños incluidos) tiene alergias ni intolerancias alimentarias; false = las escribió (van en restrictions, con consentimiento de salud); null = sin respuesta (pedidos de la app, de la web anteriores a la v2 del contrato o con el consentimiento de salud retirado). La escribe solo submit_public_request.';
+  'Respuesta del formulario web a la pregunta de alergias: true = el cliente confirmó que nadie de quienes van a comer (niños incluidos) tiene alergias, intolerancias alimentarias ni celiaquía; false = las escribió (van en restrictions, con consentimiento de salud); null = sin respuesta (pedidos de la app, de la web anteriores a la v2 del contrato o con el consentimiento de salud retirado). La escribe solo submit_public_request.';
 
 -- La app la lee (authenticated tiene select sobre requests; RLS decide las
 -- filas) y no la escribe: los privilegios de insert/update de authenticated
