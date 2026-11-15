@@ -512,6 +512,8 @@ test("segundo plano: aviso a Evelyn en su idioma, confirmación al cliente en el
   assert.equal(toClient.headers.get("idempotency-key"), `request-${REQUEST_ID}-client`);
   assert.ok(String(clientBody["text"]).includes("Evelyn ti contatterà al più presto"));
   assert.ok(String(clientBody["html"]).includes('href="https://radicicucina.app/privacy/"'));
+  // Al cliente, ni que hay alergias: su email no está verificado y eso también es un dato de salud.
+  assert.doesNotMatch(`${String(clientBody["text"])}${String(clientBody["html"])}`, /allerg|intoller|celiach/i);
 
   for (const call of emails) {
     const body = JSON.stringify(call.body);
@@ -544,8 +546,8 @@ test("nadie tiene alergias: no_allergies a la base, sin restricciones ni consent
   await settle();
   const text = (to: string): string =>
     String((fetchCalls.find((call) => call.url === RESEND_API_URL && (call.body as { to: string[] }).to[0] === to)?.body as Record<string, unknown>)["text"]);
-  assert.ok(text("evelyn@example.test").includes("Confirmó que nadie tiene alergias ni intolerancias."));
-  assert.ok(text("giulia.pii@example.test").includes("Hai confermato che nessuno ha allergie o intolleranze alimentari."));
+  assert.ok(text("evelyn@example.test").includes("Confirmó que nadie tiene alergias, intolerancias ni celiaquía."));
+  assert.ok(text("giulia.pii@example.test").includes("Hai confermato che nessuno ha allergie, intolleranze alimentari o celiachia."));
 });
 
 test("hay alergias pero sin escribirlas, o la página vieja (versión 1): 400 sin tocar la base", async () => {

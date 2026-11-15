@@ -197,20 +197,20 @@ const EXPECTED_CLIENT = {
   it: {
     subject: "Radici: abbiamo ricevuto la tua richiesta",
     lines: ["Grazie, Giulia!", "Evelyn ti contatterà al più presto", "Settimana di pasti", "2 adulti e 2 bambini",
-      "Cena", "domenica 25 ottobre 2026", "Pomeriggio", "Ci hai indicato allergie o intolleranze: Evelyn ne terrà conto.",
-      "78,00 €", "63,00 €", "141,00 €", "La spesa si paga al costo reale dello scontrino"],
+      "Cena", "domenica 25 ottobre 2026", "Pomeriggio", "78,00 €", "63,00 €", "141,00 €",
+      "La spesa si paga al costo reale dello scontrino"],
   },
   es: {
     subject: "Radici: hemos recibido tu solicitud",
     lines: ["¡Gracias, Giulia!", "Evelyn te contactará lo antes posible", "Semana de comidas", "2 adultos y 2 niños",
-      "Cena", "domingo, 25 de octubre de 2026", "Tarde", "Nos indicaste alergias o intolerancias: Evelyn las tendrá en cuenta.",
-      "78,00 €", "63,00 €", "141,00 €", "La compra se paga al precio real del ticket"],
+      "Cena", "domingo, 25 de octubre de 2026", "Tarde", "78,00 €", "63,00 €", "141,00 €",
+      "La compra se paga al precio real del ticket"],
   },
   en: {
     subject: "Radici: we've received your request",
     lines: ["Thank you, Giulia!", "Evelyn will contact you as soon as possible", "A week of meals", "2 adults and 2 children",
-      "Dinner", "Sunday 25 October 2026", "Afternoon", "You told us about allergies or intolerances: Evelyn will take them into account.",
-      "€78.00", "€63.00", "€141.00", "Groceries are charged at the actual receipt cost"],
+      "Dinner", "Sunday 25 October 2026", "Afternoon", "€78.00", "€63.00", "€141.00",
+      "Groceries are charged at the actual receipt cost"],
   },
 } as const;
 
@@ -258,33 +258,40 @@ test("cliente: sin fecha, 'sin preferencia'; ambas comidas; un evento", () => {
   assert.ok(email.text.includes("Evento o sessione extra"));
 });
 
+// Al cliente, de las alergias solo la confirmación de que nadie tiene (le sirve para ver un error). Su
+// dirección no está verificada y "hay alergias" es un dato de salud: con un email mal escrito le llegaría
+// a otra persona. Lo que contestó ya lo ve en la pantalla de gracias.
 const CLIENT_ALLERGIES: Readonly<Record<Locale, Readonly<Record<AllergyAnswer, string | null>>>> = {
   it: {
-    none: "Hai confermato che nessuno ha allergie o intolleranze alimentari.",
-    listed: "Ci hai indicato allergie o intolleranze: Evelyn ne terrà conto.",
+    none: "Hai confermato che nessuno ha allergie, intolleranze alimentari o celiachia.",
+    listed: null,
     unknown: null,
   },
   es: {
-    none: "Confirmaste que nadie tiene alergias ni intolerancias alimentarias.",
-    listed: "Nos indicaste alergias o intolerancias: Evelyn las tendrá en cuenta.",
+    none: "Confirmaste que nadie tiene alergias, intolerancias alimentarias ni celiaquía.",
+    listed: null,
     unknown: null,
   },
   en: {
-    none: "You confirmed that nobody has any food allergies or intolerances.",
-    listed: "You told us about allergies or intolerances: Evelyn will take them into account.",
+    none: "You confirmed that nobody has any food allergies, intolerances or coeliac disease.",
+    listed: null,
     unknown: null,
   },
 };
 
+/** Cualquier mención de alergias, intolerancias o celiaquía, en los tres idiomas. */
+const ALLERGY_WORDS = /allerg|alerg|intoller|intoler|celiach|celiaqu|coeliac/i;
+
 for (const locale of LOCALES) {
-  test(`cliente (${locale}): le confirma lo que contestó sobre alergias, nunca cuáles; sin respuesta, nada`, () => {
-    const all = Object.values(CLIENT_ALLERGIES[locale]).filter((line): line is string => line !== null);
+  test(`cliente (${locale}): solo le repite que nadie tiene alergias; con alergias escritas o sin respuesta, ni una palabra`, () => {
     for (const [answer, line] of Object.entries(CLIENT_ALLERGIES[locale]) as Array<[AllergyAnswer, string | null]>) {
       const email = renderClientConfirmation(clientInput({ summary: { ...SUMMARY, allergies: answer } }), locale);
-      for (const other of all) {
-        const expected = other === line;
-        assert.equal(email.text.includes(other), expected, `${answer}: texto "${other}"`);
-        assert.equal(email.html.includes(escapeHtml(other)), expected, `${answer}: HTML "${other}"`);
+      if (line === null) {
+        assert.doesNotMatch(email.text, ALLERGY_WORDS, `${answer}: texto`);
+        assert.doesNotMatch(email.html, ALLERGY_WORDS, `${answer}: HTML`);
+      } else {
+        assert.ok(email.text.includes(line), `${answer}: texto "${line}"`);
+        assert.ok(email.html.includes(escapeHtml(line)), `${answer}: HTML "${line}"`);
       }
     }
   });
@@ -317,7 +324,7 @@ test("Evelyn en español e inglés, sin notas ni WhatsApp", () => {
   const es = renderChefNotification(chefInput({ hasNotes: false, whatsappOptIn: false, summary: { ...SUMMARY, allergies: "none" } }), "es");
   assert.equal(es.subject, "Nueva solicitud de Giulia");
   assert.ok(es.text.includes("Abrir en la bandeja"));
-  assert.ok(es.text.includes("Confirmó que nadie tiene alergias ni intolerancias."));
+  assert.ok(es.text.includes("Confirmó que nadie tiene alergias, intolerancias ni celiaquía."));
   assert.ok(!es.text.includes("notas"));
   assert.ok(es.text.includes("Confirmación por WhatsApp: No"));
 
@@ -328,17 +335,17 @@ test("Evelyn en español e inglés, sin notas ni WhatsApp", () => {
 
 const CHEF_ALLERGIES: Readonly<Record<Locale, Readonly<Record<AllergyAnswer, string>>>> = {
   it: {
-    none: "Ha confermato che nessuno ha allergie o intolleranze.",
+    none: "Ha confermato che nessuno ha allergie, intolleranze o celiachia.",
     listed: "Ha indicato restrizioni alimentari: le trovi nell'app.",
     unknown: "Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.",
   },
   es: {
-    none: "Confirmó que nadie tiene alergias ni intolerancias.",
+    none: "Confirmó que nadie tiene alergias, intolerancias ni celiaquía.",
     listed: "Indicó restricciones alimentarias: las ves en la app.",
     unknown: "Sin datos de alergias: pregúntale al cliente antes de preparar el menú.",
   },
   en: {
-    none: "They confirmed that nobody has any allergies or intolerances.",
+    none: "They confirmed that nobody has any allergies, intolerances or coeliac disease.",
     listed: "They mentioned dietary restrictions: see them in the app.",
     unknown: "No allergy information: ask the client before planning the menu.",
   },
