@@ -171,7 +171,8 @@ class _MealPlanSelector extends ConsumerWidget {
   }
 }
 
-/// Desglose en vivo del presupuesto.
+/// Desglose en vivo del presupuesto. Sin tiempo de cocina, como en la web: el
+/// motor lo usa para el precio, pero el cliente no lo ve.
 class _QuoteBreakdown extends ConsumerWidget {
   const _QuoteBreakdown();
 
@@ -199,11 +200,6 @@ class _QuoteBreakdown extends ConsumerWidget {
               label: l10n.quoteRecipes,
               value: '${quote.recipes}',
               valueKey: const ValueKey('quote-recipes'),
-            ),
-            _BreakdownRow(
-              label: l10n.quoteCookTime,
-              value: l10n.quoteMinutes(quote.cookMinutes),
-              valueKey: const ValueKey('quote-cook-minutes'),
             ),
             const Divider(height: 24),
             _BreakdownRow(
