@@ -160,6 +160,14 @@ describe("translateErrors (respuesta 400 del servidor)", () => {
     });
   });
 
+  it("con la versión rechazada los errores de campo son de otro contrato: solo «página desactualizada»", () => {
+    // Por ejemplo, mientras se despliegan la web y la función: la de antes no conoce la privacy ni el
+    // consentimiento de salud de esta página, y no hay que marcar esas casillas como faltantes.
+    expect(
+      translateErrors({ version: "invalid", consentPrivacy: "consentRequired", consentHealth: "healthConsentRequired" }),
+    ).toEqual({ fields: {}, outdated: true });
+  });
+
   it("versión, payload o idioma rechazados: la página está desactualizada", () => {
     expect(translateErrors({ version: "invalid" })).toEqual({ fields: {}, outdated: true });
     expect(translateErrors({ payload: "invalid" }).outdated).toBe(true);

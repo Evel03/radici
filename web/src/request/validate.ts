@@ -127,6 +127,9 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
  * `outdated`: el servidor rechazó algo que la página no controla (versión, formato): hay que recargar.
  */
 export function translateErrors(errors: PublicRequestErrors): { fields: FieldErrors; outdated: boolean } {
+  // Con la versión rechazada, el servidor validó con otro contrato y sus errores de campo no valen para
+  // esta página (por ejemplo, una versión de la privacy que no conoce): solo hay que recargar.
+  if (errors.version !== undefined) return { fields: {}, outdated: true };
   const fields: FieldErrors = {};
   let outdated = false;
   for (const [field, code] of Object.entries(errors)) {

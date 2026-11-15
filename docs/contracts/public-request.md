@@ -46,7 +46,7 @@ Los códigos de error por campo son los de `ErrorCode`; la web los traduce a sus
 
 ### Versión y pregunta de alergias (`noAllergies`)
 
-- `version`: el servidor acepta solo `PUBLIC_REQUEST_VERSION` (hoy 2). Una página vieja en caché (versión 1, sin `noAllergies`) recibe `{ "version": "invalid", "noAllergies": "invalid" }`: los dos son errores de página para su código (`translateErrors` en `web/src/request/validate.ts`) y muestra "página desactualizada, recárgala". Para que no reciba además `consentPrivacy`, `CONSENT_VERSIONS` conserva las privacy anteriores (§6).
+- `version`: el servidor acepta solo `PUBLIC_REQUEST_VERSION` (hoy 2). Una página vieja en caché (versión 1, sin `noAllergies`) recibe `{ "version": "invalid", "noAllergies": "invalid" }`: los dos son errores de página para su código (`translateErrors` en `web/src/request/validate.ts`) y muestra "página desactualizada, recárgala". Para que no reciba además `consentPrivacy`, `CONSENT_VERSIONS` conserva las privacy anteriores (§6). Desde la versión 2, con `version` rechazada la web ignora los errores de campo (son de otro contrato, por ejemplo durante un despliegue) y solo pide recargar.
 - `noAllergies` (boolean, obligatorio): `true` = nadie de quienes van a comer, niños incluidos, tiene alergias ni intolerancias alimentarias; `false` = las escribe en `restrictionsNote`. Reglas de `parsePublicRequest`:
   - no es booleano (también si falta) → `noAllergies: "invalid"`;
   - `true` con restricciones (`restrictionsNote`, `allergens` o `diets`) → `noAllergies: "invalid"`;
