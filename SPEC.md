@@ -392,7 +392,7 @@ Sin notificaciones entre las 21:00 y las 8:00 (hora de Roma), salvo fallos de pa
 
 ## 9. Criterios de aceptación del MVP
 
-1. Un prospecto pide desde la web sin cuenta y ve precio y horarios reales; no puede enviar sin contestar la pregunta de alergias (confirmar que nadie tiene o escribirlas), ni con alergias escritas sin el consentimiento de datos de salud.
+1. Un prospecto pide desde la web sin cuenta y ve el precio y los días en que Evelyn tiene lugar (calendario con `get_free_days`; la hora se acuerda con ella); no puede enviar sin contestar la pregunta de alergias (confirmar que nadie tiene o escribirlas), ni con alergias escritas sin el consentimiento de datos de salud.
 2. El presupuesto mostrado coincide con los 9 vectores de la sección 5.1 en la app, en la web y en el servidor.
 3. Dos clientes no pueden reservar horarios superpuestos aunque acepten al mismo tiempo (la restricción `no_overlap` lo impide y la app muestra un error claro). Un horario ofrecido por `get_free_slots` nunca es rechazado por `no_overlap`.
 4. Un presupuesto enviado bloquea el horario 48 h (sesión `held`) y se libera al vencer o al ser rechazado.

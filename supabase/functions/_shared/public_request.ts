@@ -14,17 +14,22 @@ export const PUBLIC_REQUEST_VERSION = 2;
 /** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
 export const CONSENT_VERSION = "2026-11-16";
 /**
- * Versiones aceptadas de la privacy: al cambiar el texto, agregar la nueva y dejar las anteriores
- * mientras haya páginas en caché (y mientras la web y la función se despliegan, que corren por separado).
+ * Versiones de la privacy con que se puede guardar un pedido de la versión vigente del contrato. Al cambiar
+ * el texto sin cambiar el contrato, agregar la nueva y dejar la anterior mientras haya páginas en caché (y
+ * mientras la web y la función se despliegan, que corren por separado).
  * 2026-11-16 suma la pregunta de alergias y las consultas del calendario (GET …/availability, que guardan
  * un hash de la IP para el límite de consultas).
- * 2026-11-15 (sin la pregunta de alergias) y 2026-10-19 (el borrador, solo prueba interna) ya no llegan
- * a guardarse: solo las mandan páginas de la versión 1 del contrato, que se rechazan por versión. Siguen
- * acá para que a esas páginas el servidor les conteste solo errores de página (version y noAllergies),
- * que la web vieja muestra como "página desactualizada, recárgala". Sin ellas también recibirían
- * consentPrivacy, y la web vieja marcaría como faltante la casilla de privacy que sí aceptaron.
  */
-export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-11-15", "2026-10-19"];
+export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION];
+/**
+ * Privacy de las páginas de la versión 1 del contrato: 2026-11-15 (sin la pregunta de alergias ni las
+ * consultas del calendario) y 2026-10-19 (el borrador, solo prueba interna). Nunca se guardan: se aceptan
+ * solo en pedidos de otra versión, que se rechazan por versión, para que esas páginas reciban solo errores
+ * de página (version y noAllergies) y la web vieja muestre "página desactualizada, recárgala" sin marcar
+ * como faltante la casilla de privacy que sí aceptaron. Un pedido de la versión vigente con una de estas
+ * (solo posible armado a mano) recibe consentRequired: no se guarda una privacy que no habla de las alergias.
+ */
+export const LEGACY_PAGE_CONSENT_VERSIONS: readonly string[] = ["2026-11-15", "2026-10-19"];
 /**
  * Versiones aceptadas del consentimiento de salud (la web manda CONSENT_VERSION). Lista explícita, con
  * la misma regla que CONSENT_VERSIONS: al cambiar CONSENT_VERSION, agregarla acá (un test lo exige) y
@@ -412,7 +417,9 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
   const locale: Locale = isOneOf(LOCALES, raw.locale) ? raw.locale : "it";
 
   const consents: RawConsents = isRecord(raw.consents) ? raw.consents : {};
-  const privacy = isOneOf(CONSENT_VERSIONS, consents.privacy) ? consents.privacy : null;
+  const privacyVersions =
+    raw.version === PUBLIC_REQUEST_VERSION ? CONSENT_VERSIONS : [...CONSENT_VERSIONS, ...LEGACY_PAGE_CONSENT_VERSIONS];
+  const privacy = isOneOf(privacyVersions, consents.privacy) ? consents.privacy : null;
   if (!privacy) errors.consentPrivacy = "consentRequired";
 
   const restricted = hasRestrictions({

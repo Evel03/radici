@@ -65,6 +65,17 @@ function chefInput(overrides: Partial<ChefNotificationInput> = {}): ChefNotifica
   };
 }
 
+test("franja: la web ya no la pregunta ('any'), así que no aparece; un pedido con mañana o tarde la muestra", () => {
+  const labels = { it: "Fascia oraria", es: "Franja horaria", en: "Time of day" } as const;
+  for (const locale of LOCALES) {
+    const any = { ...SUMMARY, slot: "any" as const };
+    for (const email of [renderClientConfirmation(clientInput({ summary: any }), locale), renderChefNotification(chefInput({ summary: any }), locale)]) {
+      assert.ok(!email.text.includes(labels[locale]), `${locale}: sin franja con 'any'`);
+    }
+    assert.ok(renderChefNotification(chefInput(), locale).text.includes(labels[locale]), `${locale}: con 'afternoon' se muestra`);
+  }
+});
+
 test("importes con enteros: it y es con coma y € al final; en con € adelante", () => {
   assert.equal(formatCents(14100, "it"), "141,00 €");
   assert.equal(formatCents(123456, "it"), "1.234,56 €");

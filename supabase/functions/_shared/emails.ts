@@ -628,14 +628,16 @@ function render(doc: EmailDocument): RenderedEmail {
 
 function summaryRows(summary: RequestSummary, messages: Messages, locale: Locale): Row[] {
   const meals = summary.meals.length > 1 ? messages.meals.both : messages.meals[summary.meals[0] ?? "dinner"];
-  return [
+  const rows: Row[] = [
     { label: messages.labels.type, value: messages.types[summary.type] },
     { label: messages.labels.people, value: formatPeople(summary.adults, summary.kids, locale) },
     { label: messages.labels.days, value: String(summary.days) },
     { label: messages.labels.meals, value: meals },
     { label: messages.labels.date, value: summary.preferredDate ? formatDateLong(summary.preferredDate, locale) : messages.noDate },
-    { label: messages.labels.slot, value: messages.slots[summary.slot] },
   ];
+  // La web ya no pregunta la franja (manda "any"): solo se muestra si el pedido trae mañana o tarde.
+  if (summary.slot !== "any") rows.push({ label: messages.labels.slot, value: messages.slots[summary.slot] });
+  return rows;
 }
 
 function estimateBlocks(summary: RequestSummary, messages: Messages, locale: Locale): Block[] {

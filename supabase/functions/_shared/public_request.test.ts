@@ -5,6 +5,7 @@ import {
   CONSENT_VERSION,
   CONSENT_VERSIONS,
   HEALTH_CONSENT_VERSIONS,
+  LEGACY_PAGE_CONSENT_VERSIONS,
   PUBLIC_REQUEST_VERSION,
   addDays,
   cleanMultiLine,
@@ -175,13 +176,15 @@ test("privacy obligatoria y con una versión conocida", () => {
   assert.equal(errorsOf({ ...payload(), consents: undefined }).consentPrivacy, "consentRequired");
 });
 
-test("privacy: el texto de 2026-11-15 ya no es el vigente, pero sus páginas en caché se aceptan con su versión", () => {
-  // 2026-11-15 no contaba las consultas del calendario (contrato §11). Se guarda la versión que vio cada uno.
-  assert.notEqual(CONSENT_VERSION, "2026-11-15");
-  for (const version of [CONSENT_VERSION, "2026-11-15", "2026-10-19"]) {
-    const result = parsePublicRequest(payload({ consents: { privacy: version, health: null } }), { today: TODAY });
-    assert.ok(result.ok, version);
-    if (result.ok) assert.equal(result.value.consents.privacy, version);
+test("privacy: un pedido de la versión vigente solo se guarda con el texto vigente; las viejas, nunca", () => {
+  // 2026-11-15 no hablaba de la pregunta de alergias ni de las consultas del calendario (contrato §11):
+  // un pedido v2 con esa versión (solo posible armado a mano) no se guarda.
+  const ok = parsePublicRequest(payload({ consents: { privacy: CONSENT_VERSION, health: null } }), { today: TODAY });
+  assert.ok(ok.ok);
+  if (ok.ok) assert.equal(ok.value.consents.privacy, CONSENT_VERSION);
+  assert.deepEqual([...LEGACY_PAGE_CONSENT_VERSIONS], ["2026-11-15", "2026-10-19"]);
+  for (const version of LEGACY_PAGE_CONSENT_VERSIONS) {
+    assert.deepEqual(errorsOf(payload({ consents: { privacy: version, health: null } })), { consentPrivacy: "consentRequired" }, version);
   }
 });
 
@@ -240,9 +243,11 @@ test("versiones aceptadas: la vigente vale para la privacy y para la salud, y la
   // No sigue sola a CONSENT_VERSION: un cambio de la privacy que no toca la parte de salud no deja
   // afuera el consentimiento de salud que mandan las páginas ya abiertas (o la web vieja durante el despliegue).
   assert.deepEqual([...HEALTH_CONSENT_VERSIONS], ["2026-11-16"]);
-  for (const list of [CONSENT_VERSIONS, HEALTH_CONSENT_VERSIONS]) {
+  for (const list of [CONSENT_VERSIONS, HEALTH_CONSENT_VERSIONS, LEGACY_PAGE_CONSENT_VERSIONS]) {
     assert.equal(new Set(list).size, list.length, `sin repetidas: ${list.join(", ")}`);
   }
+  // Una versión vieja nunca vale para guardar un pedido de la versión vigente.
+  assert.deepEqual(CONSENT_VERSIONS.filter((v) => LEGACY_PAGE_CONSENT_VERSIONS.includes(v)), []);
 });
 
 test("solo la versión 2: una página de la versión 1 (en caché) recibe version invalid y la web pide recargar", () => {
