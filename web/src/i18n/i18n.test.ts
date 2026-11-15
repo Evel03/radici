@@ -100,6 +100,20 @@ describe("claves usadas por la web", () => {
   });
 });
 
+describe("privacy", () => {
+  // El calendario pide la disponibilidad (GET …/availability, contrato §11) mientras se completa el
+  // formulario, antes de enviar, y cada consulta deja la huella (hash) de la IP para su límite. La
+  // privacy lo cuenta donde dice qué sale antes del envío, con qué base y cuánto dura la huella.
+  const calendar = { it: "calendario", es: "calendario", en: "calendar" } as const;
+  for (const lang of LANGS) {
+    it(`${lang}: cuenta las consultas del calendario (antes de enviar, base legal y conservación)`, () => {
+      for (const key of ["privacy.flowBody", "privacy.legalBody", "privacy.retentionBody"]) {
+        expect(dicts[lang][key], key).toContain(calendar[lang]);
+      }
+    });
+  }
+});
+
 describe("SEO y accesibilidad de los textos", () => {
   /** Caracteres como los cuenta un buscador (puntos de código, no unidades UTF-16). */
   const length = (text: string): number => [...text].length;

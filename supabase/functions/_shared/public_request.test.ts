@@ -127,6 +127,16 @@ test("privacy obligatoria y con una versión conocida", () => {
   assert.equal(errorsOf({ ...payload(), consents: undefined }).consentPrivacy, "consentRequired");
 });
 
+test("privacy: el texto de 2026-11-15 ya no es el vigente, pero sus páginas en caché se aceptan con su versión", () => {
+  // 2026-11-15 no contaba las consultas del calendario (contrato §11). Se guarda la versión que vio cada uno.
+  assert.notEqual(CONSENT_VERSION, "2026-11-15");
+  for (const version of [CONSENT_VERSION, "2026-11-15", "2026-10-19"]) {
+    const result = parsePublicRequest(payload({ consents: { privacy: version, health: null } }), { today: TODAY });
+    assert.ok(result.ok, version);
+    if (result.ok) assert.equal(result.value.consents.privacy, version);
+  }
+});
+
 test("email obligatorio y válido; teléfono obligatorio y normalizable", () => {
   assert.equal(errorsOf(payload({ email: "" })).email, "required");
   assert.equal(errorsOf(payload({ email: "giulia@" })).email, "invalid");
