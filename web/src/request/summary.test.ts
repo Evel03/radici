@@ -46,10 +46,10 @@ describe("summaryRows (pantalla de gracias)", () => {
     expect(summaryRows(data, null, i18nFor("it")).some((r) => r.label === "Totale stimato")).toBe(false);
   });
 
-  it("no incluye datos personales ni de salud", () => {
-    const data = validRequest({ allergens: ["milk"], consentHealth: true, notes: "citofono rotto", zone: "Redona" });
+  it("no incluye datos personales", () => {
+    const data = validRequest({ notes: "citofono rotto", zone: "Redona" });
     const text = JSON.stringify(summaryRows(data, ESTIMATE, i18nFor("it")));
-    for (const secret of ["Latte", "milk", "citofono", "Redona", "Giulia", "333"]) {
+    for (const secret of ["citofono", "Redona", "Giulia", "333"]) {
       expect(text).not.toContain(secret);
     }
   });

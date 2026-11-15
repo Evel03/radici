@@ -6,7 +6,6 @@ import {
   PUBLIC_REQUEST_VERSION,
   cleanMultiLine,
   cleanOneLine,
-  hasHealthData,
   mealsOf,
   type Locale,
   type PublicRequestPayload,
@@ -30,9 +29,10 @@ export function buildPayload(data: RequestData, opts: PayloadOptions): PublicReq
     kids: data.kids,
     days: data.days,
     meals: mealsOf(data.meals),
-    allergens: [...data.allergens],
-    diets: [...data.diets],
-    restrictionsNote: cleanOneLine(data.restrictionsNote),
+    // El formulario no pide datos de salud: el contrato los sigue teniendo y van vacíos.
+    allergens: [],
+    diets: [],
+    restrictionsNote: "",
     preferredDate: data.preferredDate === "" ? null : data.preferredDate,
     slot: data.slot,
     name: cleanOneLine(data.name),
@@ -45,8 +45,8 @@ export function buildPayload(data: RequestData, opts: PayloadOptions): PublicReq
     consents: {
       // "" = no aceptó: el servidor responde consentRequired.
       privacy: data.consentPrivacy ? CONSENT_VERSION : "",
-      // Solo si hay datos de salud: sin restricciones no se guarda ese consentimiento.
-      health: hasHealthData(data) && data.consentHealth ? CONSENT_VERSION : null,
+      // Sin datos de salud no hay consentimiento de salud que guardar.
+      health: null,
     },
     turnstileToken: opts.turnstileToken,
     ...(opts.requestKey ? { requestKey: opts.requestKey } : {}),

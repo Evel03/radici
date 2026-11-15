@@ -8,20 +8,7 @@ import { LIMITS } from "../engine.ts";
 import type { MessageKey, Params } from "../i18n/core.ts";
 import { addDays, todayInRome } from "../lib/dates.ts";
 import { formatCents, formatDuration } from "../lib/format.ts";
-import {
-  ALLERGENS,
-  DATE_WINDOW,
-  DIETS,
-  MEAL_OPTIONS,
-  REQUEST_TYPES,
-  SLOTS,
-  TEXT_LIMITS,
-  hasHealthData,
-  isOneOf,
-  type Allergen,
-  type Diet,
-  type RequestData,
-} from "../request/model.ts";
+import { DATE_WINDOW, MEAL_OPTIONS, REQUEST_TYPES, SLOTS, TEXT_LIMITS, isOneOf, type RequestData } from "../request/model.ts";
 import { buildPayload, type PayloadOptions } from "../request/payload.ts";
 import { computeQuote } from "../request/quote.ts";
 import { createRequestKeys, doneViewFor, type DoneView } from "../request/request-key.ts";
@@ -54,10 +41,6 @@ const CONTROLS: Readonly<Record<FieldName, readonly string[]>> = {
   people: ["adults", "kids"],
   days: ["days"],
   meals: [],
-  allergens: [],
-  diets: [],
-  restrictionsNote: ["restrictionsNote"],
-  consentHealth: ["consentHealth"],
   preferredDate: ["preferredDate"],
   slot: [],
   name: ["name"],
@@ -79,8 +62,6 @@ const doneContact = byId("done-contact");
 const doneEmail = byId("done-email");
 const doneDetails = byId("done-details");
 const doneSummary = byId("done-summary");
-const healthBlock = byId("health-consent");
-const celiacNote = byId("celiac-note");
 const configWarning = byId("config-warning");
 const formError = byId("form-error");
 const formErrorText = byId("form-error-text");
@@ -160,9 +141,6 @@ function readForm(): RequestData {
     kids: int("kids"),
     days: int("days"),
     meals: isOneOf(MEAL_OPTIONS, meals) ? meals : "dinner",
-    allergens: fd.getAll("allergens").filter((v): v is Allergen => isOneOf(ALLERGENS, v)),
-    diets: fd.getAll("diets").filter((v): v is Diet => isOneOf(DIETS, v)),
-    restrictionsNote: str("restrictionsNote"),
     preferredDate: str("preferredDate"),
     slot: isOneOf(SLOTS, slot) ? slot : "any",
     name: str("name"),
@@ -172,7 +150,6 @@ function readForm(): RequestData {
     whatsappOptIn: fd.has("whatsappOptIn"),
     notes: str("notes"),
     consentPrivacy: fd.has("consentPrivacy"),
-    consentHealth: fd.has("consentHealth"),
   };
 }
 
@@ -527,8 +504,6 @@ function startRequestPage(shell: Shell): void {
     if (phase === "done") return;
     const data = readForm();
     keys.edited(JSON.stringify(data));
-    healthBlock.hidden = !hasHealthData(data);
-    celiacNote.classList.toggle("note--active", data.allergens.includes("gluten"));
     syncSteppers();
     renderQuote(data);
     const errors = fieldErrors(data);

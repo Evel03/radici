@@ -5,7 +5,7 @@ import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
 import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
-import { ALLERGENS, DIETS, MEAL_OPTIONS, REQUEST_TYPES, SLOTS } from "../request/model.ts";
+import { MEAL_OPTIONS, REQUEST_TYPES, SLOTS } from "../request/model.ts";
 import { FIELD_ORDER } from "../request/validate.ts";
 import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang } from "./core.ts";
 import en from "./en.json";
@@ -59,10 +59,8 @@ describe("claves usadas por la web", () => {
     }
   });
 
-  it("existen etiquetas para cada valor del modelo (alérgenos, dietas, tipos, comidas, franjas)", () => {
+  it("existen etiquetas para cada valor del modelo (tipos, comidas, franjas)", () => {
     const keys = [
-      ...ALLERGENS.map((a) => `allergens.${a}`),
-      ...DIETS.map((d) => `diets.${d}`),
       ...REQUEST_TYPES.map((t) => `request.type.${t}`),
       ...MEAL_OPTIONS.map((m) => `request.meals.${m}`),
       ...SLOTS.map((s) => `request.slot.${s}`),
@@ -70,12 +68,13 @@ describe("claves usadas por la web", () => {
     expect(keys.filter((key) => !(key in dicts.it))).toEqual([]);
   });
 
-  it("el formulario ofrece los 14 alérgenos UE y las dos dietas, en el orden del modelo", () => {
+  it("el formulario ofrece las opciones del modelo, en su orden, y no pide datos de salud", () => {
     const values = (name: string): string[] =>
       [...requestHtml.matchAll(new RegExp(`name="${name}" value="([^"]+)"`, "g"))].map((m) => m[1] ?? "");
-    expect(values("allergens")).toEqual([...ALLERGENS]);
-    expect(ALLERGENS).toHaveLength(14);
-    expect(values("diets")).toEqual([...DIETS]);
+    // Alergias, intolerancias y dietas las ve Evelyn con el cliente: el formulario no las pide.
+    for (const name of ["allergens", "diets", "restrictionsNote", "consentHealth"]) {
+      expect(requestHtml, name).not.toContain(`name="${name}"`);
+    }
     expect(values("meals")).toEqual([...MEAL_OPTIONS]);
     expect(values("slot")).toEqual([...SLOTS]);
     expect(values("type")).toEqual([...REQUEST_TYPES]);
