@@ -65,11 +65,10 @@ insert into public.chef_settings (chef_id) values ('cef00000-0000-4000-8000-0000
 insert into public.chef_settings (chef_id, hourly_rate_cents, travel_fee_cents, shop_minutes, gap_minutes)
 values ('cef00000-0000-4000-8000-000000000002', 2500, 1500, 40, 20);
 
--- Evelyn: lunes a viernes 9–18, sábado 9–13 (dow: 0 = domingo)
+-- Evelyn: lunes a viernes de 9 a 15 (dow: 0 = domingo), como en producción (decisión del 15/11/2026;
+-- migración 20261115130100_default_availability.sql)
 insert into public.availability_rules (chef_id, dow, start_time, end_time)
-select 'cef00000-0000-4000-8000-000000000001'::uuid, d, time '09:00', time '18:00' from generate_series(1, 5) as d
-union all
-select 'cef00000-0000-4000-8000-000000000001'::uuid, 6, time '09:00', time '13:00';
+select 'cef00000-0000-4000-8000-000000000001'::uuid, d, time '09:00', time '15:00' from generate_series(1, 5) as d;
 -- Giulia: martes a sábado 10–19
 insert into public.availability_rules (chef_id, dow, start_time, end_time)
 select 'cef00000-0000-4000-8000-000000000002'::uuid, d, time '10:00', time '19:00' from generate_series(2, 6) as d;

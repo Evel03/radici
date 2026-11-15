@@ -1,13 +1,15 @@
-// Edge Function public-request: pedido del formulario público (docs/contracts/public-request.md).
+// Edge Function public-request: pedido del formulario público (POST) y disponibilidad por día
+// del calendario (GET …/availability) (docs/contracts/public-request.md §2 y §11).
 // Este archivo solo conecta lo real (Deno, supabase-js con la clave secreta, EdgeRuntime);
 // la lógica y sus tests están en handler.ts.
 //
 // Pública: verify_jwt = false en supabase/config.toml. Las claves nuevas (sb_publishable_…,
 // sb_secret_…) no son JWT y el chequeo de la plataforma no autentica a nadie: la protección es
-// Turnstile + límite por IP + validación.
+// Turnstile + límite por IP + validación (la lectura de disponibilidad: límite por IP propio).
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import {
   StoreError,
+  availableDatesFromRpc,
   chefFromRow,
   configWarnings,
   consoleLogger,
@@ -53,10 +55,11 @@ function createStore(): PublicRequestStore {
       loadChef: () => fail("load_chef"),
       submit: () => fail("submit"),
       markChefNotificationSent: () => fail("mark_sent"),
+      freeDays: () => fail("free_days"),
     };
   }
 
-  // Clave secreta (sin RLS): solo para las funciones del pedido y la notificación.
+  // Clave secreta (sin RLS): solo para las funciones del pedido, la notificación y la disponibilidad.
   const supabase = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
@@ -112,6 +115,19 @@ function createStore(): PublicRequestStore {
         .eq("payload->>request_id", requestId)
         .is("sent_at", null);
       if (error) throw storeError("mark_sent", error);
+    },
+
+    async freeDays(chefId, cookMinutes, fromDate, days) {
+      const { data, error } = await supabase.rpc("get_free_days", {
+        p_chef_id: chefId,
+        p_cook_minutes: cookMinutes,
+        p_from_date: fromDate,
+        p_days: days,
+      });
+      if (error) throw storeError("free_days", error);
+      const dates = availableDatesFromRpc(data);
+      if (!dates) throw new StoreError("free_days", null, "unexpected_result");
+      return dates;
     },
   };
 }

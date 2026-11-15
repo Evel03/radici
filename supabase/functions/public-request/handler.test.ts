@@ -2,14 +2,20 @@
 // Correr con: npm test (node --test). La función real (index.ts) solo conecta Supabase y Deno.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { AVAILABILITY_DAYS, AVAILABILITY_PATH, buildAvailabilityResponse } from "../_shared/availability.ts";
+import { hashSubject } from "../_shared/client_ip.ts";
 import { CONSENT_VERSION, PUBLIC_REQUEST_VERSION, type PublicRequestPayload } from "../_shared/public_request.ts";
 import { DEFAULT_PRICING, calcQuote } from "../_shared/quote.ts";
 import { RESEND_API_URL } from "../_shared/resend.ts";
 import { TURNSTILE_VERIFY_URL } from "../_shared/turnstile.ts";
 import {
+  AVAILABILITY_CACHE_CONTROL,
+  AVAILABILITY_RATE_LIMITS,
   DEFAULT_CHEF_LOCALE,
   RATE_LIMITS,
   StoreError,
+  availabilityRateSubject,
+  availableDatesFromRpc,
   chefFromRow,
   configWarnings,
   createPublicRequestHandler,
@@ -98,7 +104,9 @@ class FakeStore implements PublicRequestStore {
   chef: ChefInfo | null = CHEF;
   /** Filas de public.chefs (para resolveDefaultChef sin CHEF_ID). */
   chefIds: string[] = [CHEF_ID];
-  failOn: "rate" | "resolve" | "chef" | "submit" | "mark" | null = null;
+  failOn: "rate" | "resolve" | "chef" | "submit" | "mark" | "freeDays" | null = null;
+  /** true: como hit_public_request_rate, cuenta los intentos de cada clave y aplica los límites (si no, responde allow). */
+  countHits = false;
   hits: Array<{ ipHash: string; maxHour: number; maxDay: number }> = [];
   resolveCalls = 0;
   loadedChefIds: string[] = [];
@@ -108,11 +116,22 @@ class FakeStore implements PublicRequestStore {
   submitted: SubmitPublicRequestParams[] = [];
   byKey = new Map<string, SubmitResult>();
   marked: string[] = [];
+  /** Fechas que public.get_free_days marca con available = true. */
+  freeDates: string[] = [];
+  freeDaysCalls: Array<{ chefId: string; cookMinutes: number; fromDate: string; days: number }> = [];
 
   async hitRateLimit(ipHash: string, maxHour: number, maxDay: number): Promise<boolean> {
     if (this.failOn === "rate") throw new StoreError("rate_limit", "57014", null);
     this.hits.push({ ipHash, maxHour, maxDay });
-    return this.allow;
+    if (!this.countHits) return this.allow;
+    const count = this.hits.filter((hit) => hit.ipHash === ipHash).length;
+    return count <= maxHour && count <= maxDay;
+  }
+
+  async freeDays(chefId: string, cookMinutes: number, fromDate: string, days: number): Promise<string[]> {
+    if (this.failOn === "freeDays") throw new StoreError("free_days", "57014", null);
+    this.freeDaysCalls.push({ chefId, cookMinutes, fromDate, days });
+    return [...this.freeDates];
   }
 
   async resolveDefaultChef(): Promise<DefaultChef> {
@@ -158,6 +177,8 @@ interface Harness {
 
 interface HarnessOptions {
   env?: Record<string, string | undefined>;
+  /** Ahora (por defecto NOW). */
+  now?: Date;
   turnstile?: () => Response | Promise<Response>;
   resend?: (body: { to: string[] }) => Response | Promise<Response>;
   whatsapp?: () => Response | Promise<Response>;
@@ -186,7 +207,7 @@ function harness(options: HarnessOptions = {}): Harness {
     config: readConfig((name) => env[name]),
     store,
     fetch: fakeFetch as typeof fetch,
-    now: () => NOW,
+    now: () => options.now ?? NOW,
     waitUntil: (task) => {
       background.push(task);
     },
@@ -234,7 +255,8 @@ test("OPTIONS: CORS para un origen permitido y nada para otros", async () => {
   const allowed = await handle(new Request(ENDPOINT, { method: "OPTIONS", headers: { origin: "https://radicicucina.app" } }));
   assert.equal(allowed.status, 204);
   assert.equal(allowed.headers.get("access-control-allow-origin"), "https://radicicucina.app");
-  assert.equal(allowed.headers.get("access-control-allow-methods"), "POST, OPTIONS");
+  // GET por la disponibilidad del calendario (contrato §11), POST por el pedido.
+  assert.equal(allowed.headers.get("access-control-allow-methods"), "GET, POST, OPTIONS");
   assert.match(allowed.headers.get("access-control-allow-headers") ?? "", /content-type/);
 
   const other = await handle(new Request(ENDPOINT, { method: "OPTIONS", headers: { origin: "https://evil.example" } }));
@@ -857,6 +879,227 @@ test("ningún asunto lleva teléfono, email, zona ni datos de salud, aunque el c
     }
     if (name !== "Giuliaxyz") assert.ok(subjects.includes("Nueva solicitud desde la web"), name);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Disponibilidad por día: GET …/availability?minutes=N (contrato §11)
+// ---------------------------------------------------------------------------
+
+const AVAILABILITY_URL = `${ENDPOINT}${AVAILABILITY_PATH}`;
+
+function getAvailability(query: string, headers: Record<string, string> = {}, method = "GET"): Request {
+  return new Request(`${AVAILABILITY_URL}${query}`, {
+    method,
+    headers: { origin: "https://radicicucina.app", "cf-connecting-ip": "203.0.113.7", ...headers },
+  });
+}
+
+type AvailabilityBody = { days: Array<{ date: string; available: boolean }> };
+
+test("disponibilidad: 200 con los 14 días desde mañana en Roma, marcados según get_free_days", async () => {
+  const run = harness();
+  run.store.freeDates = ["2026-10-21", "2026-10-22", "2026-11-02"];
+  // forceFunctionRegion lo agrega la web (como en el POST); la función no lo lee.
+  const response = await run.handle(getAvailability("?minutes=180&forceFunctionRegion=eu-central-1"));
+  assert.equal(response.status, 200);
+  const body = await json(response);
+  assert.deepEqual(body, buildAvailabilityResponse("2026-10-19", 180, ["2026-10-21", "2026-10-22", "2026-11-02"]));
+  const { days } = body as AvailabilityBody;
+  assert.equal(days.length, AVAILABILITY_DAYS);
+  assert.deepEqual([days[0]?.date, days[13]?.date], ["2026-10-20", "2026-11-02"]);
+  assert.deepEqual(days.filter((day) => day.available).map((day) => day.date), ["2026-10-21", "2026-10-22", "2026-11-02"]);
+  // De mañana a +14: los mismos días que se pueden elegir en el formulario.
+  assert.deepEqual(run.store.freeDaysCalls, [{ chefId: CHEF_ID, cookMinutes: 180, fromDate: "2026-10-20", days: 14 }]);
+  assert.equal(run.store.submitted.length, 0);
+  assert.equal(run.fetchCalls.length, 0, "es una lectura: sin Turnstile ni avisos");
+});
+
+test("disponibilidad: CORS con la misma lista, Vary: Origin y caché pública de un minuto", async () => {
+  const { handle } = harness();
+  const ok = await handle(getAvailability("?minutes=150"));
+  assert.equal(ok.headers.get("access-control-allow-origin"), "https://radicicucina.app");
+  assert.equal(ok.headers.get("vary"), "Origin");
+  assert.equal(ok.headers.get("cache-control"), "public, max-age=60");
+  assert.equal(AVAILABILITY_CACHE_CONTROL, "public, max-age=60");
+  assert.match(ok.headers.get("content-type") ?? "", /^application\/json/);
+
+  const other = await handle(getAvailability("?minutes=150", { origin: "https://evil.example" }));
+  assert.equal(other.status, 200, "la respuesta sale igual, pero el navegador no deja leerla");
+  assert.equal(other.headers.get("access-control-allow-origin"), null);
+  assert.equal(other.headers.get("vary"), "Origin");
+
+  const preflight = await handle(new Request(AVAILABILITY_URL, { method: "OPTIONS", headers: { origin: "https://radicicucina.app" } }));
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-methods"), "GET, POST, OPTIONS");
+});
+
+test("disponibilidad: \"hoy\" es la fecha de Roma, no la de UTC", async () => {
+  // Las 22:30 UTC del 19/10 son las 00:30 del 20/10 en Roma (CEST): la ventana empieza el 21.
+  const run = harness({ now: new Date("2026-10-19T22:30:00Z") });
+  const response = await run.handle(getAvailability("?minutes=180"));
+  assert.equal(response.status, 200);
+  assert.equal(run.store.freeDaysCalls[0]?.fromDate, "2026-10-21");
+  assert.equal(((await json(response)) as AvailabilityBody).days[0]?.date, "2026-10-21");
+});
+
+test("disponibilidad: minutes inválido o ausente → 400 sin tocar la base", async () => {
+  const { handle, store } = harness();
+  for (const query of ["", "?minutes=", "?minutes=abc", "?minutes=45", "?minutes=0", "?minutes=750", "?minutes=180.5", "?minutos=180"]) {
+    const response = await handle(getAvailability(query));
+    assert.equal(response.status, 400, query);
+    assert.deepEqual(await json(response), { errors: { minutes: "invalid" } });
+    assert.equal(response.headers.get("cache-control"), "public, max-age=60", "depende solo de la URL");
+  }
+  assert.equal(store.hits.length, 0);
+  assert.equal(store.freeDaysCalls.length, 0);
+});
+
+test("disponibilidad: solo GET (y OPTIONS); otro método → 405 con Allow, y un POST ahí no es un pedido", async () => {
+  const { handle, store } = harness();
+  for (const method of ["POST", "PUT", "DELETE"]) {
+    const response = await handle(getAvailability("?minutes=180", { "content-type": "application/json" }, method));
+    assert.equal(response.status, 405, method);
+    assert.deepEqual(await json(response), { error: "method" });
+    assert.equal(response.headers.get("allow"), "GET, OPTIONS");
+  }
+  assert.equal(store.calls.length, 0);
+  assert.equal(store.hits.length, 0);
+});
+
+test("disponibilidad: límite por IP propio y más generoso; las lecturas no gastan el cupo del formulario", async () => {
+  const run = harness({ env: { EMAIL_TRANSPORT: "log" } });
+  run.store.countHits = true;
+  for (let i = 0; i < 10; i++) {
+    assert.equal((await run.handle(getAvailability("?minutes=180"))).status, 200);
+  }
+  assert.equal((await run.handle(post(payload()))).status, 201, "10 lecturas no tocan los 5 pedidos por hora");
+  const read = run.store.hits[0];
+  const submit = run.store.hits[10];
+  assert.equal(read?.ipHash, await hashSubject("availability:203.0.113.7", ENV["IP_HASH_SALT"] ?? ""), "HMAC de availability:<ip>");
+  assert.notEqual(read?.ipHash, submit?.ipHash, "otra clave para la misma IP");
+  assert.deepEqual([read?.maxHour, read?.maxDay], [AVAILABILITY_RATE_LIMITS.perHour, AVAILABILITY_RATE_LIMITS.perDay]);
+  assert.deepEqual([submit?.maxHour, submit?.maxDay], [RATE_LIMITS.perHour, RATE_LIMITS.perDay]);
+  assert.deepEqual(AVAILABILITY_RATE_LIMITS, { perHour: 120, perDay: 600 });
+
+  // Y al revés: con el cupo del formulario agotado, el calendario sigue leyendo.
+  for (let i = 0; i < 4; i++) assert.equal((await run.handle(post(payload()))).status, 201);
+  assert.equal((await run.handle(post(payload()))).status, 429);
+  assert.equal((await run.handle(getAvailability("?minutes=180"))).status, 200);
+  await run.settle();
+});
+
+test("disponibilidad: pasado el límite → 429 con Retry-After, sin consultar los días", async () => {
+  const { handle, store, logs } = harness();
+  store.allow = false;
+  const response = await handle(getAvailability("?minutes=180"));
+  assert.equal(response.status, 429);
+  assert.deepEqual(await json(response), { error: "rateLimited" });
+  assert.equal(response.headers.get("retry-after"), "3600");
+  assert.equal(response.headers.get("access-control-expose-headers"), "Retry-After");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(store.freeDaysCalls.length, 0);
+  assert.ok(logs.some((entry) => entry.event === "rate_limited" && entry.fields["route"] === "availability"));
+});
+
+test("disponibilidad: error de la base → 503 sin detalles; el log lleva solo la operación y el código", async () => {
+  for (const [failOn, op] of [["freeDays", "free_days"], ["rate", "rate_limit"]] as const) {
+    const { handle, store, logs } = harness();
+    store.failOn = failOn;
+    const response = await handle(getAvailability("?minutes=180"));
+    assert.equal(response.status, 503, failOn);
+    assert.deepEqual(await json(response), { error: "server" });
+    assert.equal(response.headers.get("cache-control"), "no-store", "un error no queda en la caché");
+    const entry = logs.find((item) => item.event === "db_error");
+    assert.deepEqual(Object.keys(entry?.fields ?? {}).sort(), ["code", "op"]);
+    assert.equal(entry?.fields["op"], op);
+  }
+  // Sin CHEF_ID, si falla la búsqueda de la cocinera, también.
+  const run = harness({ env: { CHEF_ID: undefined } });
+  run.store.failOn = "resolve";
+  assert.equal((await run.handle(getAvailability("?minutes=180"))).status, 503);
+  assert.deepEqual(run.logs.find((entry) => entry.event === "db_error")?.fields, { op: "resolve_chef", code: "PGRST301" });
+});
+
+test("disponibilidad: sin CHEF_ID usa la única cocinera; sin ninguna o con varias → 500", async () => {
+  const run = harness({ env: { CHEF_ID: undefined } });
+  run.store.chefIds = [OTHER_CHEF_ID];
+  assert.equal((await run.handle(getAvailability("?minutes=150"))).status, 200);
+  assert.equal(run.store.freeDaysCalls[0]?.chefId, OTHER_CHEF_ID);
+
+  for (const [chefIds, reason] of [[[], "no_chef"], [[CHEF_ID, OTHER_CHEF_ID], "multiple_chefs"]] as const) {
+    const other = harness({ env: { CHEF_ID: undefined } });
+    other.store.chefIds = [...chefIds];
+    const response = await other.handle(getAvailability("?minutes=150"));
+    assert.equal(response.status, 500, reason);
+    assert.deepEqual(await json(response), { error: "server" });
+    assert.deepEqual(other.logs.find((entry) => entry.event === "chef_id_unresolved")?.fields, { reason });
+    assert.equal(other.store.freeDaysCalls.length, 0);
+  }
+});
+
+test("disponibilidad: solo necesita IP_HASH_SALT (Turnstile es del formulario) y, si está, un CHEF_ID válido", async () => {
+  const noTurnstile = harness({ env: { TURNSTILE_SECRET_KEY: undefined } });
+  assert.equal((await noTurnstile.handle(getAvailability("?minutes=180"))).status, 200);
+
+  const noSalt = harness({ env: { IP_HASH_SALT: undefined } });
+  const response = await noSalt.handle(getAvailability("?minutes=180"));
+  assert.equal(response.status, 500);
+  assert.deepEqual(await json(response), { error: "server" });
+  assert.deepEqual(noSalt.logs.find((entry) => entry.event === "config_missing")?.fields["missing"], ["IP_HASH_SALT"]);
+  assert.equal(noSalt.store.hits.length, 0);
+
+  const badChef = harness({ env: { CHEF_ID: "no-es-uuid" } });
+  assert.equal((await badChef.handle(getAvailability("?minutes=180"))).status, 500);
+  assert.deepEqual(badChef.logs.find((entry) => entry.event === "config_invalid")?.fields["invalid"], ["CHEF_ID"]);
+  assert.equal(badChef.store.hits.length, 0);
+  assert.equal(badChef.store.resolveCalls, 0);
+});
+
+test("disponibilidad: los logs no llevan la IP; sin IP se avisa y se usa un contador compartido", async () => {
+  const ok = harness();
+  const auto = harness({ env: { CHEF_ID: undefined } });
+  const limited = harness();
+  limited.store.allow = false;
+  const failing = harness();
+  failing.store.failOn = "freeDays";
+  for (const run of [ok, auto, limited, failing]) await run.handle(getAvailability("?minutes=180"));
+  const noIp = harness();
+  assert.equal((await noIp.handle(new Request(`${AVAILABILITY_URL}?minutes=180`))).status, 200);
+  for (const run of [ok, auto, limited, failing, noIp]) {
+    const text = JSON.stringify(run.logs);
+    assert.ok(!text.includes("203.0.113"), `el log lleva la IP: ${text}`);
+  }
+  assert.ok(noIp.logs.some((entry) => entry.event === "client_ip_missing"));
+  assert.equal(noIp.store.hits[0]?.ipHash, await hashSubject("availability:unknown", ENV["IP_HASH_SALT"] ?? ""));
+});
+
+test("availabilityRateSubject: la clave del límite del formulario con el prefijo del calendario", () => {
+  assert.equal(availabilityRateSubject("203.0.113.7"), "availability:203.0.113.7");
+  assert.equal(availabilityRateSubject("2001:db8:1:2:3:4:5:6"), "availability:2001:db8:1:2::/64", "una IPv6 cuenta por su /64");
+  assert.equal(availabilityRateSubject(null), "availability:unknown");
+});
+
+test("availableDatesFromRpc: las fechas con available = true; cualquier otra forma, null", () => {
+  assert.deepEqual(
+    availableDatesFromRpc([
+      { day: "2026-10-20", available: false },
+      { day: "2026-10-21", available: true },
+      { day: "2026-10-22", available: true },
+    ]),
+    ["2026-10-21", "2026-10-22"],
+  );
+  assert.deepEqual(availableDatesFromRpc([]), []);
+  const bad: unknown[] = [
+    null,
+    {},
+    "x",
+    [null],
+    [{ available: true }],
+    [{ day: 20261021, available: true }],
+    [{ day: "2026-02-30", available: true }],
+    [{ day: "2026-10-21", available: "true" }],
+  ];
+  for (const data of bad) assert.equal(availableDatesFromRpc(data), null, JSON.stringify(data));
 });
 
 // ---------------------------------------------------------------------------
