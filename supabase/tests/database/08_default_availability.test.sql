@@ -1,5 +1,5 @@
 -- =====================================================================
--- Horario inicial de las cocineras (migración 20261115120100_default_availability.sql).
+-- Horario inicial de las cocineras (migración 20261115130100_default_availability.sql).
 -- Decisión del dueño del 15/11/2026: lunes a viernes de 9 a 15 para toda cocinera sin
 -- ninguna regla de disponibilidad, hasta que la app tenga editor.
 -- =====================================================================

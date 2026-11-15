@@ -66,7 +66,7 @@ insert into public.chef_settings (chef_id, hourly_rate_cents, travel_fee_cents, 
 values ('cef00000-0000-4000-8000-000000000002', 2500, 1500, 40, 20);
 
 -- Evelyn: lunes a viernes de 9 a 15 (dow: 0 = domingo), como en producción (decisión del 15/11/2026;
--- migración 20261115120100_default_availability.sql)
+-- migración 20261115130100_default_availability.sql)
 insert into public.availability_rules (chef_id, dow, start_time, end_time)
 select 'cef00000-0000-4000-8000-000000000001'::uuid, d, time '09:00', time '15:00' from generate_series(1, 5) as d;
 -- Giulia: martes a sábado 10–19

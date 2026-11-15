@@ -1,6 +1,6 @@
 -- =====================================================================
 -- Radici · Horario inicial de las cocineras (migración de datos)
--- Tests: supabase/tests/database/07_free_slots.test.sql (parte 10).
+-- Tests: supabase/tests/database/08_default_availability.test.sql.
 --
 -- Decisión del dueño del 15/11/2026: Evelyn trabaja de lunes a viernes de 9:00 a 15:00 y la
 -- ventana de reserva sigue en 14 días (booking_horizon_days, sin cambios). Producción no tiene
