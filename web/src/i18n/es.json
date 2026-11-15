@@ -21,27 +21,24 @@
     "footerNoCookies": "Sin cookies de perfilado ni analítica.",
     "loadError": "No pudimos cargar una parte de la página, así que algo podría no funcionar. Revisa la conexión y vuelve a cargar la página.",
     "reload": "Volver a cargar la página",
-    "ogImageAlt": "{brand} · Cucina privata: «Cucina autentica, a casa tua.» Cocinera a domicilio en Bérgamo.",
-    "durationHours": "{h} h",
-    "durationHoursMinutes": "{h} h {m} min",
-    "durationMinutes": "{m} min"
+    "ogImageAlt": "{brand} · Cucina privata: «Cucina autentica, a casa tua.» Cocinera a domicilio en Bérgamo."
   },
   "landing": {
     "metaTitle": "{brand} · Cocinera a domicilio en Bérgamo: comidas listas",
     "metaDescription": "Evelyn hace la compra, cocina en tu casa en Bérgamo y te deja en la nevera porciones etiquetadas para varios días. La compra, al precio del ticket.",
     "hero": {
       "eyebrow": "Cocinera a domicilio · Bérgamo",
-      "title": "La cena ya está lista. Toda la semana.",
+      "title": "Almuerzo y cena, ya listos. Toda la semana.",
       "lead": "Evelyn hace la compra, cocina en tu casa y te deja en la nevera porciones listas, cada una con el nombre del plato y la fecha. Llegas a casa y solo tienes que calentar.",
       "cta": "Calcula tu presupuesto",
       "secondary": "Cómo funciona",
       "note": "Estimación al instante y sin compromiso. Evelyn te contacta lo antes posible.",
-      "label1Dish": "Lasaña de verduras",
-      "label1Meta": "Lun · 4 porciones",
-      "label2Dish": "Pollo al limón con patatas",
-      "label2Meta": "Mar · 4 porciones",
-      "label3Dish": "Minestrone de temporada",
-      "label3Meta": "Mié · 4 porciones"
+      "label1Title": "Una preocupación menos",
+      "label1Text": "Evelyn piensa el menú",
+      "label2Title": "Más tiempo para ti",
+      "label2Text": "Sin compras ni ollas",
+      "label3Title": "Llegas y ya está listo",
+      "label3Text": "Solo queda calentar"
     },
     "services": {
       "title": "Servicios",
@@ -91,7 +88,7 @@
       "exampleGroceriesValue": "{exGroceries}",
       "exampleTotal": "Total estimado",
       "exampleTotalValue": "{exTotal}",
-      "exampleNote": "Aprox. {exTime} de cocina. La compra real es la del ticket.",
+      "exampleNote": "La compra real es la del ticket.",
       "exampleCta": "Calcula el tuyo"
     },
     "who": {
@@ -108,7 +105,7 @@
       "q1": "¿A qué zonas llega el servicio?",
       "a1": "A Bérgamo y alrededores. Indica tu zona en la solicitud y te decimos enseguida si podemos llegar.",
       "q2": "¿Cuánto dura una sesión?",
-      "a2": "Depende de cuántas porciones y recetas haya que preparar: normalmente unas horas. La calculadora te da una estimación del tiempo de cocina; la compra Evelyn la hace antes de llegar.",
+      "a2": "Depende de cuántas porciones y recetas haya que preparar: normalmente unas horas. El horario lo acuerdas con Evelyn cuando te contacta; la compra la hace antes de llegar.",
       "q3": "¿Cuánto se conservan los platos?",
       "a3": "En general 3–4 días en la nevera, según la receta. Para los días siguientes algunos platos se pueden congelar: Evelyn te dice cuáles. Cada porción lleva la fecha de preparación.",
       "q4": "¿Qué cocina Evelyn?",
@@ -201,8 +198,6 @@
       "service": "Servicio",
       "groceries": "Compra estimada",
       "total": "Total estimado",
-      "time": "Tiempo de cocina",
-      "timeValue": "aprox. {value}",
       "portions": "Porciones",
       "note": "La compra se paga al precio real del ticket; esto es una estimación.",
       "invalid": "Indica al menos una persona y de 1 a {maxDays} días para ver la estimación."

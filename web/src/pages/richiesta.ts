@@ -7,7 +7,7 @@ import "../styles/request.css";
 import { LIMITS } from "../engine.ts";
 import type { MessageKey, Params } from "../i18n/core.ts";
 import { addDays, todayInRome } from "../lib/dates.ts";
-import { formatCents, formatDuration } from "../lib/format.ts";
+import { formatCents } from "../lib/format.ts";
 import { DATE_WINDOW, MEAL_OPTIONS, REQUEST_TYPES, SLOTS, TEXT_LIMITS, isOneOf, type RequestData } from "../request/model.ts";
 import { buildPayload, type PayloadOptions } from "../request/payload.ts";
 import { computeQuote } from "../request/quote.ts";
@@ -78,7 +78,6 @@ const quoteOut = {
   total: byId("q-total"),
   service: byId("q-service"),
   groceries: byId("q-groceries"),
-  time: byId("q-time"),
   portions: byId("q-portions"),
 };
 
@@ -253,7 +252,6 @@ function startRequestPage(shell: Shell): void {
     setText(quoteOut.total, formatCents(quote.totalCents, i18n.locale));
     setText(quoteOut.service, formatCents(quote.serviceCents, i18n.locale));
     setText(quoteOut.groceries, formatCents(quote.groceriesEstCents, i18n.locale));
-    setText(quoteOut.time, i18n.t("request.quote.timeValue", { value: formatDuration(quote.cookMinutes, i18n) }));
     setText(quoteOut.portions, String(quote.portions));
   };
 
