@@ -187,7 +187,7 @@
     "noAllergiesLabel": "Confermo che nessuna delle persone che mangeranno, bambini compresi, ha allergie o intolleranze alimentari.",
     "restrictionsNoteLabel": "Allergie e intolleranze di chi mangerà",
     "restrictionsNoteHint": "Scrivile tutte, anche quelle dei bambini: ad esempio celiachia, allergia alla frutta a guscio, intolleranza al lattosio. Massimo {noteMax} caratteri.",
-    "healthConsentLabel": "Acconsento al trattamento delle allergie e intolleranze che ho scritto, solo per preparare il preventivo e cucinare (<a href=\"/privacy/#p-health\">informativa privacy, punto 5</a>).",
+    "healthConsentLabel": "Acconsento al trattamento delle allergie e intolleranze che ho scritto, solo perché Evelyn cucini tenendone conto (<a href=\"/privacy/#p-health\">informativa privacy, punto 5</a>).",
     "healthConsentHint": "Sono dati sulla salute (art. 9 GDPR): senza il tuo consenso esplicito non possiamo riceverli. Puoi revocarlo in qualsiasi momento. Testo versione {version}.",
     "privacyConsentLabel": "Ho letto l'<a href=\"/privacy/\">informativa privacy</a> e accetto che i miei dati siano usati per preparare il preventivo.",
     "turnstileLabel": "Verifica anti-spam",

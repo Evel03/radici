@@ -187,7 +187,7 @@
     "noAllergiesLabel": "I confirm that nobody who'll be eating, children included, has any food allergies or intolerances.",
     "restrictionsNoteLabel": "Allergies and intolerances of everyone who'll be eating",
     "restrictionsNoteHint": "List them all, children's too: for example coeliac disease, a tree nut allergy, lactose intolerance. {noteMax} characters max.",
-    "healthConsentLabel": "I consent to the processing of the allergies and intolerances I have written, only to prepare the quote and cook (<a href=\"/privacy/#p-health\">privacy notice, section 5</a>).",
+    "healthConsentLabel": "I consent to the processing of the allergies and intolerances I have written, only so that Evelyn can take them into account when cooking (<a href=\"/privacy/#p-health\">privacy notice, section 5</a>).",
     "healthConsentHint": "This is health data (Art. 9 GDPR): without your explicit consent we cannot receive it. You can withdraw it at any time. Text version {version}.",
     "privacyConsentLabel": "I have read the <a href=\"/privacy/\">privacy notice</a> and agree that my data may be used to prepare the quote.",
     "turnstileLabel": "Spam check",
