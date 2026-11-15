@@ -2,7 +2,7 @@
 # bandeja de Evelyn en /gestione/ (la app Flutter compilada para la web). Contrato:
 # docs/contracts/public-request.md §6–§8.
 # - push a main  → producción (rama de producción del proyecto: main). Se sirve en el dominio
-#   propio https://radici.sepusola10.com (dominio personalizado del proyecto, se agrega una vez
+#   propio https://radicicucina.app (dominio personalizado del proyecto, se agrega una vez
 #   en Cloudflare).
 # - pull request → vista previa en <rama>.<subdominio>.pages.dev (con X-Robots-Tag: noindex).
 #   <subdominio> lo asigna Cloudflare al crear el proyecto: "radici", o con un sufijo si ya está tomado.

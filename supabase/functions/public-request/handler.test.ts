@@ -43,13 +43,13 @@ const ENV: Record<string, string> = {
   TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA",
   IP_HASH_SALT: "sal-de-prueba",
   RESEND_API_KEY: "re_prueba",
-  MAIL_FROM: "Radici <ciao@radici.sepusola10.com>",
+  MAIL_FROM: "Radici <ciao@radicicucina.app>",
   MAIL_REPLY_TO: "evelyn.respuestas@example.test",
   CHEF_NOTIFY_EMAIL: "evelyn@example.test",
   CHEF_LOCALE: "es",
-  ALLOWED_ORIGINS: "https://radici.sepusola10.com,http://localhost:5173",
-  INBOX_URL: "https://radici.sepusola10.com/gestione/",
-  PUBLIC_SITE_URL: "https://radici.sepusola10.com",
+  ALLOWED_ORIGINS: "https://radicicucina.app,http://localhost:5173",
+  INBOX_URL: "https://radicicucina.app/gestione/",
+  PUBLIC_SITE_URL: "https://radicicucina.app",
   WHATSAPP_TOKEN: "EAAprueba",
   WHATSAPP_PHONE_NUMBER_ID: "106540352242922",
   WHATSAPP_TEMPLATE: "richiesta_ricevuta",
@@ -213,7 +213,7 @@ function post(body: unknown, headers: Record<string, string> = {}, rawBody?: str
     method: "POST",
     headers: {
       "content-type": "application/json",
-      origin: "https://radici.sepusola10.com",
+      origin: "https://radicicucina.app",
       "cf-connecting-ip": "203.0.113.7",
       ...headers,
     },
@@ -231,9 +231,9 @@ async function json(response: Response): Promise<unknown> {
 
 test("OPTIONS: CORS para un origen permitido y nada para otros", async () => {
   const { handle } = harness();
-  const allowed = await handle(new Request(ENDPOINT, { method: "OPTIONS", headers: { origin: "https://radici.sepusola10.com" } }));
+  const allowed = await handle(new Request(ENDPOINT, { method: "OPTIONS", headers: { origin: "https://radicicucina.app" } }));
   assert.equal(allowed.status, 204);
-  assert.equal(allowed.headers.get("access-control-allow-origin"), "https://radici.sepusola10.com");
+  assert.equal(allowed.headers.get("access-control-allow-origin"), "https://radicicucina.app");
   assert.equal(allowed.headers.get("access-control-allow-methods"), "POST, OPTIONS");
   assert.match(allowed.headers.get("access-control-allow-headers") ?? "", /content-type/);
 
@@ -260,11 +260,11 @@ test("vistas previas de Pages: fuera por defecto; se habilitan a mano agregando 
 test("método distinto de POST: 405 con Allow", async () => {
   const { handle } = harness();
   for (const method of ["GET", "PUT", "DELETE"]) {
-    const response = await handle(new Request(ENDPOINT, { method, headers: { origin: "https://radici.sepusola10.com" } }));
+    const response = await handle(new Request(ENDPOINT, { method, headers: { origin: "https://radicicucina.app" } }));
     assert.equal(response.status, 405);
     assert.deepEqual(await json(response), { error: "method" });
     assert.equal(response.headers.get("allow"), "POST, OPTIONS");
-    assert.equal(response.headers.get("access-control-allow-origin"), "https://radici.sepusola10.com");
+    assert.equal(response.headers.get("access-control-allow-origin"), "https://radicicucina.app");
   }
 });
 
@@ -439,7 +439,7 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
   const { handle, store, background } = harness();
   const response = await handle(post(payload()));
   assert.equal(response.status, 201);
-  assert.equal(response.headers.get("access-control-allow-origin"), "https://radici.sepusola10.com");
+  assert.equal(response.headers.get("access-control-allow-origin"), "https://radicicucina.app");
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.match(response.headers.get("content-type") ?? "", /^application\/json/);
 
@@ -497,17 +497,17 @@ test("segundo plano: aviso a Evelyn en su idioma, confirmación al cliente en el
 
   const chefBody = toChef.body as Record<string, unknown>;
   assert.equal(chefBody["subject"], "Nueva solicitud de Giuliaxyz");
-  assert.equal(chefBody["from"], "Radici <ciao@radici.sepusola10.com>");
+  assert.equal(chefBody["from"], "Radici <ciao@radicicucina.app>");
   assert.equal(chefBody["reply_to"], "giulia.pii@example.test", "Evelyn responde directo al cliente");
   assert.equal(toChef.headers.get("idempotency-key"), `request-${REQUEST_ID}-chef`);
-  assert.ok(String(chefBody["html"]).includes(`https://radici.sepusola10.com/gestione/#/richieste/${REQUEST_ID}`));
+  assert.ok(String(chefBody["html"]).includes(`https://radicicucina.app/gestione/#/richieste/${REQUEST_ID}`));
 
   const clientBody = toClient.body as Record<string, unknown>;
   assert.equal(clientBody["subject"], "Radici: abbiamo ricevuto la tua richiesta");
   assert.equal(clientBody["reply_to"], "evelyn.respuestas@example.test");
   assert.equal(toClient.headers.get("idempotency-key"), `request-${REQUEST_ID}-client`);
   assert.ok(String(clientBody["text"]).includes("Evelyn ti contatterà al più presto"));
-  assert.ok(String(clientBody["html"]).includes('href="https://radici.sepusola10.com/privacy/"'));
+  assert.ok(String(clientBody["html"]).includes('href="https://radicicucina.app/privacy/"'));
 
   for (const call of emails) {
     const body = JSON.stringify(call.body);

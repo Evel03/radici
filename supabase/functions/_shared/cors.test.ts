@@ -9,7 +9,7 @@ const PAGES = "radici-placeholder.pages.dev";
 
 // La lista de ALLOWED_ORIGINS del contrato (§4), con espacios y entradas inválidas.
 const RULES = parseAllowedOrigins(
-  ` https://radici.sepusola10.com, https://${PAGES},https://*.${PAGES} ,http://localhost:5173,,` +
+  ` https://radicicucina.app, https://${PAGES},https://*.${PAGES} ,http://localhost:5173,,` +
     "no es una url,ftp://x.example,https://*.*.example,https://ejemplo.com/ruta,*",
 );
 
@@ -24,19 +24,19 @@ test("parsea la lista del contrato e ignora entradas vacías o inválidas", () =
 });
 
 test("orígenes exactos: esquema, host y puerto", () => {
-  assert.ok(isOriginAllowed("https://radici.sepusola10.com", RULES));
-  assert.ok(isOriginAllowed("https://RADICI.sepusola10.com", RULES), "el host no distingue mayúsculas");
+  assert.ok(isOriginAllowed("https://radicicucina.app", RULES));
+  assert.ok(isOriginAllowed("https://RADICICUCINA.APP", RULES), "el host no distingue mayúsculas");
   assert.ok(isOriginAllowed("http://localhost:5173", RULES));
   assert.ok(!isOriginAllowed("http://localhost:5174", RULES), "otro puerto");
-  assert.ok(!isOriginAllowed("http://radici.sepusola10.com", RULES), "otro esquema");
-  assert.ok(!isOriginAllowed("https://radici.sepusola10.com.evil.example", RULES));
-  assert.ok(!isOriginAllowed("https://evilradici.sepusola10.com", RULES));
-  assert.ok(!isOriginAllowed("https://x.radici.sepusola10.com", RULES), "una regla exacta no cubre subdominios");
+  assert.ok(!isOriginAllowed("http://radicicucina.app", RULES), "otro esquema");
+  assert.ok(!isOriginAllowed("https://radicicucina.app.evil.example", RULES));
+  assert.ok(!isOriginAllowed("https://evilradicicucina.app", RULES));
+  assert.ok(!isOriginAllowed("https://x.radicicucina.app", RULES), "una regla exacta no cubre subdominios");
 });
 
 test("Origin con formato raro o ausente: no se permite", () => {
-  for (const origin of [null, undefined, "", "null", "https://radici.sepusola10.com/", "https://radici.sepusola10.com/x",
-    "radici.sepusola10.com", "https://user@radici.sepusola10.com", "https://radici.sepusola10.com:99999"]) {
+  for (const origin of [null, undefined, "", "null", "https://radicicucina.app/", "https://radicicucina.app/x",
+    "radicicucina.app", "https://user@radicicucina.app", "https://radicicucina.app:99999"]) {
     assert.ok(!isOriginAllowed(origin, RULES), `no debería permitir ${String(origin)}`);
   }
 });

@@ -58,12 +58,12 @@ test("templates: las dos plantillas son el código del repo, con el asunto en el
 });
 
 test("smtp: Resend con el remitente de MAIL_FROM; sin clave, falla", () => {
-  assert.deepEqual(authSmtpConfig({ key: " re_clave ", mailFrom: "Radici <ciao@radici.sepusola10.com>" }), {
+  assert.deepEqual(authSmtpConfig({ key: " re_clave ", mailFrom: "Radici <ciao@radicicucina.app>" }), {
     smtp_host: "smtp.resend.com",
     smtp_port: "465",
     smtp_user: "resend",
     smtp_pass: "re_clave",
-    smtp_admin_email: "ciao@radici.sepusola10.com",
+    smtp_admin_email: "ciao@radicicucina.app",
     smtp_sender_name: "Radici",
   });
   assert.throws(() => authSmtpConfig({ key: "", mailFrom: "Radici <ciao@x.example>" }), /RESEND_SMTP_KEY/);
@@ -78,7 +78,7 @@ test("producción nunca abre las altas ni prende un CAPTCHA a medias: si config.
 });
 
 test("MAIL_FROM: nombre y dirección", () => {
-  assert.deepEqual(parseMailFrom("Radici <ciao@radici.sepusola10.com>"), { name: "Radici", address: "ciao@radici.sepusola10.com" });
+  assert.deepEqual(parseMailFrom("Radici <ciao@radicicucina.app>"), { name: "Radici", address: "ciao@radicicucina.app" });
   assert.deepEqual(parseMailFrom('"Cucina di Eve" <ciao@example.test>'), { name: "Cucina di Eve", address: "ciao@example.test" });
   assert.deepEqual(parseMailFrom("ciao@example.test"), { name: "Radici", address: "ciao@example.test" });
   assert.throws(() => parseMailFrom("sin dirección"), /MAIL_FROM/);

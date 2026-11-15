@@ -114,12 +114,12 @@ La cocinera también cambia el estado de la ficha de un cliente (`clients.status
 | `CHEF_ID` | no | opcional: uuid de Evelyn en `chefs` (sale de `promote_to_chef`). Sin él se usa la única fila de `public.chefs` (ver abajo). Hace falta solo con más de una cocinera (el seed local tiene dos) |
 | `CHEF_NOTIFY_EMAIL` | no | email de Evelyn para avisos |
 | `CHEF_LOCALE` | no | idioma de los avisos a Evelyn: `es` (por defecto), `it` o `en` |
-| `MAIL_FROM` | no | `Radici <ciao@radici.sepusola10.com>`; el nombre es la marca de los emails (si falta, Radici) |
+| `MAIL_FROM` | no | `Radici <ciao@radicicucina.app>`; el nombre es la marca de los emails (si falta, Radici) |
 | `MAIL_REPLY_TO` | no | email de Evelyn; si falta, `CHEF_NOTIFY_EMAIL` (§5) |
 | `EMAIL_TRANSPORT` | no | `resend` (por defecto) o `log` (desarrollo: no manda, registra) |
-| `ALLOWED_ORIGINS` | no | producción: `https://radici.sepusola10.com`; local: `http://localhost:5173,http://127.0.0.1:5173`. **Sin vistas previas** (ver abajo) |
-| `INBOX_URL` | no | `https://radici.sepusola10.com/gestione/` |
-| `PUBLIC_SITE_URL` | no | `https://radici.sepusola10.com` |
+| `ALLOWED_ORIGINS` | no | producción: `https://radicicucina.app`; local: `http://localhost:5173,http://127.0.0.1:5173`. **Sin vistas previas** (ver abajo) |
+| `INBOX_URL` | no | `https://radicicucina.app/gestione/` |
+| `PUBLIC_SITE_URL` | no | `https://radicicucina.app` |
 | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE` | sí / no / no | opcionales; sin ellos no se manda WhatsApp |
 
 `SUPABASE_URL` y la clave de servicio (`SUPABASE_SECRET_KEYS`, o las variables de compatibilidad) las provee Supabase a la función.
@@ -190,7 +190,7 @@ Logs de configuración, solo con nombres de variables: al arrancar, `config_miss
   - Los valores vacíos no se cargan (no pisan los que ya estén): para volver a la cocinera automática después de haber cargado `CHEF_ID`, `supabase secrets unset CHEF_ID`.
   - Antes de cargar los secretos corta si `TURNSTILE_SECRET_KEY` es una clave de prueba (`1x…AA`, `2x…AA`, `3x…AA`) o si `ALLOWED_ORIGINS`, `INBOX_URL` o `PUBLIC_SITE_URL` apuntan a localhost; avisa si `EMAIL_TRANSPORT=log` o si `CHEF_ID` es el del seed. Después comprueba (solo los nombres) que en Supabase estén `TURNSTILE_SECRET_KEY` e `IP_HASH_SALT`, cargadas desde GitHub o a mano: sin ellas corta.
   - Primer despliegue: en el orden de §10. Sin `CHEF_ID`, la función responde `500` (`chef_id_unresolved`, `no_chef`) hasta que se corre `promote_to_chef`; desde ahí funciona sin tocar nada más.
-- `deploy-web.yml`: además de la web, compila la app Flutter web y la copia a `dist/gestione/` antes de publicar. Proyecto de Pages `radici` (lo crea el workflow si no existe), servido en el dominio propio `radici.sepusola10.com`.
+- `deploy-web.yml`: además de la web, compila la app Flutter web y la copia a `dist/gestione/` antes de publicar. Proyecto de Pages `radici` (lo crea el workflow si no existe), servido en el dominio propio `radicicucina.app`.
   - Secreto `CLOUDFLARE_API_TOKEN`; variables `CLOUDFLARE_ACCOUNT_ID`, `SUPABASE_URL` (`https://<ref>.supabase.co`, solo el origen) y `SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_…`, nunca una secreta): un solo valor para la web (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` y la CSP) y para `/gestione/` (`--dart-define`). Además `VITE_TURNSTILE_SITE_KEY` (la real: el workflow rechaza las de prueba), `VITE_SITE_URL`, `VITE_NOINDEX` y, opcional, `VITE_BRAND_NAME`. En producción falla antes de publicar si falta la configuración de Supabase o de Turnstile; en una vista previa solo avisa.
   - `SUPABASE_PUBLISHABLE_KEY` se compara con una lista de permitidas (`sb_publishable_…` o un JWT con rol `anon`, sin espacios): cualquier otra cosa corta, también en una vista previa.
   - Solo en producción: corta si `ALLOWED_ORIGINS` (la misma variable de `deploy-supabase.yml`; si no está en GitHub, solo avisa) no incluye el origen de `VITE_SITE_URL`, y si la privacy sigue en borrador (texto entre corchetes en `privacy.*` o el aviso de borrador de `web/privacy/index.html`). Para una prueba interna antes de completarla, la variable `ALLOW_DRAFT_PRIVACY=true` la deja pasar con un aviso. Después de publicar prueba el CORS de `public-request` desde el sitio (solo avisa).
@@ -225,8 +225,8 @@ Nada que publique `SUPABASE_URL` y la clave publicable (producción o una vista 
 
 1. Privacy: completar lo que está entre corchetes en `privacy.*` de `web/src/i18n/{it,es,en}.json` (titular, contactos, razones sociales de los proveedores, quién da la asistencia técnica y las dos notas "[da verificare …]"), hacerla revisar y sacar el aviso de borrador (`<p class="draft">` de `web/privacy/index.html` y las claves `privacy.draftBadge` y `privacy.draftNotice`). Hasta entonces producción solo se publica con la variable `ALLOW_DRAFT_PRIVACY=true` (prueba interna, sin compartir el sitio).
 2. Supabase: proyecto `radici` en la región Central EU (Frankfurt), con la Data API y sin "Automatically expose new tables".
-3. Resend: dominio `radici.sepusola10.com` (región UE) con sus registros DNS en Cloudflare; dos claves "Sending access" para ese dominio: una para la función (`RESEND_API_KEY`) y otra para el SMTP de Auth (`RESEND_SMTP_KEY`). Sin seguimiento de aperturas ni clics.
-4. Cloudflare Turnstile: un widget con el hostname `radici.sepusola10.com` (modo managed). Sitekey → `VITE_TURNSTILE_SITE_KEY` (paso 7); secreta → `TURNSTILE_SECRET_KEY` (paso 5).
+3. Resend: dominio `radicicucina.app` (región UE) con sus registros DNS en Cloudflare; dos claves "Sending access" para ese dominio: una para la función (`RESEND_API_KEY`) y otra para el SMTP de Auth (`RESEND_SMTP_KEY`). Sin seguimiento de aperturas ni clics.
+4. Cloudflare Turnstile: un widget con el hostname `radicicucina.app` (modo managed). Sitekey → `VITE_TURNSTILE_SITE_KEY` (paso 7); secreta → `TURNSTILE_SECRET_KEY` (paso 5).
 5. GitHub, para el backend: secretos `SUPABASE_ACCESS_TOKEN` (token de supabase.com/dashboard/account/tokens, solo para este proyecto), `SUPABASE_DB_PASSWORD`, `RESEND_SMTP_KEY` y los de la función (§8); variables `SUPABASE_PROJECT_REF`, `CHEF_LOGIN_EMAIL` (el email con que entra Evelyn), `CHEF_DISPLAY_NAME` (`Evelyn`) y las de la función. Nunca valores de `supabase/functions/.env.example`.
 6. Deploy Supabase (push a `main` o a mano), en verde y sin "Faltan …". Hace lo que antes eran pasos en el panel:
    - Auth desde el repo (`supabase/scripts/auth-config.ts`), en tres partes. Siempre: altas apagadas, código de 8 cifras que vale 600 segundos y CAPTCHA apagado (la app no manda el token; para M2 hay que sumar el proveedor y su secreto a `auth-config.ts`). Con `RESEND_SMTP_KEY`: SMTP propio con Resend (`smtp.resend.com`, puerto 465, usuario `resend`, remitente de `MAIL_FROM`), después las plantillas "Magic link" y "Confirm signup" con el asunto de `supabase/config.toml` y el HTML de `supabase/templates/login_code.html`, y 100 emails por hora (cualquiera puede pedir un código por minuto para el email de Evelyn: 60 por hora; el límite es de todo el proyecto). En un proyecto Free, Supabase no deja cambiar las plantillas sin SMTP propio: sin `RESEND_SMTP_KEY` el email trae un link en lugar del código y **Evelyn no puede entrar** (el workflow avisa y sigue). Si Supabase no guardara la plantilla, el paso falla. Se vuelve a aplicar en cada despliegue: cambiar la plantilla o el asunto es un PR, y lo que se cambie de esto en el panel lo pisa el próximo despliegue.
@@ -235,8 +235,8 @@ Nada que publique `SUPABASE_URL` y la clave publicable (producción o una vista 
    - Sin `TURNSTILE_SECRET_KEY` corta en "Secretos de la función", con Auth, las migraciones y la cuenta ya hechas: completar el paso 4 y volver a correrlo.
 7. GitHub, para la web: variables `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `VITE_TURNSTILE_SITE_KEY` y las demás de §8.
 8. Revisar en el panel (solo mirar): Authentication → Sign In / Providers, Emails (SMTP y plantillas), Rate Limits y Users; en el SQL editor, `select id, email, email_confirmed_at, created_at from auth.users;` (no tiene que haber otro usuario además de Evelyn). Para crear la cuenta a mano en lugar del workflow, antes del paso 7: Authentication → Users → Create new user con "Auto Confirm User", y después `select public.promote_to_chef('<email>', 'Evelyn');` en el SQL editor (o cargar `CHEF_LOGIN_EMAIL` y `CHEF_DISPLAY_NAME` y volver a correr el paso 6, que promueve la cuenta existente). Esa cuenta no lleva `user_metadata.locale`: el email del código le llega en italiano hasta que elige su idioma en la app.
-9. Deploy web: en verde. En Pages, el dominio propio `radici.sepusola10.com`. La prueba de CORS del workflow no tiene que avisar nada.
-10. Evelyn entra en `https://radici.sepusola10.com/gestione/` con el código del email (si la interfaz no está en español: Impostazioni → Español).
+9. Deploy web: en verde. En Pages, el dominio propio `radicicucina.app`. La prueba de CORS del workflow no tiene que avisar nada.
+10. Evelyn entra en `https://radicicucina.app/gestione/` con el código del email (si la interfaz no está en español: Impostazioni → Español).
 11. Un pedido de prueba con un email propio: pantalla de gracias, aviso a Evelyn en español, confirmación en italiano y aviso en `/gestione/`. En los logs de la función, `request_saved` y `email_sent`, sin `config_missing`, `client_ip_missing` ni `email_failed`. Después, borrarlo (10.2, "Borrar a una persona").
 12. Recién ahí compartir el sitio.
 

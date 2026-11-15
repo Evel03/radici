@@ -8,7 +8,7 @@ export interface AppConfig {
   brandName: string;
   /** true: todas las páginas llevan <meta name="robots" content="noindex">. */
   noindex: boolean;
-  /** URL pública sin barra final (ej. https://radici.sepusola10.com). null si no se configuró. */
+  /** URL pública sin barra final (ej. https://radicicucina.app). null si no se configuró. */
   siteUrl: string | null;
   /** Origen del proyecto de Supabase (ej. https://abcd.supabase.co). null si falta o no es válido. */
   supabaseUrl: string | null;

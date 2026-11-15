@@ -120,7 +120,7 @@ describe("renderPage con las páginas reales", () => {
 });
 
 describe("vista previa al compartir (Open Graph y X)", () => {
-  const withSite = { ...baseConfig, siteUrl: "https://radici.sepusola10.com" };
+  const withSite = { ...baseConfig, siteUrl: "https://radicicucina.app" };
   const pages = [
     ["/", indexHtml],
     ["/richiesta/", requestHtml],
@@ -130,7 +130,7 @@ describe("vista previa al compartir (Open Graph y X)", () => {
   it("con VITE_SITE_URL: og:image absoluta con tamaño y texto alternativo, y tarjeta grande", () => {
     for (const [path, html] of pages) {
       const out = renderPage(html, { i18n, config: withSite, pagePath: path, partials });
-      expect(out).toContain(`<meta property="og:image" content="https://radici.sepusola10.com${OG_IMAGE.path}">`);
+      expect(out).toContain(`<meta property="og:image" content="https://radicicucina.app${OG_IMAGE.path}">`);
       expect(out).toContain('<meta property="og:image:type" content="image/png">');
       expect(out).toContain('<meta property="og:image:width" content="1200">');
       expect(out).toContain('<meta property="og:image:height" content="630">');
@@ -165,7 +165,7 @@ describe("página 404", () => {
 
   it("nunca se indexa, ni con el sitio indexable, y no declara URL propia ni imagen", () => {
     expect(render(baseConfig)).toContain('<meta name="robots" content="noindex, nofollow">');
-    const indexable = render({ ...baseConfig, noindex: false, siteUrl: "https://radici.sepusola10.com" });
+    const indexable = render({ ...baseConfig, noindex: false, siteUrl: "https://radicicucina.app" });
     expect(indexable).toContain('<meta name="robots" content="noindex">');
     expect(indexable).not.toMatch(/canonical|og:url|og:image|twitter:card|application\/ld\+json/);
   });

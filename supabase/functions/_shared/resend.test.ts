@@ -20,7 +20,7 @@ function scriptedFetch(responses: Array<() => Response | Promise<Response>>): { 
 }
 
 const MESSAGE: EmailMessage = {
-  from: "Radici <ciao@radici.sepusola10.com>",
+  from: "Radici <ciao@radicicucina.app>",
   to: "giulia@example.test",
   replyTo: "evelyn@example.test",
   subject: "Radici: abbiamo ricevuto la tua richiesta",

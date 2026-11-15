@@ -1,6 +1,6 @@
 # Radici — Especificación para construir con Claude Code
 
-> **Radici** es el nombre definitivo (ex Mestolo, el provisorio). Repo: `github.com/Evel03/radici`. Dominio temporal: `radici.sepusola10.com` (web pública y bandeja en `/gestione/`). Falta elegir el identificador nativo de la app (sección 14).
+> **Radici** es el nombre definitivo (ex Mestolo, el provisorio). Repo: `github.com/Evel03/radici`. Dominio: `radicicucina.app` (web pública y bandeja en `/gestione/`). Falta elegir el identificador nativo de la app (sección 14).
 >
 > **Prototipo de referencia:** `docs/prototipo.html` (también publicado en https://claude.ai/artifact/E5zsqMUGziiWUr2N1BDmsw; pendiente de copiar al repo). Es la referencia visual. Las reglas de negocio de **este documento** prevalecen sobre el prototipo: la fórmula de presupuesto y el margen entre sesiones se corrigieron en la revisión del 19/10/2026.
 
@@ -99,7 +99,7 @@ Se reutiliza lo que ya conocés de Se Puso La 10, sin servidor propio.
 | Capa | Elección | Por qué |
 |---|---|---|
 | App | **Flutter 3.x** (iOS y Android) | Evelyn y clientes recurrentes |
-| Web pública | **Vite + TypeScript estático** (hosting estático en un subdominio de prueba de sepusola10.com: `radici.sepusola10.com`) | Carga instantánea desde el navegador de WhatsApp, posiciona en Google, reutiliza `_shared/quote.ts` |
+| Web pública | **Vite + TypeScript estático** (hosting estático en Cloudflare Pages, en el dominio propio `radicicucina.app`) | Carga instantánea desde el navegador de WhatsApp, posiciona en Google, reutiliza `_shared/quote.ts` |
 | Estado / navegación | Riverpod + go_router | Estándar, testeable |
 | Modelos | freezed + json_serializable | Inmutables, menos errores |
 | Backend | **Supabase** (región UE, Frankfurt) | Postgres, Auth, RLS, Storage, Edge Functions, pg_cron |
@@ -476,7 +476,7 @@ Verificar con el commercialista antes de cobrar a clientes reales:
 
 ## 14. Decisiones abiertas
 
-- Identificador de la app y dominio definitivo. El nombre ya está decidido (Radici) y el dominio temporal es `radici.sepusola10.com`. Falta elegir el bundle id antes de la primera subida a las tiendas: no se puede cambiar después de publicar. Hoy sigue el provisorio (`com.sepusola10.mestolo`); los lugares a cambiar están en `app/README.md`.
+- Identificador de la app y dominio definitivo. El nombre ya está decidido (Radici) y el dominio es `radicicucina.app`. Falta elegir el bundle id antes de la primera subida a las tiendas: no se puede cambiar después de publicar. Hoy sigue el provisorio (`com.sepusola10.mestolo`); los lugares a cambiar están en `app/README.md`.
 - Sesión mínima: hoy es 150 min (67 € de servicio) aunque sea 1 porción. ¿Se mantiene, se baja la base de 60 min o se fija un pedido mínimo?
 - ¿Se pide tarjeta guardada también a los clientes `pay_after` (para poder cobrar la penalidad por cancelación)?
 - Al revocar el consentimiento de salud se borran las restricciones del cliente. ¿Se borran también las copias en pedidos y presupuestos pasados? Pueden servir como prueba de que Evelyn fue informada de una alergia: decidir con quien asesore en privacidad. Mientras tanto se hace lo que dice la privacy: el retiro se procesa con `private.revoke_health_consent`, que borra también las copias de los pedidos (contrato §10.2). Si se decide conservarlas, cambiar la privacy (finalidad y plazo) y esa función.
