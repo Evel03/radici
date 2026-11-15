@@ -76,7 +76,7 @@ describe("parseHeadersFile y headersFor (semántica de Cloudflare Pages)", () =>
     it("valen solo para ese host, sin importar protocolo ni puerto", () => {
       expect(headersFor(hostRules, "/", "radici.pages.dev").get("X-Robots-Tag")).toBe("noindex");
       expect(headersFor(hostRules, "/richiesta/", "Radici.Pages.Dev:443").get("X-Project")).toBe("radici");
-      expect(headersFor(hostRules, "/", "radici.sepusola10.com").has("X-Robots-Tag")).toBe(false);
+      expect(headersFor(hostRules, "/", "radicicucina.app").has("X-Robots-Tag")).toBe(false);
       expect(headersFor(hostRules, "/solo/uno", "www.example.com").get("X-Page")).toBe("uno");
       expect(headersFor(hostRules, "/solo/uno", "example.com").has("X-Page")).toBe(false);
     });
@@ -241,12 +241,12 @@ describe("public/_headers real", () => {
       expect(headersFor(rules, "/gestione/", host).get("X-Robots-Tag")).toBe("noindex, nofollow, noindex");
     }
     for (const path of ["/", "/richiesta/", "/privacy/", "/no-existe"]) {
-      expect(headersFor(rules, path, "radici.sepusola10.com").has("X-Robots-Tag"), path).toBe(false);
+      expect(headersFor(rules, path, "radicicucina.app").has("X-Robots-Tag"), path).toBe(false);
     }
     // El host no cambia la CSP de ninguna ruta.
     for (const path of ["/", "/richiesta/", "/gestione/"]) {
       expect(headersFor(rules, path, "radici.pages.dev").get("Content-Security-Policy")).toBe(
-        headersFor(rules, path, "radici.sepusola10.com").get("Content-Security-Policy"),
+        headersFor(rules, path, "radicicucina.app").get("Content-Security-Policy"),
       );
     }
   });
