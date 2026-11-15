@@ -23,6 +23,7 @@ import {
   type FieldError,
   type FieldErrors,
   type FieldName,
+  type SentConsents,
 } from "../request/validate.ts";
 import { config } from "../site-config.ts";
 import { initShell, type Shell } from "./shell.ts";
@@ -398,7 +399,8 @@ function startRequestPage(shell: Shell): void {
     done.focus();
   };
 
-  const handleOutcome = (outcome: SubmitOutcome, data: RequestData, view: DoneView): void => {
+  /** @param sent los consentimientos que llevaba el pedido: uno marcado que el servidor rechaza es de otro texto. */
+  const handleOutcome = (outcome: SubmitOutcome, data: RequestData, view: DoneView, sent: SentConsents): void => {
     if (outcome.kind === "created") {
       showDone(view, outcome.estimate);
       return;
@@ -407,7 +409,7 @@ function startRequestPage(shell: Shell): void {
     turnstile?.reset();
     switch (outcome.kind) {
       case "invalid": {
-        const { fields, outdated } = translateErrors(outcome.errors);
+        const { fields, outdated } = translateErrors(outcome.errors, sent);
         server = { errors: withoutTurnstile(fields), data: JSON.stringify(data) };
         renderErrors(data);
         const first = firstErrorField({ ...fieldErrors(data), ...serverErrors(data) });
@@ -488,7 +490,7 @@ function startRequestPage(shell: Shell): void {
     keys.settle(outcome.kind, snapshot);
     phase = "editing";
     setSending(false);
-    handleOutcome(outcome, data, view);
+    handleOutcome(outcome, data, view, payload.consents);
   };
 
   const onTurnstileChange = (): void => {

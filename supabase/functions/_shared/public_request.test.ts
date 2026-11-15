@@ -3,6 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   CONSENT_VERSION,
+  CONSENT_VERSIONS,
+  HEALTH_CONSENT_VERSIONS,
   PUBLIC_REQUEST_VERSION,
   addDays,
   cleanMultiLine,
@@ -215,6 +217,21 @@ test("textos de 2026-11-16: privacy y salud; las privacy viejas solo para que un
   // El consentimiento de salud, solo con el texto vigente: ninguno anterior pedía las alergias escritas.
   for (const health of ["2026-11-15", "2026-10-19"]) {
     assert.deepEqual(errorsOf(withAllergies({ consents: { privacy: CONSENT_VERSION, health } })), { consentHealth: "healthConsentRequired" }, health);
+  }
+});
+
+test("versiones aceptadas: la vigente vale para la privacy y para la salud, y la lista de salud es explícita", () => {
+  // La web manda CONSENT_VERSION en consents.privacy y, con alergias escritas, en consents.health.
+  assert.ok(CONSENT_VERSIONS.includes(CONSENT_VERSION), "CONSENT_VERSIONS acepta la vigente");
+  assert.ok(
+    HEALTH_CONSENT_VERSIONS.includes(CONSENT_VERSION),
+    "al cambiar CONSENT_VERSION, sumarla a HEALTH_CONSENT_VERSIONS y dejar la anterior mientras haya páginas en caché",
+  );
+  // No sigue sola a CONSENT_VERSION: un cambio de la privacy que no toca la parte de salud no deja
+  // afuera el consentimiento de salud que mandan las páginas ya abiertas (o la web vieja durante el despliegue).
+  assert.deepEqual([...HEALTH_CONSENT_VERSIONS], ["2026-11-16"]);
+  for (const list of [CONSENT_VERSIONS, HEALTH_CONSENT_VERSIONS]) {
+    assert.equal(new Set(list).size, list.length, `sin repetidas: ${list.join(", ")}`);
   }
 });
 

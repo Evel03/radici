@@ -24,11 +24,16 @@ export const CONSENT_VERSION = "2026-11-16";
  */
 export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-11-15", "2026-10-19"];
 /**
- * Versiones aceptadas del consentimiento de salud: solo la vigente. Cubre las alergias escritas en
- * el formulario de hoy, que ningún texto anterior pedía así (el de 2026-10-19 era el de los alérgenos
- * marcados con casillas; el de 2026-11-15 no pedía datos de salud).
+ * Versiones aceptadas del consentimiento de salud (la web manda CONSENT_VERSION). Lista explícita, con
+ * la misma regla que CONSENT_VERSIONS: al cambiar CONSENT_VERSION, agregarla acá (un test lo exige) y
+ * dejar la anterior mientras haya páginas en caché, si el texto de salud (la casilla y el punto 5 de la
+ * privacy) no cambió. Si siguiera sola a CONSENT_VERSION, un cambio de la privacy que no toca la salud
+ * rechazaría el consentimiento de las páginas ya abiertas. Una versión que se saca a propósito (el texto
+ * de salud cambió) no deja a nadie trabado: la página vieja pide recargar (translateErrors en la web).
+ * Hoy solo 2026-11-16: ningún texto anterior pedía las alergias escritas (el de 2026-10-19 era el de
+ * los alérgenos marcados con casillas; el de 2026-11-15 no pedía datos de salud).
  */
-export const HEALTH_CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION];
+export const HEALTH_CONSENT_VERSIONS: readonly string[] = ["2026-11-16"];
 
 /** Los 14 alérgenos del Reg. UE 1169/2011, en el orden del enum `allergen` de la base. */
 export const ALLERGENS = [
@@ -94,8 +99,8 @@ export interface PublicRequestPayload {
   meals: Meal[];
   /**
    * La pregunta de alergias: true = el cliente confirma que nadie de quienes van a comer (niños
-   * incluidos) tiene alergias ni intolerancias alimentarias, y no manda restricciones; false = las
-   * escribe en `restrictionsNote`, con el consentimiento de salud (`consents.health`).
+   * incluidos) tiene alergias, intolerancias alimentarias ni celiaquía, y no manda restricciones;
+   * false = las escribe en `restrictionsNote`, con el consentimiento de salud (`consents.health`).
    */
   noAllergies: boolean;
   /** La web los manda vacíos: las alergias llegan escritas en `restrictionsNote`. */
@@ -173,7 +178,7 @@ export interface NormalizedPublicRequest {
   kids: number;
   days: number;
   meals: Meal[];
-  /** true: confirmó que nadie tiene alergias ni intolerancias (y no hay restricciones). */
+  /** true: confirmó que nadie tiene alergias, intolerancias ni celiaquía (y no hay restricciones). */
   noAllergies: boolean;
   allergens: Allergen[];
   diets: Diet[];

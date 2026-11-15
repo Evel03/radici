@@ -11,6 +11,7 @@ import {
   type ErrorCode,
   type PublicRequestErrors,
   type PublicRequestField,
+  type PublicRequestPayload,
   type RequestData,
 } from "./model.ts";
 import { buildPayload, type PayloadOptions } from "./payload.ts";
@@ -122,18 +123,38 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
   }
 }
 
+/** Los consentimientos que mandó la página (los de buildPayload). */
+export type SentConsents = PublicRequestPayload["consents"];
+
+/**
+ * El servidor rechazó la versión de un consentimiento que la página sí mandó (la casilla estaba
+ * marcada): la página es de otro texto (abierta antes de un cambio, o durante un despliegue). Marcar
+ * la casilla otra vez no lo arregla; hay que recargar.
+ */
+function rejectedConsentVersion(field: string, sent: SentConsents | undefined): boolean {
+  if (!sent) return false;
+  if (field === "consentPrivacy") return sent.privacy !== "";
+  if (field === "consentHealth") return sent.health !== null;
+  return false;
+}
+
 /**
  * Traduce los errores del contrato (del servidor o de la validación local).
- * `outdated`: el servidor rechazó algo que la página no controla (versión, formato): hay que recargar.
+ * `outdated`: el servidor rechazó algo que la página no controla (versión, formato, la versión de un
+ * consentimiento que mandó): hay que recargar.
+ * @param sent los consentimientos que se mandaron: con ellos, un consentimiento rechazado que sí iba
+ * marcado es de otra versión del texto, no un error del campo.
  */
-export function translateErrors(errors: PublicRequestErrors): { fields: FieldErrors; outdated: boolean } {
+export function translateErrors(errors: PublicRequestErrors, sent?: SentConsents): { fields: FieldErrors; outdated: boolean } {
   // Con la versión rechazada, el servidor validó con otro contrato y sus errores de campo no valen para
   // esta página (por ejemplo, una versión de la privacy que no conoce): solo hay que recargar.
   if (errors.version !== undefined) return { fields: {}, outdated: true };
   const fields: FieldErrors = {};
   let outdated = false;
   for (const [field, code] of Object.entries(errors)) {
-    if (isOneOf(FIELD_ORDER, field)) {
+    if (rejectedConsentVersion(field, sent)) {
+      outdated = true;
+    } else if (isOneOf(FIELD_ORDER, field)) {
       // Un código desconocido (otra versión del servidor) se trata como "invalid".
       fields[field] = fieldError(field, isOneOf(ERROR_CODES, code) ? code : "invalid");
     } else {
