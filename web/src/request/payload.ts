@@ -34,7 +34,8 @@ export function buildPayload(data: RequestData, opts: PayloadOptions): PublicReq
     diets: [],
     restrictionsNote: "",
     preferredDate: data.preferredDate === "" ? null : data.preferredDate,
-    slot: data.slot,
+    // El formulario no pregunta la franja: la hora se acuerda con Evelyn.
+    slot: "any",
     name: cleanOneLine(data.name),
     zone: cleanOneLine(data.zone),
     phone: cleanOneLine(data.phone),

@@ -3,7 +3,9 @@
 // Este archivo agrega solo lo propio del formulario (la opción "pranzo e cena" y su estado).
 // El formulario no pide alergias, intolerancias ni dietas (datos de salud): Evelyn las ve con el
 // cliente cuando lo contacta. El contrato sigue teniendo esos campos y la web los manda vacíos.
-import { MEALS, type Meal, type RequestType, type Slot } from "../../../supabase/functions/_shared/public_request.ts";
+// Tampoco pide franja horaria: el día se elige en un calendario con la disponibilidad de Evelyn y la
+// hora se acuerda después. El contrato conserva `slot` y la web manda siempre "any".
+import { MEALS, type Meal, type RequestType } from "../../../supabase/functions/_shared/public_request.ts";
 
 export {
   CONSENT_VERSION,
@@ -45,9 +47,8 @@ export interface RequestData {
   kids: number;
   days: number;
   meals: MealOption;
-  /** "" si no eligió fecha; si no, "AAAA-MM-DD". */
+  /** "" si no eligió fecha; si no, "AAAA-MM-DD" (un día libre del calendario). */
   preferredDate: string;
-  slot: Slot;
   name: string;
   zone: string;
   phone: string;

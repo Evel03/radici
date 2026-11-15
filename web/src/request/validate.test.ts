@@ -132,7 +132,9 @@ describe("translateErrors (respuesta 400 del servidor)", () => {
   it("campos o códigos que no conoce (otra versión del servidor): no se rompe y pide recargar", () => {
     const unknown = { nuevoCampo: "required", phone: "otroCodigo" } as unknown as Parameters<typeof translateErrors>[0];
     expect(translateErrors(unknown)).toEqual({ fields: { phone: { key: "errors.phoneInvalid" } }, outdated: true });
-    expect(translateErrors({ slot: "invalid" }).fields).toEqual({ slot: { key: "errors.invalid" } });
+    // La franja ya no se pregunta (la web manda "any"): un error ahí es de otra versión del servidor.
+    expect(translateErrors({ slot: "invalid" })).toEqual({ fields: {}, outdated: true });
+    expect(translateErrors({ type: "invalid" }).fields).toEqual({ type: { key: "errors.invalid" } });
   });
 });
 

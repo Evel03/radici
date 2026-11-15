@@ -24,7 +24,6 @@ export const FIELD_ORDER = [
   "days",
   "meals",
   "preferredDate",
-  "slot",
   "name",
   "zone",
   "phone",
@@ -41,12 +40,14 @@ export type FieldName = (typeof FIELD_ORDER)[number];
  * Si el contrato suma un campo y el formulario no lo muestra, esto deja de compilar.
  * Los datos de salud (alérgenos, dietas, nota y su consentimiento) también: el formulario no los
  * pide y los manda vacíos, así que un error ahí solo puede venir de otra versión del servidor.
+ * Lo mismo la franja horaria: la web manda siempre "any".
  */
 export const PAGE_FIELDS = {
   payload: true,
   version: true,
   locale: true,
   requestKey: true,
+  slot: true,
   allergens: true,
   diets: true,
   restrictionsNote: true,
@@ -108,7 +109,6 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
       if (code === "required") return { key: REQUIRED_KEYS[field] ?? "errors.invalid" };
       return { key: INVALID_KEYS[field] ?? "errors.invalid" };
     case "type":
-    case "slot":
     case "whatsappOptIn":
       // El formulario no puede producir estos errores: solo con un HTML viejo o alterado.
       return { key: "errors.invalid" };

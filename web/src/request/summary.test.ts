@@ -22,13 +22,12 @@ describe("peopleText", () => {
 
 describe("summaryRows (pantalla de gracias)", () => {
   it("resume el pedido en italiano con la estimación del servidor", () => {
-    expect(rows("it", { preferredDate: "2026-10-26", slot: "afternoon" })).toEqual({
+    expect(rows("it", { preferredDate: "2026-10-26" })).toEqual({
       Servizio: "Settimana di pasti",
       Persone: "2 adulti e 2 bambini",
       Giorni: "5",
       Pasti: "Cena",
       "Giorno preferito": "lunedì 26 ottobre 2026",
-      "Fascia oraria": "Pomeriggio",
       "Totale stimato": expect.stringMatching(/^141,00\s€$/) as unknown as string,
     });
   });

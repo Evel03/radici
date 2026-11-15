@@ -5,7 +5,7 @@ import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
 import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
-import { MEAL_OPTIONS, REQUEST_TYPES, SLOTS } from "../request/model.ts";
+import { MEAL_OPTIONS, REQUEST_TYPES } from "../request/model.ts";
 import { FIELD_ORDER } from "../request/validate.ts";
 import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang } from "./core.ts";
 import en from "./en.json";
@@ -59,12 +59,8 @@ describe("claves usadas por la web", () => {
     }
   });
 
-  it("existen etiquetas para cada valor del modelo (tipos, comidas, franjas)", () => {
-    const keys = [
-      ...REQUEST_TYPES.map((t) => `request.type.${t}`),
-      ...MEAL_OPTIONS.map((m) => `request.meals.${m}`),
-      ...SLOTS.map((s) => `request.slot.${s}`),
-    ];
+  it("existen etiquetas para cada valor del modelo (tipos y comidas)", () => {
+    const keys = [...REQUEST_TYPES.map((t) => `request.type.${t}`), ...MEAL_OPTIONS.map((m) => `request.meals.${m}`)];
     expect(keys.filter((key) => !(key in dicts.it))).toEqual([]);
   });
 
@@ -76,8 +72,11 @@ describe("claves usadas por la web", () => {
       expect(requestHtml, name).not.toContain(`name="${name}"`);
     }
     expect(values("meals")).toEqual([...MEAL_OPTIONS]);
-    expect(values("slot")).toEqual([...SLOTS]);
     expect(values("type")).toEqual([...REQUEST_TYPES]);
+    // El día se elige en el calendario (con la disponibilidad de Evelyn): ni franja ni selector de fecha nativo.
+    expect(requestHtml).not.toContain('name="slot"');
+    expect(requestHtml).not.toContain('type="date"');
+    expect(requestHtml).toContain('id="calendar-grid"');
   });
 
   it("cada campo validado tiene su mensaje de error (err-<campo>) en el formulario", () => {

@@ -1,5 +1,5 @@
 // Resumen del pedido para la pantalla de gracias. Pura: devuelve textos, la página los pinta con textContent.
-// Solo datos del pedido (tipo, personas, días, comidas, fecha, franja, estimación): nada de contacto ni salud.
+// Solo datos del pedido (tipo, personas, días, comidas, fecha, estimación): nada de contacto ni salud.
 import type { I18n } from "../i18n/core.ts";
 import { formatCents, formatIsoDate } from "../lib/format.ts";
 import type { RequestData } from "./model.ts";
@@ -33,7 +33,6 @@ export function summaryRows(data: RequestData, estimate: { totalCents: number } 
       label: t("request.summary.date"),
       value: data.preferredDate ? formatIsoDate(data.preferredDate, locale) : t("request.summary.dateNone"),
     },
-    { label: t("request.summary.slot"), value: t(`request.slot.${data.slot}`) },
   ];
   if (estimate) rows.push({ label: t("request.summary.total"), value: formatCents(estimate.totalCents, locale), total: true });
   return rows;

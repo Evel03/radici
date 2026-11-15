@@ -77,7 +77,8 @@ export function parseAvailabilityResponse(json: unknown): AvailabilityResponse |
     if (typeof day !== "object" || day === null) return null;
     const { date, available } = day as Record<string, unknown>;
     if (typeof date !== "string" || !isIsoDate(date) || typeof available !== "boolean") return null;
-    if (out.length > 0 && date !== addDays(out[out.length - 1].date, 1)) return null;
+    const previous = out[out.length - 1];
+    if (previous && date !== addDays(previous.date, 1)) return null;
     out.push({ date, available });
   }
   return { version: AVAILABILITY_VERSION, minutes: minutes as number, days: out };

@@ -27,7 +27,6 @@ export function validRequest(overrides: Partial<RequestData> = {}): RequestData 
     days: 5,
     meals: "dinner",
     preferredDate: "",
-    slot: "any",
     name: "Giulia Rossi",
     zone: "Città Alta",
     phone: "+39 333 123 4567",

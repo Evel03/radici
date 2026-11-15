@@ -32,9 +32,9 @@ describe("buildPayload", () => {
     expect(result.estimate.totalCents).toBe(14100);
   });
 
-  it("arma el JSON del contrato (versión, idioma, token, comidas y fecha)", () => {
+  it("arma el JSON del contrato (versión, idioma, token, comidas y fecha; franja siempre indiferente)", () => {
     const payload = buildPayload(
-      validRequest({ meals: "both", preferredDate: "2026-10-26", slot: "afternoon", whatsappOptIn: true }),
+      validRequest({ meals: "both", preferredDate: "2026-10-26", whatsappOptIn: true }),
       { locale: "es", turnstileToken: TEST_TOKEN },
     );
     expect(payload).toMatchObject({
@@ -42,7 +42,7 @@ describe("buildPayload", () => {
       type: "week",
       meals: ["lunch", "dinner"],
       preferredDate: "2026-10-26",
-      slot: "afternoon",
+      slot: "any",
       whatsappOptIn: true,
       locale: "es",
       turnstileToken: TEST_TOKEN,
@@ -50,12 +50,10 @@ describe("buildPayload", () => {
     expect(buildPayload(validRequest({ preferredDate: "" }), { locale: "it", turnstileToken: "t" }).preferredDate).toBeNull();
   });
 
-  it("todas las combinaciones de comidas, tipos y franjas pasan", () => {
+  it("todas las combinaciones de comidas y tipos pasan", () => {
     for (const meals of ["lunch", "dinner", "both"] as const) {
       for (const type of ["week", "extra"] as const) {
-        for (const slot of ["morning", "afternoon", "any"] as const) {
-          expect(serverParse(validRequest({ meals, type, slot })).ok, `${meals}/${type}/${slot}`).toBe(true);
-        }
+        expect(serverParse(validRequest({ meals, type })).ok, `${meals}/${type}`).toBe(true);
       }
     }
   });
