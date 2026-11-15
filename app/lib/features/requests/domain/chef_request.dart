@@ -67,7 +67,8 @@ enum Diet { vegetarian, vegan }
 /// Qué contestó el cliente a la pregunta de alergias del formulario web
 /// (`requests.no_allergies` y `requests.restrictions`).
 enum AllergyAnswer {
-  /// Confirmó que nadie de quienes van a comer tiene alergias ni intolerancias.
+  /// Confirmó que nadie de quienes van a comer tiene alergias, intolerancias
+  /// ni celiaquía.
   none,
 
   /// Las escribió (o el pedido trae restricciones): se muestran.

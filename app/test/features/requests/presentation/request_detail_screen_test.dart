@@ -297,11 +297,11 @@ void main() {
     const unknownKey = ValueKey('detail-allergies-unknown');
     const noneKey = ValueKey('detail-no-allergies');
 
-    testWidgets('confirmó que nadie tiene: lo dice, sin aviso de preguntar', (tester) async {
+    testWidgets('confirmó que nadie tiene: lo dice (también la celiaquía, como la casilla de la web), sin aviso de preguntar', (tester) async {
       await openDetail(tester, buildRequest(noAllergies: true));
       expect(
         tester.widget<Text>(find.byKey(noneKey)).data,
-        'Ha confermato che nessuno ha allergie o intolleranze alimentari.',
+        'Ha confermato che nessuno ha allergie, intolleranze alimentari o celiachia.',
       );
       expect(find.byKey(unknownKey), findsNothing);
     });
@@ -340,7 +340,7 @@ void main() {
       await openDetail(tester, buildRequest(noAllergies: true), deviceLocale: const Locale('es', 'ES'));
       expect(
         tester.widget<Text>(find.byKey(noneKey)).data,
-        'Confirmó que nadie tiene alergias ni intolerancias alimentarias.',
+        'Confirmó que nadie tiene alergias, intolerancias alimentarias ni celiaquía.',
       );
     });
   });

@@ -110,7 +110,7 @@
   "detailType": "Type",
   "detailPreferredDate": "Preferred date",
   "detailPreferredSlot": "Time of day",
-  "detailNoAllergies": "They confirmed that nobody has any food allergies or intolerances.",
+  "detailNoAllergies": "They confirmed that nobody has any food allergies, intolerances or coeliac disease.",
   "detailAllergiesUnknown": "No allergy information: ask the client before planning the menu.",
   "detailAllergens": "Allergens to avoid",
   "detailDiets": "Diets",

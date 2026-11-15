@@ -110,7 +110,7 @@
   "detailType": "Tipo",
   "detailPreferredDate": "Fecha preferida",
   "detailPreferredSlot": "Franja horaria",
-  "detailNoAllergies": "Confirmó que nadie tiene alergias ni intolerancias alimentarias.",
+  "detailNoAllergies": "Confirmó que nadie tiene alergias, intolerancias alimentarias ni celiaquía.",
   "detailAllergiesUnknown": "Sin datos de alergias: pregúntale al cliente antes de preparar el menú.",
   "detailAllergens": "Alérgenos que evitar",
   "detailDiets": "Dietas",

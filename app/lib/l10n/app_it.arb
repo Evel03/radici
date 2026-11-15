@@ -481,9 +481,9 @@
   "@detailPreferredSlot": {
     "description": "Fila: franja preferida."
   },
-  "detailNoAllergies": "Ha confermato che nessuno ha allergie o intolleranze alimentari.",
+  "detailNoAllergies": "Ha confermato che nessuno ha allergie, intolleranze alimentari o celiachia.",
   "@detailNoAllergies": {
-    "description": "Sección de alergias: el cliente marcó en la web que nadie de quienes van a comer (niños incluidos) tiene alergias ni intolerancias (requests.no_allergies = true)."
+    "description": "Sección de alergias: el cliente marcó en la web que nadie de quienes van a comer (niños incluidos) tiene alergias, intolerancias ni celiaquía (requests.no_allergies = true). Dice lo mismo que la casilla del formulario."
   },
   "detailAllergiesUnknown": "Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.",
   "@detailAllergiesUnknown": {
