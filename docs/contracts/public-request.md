@@ -166,7 +166,7 @@ Logs de configuración, solo con nombres de variables: al arrancar, `config_miss
 - Estados: enviando (botón deshabilitado), éxito (pantalla de gracias con resumen y "te mandamos un email a …"), errores por campo (códigos del servidor), 429, Turnstile fallido y error de red, con opción de reintentar sin perder lo cargado.
 - Config (`web/.env.example`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_TURNSTILE_SITE_KEY` (en local, `1x00000000000000000000AA`), `VITE_SITE_URL`, `VITE_NOINDEX` y `VITE_BRAND_NAME` (si falta, Radici). `VITE_WHATSAPP_NUMBER` ya no se usa.
 - CSP: sumar Turnstile (`script-src` y `frame-src` `https://challenges.cloudflare.com`) y la URL de Supabase en `connect-src`. Verificar en un servidor local con la cabecera real.
-- Privacy: datos en Supabase (UE, Frankfurt), emails con Resend, Turnstile de Cloudflare, WhatsApp solo con aceptación, borrado 90 días después del último pedido para los que no avanzan (§9), emails y chats dentro de los 30 días siguientes (§10.3), quién más ve los datos de salud (la asistencia técnica) y que no van en las notas libres. Sigue en borrador: §10.1, paso 1.
+- Privacy: datos en Supabase (UE, Frankfurt), emails con Resend, Turnstile de Cloudflare, WhatsApp solo con aceptación, borrado 90 días después del último pedido para los que no avanzan (§9), emails y chats dentro de los 30 días siguientes (§10.3), quién más ve los datos de salud (la asistencia técnica) y que no van en las notas libres. Completada el 15/11/2026 (versión del texto `2026-11-15`, `CONSENT_VERSION`); la de `2026-10-19` era el borrador.
 
 ## 7. App y bandeja web (`app/`, Flutter)
 
