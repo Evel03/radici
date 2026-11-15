@@ -4,16 +4,43 @@
 // Solo sintaxis borrable: corre en Node (tests), Deno (Edge Functions) y Vite (web).
 import { calcQuote, LIMITS, type Quote, type QuoteInput } from "./quote.ts";
 
-export const PUBLIC_REQUEST_VERSION = 1;
+/**
+ * Versión del contrato. El servidor acepta solo esta: una página vieja en caché recibe
+ * `version: "invalid"` y la web pide recargarla.
+ * 2: la pregunta de alergias (`noAllergies`, y las alergias escritas en `restrictionsNote`).
+ */
+export const PUBLIC_REQUEST_VERSION = 2;
 
 /** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
-export const CONSENT_VERSION = "2026-11-15";
+export const CONSENT_VERSION = "2026-11-16";
 /**
- * Versiones aceptadas: al cambiar el texto, agregar la nueva y dejar las anteriores mientras haya
- * páginas en caché (y mientras la web y la función se despliegan, que corren por separado).
- * 2026-10-19: el borrador, publicado solo como prueba interna.
+ * Versiones de la privacy con que se puede guardar un pedido de la versión vigente del contrato. Al cambiar
+ * el texto sin cambiar el contrato, agregar la nueva y dejar la anterior mientras haya páginas en caché (y
+ * mientras la web y la función se despliegan, que corren por separado).
+ * 2026-11-16 suma la pregunta de alergias y las consultas del calendario (GET …/availability, que guardan
+ * un hash de la IP para el límite de consultas).
  */
-export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-10-19"];
+export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION];
+/**
+ * Privacy de las páginas de la versión 1 del contrato: 2026-11-15 (sin la pregunta de alergias ni las
+ * consultas del calendario) y 2026-10-19 (el borrador, solo prueba interna). Nunca se guardan: se aceptan
+ * solo en pedidos de otra versión, que se rechazan por versión, para que esas páginas reciban solo errores
+ * de página (version y noAllergies) y la web vieja muestre "página desactualizada, recárgala" sin marcar
+ * como faltante la casilla de privacy que sí aceptaron. Un pedido de la versión vigente con una de estas
+ * (solo posible armado a mano) recibe consentRequired: no se guarda una privacy que no habla de las alergias.
+ */
+export const LEGACY_PAGE_CONSENT_VERSIONS: readonly string[] = ["2026-11-15", "2026-10-19"];
+/**
+ * Versiones aceptadas del consentimiento de salud (la web manda CONSENT_VERSION). Lista explícita, con
+ * la misma regla que CONSENT_VERSIONS: al cambiar CONSENT_VERSION, agregarla acá (un test lo exige) y
+ * dejar la anterior mientras haya páginas en caché, si el texto de salud (la casilla y el punto 5 de la
+ * privacy) no cambió. Si siguiera sola a CONSENT_VERSION, un cambio de la privacy que no toca la salud
+ * rechazaría el consentimiento de las páginas ya abiertas. Una versión que se saca a propósito (el texto
+ * de salud cambió) no deja a nadie trabado: la página vieja pide recargar (translateErrors en la web).
+ * Hoy solo 2026-11-16: ningún texto anterior pedía las alergias escritas (el de 2026-10-19 era el de
+ * los alérgenos marcados con casillas; el de 2026-11-15 no pedía datos de salud).
+ */
+export const HEALTH_CONSENT_VERSIONS: readonly string[] = ["2026-11-16"];
 
 /** Los 14 alérgenos del Reg. UE 1169/2011, en el orden del enum `allergen` de la base. */
 export const ALLERGENS = [
@@ -57,6 +84,7 @@ export const TEXT_LIMITS = {
   zone: 80,
   phone: 30,
   email: 120,
+  /** Las alergias e intolerancias escritas en el formulario. */
   restrictionsNote: 200,
   notes: 500,
 } as const;
@@ -76,8 +104,17 @@ export interface PublicRequestPayload {
   days: number;
   /** 1 o 2 valores distintos. */
   meals: Meal[];
+  /**
+   * La pregunta de alergias: true = el cliente confirma que nadie de quienes van a comer (niños
+   * incluidos) tiene alergias, intolerancias alimentarias ni celiaquía, y no manda restricciones;
+   * false = las escribe en `restrictionsNote`, con el consentimiento de salud (`consents.health`).
+   */
+  noAllergies: boolean;
+  /** La web los manda vacíos: las alergias llegan escritas en `restrictionsNote`. */
   allergens: Allergen[];
+  /** La web los manda vacíos. */
   diets: Diet[];
+  /** Las alergias e intolerancias escritas (varias líneas); "" si `noAllergies`. */
   restrictionsNote: string;
   /** "AAAA-MM-DD" o null si no eligió fecha. */
   preferredDate: string | null;
@@ -121,6 +158,7 @@ export type PublicRequestField =
   | "people"
   | "days"
   | "meals"
+  | "noAllergies"
   | "allergens"
   | "diets"
   | "restrictionsNote"
@@ -147,6 +185,8 @@ export interface NormalizedPublicRequest {
   kids: number;
   days: number;
   meals: Meal[];
+  /** true: confirmó que nadie tiene alergias, intolerancias ni celiaquía (y no hay restricciones). */
+  noAllergies: boolean;
   allergens: Allergen[];
   diets: Diet[];
   restrictionsNote: string;
@@ -320,6 +360,10 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
   const meals = parseSet(MEALS, raw.meals, MEALS.length);
   if (!meals || meals.length === 0) errors.meals = raw.meals === undefined ? "required" : "invalid";
 
+  // La pregunta de alergias se contesta siempre: o nadie tiene (true) o las escribe (false).
+  const noAllergies = typeof raw.noAllergies === "boolean" ? raw.noAllergies : null;
+  if (noAllergies === null) errors.noAllergies = "invalid";
+
   const allergens = parseSet(ALLERGENS, raw.allergens ?? [], ALLERGENS.length);
   if (!allergens) errors.allergens = "invalid";
   const diets = parseSet(DIETS, raw.diets ?? [], DIETS.length);
@@ -339,7 +383,8 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     else if (value.length > TEXT_LIMITS[field]) errors[field] = "tooLong";
     return value;
   };
-  const restrictionsNote = text("restrictionsNote", { required: false });
+  // Un área de texto: conserva los saltos de línea (una alergia por renglón).
+  const restrictionsNote = text("restrictionsNote", { required: false, multiLine: true });
   const name = text("name", { required: true });
   const zone = text("zone", { required: true });
   const phone = text("phone", { required: true });
@@ -372,7 +417,9 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
   const locale: Locale = isOneOf(LOCALES, raw.locale) ? raw.locale : "it";
 
   const consents: RawConsents = isRecord(raw.consents) ? raw.consents : {};
-  const privacy = isOneOf(CONSENT_VERSIONS, consents.privacy) ? consents.privacy : null;
+  const privacyVersions =
+    raw.version === PUBLIC_REQUEST_VERSION ? CONSENT_VERSIONS : [...CONSENT_VERSIONS, ...LEGACY_PAGE_CONSENT_VERSIONS];
+  const privacy = isOneOf(privacyVersions, consents.privacy) ? consents.privacy : null;
   if (!privacy) errors.consentPrivacy = "consentRequired";
 
   const restricted = hasRestrictions({
@@ -380,9 +427,15 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     diets: diets ?? [],
     restrictionsNote,
   });
+  if (noAllergies === true && restricted) {
+    // Dice que nadie tiene alergias y a la vez manda restricciones: no se sabe cuál vale.
+    errors.noAllergies = "invalid";
+  } else if (noAllergies === false && !restricted && !errors.restrictionsNote) {
+    errors.restrictionsNote = "required";
+  }
   let health: string | null = null;
-  if (restricted) {
-    health = isOneOf(CONSENT_VERSIONS, consents.health) ? consents.health : null;
+  if (restricted && noAllergies !== true) {
+    health = isOneOf(HEALTH_CONSENT_VERSIONS, consents.health) ? consents.health : null;
     if (!health) errors.consentHealth = "healthConsentRequired";
   }
 
@@ -406,6 +459,7 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     kids,
     days,
     meals: meals as Meal[],
+    noAllergies: noAllergies as boolean,
     allergens: allergens as Allergen[],
     diets: diets as Diet[],
     restrictionsNote,

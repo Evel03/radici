@@ -5,9 +5,9 @@ import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
 import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
-import { MEAL_OPTIONS, REQUEST_TYPES, SLOTS } from "../request/model.ts";
+import { MEAL_OPTIONS, REQUEST_TYPES } from "../request/model.ts";
 import { FIELD_ORDER } from "../request/validate.ts";
-import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang } from "./core.ts";
+import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang, type Lang } from "./core.ts";
 import en from "./en.json";
 import es from "./es.json";
 import itJson from "./it.json";
@@ -59,25 +59,62 @@ describe("claves usadas por la web", () => {
     }
   });
 
-  it("existen etiquetas para cada valor del modelo (tipos, comidas, franjas)", () => {
-    const keys = [
-      ...REQUEST_TYPES.map((t) => `request.type.${t}`),
-      ...MEAL_OPTIONS.map((m) => `request.meals.${m}`),
-      ...SLOTS.map((s) => `request.slot.${s}`),
-    ];
+  it("existen etiquetas para cada valor del modelo (tipos y comidas)", () => {
+    const keys = [...REQUEST_TYPES.map((t) => `request.type.${t}`), ...MEAL_OPTIONS.map((m) => `request.meals.${m}`)];
     expect(keys.filter((key) => !(key in dicts.it))).toEqual([]);
   });
 
-  it("el formulario ofrece las opciones del modelo, en su orden, y no pide datos de salud", () => {
+  it("el formulario ofrece las opciones del modelo, en su orden", () => {
     const values = (name: string): string[] =>
       [...requestHtml.matchAll(new RegExp(`name="${name}" value="([^"]+)"`, "g"))].map((m) => m[1] ?? "");
-    // Alergias, intolerancias y dietas las ve Evelyn con el cliente: el formulario no las pide.
-    for (const name of ["allergens", "diets", "restrictionsNote", "consentHealth"]) {
+    expect(values("meals")).toEqual([...MEAL_OPTIONS]);
+    expect(values("type")).toEqual([...REQUEST_TYPES]);
+    // El día se elige en el calendario (con la disponibilidad de Evelyn): ni franja ni selector de fecha nativo.
+    expect(requestHtml).not.toContain('name="slot"');
+    expect(requestHtml).not.toContain('type="date"');
+    expect(requestHtml).toContain('id="calendar-grid"');
+  });
+
+  it("pregunta por las alergias: «nadie tiene» o escribirlas con el consentimiento de salud; sin alérgenos ni dietas", () => {
+    // Las alergias llegan escritas (restrictionsNote): los alérgenos y las dietas del contrato van vacíos.
+    for (const name of ["allergens", "diets"]) {
       expect(requestHtml, name).not.toContain(`name="${name}"`);
     }
-    expect(values("meals")).toEqual([...MEAL_OPTIONS]);
-    expect(values("slot")).toEqual([...SLOTS]);
-    expect(values("type")).toEqual([...REQUEST_TYPES]);
+    expect(requestHtml).toMatch(/<input id="noAllergies" name="noAllergies" type="checkbox"/);
+    // La nota y el consentimiento van juntos en el bloque que se oculta al marcar «nadie tiene».
+    const details = /<div id="allergy-details"[^>]*>([\s\S]*?)<\/fieldset>/.exec(requestHtml)?.[1] ?? "";
+    expect(details).toMatch(/<textarea [^>]*id="restrictionsNote" name="restrictionsNote"/);
+    expect(details).toMatch(/<input id="consentHealth" name="consentHealth" type="checkbox"/);
+    // Entre «¿Cuándo?» y «Tus datos».
+    const at = (key: string): number => requestHtml.indexOf(`data-i18n="${key}"`);
+    expect(at("request.whenLegend")).toBeLessThan(at("request.allergiesLegend"));
+    expect(at("request.allergiesLegend")).toBeLessThan(at("request.contactLegend"));
+  });
+
+  it("el consentimiento de salud lleva a la sección de salud de la privacy, en los tres idiomas", () => {
+    expect(privacyHtml).toContain('id="p-health"');
+    for (const lang of LANGS) {
+      expect(dicts[lang]["request.healthConsentLabel"], lang).toContain('<a href="/privacy/#p-health">');
+    }
+  });
+
+  it("alergias: «nadie tiene» nombra la celiaquía; las de otras personas, con su acuerdo; lo escrito fuera del bloque se borra", () => {
+    const expected: Record<Lang, { celiac: string; others: string; deleted: string }> = {
+      it: { celiac: "celiachia", others: "responsabilità genitoriale", deleted: "senza consenso, le cancelliamo" },
+      es: { celiac: "celiaquía", others: "responsabilidad parental", deleted: "sin consentimiento, las borramos" },
+      en: { celiac: "coeliac disease", others: "parental responsibility", deleted: "without consent, we delete them" },
+    };
+    for (const lang of LANGS) {
+      const text = (key: string): string => dicts[lang][key] ?? "";
+      // La celiaquía no es una alergia ni una intolerancia: sin nombrarla, una casa con un celíaco podría marcar «nadie tiene».
+      expect(text("request.noAllergiesLabel"), lang).toContain(expected[lang].celiac);
+      expect(text("request.allergiesIntro"), lang).toContain(expected[lang].celiac);
+      // El consentimiento del art. 9.2.a es de cada interesado: quien escribe las de otros declara que están de acuerdo.
+      expect(text("request.healthConsentLabel"), lang).toContain(expected[lang].others);
+      expect(text("privacy.healthBody"), lang).toContain(expected[lang].others);
+      // El procedimiento del contrato (§10.2) borra los datos de salud escritos en las notas: la privacy lo promete.
+      expect(text("privacy.healthBody"), lang).toContain(expected[lang].deleted);
+    }
   });
 
   it("cada campo validado tiene su mensaje de error (err-<campo>) en el formulario", () => {
@@ -98,6 +135,20 @@ describe("claves usadas por la web", () => {
       expect(text, file).not.toMatch(/wa\.me|api\.whatsapp\.com|whatsapp:\/\//i);
     }
   });
+});
+
+describe("privacy", () => {
+  // El calendario pide la disponibilidad (GET …/availability, contrato §11) mientras se completa el
+  // formulario, antes de enviar, y cada consulta deja la huella (hash) de la IP para su límite. La
+  // privacy lo cuenta donde dice qué sale antes del envío, con qué base y cuánto dura la huella.
+  const calendar = { it: "calendario", es: "calendario", en: "calendar" } as const;
+  for (const lang of LANGS) {
+    it(`${lang}: cuenta las consultas del calendario (antes de enviar, base legal y conservación)`, () => {
+      for (const key of ["privacy.flowBody", "privacy.legalBody", "privacy.retentionBody"]) {
+        expect(dicts[lang][key], key).toContain(calendar[lang]);
+      }
+    });
+  }
 });
 
 describe("SEO y accesibilidad de los textos", () => {

@@ -146,30 +146,62 @@
 
             <fieldset class="panel">
               <legend class="panel__title" data-i18n="request.whenLegend"></legend>
-              <div class="field">
-                <label class="field__label" for="preferredDate" data-i18n="request.dateLabel"></label>
-                <input class="input input--date" id="preferredDate" name="preferredDate" type="date" aria-describedby="hint-preferredDate" />
+              <!-- Calendario del día preferido: los días los dibuja richiesta.ts (src/request/calendar.ts) con la
+                   disponibilidad de Evelyn. El día elegido va en el campo oculto preferredDate. -->
+              <div class="field calendar">
+                <p class="field__label" id="calendar-label" data-i18n="request.dateLabel"></p>
+                <div class="calendar__head">
+                  <button class="calendar__nav" id="calendar-prev" type="button" data-i18n-attr="aria-label:request.calendar.prevMonth">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14.5 6 8.5 12l6 6" /></svg>
+                  </button>
+                  <p class="calendar__month" id="calendar-month" aria-live="polite"></p>
+                  <button class="calendar__nav" id="calendar-next" type="button" data-i18n-attr="aria-label:request.calendar.nextMonth">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9.5 6 6 6-6 6" /></svg>
+                  </button>
+                </div>
+                <div class="calendar__weekdays" id="calendar-weekdays" aria-hidden="true"></div>
+                <div class="calendar__grid" id="calendar-grid" role="group" tabindex="-1" aria-labelledby="calendar-label calendar-month" aria-describedby="hint-preferredDate"></div>
+                <ul class="calendar__legend" aria-hidden="true">
+                  <li><span class="calendar__swatch"></span><span data-i18n="request.calendar.available"></span></li>
+                  <li><span class="calendar__swatch calendar__swatch--unavailable"></span><span data-i18n="request.calendar.unavailable"></span></li>
+                  <li><span class="calendar__swatch calendar__swatch--selected"></span><span data-i18n="request.calendar.selected"></span></li>
+                </ul>
+                <p class="calendar__status" id="calendar-status" role="status"></p>
+                <p class="calendar__chosen" id="calendar-chosen" hidden>
+                  <span id="calendar-chosen-text"></span>
+                  <button class="calendar__clear" id="calendar-clear" type="button" data-i18n="request.calendar.clear"></button>
+                </p>
                 <p class="field__hint" id="hint-preferredDate" data-i18n="request.dateHint"></p>
                 <p class="field__error" id="err-preferredDate" hidden></p>
+                <input id="preferredDate" name="preferredDate" type="hidden" value="" />
               </div>
-              <fieldset class="subgroup">
-                <legend class="subgroup__title" data-i18n="request.slotLegend"></legend>
-                <div class="choices choices--3">
-                  <label class="choice choice--compact">
-                    <input type="radio" name="slot" value="morning" />
-                    <span class="choice__body"><span class="choice__title" data-i18n="request.slot.morning"></span></span>
-                  </label>
-                  <label class="choice choice--compact">
-                    <input type="radio" name="slot" value="afternoon" />
-                    <span class="choice__body"><span class="choice__title" data-i18n="request.slot.afternoon"></span></span>
-                  </label>
-                  <label class="choice choice--compact">
-                    <input type="radio" name="slot" value="any" checked />
-                    <span class="choice__body"><span class="choice__title" data-i18n="request.slot.any"></span></span>
-                  </label>
+            </fieldset>
+
+            <fieldset class="panel">
+              <legend class="panel__title" data-i18n="request.allergiesLegend"></legend>
+              <p class="panel__intro" data-i18n="request.allergiesIntro"></p>
+              <label class="choice">
+                <input id="noAllergies" name="noAllergies" type="checkbox" />
+                <span class="choice__body"><span class="choice__title" data-i18n="request.noAllergiesLabel"></span></span>
+              </label>
+              <p class="field__error" id="err-noAllergies" hidden></p>
+              <!-- Sin la casilla: las alergias escritas y su consentimiento (dato de salud). Marcada, se oculta y no se manda. -->
+              <div id="allergy-details" class="allergy-details">
+                <div class="field">
+                  <label class="field__label" for="restrictionsNote" data-i18n="request.restrictionsNoteLabel"></label>
+                  <textarea class="input" id="restrictionsNote" name="restrictionsNote" rows="3" autocomplete="off" required aria-describedby="hint-restrictionsNote"></textarea>
+                  <p class="field__hint" id="hint-restrictionsNote" data-i18n="request.restrictionsNoteHint"></p>
+                  <p class="field__error" id="err-restrictionsNote" hidden></p>
                 </div>
-                <p class="field__error" id="err-slot" hidden></p>
-              </fieldset>
+                <div class="consent consent--health">
+                  <label class="check">
+                    <input id="consentHealth" name="consentHealth" type="checkbox" required aria-describedby="hint-consentHealth" />
+                    <span data-i18n-html="request.healthConsentLabel"></span>
+                  </label>
+                  <p class="field__hint" id="hint-consentHealth" data-i18n="request.healthConsentHint"></p>
+                  <p class="field__error" id="err-consentHealth" hidden></p>
+                </div>
+              </div>
             </fieldset>
 
             <fieldset class="panel">

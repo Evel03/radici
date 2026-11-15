@@ -1,8 +1,10 @@
 // Emails del pedido de la web (contrato §5): confirmación al cliente y aviso a Evelyn.
 //
 // Sin datos de salud (alergias, dietas, nota de restricciones), sin dirección y sin las notas
-// libres (SPEC §6): las funciones solo reciben lo que pueden mostrar. Al cliente se le dice que
-// Evelyn tendrá en cuenta sus restricciones; a Evelyn, que las vea en la app.
+// libres (SPEC §6): las funciones solo reciben lo que pueden mostrar. De las alergias, solo qué
+// contestó el cliente (AllergyAnswer), nunca cuáles: a Evelyn, que nadie tiene, que las vea en la
+// app o, sin respuesta, que pregunte antes del menú. Al cliente, solo que confirmó que nadie tiene:
+// su dirección no está verificada y "hay alergias" también es un dato de salud.
 // Todo texto del usuario se escapa. En el asunto y en el saludo al cliente, del usuario solo va el
 // nombre de pila, y solo si parece un nombre (safeFirstName): nunca un teléfono, un email ni un
 // link escrito en ese campo. El mailto: del aviso a Evelyn lleva la dirección codificada.
@@ -20,6 +22,24 @@ export interface EstimateSummary {
   totalCents: number;
 }
 
+/**
+ * Qué contestó el cliente a la pregunta de alergias, sin decir cuáles:
+ * - "none": confirmó que nadie de quienes van a comer tiene alergias, intolerancias ni celiaquía;
+ * - "listed": las escribió (Evelyn las ve en la app);
+ * - "unknown": no hay respuesta (un pedido anterior a la pregunta).
+ * El aviso a Evelyn dice los tres casos; la confirmación al cliente, solo "none".
+ */
+export type AllergyAnswer = "none" | "listed" | "unknown";
+
+/**
+ * La respuesta a partir de lo guardado. Con restricciones, siempre "listed" (más vale avisar de más);
+ * sin ellas, "none" solo si lo confirmó y si no, "unknown".
+ */
+export function allergyAnswer(noAllergies: boolean | null | undefined, hasRestrictions: boolean): AllergyAnswer {
+  if (hasRestrictions) return "listed";
+  return noAllergies === true ? "none" : "unknown";
+}
+
 /** Resumen del pedido que se puede mostrar en un email (nada de salud ni dirección). */
 export interface RequestSummary {
   requestId: string;
@@ -31,8 +51,8 @@ export interface RequestSummary {
   /** "AAAA-MM-DD" o null. */
   preferredDate: string | null;
   slot: Slot;
-  /** Solo si hay restricciones, nunca cuáles. */
-  hasRestrictions: boolean;
+  /** Qué contestó sobre alergias, nunca cuáles. */
+  allergies: AllergyAnswer;
   estimate: EstimateSummary;
 }
 
@@ -100,7 +120,11 @@ interface Messages {
     greeting: (first: string) => string;
     intro: (chef: string) => string;
     summaryTitle: string;
-    restrictions: (chef: string) => string;
+    /**
+     * Confirmó que nadie tiene alergias: se lo repite, para que vea si se equivocó. Con alergias escritas
+     * o sin respuesta no se dice nada (el email no está verificado; lo que contestó lo vio al enviar).
+     */
+    allergiesNone: string;
     reply: string;
     privacy: string;
     /** El eslogan de la marca, el mismo de la web (common.slogan). */
@@ -121,8 +145,8 @@ interface Messages {
     yes: string;
     no: string;
     summaryTitle: string;
-    restrictionsYes: string;
-    restrictionsNo: string;
+    /** Una línea por respuesta: nadie tiene, las ve en la app, o que pregunte (pedido sin respuesta). */
+    allergies: Readonly<Record<AllergyAnswer, string>>;
     notes: string;
     button: string;
     footer: (brand: string) => string;
@@ -161,7 +185,7 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       greeting: (first) => (first ? `Grazie, ${first}!` : "Grazie!"),
       intro: (chef) => `Abbiamo ricevuto la tua richiesta. ${chef} ti contatterà al più presto per confermare giorno, orario e menù.`,
       summaryTitle: "La tua richiesta",
-      restrictions: (chef) => `Hai indicato restrizioni alimentari: ${chef} ne terrà conto.`,
+      allergiesNone: "Hai confermato che nessuno ha allergie, intolleranze alimentari o celiachia.",
       reply: "Vuoi aggiungere o cambiare qualcosa? Rispondi a questa email.",
       privacy: "Informativa privacy",
       slogan: "Cucina autentica, a casa tua.",
@@ -181,8 +205,11 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       yes: "Sì",
       no: "No",
       summaryTitle: "Richiesta",
-      restrictionsYes: "Ha indicato restrizioni alimentari: le trovi nell'app.",
-      restrictionsNo: "Nessuna restrizione alimentare indicata.",
+      allergies: {
+        none: "Ha confermato che nessuno ha allergie, intolleranze o celiachia.",
+        listed: "Ha indicato restrizioni alimentari: le trovi nell'app.",
+        unknown: "Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.",
+      },
       notes: "Ha lasciato delle note: le trovi nell'app.",
       button: "Apri la richiesta",
       footer: (brand) => `Avviso automatico di ${brand}.`,
@@ -219,7 +246,7 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       greeting: (first) => (first ? `¡Gracias, ${first}!` : "¡Gracias!"),
       intro: (chef) => `Hemos recibido tu solicitud. ${chef} te contactará lo antes posible para confirmar el día, el horario y el menú.`,
       summaryTitle: "Tu solicitud",
-      restrictions: (chef) => `Indicaste restricciones alimentarias: ${chef} las tendrá en cuenta.`,
+      allergiesNone: "Confirmaste que nadie tiene alergias, intolerancias alimentarias ni celiaquía.",
       reply: "¿Quieres añadir o cambiar algo? Responde a este email.",
       privacy: "Política de privacidad",
       slogan: "Cocina auténtica, en tu casa.",
@@ -239,8 +266,11 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       yes: "Sí",
       no: "No",
       summaryTitle: "Solicitud",
-      restrictionsYes: "Indicó restricciones alimentarias: las ves en la app.",
-      restrictionsNo: "No indicó restricciones alimentarias.",
+      allergies: {
+        none: "Confirmó que nadie tiene alergias, intolerancias ni celiaquía.",
+        listed: "Indicó restricciones alimentarias: las ves en la app.",
+        unknown: "Sin datos de alergias: pregúntale al cliente antes de preparar el menú.",
+      },
       notes: "Dejó notas: las ves en la app.",
       button: "Abrir en la bandeja",
       footer: (brand) => `Aviso automático de ${brand}.`,
@@ -277,7 +307,7 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       greeting: (first) => (first ? `Thank you, ${first}!` : "Thank you!"),
       intro: (chef) => `We've received your request. ${chef} will contact you as soon as possible to confirm the day, time and menu.`,
       summaryTitle: "Your request",
-      restrictions: (chef) => `You mentioned dietary restrictions: ${chef} will take them into account.`,
+      allergiesNone: "You confirmed that nobody has any food allergies, intolerances or coeliac disease.",
       reply: "Want to add or change something? Just reply to this email.",
       privacy: "Privacy policy",
       slogan: "Authentic cooking, in your home.",
@@ -297,8 +327,11 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       yes: "Yes",
       no: "No",
       summaryTitle: "Request",
-      restrictionsYes: "They mentioned dietary restrictions: see them in the app.",
-      restrictionsNo: "No dietary restrictions mentioned.",
+      allergies: {
+        none: "They confirmed that nobody has any allergies, intolerances or coeliac disease.",
+        listed: "They mentioned dietary restrictions: see them in the app.",
+        unknown: "No allergy information: ask the client before planning the menu.",
+      },
       notes: "They left some notes: see them in the app.",
       button: "Open in the inbox",
       footer: (brand) => `Automatic notice from ${brand}.`,
@@ -595,14 +628,16 @@ function render(doc: EmailDocument): RenderedEmail {
 
 function summaryRows(summary: RequestSummary, messages: Messages, locale: Locale): Row[] {
   const meals = summary.meals.length > 1 ? messages.meals.both : messages.meals[summary.meals[0] ?? "dinner"];
-  return [
+  const rows: Row[] = [
     { label: messages.labels.type, value: messages.types[summary.type] },
     { label: messages.labels.people, value: formatPeople(summary.adults, summary.kids, locale) },
     { label: messages.labels.days, value: String(summary.days) },
     { label: messages.labels.meals, value: meals },
     { label: messages.labels.date, value: summary.preferredDate ? formatDateLong(summary.preferredDate, locale) : messages.noDate },
-    { label: messages.labels.slot, value: messages.slots[summary.slot] },
   ];
+  // La web ya no pregunta la franja (manda "any"): solo se muestra si el pedido trae mañana o tarde.
+  if (summary.slot !== "any") rows.push({ label: messages.labels.slot, value: messages.slots[summary.slot] });
+  return rows;
 }
 
 function estimateBlocks(summary: RequestSummary, messages: Messages, locale: Locale): Block[] {
@@ -635,7 +670,9 @@ export function renderClientConfirmation(input: ClientConfirmationInput, locale:
     { kind: "title", text: messages.client.summaryTitle },
     { kind: "rows", rows: summaryRows(summary, messages, locale) },
   ];
-  if (summary.hasRestrictions) blocks.push({ kind: "note", text: messages.client.restrictions(input.chefName) });
+  // De las alergias, solo "nadie tiene", para que vea si se equivocó. "Hay alergias" no sale hacia una
+  // dirección que nadie verificó (es un dato de salud); sin respuesta, tampoco se dice nada.
+  if (summary.allergies === "none") blocks.push({ kind: "note", text: messages.client.allergiesNone });
   blocks.push(...estimateBlocks(summary, messages, locale));
   blocks.push({ kind: "paragraph", text: messages.client.reply });
   if (privacyUrl) blocks.push({ kind: "link", label: messages.client.privacy, href: privacyUrl });
@@ -679,7 +716,7 @@ export function renderChefNotification(input: ChefNotificationInput, locale: Loc
     { kind: "rows", rows: contact },
     { kind: "title", text: messages.chef.summaryTitle },
     { kind: "rows", rows: summaryRows(summary, messages, locale) },
-    { kind: "note", text: summary.hasRestrictions ? messages.chef.restrictionsYes : messages.chef.restrictionsNo },
+    { kind: "note", text: messages.chef.allergies[summary.allergies] },
   ];
   if (input.hasNotes) blocks.push({ kind: "note", text: messages.chef.notes });
   blocks.push(...estimateBlocks(summary, messages, locale));

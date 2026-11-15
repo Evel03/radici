@@ -65,11 +65,10 @@ insert into public.chef_settings (chef_id) values ('cef00000-0000-4000-8000-0000
 insert into public.chef_settings (chef_id, hourly_rate_cents, travel_fee_cents, shop_minutes, gap_minutes)
 values ('cef00000-0000-4000-8000-000000000002', 2500, 1500, 40, 20);
 
--- Evelyn: lunes a viernes 9–18, sábado 9–13 (dow: 0 = domingo)
+-- Evelyn: lunes a viernes de 9 a 15 (dow: 0 = domingo), como en producción (decisión del 15/11/2026;
+-- migración 20261115130100_default_availability.sql)
 insert into public.availability_rules (chef_id, dow, start_time, end_time)
-select 'cef00000-0000-4000-8000-000000000001'::uuid, d, time '09:00', time '18:00' from generate_series(1, 5) as d
-union all
-select 'cef00000-0000-4000-8000-000000000001'::uuid, 6, time '09:00', time '13:00';
+select 'cef00000-0000-4000-8000-000000000001'::uuid, d, time '09:00', time '15:00' from generate_series(1, 5) as d;
 -- Giulia: martes a sábado 10–19
 insert into public.availability_rules (chef_id, dow, start_time, end_time)
 select 'cef00000-0000-4000-8000-000000000002'::uuid, d, time '10:00', time '19:00' from generate_series(2, 6) as d;
@@ -199,6 +198,11 @@ insert into public.requests (id, chef_id, client_id, type, status, adults, kids,
    'week', 'accepted', 1, 0, 5, array['lunch'], null,
    '{}', null,
    date_trunc('week', current_date)::date + 8, '10:00', 'preauth', null, null, now() - interval '5 days');
+
+-- Respuesta a la pregunta de alergias (requests.no_allergies): Sara confirmó en el formulario que
+-- nadie tiene. Los demás quedan sin respuesta (null, como los pedidos anteriores a la pregunta): así
+-- la bandeja local muestra los tres casos (ninguna, alergias indicadas y sin datos).
+update public.requests set no_allergies = true where id = 'b0000000-0000-4000-8000-000000000004';
 
 -- ---------------------------------------------------------------------
 -- Sesiones (busy se calcula sola; compra y margen se copian de chef_settings)

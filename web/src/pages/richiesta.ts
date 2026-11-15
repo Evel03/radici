@@ -6,9 +6,22 @@ import "../styles/base.css";
 import "../styles/request.css";
 import { LIMITS } from "../engine.ts";
 import type { MessageKey, Params } from "../i18n/core.ts";
-import { addDays, todayInRome } from "../lib/dates.ts";
-import { formatCents } from "../lib/format.ts";
-import { DATE_WINDOW, MEAL_OPTIONS, REQUEST_TYPES, SLOTS, TEXT_LIMITS, isOneOf, type RequestData } from "../request/model.ts";
+import { todayInRome } from "../lib/dates.ts";
+import { formatCents, formatIsoDate } from "../lib/format.ts";
+import { availabilityUrl, fetchAvailability } from "../request/availability.ts";
+import {
+  availabilityState,
+  buildMonth,
+  initialMonthIndex,
+  noFreeDays,
+  selectionStillValid,
+  windowMonths,
+  type AvailabilityState,
+  type CalendarInput,
+  type CalendarMonth,
+  type DayStatus,
+} from "../request/calendar.ts";
+import { MEAL_OPTIONS, REQUEST_TYPES, TEXT_LIMITS, isOneOf, type RequestData } from "../request/model.ts";
 import { buildPayload, type PayloadOptions } from "../request/payload.ts";
 import { computeQuote } from "../request/quote.ts";
 import { createRequestKeys, doneViewFor, type DoneView } from "../request/request-key.ts";
@@ -23,6 +36,7 @@ import {
   type FieldError,
   type FieldErrors,
   type FieldName,
+  type SentConsents,
 } from "../request/validate.ts";
 import { config } from "../site-config.ts";
 import { initShell, type Shell } from "./shell.ts";
@@ -41,8 +55,8 @@ const CONTROLS: Readonly<Record<FieldName, readonly string[]>> = {
   people: ["adults", "kids"],
   days: ["days"],
   meals: [],
-  preferredDate: ["preferredDate"],
-  slot: [],
+  // El día se elige en el calendario: el error se marca en la grilla (role="group", enfocable).
+  preferredDate: ["calendar-grid"],
   name: ["name"],
   zone: ["zone"],
   phone: ["phone"],
@@ -50,6 +64,9 @@ const CONTROLS: Readonly<Record<FieldName, readonly string[]>> = {
   email: ["email"],
   notes: ["notes"],
   consentPrivacy: ["consentPrivacy"],
+  noAllergies: ["noAllergies"],
+  restrictionsNote: ["restrictionsNote"],
+  consentHealth: ["consentHealth"],
   turnstileToken: [],
 };
 const CONTROL_IDS = [...new Set(Object.values(CONTROLS).flat())];
@@ -62,6 +79,8 @@ const doneContact = byId("done-contact");
 const doneEmail = byId("done-email");
 const doneDetails = byId("done-details");
 const doneSummary = byId("done-summary");
+// La nota de alergias y su consentimiento: se ocultan si marca que nadie tiene (y no se mandan).
+const allergyDetails = byId("allergy-details");
 const configWarning = byId("config-warning");
 const formError = byId("form-error");
 const formErrorText = byId("form-error-text");
@@ -80,6 +99,40 @@ const quoteOut = {
   groceries: byId("q-groceries"),
   portions: byId("q-portions"),
 };
+const calendarEls = {
+  grid: byId("calendar-grid"),
+  weekdays: byId("calendar-weekdays"),
+  month: byId("calendar-month"),
+  prev: byId<HTMLButtonElement>("calendar-prev"),
+  next: byId<HTMLButtonElement>("calendar-next"),
+  status: byId("calendar-status"),
+  chosen: byId("calendar-chosen"),
+  chosenText: byId("calendar-chosen-text"),
+  clear: byId<HTMLButtonElement>("calendar-clear"),
+  input: byId<HTMLInputElement>("preferredDate"),
+};
+
+/** Nombre accesible de cada día del calendario según su estado. */
+const DAY_LABELS: Readonly<Record<DayStatus, MessageKey>> = {
+  available: "request.calendar.dayAvailable",
+  unavailable: "request.calendar.dayUnavailable",
+  pending: "request.calendar.dayPending",
+  outside: "request.calendar.dayUnavailable",
+};
+
+/** "novembre 2026" → "Novembre 2026" (Intl da el mes en minúscula en italiano y español). */
+function monthTitle(month: CalendarMonth, locale: string): string {
+  const text = new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" }).format(
+    new Date(Date.UTC(month.year, month.month - 1, 1)),
+  );
+  return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
+}
+
+/** Lunes a domingo, abreviados según el idioma (el 16/11/2026 es lunes). */
+function weekdayNames(locale: string): string[] {
+  const fmt = new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" });
+  return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(Date.UTC(2026, 10, 16 + i))));
+}
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -102,8 +155,8 @@ function setDescribedBy(el: HTMLElement, id: string, on: boolean): void {
   else el.removeAttribute("aria-describedby");
 }
 
-/** Límites tomados del motor y del contrato: el HTML no los repite. */
-function applyLimits(today: string): void {
+/** Límites tomados del motor y del contrato: el HTML no los repite. Las fechas las limita el calendario. */
+function applyLimits(): void {
   const range = (id: string, min: number, max: number): void => {
     const input = byId<HTMLInputElement>(id);
     input.min = String(min);
@@ -116,9 +169,6 @@ function applyLimits(today: string): void {
     const el = document.getElementById(id);
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.maxLength = max;
   }
-  const date = byId<HTMLInputElement>("preferredDate");
-  date.min = addDays(today, DATE_WINDOW.minDaysAhead);
-  date.max = addDays(today, DATE_WINDOW.maxDaysAhead);
 }
 
 function readForm(): RequestData {
@@ -133,15 +183,14 @@ function readForm(): RequestData {
   };
   const type = str("type");
   const meals = str("meals");
-  const slot = str("slot");
   return {
     type: isOneOf(REQUEST_TYPES, type) ? type : "week",
     adults: int("adults"),
     kids: int("kids"),
     days: int("days"),
     meals: isOneOf(MEAL_OPTIONS, meals) ? meals : "dinner",
+    // Campo oculto que llena el calendario.
     preferredDate: str("preferredDate"),
-    slot: isOneOf(SLOTS, slot) ? slot : "any",
     name: str("name"),
     zone: str("zone"),
     phone: str("phone"),
@@ -149,6 +198,9 @@ function readForm(): RequestData {
     whatsappOptIn: fd.has("whatsappOptIn"),
     notes: str("notes"),
     consentPrivacy: fd.has("consentPrivacy"),
+    noAllergies: fd.has("noAllergies"),
+    restrictionsNote: str("restrictionsNote"),
+    consentHealth: fd.has("consentHealth"),
   };
 }
 
@@ -243,6 +295,133 @@ function startRequestPage(shell: Shell): void {
 
   const payloadOptions = (turnstileToken: string): PayloadOptions => ({ locale: shell.i18n.lang, turnstileToken });
 
+  // --- Calendario del día preferido (src/request/calendar.ts) ------------------------------------
+  /** Disponibilidad para la duración del pedido (minutos de cocina del motor, que el cliente no ve). */
+  let availability: AvailabilityState = { kind: "loading" };
+  /** Minutos de la última consulta (null: todavía ninguna). */
+  let availabilityFor: number | null = null;
+  let availabilityRequested = false;
+  let availabilitySeq = 0;
+  let availabilityTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Respuestas buenas por duración: volver a una duración ya vista no consulta de nuevo. */
+  const availabilityCache = new Map<number, AvailabilityState>();
+  /** Mes que se muestra (índice en windowMonths). Mientras el cliente no lo cambie, se elige solo. */
+  let monthIndex = 0;
+  let monthTouched = false;
+  /** Aviso cuando el día elegido dejó de estar libre (hasta que el cliente elija o quite la fecha). */
+  let calendarNotice: MessageKey | null = null;
+  /** Lo que se pintó por última vez: si no cambió, no se rehace la grilla (el día con foco no lo pierde). */
+  let calendarPainted = "";
+
+  const calendarInput = (data: RequestData): CalendarInput => ({
+    today: todayInRome(),
+    selected: data.preferredDate,
+    applies: data.type === "week",
+    availability,
+  });
+
+  const setPreferredDate = (date: string): void => {
+    calendarEls.input.value = date;
+  };
+
+  /**
+   * Pide la disponibilidad para la duración actual (solo la semana de comidas). Con caché o sin backend
+   * la aplica en el momento; si no, espera un poco (los steppers cambian de a un clic) y consulta.
+   */
+  const syncAvailability = (data: RequestData): void => {
+    const quote = data.type === "week" ? computeQuote(data) : null;
+    // Eventos: no aplica. Datos incompletos: se mantiene la última disponibilidad.
+    if (!quote || quote.cookMinutes === availabilityFor) return;
+    const minutes = quote.cookMinutes;
+    availabilityFor = minutes;
+    clearTimeout(availabilityTimer);
+    availabilitySeq++;
+    const cached = availabilityCache.get(minutes);
+    if (cached) {
+      availability = cached;
+      return;
+    }
+    if (!config.supabaseUrl) {
+      availability = { kind: "error" };
+      return;
+    }
+    availability = { kind: "loading" };
+    const seq = availabilitySeq;
+    const url = availabilityUrl(config.supabaseUrl, minutes);
+    const delay = availabilityRequested ? 300 : 0;
+    availabilityRequested = true;
+    availabilityTimer = setTimeout(() => {
+      void fetchAvailability(url).then((response) => {
+        // Llegó tarde: mientras tanto cambió la duración.
+        if (seq !== availabilitySeq) return;
+        const state = availabilityState(response, minutes);
+        if (state.kind === "ready") availabilityCache.set(minutes, state);
+        availability = state;
+        update();
+      });
+    }, delay);
+  };
+
+  const renderCalendar = (data: RequestData): void => {
+    const { i18n } = shell;
+    const input = calendarInput(data);
+    const months = windowMonths(input.today);
+    if (!monthTouched) monthIndex = initialMonthIndex(input);
+    monthIndex = Math.min(Math.max(monthIndex, 0), months.length - 1);
+    const ref = months[monthIndex];
+    if (!ref) return;
+    const view = buildMonth(ref, input);
+    calendarEls.prev.disabled = monthIndex === 0;
+    calendarEls.next.disabled = monthIndex === months.length - 1;
+
+    const signature = JSON.stringify([i18n.lang, view.year, view.month, view.cells.map((c) => `${c.status}${c.selected ? "*" : ""}`)]);
+    if (signature !== calendarPainted) {
+      calendarPainted = signature;
+      const active = document.activeElement;
+      const focusedDate = active instanceof HTMLElement && calendarEls.grid.contains(active) ? active.dataset["date"] : undefined;
+      setText(calendarEls.month, monthTitle(view, i18n.locale));
+      calendarEls.weekdays.replaceChildren(
+        ...weekdayNames(i18n.locale).map((name) => {
+          const el = document.createElement("span");
+          el.textContent = name;
+          return el;
+        }),
+      );
+      const nodes: HTMLElement[] = [];
+      for (let i = 0; i < view.leading; i++) nodes.push(document.createElement("span"));
+      for (const cell of view.cells) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "calendar__day";
+        btn.dataset["date"] = cell.date;
+        btn.dataset["status"] = cell.status;
+        btn.disabled = cell.status !== "available";
+        btn.setAttribute("aria-pressed", String(cell.selected));
+        btn.setAttribute("aria-label", i18n.t(DAY_LABELS[cell.status], { date: formatIsoDate(cell.date, i18n.locale) }));
+        btn.textContent = String(cell.day);
+        nodes.push(btn);
+      }
+      calendarEls.grid.replaceChildren(...nodes);
+      if (focusedDate) {
+        const again = calendarEls.grid.querySelector<HTMLButtonElement>(`button[data-date="${focusedDate}"]`);
+        (again && !again.disabled ? again : calendarEls.grid).focus({ preventScroll: true });
+      }
+    }
+
+    const notes: string[] = [];
+    if (calendarNotice) notes.push(i18n.t(calendarNotice));
+    if (!input.applies) notes.push(i18n.t("request.calendar.eventNote"));
+    else if (availability.kind === "loading") notes.push(i18n.t("request.calendar.loading"));
+    else if (availability.kind === "error") notes.push(i18n.t("request.calendar.error"));
+    else if (noFreeDays(input)) notes.push(i18n.t("request.calendar.noneFree"));
+    setText(calendarEls.status, notes.join(" "));
+    calendarEls.chosen.hidden = data.preferredDate === "";
+    setText(
+      calendarEls.chosenText,
+      data.preferredDate ? i18n.t("request.calendar.chosen", { date: formatIsoDate(data.preferredDate, i18n.locale) }) : "",
+    );
+  };
+
   const renderQuote = (data: RequestData): void => {
     const { i18n } = shell;
     const quote = computeQuote(data);
@@ -327,7 +506,7 @@ function startRequestPage(shell: Shell): void {
     if (field === "turnstileToken") target = turnstileRetry.hidden ? turnstileBox : turnstileRetry;
     else {
       const id = CONTROLS[field][0];
-      // Grupos de opciones (tipo, comidas, alérgenos, dietas, franja): la primera opción.
+      // Grupos de opciones (tipo, comidas): la primera opción.
       target = id ? byId(id) : form.querySelector<HTMLInputElement>(`input[name="${field}"]`);
     }
     if (!target) return;
@@ -390,7 +569,8 @@ function startRequestPage(shell: Shell): void {
     done.focus();
   };
 
-  const handleOutcome = (outcome: SubmitOutcome, data: RequestData, view: DoneView): void => {
+  /** @param sent los consentimientos que llevaba el pedido: uno marcado que el servidor rechaza es de otro texto. */
+  const handleOutcome = (outcome: SubmitOutcome, data: RequestData, view: DoneView, sent: SentConsents): void => {
     if (outcome.kind === "created") {
       showDone(view, outcome.estimate);
       return;
@@ -399,7 +579,7 @@ function startRequestPage(shell: Shell): void {
     turnstile?.reset();
     switch (outcome.kind) {
       case "invalid": {
-        const { fields, outdated } = translateErrors(outcome.errors);
+        const { fields, outdated } = translateErrors(outcome.errors, sent);
         server = { errors: withoutTurnstile(fields), data: JSON.stringify(data) };
         renderErrors(data);
         const first = firstErrorField({ ...fieldErrors(data), ...serverErrors(data) });
@@ -480,7 +660,7 @@ function startRequestPage(shell: Shell): void {
     keys.settle(outcome.kind, snapshot);
     phase = "editing";
     setSending(false);
-    handleOutcome(outcome, data, view);
+    handleOutcome(outcome, data, view, payload.consents);
   };
 
   const onTurnstileChange = (): void => {
@@ -500,10 +680,19 @@ function startRequestPage(shell: Shell): void {
 
   const update = (): void => {
     if (phase === "done") return;
+    syncAvailability(readForm());
+    // El día elegido dejó de estar libre (otra duración, o pasó de evento a semana de comidas): se quita.
+    if (!selectionStillValid(calendarInput(readForm()))) {
+      setPreferredDate("");
+      calendarNotice = "request.calendar.cleared";
+    }
     const data = readForm();
     keys.edited(JSON.stringify(data));
+    // Lo escrito se conserva si vuelve a desmarcar la casilla, pero oculto no se manda (buildPayload).
+    allergyDetails.hidden = data.noAllergies;
     syncSteppers();
     renderQuote(data);
+    renderCalendar(data);
     const errors = fieldErrors(data);
     renderErrors(data, errors);
     if (formMessage?.key === "errors.summary" && !firstErrorField({ ...errors, ...serverErrors(data) })) {
@@ -527,6 +716,28 @@ function startRequestPage(shell: Shell): void {
     void submitRequest();
   });
   formRetry.addEventListener("click", () => void submitRequest());
+  calendarEls.grid.addEventListener("click", (event) => {
+    const btn = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[data-date]") : null;
+    if (!btn || btn.disabled) return;
+    const date = btn.dataset["date"] ?? "";
+    // Tocar el día elegido lo quita (la fecha es opcional).
+    setPreferredDate(calendarEls.input.value === date ? "" : date);
+    calendarNotice = null;
+    update();
+  });
+  const moveMonth = (delta: number): void => {
+    monthTouched = true;
+    monthIndex += delta;
+    renderCalendar(readForm());
+  };
+  calendarEls.prev.addEventListener("click", () => moveMonth(-1));
+  calendarEls.next.addEventListener("click", () => moveMonth(1));
+  calendarEls.clear.addEventListener("click", () => {
+    setPreferredDate("");
+    calendarNotice = null;
+    update();
+    calendarEls.grid.focus({ preventScroll: true });
+  });
   turnstileRetry.addEventListener("click", () => {
     turnstile?.reset();
     turnstileBox.focus({ preventScroll: true });
@@ -556,7 +767,7 @@ function startRequestPage(shell: Shell): void {
   submitButton.disabled = false;
 }
 
-applyLimits(todayInRome());
+applyLimits();
 trackQuoteHeight(byId("quote"));
 // Si no llegan los textos, initShell muestra el aviso y se resuelve recién si un reintento funciona:
 // mientras tanto el botón de envío sigue deshabilitado, como viene en el HTML.

@@ -1,19 +1,30 @@
-// Lógica de la Edge Function public-request (docs/contracts/public-request.md §2, §4 y §5).
+// Lógica de la Edge Function public-request (docs/contracts/public-request.md §2, §4, §5 y §11).
 // No depende de Deno ni de supabase-js: index.ts arma las dependencias reales y los tests
 // (handler.test.ts, en Node) las simulan.
 //
-// Orden: CORS → método (405) → tipo (415) → tamaño (413) → JSON y validación (400) →
-// configuración (500) → límite por IP (429) → Turnstile (403) → cocinera (CHEF_ID o la única
-// de public.chefs) y sus tarifas → guardado en una transacción (submit_public_request) → 201.
-// Los emails y el WhatsApp salen después, en segundo plano (waitUntil): un fallo de envío no
-// rompe el pedido. Un reintento con la misma requestKey recibe un 201 con el mismo id y la
-// estimación guardada, más duplicate: true, y no repite ningún aviso.
+// Dos rutas:
+// - POST <función> (el pedido). Orden: CORS → método (405) → tipo (415) → tamaño (413) → JSON y
+//   validación (400) → configuración (500) → límite por IP (429) → Turnstile (403) → cocinera
+//   (CHEF_ID o la única de public.chefs) y sus tarifas → guardado en una transacción
+//   (submit_public_request) → 201. Los emails y el WhatsApp salen después, en segundo plano
+//   (waitUntil): un fallo de envío no rompe el pedido. Un reintento con la misma requestKey recibe
+//   un 201 con el mismo id y la estimación guardada, más duplicate: true, y no repite ningún aviso.
+// - GET <función>/availability?minutes=N (el calendario, §11). Orden: CORS → método (405) →
+//   minutes (400) → configuración (500) → su propio límite por IP (429) → cocinera →
+//   get_free_days (503 si falla la base) → 200, con caché pública de un minuto.
 //
 // Los logs nunca llevan datos personales, de salud ni la IP: solo ids, códigos y contadores.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
+import {
+  AVAILABILITY_DAYS,
+  AVAILABILITY_PATH,
+  buildAvailabilityResponse,
+  parseAvailabilityMinutes,
+} from "../_shared/availability.ts";
 import { clientIp, hashSubject, rateLimitSubject } from "../_shared/client_ip.ts";
 import { corsHeaders, parseAllowedOrigins, type OriginRule } from "../_shared/cors.ts";
 import {
+  allergyAnswer,
   brandFromMailFrom,
   privacyPageUrl,
   renderChefNotification,
@@ -22,8 +33,11 @@ import {
   type RequestSummary,
 } from "../_shared/emails.ts";
 import {
+  DATE_WINDOW,
   LOCALES,
   MAX_PAYLOAD_BYTES,
+  addDays,
+  isIsoDate,
   isOneOf,
   parsePublicRequest,
   romeToday,
@@ -44,6 +58,22 @@ import { sendWhatsAppTemplate, whatsAppConfigFrom, type WhatsAppConfig } from ".
 export const RATE_LIMITS = { perHour: 5, perDay: 20 } as const;
 /** La ventana corta es de una hora: la web puede sugerir reintentar después. */
 export const RETRY_AFTER_SECONDS = 3600;
+
+/**
+ * Contrato §11: lecturas del calendario por IP. Más generoso que el del pedido (cada cambio de
+ * personas, días o comidas puede pedir otra duración) y en otro contador: no gasta el cupo del POST.
+ */
+export const AVAILABILITY_RATE_LIMITS = { perHour: 120, perDay: 600 } as const;
+/** La disponibilidad depende solo de la URL (y del origen, por CORS): el navegador la guarda un minuto. */
+export const AVAILABILITY_CACHE_CONTROL = "public, max-age=60";
+
+/**
+ * Clave del límite de las lecturas: la del pedido con el prefijo "availability:". Con el HMAC queda
+ * otra fila en public_request_hits (la misma función SQL, otro contador), sin migración.
+ */
+export function availabilityRateSubject(ip: string | null): string {
+  return `availability:${ip ? rateLimitSubject(ip) : "unknown"}`;
+}
 
 // ---------------------------------------------------------------------------
 // Configuración (secretos y variables de la función, contrato §4)
@@ -180,6 +210,8 @@ export interface SubmitPublicRequestParams {
   kids: number;
   days: number;
   meals: Meal[];
+  /** Respuesta a la pregunta de alergias: true = nadie tiene; false = las escribió (requests.no_allergies). */
+  no_allergies: boolean;
   allergens: Allergen[];
   diets: Diet[];
   restrictions_note: string;
@@ -223,6 +255,11 @@ export interface PublicRequestStore {
   submit(params: SubmitPublicRequestParams): Promise<SubmitResult>;
   /** Completa notifications.sent_at del aviso 'new_request' de ese pedido. */
   markChefNotificationSent(requestId: string): Promise<void>;
+  /**
+   * public.get_free_days: las fechas ("AAAA-MM-DD") de [fromDate, fromDate + days − 1] con al menos
+   * un horario libre para cookMinutes de cocina.
+   */
+  freeDays(chefId: string, cookMinutes: number, fromDate: string, days: number): Promise<string[]>;
 }
 
 /** Error de la base sin datos: operación, SQLSTATE y, como mucho, un código propio en snake_case. */
@@ -281,6 +318,22 @@ export function submitResultFromRpc(data: unknown): SubmitResult | null {
   return { requestId, duplicate, storedEstimate: record["estimate"] ?? null };
 }
 
+/**
+ * Filas de public.get_free_days ([{ day: "AAAA-MM-DD", available: boolean }, …]): las fechas con
+ * available = true, o null si la respuesta no tiene esa forma.
+ */
+export function availableDatesFromRpc(data: unknown): string[] | null {
+  if (!Array.isArray(data)) return null;
+  const dates: string[] = [];
+  for (const row of data) {
+    if (typeof row !== "object" || row === null) return null;
+    const { day, available } = row as Record<string, unknown>;
+    if (typeof day !== "string" || !isIsoDate(day) || typeof available !== "boolean") return null;
+    if (available) dates.push(day);
+  }
+  return dates;
+}
+
 export function toSubmitParams(chefId: string, value: NormalizedPublicRequest, estimate: StoredEstimate): SubmitPublicRequestParams {
   return {
     chef_id: chefId,
@@ -289,6 +342,7 @@ export function toSubmitParams(chefId: string, value: NormalizedPublicRequest, e
     kids: value.kids,
     days: value.days,
     meals: value.meals,
+    no_allergies: value.noAllergies,
     allergens: value.allergens,
     diets: value.diets,
     restrictions_note: value.restrictionsNote,
@@ -408,6 +462,77 @@ function logStoreError(log: Logger, error: unknown, op: string): void {
   }
 }
 
+type ChefResolution = { ok: true; chefId: string } | { ok: false; reason: "db_error" | "unresolved" };
+
+/** Cocinera de la función: CHEF_ID o, si no está configurado, la única de public.chefs. Deja el motivo en el log. */
+async function resolveChef(deps: HandlerDeps): Promise<ChefResolution> {
+  if (deps.config.chefId) return { ok: true, chefId: deps.config.chefId };
+  let resolved: DefaultChef;
+  try {
+    resolved = await deps.store.resolveDefaultChef();
+  } catch (error) {
+    logStoreError(deps.log, error, "resolve_chef");
+    return { ok: false, reason: "db_error" };
+  }
+  if (!resolved.ok) {
+    // no_chef: falta promote_to_chef. multiple_chefs: hay que fijar CHEF_ID.
+    deps.log("error", "chef_id_unresolved", { reason: resolved.reason });
+    return { ok: false, reason: "unresolved" };
+  }
+  return { ok: true, chefId: resolved.chefId };
+}
+
+type Reply = (status: number, body: unknown, extra?: Record<string, string>) => Response;
+
+/**
+ * GET …/availability?minutes=N (contrato §11): para cada día de la ventana del formulario (de mañana
+ * a +14, en Roma), si la cocinera tiene al menos un horario libre para esa duración de cocina.
+ * El 200 y el 400 dependen solo de la URL: caché pública de un minuto. Los errores, no-store.
+ */
+async function availabilityRoute(deps: HandlerDeps, request: Request, url: URL, reply: Reply): Promise<Response> {
+  const { config, log } = deps;
+  if (request.method !== "GET") return reply(405, { error: "method" }, { Allow: "GET, OPTIONS" });
+  const cacheable = { "Cache-Control": AVAILABILITY_CACHE_CONTROL };
+
+  const minutes = parseAvailabilityMinutes(url.searchParams.get("minutes"));
+  if (minutes === null) return reply(400, { errors: { minutes: "invalid" } }, cacheable);
+
+  // Una lectura no pasa por Turnstile: solo hacen falta la sal del límite y, si está, un CHEF_ID válido.
+  if (!config.ipHashSalt) log("error", "config_missing", { missing: ["IP_HASH_SALT"] });
+  if (config.invalid.length > 0) log("error", "config_invalid", { invalid: config.invalid });
+  if (!config.ipHashSalt || config.invalid.length > 0) return reply(500, { error: "server" });
+
+  // Su propio contador (otra clave, la misma función SQL): no gasta el cupo del formulario.
+  const ip = clientIp(request.headers);
+  if (!ip) log("warn", "client_ip_missing");
+  const ipHash = await hashSubject(availabilityRateSubject(ip), config.ipHashSalt);
+  let allowed: boolean;
+  try {
+    allowed = await deps.store.hitRateLimit(ipHash, AVAILABILITY_RATE_LIMITS.perHour, AVAILABILITY_RATE_LIMITS.perDay);
+  } catch (error) {
+    logStoreError(log, error, "rate_limit");
+    return reply(503, { error: "server" });
+  }
+  if (!allowed) {
+    log("info", "rate_limited", { route: "availability" });
+    return reply(429, { error: "rateLimited" }, { "Retry-After": String(RETRY_AFTER_SECONDS) });
+  }
+
+  const chef = await resolveChef(deps);
+  if (!chef.ok) return reply(chef.reason === "db_error" ? 503 : 500, { error: "server" });
+
+  // "Hoy" en Roma; la ventana es la de availabilityDates: desde mañana, AVAILABILITY_DAYS días.
+  const today = romeToday(deps.now());
+  let free: string[];
+  try {
+    free = await deps.store.freeDays(chef.chefId, minutes, addDays(today, DATE_WINDOW.minDaysAhead), AVAILABILITY_DAYS);
+  } catch (error) {
+    logStoreError(log, error, "free_days");
+    return reply(503, { error: "server" });
+  }
+  return reply(200, buildAvailabilityResponse(today, minutes, free), cacheable);
+}
+
 export function createPublicRequestHandler(deps: HandlerDeps): (request: Request) => Promise<Response> {
   const { config, log } = deps;
 
@@ -429,6 +554,10 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
     }
 
     try {
+      // La URL termina en /availability (antes de la query): el calendario. Cualquier otra, el pedido.
+      const url = new URL(request.url);
+      if (url.pathname.endsWith(AVAILABILITY_PATH)) return await availabilityRoute(deps, request, url, reply);
+
       if (request.method !== "POST") return reply(405, { error: "method" }, { Allow: "POST, OPTIONS" });
       if (!isJsonContentType(request.headers.get("content-type"))) return reply(415, { error: "contentType" });
 
@@ -487,22 +616,9 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
       }
 
       // Cocinera: CHEF_ID o, si no está configurado, la única de public.chefs.
-      let chefId = config.chefId;
-      if (!chefId) {
-        let resolved: DefaultChef;
-        try {
-          resolved = await deps.store.resolveDefaultChef();
-        } catch (error) {
-          logStoreError(log, error, "resolve_chef");
-          return reply(500, { error: "server" });
-        }
-        if (!resolved.ok) {
-          // no_chef: falta promote_to_chef. multiple_chefs: hay que fijar CHEF_ID.
-          log("error", "chef_id_unresolved", { reason: resolved.reason });
-          return reply(500, { error: "server" });
-        }
-        chefId = resolved.chefId;
-      }
+      const resolved = await resolveChef(deps);
+      if (!resolved.ok) return reply(500, { error: "server" });
+      const chefId = resolved.chefId;
 
       // Estimación con las tarifas actuales de la cocinera (no las de la web).
       let chef: ChefInfo | null;
@@ -582,7 +698,7 @@ function summaryOf(context: NotifyContext): RequestSummary {
     meals: value.meals,
     preferredDate: value.preferredDate,
     slot: value.slot,
-    hasRestrictions: value.hasRestrictions,
+    allergies: allergyAnswer(value.noAllergies, value.hasRestrictions),
     estimate: {
       portions: estimate.portions,
       cookMinutes: estimate.cookMinutes,

@@ -1,5 +1,6 @@
 // Resumen del pedido para la pantalla de gracias. Pura: devuelve textos, la página los pinta con textContent.
-// Solo datos del pedido (tipo, personas, días, comidas, fecha, franja, estimación): nada de contacto ni salud.
+// Solo datos del pedido (tipo, personas, días, comidas, fecha, estimación) y qué contestó sobre
+// alergias (ninguna o indicadas, nunca cuáles): nada de contacto ni de salud.
 import type { I18n } from "../i18n/core.ts";
 import { formatCents, formatIsoDate } from "../lib/format.ts";
 import type { RequestData } from "./model.ts";
@@ -33,8 +34,13 @@ export function summaryRows(data: RequestData, estimate: { totalCents: number } 
       label: t("request.summary.date"),
       value: data.preferredDate ? formatIsoDate(data.preferredDate, locale) : t("request.summary.dateNone"),
     },
-    { label: t("request.summary.slot"), value: t(`request.slot.${data.slot}`) },
   ];
+  // Qué contestó sobre alergias, nunca cuáles. Un pedido guardado sin la casilla siempre trae alergias
+  // escritas (el servidor las exige).
+  rows.push({
+    label: t("request.summary.allergies"),
+    value: t(data.noAllergies ? "request.summary.allergiesNone" : "request.summary.allergiesListed"),
+  });
   if (estimate) rows.push({ label: t("request.summary.total"), value: formatCents(estimate.totalCents, locale), total: true });
   return rows;
 }

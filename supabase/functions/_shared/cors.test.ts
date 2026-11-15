@@ -61,10 +61,11 @@ test("el puerto por defecto escrito en la regla equivale a no escribirlo", () =>
   assert.ok(isOriginAllowed("http://example.com", parseAllowedOrigins("http://example.com:80/")));
 });
 
-test("preflight de un origen permitido: método, cabeceras y caché", () => {
+test("preflight de un origen permitido: métodos, cabeceras y caché", () => {
   const headers = corsHeaders(`https://abc.${PAGES}`, RULES, { preflight: true });
   assert.equal(headers["Access-Control-Allow-Origin"], `https://abc.${PAGES}`);
-  assert.equal(headers["Access-Control-Allow-Methods"], "POST, OPTIONS");
+  // POST: el pedido; GET: la disponibilidad del calendario (contrato public-request §11).
+  assert.equal(headers["Access-Control-Allow-Methods"], "GET, POST, OPTIONS");
   assert.equal(headers["Access-Control-Allow-Headers"], CORS_ALLOWED_HEADERS);
   for (const name of ["content-type", "apikey", "authorization", "x-client-info"]) {
     assert.ok(CORS_ALLOWED_HEADERS.split(", ").includes(name), `falta ${name}`);

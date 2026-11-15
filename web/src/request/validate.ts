@@ -11,6 +11,7 @@ import {
   type ErrorCode,
   type PublicRequestErrors,
   type PublicRequestField,
+  type PublicRequestPayload,
   type RequestData,
 } from "./model.ts";
 import { buildPayload, type PayloadOptions } from "./payload.ts";
@@ -24,7 +25,9 @@ export const FIELD_ORDER = [
   "days",
   "meals",
   "preferredDate",
-  "slot",
+  "noAllergies",
+  "restrictionsNote",
+  "consentHealth",
   "name",
   "zone",
   "phone",
@@ -39,18 +42,18 @@ export type FieldName = (typeof FIELD_ORDER)[number];
 /**
  * Errores que no son de un campo: la página quedó desactualizada respecto del servidor.
  * Si el contrato suma un campo y el formulario no lo muestra, esto deja de compilar.
- * Los datos de salud (alérgenos, dietas, nota y su consentimiento) también: el formulario no los
- * pide y los manda vacíos, así que un error ahí solo puede venir de otra versión del servidor.
+ * Los alérgenos y las dietas también: las alergias llegan escritas (restrictionsNote) y esos dos van
+ * vacíos, así que un error ahí solo puede venir de otra versión del servidor. Lo mismo la franja
+ * horaria: el formulario no la pregunta y manda siempre "any".
  */
 export const PAGE_FIELDS = {
   payload: true,
   version: true,
   locale: true,
   requestKey: true,
+  slot: true,
   allergens: true,
   diets: true,
-  restrictionsNote: true,
-  consentHealth: true,
 } as const satisfies Record<Exclude<PublicRequestField, FieldName>, true>;
 
 const ERROR_CODES: readonly ErrorCode[] = [
@@ -70,6 +73,7 @@ export interface FieldError {
 export type FieldErrors = Partial<Record<FieldName, FieldError>>;
 
 const REQUIRED_KEYS: Partial<Record<FieldName, MessageKey>> = {
+  restrictionsNote: "errors.restrictionsRequired",
   name: "errors.nameRequired",
   zone: "errors.zoneRequired",
   phone: "errors.phoneRequired",
@@ -97,8 +101,11 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
       return { key: "errors.date", params: { days: DATE_WINDOW.maxDaysAhead } };
     case "consentPrivacy":
       return { key: "errors.privacyRequired" };
+    case "consentHealth":
+      return { key: "errors.healthRequired" };
     case "turnstileToken":
       return { key: "errors.turnstileRequired" };
+    case "restrictionsNote":
     case "name":
     case "zone":
     case "phone":
@@ -108,22 +115,46 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
       if (code === "required") return { key: REQUIRED_KEYS[field] ?? "errors.invalid" };
       return { key: INVALID_KEYS[field] ?? "errors.invalid" };
     case "type":
-    case "slot":
     case "whatsappOptIn":
-      // El formulario no puede producir estos errores: solo con un HTML viejo o alterado.
+    case "noAllergies":
+      // El formulario no puede producir estos errores: solo con un HTML viejo o alterado (la casilla de
+      // "nadie tiene alergias" siempre es true o false, y marcada no se manda la nota).
       return { key: "errors.invalid" };
   }
 }
 
+/** Los consentimientos que mandó la página (los de buildPayload). */
+export type SentConsents = PublicRequestPayload["consents"];
+
+/**
+ * El servidor rechazó la versión de un consentimiento que la página sí mandó (la casilla estaba
+ * marcada): la página es de otro texto (abierta antes de un cambio, o durante un despliegue). Marcar
+ * la casilla otra vez no lo arregla; hay que recargar.
+ */
+function rejectedConsentVersion(field: string, sent: SentConsents | undefined): boolean {
+  if (!sent) return false;
+  if (field === "consentPrivacy") return sent.privacy !== "";
+  if (field === "consentHealth") return sent.health !== null;
+  return false;
+}
+
 /**
  * Traduce los errores del contrato (del servidor o de la validación local).
- * `outdated`: el servidor rechazó algo que la página no controla (versión, formato): hay que recargar.
+ * `outdated`: el servidor rechazó algo que la página no controla (versión, formato, la versión de un
+ * consentimiento que mandó): hay que recargar.
+ * @param sent los consentimientos que se mandaron: con ellos, un consentimiento rechazado que sí iba
+ * marcado es de otra versión del texto, no un error del campo.
  */
-export function translateErrors(errors: PublicRequestErrors): { fields: FieldErrors; outdated: boolean } {
+export function translateErrors(errors: PublicRequestErrors, sent?: SentConsents): { fields: FieldErrors; outdated: boolean } {
+  // Con la versión rechazada, el servidor validó con otro contrato y sus errores de campo no valen para
+  // esta página (por ejemplo, una versión de la privacy que no conoce): solo hay que recargar.
+  if (errors.version !== undefined) return { fields: {}, outdated: true };
   const fields: FieldErrors = {};
   let outdated = false;
   for (const [field, code] of Object.entries(errors)) {
-    if (isOneOf(FIELD_ORDER, field)) {
+    if (rejectedConsentVersion(field, sent)) {
+      outdated = true;
+    } else if (isOneOf(FIELD_ORDER, field)) {
       // Un código desconocido (otra versión del servidor) se trata como "invalid".
       fields[field] = fieldError(field, isOneOf(ERROR_CODES, code) ? code : "invalid");
     } else {
