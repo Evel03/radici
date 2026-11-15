@@ -31,6 +31,13 @@ void main() {
     expect(request.client.zone, 'Città Alta');
   });
 
+  test('respuesta a la pregunta de alergias (no_allergies): true, false o sin respuesta', () {
+    expect(ChefRequest.fromJson(requestRow(restrictions: null, noAllergies: true)).noAllergies, isTrue);
+    expect(ChefRequest.fromJson(requestRow(noAllergies: false)).noAllergies, isFalse);
+    expect(ChefRequest.fromJson(requestRow()).noAllergies, isNull, reason: 'pedido anterior a la pregunta');
+    expect(ChefRequest.fromJson(requestRow()..remove('no_allergies')).noAllergies, isNull);
+  });
+
   test('restricciones: alérgenos en el orden del enum, dietas y nota', () {
     final restrictions = ChefRequest.fromJson(requestRow()).restrictions!;
     expect(restrictions.allergens, [Allergen.gluten, Allergen.milk]);
@@ -196,6 +203,20 @@ void main() {
         RequestStatus.quoted,
         RequestStatus.accepted,
       });
+    });
+
+    test('alergias: indicadas si hay restricciones; nadie solo si lo confirmó; si no, sin datos', () {
+      const note = RequestRestrictions(note: 'Celiachia');
+      expect(buildRequest(noAllergies: true).allergyAnswer, AllergyAnswer.none);
+      expect(buildRequest(restrictions: note, noAllergies: false).allergyAnswer, AllergyAnswer.listed);
+      // Pedidos anteriores (con o sin restricciones copiadas) y de la app.
+      expect(buildRequest(restrictions: note).allergyAnswer, AllergyAnswer.listed);
+      expect(buildRequest().allergyAnswer, AllergyAnswer.unknown);
+      expect(buildRequest(restrictions: const RequestRestrictions()).allergyAnswer, AllergyAnswer.unknown);
+      // Retiró el consentimiento de salud: la base borra la nota y el "hay alergias".
+      expect(buildRequest(noAllergies: false).allergyAnswer, AllergyAnswer.unknown);
+      // Si llegaran las dos cosas (la base no lo deja), se muestran las restricciones.
+      expect(buildRequest(restrictions: note, noAllergies: true).allergyAnswer, AllergyAnswer.listed);
     });
 
     test('personas, teléfono normalizado y primer nombre', () {

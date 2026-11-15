@@ -53,7 +53,7 @@ void main() {
       expect(
         query['select'],
         'id,chef_id,client_id,type,status,adults,kids,days,meals,'
-        'restrictions,notes,preferred_date,preferred_slot,locale,'
+        'restrictions,no_allergies,notes,preferred_date,preferred_slot,locale,'
         'whatsapp_opt_in,estimate,source,seen_at,created_at,contact,'
         'client:clients(display_name,contact_email,contact_phone,zone,status)',
       );

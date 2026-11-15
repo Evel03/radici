@@ -1,7 +1,8 @@
 // Detalle de un pedido: todos los datos (incluidas las restricciones, que
-// solo ve la cocinera), la estimación guardada y las acciones: WhatsApp,
-// llamar, email, rechazar, deshacer el rechazo y marcar a la persona como
-// clienta (así no se borra a los 90 días). Al abrirlo se marca como visto.
+// solo ve la cocinera, o lo que contestó el cliente a la pregunta de
+// alergias), la estimación guardada y las acciones: WhatsApp, llamar, email,
+// rechazar, deshacer el rechazo y marcar a la persona como clienta (así no se
+// borra a los 90 días). Al abrirlo se marca como visto.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -229,7 +230,7 @@ class _RequestDetail extends ConsumerWidget {
 
     final date = request.preferredDate;
     final slot = request.preferredSlot;
-    final restrictions = request.restrictions;
+    final restrictions = request.restrictions ?? const RequestRestrictions();
     final notes = request.notes?.trim() ?? '';
     final client = request.client;
 
@@ -327,28 +328,44 @@ class _RequestDetail extends ConsumerWidget {
               _InfoRow(label: l10n.detailPreferredSlot, value: l10n.slot(slot)),
 
             _Section(title: l10n.detailSectionRestrictions),
-            if (restrictions == null || restrictions.isEmpty)
-              Text(
-                l10n.detailNoRestrictions,
-                key: const ValueKey('detail-no-restrictions'),
-              )
-            else ...[
-              if (restrictions.allergens.isNotEmpty)
-                _ChipsRow(
-                  label: l10n.detailAllergens,
-                  values: [for (final a in restrictions.allergens) l10n.allergen(a)],
+            ...switch (request.allergyAnswer) {
+              AllergyAnswer.none => [
+                Text(
+                  l10n.detailNoAllergies,
+                  key: const ValueKey('detail-no-allergies'),
                 ),
-              if (restrictions.diets.isNotEmpty)
-                _ChipsRow(
-                  label: l10n.detailDiets,
-                  values: [for (final d in restrictions.diets) l10n.diet(d)],
+              ],
+              // Sin respuesta: que pregunte antes de armar el menú (se destaca).
+              AllergyAnswer.unknown => [
+                Text(
+                  l10n.detailAllergiesUnknown,
+                  key: const ValueKey('detail-allergies-unknown'),
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              if (restrictions.note.isNotEmpty)
-                _InfoRow(
-                  label: l10n.detailRestrictionsNote,
-                  value: restrictions.note,
-                ),
-            ],
+              ],
+              AllergyAnswer.listed => [
+                if (restrictions.allergens.isNotEmpty)
+                  _ChipsRow(
+                    label: l10n.detailAllergens,
+                    values: [
+                      for (final a in restrictions.allergens) l10n.allergen(a),
+                    ],
+                  ),
+                if (restrictions.diets.isNotEmpty)
+                  _ChipsRow(
+                    label: l10n.detailDiets,
+                    values: [for (final d in restrictions.diets) l10n.diet(d)],
+                  ),
+                if (restrictions.note.isNotEmpty)
+                  _InfoRow(
+                    label: l10n.detailRestrictionsNote,
+                    value: restrictions.note,
+                  ),
+              ],
+            },
 
             _Section(title: l10n.detailSectionNotes),
             SelectableText(
