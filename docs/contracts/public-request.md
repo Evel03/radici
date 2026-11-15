@@ -5,10 +5,11 @@ Actualizado el 19/10/2026 para reflejar lo implementado: idempotencia con `reque
 Actualizado el 19/10/2026 después de la revisión de seguridad y privacidad: un envío sin login nunca modifica a una persona existente (copia del contacto en cada pedido, §3), `duplicate: true` en los reintentos (§2), Evelyn creada confirmada antes de publicar y altas apagadas (§8, §10), "Segna come cliente" en la app (§7, §9) y procedimientos de arranque y de derechos (§10).
 Código del contrato: `supabase/functions/_shared/public_request.ts` (tipos, validación y normalización; tests en `public_request.test.ts`). Si este documento y ese archivo difieren, manda el archivo.
 Actualizado el 15/11/2026: el formulario de la web ya no pide alergias, intolerancias ni dietas (datos de salud); Evelyn las ve con el cliente cuando lo contacta. El contrato conserva `allergens`, `diets`, `restrictionsNote` y `consents.health`: la web los manda vacíos (`consents.health` en `null`) y la función los sigue aceptando.
+Actualizado el 15/11/2026: disponibilidad por día para el calendario del formulario (`GET …/public-request/availability`, §11), con las funciones de horarios libres de la base y el horario inicial de lunes a viernes de 9 a 15.
 
 ## 1. Flujo
 
-1. El cliente completa `/richiesta/` en la web. Cloudflare Turnstile protege el envío.
+1. El cliente completa `/richiesta/` en la web. El calendario marca los días en que Evelyn tiene lugar para la duración estimada (`GET …/availability`, §11). Cloudflare Turnstile protege el envío.
 2. La web hace `POST` a la Edge Function `public-request` con el JSON `PublicRequestPayload`, que lleva una `requestKey` (UUID) generada una vez por pedido y repetida en cada reintento (§2).
 3. La función valida (`parsePublicRequest`), limita por IP, verifica Turnstile, elige la cocinera (`CHEF_ID` o la única de `public.chefs`, §4) y guarda todo en una transacción (`submit_public_request`):
    cliente prospecto (uno que ya existe no se modifica), consentimientos, restricciones (solo con consentimiento de salud), pedido con la estimación calculada en el servidor y la copia del contacto, y una notificación para Evelyn.
@@ -29,7 +30,7 @@ Notificaciones push en segundo plano (FCM) quedan para una etapa siguiente: nece
 
 - Público (sin login). `verify_jwt = false` para esta función; la protección es Turnstile + límite por IP + validación.
 - La web la llama con `?forceFunctionRegion=eu-central-1` (`FUNCTION_REGION` en `web/src/request/submit.ts`): la función corre en Frankfurt, como dice la privacy, aunque el cliente escriba desde fuera de la UE (sin esto Supabase usa la región más cercana a quien envía). Va en la URL y no en la cabecera `x-region`, que necesitaría CORS. La función no lee la URL.
-- `OPTIONS`: CORS. Orígenes permitidos en `ALLOWED_ORIGINS` (lista separada por comas; admite comodín de una etiqueta, ej. `https://*.example.com`). Cualquier otro origen: sin cabeceras CORS, así que el navegador no llega a mandar el `POST` (un `POST` JSON siempre pasa antes por el preflight). Las vistas previas de Pages quedan fuera por defecto (§4).
+- `OPTIONS`: CORS. Orígenes permitidos en `ALLOWED_ORIGINS` (lista separada por comas; admite comodín de una etiqueta, ej. `https://*.example.com`). Cualquier otro origen: sin cabeceras CORS, así que el navegador no llega a mandar el `POST` (un `POST` JSON siempre pasa antes por el preflight). Las vistas previas de Pages quedan fuera por defecto (§4). El preflight permite `GET, POST, OPTIONS`: el `GET` es la disponibilidad del calendario (§11).
 - Cuerpo: `application/json`, máximo `MAX_PAYLOAD_BYTES` (8 KB).
 
 | Código | Cuerpo | Cuándo |
@@ -58,7 +59,7 @@ Los códigos de error por campo son los de `ErrorCode`; la web los traduce a sus
 
 ## 3. Base de datos
 
-Migraciones: `20261019120000_public_requests.sql`, `20261019130000_api_grants.sql`, `20261019140000_public_request_idempotency.sql`, `20261019150000_prospect_retention.sql` y `20261019160000_public_request_hardening.sql` (copia del contacto, prospecto sin modificar, guarda en el alta, `promote_to_chef` endurecida, intentos por IP de 1 día y `private.revoke_health_consent`). Tests pgTAP: `supabase/tests/database/03_health_consent`, `04_public_requests`, `05_public_request_idempotency` y `06_prospect_retention`.
+Migraciones: `20261019120000_public_requests.sql`, `20261019130000_api_grants.sql`, `20261019140000_public_request_idempotency.sql`, `20261019150000_prospect_retention.sql` y `20261019160000_public_request_hardening.sql` (copia del contacto, prospecto sin modificar, guarda en el alta, `promote_to_chef` endurecida, intentos por IP de 1 día y `private.revoke_health_consent`). Tests pgTAP: `supabase/tests/database/03_health_consent`, `04_public_requests`, `05_public_request_idempotency` y `06_prospect_retention`. Las de la disponibilidad del calendario están en §11.
 
 `requests` (columnas nuevas):
 
@@ -83,7 +84,7 @@ Funciones para la Edge Function y el arranque (todas `security definer`, `set se
   - Reutiliza un cliente **solo** si es `status = 'prospect'` del mismo chef con el mismo `contact_email` (sin distinguir mayúsculas). En ese caso **no le cambia nada**: ni nombre, ni teléfono, ni zona, ni el hogar. El email no está verificado: cualquiera que conozca el de otra persona podía cambiarle el teléfono (y con él los botones de WhatsApp y llamada de sus pedidos) o borrarle las alergias. Lo que llegó con cada pedido queda en `requests.contact`.
   - Restricciones del hogar (`client_restrictions`): solo las de un pedido semanal (`week`), y **se suman** a las que ya tenía (nunca se borran desde la web; las cura Evelyn o el cliente con cuenta). Las de un evento (`extra`) son de sus invitados: quedan solo en la copia del pedido (`requests.restrictions`), igual que el hogar (`adults`, `kids`) se toma solo de un pedido semanal. El consentimiento de salud se registra en los dos casos. Una versión nueva del texto de salud cierra el consentimiento anterior y eso, como siempre, borra las restricciones del prospecto (trigger `consents_purge_health_data`); las del pedido semanal se vuelven a cargar.
   - Nunca modifica clientes que no sean prospectos: si el email es de un cliente con cuenta, crea un prospecto nuevo. Evelyn los une a mano más adelante.
-- `public.hit_public_request_rate(p_ip_hash text, p_max_hour int, p_max_day int) returns boolean`: registra el intento y dice si está dentro del límite. La tabla es `private.public_request_hits(ip_hash, created_at)`: el esquema `private` está fuera de la API (ni `anon`, ni `authenticated`, ni `service_role` lo ven), con RLS y sin políticas. `ip_hash` es un HMAC-SHA-256 en hexadecimal (`IP_HASH_SALT` como clave; de una IPv6, su /64), nunca la IP. Cada llamada borra los registros de más de 1 día (la ventana más larga), y el borrado diario también (§9): ninguno dura 2 días.
+- `public.hit_public_request_rate(p_ip_hash text, p_max_hour int, p_max_day int) returns boolean`: registra el intento y dice si está dentro del límite. La tabla es `private.public_request_hits(ip_hash, created_at)`: el esquema `private` está fuera de la API (ni `anon`, ni `authenticated`, ni `service_role` lo ven), con RLS y sin políticas. `ip_hash` es un HMAC-SHA-256 en hexadecimal (`IP_HASH_SALT` como clave; de una IPv6, su /64), nunca la IP. Cada llamada borra los registros de más de 1 día (la ventana más larga), y el borrado diario también (§9): ninguno dura 2 días. La disponibilidad (§11) usa la misma función con otra clave (el HMAC de `availability:<ip>`): otro contador, con sus propios límites.
 - `public.promote_to_chef(p_email text, p_display_name text) returns uuid`: para el arranque (§10). Convierte el usuario de auth con ese email en cocinera: rol `chef`, fila en `chefs` y `chef_settings` por defecto. Devuelve el `chef_id`. La corre una vez `deploy-supabase.yml` (o el SQL editor); repetirla devuelve la misma ficha.
   - Exige el email confirmado (`user_not_confirmed` si no): creado confirmado por el despliegue o desde el panel, o después de entrar una vez con el código.
   - Le pone una contraseña al azar (nadie la conoce: la app entra con código) y borra sus sesiones, refresh tokens y factores MFA. Así nadie que haya registrado antes ese email con una contraseña propia entra como cocinera. Un access token ya emitido vale hasta que vence (1 h). Repetirla también cierra las sesiones de Evelyn: vuelve a entrar con el código.
@@ -110,8 +111,8 @@ La cocinera también cambia el estado de la ficha de un cliente (`clients.status
 | Nombre | Secreto | Ejemplo / nota |
 |---|---|---|
 | `RESEND_API_KEY` | sí | clave de Resend con permiso solo de envío |
-| `TURNSTILE_SECRET_KEY` | sí | **obligatoria**. En local: `1x0000000000000000000000000000000AA` (siempre aprueba) |
-| `IP_HASH_SALT` | sí | **obligatoria**. Aleatoria (`openssl rand -hex 32`); la IP nunca se guarda en claro |
+| `TURNSTILE_SECRET_KEY` | sí | **obligatoria** para el pedido (la disponibilidad, §11, no la usa). En local: `1x0000000000000000000000000000000AA` (siempre aprueba) |
+| `IP_HASH_SALT` | sí | **obligatoria** (también para el límite de la disponibilidad, §11). Aleatoria (`openssl rand -hex 32`); la IP nunca se guarda en claro |
 | `CHEF_ID` | no | opcional: uuid de Evelyn en `chefs` (sale de `promote_to_chef`). Sin él se usa la única fila de `public.chefs` (ver abajo). Hace falta solo con más de una cocinera (el seed local tiene dos) |
 | `CHEF_NOTIFY_EMAIL` | no | email de Evelyn para avisos |
 | `CHEF_LOCALE` | no | idioma de los avisos a Evelyn: `es` (por defecto), `it` o `en` |
@@ -233,6 +234,7 @@ Nada que publique `SUPABASE_URL` y la clave publicable (producción o una vista 
    - Auth desde el repo (`supabase/scripts/auth-config.ts`), en tres partes. Siempre: altas apagadas, código de 8 cifras que vale 600 segundos y CAPTCHA apagado (la app no manda el token; para M2 hay que sumar el proveedor y su secreto a `auth-config.ts`). Con `RESEND_SMTP_KEY`: SMTP propio con Resend (`smtp.resend.com`, puerto 465, usuario `resend`, remitente de `MAIL_FROM`), después las plantillas "Magic link" y "Confirm signup" con el asunto de `supabase/config.toml` y el HTML de `supabase/templates/login_code.html`, y 100 emails por hora (cualquiera puede pedir un código por minuto para el email de Evelyn: 60 por hora; el límite es de todo el proyecto). En un proyecto Free, Supabase no deja cambiar las plantillas sin SMTP propio: sin `RESEND_SMTP_KEY` el email trae un link en lugar del código y **Evelyn no puede entrar** (el workflow avisa y sigue). Si Supabase no guardara la plantilla, el paso falla. Se vuelve a aplicar en cada despliegue: cambiar la plantilla o el asunto es un PR, y lo que se cambie de esto en el panel lo pisa el próximo despliegue.
    - La cuenta de Evelyn, solo si todavía no hay ninguna cocinera: usuario confirmado con una contraseña al azar que nadie conoce y `user_metadata.locale` = `CHEF_LOCALE` (el email del código sale en su idioma), y `promote_to_chef(CHEF_LOGIN_EMAIL, CHEF_DISPLAY_NAME)`. Si ya hay una cuenta con ese email sin confirmar (la registró otro antes de apagar las altas, o se creó en el panel sin "Auto Confirm User"), el paso falla y dice que hay que borrarla. El log dice cuántos usuarios hay en Auth (tiene que ser 1).
    - Migraciones, secretos y la función.
+   - Horario de Evelyn (§11): la migración `20261115120100_default_availability.sql` le da lunes a viernes de 9 a 15 a cada cocinera que ya existe y no tiene reglas. En un proyecto nuevo `db push` corre antes de crear la cuenta, así que la cocinera queda sin reglas: después de este paso, correr una vez `select private.add_default_availability();` en el SQL editor. Sin reglas, el calendario de la web no marca ningún día.
    - Sin `TURNSTILE_SECRET_KEY` corta en "Secretos de la función", con Auth, las migraciones y la cuenta ya hechas: completar el paso 4 y volver a correrlo.
 7. GitHub, para la web: variables `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `VITE_TURNSTILE_SITE_KEY` y las demás de §8.
 8. Revisar en el panel (solo mirar): Authentication → Sign In / Providers, Emails (SMTP y plantillas), Rate Limits y Users; en el SQL editor, `select id, email, email_confirmed_at, created_at from auth.users;` (no tiene que haber otro usuario además de Evelyn). Para crear la cuenta a mano en lugar del workflow, antes del paso 7: Authentication → Users → Create new user con "Auto Confirm User", y después `select public.promote_to_chef('<email>', 'Evelyn');` en el SQL editor (o cargar `CHEF_LOGIN_EMAIL` y `CHEF_DISPLAY_NAME` y volver a correr el paso 6, que promueve la cuenta existente). Esa cuenta no lleva `user_metadata.locale`: el email del código le llega en italiano hasta que elige su idioma en la app.
@@ -300,3 +302,43 @@ group by cl.id
 having coalesce(max(r.created_at), cl.created_at) < now() - interval '60 days'
 order by ultimo_pedido;
 ```
+
+## 11. Disponibilidad por día: `GET /functions/v1/public-request/availability?minutes=N`
+
+Agregada el 15/11/2026 para el calendario del formulario. Código del contrato: `supabase/functions/_shared/availability.ts` (lo comparten la función y la web; tests en `availability.test.ts`). Si este documento y ese archivo difieren, manda el archivo. La ruta está en `supabase/functions/public-request/handler.ts` (tests en `handler.test.ts`).
+
+- Pública (sin login), como el `POST`. La URL termina en `/availability` (`AVAILABILITY_PATH`), antes de la query. La web puede agregar `?forceFunctionRegion=eu-central-1` como en el `POST` (§2); la función solo lee `minutes`.
+- `minutes`: los minutos de cocina que calcula el motor de presupuesto para el pedido. Entero de 30 a 720, en pasos de 30 (`AVAILABILITY_MINUTES`, `parseAvailabilityMinutes`).
+- Respuesta `200` (`AvailabilityResponse`, armada con `buildAvailabilityResponse`):
+
+  ```json
+  { "version": 1, "minutes": 180, "days": [{ "date": "2026-11-16", "available": false }, { "date": "2026-11-17", "available": true }] }
+  ```
+
+  Un día por cada fecha de la ventana del formulario (`DATE_WINDOW`: de mañana a +14, en Roma; `AVAILABILITY_DAYS` = 14), en orden y sin huecos. `available` es `true` si Evelyn tiene al menos un horario libre ese día para esa duración (SPEC §5.2, `get_free_days`). "Hoy" es la fecha de Roma en la función. La web la lee con `parseAvailabilityResponse`: con otra forma, otra `version` o un error, el calendario no marca disponibilidad y deja elegir cualquier día de la ventana.
+
+| Código | Cuerpo | Cuándo |
+|---|---|---|
+| 200 | `AvailabilityResponse` (arriba) | — |
+| 400 | `{ "errors": { "minutes": "invalid" } }` | `minutes` falta o no es un valor aceptado |
+| 405 | `{ "error": "method" }` + `Allow: GET, OPTIONS` | otro método (un `POST` a esta ruta no es un pedido) |
+| 429 | `{ "error": "rateLimited" }` + `Retry-After: 3600` | más de 120 por hora o 600 por día por IP |
+| 500 | `{ "error": "server" }` | configuración: falta `IP_HASH_SALT`, `CHEF_ID` inválido o no se puede elegir la cocinera (`chef_id_unresolved`) |
+| 503 | `{ "error": "server" }` | error de la base (límite, cocinera o `get_free_days`), sin detalles |
+
+- CORS: la misma `ALLOWED_ORIGINS` que el `POST`. Un `GET` simple no necesita preflight; si lo hay, permite `GET, POST, OPTIONS`. Siempre `Vary: Origin`.
+- Caché: el `200` y el `400` llevan `Cache-Control: public, max-age=60` (dependen solo de la URL y del origen); los demás, `no-store`, para que un error o un `429` no queden guardados.
+- Límite por IP propio: la misma `hit_public_request_rate` (§3) con otra clave, el HMAC de `availability:<ip>` (de una IPv6, su /64; sin IP, `availability:unknown`). Es otro contador en `private.public_request_hits`: las lecturas no gastan el cupo del formulario (5 por hora, 20 por día) ni al revés, y no hizo falta migración. Más generoso (`AVAILABILITY_RATE_LIMITS`: 120 por hora, 600 por día) porque cada cambio de personas, días o comidas puede pedir otra duración.
+- No pasa por Turnstile (es una lectura): de la configuración (§4) usa `IP_HASH_SALT` y, si está, `CHEF_ID`. La cocinera se elige igual que en el `POST`.
+- Pide `get_free_days(cocinera, minutes, mañana, 14)` con la clave secreta (`PublicRequestStore.freeDays`, `supabase.rpc` en `index.ts`); una respuesta con otra forma cuenta como error de la base (`unexpected_result`).
+- Logs: nunca la IP. `rate_limited` con `route: "availability"`, `db_error` con la operación (`rate_limit`, `resolve_chef` o `free_days`) y el código, y los de configuración del `POST` (`config_missing`, `config_invalid`, `chef_id_unresolved`, `client_ip_missing`).
+
+### 11.1 Base de datos
+
+Migraciones `20261115120000_free_slots.sql` y `20261115120100_default_availability.sql`; tests pgTAP `07_free_slots` y `08_default_availability`.
+
+- `public.get_free_days(p_chef_id uuid, p_cook_minutes int, p_from_date date, p_days int) returns table (day date, available boolean)`: cada fecha de `[p_from_date, p_from_date + p_days − 1]`, en orden, con `available` si hay al menos un horario libre. Las fechas fuera de la ventana (hoy, el pasado, después de `booking_horizon_days`) salen en `false`.
+- `public.get_free_slots(p_chef_id uuid, p_cook_minutes int, p_from_date date, p_days int) returns table (day date, start_time time)`: los horarios para mostrar (hasta 3 por día, separados al menos 2 h, en los primeros 5 días con lugar; `start_time` es la llegada a la casa, hora de Roma). Todavía no lo usa nadie: es para la pantalla Pedir de la app y los presupuestos.
+- Las dos salen de `private.free_slot_candidates(…, p_now timestamptz default now())`, el generador común, con la regla de choque de `no_overlap` (SPEC §5.2), y validan los datos: `22023` con `invalid_cook_minutes` (de 1 a 720), `invalid_days` (de 1 a 366) o `invalid_from_date` (null o infinita), y `P0002` con `chef_not_found`.
+- Las ejecuta **solo** `service_role` (ni `anon` ni `authenticated`, tampoco la cocinera): la web no lee horarios con una RPC anónima, sino por esta ruta, con CORS y límite por IP. Son `security definer` con `search_path` vacío porque el generador vive en el esquema `private`, fuera de la API (ni `service_role` tiene `USAGE` ahí); corren como su dueño solo para poder llamarlo.
+- Horario inicial (decisión del dueño del 15/11/2026, hasta que la app tenga editor de disponibilidad): `private.add_default_availability()` le da lunes a viernes de 9:00 a 15:00 a cada cocinera sin ninguna regla, y devuelve cuántas reglas agregó. La migración la corre una vez; es idempotente y ningún rol de la API la ejecuta. En un proyecto nuevo, correrla después de crear la cuenta de la cocinera (§10.1, paso 6). Con 45 min de compra, la primera llegada es a las 10:00 y una sesión de más de 300 min no entra ningún día.

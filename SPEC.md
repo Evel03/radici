@@ -224,13 +224,15 @@ Con los valores por defecto (22 €/h, 12 € fijo, 3,80 € adulto, 2,50 € ni
 
 ### 5.2 Disponibilidad y horarios libres
 
-Función SQL `get_free_slots(chef_id, cook_minutes, from_date, days)` accesible por RPC (también para usuarios anónimos del formulario público, con rate limit).
+Implementado en SQL (migración `20261115120000_free_slots.sql`, tests pgTAP `07_free_slots`): `get_free_slots(chef_id, cook_minutes, from_date, days)` y `get_free_days(chef_id, cook_minutes, from_date, days)`, sobre un generador común (`private.free_slot_candidates`). Las ejecuta **solo `service_role`**: la web pública lee los días por la Edge Function `public-request` (`GET …/availability?minutes=N`, contrato §11, con CORS y su propio límite por IP), nunca con una RPC anónima. La app las usará desde el servidor.
 
-- Ventana: desde mañana (respetando `min_notice_hours`) hasta `booking_horizon_days`.
+- Ventana: desde mañana en Roma, respetando `min_notice_hours` (la compra empieza como pronto tantas horas después de ahora), hasta hoy + `booking_horizon_days` (14: los mismos días que se pueden elegir en el formulario).
 - Un día cuenta si tiene regla de disponibilidad y no está bloqueado.
 - Candidatos cada `slot_step_minutes`, desde `ceil_a_30(apertura + compra)` mientras `inicio + cocina ≤ cierre`. La **hora mostrada es la de llegada a la casa**; la compra ocurre antes.
-- Un candidato `[inicio − compra, inicio + cocina]` choca con una sesión no cancelada (incluidas las `held`) si `a_ini < b_fin + margen` y `b_ini < a_fin + margen`. Es la misma condición que `no_overlap`: un horario ofrecido nunca puede ser rechazado por la base (hay un test que lo verifica).
-- Se muestran hasta 3 horarios por día, separados al menos 2 h, en los primeros 5 días con lugar.
+- Un candidato `[inicio − compra, inicio + cocina]` choca con una sesión no cancelada (incluidas las `held`, también las vencidas mientras el cron no las cancele) si `a_ini < b_fin + margen` y `b_ini < a_fin + margen`. Es la misma condición que `no_overlap`: el rango del candidato se arma igual que `sessions.busy`, con la compra y el margen actuales de la cocinera, y se compara con `&&` contra el `busy` guardado de cada sesión. Un horario ofrecido nunca puede ser rechazado por la base (hay un test que lo verifica en toda la grilla, también en días con cambio de hora).
+- `get_free_slots`: se muestran hasta 3 horarios por día, separados al menos 2 h (los primeros que cumplen), en los primeros 5 días con lugar.
+- `get_free_days`: cada fecha del rango pedido, con `available` si tiene al menos un horario libre (el calendario de la web).
+- Horario inicial (decisión del dueño del 15/11/2026): lunes a viernes de 9:00 a 15:00 para toda cocinera sin reglas (migración `20261115120100_default_availability.sql`), hasta que la app tenga editor de disponibilidad; la ventana sigue en 14 días. Con 45 min de compra, la primera llegada es a las 10:00 y una sesión de más de 5 h (300 min) no entra en ningún día.
 - F3: sumar tiempo de traslado según zona de la sesión anterior y la siguiente.
 
 ### 5.3 Estados
@@ -330,7 +332,7 @@ Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automá
 | payments | lee lo propio | lee todo; escribe solo con efectivo o transferencia | — |
 | prepared_portions | lee y actualiza `count_left` / `discarded_at` | crea y lee | — |
 | pantry_items | CRUD de lo propio | lee si `share_pantry = true` | — |
-| chef_settings, availability_* | — | CRUD | horarios libres solo vía RPC |
+| chef_settings, availability_* | — | CRUD | días libres solo vía la Edge Function `public-request` (`GET …/availability`) |
 
 Precisiones implementadas en M1 (`supabase/migrations/*_rls.sql`):
 - `recipes`: el cliente lee las recetas activas de su cocinera (para elegir platos deseados).

@@ -16,7 +16,7 @@ Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y est
 - Dinero siempre en centavos (int). Nunca double para importes. La fórmula de presupuesto usa solo enteros.
 - Fechas y horas de negocio en Europe/Rome. Guardar timestamptz.
 - Presupuesto: fuente de verdad `quote.ts`; la copia Dart (`app/lib/features/quote/`) es vista previa y pasa los mismos vectores.
-- Horarios: `get_free_slots()` en SQL. Su regla de choque es idéntica a `no_overlap` (margen de un solo lado).
+- Horarios: `get_free_slots()` y `get_free_days()` en SQL, sobre un generador común (`private.free_slot_candidates`). Su regla de choque es idéntica a `no_overlap` (margen de un solo lado). Solo las ejecuta `service_role`: la web lee los días por `public-request` (`GET …/availability`), nunca por RPC anónima. Horario inicial: lunes a viernes de 9 a 15 (15/11/2026), hasta que la app tenga editor.
 - Presupuestos enviados = sesiones `held` con `hold_until`, protegidas por `no_overlap`.
 - Estados de sesión y pagos solo cambian vía Edge Functions o webhooks de Stripe, nunca desde la app.
 - Nunca loguear ni mandar por push/email restricciones, alergias, direcciones ni datos de tarjeta.
