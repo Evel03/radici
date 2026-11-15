@@ -21,27 +21,24 @@
     "footerNoCookies": "Niente cookie di profilazione, niente analytics.",
     "loadError": "Non siamo riusciti a caricare una parte della pagina, quindi qualcosa potrebbe non funzionare. Controlla la connessione e ricarica la pagina.",
     "reload": "Ricarica la pagina",
-    "ogImageAlt": "{brand} · Cucina privata: «Cucina autentica, a casa tua.» Cuoca a domicilio a Bergamo.",
-    "durationHours": "{h} h",
-    "durationHoursMinutes": "{h} h {m} min",
-    "durationMinutes": "{m} min"
+    "ogImageAlt": "{brand} · Cucina privata: «Cucina autentica, a casa tua.» Cuoca a domicilio a Bergamo."
   },
   "landing": {
     "metaTitle": "{brand} · Cuoca a domicilio a Bergamo, pasti pronti in frigo",
     "metaDescription": "Evelyn fa la spesa e cucina a casa tua a Bergamo: porzioni etichettate in frigo per più giorni. Spesa al costo dello scontrino. Preventivo subito.",
     "hero": {
       "eyebrow": "Cuoca a domicilio · Bergamo",
-      "title": "La cena è già pronta. Per tutta la settimana.",
+      "title": "Pranzo e cena già pronti. Per tutta la settimana.",
       "lead": "Evelyn fa la spesa, cucina a casa tua e ti lascia in frigo porzioni pronte, ognuna con il nome del piatto e la data. Tu torni a casa e devi solo scaldare.",
       "cta": "Calcola il preventivo",
       "secondary": "Come funziona",
       "note": "Stima immediata e senza impegno. Evelyn ti ricontatta al più presto.",
-      "label1Dish": "Lasagne alle verdure",
-      "label1Meta": "Lun · 4 porzioni",
-      "label2Dish": "Pollo al limone con patate",
-      "label2Meta": "Mar · 4 porzioni",
-      "label3Dish": "Minestrone di stagione",
-      "label3Meta": "Mer · 4 porzioni"
+      "label1Title": "Un pensiero in meno",
+      "label1Text": "Il menù lo pensa Evelyn",
+      "label2Title": "Più tempo per te",
+      "label2Text": "Niente spesa né pentole",
+      "label3Title": "Torni ed è già pronto",
+      "label3Text": "Basta scaldare"
     },
     "services": {
       "title": "Servizi",
@@ -91,7 +88,7 @@
       "exampleGroceriesValue": "{exGroceries}",
       "exampleTotal": "Totale stimato",
       "exampleTotalValue": "{exTotal}",
-      "exampleNote": "Circa {exTime} di cucina. La spesa reale è quella dello scontrino.",
+      "exampleNote": "La spesa reale è quella dello scontrino.",
       "exampleCta": "Calcola il tuo"
     },
     "who": {
@@ -108,7 +105,7 @@
       "q1": "In quali zone lavorate?",
       "a1": "A Bergamo e dintorni. Indica la tua zona nella richiesta: ti diciamo subito se riusciamo ad arrivare.",
       "q2": "Quanto dura una sessione?",
-      "a2": "Dipende da quante porzioni e ricette preparare: di solito qualche ora. Il calcolatore ti dà una stima del tempo di cucina; la spesa Evelyn la fa prima di arrivare.",
+      "a2": "Dipende da quante porzioni e ricette preparare: di solito qualche ora. L'orario lo concordi con Evelyn quando ti contatta; la spesa la fa prima di arrivare.",
       "q3": "Quanto si conservano i piatti?",
       "a3": "In genere 3–4 giorni in frigorifero, a seconda della ricetta. Per i giorni successivi alcuni piatti si possono congelare: Evelyn ti dice quali. Su ogni porzione trovi la data di preparazione.",
       "q4": "Che cosa cucina Evelyn?",
@@ -201,8 +198,6 @@
       "service": "Servizio",
       "groceries": "Spesa stimata",
       "total": "Totale stimato",
-      "time": "Tempo di cucina",
-      "timeValue": "circa {value}",
       "portions": "Porzioni",
       "note": "La spesa si paga al costo reale dello scontrino; questa è una stima.",
       "invalid": "Indica almeno una persona e da 1 a {maxDays} giorni per vedere la stima."

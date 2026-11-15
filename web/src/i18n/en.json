@@ -21,27 +21,24 @@
     "footerNoCookies": "No profiling cookies, no analytics.",
     "loadError": "We couldn't load part of this page, so some things may not work. Check your connection and reload the page.",
     "reload": "Reload the page",
-    "ogImageAlt": "{brand} · Cucina privata: “Cucina autentica, a casa tua.” Home cook in Bergamo.",
-    "durationHours": "{h} h",
-    "durationHoursMinutes": "{h} h {m} min",
-    "durationMinutes": "{m} min"
+    "ogImageAlt": "{brand} · Cucina privata: “Cucina autentica, a casa tua.” Home cook in Bergamo."
   },
   "landing": {
     "metaTitle": "{brand} · Home cook in Bergamo: ready meals for the week",
     "metaDescription": "Evelyn does the shopping, cooks in your kitchen in Bergamo and leaves labelled portions in your fridge for several days. Groceries at receipt cost.",
     "hero": {
       "eyebrow": "Home cook · Bergamo",
-      "title": "Dinner is already done. All week long.",
+      "title": "Lunch and dinner, ready. All week long.",
       "lead": "Evelyn does the shopping, cooks in your kitchen and leaves ready portions in your fridge, each labelled with the dish and the date. You get home and just heat it up.",
       "cta": "Get a quote",
       "secondary": "How it works",
       "note": "Instant estimate, no commitment. Evelyn will get back to you as soon as possible.",
-      "label1Dish": "Vegetable lasagne",
-      "label1Meta": "Mon · 4 portions",
-      "label2Dish": "Lemon chicken with potatoes",
-      "label2Meta": "Tue · 4 portions",
-      "label3Dish": "Seasonal minestrone",
-      "label3Meta": "Wed · 4 portions"
+      "label1Title": "One less worry",
+      "label1Text": "Evelyn plans the menu",
+      "label2Title": "More time for you",
+      "label2Text": "No shopping, no pans",
+      "label3Title": "Come home to it ready",
+      "label3Text": "Just heat and eat"
     },
     "services": {
       "title": "Services",
@@ -91,7 +88,7 @@
       "exampleGroceriesValue": "{exGroceries}",
       "exampleTotal": "Estimated total",
       "exampleTotalValue": "{exTotal}",
-      "exampleNote": "About {exTime} of cooking. Actual groceries are whatever the receipt says.",
+      "exampleNote": "Actual groceries are whatever the receipt says.",
       "exampleCta": "Work out yours"
     },
     "who": {
@@ -108,7 +105,7 @@
       "q1": "Which areas do you cover?",
       "a1": "Bergamo and the surrounding area. Put your area in the request and we'll tell you straight away if we can get there.",
       "q2": "How long does a session take?",
-      "a2": "It depends on how many portions and recipes: usually a few hours. The calculator gives you an estimate of the cooking time; Evelyn does the shopping before she arrives.",
+      "a2": "It depends on how many portions and recipes: usually a few hours. You agree the time with Evelyn when she contacts you; she does the shopping before she arrives.",
       "q3": "How long do the dishes keep?",
       "a3": "Usually 3–4 days in the fridge, depending on the recipe. For later in the week some dishes can be frozen: Evelyn will tell you which. Every portion shows the date it was made.",
       "q4": "What does Evelyn cook?",
@@ -201,8 +198,6 @@
       "service": "Service",
       "groceries": "Estimated groceries",
       "total": "Estimated total",
-      "time": "Cooking time",
-      "timeValue": "about {value}",
       "portions": "Portions",
       "note": "Groceries are charged at the actual receipt cost; this is an estimate.",
       "invalid": "Add at least one person and 1 to {maxDays} days to see the estimate."

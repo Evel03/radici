@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { romeToday } from "../../../supabase/functions/_shared/public_request.ts";
-import { createI18n } from "../i18n/core.ts";
 import { addDays, isIsoDate, todayInRome } from "./dates.ts";
-import { formatCents, formatDuration, formatIsoDate } from "./format.ts";
+import { formatCents, formatIsoDate } from "./format.ts";
 
 describe("fechas en Europe/Rome", () => {
   it("'hoy' es el día de Bergamo, no el de UTC", () => {
@@ -40,17 +39,6 @@ describe("formato", () => {
 
   it("rechaza importes no enteros", () => {
     expect(() => formatCents(10.5, "it-IT")).toThrow(RangeError);
-  });
-
-  it("duraciones", () => {
-    const i18n = createI18n("it", {
-      "common.durationHours": "{h} h",
-      "common.durationHoursMinutes": "{h} h {m} min",
-      "common.durationMinutes": "{m} min",
-    });
-    expect(formatDuration(180, i18n)).toBe("3 h");
-    expect(formatDuration(150, i18n)).toBe("2 h 30 min");
-    expect(formatDuration(45, i18n)).toBe("45 min");
   });
 
   it("fecha larga según el idioma", () => {

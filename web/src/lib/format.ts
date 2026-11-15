@@ -1,6 +1,4 @@
-// Formato de importes, duraciones y fechas. Los importes siempre llegan en centavos enteros.
-import type { I18n } from "../i18n/core.ts";
-
+// Formato de importes y fechas. Los importes siempre llegan en centavos enteros.
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 
 export function formatCents(cents: number, locale: string): string {
@@ -12,14 +10,6 @@ export function formatCents(cents: number, locale: string): string {
   }
   // La división es solo para mostrar: ningún cálculo usa este valor.
   return fmt.format(cents / 100);
-}
-
-export function formatDuration(minutes: number, i18n: Pick<I18n, "t">): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h === 0) return i18n.t("common.durationMinutes", { m });
-  if (m === 0) return i18n.t("common.durationHours", { h });
-  return i18n.t("common.durationHoursMinutes", { h, m });
 }
 
 /** "2026-10-26" → "lunedì 26 ottobre 2026" (según el locale). */
