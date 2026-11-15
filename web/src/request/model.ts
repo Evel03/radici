@@ -56,7 +56,7 @@ export interface RequestData {
   whatsappOptIn: boolean;
   notes: string;
   consentPrivacy: boolean;
-  /** Marcó que nadie de quienes van a comer (niños incluidos) tiene alergias ni intolerancias. */
+  /** Marcó que nadie de quienes van a comer (niños incluidos) tiene alergias, intolerancias ni celiaquía. */
   noAllergies: boolean;
   /** Las alergias e intolerancias escritas. Con `noAllergies` no se manda (aunque quede algo escrito). */
   restrictionsNote: string;

@@ -7,7 +7,7 @@ import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
 import { MEAL_OPTIONS, REQUEST_TYPES, SLOTS } from "../request/model.ts";
 import { FIELD_ORDER } from "../request/validate.ts";
-import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang } from "./core.ts";
+import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang, type Lang } from "./core.ts";
 import en from "./en.json";
 import es from "./es.json";
 import itJson from "./it.json";
@@ -96,6 +96,25 @@ describe("claves usadas por la web", () => {
     expect(privacyHtml).toContain('id="p-health"');
     for (const lang of LANGS) {
       expect(dicts[lang]["request.healthConsentLabel"], lang).toContain('<a href="/privacy/#p-health">');
+    }
+  });
+
+  it("alergias: «nadie tiene» nombra la celiaquía; las de otras personas, con su acuerdo; lo escrito fuera del bloque se borra", () => {
+    const expected: Record<Lang, { celiac: string; others: string; deleted: string }> = {
+      it: { celiac: "celiachia", others: "responsabilità genitoriale", deleted: "senza consenso, le cancelliamo" },
+      es: { celiac: "celiaquía", others: "responsabilidad parental", deleted: "sin consentimiento, las borramos" },
+      en: { celiac: "coeliac disease", others: "parental responsibility", deleted: "without consent, we delete them" },
+    };
+    for (const lang of LANGS) {
+      const text = (key: string): string => dicts[lang][key] ?? "";
+      // La celiaquía no es una alergia ni una intolerancia: sin nombrarla, una casa con un celíaco podría marcar «nadie tiene».
+      expect(text("request.noAllergiesLabel"), lang).toContain(expected[lang].celiac);
+      expect(text("request.allergiesIntro"), lang).toContain(expected[lang].celiac);
+      // El consentimiento del art. 9.2.a es de cada interesado: quien escribe las de otros declara que están de acuerdo.
+      expect(text("request.healthConsentLabel"), lang).toContain(expected[lang].others);
+      expect(text("privacy.healthBody"), lang).toContain(expected[lang].others);
+      // El procedimiento del contrato (§10.2) borra los datos de salud escritos en las notas: la privacy lo promete.
+      expect(text("privacy.healthBody"), lang).toContain(expected[lang].deleted);
     }
   });
 
