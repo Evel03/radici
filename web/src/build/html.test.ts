@@ -85,6 +85,25 @@ describe("renderPage con las páginas reales", () => {
     }
   });
 
+  it("fotos de la portada: las de contenido con texto alternativo; la decorativa, alt vacío y oculta", () => {
+    const out = renderPage(indexHtml, { i18n, config: baseConfig, pagePath: "/", partials });
+    const photos = [...out.matchAll(/<figure([^>]*)>\s*<img([^>]*)>/g)].map(([, figure = "", img = ""]) => ({
+      name: /\ssrc="\/src\/images\/([\w-]+)\.jpg"/.exec(img)?.[1],
+      alt: /\salt="([^"]*)"/.exec(img)?.[1],
+      hidden: figure.includes('aria-hidden="true"'),
+    }));
+    // Cada <img> va en una lámina, y una foto nueva obliga a decidir si es contenido o decorativa.
+    expect(out.match(/<img\b/g)).toHaveLength(photos.length);
+    expect(photos.map((photo) => photo.name)).toEqual(["cocina", "delantal", "menu", "tarjeta"]);
+    for (const { name, alt, hidden } of photos) {
+      // La tarjeta con el logotipo junto al CTA final solo repite la marca de la cabecera.
+      const decorative = name === "tarjeta";
+      expect(hidden, name).toBe(decorative);
+      if (decorative) expect(alt, name).toBe("");
+      else expect(alt?.trim(), name).toBeTruthy();
+    }
+  });
+
   it("sin VITE_NOINDEX=true no agrega noindex; con VITE_SITE_URL agrega canonical y og:url", () => {
     const config = { ...baseConfig, noindex: false, siteUrl: "https://example.test" };
     const out = renderPage(requestHtml, { i18n, config, pagePath: "/richiesta/", partials });

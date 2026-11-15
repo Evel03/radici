@@ -39,7 +39,8 @@
       "label2Text": "Niente spesa né pentole",
       "label3Title": "Torni ed è già pronto",
       "label3Text": "Basta scaldare",
-      "benefitsLabel": "Perché sceglierci"
+      "benefitsLabel": "Perché sceglierci",
+      "photoAlt": "Piatti di ceramica, olio d'oliva e un canovaccio su un tavolo di legno"
     },
     "services": {
       "title": "Servizi",
@@ -57,7 +58,8 @@
       "step3Title": "Spesa e cucina a casa tua",
       "step3Text": "Il giorno stabilito fa la spesa con ingredienti freschi e cucina nella tua cucina. Intanto tu puoi lavorare, uscire o goderti il profumo.",
       "step4Title": "Porzioni etichettate in frigo",
-      "step4Text": "Trovi i pasti già divisi in porzioni, con il nome del piatto e la data di preparazione. Basta scaldare e mettersi a tavola."
+      "step4Text": "Trovi i pasti già divisi in porzioni, con il nome del piatto e la data di preparazione. Basta scaldare e mettersi a tavola.",
+      "photoAlt": "Una cuoca con il grembiule di {brand}"
     },
     "included": {
       "title": "Cosa è compreso",
@@ -70,7 +72,8 @@
       "item4Title": "Porzioni con etichetta",
       "item4Text": "Ogni porzione ha piatto e data: sai sempre cosa c'è in frigo e cosa mangiare prima.",
       "item5Title": "Attenzione alle allergie",
-      "item5Text": "Le ricette tengono conto di allergie, intolleranze e diete che ci indichi."
+      "item5Text": "Le ricette tengono conto di allergie, intolleranze e diete che ci indichi.",
+      "photoAlt": "Menù di {brand}: antipasto, primo, secondo e dolce"
     },
     "pricing": {
       "title": "Come si paga",
