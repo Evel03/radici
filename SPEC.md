@@ -69,7 +69,7 @@ La ficha (`clients.status`, una por cocinera) se muestra con dos estados (decisi
 - Web pública en italiano (`web/`): cómo funciona, calculadora de presupuesto (misma fórmula 5.1, mismo `quote.ts`) y formulario de pedido con la pregunta de alergias: el cliente confirma que nadie de quienes van a comer (niños incluidos) tiene alergias, intolerancias ni celiaquía, o las escribe con su consentimiento de datos de salud.
 - El pedido se guarda en Supabase (Edge Function `public-request`, contrato `docs/contracts/public-request.md`, aprobado el 19/10/2026; reemplaza el envío por WhatsApp). Evelyn recibe un email y un aviso emergente en la app, y lo revisa en la bandeja y la agenda (app y `/gestione/`); el cliente recibe la confirmación por email y, si la pidió, por WhatsApp. El cliente no necesita cuenta.
 - Eventos privados con sección y formulario propios (M3b, después del PR del formulario con calendario y alergias), sin precio automático (5.3). Hasta entonces la web los pide como `extra` («Evento o sessione extra»).
-- Disponibilidad desde la app (M5a): Evelyn bloquea días y edita su horario semanal. En Fase 0 no hay sesiones: un día ocupado es un día bloqueado, y así lo ve el calendario de la web (5.2).
+- Disponibilidad desde la app (M5a): Evelyn bloquea días y edita su horario semanal. En Fase 0 las sesiones se acuerdan fuera del sistema (por WhatsApp) y no hay filas en `sessions`, que crea el envío de un presupuesto (M4): un día ocupado es un día bloqueado, y así lo ve el calendario de la web (5.2).
 - Pendientes de la web que pide la especificación de la app: texto alternativo de las fotos (en los textos i18n) y quitar `noindex` (`VITE_NOINDEX=false`) recién al compartir el sitio (contrato §10.1, paso 12). El contacto directo es la decisión abierta D7.
 - Cobro manual: efectivo, transferencia, Satispay o Stripe Payment Links.
 - Meta: 10–20 sesiones reales para calibrar tiempos de cocina, costo por porción y política de cancelación **antes** de congelarlos en los vectores.
@@ -247,7 +247,7 @@ Con los valores por defecto (22 €/h, 12 € fijo, 3,80 € adulto, 2,50 € ni
 
 ### 5.2 Disponibilidad y horarios libres
 
-Implementado en SQL (migración `20261115130000_free_slots.sql`, tests pgTAP `07_free_slots`): `get_free_slots(chef_id, cook_minutes, from_date, days)` y `get_free_days(chef_id, cook_minutes, from_date, days)`, sobre un generador común (`private.free_slot_candidates`). Las ejecuta **solo `service_role`**: la web pública lee los días por la Edge Function `public-request` (`GET …/availability?minutes=N`, contrato §11, con CORS y su propio límite por IP), nunca con una RPC anónima. La app las usará desde el servidor.
+Implementado en SQL (migración `20261115130000_free_slots.sql`, tests pgTAP `07_free_slots`): `get_free_slots(chef_id, cook_minutes, from_date, days)` y `get_free_days(chef_id, cook_minutes, from_date, days)`, sobre un generador común (`private.free_slot_candidates`). Las ejecuta **solo `service_role`**: la web pública lee los días por la Edge Function `public-request` (`GET …/availability?minutes=N`, contrato §11, con CORS y su propio límite por IP), nunca con una RPC anónima. La app las usará desde una ruta de servidor (M3c).
 
 - Ventana: desde mañana en Roma, respetando `min_notice_hours` (la compra empieza como pronto tantas horas después de ahora), hasta hoy + `booking_horizon_days` (14: los mismos días que se pueden elegir en el formulario).
 - Un día cuenta si tiene regla de disponibilidad y no está bloqueado.
@@ -257,7 +257,7 @@ Implementado en SQL (migración `20261115130000_free_slots.sql`, tests pgTAP `07
 - `get_free_days`: cada fecha del rango pedido, con `available` si tiene al menos un horario libre (el calendario de la web). El calendario vale solo para la semana de comidas: con `extra` se puede elegir cualquier día de la ventana (Evelyn confirma la disponibilidad al contactar) y los eventos no usan ni el calendario ni la ventana (5.3).
 - Horario inicial (decisión del dueño del 15/11/2026): lunes a viernes de 9:00 a 15:00 para toda cocinera sin reglas (migración `20261115130100_default_availability.sql`; en un proyecto nuevo, `deploy-supabase.yml` al crear la cuenta), hasta que la app tenga editor de disponibilidad (M5a); la ventana sigue en 14 días.
 - A las 9:00 Evelyn empieza la compra, no llega a la casa (D1, decisión del 15/11/2026): las reglas quedan en 9:00–15:00 y la regla de esta sección no cambia. Con 45 min de compra, la primera llegada es a las 10:00 y la cocina dura como máximo 300 min (5 h). Un pedido más largo (el vector 7, de 330 min) no tiene ningún día libre: la web lo explica y deja enviarlo sin fecha, y Evelyn propone una.
-- En Fase 0 no hay sesiones: un día ocupado es un día bloqueado (`availability_exceptions`), que Evelyn carga desde la app (M5a).
+- En Fase 0 no hay filas en `sessions` (las crea el envío de un presupuesto, M4): un día ocupado es un día bloqueado (`availability_exceptions`), que Evelyn carga desde la app (M5a).
 - F3: sumar tiempo de traslado según zona de la sesión anterior y la siguiente.
 
 ### 5.3 Estados
@@ -363,9 +363,9 @@ Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automá
 - Un envío del formulario público (sin login, email sin verificar) nunca modifica a una persona que ya existe: cada pedido guarda el contacto con que llegó (`requests.contact`) y las restricciones del hogar solo se suman, desde pedidos semanales.
 - Las altas de usuarios van apagadas hasta el área de clientes (M2): la cuenta de la cocinera la crea confirmada el despliegue de Supabase (o el panel) antes de publicar nada, y `promote_to_chef` le cambia la contraseña por una al azar y le cierra las sesiones. En M2 se abren a cualquiera (registro abierto, D3): ese PR cambia esta regla, la de `CLAUDE.md` y el contrato §10.
 - Registro abierto (M2). Antes de abrir las altas:
-  - Turnstile en el alta (el CAPTCHA de Supabase Auth, que `supabase/scripts/auth-config.ts` deja anotado para M2), además de los límites de Auth.
+  - Turnstile en Auth (el CAPTCHA de Supabase, que `supabase/scripts/auth-config.ts` deja anotado para M2), además de los límites de Auth. No es solo del alta: Supabase también lo pide en cada pedido de código (`signInWithOtp`), así que la app lo manda en todo inicio de sesión, también en el de Evelyn (iOS, Android y `/gestione/`). Sin el token nadie entra.
   - La ficha la crea el servidor al registrarse, en `prospect`. M2 define cómo se une con un prospecto de la web del mismo email: solo con el email ya verificado por el código.
-  - Un prospecto puede tener cuenta: M2 relaja el check `clients_prospect_sin_cuenta`.
+  - Un prospecto puede tener cuenta: M2 relaja el check `clients_prospect_sin_cuenta`. Hoy ese check es lo que impide que `submit_public_request` reutilice una ficha con cuenta: sin él, un envío sin login con el email de una cuenta le colgaría a esa ficha pedidos, restricciones y consentimientos de otra persona (y un consentimiento de salud con otra versión del texto le borraría las restricciones). Por eso, en el mismo cambio, la función pasa a reutilizar solo prospectos sin cuenta (`profile_id is null`, como el borrado de 90 días) y, si el email es de una cuenta, crea un prospecto nuevo, como hoy con un cliente con cuenta (contrato §3). Con test pgTAP.
   - Conservación: el borrado de 90 días alcanza solo a prospectos sin cuenta (contrato §9). M2 suma una regla para las cuentas que nunca pasan a cliente activo, y la privacy la cuenta (versión nueva del texto).
   - El catálogo y las sugerencias, solo para clientes activos (precisiones de RLS, abajo), con tests.
 - Las notificaciones push y los emails nunca llevan restricciones ni direcciones. De las alergias del formulario, el aviso a la cocinera dice solo qué contestó el cliente (nadie tiene, indicadas o sin datos), nunca cuáles; la confirmación al cliente, que va a un email sin verificar, solo que confirmó que nadie tiene ("hay alergias" también es un dato de salud).
@@ -392,7 +392,7 @@ Precisiones implementadas en M1 (`supabase/migrations/*_rls.sql`):
 - `clients`: el cliente no crea su propia ficha (con el registro abierto de M2 la crea el servidor, en `prospect`). El estado lo cambia solo la cocinera (y el servidor al aceptar el primer presupuesto, M4); `share_pantry`, solo el cliente.
 - `profiles`: el perfil se crea por trigger siempre con rol `client`; nadie cambia su propio rol.
 - `recurring_plans`: solo lectura para el cliente.
-- Las tarifas (`chef_settings`) no son visibles para clientes: la vista previa y la política de cancelación se exponen con una RPC de solo lectura (M3).
+- Las tarifas (`chef_settings`) no son visibles para clientes: la vista previa y la política de cancelación se exponen con una RPC de solo lectura (M3c, con la pantalla Pedir de la app).
 
 Las escrituras sensibles (estados de sesión, pagos) pasan por Edge Functions con la service role, nunca por updates directos desde la app. Tests de políticas RLS obligatorios (pgTAP o la suite de tests de Supabase).
 
@@ -467,18 +467,19 @@ Sin notificaciones entre las 21:00 y las 8:00 (hora de Roma), salvo fallos de pa
 
 ## 10. Plan de construcción (milestones para Claude Code)
 
-La tabla sigue el orden de trabajo, reordenado el 15/11/2026 con la especificación de la app. Los números son nombres estables (los citan el código y el contrato); los milestones nuevos llevan letra: M3b amplía el pedido de M3, M5a adelanta la disponibilidad de M5, M4a prepara el menú de M4 y M2b necesita las cuentas de M2. Después del PR del formulario con calendario y pregunta de alergias siguen M3b, M5a, M4a, M2 y M2b.
+La tabla sigue el orden de trabajo, reordenado el 15/11/2026 con la especificación de la app. Los números son nombres estables (los citan el código y el contrato); los milestones nuevos llevan letra: M3b amplía el pedido de M3, M3c lo lleva a la app (con las cuentas de M2), M5a adelanta la disponibilidad de M5, M4a prepara el menú de M4 y M2b necesita las cuentas de M2. Después del PR del formulario con calendario y pregunta de alergias siguen M3b, M5a, M4a, M2, M3c y M2b.
 
 | # | Milestone | Entregable verificable |
 |---|---|---|
 | F0 | Web de validación | `web/`: landing en italiano, calculadora con `quote.ts`, formulario → Edge Function `public-request` (emails a Evelyn y al cliente), bandeja y agenda en `/gestione/`, privacidad. Deploy en `radicicucina.app` |
 | M0 | Setup | Repo, Flutter con entornos dev/prod, proyecto Supabase UE, CI en verde, `CLAUDE.md`, `quote.ts` + vectores en TS y Dart |
 | M1 | Esquema y RLS | Migraciones de la sección 4, seeds del prototipo, tests de políticas RLS y de `no_overlap` (incluidas sesiones `held` y margen de un lado) |
-| M3 | Horarios y pedido | `get_free_slots()` y `get_free_days()` con tests; Edge Function `public-request` con la disponibilidad por día; formulario de la web con calendario y pregunta de alergias. La pantalla Pedir de la app va con M2 |
-| M3b | Eventos privados | Tipo `event` (5.3): sección y formulario propios en la web (fecha libre, invitados, hora aproximada, idea), sin estimación en la web ni en los emails; contrato, `submit_public_request`, checks de la base (`requests_datos_de_presupuesto`, `estimate_required`) y emails, con tests primero; etiqueta y filtro de eventos en la bandeja |
+| M3 | Horarios y pedido | `get_free_slots()` y `get_free_days()` con tests; Edge Function `public-request` con la disponibilidad por día; formulario de la web con calendario y pregunta de alergias. La pantalla Pedir de la app va en M3c |
+| M3b | Eventos privados | Tipo `event` (5.3): sección y formulario propios en la web (fecha libre, invitados, hora aproximada, idea), sin estimación en la web ni en los emails; contrato, el check `requests_datos_de_presupuesto`, las validaciones de `submit_public_request` (`invalid_request_type`, `estimate_required`, `invalid_meals`) y los emails, con tests primero; etiqueta y filtro de eventos en la bandeja |
 | M5a | Disponibilidad en la app | Bloquear y desbloquear días; después, editar el horario semanal (`availability_rules`). Repositorio + providers, textos ARB y tests; reemplaza el horario inicial fijo de 5.2 |
 | M4a | Catálogo de platos | Migración con `name_en` y `season_months`; pantalla de Evelyn: alta, edición, baja (desactivar), alérgenos UE, dieta y temporada; con tests |
-| M2 | Auth y perfil, con registro abierto | Registro abierto con Turnstile y login con código; ficha `prospect` creada por el servidor; check `clients_prospect_sin_cuenta` relajado; conservación de las cuentas que no pasan a cliente activo (y privacy); RLS del catálogo solo para clientes activos; roles, perfil del hogar, restricciones con consentimiento, borrado de cuenta; pantalla Pedir de la app. Cambia la regla de altas aquí, en `CLAUDE.md` y en el contrato §10 (§6) |
+| M2 | Auth y perfil, con registro abierto | Registro abierto y login con código, con Turnstile en cada pedido de código (también el de Evelyn); ficha `prospect` creada por el servidor; check `clients_prospect_sin_cuenta` relajado y `submit_public_request` limitado a prospectos sin cuenta (test pgTAP); conservación de las cuentas que no pasan a cliente activo (y privacy); RLS del catálogo solo para clientes activos; roles, perfil del hogar, restricciones con consentimiento, borrado de cuenta. Cambia la regla de altas aquí, en `CLAUDE.md` y en el contrato §10 (§6) |
+| M3c | Pedir en la app | Pantalla Pedir del cliente con cuenta (§7): presupuesto estimado en vivo (copia Dart de `quote.ts`) y horarios libres reales; RPC de solo lectura con la vista previa y la política de cancelación (§6); ruta de servidor para `get_free_slots`, que hoy ejecuta solo `service_role` (5.2). Repositorio + providers, textos ARB y tests |
 | M2b | Sugerencias de menú | Cliente activo: sugerencias de la semana (catálogo de temporada sin cantidad fija, incompatibles tachados, nota libre y pedidos especiales). Evelyn: Menús de la semana, con aprobación o alternativa de los pedidos especiales. Tabla propia con RLS, tests primero |
 | M4 | Pedidos y presupuestos | Bandeja, menú con alérgenos y con las sugerencias a la vista, ajuste de precio, envío, aceptación → sesión (y la ficha de un prospecto pasa a `trial`), vencimiento de presupuestos; presupuesto de eventos sin fórmula, con recetas propias y su vencimiento |
 | M5 | Agenda | Semana y día con sesiones y eventos, huecos libres; Inicio de Evelyn con pendientes accionables |
@@ -489,7 +490,7 @@ La tabla sigue el orden de trabajo, reordenado el 15/11/2026 con la especificaci
 | M10 | F2 Despensa | Ingredientes, compartir, "usar primero" |
 | M11 | F2 Recurrencias | Planes semanales que generan sesiones; el plazo de las sugerencias y la repetición del menú anterior, si se decide D5 |
 
-En cada milestone: plan con `planner` → tests primero → implementación → revisión con `code-reviewer` (y `security-reviewer` en M2, M2b, M4 y M6; `database-reviewer` en M1, M3, M3b, M4a y M2b).
+En cada milestone: plan con `planner` → tests primero → implementación → revisión con `code-reviewer` (y `security-reviewer` en M2, M2b, M4 y M6; `database-reviewer` en M1, M3, M3b, M4a, M3c y M2b).
 
 ---
 
