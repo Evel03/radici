@@ -8,6 +8,8 @@ import { addDays } from "../lib/dates.ts";
 import {
   availabilityState,
   buildMonth,
+  calendarNav,
+  coversWindow,
   dayStatus,
   daysInMonth,
   initialMonthIndex,
@@ -127,20 +129,36 @@ describe("despliegue: la web y la función no coinciden unos minutos", () => {
     expect(selectionStillValid({ ...state, selected: "2026-12-15" })).toBe(false);
     expect(noFreeDays(state)).toBe(false);
     expect(initialMonthIndex(state)).toBe(0);
-    // Sin ningún libre en esos 14 días: el aviso de que no hay lugar (envíalo sin fecha).
+    // Sin ningún libre en esos 14 días, el aviso dice que no hay lugar en las 8 semanas aunque solo se
+    // consultaron 2. Dura lo que el despliegue; con más de 300 min de cocina es cierto igual (no entra ningún
+    // día) y mandarlo sin fecha es lo único que se puede hacer.
     expect(noFreeDays(input({ availability: received({ ...full, days: full.days.slice(0, 14).map((d) => ({ ...d, available: false })) }) }))).toBe(true);
   });
 
-  it("una respuesta con días de más (como la que recibe la web de antes): esos días no se pueden elegir", () => {
+  it("una respuesta con días de más (como la que recibe la web de antes): se usa, y esos días no se pueden elegir", () => {
     const longer = received({
       ...full,
-      days: Array.from({ length: 70 }, (_, i) => ({ date: addDays(TODAY, 1 + i), available: true })),
+      // El día 10 (25/11) ocupado: si la respuesta se descartara (error), ese día se podría elegir.
+      days: Array.from({ length: 70 }, (_, i) => ({ date: addDays(TODAY, 1 + i), available: i !== 9 })),
     });
+    expect(longer.kind).toBe("ready");
     const state = input({ availability: longer });
+    expect(dayStatus("2026-11-25", state)).toBe("unavailable");
     expect(dayStatus("2027-01-10", state)).toBe("available");
     expect(dayStatus("2027-01-11", state)).toBe("outside");
     expect(dayStatus("2027-01-24", state)).toBe("outside");
     expect(windowMonths(TODAY)).toHaveLength(3);
+  });
+
+  it("caché de la página: solo guarda una respuesta que cubre la ventana", () => {
+    const days = (state: AvailabilityState): ReadonlyMap<string, boolean> => (state.kind === "ready" ? state.days : new Map());
+    expect(coversWindow(days(received(full)), TODAY)).toBe(true);
+    // La de la función de antes no: al volver a esa duración, la página la pide de nuevo.
+    expect(coversWindow(days(received({ ...full, days: full.days.slice(0, 14) })), TODAY)).toBe(false);
+    expect(coversWindow(days(received({ ...full, days: full.days.slice(0, 55) })), TODAY)).toBe(false);
+    // Una con días de más, sí.
+    const longer = { ...full, days: Array.from({ length: 70 }, (_, i) => ({ date: addDays(TODAY, 1 + i), available: false })) };
+    expect(coversWindow(days(received(longer)), TODAY)).toBe(true);
   });
 });
 
@@ -226,5 +244,23 @@ describe("flechas del calendario", () => {
     expect(monthNav(1, 2)).toEqual({ index: 1, prev: true, next: false });
     expect(monthNav(2, 2)).toEqual({ index: 1, prev: true, next: false });
     expect(monthNav(-1, 3)).toEqual({ index: 0, prev: false, next: true });
+  });
+
+  it("calendarNav: el mes inicial mientras el cliente no usó las flechas; después, el que eligió", () => {
+    const today = "2026-11-25"; // ventana: 26/11/2026 a 20/01/2027, tres meses
+    const state = { today, selected: "", applies: true, availability: ready(["2026-12-02"], today) };
+    expect(calendarNav(state, 0, false)).toEqual({ index: 1, prev: true, next: true }); // el del primer día libre
+    expect(calendarNav(state, 2, false)).toEqual({ index: 1, prev: true, next: true });
+    expect(calendarNav(state, 2, true)).toEqual({ index: 2, prev: true, next: false });
+    expect(calendarNav(state, 0, true)).toEqual({ index: 0, prev: false, next: true });
+  });
+
+  it("calendarNav: si a medianoche la ventana pierde un mes, el índice se recorta y el calendario sigue teniendo mes", () => {
+    // Domingo 29/11/2026: de noviembre a enero. Lunes 30/11: de diciembre a enero.
+    expect(windowMonths("2026-11-29")).toHaveLength(3);
+    expect(windowMonths("2026-11-30")).toEqual([{ year: 2026, month: 12 }, { year: 2027, month: 1 }]);
+    const after = { today: "2026-11-30", selected: "", applies: true, availability: ready([], "2026-11-30") };
+    // El cliente estaba en enero (el tercero): enero sigue siendo el último.
+    expect(calendarNav(after, 2, true)).toEqual({ index: 1, prev: true, next: false });
   });
 });

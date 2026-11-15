@@ -56,13 +56,19 @@ test("la base corta donde el contrato: booking_horizon_days por defecto es DATE_
   assert.equal(current.value, DATE_WINDOW.maxDaysAhead, `valor por defecto de ${current.file}`);
   // El valor por defecto vale solo para las cocineras nuevas: la migración que lo cambia también pasa a las
   // que seguían en el anterior (en producción, Evelyn). Si no, la de producción se queda con la ventana vieja.
+  // Lo hace private.replace_booking_horizon (pgTAP: 10_booking_horizon prueba qué filas cambia y updated_at).
+  // pgTAP no ve la llamada (db reset corre las migraciones sobre una base vacía): la exige este test.
   const previous = defaults[defaults.length - 2];
   if (previous && previous.value !== current.value) {
     const migratesRows = new RegExp(
-      `update\\s+public\\.chef_settings\\s+set\\s+booking_horizon_days\\s*=\\s*${current.value}\\b[^;]*?\\bwhere\\s+booking_horizon_days\\s*=\\s*${previous.value}\\b`,
-      "i",
+      `^\\s*select\\s+private\\.replace_booking_horizon\\(\\s*${previous.value}\\s*,\\s*${current.value}\\s*\\)\\s*;`,
+      "im",
     );
-    assert.match(current.sql, migratesRows, `${current.file} pasa de ${previous.value} a ${current.value} a las cocineras que seguían en ${previous.value}`);
+    assert.match(
+      current.sql,
+      migratesRows,
+      `${current.file} llama a private.replace_booking_horizon(${previous.value}, ${current.value}): pasa a ${current.value} a las cocineras que seguían en ${previous.value}`,
+    );
   }
   // Y las dos empiezan mañana: v_today + 1 en free_slot_candidates.
   assert.equal(DATE_WINDOW.minDaysAhead, 1);

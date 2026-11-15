@@ -88,13 +88,29 @@ export function windowMonths(today: string): MonthRef[] {
   return months;
 }
 
+/** Mes a mostrar (índice en windowMonths) y si se puede ir al anterior y al siguiente. */
+export interface MonthNav {
+  index: number;
+  prev: boolean;
+  next: boolean;
+}
+
 /**
- * Flechas del calendario: el mes a mostrar (índice en windowMonths, recortado a los que hay) y si se
- * puede ir al anterior y al siguiente. Con tres meses, en el del medio se puede ir a los dos lados.
+ * Flechas del calendario: el índice recortado a los meses que hay. Con tres meses, en el del medio se
+ * puede ir a los dos lados.
  */
-export function monthNav(index: number, count: number): { index: number; prev: boolean; next: boolean } {
+export function monthNav(index: number, count: number): MonthNav {
   const clamped = Math.min(Math.max(index, 0), count - 1);
   return { index: clamped, prev: clamped > 0, next: clamped < count - 1 };
+}
+
+/**
+ * Mes a mostrar y flechas. Mientras el cliente no usó las flechas (touched en false), el mes inicial
+ * (initialMonthIndex); después, el que eligió, recortado: a medianoche la ventana puede tener un mes
+ * menos y el índice no puede quedar fuera (el calendario se quedaría sin mes para pintar).
+ */
+export function calendarNav(input: CalendarInput, index: number, touched: boolean): MonthNav {
+  return monthNav(touched ? index : initialMonthIndex(input), windowMonths(input.today).length);
 }
 
 /**
@@ -105,6 +121,15 @@ export function monthNav(index: number, count: number): { index: number; prev: b
 export function availabilityState(response: AvailabilityResponse | null, minutes: number): AvailabilityState {
   if (!response || response.minutes !== minutes) return { kind: "error" };
   return { kind: "ready", days: new Map(response.days.map((d) => [d.date, d.available])) };
+}
+
+/**
+ * Si la disponibilidad trae todas las fechas de la ventana de hoy. La de una función de otra versión
+ * (14 días, durante un despliegue) no: la página no la guarda en su caché por duración, así que al volver
+ * a esa duración la pide de nuevo en lugar de quedarse con los días 15 a 56 no disponibles hasta recargar.
+ */
+export function coversWindow(days: ReadonlyMap<string, boolean>, today: string): boolean {
+  return availabilityDates(today).every((date) => days.has(date));
 }
 
 function statusOf(date: string, window: ReadonlySet<string>, input: CalendarInput): DayStatus {

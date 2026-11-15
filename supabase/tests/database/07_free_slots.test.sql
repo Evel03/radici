@@ -226,6 +226,8 @@ update public.chef_settings set min_notice_hours = 24 where chef_id = '7e5f1000-
 -- 5. Horizonte: de mañana a hoy + booking_horizon_days. Por defecto 56 (8 semanas, decisión del
 --    15/11/2026): la ventana del formulario, DATE_WINDOW.maxDaysAhead en el contrato. Si se separan,
 --    falla availability.test.ts (compara el valor por defecto de las migraciones con el contrato).
+--    Las cocineras que ya existían (en producción, Evelyn en 14) las pasa a 56
+--    private.replace_booking_horizon: la prueba 10_booking_horizon.
 -- =====================================================================
 select col_default_is(
   'public', 'chef_settings', 'booking_horizon_days', '56'::text,
@@ -236,7 +238,7 @@ select is(
    from public.chef_settings s
    where s.chef_id in ('cef00000-0000-4000-8000-000000000001', 'cef00000-0000-4000-8000-000000000002')),
   array[56, 56],
-  'las cocineras del seed tienen las 8 semanas (como Evelyn en producción después de la migración)'
+  'el valor por defecto llega a las filas nuevas: las cocineras del seed (sembradas sin booking_horizon_days) tienen 56'
 );
 select is(
   (select max(c.day)

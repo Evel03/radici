@@ -152,9 +152,11 @@ describe("claves usadas por la web", () => {
 
 describe("ventana de la fecha preferida: se dice en semanas", () => {
   // «Hasta dentro de 56 días» se lee mal: los textos dicen «las próximas 8 semanas», con el número
-  // calculado del contrato (horizonWeeks en site.ts), nunca escrito a mano.
+  // calculado del contrato (horizonWeeks en site.ts), nunca escrito a mano. Entre el número y la palabra va
+  // un espacio duro (U+00A0): en el teléfono el «8» no queda solo al final de la línea.
   const WINDOW_KEYS = ["request.dateHint", "request.calendar.noneFree", "errors.date"] as const;
   const WEEKS: Record<Lang, string> = { it: "settimane", es: "semanas", en: "weeks" };
+  const NBSP = "\u00a0";
 
   it("la ventana del contrato son semanas enteras", () => {
     expect(DATE_WINDOW.maxDaysAhead % 7).toBe(0);
@@ -166,6 +168,7 @@ describe("ventana de la fecha preferida: se dice en semanas", () => {
         const template = dicts[lang][key] ?? "";
         expect(placeholders(template), key).toEqual(["horizonWeeks"]);
         expect(template, key).not.toMatch(/\d/);
+        expect(template, key).toContain(`{horizonWeeks}${NBSP}${WEEKS[lang]}`);
       }
       // Ningún texto queda con la ventana en días.
       for (const [key, template] of Object.entries(dicts[lang])) {
@@ -175,7 +178,7 @@ describe("ventana de la fecha preferida: se dice en semanas", () => {
 
     it(`${lang}: dicen las ${DATE_WINDOW.maxDaysAhead / 7} ${WEEKS[lang]}, también el error de la fecha`, () => {
       const i18n = createSiteI18n(lang, dicts[lang], "Radici");
-      const expected = `${DATE_WINDOW.maxDaysAhead / 7} ${WEEKS[lang]}`;
+      const expected = `${DATE_WINDOW.maxDaysAhead / 7}${NBSP}${WEEKS[lang]}`;
       expect(i18n.t("request.dateHint")).toContain(expected);
       expect(i18n.t("request.calendar.noneFree")).toContain(expected);
       const error = fieldError("preferredDate", "dateOutOfRange");
