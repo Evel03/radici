@@ -69,6 +69,22 @@ describe("renderPage con las páginas reales", () => {
     expect(out).toMatch(/141,00\s€/);
   });
 
+  it("las frases de los recuadros de la portada se leen: lista con nombre, sin aria-hidden encima", () => {
+    const out = renderPage(indexHtml, { i18n, config: baseConfig, pagePath: "/", partials });
+    const start = out.indexOf('<section class="hero"');
+    const hero = out.slice(start, out.indexOf("</section>", start));
+    // aria-hidden solo puede ir en la foto: en un contenedor ocultaría también las frases.
+    for (const [tag] of hero.matchAll(/<\w+[^>]*\saria-hidden="true"[^>]*>/g)) {
+      expect(tag).toMatch(/^<figure class="photo hero__photo"/);
+    }
+    expect(hero).toMatch(/<ul class="hero__labels"[^>]*\saria-label="[^"]+">/);
+    const items = [...hero.matchAll(/<li class="fridge-label">([\s\S]*?)<\/li>/g)].map((m) => m[1] ?? "");
+    expect(items).toHaveLength(3);
+    for (const item of items) {
+      expect(item).toMatch(/class="fridge-label__title"[^>]*>[^<]+<[\s\S]*class="fridge-label__text"[^>]*>[^<]+</);
+    }
+  });
+
   it("sin VITE_NOINDEX=true no agrega noindex; con VITE_SITE_URL agrega canonical y og:url", () => {
     const config = { ...baseConfig, noindex: false, siteUrl: "https://example.test" };
     const out = renderPage(requestHtml, { i18n, config, pagePath: "/richiesta/", partials });
