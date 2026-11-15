@@ -6,7 +6,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(6);
+select plan(11);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres): C1 sin reglas, C2 con una regla propia (sábado de 10 a 12).
@@ -59,6 +59,35 @@ select is(
    where has_function_privilege(r, 'private.add_default_availability()', 'EXECUTE')),
   null::text[],
   'ningún rol de la API la ejecuta (la corren la migración o el dueño desde el SQL editor)'
+);
+select ok(
+  has_function_privilege('postgres', 'private.add_default_availability()', 'EXECUTE'),
+  'postgres sí la ejecuta (el SQL editor y deploy-supabase.yml, por la Management API)'
+);
+
+-- ---------------------------------------------------------------------
+-- Proyecto nuevo: deploy-supabase.yml crea la cocinera DESPUÉS de db push, con promote_to_chef
+-- (como postgres, por la Management API), así que la migración no la encontró. El mismo paso
+-- corre add_default_availability justo después (contrato §10.1, paso 6).
+-- ---------------------------------------------------------------------
+insert into auth.users (id, email, email_confirmed_at)
+values ('7e5e0000-0000-4000-8000-00000000c003', 'chef3@horario.test', now());
+create temp table c3 as select public.promote_to_chef('chef3@horario.test', 'Chef Tre') as id;
+
+select is(
+  (select count(*)::int from public.availability_rules where chef_id = (select id from c3)),
+  0,
+  'proyecto nuevo: promote_to_chef sola deja a la cocinera sin reglas'
+);
+select is(
+  (select bool_or(available) from public.get_free_days((select id from c3), 180, current_date + 1, 14)),
+  false,
+  'sin reglas, el calendario de la web no marca ningún día'
+);
+select is(private.add_default_availability(), 5, 'el paso de la cuenta le carga el horario (solo a ella le faltaba)');
+select ok(
+  (select bool_or(available) from public.get_free_days((select id from c3), 180, current_date + 1, 14)),
+  'con el horario, el calendario marca días libres'
 );
 
 select finish();

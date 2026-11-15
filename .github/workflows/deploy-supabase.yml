@@ -1,6 +1,7 @@
 # Despliega el backend de Supabase a producción: la configuración de Auth (desde config.toml y la
-# plantilla del código), migraciones (db push), la cuenta de la cocinera la primera vez, secretos de la
-# Edge Function y la función public-request. Contrato: docs/contracts/public-request.md §8.
+# plantilla del código), migraciones (db push), la cuenta de la cocinera con su horario inicial la
+# primera vez, secretos de la Edge Function y la función public-request. Contrato:
+# docs/contracts/public-request.md §8.
 # - push a main que toque supabase/** (o este archivo) → producción
 # - workflow_dispatch → a mano, desde la pestaña Actions
 # Antes de tocar producción corre los tests de TypeScript y los de la base (pgTAP, base local).
@@ -237,7 +238,8 @@ jobs:
       # Solo mientras no haya ninguna cocinera: promote_to_chef le pone una contraseña al azar y le cierra
       # las sesiones, así que nunca corre otra vez. El usuario nace confirmado, con una contraseña al azar
       # que nadie conoce (entra con el código por email) y con el idioma de los avisos para el email del
-      # código. La clave secreta del proyecto solo vive en este paso, enmascarada.
+      # código. La clave secreta del proyecto solo vive en este paso, enmascarada. Después le carga el
+      # horario inicial (private.add_default_availability, contrato §11.1).
       - name: Cuenta de la cocinera (solo la primera vez)
         if: env.HAS_SUPABASE == 'true'
         env:
@@ -320,6 +322,13 @@ jobs:
             exit 1
           fi
           sql "select public.promote_to_chef('${CHEF_LOGIN_EMAIL}', '${CHEF_DISPLAY_NAME}')" > /dev/null
+          # Horario inicial (contrato §11.1): db push corrió antes de que existiera la cocinera, así que
+          # la migración no se lo dio. Con la cocinera ya creada este paso no vuelve a llegar acá.
+          if ! rules=$(sql "select private.add_default_availability() as n" | jq -r '.[0].n'); then
+            echo "::error::La cocinera quedó creada sin horario y este paso no lo reintenta: correr select private.add_default_availability(); en el SQL editor."
+            exit 1
+          fi
+          echo "Horario inicial cargado: ${rules} reglas (lunes a viernes de 9 a 15)."
           total=$(sql "select count(*)::int as n from auth.users" | jq -r '.[0].n')
           echo "Cocinera lista. Usuarios en Auth: ${total} (tiene que ser 1)."
           if [ "${total}" != "1" ]; then

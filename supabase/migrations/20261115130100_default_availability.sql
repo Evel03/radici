@@ -11,7 +11,8 @@
 -- private.add_default_availability() deja la regla en un solo lugar y la hace testeable.
 -- Idempotente: una cocinera que ya tiene alguna regla no se toca, así que otra corrida no
 -- agrega nada. En un proyecto nuevo, deploy-supabase.yml crea la cuenta de la cocinera después
--- de las migraciones: ahí hay que correrla a mano una vez (contrato public-request §10.1).
+-- de las migraciones: ese mismo paso la corre justo después de promote_to_chef (contrato
+-- public-request §10.1).
 -- =====================================================================
 
 create function private.add_default_availability()
