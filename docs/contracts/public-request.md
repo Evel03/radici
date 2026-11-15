@@ -7,6 +7,7 @@ Código del contrato: `supabase/functions/_shared/public_request.ts` (tipos, val
 Actualizado el 15/11/2026: el formulario de la web ya no pide alergias, intolerancias ni dietas (datos de salud); Evelyn las ve con el cliente cuando lo contacta. El contrato conserva `allergens`, `diets`, `restrictionsNote` y `consents.health`: la web los manda vacíos (`consents.health` en `null`) y la función los sigue aceptando.
 Actualizado el 15/11/2026: disponibilidad por día para el calendario del formulario (`GET …/public-request/availability`, §11), con las funciones de horarios libres de la base y el horario inicial de lunes a viernes de 9 a 15. El formulario ya no pregunta la franja horaria (manda `slot: "any"`). La privacy cuenta esas consultas (§6).
 Actualizado el 15/11/2026: el formulario vuelve a preguntar por las alergias e intolerancias. Versión 2 del contrato (el servidor acepta solo la 2): campo `noAllergies` (§2) — el cliente confirma que nadie de quienes van a comer, niños incluidos, tiene, o las escribe en `restrictionsNote` con el consentimiento de salud —, guardado en `requests.no_allergies` (§3); emails con tres casos (§5). Privacy y consentimientos de la versión `2026-11-16`, que también cuenta las consultas del calendario (§6).
+Actualizado el 15/11/2026: el día preferido se elige de mañana a 8 semanas (56 días) y no a 14, en el formulario (`DATE_WINDOW`, §2), en la disponibilidad del calendario (§11) y en la base (`booking_horizon_days`, §11.1). Sin cambio de versión del contrato ni de la respuesta de disponibilidad: mientras se despliega, ninguna combinación de web y función rompe el calendario (§11, §8).
 
 ## 1. Flujo
 
@@ -54,6 +55,14 @@ Los códigos de error por campo son los de `ErrorCode`; la web los traduce a sus
   - `false` sin restricciones → `restrictionsNote: "required"`;
   - `false` con restricciones → `consents.health` con una versión aceptada (`HEALTH_CONSENT_VERSIONS`, lista explícita: hoy solo `2026-11-16`, §6); si no, `consentHealth: "healthConsentRequired"`. Con `true`, un `consents.health` que llegue se descarta.
 - `restrictionsNote`: las alergias escritas, hasta `TEXT_LIMITS.restrictionsNote` (200) caracteres, en varias líneas (se limpia como las notas). `allergens` y `diets` siguen en el contrato y la web los manda vacíos.
+
+### Día preferido (`preferredDate`)
+
+Actualizado el 15/11/2026: la ventana pasó de 14 días a 8 semanas.
+
+- Opcional: `"AAAA-MM-DD"` o `null` (`""` cuenta como `null`). De mañana a 8 semanas, con la fecha de hoy de Roma en el servidor: `DATE_WINDOW`, de +1 a +56 días. Fuera de la ventana, `preferredDate: "dateOutOfRange"`; una fecha que no existe o con otro formato, `"invalid"`.
+- La web lo elige en el calendario (§11) y dice la ventana en semanas: sus textos usan `{horizonWeeks}`, que sale de `DATE_WINDOW` (un test exige que `maxDaysAhead` sea múltiplo de 7). La base corta en el mismo día (`booking_horizon_days`, §11.1).
+- Cambiar la ventana no cambia `PUBLIC_REQUEST_VERSION`: el payload es el mismo. Mientras se despliega (la web y la función salen por separado, §8), la función de antes puede rechazar con `dateOutOfRange` una fecha que la web nueva ya ofrece (con `extra`, o si el calendario no pudo cargar la disponibilidad): la web lo marca en el calendario con su mensaje (`errors.date`), sin pedir recargar. Una página de antes manda fechas de su ventana, que la función nueva también acepta.
 
 ### Idempotencia (`requestKey`)
 
@@ -217,6 +226,7 @@ Logs de configuración, solo con nombres de variables: al arrancar, `config_miss
   - Una migración que agrega algo que leen la app o la web (como `requests.no_allergies`, que pide la bandeja) va en un PR propio, antes que el código que la usa, y tiene que andar con la función y la web que siguen en producción. Se mergea ese PR, se espera a que Deploy Supabase termine en verde y recién después se mergea el resto. Con todo en un solo merge, si Deploy web termina primero, `/gestione/` no carga la bandeja hasta que corre la migración. Correr Deploy Supabase a mano desde la rama antes del merge no sirve: publica también la función nueva mientras sigue en línea la web vieja.
   - Pregunta de alergias (versión 2): primer PR con `supabase/migrations/20261115120000_requests_no_allergies.sql`, `supabase/tests/database/09_allergy_answer.test.sql` y `supabase/seed.sql` (la función de la versión 1 sigue guardando pedidos con esa migración: caso "vieja" del test); segundo PR con la función, la web, la app y los documentos.
   - Un cambio de versión del contrato (como la 2) deja igual unos minutos, entre los dos despliegues del segundo PR, en que la web y la función no coinciden y los envíos reciben "página desactualizada".
+  - Ventana de 8 semanas (15/11/2026): un solo PR con la migración, la función, la web y los documentos, porque la migración no agrega nada que lean la web o la app y la función de antes anda con la base nueva. `db push` deja `booking_horizon_days` en 56 antes de publicar la función, y la de antes sigue pidiendo 14 días. Unos minutos la web y la función pueden no coincidir (14 contra 56 días): ninguna combinación rompe el calendario (§11) y una fecha que la función de antes todavía rechaza recibe `dateOutOfRange`, con su mensaje (§2).
   - La versión de una migración nueva tiene que ser posterior a la última aplicada en producción: `db push` corre sin `--include-all` y rechaza una más vieja (corta antes de aplicar nada). Con ramas en paralelo, la que llega segunda a producción lleva la versión más nueva: `20261115120000_requests_no_allergies.sql` va antes que las de los horarios libres del calendario (`20261115130000` y `20261115130100`). Si esas llegan antes, cambiarle la versión a una libre posterior antes de mergearla (y actualizar §3).
 - Las actions de terceros van fijadas por SHA con su versión en un comentario; Dependabot (`.github/dependabot.yml`) propone las actualizaciones. `ci.yml` corre con `contents: read`.
 
@@ -337,7 +347,9 @@ Agregada el 15/11/2026 para el calendario del formulario. Código del contrato: 
   { "version": 1, "minutes": 180, "days": [{ "date": "2026-11-16", "available": false }, { "date": "2026-11-17", "available": true }] }
   ```
 
-  Un día por cada fecha de la ventana del formulario (`DATE_WINDOW`: de mañana a +14, en Roma; `AVAILABILITY_DAYS` = 14), en orden y sin huecos. `available` es `true` si Evelyn tiene al menos un horario libre ese día para esa duración (SPEC §5.2, `get_free_days`). "Hoy" es la fecha de Roma en la función. La web la lee con `parseAvailabilityResponse`: con otra forma, otra `version` o un error, el calendario no marca disponibilidad y deja elegir cualquier día de la ventana.
+  Un día por cada fecha de la ventana del formulario (`DATE_WINDOW`: de mañana a +56, 8 semanas, en Roma; `AVAILABILITY_DAYS` = 56; actualizado el 15/11/2026, antes 14), en orden y sin huecos. `available` es `true` si Evelyn tiene al menos un horario libre ese día para esa duración (SPEC §5.2, `get_free_days`). "Hoy" es la fecha de Roma en la función. La web la lee con `parseAvailabilityResponse`: con otra forma, otra `version` o un error, el calendario no marca disponibilidad y deja elegir cualquier día de la ventana.
+
+  El largo no se valida, a propósito: el calendario busca cada fecha de su ventana en la respuesta, así que las que no vienen cuentan como no disponibles y las que sobran no se muestran. Por eso un cambio de ventana no sube `AVAILABILITY_VERSION` ni rompe el calendario mientras se despliega: con la función de antes (14 días), la web nueva marca no disponibles los días 15 a 56; una página de antes abierta (14 días) con la función nueva usa los primeros 14 y deja afuera el resto. El calendario muestra un mes por vez, con flechas: la ventana toca dos o tres meses.
 
 | Código | Cuerpo | Cuándo |
 |---|---|---|
@@ -353,14 +365,15 @@ Agregada el 15/11/2026 para el calendario del formulario. Código del contrato: 
 - Límite por IP propio: la misma `hit_public_request_rate` (§3) con otra clave, el HMAC de `availability:<ip>` (de una IPv6, su /64; sin IP, `availability:unknown`). Es otro contador en `private.public_request_hits`: las lecturas no gastan el cupo del formulario (5 por hora, 20 por día) ni al revés, y no hizo falta migración. Más generoso (`AVAILABILITY_RATE_LIMITS`: 120 por hora, 600 por día) porque cada cambio de personas, días o comidas puede pedir otra duración.
 - Privacy (versión `2026-11-16`, §6): `privacy.flowBody` dice que el calendario consulta la disponibilidad antes de enviar, solo con la duración estimada; `legalBody` y `retentionBody` suman estas consultas al límite por IP (interés legítimo; la huella dura 2 días como máximo). Si cambia lo que manda la consulta o lo que se guarda por IP, cambian la privacy y su versión.
 - No pasa por Turnstile (es una lectura): de la configuración (§4) usa `IP_HASH_SALT` y, si está, `CHEF_ID`. La cocinera se elige igual que en el `POST`.
-- Pide `get_free_days(cocinera, minutes, mañana, 14)` con la clave secreta (`PublicRequestStore.freeDays`, `supabase.rpc` en `index.ts`); una respuesta con otra forma cuenta como error de la base (`unexpected_result`).
+- Pide `get_free_days(cocinera, minutes, mañana, AVAILABILITY_DAYS)` (56 días) con la clave secreta (`PublicRequestStore.freeDays`, `supabase.rpc` en `index.ts`); una respuesta con otra forma cuenta como error de la base (`unexpected_result`).
 - Logs: nunca la IP. `rate_limited` con `route: "availability"`, `db_error` con la operación (`rate_limit`, `resolve_chef` o `free_days`) y el código, y los de configuración del `POST` (`config_missing`, `config_invalid`, `chef_id_unresolved`, `client_ip_missing`).
 
 ### 11.1 Base de datos
 
-Migraciones `20261115130000_free_slots.sql` y `20261115130100_default_availability.sql`; tests pgTAP `07_free_slots` y `08_default_availability`.
+Migraciones `20261115130000_free_slots.sql`, `20261115130100_default_availability.sql` y `20261115130200_booking_horizon_8_weeks.sql`; tests pgTAP `07_free_slots` y `08_default_availability`.
 
 - `public.get_free_days(p_chef_id uuid, p_cook_minutes int, p_from_date date, p_days int) returns table (day date, available boolean)`: cada fecha de `[p_from_date, p_from_date + p_days − 1]`, en orden, con `available` si hay al menos un horario libre. Las fechas fuera de la ventana (hoy, el pasado, después de `booking_horizon_days`) salen en `false`.
+- `chef_settings.booking_horizon_days` es la ventana de la base y tiene que ser la del contrato (`DATE_WINDOW.maxDaysAhead`): 56 por defecto desde `20261115130200_booking_horizon_8_weeks.sql`, que también pasó a 56 a las cocineras que seguían en 14 (en producción, Evelyn; un valor distinto de 14 no se toca). `availability.test.ts` compara el último valor por defecto de las migraciones con el contrato y exige que la migración que lo cambie pase las filas que tenían el anterior; `07_free_slots` prueba el corte en hoy + 56.
 - `public.get_free_slots(p_chef_id uuid, p_cook_minutes int, p_from_date date, p_days int) returns table (day date, start_time time)`: los horarios para mostrar (hasta 3 por día, separados al menos 2 h, en los primeros 5 días con lugar; `start_time` es la llegada a la casa, hora de Roma). Todavía no lo usa nadie: es para la pantalla Pedir de la app y los presupuestos.
 - Las dos salen de `private.free_slot_candidates(…, p_now timestamptz default now())`, el generador común, con la regla de choque de `no_overlap` (SPEC §5.2), y validan los datos: `22023` con `invalid_cook_minutes` (de 1 a 720), `invalid_days` (de 1 a 366) o `invalid_from_date` (null o infinita), y `P0002` con `chef_not_found`.
 - Las ejecuta **solo** `service_role` (ni `anon` ni `authenticated`, tampoco la cocinera): la web no lee horarios con una RPC anónima, sino por esta ruta, con CORS y límite por IP. Son `security definer` con `search_path` vacío porque el generador vive en el esquema `private`, fuera de la API (ni `service_role` tiene `USAGE` ahí); corren como su dueño solo para poder llamarlo.
