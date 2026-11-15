@@ -1,6 +1,7 @@
 // Calendario mensual del día preferido: qué meses se muestran, qué días se pueden elegir y por qué.
 // Puro: la página (richiesta.ts) solo pinta lo que devuelve. Fechas "AAAA-MM-DD" de Europe/Rome.
-// La ventana (de mañana a +14 días) y la disponibilidad salen del contrato compartido con el servidor.
+// La ventana (DATE_WINDOW: de mañana a 8 semanas, dos o tres meses) y la disponibilidad salen del
+// contrato compartido con el servidor.
 import {
   availabilityDates,
   type AvailabilityResponse,
@@ -76,7 +77,7 @@ export function mondayIndex(iso: string): number {
   return (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
 }
 
-/** Meses que tocan la ventana de fechas elegibles (uno o dos), en orden. */
+/** Meses que tocan la ventana de fechas elegibles (dos o tres: 56 días nunca caben en uno ni tocan cuatro), en orden. */
 export function windowMonths(today: string): MonthRef[] {
   const months: MonthRef[] = [];
   for (const date of availabilityDates(today)) {
@@ -87,7 +88,20 @@ export function windowMonths(today: string): MonthRef[] {
   return months;
 }
 
-/** La respuesta del servidor como estado del calendario (null: no hubo una respuesta útil). */
+/**
+ * Flechas del calendario: el mes a mostrar (índice en windowMonths, recortado a los que hay) y si se
+ * puede ir al anterior y al siguiente. Con tres meses, en el del medio se puede ir a los dos lados.
+ */
+export function monthNav(index: number, count: number): { index: number; prev: boolean; next: boolean } {
+  const clamped = Math.min(Math.max(index, 0), count - 1);
+  return { index: clamped, prev: clamped > 0, next: clamped < count - 1 };
+}
+
+/**
+ * La respuesta del servidor como estado del calendario (null: no hubo una respuesta útil). Puede traer
+ * otro largo que la ventana (una función de otra versión, durante un despliegue): cada día se busca por
+ * fecha, así que los que no vienen cuentan como no disponibles y los de más quedan fuera.
+ */
 export function availabilityState(response: AvailabilityResponse | null, minutes: number): AvailabilityState {
   if (!response || response.minutes !== minutes) return { kind: "error" };
   return { kind: "ready", days: new Map(response.days.map((d) => [d.date, d.available])) };

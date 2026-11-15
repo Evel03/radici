@@ -11,7 +11,8 @@ import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Cuántos pedidos se cargan (los más recientes). Sobra para la bandeja y la
-/// agenda: la fecha preferida está a 14 días como mucho de la creación.
+/// agenda: la fecha preferida está a 8 semanas como mucho de la creación
+/// (DATE_WINDOW del contrato), y en 8 semanas llegan muchos menos pedidos.
 const int requestsPageSize = 500;
 
 abstract interface class ChefRequestsRepository {

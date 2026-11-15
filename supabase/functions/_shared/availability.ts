@@ -67,6 +67,10 @@ export function buildAvailabilityResponse(
 /**
  * Lectura defensiva en la web: null si la respuesta no tiene la forma esperada (otra versión, un error,
  * un proxy). Con null el calendario no marca disponibilidad y deja elegir cualquier día de la ventana.
+ * El largo no se valida, a propósito: al cambiar la ventana, la web y la función se despliegan por
+ * separado y unos minutos responde la función de antes (14 días) a la web nueva, o la nueva (56) a una
+ * página vieja abierta. El calendario busca cada fecha de su ventana en la respuesta: las que no vienen
+ * cuentan como no disponibles y las de más no se muestran (calendar.ts).
  */
 export function parseAvailabilityResponse(json: unknown): AvailabilityResponse | null {
   if (typeof json !== "object" || json === null) return null;

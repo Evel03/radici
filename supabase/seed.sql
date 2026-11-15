@@ -59,7 +59,7 @@ insert into public.chefs (id, profile_id, display_name, service_area, whatsapp) 
   ('cef00000-0000-4000-8000-000000000002', 'e0000000-0000-4000-8000-000000000002',
    'Giulia', array['Treviglio','Dalmine'], '+393330000002');
 
--- Evelyn: todos los valores por defecto de la spec (2200, 1200, 380, 250, 15 %, 90, 45, 30, 30, 14, 24, 48, 90)
+-- Evelyn: todos los valores por defecto de la spec (2200, 1200, 380, 250, 15 %, 90, 45, 30, 30, 56, 24, 48, 90)
 insert into public.chef_settings (chef_id) values ('cef00000-0000-4000-8000-000000000001');
 -- Giulia: tarifas distintas, para que se note si se mezclan datos entre chefs
 insert into public.chef_settings (chef_id, hourly_rate_cents, travel_fee_cents, shop_minutes, gap_minutes)

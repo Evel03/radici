@@ -210,13 +210,14 @@ test("normalizePhone: formatos italianos sin prefijo y números internacionales"
   assert.equal(normalizePhone("hola"), null);
 });
 
-test("fecha preferida: de mañana a +14 días, fechas reales", () => {
+test("fecha preferida: de mañana a +56 días (8 semanas), fechas reales", () => {
   const ok = parsePublicRequest(payload({ preferredDate: "2026-10-20" }), { today: TODAY });
   assert.ok(ok.ok);
-  assert.ok(parsePublicRequest(payload({ preferredDate: "2026-11-02" }), { today: TODAY }).ok);
+  assert.ok(parsePublicRequest(payload({ preferredDate: "2026-11-03" }), { today: TODAY }).ok, "lo que antes quedaba fuera (+15)");
+  assert.ok(parsePublicRequest(payload({ preferredDate: "2026-12-14" }), { today: TODAY }).ok);
   assert.ok(parsePublicRequest(payload({ preferredDate: "" as unknown as null }), { today: TODAY }).ok);
   assert.equal(errorsOf(payload({ preferredDate: "2026-10-19" })).preferredDate, "dateOutOfRange");
-  assert.equal(errorsOf(payload({ preferredDate: "2026-11-03" })).preferredDate, "dateOutOfRange");
+  assert.equal(errorsOf(payload({ preferredDate: "2026-12-15" })).preferredDate, "dateOutOfRange");
   assert.equal(errorsOf(payload({ preferredDate: "2026-02-30" })).preferredDate, "invalid");
   assert.equal(errorsOf(payload({ preferredDate: "20/10/2026" })).preferredDate, "invalid");
 });

@@ -13,6 +13,7 @@ import {
   availabilityState,
   buildMonth,
   initialMonthIndex,
+  monthNav,
   noFreeDays,
   selectionStillValid,
   windowMonths,
@@ -367,12 +368,14 @@ function startRequestPage(shell: Shell): void {
     const input = calendarInput(data);
     const months = windowMonths(input.today);
     if (!monthTouched) monthIndex = initialMonthIndex(input);
-    monthIndex = Math.min(Math.max(monthIndex, 0), months.length - 1);
+    // Dos o tres meses (8 semanas): las flechas y el recorte salen de monthNav.
+    const nav = monthNav(monthIndex, months.length);
+    monthIndex = nav.index;
     const ref = months[monthIndex];
     if (!ref) return;
     const view = buildMonth(ref, input);
-    calendarEls.prev.disabled = monthIndex === 0;
-    calendarEls.next.disabled = monthIndex === months.length - 1;
+    calendarEls.prev.disabled = !nav.prev;
+    calendarEls.next.disabled = !nav.next;
 
     const signature = JSON.stringify([i18n.lang, view.year, view.month, view.cells.map((c) => `${c.status}${c.selected ? "*" : ""}`)]);
     if (signature !== calendarPainted) {

@@ -546,8 +546,8 @@ select results_eq(
 select results_eq(
   $$ select hourly_rate_cents, travel_fee_cents, booking_horizon_days
      from public.chef_settings where chef_id = (select v from ids where k = 'chef3') $$,
-  $$ values (2200, 1200, 14) $$,
-  'con las tarifas por defecto'
+  $$ values (2200, 1200, 56) $$,
+  'con las tarifas y la ventana (8 semanas) por defecto'
 );
 select is(
   public.promote_to_chef('NUOVA.CUOCA@PUBLIC.TEST', 'Nuova Cuoca'),

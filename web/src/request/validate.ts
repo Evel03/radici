@@ -4,7 +4,6 @@
 import { LIMITS } from "../engine.ts";
 import type { MessageKey, Params } from "../i18n/core.ts";
 import {
-  DATE_WINDOW,
   TEXT_LIMITS,
   isOneOf,
   parsePublicRequest,
@@ -98,7 +97,9 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
     case "meals":
       return { key: "errors.meals" };
     case "preferredDate":
-      return { key: "errors.date", params: { days: DATE_WINDOW.maxDaysAhead } };
+      // La ventana va en el texto con {horizonWeeks}, un valor global de la web (i18n/site.ts). Es el mismo
+      // mensaje si la fecha la rechaza el servidor: por ejemplo, la función de antes durante un despliegue.
+      return { key: "errors.date" };
     case "consentPrivacy":
       return { key: "errors.privacyRequired" };
     case "consentHealth":
