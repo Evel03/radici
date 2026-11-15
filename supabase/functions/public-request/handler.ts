@@ -24,6 +24,7 @@ import {
 import { clientIp, hashSubject, rateLimitSubject } from "../_shared/client_ip.ts";
 import { corsHeaders, parseAllowedOrigins, type OriginRule } from "../_shared/cors.ts";
 import {
+  allergyAnswer,
   brandFromMailFrom,
   privacyPageUrl,
   renderChefNotification,
@@ -209,6 +210,8 @@ export interface SubmitPublicRequestParams {
   kids: number;
   days: number;
   meals: Meal[];
+  /** Respuesta a la pregunta de alergias: true = nadie tiene; false = las escribió (requests.no_allergies). */
+  no_allergies: boolean;
   allergens: Allergen[];
   diets: Diet[];
   restrictions_note: string;
@@ -339,6 +342,7 @@ export function toSubmitParams(chefId: string, value: NormalizedPublicRequest, e
     kids: value.kids,
     days: value.days,
     meals: value.meals,
+    no_allergies: value.noAllergies,
     allergens: value.allergens,
     diets: value.diets,
     restrictions_note: value.restrictionsNote,
@@ -694,7 +698,7 @@ function summaryOf(context: NotifyContext): RequestSummary {
     meals: value.meals,
     preferredDate: value.preferredDate,
     slot: value.slot,
-    hasRestrictions: value.hasRestrictions,
+    allergies: allergyAnswer(value.noAllergies, value.hasRestrictions),
     estimate: {
       portions: estimate.portions,
       cookMinutes: estimate.cookMinutes,

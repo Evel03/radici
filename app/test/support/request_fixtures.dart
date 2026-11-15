@@ -39,6 +39,8 @@ Map<String, dynamic> requestRow({
     'diets': ['vegetarian'],
     'note': 'niente funghi',
   },
+  // Respuesta a la pregunta de alergias (requests.no_allergies); null en los pedidos anteriores.
+  Object? noAllergies,
   Object? estimate = const {
     'adultPortions': 10,
     'kidPortions': 10,
@@ -63,6 +65,7 @@ Map<String, dynamic> requestRow({
   'days': 5,
   'meals': ['dinner'],
   'restrictions': restrictions,
+  'no_allergies': noAllergies,
   'notes': 'Citofono: Rossi',
   'preferred_date': preferredDate,
   'preferred_slot': preferredSlot,
@@ -96,6 +99,7 @@ ChefRequest buildRequest({
   String? email = 'giulia@example.test',
   ClientLocale locale = ClientLocale.it,
   RequestRestrictions? restrictions,
+  bool? noAllergies,
   RequestEstimate? estimate = const RequestEstimate(
     portions: 20,
     recipes: 3,
@@ -118,6 +122,7 @@ ChefRequest buildRequest({
   days: 5,
   meals: const [Meal.dinner],
   restrictions: restrictions,
+  noAllergies: noAllergies,
   notes: 'Citofono: Rossi',
   preferredDate: noDate ? null : (preferredDate ?? CalendarDate(2026, 10, 21)),
   preferredSlot: preferredSlot,

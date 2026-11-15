@@ -337,6 +337,20 @@ input[type="radio"] {
   font-weight: 500;
 }
 
+/* Alergias: la casilla "nadie tiene" es una tarjeta como las opciones (se ve cuando está marcada).
+   Sin marcar, debajo van la nota y el consentimiento de salud, este en un recuadro aparte. */
+.allergy-details {
+  margin-top: 1.25rem;
+}
+
+.consent--health {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
 .panel--submit {
   display: grid;
   gap: 1rem;

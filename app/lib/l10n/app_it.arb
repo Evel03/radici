@@ -455,7 +455,7 @@
   },
   "detailSectionRestrictions": "Restrizioni alimentari",
   "@detailSectionRestrictions": {
-    "description": "Sección de alergias y dietas (dato de salud, solo la cocinera la ve)."
+    "description": "Sección de alergias e intolerancias (dato de salud, solo la cocinera la ve): las que escribió el cliente, la confirmación de que nadie tiene o el aviso de que faltan datos."
   },
   "detailSectionNotes": "Note del cliente",
   "@detailSectionNotes": {
@@ -481,13 +481,17 @@
   "@detailPreferredSlot": {
     "description": "Fila: franja preferida."
   },
-  "detailNoRestrictions": "Nessuna restrizione indicata.",
-  "@detailNoRestrictions": {
-    "description": "El pedido no trae restricciones."
+  "detailNoAllergies": "Ha confermato che nessuno ha allergie, intolleranze alimentari o celiachia.",
+  "@detailNoAllergies": {
+    "description": "Sección de alergias: el cliente marcó en la web que nadie de quienes van a comer (niños incluidos) tiene alergias, intolerancias ni celiaquía (requests.no_allergies = true). Dice lo mismo que la casilla del formulario."
+  },
+  "detailAllergiesUnknown": "Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.",
+  "@detailAllergiesUnknown": {
+    "description": "Sección de alergias, destacada: el pedido no trae respuesta (anterior a la pregunta de la web, de la app o con el consentimiento de salud retirado). Pide preguntarle al cliente antes del menú."
   },
   "detailAllergens": "Allergeni da evitare",
   "@detailAllergens": {
-    "description": "Fila: alérgenos (igual que en la web)."
+    "description": "Fila: alérgenos de la lista UE. Los traen pedidos viejos de la web, que los marcaba con casillas; el formulario de hoy manda las alergias escritas (detailRestrictionsNote)."
   },
   "detailDiets": "Diete",
   "@detailDiets": {
@@ -495,7 +499,7 @@
   },
   "detailRestrictionsNote": "Nota",
   "@detailRestrictionsNote": {
-    "description": "Fila: nota de restricciones."
+    "description": "Fila: las alergias e intolerancias que escribió el cliente en el formulario."
   },
   "detailNoNotes": "Nessuna nota.",
   "@detailNoNotes": {
@@ -737,7 +741,7 @@
   },
   "allergenGluten": "Glutine",
   "@allergenGluten": {
-    "description": "Alérgeno UE (igual que en la web)."
+    "description": "Alérgeno UE."
   },
   "allergenCrustaceans": "Crostacei",
   "@allergenCrustaceans": {

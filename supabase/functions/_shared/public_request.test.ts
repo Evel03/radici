@@ -3,6 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   CONSENT_VERSION,
+  CONSENT_VERSIONS,
+  HEALTH_CONSENT_VERSIONS,
   PUBLIC_REQUEST_VERSION,
   addDays,
   cleanMultiLine,
@@ -16,6 +18,7 @@ import {
 
 const TODAY = "2026-10-19";
 
+/** Pedido válido: vector 1, y nadie de quienes van a comer tiene alergias. */
 function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPayload {
   return {
     version: PUBLIC_REQUEST_VERSION,
@@ -24,6 +27,7 @@ function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPa
     kids: 2,
     days: 5,
     meals: ["dinner"],
+    noAllergies: true,
     allergens: [],
     diets: [],
     restrictionsNote: "",
@@ -42,6 +46,16 @@ function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPa
   };
 }
 
+/** Lo que manda el formulario si no marca "ninguna": las alergias escritas y el consentimiento de salud. */
+function withAllergies(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPayload {
+  return payload({
+    noAllergies: false,
+    restrictionsNote: "Celiachia",
+    consents: { privacy: CONSENT_VERSION, health: CONSENT_VERSION },
+    ...overrides,
+  });
+}
+
 function errorsOf(input: unknown): Record<string, string> {
   const result = parsePublicRequest(input, { today: TODAY });
   assert.equal(result.ok, false, "se esperaba un error");
@@ -54,6 +68,7 @@ test("un pedido válido se normaliza y trae la estimación del vector 1", () => 
   if (!result.ok) return;
   assert.equal(result.value.phoneE164, "+393331234567");
   assert.deepEqual(result.value.meals, ["dinner"]);
+  assert.equal(result.value.noAllergies, true);
   assert.equal(result.value.hasRestrictions, false);
   assert.equal(result.value.consents.health, null);
   assert.deepEqual(result.value.quoteInput, { adults: 2, kids: 2, days: 5, meals: 1 });
@@ -92,33 +107,66 @@ test("rangos de personas y días", () => {
   assert.equal(errorsOf(payload({ days: 8 })).days, "range");
 });
 
-test("restricciones sin consentimiento de salud: no se aceptan", () => {
-  assert.equal(errorsOf(payload({ allergens: ["milk"] })).consentHealth, "healthConsentRequired");
-  assert.equal(errorsOf(payload({ diets: ["vegan"] })).consentHealth, "healthConsentRequired");
-  assert.equal(errorsOf(payload({ restrictionsNote: "niente maiale" })).consentHealth, "healthConsentRequired");
-  assert.equal(
-    errorsOf(payload({ allergens: ["milk"], consents: { privacy: CONSENT_VERSION, health: "1999-01-01" } })).consentHealth,
-    "healthConsentRequired",
-  );
+test("pregunta de alergias: solo true o false (ausente o de otro tipo, invalid)", () => {
+  for (const value of [undefined, null, "true", "sí", 1, 0]) {
+    assert.deepEqual(errorsOf({ ...payload(), noAllergies: value }), { noAllergies: "invalid" }, String(value));
+  }
 });
 
-test("con consentimiento de salud las restricciones se guardan; sin restricciones el consentimiento se descarta", () => {
-  const withHealth = parsePublicRequest(
-    payload({ allergens: ["milk", "gluten"], consents: { privacy: CONSENT_VERSION, health: CONSENT_VERSION } }),
-    { today: TODAY },
-  );
-  assert.ok(withHealth.ok);
-  if (withHealth.ok) {
-    assert.deepEqual(withHealth.value.allergens, ["gluten", "milk"]);
-    assert.equal(withHealth.value.consents.health, CONSENT_VERSION);
-    assert.equal(withHealth.value.hasRestrictions, true);
+test("nadie tiene alergias (true) junto con restricciones: invalid, sin pedir consentimiento de salud", () => {
+  const health = { privacy: CONSENT_VERSION, health: CONSENT_VERSION };
+  for (const restriction of [
+    { restrictionsNote: "noci" },
+    { allergens: ["milk" as const] },
+    { diets: ["vegan" as const] },
+  ]) {
+    assert.deepEqual(errorsOf(payload({ ...restriction, consents: health })), { noAllergies: "invalid" }, JSON.stringify(restriction));
+    assert.deepEqual(errorsOf(payload(restriction)), { noAllergies: "invalid" }, "ni con el consentimiento ni sin él");
   }
-  const noRestrictions = parsePublicRequest(
-    payload({ consents: { privacy: CONSENT_VERSION, health: CONSENT_VERSION } }),
-    { today: TODAY },
-  );
-  assert.ok(noRestrictions.ok);
-  if (noRestrictions.ok) assert.equal(noRestrictions.value.consents.health, null);
+});
+
+test("hay alergias (false) sin escribirlas: restrictionsNote required (también con solo espacios)", () => {
+  assert.deepEqual(errorsOf(withAllergies({ restrictionsNote: "" })), { restrictionsNote: "required" });
+  assert.deepEqual(errorsOf(withAllergies({ restrictionsNote: " \n\t " })), { restrictionsNote: "required" });
+  // Si la nota ya tiene otro error, ese es el que vale.
+  assert.deepEqual(errorsOf(withAllergies({ restrictionsNote: 5 as unknown as string })), { restrictionsNote: "invalid" });
+  assert.deepEqual(errorsOf(withAllergies({ restrictionsNote: "x".repeat(201) })), { restrictionsNote: "tooLong" });
+});
+
+test("alergias escritas sin consentimiento de salud (o con una versión que no es la vigente): no se aceptan", () => {
+  for (const health of [null, "", "1999-01-01"]) {
+    assert.deepEqual(
+      errorsOf(withAllergies({ consents: { privacy: CONSENT_VERSION, health } })),
+      { consentHealth: "healthConsentRequired" },
+      String(health),
+    );
+  }
+  // Las restricciones del contrato (alérgenos y dietas, que la web manda vacíos) siguen la misma regla.
+  assert.equal(errorsOf(withAllergies({ restrictionsNote: "", allergens: ["milk"], consents: { privacy: CONSENT_VERSION, health: null } })).consentHealth, "healthConsentRequired");
+});
+
+test("alergias escritas con consentimiento: se aceptan, con la nota en varias líneas", () => {
+  const result = parsePublicRequest(withAllergies({ restrictionsNote: "  Marco: celiachia \r\n\r\n\r\n Anna:  noci  " }), { today: TODAY });
+  assert.ok(result.ok);
+  if (!result.ok) return;
+  assert.equal(result.value.noAllergies, false);
+  assert.equal(result.value.hasRestrictions, true);
+  assert.equal(result.value.restrictionsNote, "Marco: celiachia\n\nAnna: noci");
+  assert.equal(result.value.consents.health, CONSENT_VERSION);
+});
+
+test("sin alergias, un consentimiento de salud marcado se descarta: no hay datos de salud que cubra", () => {
+  const result = parsePublicRequest(payload({ consents: { privacy: CONSENT_VERSION, health: CONSENT_VERSION } }), { today: TODAY });
+  assert.ok(result.ok);
+  if (result.ok) assert.equal(result.value.consents.health, null);
+});
+
+test("restricciones del contrato con consentimiento: alérgenos en orden canónico", () => {
+  const result = parsePublicRequest(withAllergies({ allergens: ["milk", "gluten"], restrictionsNote: "" }), { today: TODAY });
+  assert.ok(result.ok);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.allergens, ["gluten", "milk"]);
+  assert.equal(result.value.hasRestrictions, true);
 });
 
 test("privacy obligatoria y con una versión conocida", () => {
@@ -170,12 +218,46 @@ test("fecha preferida: de mañana a +14 días, fechas reales", () => {
   assert.equal(errorsOf(payload({ preferredDate: "20/10/2026" })).preferredDate, "invalid");
 });
 
+test("textos de 2026-11-16: privacy y salud; las privacy viejas solo para que una página v1 reciba errores de página", () => {
+  assert.equal(CONSENT_VERSION, "2026-11-16");
+  // La página de la versión 1 en caché manda la privacy de 2026-11-15 y no manda noAllergies: solo errores
+  // de página (la web vieja muestra "página desactualizada", sin marcar la casilla de privacy como faltante).
+  const { noAllergies: _sinRespuesta, ...old } = payload({ version: 1, consents: { privacy: "2026-11-15", health: null } });
+  assert.deepEqual(errorsOf(old), { version: "invalid", noAllergies: "invalid" });
+  // El consentimiento de salud, solo con el texto vigente: ninguno anterior pedía las alergias escritas.
+  for (const health of ["2026-11-15", "2026-10-19"]) {
+    assert.deepEqual(errorsOf(withAllergies({ consents: { privacy: CONSENT_VERSION, health } })), { consentHealth: "healthConsentRequired" }, health);
+  }
+});
+
+test("versiones aceptadas: la vigente vale para la privacy y para la salud, y la lista de salud es explícita", () => {
+  // La web manda CONSENT_VERSION en consents.privacy y, con alergias escritas, en consents.health.
+  assert.ok(CONSENT_VERSIONS.includes(CONSENT_VERSION), "CONSENT_VERSIONS acepta la vigente");
+  assert.ok(
+    HEALTH_CONSENT_VERSIONS.includes(CONSENT_VERSION),
+    "al cambiar CONSENT_VERSION, sumarla a HEALTH_CONSENT_VERSIONS y dejar la anterior mientras haya páginas en caché",
+  );
+  // No sigue sola a CONSENT_VERSION: un cambio de la privacy que no toca la parte de salud no deja
+  // afuera el consentimiento de salud que mandan las páginas ya abiertas (o la web vieja durante el despliegue).
+  assert.deepEqual([...HEALTH_CONSENT_VERSIONS], ["2026-11-16"]);
+  for (const list of [CONSENT_VERSIONS, HEALTH_CONSENT_VERSIONS]) {
+    assert.equal(new Set(list).size, list.length, `sin repetidas: ${list.join(", ")}`);
+  }
+});
+
+test("solo la versión 2: una página de la versión 1 (en caché) recibe version invalid y la web pide recargar", () => {
+  assert.equal(PUBLIC_REQUEST_VERSION, 2);
+  // Lo que mandaba la página de la versión 1: sin noAllergies.
+  const { noAllergies: _sinRespuesta, ...v1 } = payload({ version: 1 });
+  assert.deepEqual(errorsOf(v1), { version: "invalid", noAllergies: "invalid" });
+});
+
 test("payload que no es un objeto, versión distinta, campos faltantes y token", () => {
   assert.deepEqual(errorsOf(null), { payload: "invalid" });
   assert.deepEqual(errorsOf([]), { payload: "invalid" });
   assert.equal(errorsOf(payload({ version: 99 })).version, "invalid");
   const missing = errorsOf({ version: PUBLIC_REQUEST_VERSION });
-  for (const field of ["type", "adults", "kids", "days", "meals", "slot", "name", "zone", "phone", "email", "consentPrivacy", "turnstileToken"]) {
+  for (const field of ["type", "adults", "kids", "days", "meals", "noAllergies", "slot", "name", "zone", "phone", "email", "consentPrivacy", "turnstileToken"]) {
     assert.ok(field in missing, `falta el error de ${field}`);
   }
   assert.equal(errorsOf(payload({ turnstileToken: "" })).turnstileToken, "required");

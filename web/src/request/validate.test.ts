@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { flatten } from "../i18n/core.ts";
 import itJson from "../i18n/it.json";
 import { TEST_TOKEN, TODAY, validRequest } from "./fixtures.ts";
-import type { ErrorCode, PublicRequestField, RequestData } from "./model.ts";
+import { CONSENT_VERSION, type ErrorCode, type PublicRequestField, type RequestData } from "./model.ts";
 import { FIELD_ORDER, PAGE_FIELDS, fieldError, firstErrorField, translateErrors, validateRequest } from "./validate.ts";
 
 const ALL_FIELDS: readonly PublicRequestField[] = [
-  "payload", "version", "type", "adults", "kids", "people", "days", "meals", "allergens", "diets",
+  "payload", "version", "type", "adults", "kids", "people", "days", "meals", "noAllergies", "allergens", "diets",
   "restrictionsNote", "preferredDate", "slot", "name", "zone", "phone", "email", "whatsappOptIn", "notes",
   "locale", "consentPrivacy", "consentHealth", "turnstileToken", "requestKey",
 ];
@@ -30,6 +30,34 @@ describe("validateRequest (la misma validación del servidor)", () => {
   describe("consentimientos", () => {
     it("la privacy es obligatoria", () => {
       expect(validate({ consentPrivacy: false }).consentPrivacy?.key).toBe("errors.privacyRequired");
+    });
+  });
+
+  describe("alergias e intolerancias", () => {
+    it("marcar que nadie tiene alcanza: no pide nota ni consentimiento", () => {
+      expect(validate({ noAllergies: true })).toEqual({});
+    });
+
+    it("con la casilla marcada lo que haya quedado escrito no se valida (no se manda)", () => {
+      expect(validate({ noAllergies: true, restrictionsNote: "x".repeat(500), consentHealth: false })).toEqual({});
+    });
+
+    it("sin la casilla hay que escribirlas (solo espacios no cuenta); el consentimiento se pide recién con algo escrito", () => {
+      for (const restrictionsNote of ["", "  \n\t "]) {
+        expect(validate({ noAllergies: false, restrictionsNote })).toEqual({ restrictionsNote: { key: "errors.restrictionsRequired" } });
+      }
+    });
+
+    it("escritas, piden el consentimiento explícito de salud", () => {
+      expect(validate({ noAllergies: false, restrictionsNote: "noci" })).toEqual({ consentHealth: { key: "errors.healthRequired" } });
+      expect(validate({ noAllergies: false, restrictionsNote: "noci", consentHealth: true })).toEqual({});
+    });
+
+    it("largo máximo de la nota", () => {
+      expect(validate({ noAllergies: false, restrictionsNote: "x".repeat(201), consentHealth: true }).restrictionsNote).toEqual({
+        key: "errors.tooLong",
+        params: { max: 200 },
+      });
     });
   });
 
@@ -99,24 +127,61 @@ describe("validateRequest (la misma validación del servidor)", () => {
     const errors = validate({ consentPrivacy: false, phone: "", adults: 0, kids: 0 });
     expect(firstErrorField(errors)).toBe("people");
     expect(firstErrorField({})).toBeUndefined();
+    // Las alergias van entre «¿Cuándo?» y «Tus datos».
+    expect(firstErrorField(validate({ noAllergies: false, phone: "", consentPrivacy: false }))).toBe("restrictionsNote");
+    expect(firstErrorField(validate({ noAllergies: false, preferredDate: "2026-10-19" }))).toBe("preferredDate");
   });
 });
 
 describe("translateErrors (respuesta 400 del servidor)", () => {
   it("traduce cada campo a su mensaje", () => {
-    const { fields, outdated } = translateErrors({ phone: "invalid", email: "required" });
+    const { fields, outdated } = translateErrors({
+      phone: "invalid",
+      email: "required",
+      restrictionsNote: "required",
+      consentHealth: "healthConsentRequired",
+      noAllergies: "invalid",
+    });
     expect(outdated).toBe(false);
     expect(fields).toEqual({
       phone: { key: "errors.phoneInvalid" },
       email: { key: "errors.emailRequired" },
+      restrictionsNote: { key: "errors.restrictionsRequired" },
+      consentHealth: { key: "errors.healthRequired" },
+      noAllergies: { key: "errors.invalid" },
     });
   });
 
-  it("un error en los datos de salud (que la web manda vacíos) es de otra versión del servidor: pide recargar", () => {
-    expect(translateErrors({ consentHealth: "healthConsentRequired" })).toEqual({ fields: {}, outdated: true });
+  it("un error en alérgenos o dietas (que la web manda vacíos) es de otra versión del servidor: pide recargar", () => {
+    expect(translateErrors({ diets: "invalid" })).toEqual({ fields: {}, outdated: true });
     expect(translateErrors({ allergens: "invalid", name: "required" })).toEqual({
       fields: { name: { key: "errors.nameRequired" } },
       outdated: true,
+    });
+  });
+
+  it("con la versión rechazada los errores de campo son de otro contrato: solo «página desactualizada»", () => {
+    // Por ejemplo, mientras se despliegan la web y la función: la de antes no conoce la privacy ni el
+    // consentimiento de salud de esta página, y no hay que marcar esas casillas como faltantes.
+    expect(
+      translateErrors({ version: "invalid", consentPrivacy: "consentRequired", consentHealth: "healthConsentRequired" }),
+    ).toEqual({ fields: {}, outdated: true });
+  });
+
+  it("una versión de consentimiento que la página mandó y el servidor no acepta: página desactualizada, no la casilla", () => {
+    // Por ejemplo, una página abierta antes de que cambie el texto: la casilla está marcada y volver a
+    // marcarla no arregla nada. Hay que recargar.
+    const sent = { privacy: CONSENT_VERSION, health: CONSENT_VERSION };
+    expect(translateErrors({ consentHealth: "healthConsentRequired" }, sent)).toEqual({ fields: {}, outdated: true });
+    expect(translateErrors({ consentPrivacy: "consentRequired", name: "required" }, sent)).toEqual({
+      fields: { name: { key: "errors.nameRequired" } },
+      outdated: true,
+    });
+    // Sin la casilla (no mandó la versión), es el error del campo de siempre.
+    const unchecked = { privacy: "", health: null };
+    expect(translateErrors({ consentPrivacy: "consentRequired", consentHealth: "healthConsentRequired" }, unchecked)).toEqual({
+      fields: { consentPrivacy: { key: "errors.privacyRequired" }, consentHealth: { key: "errors.healthRequired" } },
+      outdated: false,
     });
   });
 

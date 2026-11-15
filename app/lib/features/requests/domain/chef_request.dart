@@ -64,6 +64,21 @@ enum Allergen {
 /// Enum `diet`.
 enum Diet { vegetarian, vegan }
 
+/// Qué contestó el cliente a la pregunta de alergias del formulario web
+/// (`requests.no_allergies` y `requests.restrictions`).
+enum AllergyAnswer {
+  /// Confirmó que nadie de quienes van a comer tiene alergias, intolerancias
+  /// ni celiaquía.
+  none,
+
+  /// Las escribió (o el pedido trae restricciones): se muestran.
+  listed,
+
+  /// Sin respuesta: un pedido anterior a la pregunta, uno de la app o uno
+  /// cuyo consentimiento de salud se retiró. Hay que preguntarle al cliente.
+  unknown,
+}
+
 /// Lee una fecha `date` de Postgres ("AAAA-MM-DD").
 class CalendarDateConverter implements JsonConverter<CalendarDate, String> {
   const CalendarDateConverter();
@@ -209,7 +224,7 @@ abstract class RequestClient with _$RequestClient {
 /// (FK `requests (client_id, chef_id) → clients (id, chef_id)`).
 const String chefRequestColumns =
     'id, chef_id, client_id, type, status, adults, kids, days, meals, '
-    'restrictions, notes, preferred_date, preferred_slot, locale, '
+    'restrictions, no_allergies, notes, preferred_date, preferred_slot, locale, '
     'whatsapp_opt_in, estimate, source, seen_at, created_at, contact, '
     'client:clients(display_name, contact_email, contact_phone, zone, status)';
 
@@ -247,6 +262,11 @@ abstract class ChefRequest with _$ChefRequest {
     int? days,
     @JsonKey(fromJson: _mealsFromJson) @Default(<Meal>[]) List<Meal> meals,
     RequestRestrictions? restrictions,
+
+    /// Respuesta a la pregunta de alergias de la web (`requests.no_allergies`):
+    /// true = nadie tiene; false = las escribió; null = sin respuesta. Para
+    /// mostrarla, [allergyAnswer].
+    @JsonKey(name: 'no_allergies') bool? noAllergies,
     String? notes,
     @JsonKey(name: 'preferred_date')
     @CalendarDateConverter()
@@ -305,6 +325,15 @@ abstract class ChefRequest with _$ChefRequest {
   };
 
   bool get hasRestrictions => !(restrictions?.isEmpty ?? true);
+
+  /// Qué mostrar de alergias. Con restricciones, siempre
+  /// [AllergyAnswer.listed] (más vale mostrarlas, aunque diga lo contrario);
+  /// sin ellas, [AllergyAnswer.none] solo si lo confirmó y si no,
+  /// [AllergyAnswer.unknown].
+  AllergyAnswer get allergyAnswer {
+    if (hasRestrictions) return AllergyAnswer.listed;
+    return noAllergies == true ? AllergyAnswer.none : AllergyAnswer.unknown;
+  }
 
   /// Total de personas, o null si el pedido no lo indica (type = change).
   int? get people =>

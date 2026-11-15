@@ -18,7 +18,7 @@ export function i18nFor(lang: Lang) {
   return createSiteI18n(lang, dicts[lang], "Radici");
 }
 
-/** Pedido válido: vector 1 de SPEC.md §5.1 (2 adultos, 2 niños, 5 días, cena). */
+/** Pedido válido: vector 1 de SPEC.md §5.1 (2 adultos, 2 niños, 5 días, cena), sin alergias. */
 export function validRequest(overrides: Partial<RequestData> = {}): RequestData {
   return {
     type: "week",
@@ -34,6 +34,9 @@ export function validRequest(overrides: Partial<RequestData> = {}): RequestData 
     whatsappOptIn: false,
     notes: "",
     consentPrivacy: true,
+    noAllergies: true,
+    restrictionsNote: "",
+    consentHealth: false,
     ...overrides,
   };
 }

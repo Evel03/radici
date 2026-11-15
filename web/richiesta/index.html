@@ -178,6 +178,33 @@
             </fieldset>
 
             <fieldset class="panel">
+              <legend class="panel__title" data-i18n="request.allergiesLegend"></legend>
+              <p class="panel__intro" data-i18n="request.allergiesIntro"></p>
+              <label class="choice">
+                <input id="noAllergies" name="noAllergies" type="checkbox" />
+                <span class="choice__body"><span class="choice__title" data-i18n="request.noAllergiesLabel"></span></span>
+              </label>
+              <p class="field__error" id="err-noAllergies" hidden></p>
+              <!-- Sin la casilla: las alergias escritas y su consentimiento (dato de salud). Marcada, se oculta y no se manda. -->
+              <div id="allergy-details" class="allergy-details">
+                <div class="field">
+                  <label class="field__label" for="restrictionsNote" data-i18n="request.restrictionsNoteLabel"></label>
+                  <textarea class="input" id="restrictionsNote" name="restrictionsNote" rows="3" autocomplete="off" required aria-describedby="hint-restrictionsNote"></textarea>
+                  <p class="field__hint" id="hint-restrictionsNote" data-i18n="request.restrictionsNoteHint"></p>
+                  <p class="field__error" id="err-restrictionsNote" hidden></p>
+                </div>
+                <div class="consent consent--health">
+                  <label class="check">
+                    <input id="consentHealth" name="consentHealth" type="checkbox" required aria-describedby="hint-consentHealth" />
+                    <span data-i18n-html="request.healthConsentLabel"></span>
+                  </label>
+                  <p class="field__hint" id="hint-consentHealth" data-i18n="request.healthConsentHint"></p>
+                  <p class="field__error" id="err-consentHealth" hidden></p>
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset class="panel">
               <legend class="panel__title" data-i18n="request.contactLegend"></legend>
               <div class="field">
                 <label class="field__label" for="name" data-i18n="request.nameLabel"></label>

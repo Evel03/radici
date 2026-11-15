@@ -19,8 +19,9 @@ Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y est
 - Horarios: `get_free_slots()` y `get_free_days()` en SQL, sobre un generador común (`private.free_slot_candidates`). Su regla de choque es idéntica a `no_overlap` (margen de un solo lado). Solo las ejecuta `service_role`: la web lee los días por `public-request` (`GET …/availability`), nunca por RPC anónima. Horario inicial: lunes a viernes de 9 a 15 (15/11/2026), hasta que la app tenga editor.
 - Presupuestos enviados = sesiones `held` con `hold_until`, protegidas por `no_overlap`.
 - Estados de sesión y pagos solo cambian vía Edge Functions o webhooks de Stripe, nunca desde la app.
-- Nunca loguear ni mandar por push/email restricciones, alergias, direcciones ni datos de tarjeta.
+- Nunca loguear ni mandar por push/email restricciones, alergias, direcciones ni datos de tarjeta. De las alergias, el aviso a la cocinera dice solo qué contestó el cliente (nadie tiene, indicadas o sin datos), nunca cuáles; la confirmación al cliente (email sin verificar), solo «nadie tiene».
 - Formulario público (sin login, email sin verificar): nunca modifica a una persona que ya existe; lo que llega queda en el pedido (`requests.contact`). Nada de lo escrito en el formulario sale hacia direcciones o números no verificados salvo un nombre de pila que parezca un nombre (`safeFirstName`).
+- Pregunta de alergias del formulario: el cliente confirma que nadie de quienes van a comer tiene (`requests.no_allergies`) o las escribe con el consentimiento de salud (una versión de `HEALTH_CONSENT_VERSIONS`, lista explícita); nunca las dos cosas (contrato §2).
 - Altas de usuarios apagadas hasta M2: la cuenta de la cocinera la crea confirmada `deploy-supabase.yml` (o el panel) antes de publicar nada, y la configuración de Auth sale del repo (contrato §10).
 - Workflows: actions fijadas por SHA con `# vX.Y.Z` (Dependabot las actualiza).
 - Textos de UI: ARB en la app, JSON por idioma en la web (it por defecto, es, en). Nada hardcodeado.

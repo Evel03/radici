@@ -283,17 +283,66 @@ void main() {
     });
   });
 
-  testWidgets('sin restricciones, sin notas, sin estimación y sin fecha', (
-    tester,
-  ) async {
+  testWidgets('sin notas, sin estimación y sin fecha', (tester) async {
     await openDetail(
       tester,
       buildRequest(estimate: null, noDate: true, preferredSlot: null).copyWith(notes: null),
     );
-    expect(find.byKey(const ValueKey('detail-no-restrictions')), findsOneWidget);
     expect(find.text('Nessuna nota.'), findsOneWidget);
     expect(find.byKey(const ValueKey('detail-no-estimate')), findsOneWidget);
     expect(find.text('Senza data'), findsOneWidget);
+  });
+
+  group('alergias: lo que contestó el cliente', () {
+    const unknownKey = ValueKey('detail-allergies-unknown');
+    const noneKey = ValueKey('detail-no-allergies');
+
+    testWidgets('confirmó que nadie tiene: lo dice (también la celiaquía, como la casilla de la web), sin aviso de preguntar', (tester) async {
+      await openDetail(tester, buildRequest(noAllergies: true));
+      expect(
+        tester.widget<Text>(find.byKey(noneKey)).data,
+        'Ha confermato che nessuno ha allergie, intolleranze alimentari o celiachia.',
+      );
+      expect(find.byKey(unknownKey), findsNothing);
+    });
+
+    testWidgets('las escribió: se ven, como siempre (también varias líneas)', (tester) async {
+      await openDetail(
+        tester,
+        buildRequest(
+          restrictions: const RequestRestrictions(note: 'Marco: celiachia\nAnna: noci'),
+          noAllergies: false,
+        ),
+      );
+      expect(find.text('Marco: celiachia\nAnna: noci'), findsOneWidget);
+      expect(find.byKey(noneKey), findsNothing);
+      expect(find.byKey(unknownKey), findsNothing);
+    });
+
+    testWidgets('sin respuesta (pedido anterior a la pregunta): avisa que pregunte antes del menú', (tester) async {
+      await openDetail(tester, buildRequest());
+      expect(
+        tester.widget<Text>(find.byKey(unknownKey)).data,
+        'Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.',
+      );
+      expect(find.byKey(noneKey), findsNothing);
+    });
+
+    testWidgets('en español: los dos textos nuevos', (tester) async {
+      await openDetail(tester, buildRequest(), deviceLocale: const Locale('es', 'ES'));
+      expect(
+        tester.widget<Text>(find.byKey(unknownKey)).data,
+        'Sin datos de alergias: pregúntale al cliente antes de preparar el menú.',
+      );
+    });
+
+    testWidgets('en español, confirmó que nadie tiene', (tester) async {
+      await openDetail(tester, buildRequest(noAllergies: true), deviceLocale: const Locale('es', 'ES'));
+      expect(
+        tester.widget<Text>(find.byKey(noneKey)).data,
+        'Confirmó que nadie tiene alergias, intolerancias alimentarias ni celiaquía.',
+      );
+    });
   });
 
   testWidgets('pedido inexistente', (tester) async {

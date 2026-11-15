@@ -36,6 +36,7 @@ import {
   type FieldError,
   type FieldErrors,
   type FieldName,
+  type SentConsents,
 } from "../request/validate.ts";
 import { config } from "../site-config.ts";
 import { initShell, type Shell } from "./shell.ts";
@@ -63,6 +64,9 @@ const CONTROLS: Readonly<Record<FieldName, readonly string[]>> = {
   email: ["email"],
   notes: ["notes"],
   consentPrivacy: ["consentPrivacy"],
+  noAllergies: ["noAllergies"],
+  restrictionsNote: ["restrictionsNote"],
+  consentHealth: ["consentHealth"],
   turnstileToken: [],
 };
 const CONTROL_IDS = [...new Set(Object.values(CONTROLS).flat())];
@@ -75,6 +79,8 @@ const doneContact = byId("done-contact");
 const doneEmail = byId("done-email");
 const doneDetails = byId("done-details");
 const doneSummary = byId("done-summary");
+// La nota de alergias y su consentimiento: se ocultan si marca que nadie tiene (y no se mandan).
+const allergyDetails = byId("allergy-details");
 const configWarning = byId("config-warning");
 const formError = byId("form-error");
 const formErrorText = byId("form-error-text");
@@ -192,6 +198,9 @@ function readForm(): RequestData {
     whatsappOptIn: fd.has("whatsappOptIn"),
     notes: str("notes"),
     consentPrivacy: fd.has("consentPrivacy"),
+    noAllergies: fd.has("noAllergies"),
+    restrictionsNote: str("restrictionsNote"),
+    consentHealth: fd.has("consentHealth"),
   };
 }
 
@@ -560,7 +569,8 @@ function startRequestPage(shell: Shell): void {
     done.focus();
   };
 
-  const handleOutcome = (outcome: SubmitOutcome, data: RequestData, view: DoneView): void => {
+  /** @param sent los consentimientos que llevaba el pedido: uno marcado que el servidor rechaza es de otro texto. */
+  const handleOutcome = (outcome: SubmitOutcome, data: RequestData, view: DoneView, sent: SentConsents): void => {
     if (outcome.kind === "created") {
       showDone(view, outcome.estimate);
       return;
@@ -569,7 +579,7 @@ function startRequestPage(shell: Shell): void {
     turnstile?.reset();
     switch (outcome.kind) {
       case "invalid": {
-        const { fields, outdated } = translateErrors(outcome.errors);
+        const { fields, outdated } = translateErrors(outcome.errors, sent);
         server = { errors: withoutTurnstile(fields), data: JSON.stringify(data) };
         renderErrors(data);
         const first = firstErrorField({ ...fieldErrors(data), ...serverErrors(data) });
@@ -650,7 +660,7 @@ function startRequestPage(shell: Shell): void {
     keys.settle(outcome.kind, snapshot);
     phase = "editing";
     setSending(false);
-    handleOutcome(outcome, data, view);
+    handleOutcome(outcome, data, view, payload.consents);
   };
 
   const onTurnstileChange = (): void => {
@@ -678,6 +688,8 @@ function startRequestPage(shell: Shell): void {
     }
     const data = readForm();
     keys.edited(JSON.stringify(data));
+    // Lo escrito se conserva si vuelve a desmarcar la casilla, pero oculto no se manda (buildPayload).
+    allergyDetails.hidden = data.noAllergies;
     syncSteppers();
     renderQuote(data);
     renderCalendar(data);

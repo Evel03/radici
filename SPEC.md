@@ -52,7 +52,7 @@ Evelyn cocina **en la casa del cliente**: hace las compras, cocina para varios d
 ## 2. Alcance por fases
 
 ### Fase 0 — Validación (web liviana, sin app)
-- Web pública en italiano (`web/`): cómo funciona, calculadora de presupuesto (misma fórmula 5.1, mismo `quote.ts`) y formulario de pedido, sin datos de salud: las alergias las ve Evelyn con el cliente cuando lo contacta.
+- Web pública en italiano (`web/`): cómo funciona, calculadora de presupuesto (misma fórmula 5.1, mismo `quote.ts`) y formulario de pedido con la pregunta de alergias: el cliente confirma que nadie de quienes van a comer (niños incluidos) tiene alergias, intolerancias ni celiaquía, o las escribe con su consentimiento de datos de salud.
 - El pedido se guarda en Supabase (Edge Function `public-request`, contrato `docs/contracts/public-request.md`, aprobado el 19/10/2026; reemplaza el envío por WhatsApp). Evelyn recibe un email y un aviso emergente en la app, y lo revisa en la bandeja y la agenda (app y `/gestione/`); el cliente recibe la confirmación por email y, si la pidió, por WhatsApp. El cliente no necesita cuenta.
 - Cobro manual: efectivo, transferencia, Satispay o Stripe Payment Links.
 - Meta: 10–20 sesiones reales para calibrar tiempos de cocina, costo por porción y política de cancelación **antes** de congelarlos en los vectores.
@@ -63,7 +63,7 @@ Evelyn cocina **en la casa del cliente**: hace las compras, cocina para varios d
 - Perfil del hogar: adultos, niños, zona, dirección, restricciones, preferencias, notas de cocina.
 - **Pedir**: semana de comidas, sesión extra/evento, o cambio en la próxima sesión.
 - **Presupuesto estimado instantáneo** al pedir (fórmula 5.1) y horarios libres reales (5.2).
-- Formulario público para clientes nuevos (web), sin datos de salud (desde el 15/11/2026: alergias, intolerancias y dietas se hablan con Evelyn).
+- Formulario público para clientes nuevos (web), con la pregunta de alergias (desde el 15/11/2026): confirmar que nadie tiene o escribirlas, con consentimiento de datos de salud.
 - **Bandeja de pedidos** de Evelyn: armar menú con control de alérgenos, ajustar precio, enviar presupuesto.
 - Aceptación del presupuesto → sesión agendada (con protección contra doble reserva).
 - **Agenda** (semana + día con línea de tiempo), **disponibilidad** semanal, **bloqueo de días**.
@@ -149,7 +149,7 @@ create type diet            as enum ('vegetarian','vegan');
 | `recurring_plans` (F2) | id, client_id, freq ('weekly','biweekly'), dow, start_time, days, meals text[], active |
 | `recipes` | id, chef_id, name_it, name_es, fridge_days, freezable, freezer_days (60), diet null, notes, active |
 | `recipe_allergens` | recipe_id, allergen |
-| `requests` | id, chef_id, client_id (siempre, también para prospectos), type, status, adults, kids, days, meals text[], restrictions jsonb, wishes uuid[], notes, preferred_date, preferred_start, pay_mode, target_session_id null (para 'change'), text (para 'change'), created_at; del pedido de la web además preferred_slot, locale, whatsapp_opt_in, estimate, source, seen_at, request_key y contact jsonb (el contacto con que llegó; contrato §3) |
+| `requests` | id, chef_id, client_id (siempre, también para prospectos), type, status, adults, kids, days, meals text[], restrictions jsonb, wishes uuid[], notes, preferred_date, preferred_start, pay_mode, target_session_id null (para 'change'), text (para 'change'), created_at; del pedido de la web además preferred_slot, locale, whatsapp_opt_in, estimate, source, seen_at, request_key, contact jsonb (el contacto con que llegó) y no_allergies (la pregunta de alergias: true = nadie tiene, false = las escribió y van en restrictions, null = sin respuesta; contrato §3) |
 | `quotes` | id, request_id, session_id (la sesión `held` que reserva el horario), version, menu uuid[], cook_minutes, portions, service_cents, groceries_est_cents, preauth_cents, pricing_snapshot jsonb, allergen_override text null, slot_date, slot_start, hold_until, sent_at, accepted_at |
 | `sessions` | id, chef_id, client_id, request_id, quote_id, date, start_time, cook_minutes, shop_minutes, gap_minutes, portions, status, hold_until null (solo `held`), pay_mode, service_cents, groceries_est_cents, preauth_cents, groceries_actual_cents null, service_paid_at, groceries_paid_at, cancelled_at, cancel_reason, **busy tstzrange** (generada) |
 | `session_menu` | session_id, recipe_id, portions |
@@ -317,7 +317,7 @@ Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automá
 - Conservación: los prospectos que no se convierten se borran con un cron cuando pasan `prospect_retention_days` (90) desde su último pedido. Si la persona pasa a ser clienta (en Fase 0, por WhatsApp), la cocinera la marca como cliente desde el detalle del pedido (ficha en `trial`) y se conserva.
 - Un envío del formulario público (sin login, email sin verificar) nunca modifica a una persona que ya existe: cada pedido guarda el contacto con que llegó (`requests.contact`) y las restricciones del hogar solo se suman, desde pedidos semanales.
 - Las altas de usuarios van apagadas hasta el área de clientes (M2): la cuenta de la cocinera la crea confirmada el despliegue de Supabase (o el panel) antes de publicar nada, y `promote_to_chef` le cambia la contraseña por una al azar y le cierra las sesiones.
-- Las notificaciones push y los emails nunca llevan restricciones ni direcciones.
+- Las notificaciones push y los emails nunca llevan restricciones ni direcciones. De las alergias del formulario, el aviso a la cocinera dice solo qué contestó el cliente (nadie tiene, indicadas o sin datos), nunca cuáles; la confirmación al cliente, que va a un email sin verificar, solo que confirmó que nadie tiene ("hay alergias" también es un dato de salud).
 - La política de privacidad lista los subencargados: Supabase, Stripe, el proveedor de email, Firebase (push), Sentry y el hosting de la web.
 - Supabase en región UE; DPA firmado con Supabase y Stripe; política de privacidad en italiano.
 - Fotos de tickets en Storage privado, accesibles con URL firmadas de corta duración.
@@ -392,7 +392,7 @@ Sin notificaciones entre las 21:00 y las 8:00 (hora de Roma), salvo fallos de pa
 
 ## 9. Criterios de aceptación del MVP
 
-1. Un prospecto pide desde la web sin cuenta y ve precio y horarios reales; el formulario no le pide datos de salud.
+1. Un prospecto pide desde la web sin cuenta y ve precio y horarios reales; no puede enviar sin contestar la pregunta de alergias (confirmar que nadie tiene o escribirlas), ni con alergias escritas sin el consentimiento de datos de salud.
 2. El presupuesto mostrado coincide con los 9 vectores de la sección 5.1 en la app, en la web y en el servidor.
 3. Dos clientes no pueden reservar horarios superpuestos aunque acepten al mismo tiempo (la restricción `no_overlap` lo impide y la app muestra un error claro). Un horario ofrecido por `get_free_slots` nunca es rechazado por `no_overlap`.
 4. Un presupuesto enviado bloquea el horario 48 h (sesión `held`) y se libera al vencer o al ser rechazado.
@@ -482,6 +482,8 @@ Verificar con el commercialista antes de cobrar a clientes reales:
 - Sesión mínima: hoy es 150 min (67 € de servicio) aunque sea 1 porción. ¿Se mantiene, se baja la base de 60 min o se fija un pedido mínimo?
 - ¿Se pide tarjeta guardada también a los clientes `pay_after` (para poder cobrar la penalidad por cancelación)?
 - Al revocar el consentimiento de salud se borran las restricciones del cliente. ¿Se borran también las copias en pedidos y presupuestos pasados? Pueden servir como prueba de que Evelyn fue informada de una alergia: decidir con quien asesore en privacidad. Mientras tanto se hace lo que dice la privacy: el retiro se procesa con `private.revoke_health_consent`, que borra también las copias de los pedidos (contrato §10.2). Si se decide conservarlas, cambiar la privacy (finalidad y plazo) y esa función.
+- La confirmación de que nadie tiene alergias (`requests.no_allergies = true`) se trata como dato de la solicitud (art. 6.1.b RGPD, sin consentimiento de salud), y así lo dice la privacy `2026-11-16`. Confirmarlo con quien asesore en privacidad: si se la considera dato de salud, también necesitaría el consentimiento explícito.
+- Alergias de otras personas: el formulario pide las de todos los que van a comer (otros adultos de la casa, invitados de un evento), pero el consentimiento del art. 9.2.a RGPD tiene que darlo cada interesado (por un menor, quien tiene su responsabilidad parental). Hoy quien las escribe declara, en la misma casilla del consentimiento de salud, que esas personas están informadas y de acuerdo, y la privacy `2026-11-16` (§5) le pide informarlas (art. 14) y les reconoce a ellas el derecho a pedir el borrado (contrato §10.2). Confirmar con quien asesore en privacidad si alcanza o si hace falta otro mecanismo (por ejemplo, que Evelyn lo confirme con cada invitado de un evento).
 - Tarifas reales. Con los valores de ejemplo, una sesión de 3 h para 4 personas deja 78 € por unas 4,5 h reales (compra + traslados + cocina): unos 17–18 €/h brutos.
 - Zona de cobertura (¿solo Bergamo y primer cinturón?).
 - Pedido mínimo (ej.: 10 porciones) y recargo por zona lejana.
