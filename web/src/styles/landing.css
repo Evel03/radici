@@ -67,12 +67,15 @@
   content: "";
 }
 
+/* Lista (los lectores de pantalla las leen como tres frases): sin sangría ni viñetas. */
 .hero__labels {
   position: relative;
   display: grid;
   gap: 0.5rem;
   width: min(85%, 17rem);
   margin: -2.25rem 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
 }
 
 /* Planas, como el manual: filete lino y una línea oliva arriba, sin sombra. */

@@ -35,11 +35,21 @@ void main() {
     expect(_textOf(tester, 'quote-days-value'), '5');
     expect(_textOf(tester, 'quote-portions'), '20');
     expect(_textOf(tester, 'quote-recipes'), '3');
-    expect(_textOf(tester, 'quote-cook-minutes'), '180 min');
     expect(_textOf(tester, 'quote-service'), '78,00$_nbsp€');
     expect(_textOf(tester, 'quote-groceries'), '63,00$_nbsp€');
     expect(_textOf(tester, 'quote-hold'), '150,45$_nbsp€');
     expect(_textOf(tester, 'quote-total'), '141,00$_nbsp€');
+  });
+
+  testWidgets('no muestra el tiempo de cocina, como la web', (tester) async {
+    setSurfaceSize(tester, phone);
+    await pumpLocalized(tester, const QuoteCalculatorScreen());
+
+    // Vector 1: 180 min de cocina. El motor los usa para el servicio, pero el
+    // cliente no los ve (sí Evelyn, en el detalle del pedido).
+    expect(find.text('Tempo in cucina'), findsNothing);
+    expect(find.text('180 min'), findsNothing);
+    expect(find.byKey(const ValueKey('quote-cook-minutes')), findsNothing);
   });
 
   testWidgets('tocar + en adultos actualiza el total', (tester) async {

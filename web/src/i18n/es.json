@@ -38,7 +38,9 @@
       "label2Title": "Más tiempo para ti",
       "label2Text": "Sin compras ni ollas",
       "label3Title": "Llegas y ya está listo",
-      "label3Text": "Solo queda calentar"
+      "label3Text": "Solo queda calentar",
+      "benefitsLabel": "Por qué elegirnos",
+      "photoAlt": "Platos de cerámica, aceite de oliva y un paño de cocina sobre una mesa de madera"
     },
     "services": {
       "title": "Servicios",
@@ -56,7 +58,8 @@
       "step3Title": "Compra y cocina en tu casa",
       "step3Text": "El día acordado hace la compra con ingredientes frescos y cocina en tu cocina. Mientras tanto puedes trabajar, salir o disfrutar del aroma.",
       "step4Title": "Porciones etiquetadas en la nevera",
-      "step4Text": "Encuentras las comidas ya divididas en porciones, con el nombre del plato y la fecha de preparación. Solo hay que calentar y sentarse a la mesa."
+      "step4Text": "Encuentras las comidas ya divididas en porciones, con el nombre del plato y la fecha de preparación. Solo hay que calentar y sentarse a la mesa.",
+      "photoAlt": "Una cocinera con el delantal de {brand}"
     },
     "included": {
       "title": "Qué incluye",
@@ -69,7 +72,8 @@
       "item4Title": "Porciones con etiqueta",
       "item4Text": "Cada porción lleva plato y fecha: siempre sabes qué hay en la nevera y qué comer primero.",
       "item5Title": "Cuidado con las alergias",
-      "item5Text": "Las recetas tienen en cuenta las alergias, intolerancias y dietas que nos indiques."
+      "item5Text": "Las recetas tienen en cuenta las alergias, intolerancias y dietas que nos indiques.",
+      "photoAlt": "Menú de {brand}: entrante, primero, segundo y postre"
     },
     "pricing": {
       "title": "Cómo se paga",

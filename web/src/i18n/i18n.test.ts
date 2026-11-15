@@ -129,6 +129,18 @@ describe("claves usadas por la web", () => {
     }
   });
 
+  it("las imágenes no traen texto alternativo propio: del JSON (data-i18n-attr) o alt vacío si son decorativas", () => {
+    for (const [file, html] of Object.entries(htmlFiles)) {
+      for (const [tag] of html.matchAll(/<img\b[^>]*>/g)) {
+        const fromJson = /\sdata-i18n-attr="[^"]*\balt:/.test(tag);
+        const alt = /\salt="([^"]*)"/.exec(tag)?.[1];
+        // Un alt escrito en el HTML no se traduciría; sin ninguno de los dos, la imagen no tiene texto alternativo.
+        if (fromJson) expect(alt, `${file}: ${tag}`).toBeUndefined();
+        else expect(alt, `${file}: ${tag}`).toBe("");
+      }
+    }
+  });
+
   it("no queda ningún link a WhatsApp en la web pública (el pedido va al servidor)", () => {
     const sources = { ...htmlFiles, it: JSON.stringify(itJson), es: JSON.stringify(es), en: JSON.stringify(en) };
     for (const [file, text] of Object.entries(sources)) {

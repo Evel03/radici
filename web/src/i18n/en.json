@@ -38,7 +38,9 @@
       "label2Title": "More time for you",
       "label2Text": "No shopping, no pans",
       "label3Title": "Come home to it ready",
-      "label3Text": "Just heat and eat"
+      "label3Text": "Just heat and eat",
+      "benefitsLabel": "Why choose us",
+      "photoAlt": "Ceramic plates, olive oil and a tea towel on a wooden table"
     },
     "services": {
       "title": "Services",
@@ -56,7 +58,8 @@
       "step3Title": "Shopping and cooking at your place",
       "step3Text": "On the agreed day she buys fresh ingredients and cooks in your kitchen. Meanwhile you can work, go out or just enjoy the smell.",
       "step4Title": "Labelled portions in the fridge",
-      "step4Text": "Meals are already split into portions, each with the dish name and the date it was made. Just heat and eat."
+      "step4Text": "Meals are already split into portions, each with the dish name and the date it was made. Just heat and eat.",
+      "photoAlt": "A cook wearing a {brand} apron"
     },
     "included": {
       "title": "What's included",
@@ -69,7 +72,8 @@
       "item4Title": "Labelled portions",
       "item4Text": "Every portion shows dish and date, so you always know what's in the fridge and what to eat first.",
       "item5Title": "Care with allergies",
-      "item5Text": "Recipes take into account the allergies, intolerances and diets you tell us about."
+      "item5Text": "Recipes take into account the allergies, intolerances and diets you tell us about.",
+      "photoAlt": "{brand} menu: starter, first course, main course and dessert"
     },
     "pricing": {
       "title": "How you pay",
