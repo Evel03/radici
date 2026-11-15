@@ -26,9 +26,6 @@ export function validRequest(overrides: Partial<RequestData> = {}): RequestData 
     kids: 2,
     days: 5,
     meals: "dinner",
-    noAllergies: true,
-    restrictionsNote: "",
-    consentHealth: false,
     preferredDate: "",
     slot: "any",
     name: "Giulia Rossi",
@@ -38,6 +35,9 @@ export function validRequest(overrides: Partial<RequestData> = {}): RequestData 
     whatsappOptIn: false,
     notes: "",
     consentPrivacy: true,
+    noAllergies: true,
+    restrictionsNote: "",
+    consentHealth: false,
     ...overrides,
   };
 }

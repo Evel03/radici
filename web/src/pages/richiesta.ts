@@ -43,9 +43,6 @@ const CONTROLS: Readonly<Record<FieldName, readonly string[]>> = {
   meals: [],
   preferredDate: ["preferredDate"],
   slot: [],
-  noAllergies: ["noAllergies"],
-  restrictionsNote: ["restrictionsNote"],
-  consentHealth: ["consentHealth"],
   name: ["name"],
   zone: ["zone"],
   phone: ["phone"],
@@ -53,6 +50,9 @@ const CONTROLS: Readonly<Record<FieldName, readonly string[]>> = {
   email: ["email"],
   notes: ["notes"],
   consentPrivacy: ["consentPrivacy"],
+  noAllergies: ["noAllergies"],
+  restrictionsNote: ["restrictionsNote"],
+  consentHealth: ["consentHealth"],
   turnstileToken: [],
 };
 const CONTROL_IDS = [...new Set(Object.values(CONTROLS).flat())];
@@ -145,9 +145,6 @@ function readForm(): RequestData {
     kids: int("kids"),
     days: int("days"),
     meals: isOneOf(MEAL_OPTIONS, meals) ? meals : "dinner",
-    noAllergies: fd.has("noAllergies"),
-    restrictionsNote: str("restrictionsNote"),
-    consentHealth: fd.has("consentHealth"),
     preferredDate: str("preferredDate"),
     slot: isOneOf(SLOTS, slot) ? slot : "any",
     name: str("name"),
@@ -157,6 +154,9 @@ function readForm(): RequestData {
     whatsappOptIn: fd.has("whatsappOptIn"),
     notes: str("notes"),
     consentPrivacy: fd.has("consentPrivacy"),
+    noAllergies: fd.has("noAllergies"),
+    restrictionsNote: str("restrictionsNote"),
+    consentHealth: fd.has("consentHealth"),
   };
 }
 

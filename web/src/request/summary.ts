@@ -35,12 +35,13 @@ export function summaryRows(data: RequestData, estimate: { totalCents: number } 
       value: data.preferredDate ? formatIsoDate(data.preferredDate, locale) : t("request.summary.dateNone"),
     },
     { label: t("request.summary.slot"), value: t(`request.slot.${data.slot}`) },
-    // Un pedido guardado sin la casilla siempre trae alergias escritas (el servidor las exige).
-    {
-      label: t("request.summary.allergies"),
-      value: t(data.noAllergies ? "request.summary.allergiesNone" : "request.summary.allergiesListed"),
-    },
   ];
+  // Qué contestó sobre alergias, nunca cuáles. Un pedido guardado sin la casilla siempre trae alergias
+  // escritas (el servidor las exige).
+  rows.push({
+    label: t("request.summary.allergies"),
+    value: t(data.noAllergies ? "request.summary.allergiesNone" : "request.summary.allergiesListed"),
+  });
   if (estimate) rows.push({ label: t("request.summary.total"), value: formatCents(estimate.totalCents, locale), total: true });
   return rows;
 }

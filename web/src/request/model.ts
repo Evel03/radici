@@ -45,12 +45,6 @@ export interface RequestData {
   kids: number;
   days: number;
   meals: MealOption;
-  /** Marcó que nadie de quienes van a comer (niños incluidos) tiene alergias ni intolerancias. */
-  noAllergies: boolean;
-  /** Las alergias e intolerancias escritas. Con `noAllergies` no se manda (aunque quede algo escrito). */
-  restrictionsNote: string;
-  /** Consentimiento explícito para esas alergias (dato de salud). Se manda solo con alergias escritas. */
-  consentHealth: boolean;
   /** "" si no eligió fecha; si no, "AAAA-MM-DD". */
   preferredDate: string;
   slot: Slot;
@@ -62,6 +56,12 @@ export interface RequestData {
   whatsappOptIn: boolean;
   notes: string;
   consentPrivacy: boolean;
+  /** Marcó que nadie de quienes van a comer (niños incluidos) tiene alergias ni intolerancias. */
+  noAllergies: boolean;
+  /** Las alergias e intolerancias escritas. Con `noAllergies` no se manda (aunque quede algo escrito). */
+  restrictionsNote: string;
+  /** Consentimiento explícito para esas alergias (dato de salud). Se manda solo con alergias escritas. */
+  consentHealth: boolean;
 }
 
 export function mealsOf(option: MealOption): Meal[] {
