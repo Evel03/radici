@@ -12,16 +12,21 @@ import { calcQuote, LIMITS, type Quote, type QuoteInput } from "./quote.ts";
 export const PUBLIC_REQUEST_VERSION = 2;
 
 /** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
-export const CONSENT_VERSION = "2026-11-15";
+export const CONSENT_VERSION = "2026-11-16";
 /**
- * Versiones aceptadas: al cambiar el texto, agregar la nueva y dejar las anteriores mientras haya
- * páginas en caché (y mientras la web y la función se despliegan, que corren por separado).
- * 2026-10-19: el borrador, publicado solo como prueba interna.
+ * Versiones aceptadas de la privacy: al cambiar el texto, agregar la nueva y dejar las anteriores
+ * mientras haya páginas en caché (y mientras la web y la función se despliegan, que corren por separado).
+ * 2026-11-15 (sin la pregunta de alergias) y 2026-10-19 (el borrador, solo prueba interna) ya no llegan
+ * a guardarse: solo las mandan páginas de la versión 1 del contrato, que se rechazan por versión. Siguen
+ * acá para que a esas páginas el servidor les conteste solo errores de página (version y noAllergies),
+ * que la web vieja muestra como "página desactualizada, recárgala". Sin ellas también recibirían
+ * consentPrivacy, y la web vieja marcaría como faltante la casilla de privacy que sí aceptaron.
  */
-export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-10-19"];
+export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-11-15", "2026-10-19"];
 /**
  * Versiones aceptadas del consentimiento de salud: solo la vigente. Cubre las alergias escritas en
- * el formulario de hoy, que ninguna versión anterior del texto pedía así.
+ * el formulario de hoy, que ningún texto anterior pedía así (el de 2026-10-19 era el de los alérgenos
+ * marcados con casillas; el de 2026-11-15 no pedía datos de salud).
  */
 export const HEALTH_CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION];
 

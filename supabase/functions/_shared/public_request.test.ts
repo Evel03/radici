@@ -206,6 +206,18 @@ test("fecha preferida: de mañana a +14 días, fechas reales", () => {
   assert.equal(errorsOf(payload({ preferredDate: "20/10/2026" })).preferredDate, "invalid");
 });
 
+test("textos de 2026-11-16: privacy y salud; las privacy viejas solo para que una página v1 reciba errores de página", () => {
+  assert.equal(CONSENT_VERSION, "2026-11-16");
+  // La página de la versión 1 en caché manda la privacy de 2026-11-15 y no manda noAllergies: solo errores
+  // de página (la web vieja muestra "página desactualizada", sin marcar la casilla de privacy como faltante).
+  const { noAllergies: _sinRespuesta, ...old } = payload({ version: 1, consents: { privacy: "2026-11-15", health: null } });
+  assert.deepEqual(errorsOf(old), { version: "invalid", noAllergies: "invalid" });
+  // El consentimiento de salud, solo con el texto vigente: ninguno anterior pedía las alergias escritas.
+  for (const health of ["2026-11-15", "2026-10-19"]) {
+    assert.deepEqual(errorsOf(withAllergies({ consents: { privacy: CONSENT_VERSION, health } })), { consentHealth: "healthConsentRequired" }, health);
+  }
+});
+
 test("solo la versión 2: una página de la versión 1 (en caché) recibe version invalid y la web pide recargar", () => {
   assert.equal(PUBLIC_REQUEST_VERSION, 2);
   // Lo que mandaba la página de la versión 1: sin noAllergies.
