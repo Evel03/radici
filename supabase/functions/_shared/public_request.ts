@@ -4,7 +4,12 @@
 // Solo sintaxis borrable: corre en Node (tests), Deno (Edge Functions) y Vite (web).
 import { calcQuote, LIMITS, type Quote, type QuoteInput } from "./quote.ts";
 
-export const PUBLIC_REQUEST_VERSION = 1;
+/**
+ * Versión del contrato. El servidor acepta solo esta: una página vieja en caché recibe
+ * `version: "invalid"` y la web pide recargarla.
+ * 2: la pregunta de alergias (`noAllergies`, y las alergias escritas en `restrictionsNote`).
+ */
+export const PUBLIC_REQUEST_VERSION = 2;
 
 /** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
 export const CONSENT_VERSION = "2026-11-15";
@@ -14,6 +19,11 @@ export const CONSENT_VERSION = "2026-11-15";
  * 2026-10-19: el borrador, publicado solo como prueba interna.
  */
 export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-10-19"];
+/**
+ * Versiones aceptadas del consentimiento de salud: solo la vigente. Cubre las alergias escritas en
+ * el formulario de hoy, que ninguna versión anterior del texto pedía así.
+ */
+export const HEALTH_CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION];
 
 /** Los 14 alérgenos del Reg. UE 1169/2011, en el orden del enum `allergen` de la base. */
 export const ALLERGENS = [
@@ -57,6 +67,7 @@ export const TEXT_LIMITS = {
   zone: 80,
   phone: 30,
   email: 120,
+  /** Las alergias e intolerancias escritas en el formulario. */
   restrictionsNote: 200,
   notes: 500,
 } as const;
@@ -76,8 +87,17 @@ export interface PublicRequestPayload {
   days: number;
   /** 1 o 2 valores distintos. */
   meals: Meal[];
+  /**
+   * La pregunta de alergias: true = el cliente confirma que nadie de quienes van a comer (niños
+   * incluidos) tiene alergias ni intolerancias alimentarias, y no manda restricciones; false = las
+   * escribe en `restrictionsNote`, con el consentimiento de salud (`consents.health`).
+   */
+  noAllergies: boolean;
+  /** La web los manda vacíos: las alergias llegan escritas en `restrictionsNote`. */
   allergens: Allergen[];
+  /** La web los manda vacíos. */
   diets: Diet[];
+  /** Las alergias e intolerancias escritas (varias líneas); "" si `noAllergies`. */
   restrictionsNote: string;
   /** "AAAA-MM-DD" o null si no eligió fecha. */
   preferredDate: string | null;
@@ -121,6 +141,7 @@ export type PublicRequestField =
   | "people"
   | "days"
   | "meals"
+  | "noAllergies"
   | "allergens"
   | "diets"
   | "restrictionsNote"
@@ -147,6 +168,8 @@ export interface NormalizedPublicRequest {
   kids: number;
   days: number;
   meals: Meal[];
+  /** true: confirmó que nadie tiene alergias ni intolerancias (y no hay restricciones). */
+  noAllergies: boolean;
   allergens: Allergen[];
   diets: Diet[];
   restrictionsNote: string;
@@ -320,6 +343,10 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
   const meals = parseSet(MEALS, raw.meals, MEALS.length);
   if (!meals || meals.length === 0) errors.meals = raw.meals === undefined ? "required" : "invalid";
 
+  // La pregunta de alergias se contesta siempre: o nadie tiene (true) o las escribe (false).
+  const noAllergies = typeof raw.noAllergies === "boolean" ? raw.noAllergies : null;
+  if (noAllergies === null) errors.noAllergies = "invalid";
+
   const allergens = parseSet(ALLERGENS, raw.allergens ?? [], ALLERGENS.length);
   if (!allergens) errors.allergens = "invalid";
   const diets = parseSet(DIETS, raw.diets ?? [], DIETS.length);
@@ -339,7 +366,8 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     else if (value.length > TEXT_LIMITS[field]) errors[field] = "tooLong";
     return value;
   };
-  const restrictionsNote = text("restrictionsNote", { required: false });
+  // Un área de texto: conserva los saltos de línea (una alergia por renglón).
+  const restrictionsNote = text("restrictionsNote", { required: false, multiLine: true });
   const name = text("name", { required: true });
   const zone = text("zone", { required: true });
   const phone = text("phone", { required: true });
@@ -380,9 +408,15 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     diets: diets ?? [],
     restrictionsNote,
   });
+  if (noAllergies === true && restricted) {
+    // Dice que nadie tiene alergias y a la vez manda restricciones: no se sabe cuál vale.
+    errors.noAllergies = "invalid";
+  } else if (noAllergies === false && !restricted && !errors.restrictionsNote) {
+    errors.restrictionsNote = "required";
+  }
   let health: string | null = null;
-  if (restricted) {
-    health = isOneOf(CONSENT_VERSIONS, consents.health) ? consents.health : null;
+  if (restricted && noAllergies !== true) {
+    health = isOneOf(HEALTH_CONSENT_VERSIONS, consents.health) ? consents.health : null;
     if (!health) errors.consentHealth = "healthConsentRequired";
   }
 
@@ -406,6 +440,7 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     kids,
     days,
     meals: meals as Meal[],
+    noAllergies: noAllergies as boolean,
     allergens: allergens as Allergen[],
     diets: diets as Diet[],
     restrictionsNote,

@@ -1,9 +1,9 @@
 // Modelo del pedido de la web. Tipos, constantes y reglas vienen del contrato compartido con la
 // Edge Function (supabase/functions/_shared/public_request.ts): un solo origen, nada copiado acá.
 // Este archivo agrega solo lo propio del formulario (la opción "pranzo e cena" y su estado).
-// El formulario no pide alergias, intolerancias ni dietas (datos de salud): Evelyn las ve con el
-// cliente cuando lo contacta. El contrato sigue teniendo esos campos y la web los manda vacíos.
-import { MEALS, type Meal, type RequestType, type Slot } from "../../../supabase/functions/_shared/public_request.ts";
+// Alergias: el cliente confirma que nadie de quienes van a comer tiene, o las escribe (con el
+// consentimiento de salud). Los alérgenos y las dietas del contrato van vacíos.
+import { MEALS, cleanMultiLine, type Meal, type RequestType, type Slot } from "../../../supabase/functions/_shared/public_request.ts";
 
 export {
   CONSENT_VERSION,
@@ -45,6 +45,12 @@ export interface RequestData {
   kids: number;
   days: number;
   meals: MealOption;
+  /** Marcó que nadie de quienes van a comer (niños incluidos) tiene alergias ni intolerancias. */
+  noAllergies: boolean;
+  /** Las alergias e intolerancias escritas. Con `noAllergies` no se manda (aunque quede algo escrito). */
+  restrictionsNote: string;
+  /** Consentimiento explícito para esas alergias (dato de salud). Se manda solo con alergias escritas. */
+  consentHealth: boolean;
   /** "" si no eligió fecha; si no, "AAAA-MM-DD". */
   preferredDate: string;
   slot: Slot;
@@ -64,4 +70,12 @@ export function mealsOf(option: MealOption): Meal[] {
 
 export function mealsPerDay(option: MealOption): number {
   return mealsOf(option).length;
+}
+
+/**
+ * Hay alergias escritas que mandar (datos de salud: hace falta el consentimiento explícito). Con la
+ * casilla de "nadie tiene" marcada, no. La nota se limpia igual que en el servidor: solo espacios no cuenta.
+ */
+export function hasHealthData(data: Pick<RequestData, "noAllergies" | "restrictionsNote">): boolean {
+  return !data.noAllergies && cleanMultiLine(data.restrictionsNote) !== "";
 }

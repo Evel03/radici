@@ -29,8 +29,18 @@ describe("summaryRows (pantalla de gracias)", () => {
       Pasti: "Cena",
       "Giorno preferito": "lunedì 26 ottobre 2026",
       "Fascia oraria": "Pomeriggio",
+      "Allergie e intolleranze": "Nessuna",
       "Totale stimato": expect.stringMatching(/^141,00\s€$/) as unknown as string,
     });
+  });
+
+  it("alergias: confirma lo que contestó, nunca cuáles", () => {
+    const listed = { noAllergies: false, restrictionsNote: "Celiachia, noci", consentHealth: true };
+    expect(rows("es")["Alergias e intolerancias"]).toBe("Ninguna");
+    expect(rows("es", listed)["Alergias e intolerancias"]).toBe("Indicadas: Evelyn las tendrá en cuenta");
+    expect(rows("en", listed)["Allergies and intolerances"]).toBe("Listed: Evelyn will take them into account");
+    expect(rows("it", listed)["Allergie e intolleranze"]).toBe("Indicate: Evelyn ne terrà conto");
+    expect(JSON.stringify(summaryRows(validRequest(listed), ESTIMATE, i18nFor("it")))).not.toMatch(/Celiachia|noci/);
   });
 
   it("sin fecha: da concordare; en español e inglés", () => {
@@ -46,10 +56,10 @@ describe("summaryRows (pantalla de gracias)", () => {
     expect(summaryRows(data, null, i18nFor("it")).some((r) => r.label === "Totale stimato")).toBe(false);
   });
 
-  it("no incluye datos personales", () => {
-    const data = validRequest({ notes: "citofono rotto", zone: "Redona" });
+  it("no incluye datos personales ni de salud", () => {
+    const data = validRequest({ notes: "citofono rotto", zone: "Redona", noAllergies: false, restrictionsNote: "lattosio", consentHealth: true });
     const text = JSON.stringify(summaryRows(data, ESTIMATE, i18nFor("it")));
-    for (const secret of ["citofono", "Redona", "Giulia", "333"]) {
+    for (const secret of ["citofono", "Redona", "Giulia", "333", "lattosio"]) {
       expect(text).not.toContain(secret);
     }
   });

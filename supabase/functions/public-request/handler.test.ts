@@ -55,7 +55,8 @@ const ENV: Record<string, string> = {
   WHATSAPP_TEMPLATE: "richiesta_ricevuta",
 };
 
-// Datos personales con marcas fáciles de buscar en los logs.
+// Datos personales con marcas fáciles de buscar en los logs. Con alergias escritas (y, para buscar
+// fugas, también un alérgeno del contrato, que la web de hoy manda vacío).
 function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPayload {
   return {
     version: PUBLIC_REQUEST_VERSION,
@@ -64,6 +65,7 @@ function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPa
     kids: 2,
     days: 5,
     meals: ["dinner"],
+    noAllergies: false,
     allergens: ["milk"],
     diets: [],
     restrictionsNote: "NOTA-SALUD-zzz",
@@ -464,6 +466,7 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
     kids: 2,
     days: 5,
     meals: ["dinner"],
+    no_allergies: false,
     allergens: ["milk"],
     diets: [],
     restrictions_note: "NOTA-SALUD-zzz",
@@ -501,6 +504,7 @@ test("segundo plano: aviso a Evelyn en su idioma, confirmación al cliente en el
   assert.equal(chefBody["reply_to"], "giulia.pii@example.test", "Evelyn responde directo al cliente");
   assert.equal(toChef.headers.get("idempotency-key"), `request-${REQUEST_ID}-chef`);
   assert.ok(String(chefBody["html"]).includes(`https://radicicucina.app/gestione/#/richieste/${REQUEST_ID}`));
+  assert.ok(String(chefBody["text"]).includes("Indicó restricciones alimentarias: las ves en la app."), "las ve en la app, nunca cuáles");
 
   const clientBody = toClient.body as Record<string, unknown>;
   assert.equal(clientBody["subject"], "Radici: abbiamo ricevuto la tua richiesta");
@@ -523,6 +527,38 @@ test("segundo plano: aviso a Evelyn en su idioma, confirmación al cliente en el
   assert.deepEqual(whatsAppFirstName(whatsapp[0]?.body), "Giuliaxyz");
 
   assert.deepEqual(store.marked, [REQUEST_ID]);
+});
+
+test("nadie tiene alergias: no_allergies a la base, sin restricciones ni consentimiento de salud; los emails lo confirman", async () => {
+  const { handle, store, fetchCalls, settle } = harness();
+  const response = await handle(
+    post(payload({ noAllergies: true, allergens: [], restrictionsNote: "", consents: { privacy: CONSENT_VERSION, health: CONSENT_VERSION } })),
+  );
+  assert.equal(response.status, 201);
+  assert.deepEqual(
+    (({ no_allergies, allergens, diets, restrictions_note, health_consent_version }) =>
+      ({ no_allergies, allergens, diets, restrictions_note, health_consent_version }))(store.submitted[0] as SubmitPublicRequestParams),
+    { no_allergies: true, allergens: [], diets: [], restrictions_note: "", health_consent_version: null },
+    "el consentimiento de salud marcado se descarta: no hay datos de salud",
+  );
+  await settle();
+  const text = (to: string): string =>
+    String((fetchCalls.find((call) => call.url === RESEND_API_URL && (call.body as { to: string[] }).to[0] === to)?.body as Record<string, unknown>)["text"]);
+  assert.ok(text("evelyn@example.test").includes("Confirmó que nadie tiene alergias ni intolerancias."));
+  assert.ok(text("giulia.pii@example.test").includes("Hai confermato che nessuno ha allergie o intolleranze alimentari."));
+});
+
+test("hay alergias pero sin escribirlas, o la página vieja (versión 1): 400 sin tocar la base", async () => {
+  const { handle, store } = harness();
+  const empty = await handle(post(payload({ allergens: [], restrictionsNote: "  " })));
+  assert.equal(empty.status, 400);
+  assert.deepEqual(await json(empty), { errors: { restrictionsNote: "required" } });
+
+  const { noAllergies: _v1, ...old } = payload({ version: 1, noAllergies: true, allergens: [], restrictionsNote: "", consents: { privacy: CONSENT_VERSION, health: null } });
+  const outdated = await handle(post(old));
+  assert.equal(outdated.status, 400);
+  assert.deepEqual(await json(outdated), { errors: { version: "invalid", noAllergies: "invalid" } });
+  assert.equal(store.hits.length, 0);
 });
 
 /** Texto del parámetro {{first_name}} de la plantilla de WhatsApp. */

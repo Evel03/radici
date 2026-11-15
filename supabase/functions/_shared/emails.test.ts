@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { LOCALES, type Locale } from "./public_request.ts";
 import {
+  allergyAnswer,
   brandFromMailFrom,
   emailWithBreaks,
   escapeHtml,
@@ -17,6 +18,7 @@ import {
   renderClientConfirmation,
   safeFirstName,
   safeHttpUrl,
+  type AllergyAnswer,
   type ChefNotificationInput,
   type ClientConfirmationInput,
   type RequestSummary,
@@ -33,7 +35,7 @@ const SUMMARY: RequestSummary = {
   meals: ["dinner"],
   preferredDate: "2026-10-25",
   slot: "afternoon",
-  hasRestrictions: true,
+  allergies: "listed",
   estimate: { portions: 20, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300, totalCents: 14100 },
 };
 
@@ -195,19 +197,19 @@ const EXPECTED_CLIENT = {
   it: {
     subject: "Radici: abbiamo ricevuto la tua richiesta",
     lines: ["Grazie, Giulia!", "Evelyn ti contatterà al più presto", "Settimana di pasti", "2 adulti e 2 bambini",
-      "Cena", "domenica 25 ottobre 2026", "Pomeriggio", "Hai indicato restrizioni alimentari: Evelyn ne terrà conto.",
+      "Cena", "domenica 25 ottobre 2026", "Pomeriggio", "Ci hai indicato allergie o intolleranze: Evelyn ne terrà conto.",
       "78,00 €", "63,00 €", "141,00 €", "La spesa si paga al costo reale dello scontrino"],
   },
   es: {
     subject: "Radici: hemos recibido tu solicitud",
     lines: ["¡Gracias, Giulia!", "Evelyn te contactará lo antes posible", "Semana de comidas", "2 adultos y 2 niños",
-      "Cena", "domingo, 25 de octubre de 2026", "Tarde", "Indicaste restricciones alimentarias: Evelyn las tendrá en cuenta.",
+      "Cena", "domingo, 25 de octubre de 2026", "Tarde", "Nos indicaste alergias o intolerancias: Evelyn las tendrá en cuenta.",
       "78,00 €", "63,00 €", "141,00 €", "La compra se paga al precio real del ticket"],
   },
   en: {
     subject: "Radici: we've received your request",
     lines: ["Thank you, Giulia!", "Evelyn will contact you as soon as possible", "A week of meals", "2 adults and 2 children",
-      "Dinner", "Sunday 25 October 2026", "Afternoon", "You mentioned dietary restrictions: Evelyn will take them into account.",
+      "Dinner", "Sunday 25 October 2026", "Afternoon", "You told us about allergies or intolerances: Evelyn will take them into account.",
       "€78.00", "€63.00", "€141.00", "Groceries are charged at the actual receipt cost"],
   },
 } as const;
@@ -246,16 +248,47 @@ test("los textos del usuario se escapan y no hay imágenes remotas ni scripts", 
   }
 });
 
-test("cliente: sin restricciones no hay aviso; sin fecha, 'sin preferencia'; ambas comidas", () => {
+test("cliente: sin fecha, 'sin preferencia'; ambas comidas; un evento", () => {
   const email = renderClientConfirmation(
-    clientInput({ summary: { ...SUMMARY, hasRestrictions: false, preferredDate: null, meals: ["lunch", "dinner"], type: "extra" } }),
+    clientInput({ summary: { ...SUMMARY, preferredDate: null, meals: ["lunch", "dinner"], type: "extra" } }),
     "it",
   );
-  assert.ok(!email.text.includes("restrizioni"));
   assert.ok(email.text.includes("Nessuna preferenza"));
   assert.ok(email.text.includes("Pranzo e cena"));
   assert.ok(email.text.includes("Evento o sessione extra"));
 });
+
+const CLIENT_ALLERGIES: Readonly<Record<Locale, Readonly<Record<AllergyAnswer, string | null>>>> = {
+  it: {
+    none: "Hai confermato che nessuno ha allergie o intolleranze alimentari.",
+    listed: "Ci hai indicato allergie o intolleranze: Evelyn ne terrà conto.",
+    unknown: null,
+  },
+  es: {
+    none: "Confirmaste que nadie tiene alergias ni intolerancias alimentarias.",
+    listed: "Nos indicaste alergias o intolerancias: Evelyn las tendrá en cuenta.",
+    unknown: null,
+  },
+  en: {
+    none: "You confirmed that nobody has any food allergies or intolerances.",
+    listed: "You told us about allergies or intolerances: Evelyn will take them into account.",
+    unknown: null,
+  },
+};
+
+for (const locale of LOCALES) {
+  test(`cliente (${locale}): le confirma lo que contestó sobre alergias, nunca cuáles; sin respuesta, nada`, () => {
+    const all = Object.values(CLIENT_ALLERGIES[locale]).filter((line): line is string => line !== null);
+    for (const [answer, line] of Object.entries(CLIENT_ALLERGIES[locale]) as Array<[AllergyAnswer, string | null]>) {
+      const email = renderClientConfirmation(clientInput({ summary: { ...SUMMARY, allergies: answer } }), locale);
+      for (const other of all) {
+        const expected = other === line;
+        assert.equal(email.text.includes(other), expected, `${answer}: texto "${other}"`);
+        assert.equal(email.html.includes(escapeHtml(other)), expected, `${answer}: HTML "${other}"`);
+      }
+    }
+  });
+}
 
 test("cliente: sin URL de privacy (o con una no http) no hay link", () => {
   for (const privacyUrl of [null, "javascript:alert(1)"]) {
@@ -281,16 +314,58 @@ test("Evelyn (it): asunto con el nombre de pila, contacto con links, botón a la
 });
 
 test("Evelyn en español e inglés, sin notas ni WhatsApp", () => {
-  const es = renderChefNotification(chefInput({ hasNotes: false, whatsappOptIn: false, summary: { ...SUMMARY, hasRestrictions: false } }), "es");
+  const es = renderChefNotification(chefInput({ hasNotes: false, whatsappOptIn: false, summary: { ...SUMMARY, allergies: "none" } }), "es");
   assert.equal(es.subject, "Nueva solicitud de Giulia");
   assert.ok(es.text.includes("Abrir en la bandeja"));
-  assert.ok(es.text.includes("No indicó restricciones alimentarias."));
+  assert.ok(es.text.includes("Confirmó que nadie tiene alergias ni intolerancias."));
   assert.ok(!es.text.includes("notas"));
   assert.ok(es.text.includes("Confirmación por WhatsApp: No"));
 
   const en = renderChefNotification(chefInput(), "en");
   assert.equal(en.subject, "New request from Giulia");
   assert.ok(en.text.includes("Open in the inbox"));
+});
+
+const CHEF_ALLERGIES: Readonly<Record<Locale, Readonly<Record<AllergyAnswer, string>>>> = {
+  it: {
+    none: "Ha confermato che nessuno ha allergie o intolleranze.",
+    listed: "Ha indicato restrizioni alimentari: le trovi nell'app.",
+    unknown: "Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.",
+  },
+  es: {
+    none: "Confirmó que nadie tiene alergias ni intolerancias.",
+    listed: "Indicó restricciones alimentarias: las ves en la app.",
+    unknown: "Sin datos de alergias: pregúntale al cliente antes de preparar el menú.",
+  },
+  en: {
+    none: "They confirmed that nobody has any allergies or intolerances.",
+    listed: "They mentioned dietary restrictions: see them in the app.",
+    unknown: "No allergy information: ask the client before planning the menu.",
+  },
+};
+
+for (const locale of LOCALES) {
+  test(`Evelyn (${locale}): tres casos de alergias (nadie, indicadas en la app, sin datos), una sola línea`, () => {
+    const all = Object.values(CHEF_ALLERGIES[locale]);
+    for (const [answer, line] of Object.entries(CHEF_ALLERGIES[locale]) as Array<[AllergyAnswer, string]>) {
+      const email = renderChefNotification(chefInput({ summary: { ...SUMMARY, allergies: answer } }), locale);
+      for (const other of all) {
+        const expected = other === line;
+        assert.equal(email.text.includes(other), expected, `${answer}: texto "${other}"`);
+        assert.equal(email.html.includes(escapeHtml(other)), expected, `${answer}: HTML "${other}"`);
+      }
+    }
+  });
+}
+
+test("allergyAnswer: indicadas si hay restricciones; nadie solo si lo confirmó; si no, sin datos", () => {
+  assert.equal(allergyAnswer(true, false), "none");
+  assert.equal(allergyAnswer(false, true), "listed");
+  // Con restricciones siempre se avisa que las vea, aunque diga lo contrario (más vale avisar de más).
+  assert.equal(allergyAnswer(true, true), "listed");
+  assert.equal(allergyAnswer(null, true), "listed");
+  // Un pedido sin respuesta (anterior a la pregunta), o un "hay" sin restricciones: que pregunte.
+  for (const noAllergies of [null, undefined, false]) assert.equal(allergyAnswer(noAllergies, false), "unknown");
 });
 
 test("Evelyn: sin INBOX_URL (o con una no http) no hay botón", () => {

@@ -25,6 +25,9 @@ export const FIELD_ORDER = [
   "meals",
   "preferredDate",
   "slot",
+  "noAllergies",
+  "restrictionsNote",
+  "consentHealth",
   "name",
   "zone",
   "phone",
@@ -39,8 +42,8 @@ export type FieldName = (typeof FIELD_ORDER)[number];
 /**
  * Errores que no son de un campo: la página quedó desactualizada respecto del servidor.
  * Si el contrato suma un campo y el formulario no lo muestra, esto deja de compilar.
- * Los datos de salud (alérgenos, dietas, nota y su consentimiento) también: el formulario no los
- * pide y los manda vacíos, así que un error ahí solo puede venir de otra versión del servidor.
+ * Los alérgenos y las dietas también: las alergias llegan escritas (restrictionsNote) y esos dos van
+ * vacíos, así que un error ahí solo puede venir de otra versión del servidor.
  */
 export const PAGE_FIELDS = {
   payload: true,
@@ -49,8 +52,6 @@ export const PAGE_FIELDS = {
   requestKey: true,
   allergens: true,
   diets: true,
-  restrictionsNote: true,
-  consentHealth: true,
 } as const satisfies Record<Exclude<PublicRequestField, FieldName>, true>;
 
 const ERROR_CODES: readonly ErrorCode[] = [
@@ -70,6 +71,7 @@ export interface FieldError {
 export type FieldErrors = Partial<Record<FieldName, FieldError>>;
 
 const REQUIRED_KEYS: Partial<Record<FieldName, MessageKey>> = {
+  restrictionsNote: "errors.restrictionsRequired",
   name: "errors.nameRequired",
   zone: "errors.zoneRequired",
   phone: "errors.phoneRequired",
@@ -97,8 +99,11 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
       return { key: "errors.date", params: { days: DATE_WINDOW.maxDaysAhead } };
     case "consentPrivacy":
       return { key: "errors.privacyRequired" };
+    case "consentHealth":
+      return { key: "errors.healthRequired" };
     case "turnstileToken":
       return { key: "errors.turnstileRequired" };
+    case "restrictionsNote":
     case "name":
     case "zone":
     case "phone":
@@ -110,7 +115,9 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
     case "type":
     case "slot":
     case "whatsappOptIn":
-      // El formulario no puede producir estos errores: solo con un HTML viejo o alterado.
+    case "noAllergies":
+      // El formulario no puede producir estos errores: solo con un HTML viejo o alterado (la casilla de
+      // "nadie tiene alergias" siempre es true o false, y marcada no se manda la nota).
       return { key: "errors.invalid" };
   }
 }

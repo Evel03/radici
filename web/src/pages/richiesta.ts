@@ -43,6 +43,9 @@ const CONTROLS: Readonly<Record<FieldName, readonly string[]>> = {
   meals: [],
   preferredDate: ["preferredDate"],
   slot: [],
+  noAllergies: ["noAllergies"],
+  restrictionsNote: ["restrictionsNote"],
+  consentHealth: ["consentHealth"],
   name: ["name"],
   zone: ["zone"],
   phone: ["phone"],
@@ -62,6 +65,8 @@ const doneContact = byId("done-contact");
 const doneEmail = byId("done-email");
 const doneDetails = byId("done-details");
 const doneSummary = byId("done-summary");
+// La nota de alergias y su consentimiento: se ocultan si marca que nadie tiene (y no se mandan).
+const allergyDetails = byId("allergy-details");
 const configWarning = byId("config-warning");
 const formError = byId("form-error");
 const formErrorText = byId("form-error-text");
@@ -140,6 +145,9 @@ function readForm(): RequestData {
     kids: int("kids"),
     days: int("days"),
     meals: isOneOf(MEAL_OPTIONS, meals) ? meals : "dinner",
+    noAllergies: fd.has("noAllergies"),
+    restrictionsNote: str("restrictionsNote"),
+    consentHealth: fd.has("consentHealth"),
     preferredDate: str("preferredDate"),
     slot: isOneOf(SLOTS, slot) ? slot : "any",
     name: str("name"),
@@ -327,7 +335,7 @@ function startRequestPage(shell: Shell): void {
     if (field === "turnstileToken") target = turnstileRetry.hidden ? turnstileBox : turnstileRetry;
     else {
       const id = CONTROLS[field][0];
-      // Grupos de opciones (tipo, comidas, alérgenos, dietas, franja): la primera opción.
+      // Grupos de opciones (tipo, comidas, franja): la primera opción.
       target = id ? byId(id) : form.querySelector<HTMLInputElement>(`input[name="${field}"]`);
     }
     if (!target) return;
@@ -502,6 +510,8 @@ function startRequestPage(shell: Shell): void {
     if (phase === "done") return;
     const data = readForm();
     keys.edited(JSON.stringify(data));
+    // Lo escrito se conserva si vuelve a desmarcar la casilla, pero oculto no se manda (buildPayload).
+    allergyDetails.hidden = data.noAllergies;
     syncSteppers();
     renderQuote(data);
     const errors = fieldErrors(data);

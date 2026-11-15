@@ -68,16 +68,35 @@ describe("claves usadas por la web", () => {
     expect(keys.filter((key) => !(key in dicts.it))).toEqual([]);
   });
 
-  it("el formulario ofrece las opciones del modelo, en su orden, y no pide datos de salud", () => {
+  it("el formulario ofrece las opciones del modelo, en su orden", () => {
     const values = (name: string): string[] =>
       [...requestHtml.matchAll(new RegExp(`name="${name}" value="([^"]+)"`, "g"))].map((m) => m[1] ?? "");
-    // Alergias, intolerancias y dietas las ve Evelyn con el cliente: el formulario no las pide.
-    for (const name of ["allergens", "diets", "restrictionsNote", "consentHealth"]) {
-      expect(requestHtml, name).not.toContain(`name="${name}"`);
-    }
     expect(values("meals")).toEqual([...MEAL_OPTIONS]);
     expect(values("slot")).toEqual([...SLOTS]);
     expect(values("type")).toEqual([...REQUEST_TYPES]);
+  });
+
+  it("pregunta por las alergias: «nadie tiene» o escribirlas con el consentimiento de salud; sin alérgenos ni dietas", () => {
+    // Las alergias llegan escritas (restrictionsNote): los alérgenos y las dietas del contrato van vacíos.
+    for (const name of ["allergens", "diets"]) {
+      expect(requestHtml, name).not.toContain(`name="${name}"`);
+    }
+    expect(requestHtml).toMatch(/<input id="noAllergies" name="noAllergies" type="checkbox"/);
+    // La nota y el consentimiento van juntos en el bloque que se oculta al marcar «nadie tiene».
+    const details = /<div id="allergy-details"[^>]*>([\s\S]*?)<\/fieldset>/.exec(requestHtml)?.[1] ?? "";
+    expect(details).toMatch(/<textarea [^>]*id="restrictionsNote" name="restrictionsNote"/);
+    expect(details).toMatch(/<input id="consentHealth" name="consentHealth" type="checkbox"/);
+    // Entre «¿Cuándo?» y «Tus datos».
+    const at = (key: string): number => requestHtml.indexOf(`data-i18n="${key}"`);
+    expect(at("request.whenLegend")).toBeLessThan(at("request.allergiesLegend"));
+    expect(at("request.allergiesLegend")).toBeLessThan(at("request.contactLegend"));
+  });
+
+  it("el consentimiento de salud lleva a la sección de salud de la privacy, en los tres idiomas", () => {
+    expect(privacyHtml).toContain('id="p-health"');
+    for (const lang of LANGS) {
+      expect(dicts[lang]["request.healthConsentLabel"], lang).toContain('<a href="/privacy/#p-health">');
+    }
   });
 
   it("cada campo validado tiene su mensaje de error (err-<campo>) en el formulario", () => {

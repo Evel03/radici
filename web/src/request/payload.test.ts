@@ -26,6 +26,7 @@ describe("buildPayload", () => {
     if (!result.ok) return;
     expect(result.value.phoneE164).toBe("+393331234567");
     expect(result.value.meals).toEqual(["dinner"]);
+    expect(result.value.noAllergies).toBe(true);
     expect(result.value.consents).toEqual({ privacy: CONSENT_VERSION, health: null });
     // La estimación del servidor coincide con la de la calculadora de la web (vector 1).
     expect(result.estimate.totalCents).toBe(computeQuote(validRequest())?.totalCents);
@@ -60,17 +61,40 @@ describe("buildPayload", () => {
     }
   });
 
-  it("no manda datos de salud: alérgenos, dietas y nota vacíos, sin consentimiento de salud", () => {
-    const payload = buildPayload(validRequest(), { locale: "it", turnstileToken: TEST_TOKEN });
-    expect(payload).toMatchObject({ allergens: [], diets: [], restrictionsNote: "" });
+  it("«nadie tiene alergias»: no manda nota ni consentimiento de salud, aunque haya quedado algo escrito", () => {
+    const data = validRequest({ noAllergies: true, restrictionsNote: "noci", consentHealth: true });
+    const payload = buildPayload(data, { locale: "it", turnstileToken: TEST_TOKEN });
+    expect(payload).toMatchObject({ noAllergies: true, allergens: [], diets: [], restrictionsNote: "" });
     expect(payload.consents.health).toBeNull();
-    const result = serverParse(validRequest());
+    const result = serverParse(data);
     expect(result.ok && result.value.hasRestrictions).toBe(false);
   });
 
-  it("sin privacy o sin token el servidor lo rechaza con el código del contrato", () => {
+  it("alergias escritas con consentimiento: manda la nota limpia (en varias líneas) y la versión del texto", () => {
+    const data = validRequest({ noAllergies: false, restrictionsNote: " Celiachia \r\n\r\n\r\n Noci ", consentHealth: true });
+    const payload = buildPayload(data, { locale: "it", turnstileToken: TEST_TOKEN });
+    expect(payload).toMatchObject({ noAllergies: false, allergens: [], diets: [], restrictionsNote: "Celiachia\n\nNoci" });
+    expect(payload.consents.health).toBe(CONSENT_VERSION);
+    const result = serverParse(data);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toMatchObject({ noAllergies: false, hasRestrictions: true, restrictionsNote: "Celiachia\n\nNoci" });
+    expect(result.value.consents.health).toBe(CONSENT_VERSION);
+  });
+
+  it("sin la casilla y sin escribir nada: sin consentimiento de salud (no hay datos que cubra) y el servidor pide la nota", () => {
+    const data = validRequest({ noAllergies: false, restrictionsNote: "  \n ", consentHealth: true });
+    expect(buildPayload(data, { locale: "it", turnstileToken: TEST_TOKEN }).consents.health).toBeNull();
+    const result = serverParse(data);
+    expect(result.ok ? {} : result.errors).toEqual({ restrictionsNote: "required" });
+  });
+
+  it("sin privacy, sin consentimiento de salud o sin token el servidor lo rechaza con el código del contrato", () => {
     const noPrivacy = serverParse(validRequest({ consentPrivacy: false }));
     expect(noPrivacy.ok ? {} : noPrivacy.errors).toEqual({ consentPrivacy: "consentRequired" });
+
+    const noHealth = serverParse(validRequest({ noAllergies: false, restrictionsNote: "noci", consentHealth: false }));
+    expect(noHealth.ok ? {} : noHealth.errors).toEqual({ consentHealth: "healthConsentRequired" });
 
     const noToken = serverParse(validRequest(), "");
     expect(noToken.ok ? {} : noToken.errors).toEqual({ turnstileToken: "required" });
@@ -100,6 +124,9 @@ describe("buildPayload", () => {
       zone: fill(TEXT_LIMITS.zone),
       phone: "+39 333 123 4567",
       email: `${"a".repeat(TEXT_LIMITS.email - 13)}@example.test`,
+      noAllergies: false,
+      restrictionsNote: fill(TEXT_LIMITS.restrictionsNote, "\u0001") + fill(TEXT_LIMITS.restrictionsNote),
+      consentHealth: true,
       notes: fill(TEXT_LIMITS.notes, "\u0001") + fill(TEXT_LIMITS.notes),
     });
     const body = JSON.stringify(buildPayload(data, { locale: "it", turnstileToken: "x".repeat(2048) }));
