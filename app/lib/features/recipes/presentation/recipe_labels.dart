@@ -32,11 +32,15 @@ extension RecipeLabels on AppLocalizations {
   String allergenList(Iterable<Allergen> allergens, {String separator = ', '}) =>
       allergens.map(allergen).join(separator);
 
-  /// Por qué [diet] no va con [allergens] (los que sobran).
-  String dietConflict(Diet diet, List<Allergen> allergens) => switch (diet) {
-    Diet.vegan => recipeDietConflictVegan(allergenList(allergens)),
-    Diet.vegetarian => recipeDietConflictVegetarian(allergenList(allergens)),
-  };
+  /// Por qué [diet] no va con [allergens] (los que sobran): los nombres de los
+  /// chips van después de dos puntos, separados como en la lista de platos.
+  String dietConflict(Diet diet, List<Allergen> allergens) {
+    final list = allergenList(allergens, separator: ' · ');
+    return switch (diet) {
+      Diet.vegan => recipeDietConflictVegan(list),
+      Diet.vegetarian => recipeDietConflictVegetarian(list),
+    };
+  }
 }
 
 /// Meses y temporada en el idioma de la interfaz.

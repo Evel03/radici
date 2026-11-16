@@ -957,7 +957,7 @@
   "@recipesSearchClear": {
     "description": "Botón (y ayuda) que borra la búsqueda de platos."
   },
-  "recipesEmpty": "Non hai ancora piatti. Carica il primo con «Nuovo piatto»: bastano il nome in italiano e gli allergeni.",
+  "recipesEmpty": "Non hai ancora piatti. Aggiungi il primo con «Nuovo piatto»: bastano il nome in italiano e gli allergeni.",
   "@recipesEmpty": {
     "description": "Catálogo vacío: propone cargar el primer plato con el botón flotante."
   },
@@ -1035,9 +1035,9 @@
   "@recipeNameItLabel": {
     "description": "Campo obligatorio del nombre del plato en italiano."
   },
-  "recipeNameItHelper": "È quello che vedono i clienti.",
+  "recipeNameItHelper": "È il nome principale: i clienti lo vedono se manca la traduzione.",
   "@recipeNameItHelper": {
-    "description": "Ayuda del nombre en italiano."
+    "description": "Ayuda del nombre en italiano: un cliente que usa español o inglés ve la traducción, si la hay."
   },
   "recipeNameRequired": "Scrivi il nome in italiano.",
   "@recipeNameRequired": {
@@ -1058,7 +1058,7 @@
   "@recipeAllergensSection": {
     "description": "Sección de los 14 alérgenos UE del editor."
   },
-  "recipeAllergensNone": "Nessun allergene segnato: controlla che non ne abbia nessuno dei 14.",
+  "recipeAllergensNone": "Nessun allergene segnato: controlla che non contenga nessuno dei 14.",
   "@recipeAllergensNone": {
     "description": "Aviso cuando no hay ningún alérgeno marcado."
   },
@@ -1070,16 +1070,16 @@
   "@recipeDietNone": {
     "description": "Chip: el plato no es vegetariano ni vegano."
   },
-  "recipeDietConflictVegan": "Un piatto vegano non contiene {allergens}: togli la dieta o questi allergeni.",
+  "recipeDietConflictVegan": "Un piatto vegano non può contenere: {allergens}. Togli la dieta o questi allergeni.",
   "@recipeDietConflictVegan": {
-    "description": "Error: un plato vegano con alérgenos de origen animal.",
+    "description": "Error: un plato vegano con alérgenos de origen animal. {allergens}: los nombres de los chips, separados por « · ».",
     "placeholders": {
-      "allergens": { "type": "String", "example": "Latte e derivati" }
+      "allergens": { "type": "String", "example": "Uova · Latte e derivati" }
     }
   },
-  "recipeDietConflictVegetarian": "Un piatto vegetariano non contiene {allergens}: togli la dieta o questi allergeni.",
+  "recipeDietConflictVegetarian": "Un piatto vegetariano non può contenere: {allergens}. Togli la dieta o questi allergeni.",
   "@recipeDietConflictVegetarian": {
-    "description": "Error: un plato vegetariano con pescado o mariscos.",
+    "description": "Error: un plato vegetariano con pescado o mariscos. {allergens}: los nombres de los chips, separados por « · ».",
     "placeholders": {
       "allergens": { "type": "String", "example": "Pesce" }
     }
@@ -1135,7 +1135,7 @@
       "portions": { "type": "int", "example": "4" }
     }
   },
-  "recipeIngredientsHelp": "Da qui esce la lista della spesa: le quantità si moltiplicano per le porzioni della sessione.",
+  "recipeIngredientsHelp": "Da qui nasce la lista della spesa: le quantità si adattano alle porzioni di ogni sessione.",
   "@recipeIngredientsHelp": {
     "description": "Ayuda de la sección de ingredientes."
   },
@@ -1159,19 +1159,28 @@
   "@recipeIngredientAdd": {
     "description": "Botón que agrega una fila de ingrediente."
   },
-  "recipeIngredientRemove": "Togli ingrediente",
+  "recipeIngredientRemove": "Rimuovi l'ingrediente {position}",
   "@recipeIngredientRemove": {
-    "description": "Botón (y ayuda) que quita una fila de ingrediente."
+    "description": "Botón (y ayuda, que lee VoiceOver) que quita una fila de ingrediente. {position}: el número de la fila, el mismo que lleva su campo («2. Ingrediente»).",
+    "placeholders": {
+      "position": { "type": "int", "example": "2" }
+    }
   },
-  "recipeIngredientMoveUp": "Sposta su",
+  "recipeIngredientMoveUp": "Sposta su l'ingrediente {position}",
   "@recipeIngredientMoveUp": {
-    "description": "Botón (y ayuda) que sube un ingrediente en la lista."
+    "description": "Botón (y ayuda, que lee VoiceOver) que sube un ingrediente en la lista. {position}: el número de la fila.",
+    "placeholders": {
+      "position": { "type": "int", "example": "2" }
+    }
   },
-  "recipeIngredientMoveDown": "Sposta giù",
+  "recipeIngredientMoveDown": "Sposta giù l'ingrediente {position}",
   "@recipeIngredientMoveDown": {
-    "description": "Botón (y ayuda) que baja un ingrediente en la lista."
+    "description": "Botón (y ayuda, que lee VoiceOver) que baja un ingrediente en la lista. {position}: el número de la fila.",
+    "placeholders": {
+      "position": { "type": "int", "example": "2" }
+    }
   },
-  "recipeIngredientRemoved": "Ingrediente tolto.",
+  "recipeIngredientRemoved": "Ingrediente rimosso.",
   "@recipeIngredientRemoved": {
     "description": "Aviso después de quitar un ingrediente, con el botón para deshacer."
   },
@@ -1293,11 +1302,11 @@
   "@recipeReactivate": {
     "description": "Botón que vuelve a activar un plato desactivado."
   },
-  "recipeDeactivateHelp": "Un piatto disattivato non si offre e non entra nei menù nuovi; quelli già fatti lo conservano. Non si cancella mai.",
+  "recipeDeactivateHelp": "Un piatto disattivato non viene proposto e non entra nei nuovi menù; quelli già fatti lo mantengono. Non si cancella mai.",
   "@recipeDeactivateHelp": {
     "description": "Explicación debajo de «Disattiva»."
   },
-  "recipeInactiveBanner": "Piatto disattivato: non si offre ai clienti né entra nei menù nuovi.",
+  "recipeInactiveBanner": "Piatto disattivato: non viene proposto ai clienti e non entra nei nuovi menù.",
   "@recipeInactiveBanner": {
     "description": "Arriba del editor de un plato desactivado, con «Riattiva»."
   },

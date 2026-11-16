@@ -127,7 +127,9 @@ class IngredientRow extends StatelessWidget {
                 ),
                 IconButton(
                   key: ValueKey('recipe-ingredient-remove-$key'),
-                  tooltip: l10n.recipeIngredientRemove,
+                  // Con el número de la fila, como su campo: en el rotor de
+                  // VoiceOver se distinguen.
+                  tooltip: l10n.recipeIngredientRemove(position + 1),
                   icon: const Icon(Icons.delete_outline),
                   onPressed: onRemove,
                 ),
@@ -211,13 +213,13 @@ class IngredientRow extends StatelessWidget {
                 ),
                 IconButton(
                   key: ValueKey('recipe-ingredient-up-$key'),
-                  tooltip: l10n.recipeIngredientMoveUp,
+                  tooltip: l10n.recipeIngredientMoveUp(position + 1),
                   icon: const Icon(Icons.arrow_upward),
                   onPressed: position > 0 ? () => onMove(-1) : null,
                 ),
                 IconButton(
                   key: ValueKey('recipe-ingredient-down-$key'),
-                  tooltip: l10n.recipeIngredientMoveDown,
+                  tooltip: l10n.recipeIngredientMoveDown(position + 1),
                   icon: const Icon(Icons.arrow_downward),
                   onPressed: position < count - 1 ? () => onMove(1) : null,
                 ),

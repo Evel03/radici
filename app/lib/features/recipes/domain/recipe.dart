@@ -1,7 +1,8 @@
 // Catálogo de platos de la cocinera (M4a): cada plato con su nombre en
-// italiano (el que ven los clientes) y, si quiere, en español e inglés; los
-// alérgenos (los 14 del Reg. UE 1169/2011), la dieta, la temporada, la
-// conservación y los ingredientes con su cantidad para 4 porciones. Dart puro.
+// italiano (el principal: lo ven los clientes sin traducción) y, si quiere, en
+// español e inglés; los alérgenos (los 14 del Reg. UE 1169/2011), la dieta,
+// la temporada, la conservación y los ingredientes con su cantidad para 4
+// porciones. Dart puro.
 //
 // La base (migración 20261116170000_recipe_catalog.sql) guarda un plato entero
 // con save_recipe: la receta, sus alérgenos y sus ingredientes en una sola

@@ -229,9 +229,8 @@ class _RecipesScreenState extends ConsumerState<RecipesScreen> {
   }
 }
 
-/// Un plato de la lista: el nombre en italiano (el que ven los clientes), el
-/// del idioma de la interfaz si es otro, los alérgenos, la dieta y la
-/// temporada.
+/// Un plato de la lista: el nombre en italiano (el principal), el del idioma
+/// de la interfaz si es otro, los alérgenos, la dieta y la temporada.
 class _RecipeTile extends StatelessWidget {
   const _RecipeTile({required this.recipe});
 

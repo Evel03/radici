@@ -1,5 +1,5 @@
 // Editor de un plato del catálogo, a pantalla completa. Primero lo rápido:
-// el nombre en italiano (el que ven los clientes), los alérgenos, la dieta y
+// el nombre en italiano (el principal), los alérgenos, la dieta y
 // la temporada; después lo opcional: nombres en español e inglés,
 // conservación, ingredientes con su cantidad para 4 porciones y notas.
 // «Salva» queda abajo, siempre a mano (con el teclado abierto, justo arriba de

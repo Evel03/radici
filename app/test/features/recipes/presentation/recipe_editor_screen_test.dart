@@ -216,7 +216,7 @@ void main() {
     await tapVisible(tester, byKey('recipe-diet-vegan'));
 
     const conflict =
-        'Un piatto vegano non contiene Latte e derivati: togli la dieta o questi allergeni.';
+        'Un piatto vegano non può contenere: Latte e derivati. Togli la dieta o questi allergeni.';
     expect(find.text(conflict), findsOneWidget);
     await save(tester);
     expect(repository.saveCalls, isEmpty);
@@ -367,12 +367,41 @@ void main() {
     expect(repository.saveCalls, isEmpty);
   });
 
+  // En el rotor de VoiceOver los botones de las filas se distinguen por el
+  // número, el mismo del campo («2. Ingrediente»).
+  testWidgets('los botones de cada fila dicen de qué ingrediente son', (tester) async {
+    await openEditor(tester, location: '/altro/piatti/$lasagneId', locale: const Locale('es', 'ES'));
+    expect(
+      tester.widget<IconButton>(byKey('recipe-ingredient-remove-1')).tooltip,
+      'Quitar el ingrediente 2',
+    );
+    expect(tester.widget<IconButton>(byKey('recipe-ingredient-up-1')).tooltip, 'Subir el ingrediente 2');
+    expect(tester.widget<IconButton>(byKey('recipe-ingredient-down-1')).tooltip, 'Bajar el ingrediente 2');
+    expect(find.byTooltip('Quitar el ingrediente 3'), findsOneWidget);
+
+    // Después de mover una fila, el número sigue al lugar.
+    await tapVisible(tester, byKey('recipe-ingredient-up-1'));
+    expect(tester.widget<IconButton>(byKey('recipe-ingredient-remove-1')).tooltip, 'Quitar el ingrediente 1');
+  });
+
+  testWidgets('las ayudas en español: el nombre principal y las cantidades que se ajustan a las porciones', (
+    tester,
+  ) async {
+    await openEditor(tester, locale: const Locale('es', 'ES'));
+    expect(find.text('Es el nombre principal: los clientes lo ven si no hay traducción.'), findsOneWidget);
+    expect(find.text('Ingredientes para 4 porciones'), findsOneWidget);
+    expect(
+      find.text('De aquí sale la lista de compras: las cantidades se ajustan a las porciones de cada sesión.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('quitar un ingrediente se deshace con «Annulla»', (tester) async {
     await openEditor(tester, location: '/altro/piatti/$lasagneId');
     await tapVisible(tester, byKey('recipe-ingredient-remove-1'));
 
     expect(find.widgetWithText(TextField, 'Passata di pomodoro'), findsNothing);
-    expect(find.text('Ingrediente tolto.'), findsOneWidget);
+    expect(find.text('Ingrediente rimosso.'), findsOneWidget);
     await tester.tap(find.widgetWithText(SnackBarAction, 'Annulla'));
     await tester.pumpAndSettle();
 
@@ -441,7 +470,7 @@ void main() {
 
   testWidgets('desactivar se ve enseguida y se deshace con «Annulla»', (tester) async {
     await openEditor(tester, location: '/altro/piatti/$lasagneId');
-    const banner = 'Piatto disattivato: non si offre ai clienti né entra nei menù nuovi.';
+    const banner = 'Piatto disattivato: non viene proposto ai clienti e non entra nei nuovi menù.';
     expect(find.text(banner), findsNothing);
 
     await tapVisible(tester, byKey('recipe-deactivate'));

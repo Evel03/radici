@@ -38,14 +38,18 @@ void main() {
     expect(UnitChoice.values.map(l10n('en').unitChoice), ['g', 'ml', 'pcs', 'to taste']);
   });
 
-  test('choque de dieta: nombra los alérgenos que sobran', () {
+  test('choque de dieta: nombra los alérgenos que sobran, después de dos puntos y separados por «·»', () {
     expect(
       l10n('es').dietConflict(Diet.vegan, const [Allergen.eggs, Allergen.milk]),
-      'Un plato vegano no lleva Huevos, Leche y lácteos: quita la dieta o esos alérgenos.',
+      'Un plato vegano no puede llevar: Huevos · Leche y lácteos. Quita la dieta o esos alérgenos.',
     );
     expect(
       l10n('it').dietConflict(Diet.vegetarian, const [Allergen.fish]),
-      'Un piatto vegetariano non contiene Pesce: togli la dieta o questi allergeni.',
+      'Un piatto vegetariano non può contenere: Pesce. Togli la dieta o questi allergeni.',
+    );
+    expect(
+      l10n('en').dietConflict(Diet.vegan, const [Allergen.eggs, Allergen.milk]),
+      "A vegan dish can't contain: Eggs · Milk and dairy. Remove the diet or these allergens.",
     );
   });
 
