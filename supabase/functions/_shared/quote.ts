@@ -71,7 +71,8 @@ export interface PricedQuote extends QuoteBase {
 }
 
 /** Por qué no hay precio automático: más personas que weeklyRateMaxPeople, o una sesión extra. */
-export type NoAutoPriceReason = "people" | "extra";
+export const NO_AUTO_PRICE_REASONS = ["people", "extra"] as const;
+export type NoAutoPriceReason = (typeof NO_AUTO_PRICE_REASONS)[number];
 
 export interface UnpricedQuote extends QuoteBase {
   autoPrice: false;

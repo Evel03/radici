@@ -7,19 +7,24 @@ import {
   HEALTH_CONSENT_VERSIONS,
   LEGACY_PAGE_CONSENT_VERSIONS,
   PUBLIC_REQUEST_VERSION,
+  PUBLIC_REQUEST_VERSIONS,
   addDays,
   cleanMultiLine,
   cleanOneLine,
   isIsoDate,
   normalizePhone,
   parsePublicRequest,
+  publicEstimate,
+  readPublicEstimate,
   romeToday,
+  weeklyDates,
   type PublicRequestPayload,
 } from "./public_request.ts";
+import { DEFAULT_PRICING, calcQuote } from "./quote.ts";
 
 const TODAY = "2026-10-19";
 
-/** Pedido válido: vector 1, y nadie de quienes van a comer tiene alergias. */
+/** Pedido válido: vector 1 (una semana), y nadie de quienes van a comer tiene alergias. */
 function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPayload {
   return {
     version: PUBLIC_REQUEST_VERSION,
@@ -28,6 +33,7 @@ function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPa
     kids: 2,
     days: 5,
     meals: ["dinner"],
+    weeks: 1,
     noAllergies: true,
     allergens: [],
     diets: [],
@@ -69,11 +75,14 @@ test("un pedido válido se normaliza y trae la estimación del vector 1", () => 
   if (!result.ok) return;
   assert.equal(result.value.phoneE164, "+393331234567");
   assert.deepEqual(result.value.meals, ["dinner"]);
+  assert.equal(result.value.weeks, 1);
   assert.equal(result.value.noAllergies, true);
   assert.equal(result.value.hasRestrictions, false);
   assert.equal(result.value.consents.health, null);
-  assert.deepEqual(result.value.quoteInput, { adults: 2, kids: 2, days: 5, meals: 1 });
-  assert.equal(result.estimate.totalCents, 14100);
+  assert.deepEqual(result.value.quoteInput, { type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 });
+  assert.deepEqual(result.estimate, calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 }));
+  assert.ok(result.estimate.autoPrice && result.estimate.serviceCents === 15000);
+  assert.equal(result.estimate.groceriesEstCents, 6300);
 });
 
 test("limpia espacios y caracteres de control, y pasa el email a minúsculas", () => {
@@ -93,7 +102,8 @@ test("las comidas se devuelven en orden canónico y sin repetir", () => {
   assert.ok(ok.ok);
   if (ok.ok) {
     assert.deepEqual(ok.value.meals, ["lunch", "dinner"]);
-    assert.equal(ok.estimate.totalCents, 23700);
+    assert.equal(ok.value.quoteInput.meals, 2);
+    assert.equal(ok.estimate.groceriesEstCents, 12600);
   }
   assert.equal(errorsOf(payload({ meals: ["lunch", "lunch"] })).meals, "invalid");
   assert.equal(errorsOf(payload({ meals: [] })).meals, "invalid");
@@ -251,11 +261,141 @@ test("versiones aceptadas: la vigente vale para la privacy y para la salud, y la
   assert.deepEqual(CONSENT_VERSIONS.filter((v) => LEGACY_PAGE_CONSENT_VERSIONS.includes(v)), []);
 });
 
-test("solo la versión 2: una página de la versión 1 (en caché) recibe version invalid y la web pide recargar", () => {
-  assert.equal(PUBLIC_REQUEST_VERSION, 2);
-  // Lo que mandaba la página de la versión 1: sin noAllergies.
-  const { noAllergies: _sinRespuesta, ...v1 } = payload({ version: 1 });
+test("versiones 3 y 2: una página de la versión 1 (en caché) recibe version invalid y la web pide recargar", () => {
+  assert.equal(PUBLIC_REQUEST_VERSION, 3);
+  assert.deepEqual([...PUBLIC_REQUEST_VERSIONS], [3, 2]);
+  // Lo que mandaba la página de la versión 1: sin noAllergies ni semanas.
+  const { noAllergies: _sinRespuesta, weeks: _sinSemanas, ...v1 } = payload({ version: 1 });
   assert.deepEqual(errorsOf(v1), { version: "invalid", noAllergies: "invalid" });
+});
+
+/** Lo que manda una página de la versión 2 (la de antes del precio por semana): sin weeks. */
+function v2(overrides: Partial<PublicRequestPayload> = {}): Omit<PublicRequestPayload, "weeks"> {
+  const { weeks: _sinSemanas, ...rest } = payload({ version: 2, ...overrides });
+  return rest;
+}
+
+test("versión 2 (páginas en caché y la web de antes durante el despliegue): se acepta y el pedido es de una semana", () => {
+  const result = parsePublicRequest(v2(), { today: TODAY });
+  assert.ok(result.ok);
+  if (!result.ok) return;
+  assert.equal(result.value.weeks, 1, "la versión 2 no podía pedir más de una semana: no se pierde nada");
+  assert.equal(result.value.quoteInput.weeks, 1);
+  // La privacy y el consentimiento de salud son los mismos de la versión 3.
+  const health = parsePublicRequest(v2({ noAllergies: false, restrictionsNote: "noci", consents: { privacy: CONSENT_VERSION, health: CONSENT_VERSION } }), {
+    today: TODAY,
+  });
+  assert.ok(health.ok);
+  // Una privacy vieja sigue sin valer para guardar (como en la 3).
+  assert.deepEqual(errorsOf(v2({ consents: { privacy: "2026-11-15", health: null } })), { consentPrivacy: "consentRequired" });
+});
+
+test("semanas (versión 3): obligatorias, enteras de 1 a 8; más de una solo en el pedido semanal", () => {
+  for (const weeks of [1, 3, 4, 5, 8]) {
+    const result = parsePublicRequest(payload({ weeks }), { today: TODAY });
+    assert.ok(result.ok, String(weeks));
+    if (result.ok) {
+      assert.equal(result.value.weeks, weeks);
+      assert.equal(result.value.quoteInput.weeks, weeks);
+      assert.equal(result.estimate.weeks, weeks);
+    }
+  }
+  // Sin el campo, la versión 3 no lo da por 1: nunca se pierden semanas en silencio.
+  const { weeks: _sinSemanas, ...missing } = payload();
+  assert.deepEqual(errorsOf(missing), { weeks: "required" });
+  assert.deepEqual(errorsOf({ ...payload(), weeks: null }), { weeks: "required" });
+  for (const weeks of [0, 9, 1.5, -1, "3", true]) {
+    assert.deepEqual(errorsOf({ ...payload(), weeks }), { weeks: "range" }, String(weeks));
+  }
+  // Una sesión extra es de una semana.
+  assert.ok(parsePublicRequest(payload({ type: "extra", weeks: 1 }), { today: TODAY }).ok);
+  assert.deepEqual(errorsOf(payload({ type: "extra", weeks: 2 })), { weeks: "invalid" });
+  // Con el tipo inválido, solo el error del tipo.
+  assert.deepEqual(errorsOf({ ...payload(), type: "change", weeks: 2 }), { type: "invalid" });
+});
+
+test("4 semanas: la estimación del servidor sale del motor con las semanas y el tipo", () => {
+  const result = parsePublicRequest(payload({ weeks: 4 }), { today: TODAY });
+  assert.ok(result.ok);
+  if (!result.ok) return;
+  assert.ok(result.estimate.autoPrice);
+  if (result.estimate.autoPrice) {
+    assert.equal(result.estimate.weeklyServiceCents, DEFAULT_PRICING.weeklyRateDiscountedCents);
+    assert.equal(result.estimate.serviceCents, 56000);
+    assert.equal(result.estimate.savingsCents, 4000);
+  }
+  const extra = parsePublicRequest(payload({ type: "extra" }), { today: TODAY });
+  assert.ok(extra.ok && extra.estimate.autoPrice === false && extra.estimate.reason === "extra");
+  const six = parsePublicRequest(payload({ adults: 3, kids: 3 }), { today: TODAY });
+  assert.ok(six.ok && six.estimate.autoPrice === false && six.estimate.reason === "people");
+});
+
+test("weeklyDates: el primer día y el mismo día de cada semana siguiente", () => {
+  assert.deepEqual(weeklyDates("2026-11-23", 1), ["2026-11-23"]);
+  assert.deepEqual(weeklyDates("2026-11-23", 4), ["2026-11-23", "2026-11-30", "2026-12-07", "2026-12-14"]);
+  assert.deepEqual(weeklyDates("2026-12-28", 2), ["2026-12-28", "2027-01-04"]);
+  assert.equal(weeklyDates("2026-11-23", 8).at(-1), "2027-01-11");
+});
+
+test("estimación del 201: con precio, sin precio y la guardada antes del precio por semana", () => {
+  const priced = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 4 });
+  assert.deepEqual(publicEstimate(priced), {
+    weeks: 4,
+    portions: 20,
+    recipes: 3,
+    cookMinutes: 180,
+    groceriesEstCents: 6300,
+    autoPrice: true,
+    weeklyServiceCents: 14000,
+    serviceCents: 56000,
+    savingsCents: 4000,
+    totalCents: 81200,
+  });
+  const unpriced = calcQuote({ type: "extra", adults: 10, kids: 6, days: 1, meals: 1, weeks: 1 });
+  assert.deepEqual(publicEstimate(unpriced), {
+    weeks: 1,
+    portions: 16,
+    recipes: 2,
+    cookMinutes: 150,
+    groceriesEstCents: 5300,
+    autoPrice: false,
+    reason: "extra",
+  });
+  // Lo que se guarda en requests.estimate (el resultado del motor y las tarifas) se lee igual que el 201.
+  for (const quote of [priced, unpriced]) {
+    assert.deepEqual(readPublicEstimate({ ...quote, pricing: DEFAULT_PRICING }), publicEstimate(quote));
+    assert.deepEqual(readPublicEstimate(JSON.parse(JSON.stringify(publicEstimate(quote)))), publicEstimate(quote));
+  }
+  // Las guardadas antes del precio por semana (servicio por hora): una semana y con precio, sin ahorro.
+  const legacy = { portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300, totalCents: 14100, preauthCents: 7245, holdCents: 15045, pricing: { hourlyRateCents: 2200 } };
+  assert.deepEqual(readPublicEstimate(legacy), {
+    weeks: 1,
+    portions: 20,
+    recipes: 3,
+    cookMinutes: 180,
+    groceriesEstCents: 6300,
+    autoPrice: true,
+    weeklyServiceCents: 7800,
+    serviceCents: 7800,
+    savingsCents: 0,
+    totalCents: 14100,
+  });
+  const bad: unknown[] = [
+    null,
+    "x",
+    [],
+    {},
+    { ...legacy, totalCents: 1.5 },
+    { ...legacy, portions: -1 },
+    { ...legacy, recipes: undefined },
+    { ...publicEstimate(priced), autoPrice: "true" },
+    { ...publicEstimate(priced), weeks: 9 },
+    { ...publicEstimate(priced), weeks: undefined },
+    { ...publicEstimate(priced), savingsCents: undefined },
+    { ...publicEstimate(unpriced), reason: "otro" },
+    { ...publicEstimate(unpriced), reason: undefined },
+  ];
+  for (const value of bad) assert.equal(readPublicEstimate(value), null, JSON.stringify(value));
 });
 
 test("payload que no es un objeto, versión distinta, campos faltantes y token", () => {
