@@ -101,6 +101,12 @@ repositorios falsos (`test/support/fakes.dart`).
   (Europe/Rome) cambia a la medianoche sin reabrir la app: se vuelve a mirar la fecha a la
   medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
   Si estaba elegido "hoy", la agenda pasa al día nuevo; si no, respeta el día elegido.
+  Días bloqueados (`availability_exceptions`, sin migración: la RLS y los grants ya estaban): la
+  tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada, y el botón
+  «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
+  existía). La web deja de ofrecerlos en 1 o 2 minutos (`get_free_days` los descuenta; la
+  disponibilidad se cachea 60 s). Marca los feriados nacionales (Pasquetta calculada; San Francesco
+  desde 2026, legge n. 151/2025) y Sant'Alessandro (26/8) como festivo local de Bergamo.
 - **Detalle**: todos los datos (también las restricciones), la estimación guardada y las acciones:
   WhatsApp (`https://wa.me/<número sin +>?text=…` en el idioma del cliente), llamar (`tel:`),
   email (`mailto:`), rechazar (`new` → `rejected`) y deshacer el rechazo (`rejected` → `new`;

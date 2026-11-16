@@ -15,6 +15,7 @@ import 'package:radici/features/requests/presentation/request_detail_screen.dart
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';
 import '../../../support/request_fixtures.dart';
+import '../../../support/text_input_guard.dart';
 
 void main() {
   late FakeAuthRepository auth;
@@ -106,6 +107,15 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('login-code')), '12ab34');
     final field = tester.widget<TextField>(find.byKey(const ValueKey('login-code')));
     expect(field.controller!.text, '1234');
+  });
+
+  testWidgets('los campos tienen letra de 16 px o más (en el iPhone no hace zoom)', (
+    tester,
+  ) async {
+    await pumpLogin(tester);
+    expectReadableInputs(tester);
+    await enterEmail(tester, 'evelyn@example.test');
+    expectReadableInputs(tester);
   });
 
   testWidgets('pedir otro código y volver a cambiar el email', (tester) async {

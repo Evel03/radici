@@ -70,6 +70,10 @@ void main() {
         ('día de hoy: secundario', s.onSurfaceVariant, s.secondaryContainer),
         ('día de hoy: restricciones', s.tertiary, s.secondaryContainer),
         ('restricciones', s.tertiary, s.surface),
+        // Agenda: número de un día bloqueado (tachado) sobre su círculo, y el
+        // botón tonal «Blocca questo giorno».
+        ('día bloqueado', s.onSurface, s.surfaceContainerHighest),
+        ('botón tonal', s.onSecondaryContainer, s.secondaryContainer),
         (
           'etiquetas de restricciones',
           s.onTertiaryContainer,
