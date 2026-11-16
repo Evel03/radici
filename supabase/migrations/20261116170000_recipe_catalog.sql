@@ -30,6 +30,11 @@
 --     debería haber recetas (ninguna pantalla las crea todavía); si alguna tuviera un nombre vacío,
 --     con espacios al borde, con caracteres de control o de más de 120 caracteres, db push falla en
 --     ese check y hay que corregirla a mano antes de volver a desplegar.
+--   * Orden: va después de las migraciones de precio por semanas (20261116120000) y de reservas
+--     (20261116150000 y 20261116150100), que todavía no están en main. deploy-supabase.yml corre
+--     `db push` sin --include-all: si esta llega antes a producción, el push siguiente con esas
+--     falla («Found local migration files to be inserted before the last migration on remote
+--     database»). Si igual se mergea antes, hay que pasar esas a una versión posterior a esta.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
