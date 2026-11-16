@@ -2,14 +2,22 @@
 // Fuente única de verdad: la web arma el payload con estos tipos y el servidor lo valida
 // con `parsePublicRequest`. Si cambia el contrato, subir PUBLIC_REQUEST_VERSION.
 // Solo sintaxis borrable: corre en Node (tests), Deno (Edge Functions) y Vite (web).
-import { calcQuote, LIMITS, type Quote, type QuoteInput } from "./quote.ts";
+import { calcQuote, LIMITS, NO_AUTO_PRICE_REASONS, type NoAutoPriceReason, type Quote, type QuoteInput } from "./quote.ts";
 
 /**
- * Versión del contrato. El servidor acepta solo esta: una página vieja en caché recibe
- * `version: "invalid"` y la web pide recargarla.
+ * Versión del contrato: la que manda la web. Una página de una versión que el servidor ya no acepta
+ * recibe `version: "invalid"` y la web pide recargarla.
  * 2: la pregunta de alergias (`noAllergies`, y las alergias escritas en `restrictionsNote`).
+ * 3: las semanas del pedido semanal (`weeks`, obligatorio) y la estimación con el precio por semana (§2).
  */
-export const PUBLIC_REQUEST_VERSION = 2;
+export const PUBLIC_REQUEST_VERSION = 3;
+/**
+ * Versiones que el servidor acepta. La 2 (sin `weeks`: siempre una semana, no podía pedir más) mientras
+ * haya páginas en caché y mientras se despliegan la web y la función, que salen por separado: así la
+ * función nueva atiende a la web de antes. Una función de antes (solo la 2) rechaza la 3 por versión y
+ * nunca guarda un pedido de varias semanas como si fuera de una. Sacar la 2 en un PR propio.
+ */
+export const PUBLIC_REQUEST_VERSIONS: readonly number[] = [PUBLIC_REQUEST_VERSION, 2];
 
 /** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
 export const CONSENT_VERSION = "2026-11-16";
@@ -109,6 +117,11 @@ export interface PublicRequestPayload {
   /** 1 o 2 valores distintos. */
   meals: Meal[];
   /**
+   * Semanas del pedido semanal, de 1 a LIMITS.maxWeeks: un menú y una sesión de cocina por semana. Una
+   * sesión extra manda 1. Obligatorio desde la versión 3 (la 2 no lo manda: una semana).
+   */
+  weeks: number;
+  /**
    * La pregunta de alergias: true = el cliente confirma que nadie de quienes van a comer (niños
    * incluidos) tiene alergias, intolerancias alimentarias ni celiaquía, y no manda restricciones;
    * false = las escribe en `restrictionsNote`, con el consentimiento de salud (`consents.health`).
@@ -162,6 +175,7 @@ export type PublicRequestField =
   | "people"
   | "days"
   | "meals"
+  | "weeks"
   | "noAllergies"
   | "allergens"
   | "diets"
@@ -189,6 +203,8 @@ export interface NormalizedPublicRequest {
   kids: number;
   days: number;
   meals: Meal[];
+  /** 1 a LIMITS.maxWeeks; 1 si no es un pedido semanal o si llegó de una página de la versión 2. */
+  weeks: number;
   /** true: confirmó que nadie tiene alergias, intolerancias ni celiaquía (y no hay restricciones). */
   noAllergies: boolean;
   allergens: Allergen[];
@@ -303,6 +319,14 @@ export function addDays(iso: string, days: number): string {
   return new Date(Date.UTC(p.y, p.m - 1, p.d + days)).toISOString().slice(0, 10);
 }
 
+/**
+ * Días de las sesiones de un pedido de varias semanas: el día elegido y el mismo día de cada semana
+ * siguiente ("AAAA-MM-DD"). Lo usan el calendario y el resumen de la web y los emails.
+ */
+export function weeklyDates(first: string, weeks: number): string[] {
+  return Array.from({ length: weeks }, (_, i) => addDays(first, 7 * i));
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** true si es un UUID (cualquier versión) en formato canónico. */
@@ -343,7 +367,8 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
   const raw: RawPayload = input;
   const errors: PublicRequestErrors = {};
 
-  if (raw.version !== PUBLIC_REQUEST_VERSION) errors.version = "invalid";
+  const acceptedVersion = typeof raw.version === "number" && PUBLIC_REQUEST_VERSIONS.includes(raw.version);
+  if (!acceptedVersion) errors.version = "invalid";
 
   const type = isOneOf(REQUEST_TYPES, raw.type) ? raw.type : null;
   if (!type) errors.type = raw.type === undefined ? "required" : "invalid";
@@ -363,6 +388,22 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
 
   const meals = parseSet(MEALS, raw.meals, MEALS.length);
   if (!meals || meals.length === 0) errors.meals = raw.meals === undefined ? "required" : "invalid";
+
+  // Semanas: desde la versión 3 se mandan siempre (sin el campo no se da por 1: nunca se pierden en
+  // silencio, tampoco cuando la 3 deje de ser la vigente); una página de la versión 2 no las manda y su
+  // pedido es de una semana (no podía pedir más).
+  let weeks = 1;
+  const weeksRaw = raw.weeks;
+  if (weeksRaw === undefined || weeksRaw === null) {
+    if (typeof raw.version === "number" && raw.version >= 3) errors.weeks = "required";
+  } else if (typeof weeksRaw !== "number" || !Number.isInteger(weeksRaw) || weeksRaw < 1 || weeksRaw > LIMITS.maxWeeks) {
+    errors.weeks = "range";
+  } else if (weeksRaw > 1 && type === "extra") {
+    // Una sesión extra es una sola: solo el pedido semanal tiene semanas.
+    errors.weeks = "invalid";
+  } else {
+    weeks = weeksRaw;
+  }
 
   // La pregunta de alergias se contesta siempre: o nadie tiene (true) o las escribe (false).
   const noAllergies = typeof raw.noAllergies === "boolean" ? raw.noAllergies : null;
@@ -421,8 +462,8 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
   const locale: Locale = isOneOf(LOCALES, raw.locale) ? raw.locale : "it";
 
   const consents: RawConsents = isRecord(raw.consents) ? raw.consents : {};
-  const privacyVersions =
-    raw.version === PUBLIC_REQUEST_VERSION ? CONSENT_VERSIONS : [...CONSENT_VERSIONS, ...LEGACY_PAGE_CONSENT_VERSIONS];
+  // Las versiones 2 y 3 guardan con la privacy vigente; las viejas, solo para las páginas de la 1 (fallan por versión).
+  const privacyVersions = acceptedVersion ? CONSENT_VERSIONS : [...CONSENT_VERSIONS, ...LEGACY_PAGE_CONSENT_VERSIONS];
   const privacy = isOneOf(privacyVersions, consents.privacy) ? consents.privacy : null;
   if (!privacy) errors.consentPrivacy = "consentRequired";
 
@@ -456,13 +497,14 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
-  const quoteInput: QuoteInput = { adults, kids, days, meals: (meals as Meal[]).length };
+  const quoteInput: QuoteInput = { type: type as RequestType, adults, kids, days, meals: (meals as Meal[]).length, weeks };
   const value: NormalizedPublicRequest = {
     type: type as RequestType,
     adults,
     kids,
     days,
     meals: meals as Meal[],
+    weeks,
     noAllergies: noAllergies as boolean,
     allergens: allergens as Allergen[],
     diets: diets as Diet[],
@@ -484,4 +526,113 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     quoteInput,
   };
   return { ok: true, value, estimate: calcQuote(quoteInput) };
+}
+
+// ---------------------------------------------------------------------------
+// Estimación del 201 (contrato §2)
+// ---------------------------------------------------------------------------
+
+/** Lo de cualquier estimación: lo de una semana (una sesión) y las semanas del pedido. */
+interface EstimateBase {
+  weeks: number;
+  portions: number;
+  recipes: number;
+  cookMinutes: number;
+  /** Compra estimada de una semana: se paga aparte, al costo del ticket. */
+  groceriesEstCents: number;
+}
+
+export interface PricedEstimate extends EstimateBase {
+  autoPrice: true;
+  weeklyServiceCents: number;
+  serviceCents: number;
+  savingsCents: number;
+  /**
+   * Servicio y compra estimada de todas las semanas. La web de la versión 3 muestra el servicio y la compra
+   * por separado; las páginas de la versión 2 muestran este total en la pantalla de gracias.
+   */
+  totalCents: number;
+}
+
+export interface UnpricedEstimate extends EstimateBase {
+  autoPrice: false;
+  /** Más personas que el tope del precio automático, o una sesión extra: la cocinera pasa el precio. */
+  reason: NoAutoPriceReason;
+}
+
+/**
+ * La estimación que devuelve el 201: la del motor con las tarifas de la cocinera, sin las tarifas. Sin
+ * precio automático no lleva claves de precio. Con precio trae las seis de la versión 2 (portions, recipes,
+ * cookMinutes, serviceCents, groceriesEstCents y totalCents): así una página de antes la sigue leyendo.
+ */
+export type PublicRequestEstimate = PricedEstimate | UnpricedEstimate;
+
+export function publicEstimate(quote: Quote): PublicRequestEstimate {
+  const base: EstimateBase = {
+    weeks: quote.weeks,
+    portions: quote.portions,
+    recipes: quote.recipes,
+    cookMinutes: quote.cookMinutes,
+    groceriesEstCents: quote.groceriesEstCents,
+  };
+  if (!quote.autoPrice) return { ...base, autoPrice: false, reason: quote.reason };
+  return {
+    ...base,
+    autoPrice: true,
+    weeklyServiceCents: quote.weeklyServiceCents,
+    serviceCents: quote.serviceCents,
+    savingsCents: quote.savingsCents,
+    totalCents: quote.totalCents,
+  };
+}
+
+/**
+ * Lee una estimación: la del 201 (en la web) o la guardada en requests.estimate (en la función, para un
+ * reintento; trae además pricing y otras claves del motor). Las guardadas antes del precio por semana no
+ * tienen autoPrice ni weeks: eran de una semana y con precio (el servicio por hora), sin ahorro. null si
+ * le falta algo o un número no es un entero ≥ 0.
+ */
+export function readPublicEstimate(value: unknown): PublicRequestEstimate | null {
+  if (!isRecord(value)) return null;
+  const int = (key: string, min = 0, max = Number.MAX_SAFE_INTEGER): number | null => {
+    const item = value[key];
+    return typeof item === "number" && Number.isInteger(item) && item >= min && item <= max ? item : null;
+  };
+  const portions = int("portions");
+  const recipes = int("recipes");
+  const cookMinutes = int("cookMinutes");
+  const groceriesEstCents = int("groceriesEstCents");
+  const serviceCents = int("serviceCents");
+  const totalCents = int("totalCents");
+  if (portions === null || recipes === null || cookMinutes === null || groceriesEstCents === null) return null;
+
+  const autoPrice = value["autoPrice"];
+  if (autoPrice === undefined) {
+    if (serviceCents === null || totalCents === null) return null;
+    return {
+      weeks: 1,
+      portions,
+      recipes,
+      cookMinutes,
+      groceriesEstCents,
+      autoPrice: true,
+      weeklyServiceCents: serviceCents,
+      serviceCents,
+      savingsCents: 0,
+      totalCents,
+    };
+  }
+  const weeks = int("weeks", 1, LIMITS.maxWeeks);
+  if (weeks === null) return null;
+  const base: EstimateBase = { weeks, portions, recipes, cookMinutes, groceriesEstCents };
+  if (autoPrice === false) {
+    const reason = value["reason"];
+    return isOneOf(NO_AUTO_PRICE_REASONS, reason) ? { ...base, autoPrice: false, reason } : null;
+  }
+  const weeklyServiceCents = int("weeklyServiceCents");
+  const savingsCents = int("savingsCents");
+  if (autoPrice !== true || weeklyServiceCents === null || serviceCents === null || savingsCents === null || totalCents === null) {
+    return null;
+  }
+  return { ...base, autoPrice: true, weeklyServiceCents, serviceCents, savingsCents, totalCents };
 }

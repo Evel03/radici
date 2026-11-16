@@ -28,7 +28,6 @@ extension RequestLabels on AppLocalizations {
   String slot(PreferredSlot slot) => switch (slot) {
     PreferredSlot.morning => slotMorning,
     PreferredSlot.afternoon => slotAfternoon,
-    PreferredSlot.any => slotAny,
   };
 
   /// "Pranzo", "Cena" o "Pranzo e cena".
@@ -68,9 +67,11 @@ extension RequestLabels on AppLocalizations {
     ClientLocale.en => languageEn,
   };
 
-  /// Resumen de una línea: "Settimana di pasti · 4 persone · 5 giorni · Cena".
+  /// Resumen de una línea: "Settimana di pasti · 4 settimane · 4 persone ·
+  /// 5 giorni · Cena". Las semanas, solo si son más de una.
   String requestSummary(ChefRequest request) => [
     requestType(request.type),
+    if (request.weeks > 1) requestWeeksCount(request.weeks),
     if (request.people case final people?) requestPeopleCount(people),
     if (request.days case final days?) requestDaysCount(days),
     if (request.meals.isNotEmpty) meals(request.meals),

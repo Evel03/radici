@@ -2,7 +2,7 @@
 
 > **Radici** es el nombre definitivo (ex Mestolo, el provisorio). Repo: `github.com/Evel03/radici`. Dominio: `radicicucina.app` (web pública y bandeja en `/gestione/`). Falta elegir el identificador nativo de la app (sección 14).
 >
-> **Prototipo de referencia:** `docs/prototipo.html` (también publicado en https://claude.ai/artifact/E5zsqMUGziiWUr2N1BDmsw; pendiente de copiar al repo). Es la referencia visual. Las reglas de negocio de **este documento** prevalecen sobre el prototipo: la fórmula de presupuesto y el margen entre sesiones se corrigieron en la revisión del 19/10/2026.
+> **Prototipo de referencia:** `docs/prototipo.html` (también publicado en https://claude.ai/artifact/E5zsqMUGziiWUr2N1BDmsw; pendiente de copiar al repo). Es la referencia visual. Las reglas de negocio de **este documento** prevalecen sobre el prototipo: la fórmula de presupuesto y el margen entre sesiones se corrigieron en la revisión del 19/10/2026, y el 15 y 16/11/2026 el servicio pasó a tener un precio por semana (5.1).
 >
 > **Especificación de la app (15/11/2026):** el dueño mandó una especificación de la app con área de clientes y tablero de administración. Está integrada en este documento con sus decisiones del mismo día: D1, a las 9:00 empieza la compra (5.2); D2, eventos privados con sección y formulario propios (5.3); D3, registro abierto desde M2 (§1 y §6); D4, el cliente solo sugiere platos y el menú lo decide Evelyn (5.1). Lo que quedó sin decidir (D5–D7 y otras) está en la sección 14. La copia original, sin cambios, está en [`docs/especificaciones/2026-11-15-especificacion-app.md`](docs/especificaciones/2026-11-15-especificacion-app.md): es historia y, si difiere de este documento, manda este documento.
 
@@ -37,7 +37,7 @@ Evelyn cocina **en la casa del cliente**: hace las compras, cocina para varios d
 
 ### Líneas de servicio
 Una sola marca, **Radici · Cucina privata**, con dos líneas. Los nombres son provisorios (sección 14): van en los textos de i18n, nunca en el código.
-- **Servicio semanal** («Radici Quotidiano»): la propuesta de arriba. Presupuesto estimado con la fórmula de 5.1 y día elegido en el calendario de disponibilidad (5.2). El menú lo decide Evelyn; el cliente activo puede sugerir platos.
+- **Servicio semanal** («Radici Quotidiano»): la propuesta de arriba, de 1 a 8 semanas con un menú y una sesión por semana. Precio por semana estimado con 5.1 (sin precio automático para más de 5 personas) y día elegido en el calendario de disponibilidad (5.2), el mismo en cada semana. El menú lo decide Evelyn; el cliente activo puede sugerir platos.
 - **Cenas privadas y eventos** («Radici Privato»): sección y formulario propios, menú a medida y presupuesto que Evelyn pasa después de hablar con el cliente, sin precio automático (5.3).
 
 ### Roles
@@ -50,7 +50,7 @@ Una sola marca, **Radici · Cucina privata**, con dos líneas. Los nombres son p
 ### Estados del cliente
 La ficha (`clients.status`, una por cocinera) se muestra con dos estados (decisión del 15/11/2026):
 - **Prospecto** (`prospect`): pidió desde la web o, desde M2, se registró y todavía no es cliente. Con cuenta ve su perfil y sus pedidos y puede pedir presupuesto; no ve el catálogo de platos ni sugiere.
-- **Cliente activo** (`trial` o `active`): además ve el catálogo de temporada y sugiere platos. Pasa a este estado al aceptar su primer presupuesto (lo hace el servidor, M4) o cuando Evelyn toca «Segna come cliente».
+- **Cliente activo** (`trial` o `active`): además ve el catálogo de temporada y sugiere platos. Pasa a este estado al aceptar su primer presupuesto (lo hace el servidor, M4), cuando Evelyn le confirma una reserva (5.3) o cuando Evelyn toca «Segna come cliente».
 
 `paused` y `churned` siguen en el enum y no cuentan como activos. El estado lo cambian la cocinera o el servidor, nunca el cliente.
 
@@ -69,7 +69,8 @@ La ficha (`clients.status`, una por cocinera) se muestra con dos estados (decisi
 - Web pública en italiano (`web/`): cómo funciona, calculadora de presupuesto (misma fórmula 5.1, mismo `quote.ts`) y formulario de pedido con la pregunta de alergias: el cliente confirma que nadie de quienes van a comer (niños incluidos) tiene alergias, intolerancias ni celiaquía, o las escribe con su consentimiento de datos de salud.
 - El pedido se guarda en Supabase (Edge Function `public-request`, contrato `docs/contracts/public-request.md`, aprobado el 19/10/2026; reemplaza el envío por WhatsApp). Evelyn recibe un email y un aviso emergente en la app, y lo revisa en la bandeja y la agenda (app y `/gestione/`); el cliente recibe la confirmación por email y, si la pidió, por WhatsApp. El cliente no necesita cuenta.
 - Eventos privados con sección y formulario propios (M3b, después del PR del formulario con calendario y alergias), sin precio automático (5.3). Hasta entonces la web los pide como `extra` («Evento o sessione extra»).
-- Disponibilidad desde la app (M5a): Evelyn bloquea días y edita su horario semanal. En Fase 0 las sesiones se acuerdan fuera del sistema (por WhatsApp) y no hay filas en `sessions`, que crea el envío de un presupuesto (M4): un día ocupado es un día bloqueado, y así lo ve el calendario de la web (5.2).
+- Disponibilidad desde la app (M5a): Evelyn bloquea días y edita su horario semanal. Los bloqueos quedan para las ausencias (vacaciones, feriados): las sesiones acordadas por WhatsApp se cargan como reservas.
+- **Reservas** (área de Evelyn; decisiones del dueño del 16/11/2026): Evelyn confirma desde un pedido, o carga a mano, una reserva de 1 a 8 semanas con una sesión de cocina por semana. Confirmarla crea sus sesiones y el calendario de la web descuenta esos días solo (5.2). El precio del servicio lo fija Evelyn al confirmar (la web estima 150 € por semana, 140 € desde 4 semanas, hasta 5 personas); la compra va aparte, al costo del ticket, y el cobro es manual. Hasta M4 se confirman sin presupuesto ni retención (5.3).
 - Pendiente de la web que pide la especificación de la app: quitar `noindex` (`VITE_NOINDEX=false`) recién al compartir el sitio (contrato §10.1, paso 12). El texto alternativo de las fotos ya está, en los textos i18n. El contacto directo es la decisión abierta D7.
 - Cobro manual: efectivo, transferencia, Satispay o Stripe Payment Links.
 - Meta: 10–20 sesiones reales para calibrar tiempos de cocina, costo por porción y política de cancelación **antes** de congelarlos en los vectores.
@@ -88,7 +89,7 @@ La ficha (`clients.status`, una por cocinera) se muestra con dos estados (decisi
 - **Agenda** (semana + día con línea de tiempo, con sesiones y eventos). La **disponibilidad** semanal y el **bloqueo de días** llegan antes, con M5a (Fase 0).
 - **Pagos con Stripe**: pre-autorización única (servicio + insumos), captura al cocinar según ticket, pago al final; registro manual de efectivo o transferencia.
 - Carga del ticket (monto + foto).
-- **Inicio** de Evelyn: pendientes accionables en uno o dos toques y panel con ingreso por servicio, por cobrar, retenido, adelantado de su bolsillo y ocupación de los próximos 7 días (§7).
+- **Hoy**, el inicio de Evelyn: la sesión del día, pendientes accionables en uno o dos toques y panel con ingreso por servicio, por cobrar, retenido, adelantado de su bolsillo y ocupación de los próximos 7 días (§7).
 - Notificaciones push y email básicas (sección 8).
 
 ### Fase 2 — Retención
@@ -144,7 +145,7 @@ Convenciones: `uuid` como PK, dinero en **centavos `int`**, fechas `date`, horas
 -- enums
 create type user_role       as enum ('chef','client');
 create type client_status   as enum ('prospect','trial','active','paused','churned');
-create type pay_mode        as enum ('preauth','pay_after');
+create type pay_mode        as enum ('preauth','pay_after','manual');  -- manual: las sesiones que crea Evelyn (reservas), cobro a mano
 create type request_type    as enum ('week','extra','change');  -- M3b suma 'event' (5.3)
 create type request_status  as enum ('new','quoted','accepted','declined','rejected','expired','resolved');
 create type session_status  as enum ('held','confirmed','shopping_done','cooked','paid','cancelled');
@@ -161,7 +162,7 @@ create type ingredient_unit  as enum ('g','ml','pcs');  -- unidad de la cantidad
 |---|---|
 | `chefs` | id, profile_id, display_name, service_area text[], whatsapp |
 | `profiles` | id (= auth.users.id), role, full_name, phone, locale, created_at |
-| `chef_settings` | chef_id PK, hourly_rate_cents (2200), travel_fee_cents (1200), adult_portion_cents (380), kid_portion_cents (250), preauth_buffer_pct (15), min_cook_minutes (90), shop_minutes (45), gap_minutes (30), slot_step_minutes (30), booking_horizon_days (56), min_notice_hours (24), quote_hold_hours (48), prospect_retention_days (90), cancellation_policy jsonb |
+| `chef_settings` | chef_id PK, hourly_rate_cents (2200) y travel_fee_cents (1200) (ya no entran en la estimación: 5.1), adult_portion_cents (380) y kid_portion_cents (250) (de 0 a 100000, lo que acepta el motor de presupuesto: checks de `20261116120000_weekly_pricing.sql`), preauth_buffer_pct (15), min_cook_minutes (90), shop_minutes (45), gap_minutes (30), slot_step_minutes (30), booking_horizon_days (56), min_notice_hours (24), quote_hold_hours (48), prospect_retention_days (90), cancellation_policy jsonb; precio por semana (migración `20261116120000_weekly_pricing.sql`): weekly_rate_cents (15000), weekly_rate_discounted_cents (14000), weekly_discount_min_weeks (4), weekly_rate_max_people (5) |
 | `availability_rules` | id, chef_id, dow (0–6), start_time, end_time |
 | `availability_exceptions` | id, chef_id, date, kind ('blocked'), note |
 | `clients` | id, chef_id, profile_id null (null = sin cuenta; hasta M2 un prospecto nunca tiene cuenta, desde M2 puede tenerla: §6), display_name, contact_email, contact_phone, zone, address, adults, kids, preferences, kitchen_notes, pay_mode, status, share_pantry bool, stripe_customer_id, default_payment_method_id, since. **El formulario público siempre crea un `clients` con `status = prospect`**, así el consentimiento tiene dónde colgarse |
@@ -172,9 +173,9 @@ create type ingredient_unit  as enum ('g','ml','pcs');  -- unidad de la cantidad
 | `recipe_ingredients` (M4a) | recipe_id, chef_id, position (1–50: el orden en el plato), name (hasta 80 caracteres), section (`shopping_section`; 'other' por defecto), quantity int null (para 4 porciones, de 1 a 100000), unit null (`ingredient_unit`). quantity y unit van juntas, o ninguna de las dos para «q.b.» (como la sal). Solo de la cocinera |
 | `recipe_notes` (M4a) | recipe_id (una fila por plato con notas; sin notas, sin fila), chef_id, notes (sin espacios al borde). Solo de la cocinera |
 | `recipe_allergens` | recipe_id, allergen |
-| `requests` | id, chef_id, client_id (siempre, también para prospectos), type, status, adults, kids, days, meals text[], restrictions jsonb, wishes uuid[], notes, preferred_date, preferred_start, pay_mode, target_session_id null (para 'change'), text (para 'change'), created_at; del pedido de la web además preferred_slot, locale, whatsapp_opt_in, estimate, source, seen_at, request_key, contact jsonb (el contacto con que llegó) y no_allergies (la pregunta de alergias: true = nadie tiene, false = las escribió y van en restrictions, null = sin respuesta; contrato §3) |
+| `requests` | id, chef_id, client_id (siempre, también para prospectos), type, status, adults, kids, days, meals text[], weeks (1–8: las semanas de un pedido `week`, una sesión de cocina por semana; 1 en los demás; al confirmar una reserva, las que se crearon), restrictions jsonb, wishes uuid[], notes, preferred_date, preferred_start, pay_mode, target_session_id null (para 'change'), text (para 'change'), created_at; del pedido de la web además preferred_slot, locale, whatsapp_opt_in, estimate, source, seen_at, request_key, contact jsonb (el contacto con que llegó) y no_allergies (la pregunta de alergias: true = nadie tiene, false = las escribió y van en restrictions, null = sin respuesta; contrato §3) |
 | `quotes` | id, request_id, session_id (la sesión `held` que reserva el horario), version, menu uuid[], cook_minutes, portions, service_cents, groceries_est_cents, preauth_cents, pricing_snapshot jsonb, allergen_override text null, slot_date, slot_start, hold_until, sent_at, accepted_at |
-| `sessions` | id, chef_id, client_id, request_id, quote_id, date, start_time, cook_minutes, shop_minutes, gap_minutes, portions, status, hold_until null (solo `held`), pay_mode, service_cents, groceries_est_cents, preauth_cents, groceries_actual_cents null, service_paid_at, groceries_paid_at, cancelled_at, cancel_reason, **busy tstzrange** (generada) |
+| `sessions` | id, chef_id, client_id, request_id, quote_id, date, start_time, cook_minutes, shop_minutes, gap_minutes, portions, status, hold_until null (solo `held`), pay_mode, service_cents, groceries_est_cents, preauth_cents, groceries_actual_cents null, service_paid_at, groceries_paid_at, shopping_done_at, cooked_at, cancelled_at, cancel_reason, **busy tstzrange** (generada), week_start (generada: el lunes de la semana ISO). Como máximo una sesión viva (no cancelada) por semana de cada pedido (`sessions_una_por_semana`) |
 | `session_menu` | session_id, recipe_id, portions |
 | `receipts` | id, session_id, storage_path, total_cents, store_name, purchased_at, uploaded_by |
 | `payments` | id, session_id, kind, provider ('stripe','satispay','cash','transfer'), stripe_payment_intent_id, amount_cents, captured_cents, service_part_cents, groceries_part_cents (reparto para separar servicio e insumos en un mismo cobro), status, idempotency_key unique, last_error, created_at |
@@ -202,48 +203,71 @@ alter table sessions add constraint no_overlap
 
 Al enviar un presupuesto se crea la sesión con `status = held` y `hold_until` (48 h; un evento, su propio plazo: 5.3): `no_overlap` la protege igual que a una confirmada, así dos presupuestos nunca prometen el mismo horario. Al aceptar pasa a `confirmed`; si el cliente rechaza o vence, un cron la pasa a `cancelled` (`cancel_reason = 'hold_expired' | 'declined'`).
 
+**Reservas** (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, tests pgTAP `13_bookings`): una reserva es un pedido aceptado más sus sesiones, una por semana (las que tienen ese `request_id`); no hay tabla propia. Las crea `chef_create_booking`, desde un pedido `new` o a mano (ficha existente o nueva y un pedido `source = 'app'`, idempotente por `request_key`): todas `confirmed`, con `pay_mode = manual`, y el servicio que fija Evelyn repartido en centavos entre las semanas (los que sobran, a las primeras: 500 € en 3 son 166,67 + 166,67 + 166,66). Es todo o nada: si una semana choca, no se crea ninguna y el error dice la fecha. `chef_move_session` y `chef_cancel_sessions` mueven y cancelan semanas. Las tres son security definer y solo las ejecuta `service_role`: las llama la Edge Function `chef`, que valida a la cocinera.
+
 ---
 
 ## 5. Reglas de negocio
 
 ### 5.1 Presupuesto
 
-Es la misma fórmula del prototipo, pero **solo con enteros** (sin decimales en ningún paso). Fuente única de verdad: el módulo TS `supabase/functions/_shared/quote.ts`, usado por las Edge Functions y por la web. La app replica el cálculo en Dart solo para la vista previa, y **todas las implementaciones pasan los mismos vectores** (`supabase/functions/_shared/quote_vectors.json`, leído por los tests de TS y de Dart).
+Precio por semana (decisiones del dueño del 15 y 16/11/2026), **solo con enteros** (sin decimales en ningún paso). Fuente única de verdad: el módulo TS `supabase/functions/_shared/quote.ts`, usado por las Edge Functions y por la web. La app replica el cálculo en Dart solo para la vista previa, y **todas las implementaciones pasan los mismos vectores** (`supabase/functions/_shared/quote_vectors.json`, leído por los tests de TS y de Dart).
+
+- **Pedido semanal** (`week`): de 1 a 8 semanas (`LIMITS.maxWeeks`, el check `requests_semanas_validas`), con un menú y una sesión de cocina por semana, el mismo día.
+- **Servicio por semana**: `weekly_rate_cents` (150 €) para un hogar de hasta `weekly_rate_max_people` (5) personas, adultos y niños. No cambia con los días ni con las comidas, e incluye el traslado.
+- **Desde `weekly_discount_min_weeks` (4) semanas**, cada semana cuesta `weekly_rate_discounted_cents` (140 €): 560 € por 4 semanas. Con más de 4 se mantienen los 140 €. El ahorro se cuenta frente a la tarifa sin descuento; con 1 a 3 semanas no hay. Para no hacer descuento, la misma tarifa en las dos columnas.
+- **Sin precio automático**: con más personas que el tope, o en una sesión extra suelta (`extra`, de una sola semana). Evelyn pasa el presupuesto.
+- **Compra de ingredientes**: aparte, al costo del ticket. La web, la app y los emails muestran una estimación por semana (de la sesión, en una extra) con las porciones.
+- El precio automático es una **estimación**: Evelyn recibe el pedido y devuelve el costo final. El pago se acuerda con ella (manual) por ahora.
+- El **tiempo de cocina** se estima como antes, por sesión: de él dependen los días libres del calendario (`get_free_days`, 5.2) y el tope de 300 min. No entra en el precio.
 
 ```
 div_arriba(a, b)   = (a + b − 1) div b                  -- enteros ≥ 0
 comidas            = cantidad de comidas por día (1 o 2: almuerzo, cena)
+-- De una semana (una sesión):
 porc_adulto        = adultos × días × comidas
 porc_niño          = niños × días × comidas
 porciones          = porc_adulto + porc_niño
 recetas            = clamp( min(div_arriba(días × comidas, 2), porciones div 2), 2, 6 )
 minutos_cocina     = max(min_cocina, div_arriba(300 + 150 × recetas + 6 × porciones, 150) × 30)
                      -- = ceil_a_30(60 + 30 × recetas + 1,2 × porciones), escrito en enteros
-servicio           = (minutos_cocina × tarifa_hora + 30) div 60 + fijo_compra_traslado
-                     -- redondeo al centavo, mitad hacia arriba
-insumos_estimados  = porc_adulto × costo_adulto + porc_niño × costo_niño
-preautorización    = div_arriba(insumos_estimados × (100 + margen%), 100)
-retención          = servicio + preautorización          -- monto del PaymentIntent único (§5.4)
-total_estimado     = servicio + insumos_estimados
+compra_estimada    = porc_adulto × costo_adulto + porc_niño × costo_niño
+preautorización    = div_arriba(compra_estimada × (100 + margen%), 100)   -- de una sesión (§5.4)
+-- Precio automático: solo un pedido semanal con adultos + niños ≤ tope_personas.
+servicio_semana    = semanas ≥ desde_semanas ? tarifa_descuento : tarifa
+servicio           = servicio_semana × semanas
+ahorro             = tarifa × semanas − servicio
+total_estimado     = servicio + compra_estimada × semanas
 ```
 
-Con los valores por defecto (22 €/h, 12 € fijo, 3,80 € adulto, 2,50 € niño, 15 %, mínimo 90 min):
+Con los valores por defecto (150 € por semana, 140 € desde 4 semanas, hasta 5 personas; 3,80 € por porción de adulto, 2,50 € de niño, 15 %, mínimo 90 min):
 
-| # | Entrada | Porciones | Recetas | Cocina | Servicio | Insumos | Pre-aut. | Total |
-|---|---|---|---|---|---|---|---|---|
-| 1 | 2 ad · 2 niños · 5 días · cena | 20 | 3 | 180 min | 7800 | 6300 | 7245 | 14100 |
-| 2 | 1 ad · 5 días · almuerzo | 5 | 2 | 150 min | 6700 | 1900 | 2185 | 8600 |
-| 3 | 10 ad · 6 niños · 1 día · cena | 16 | 2 | 150 min | 6700 | 5300 | 6095 | 12000 |
-| 4 | 2 ad · 3 niños · 4 días · cena | 20 | 2 | 150 min | 6700 | 6040 | 6946 | 12740 |
-| 5 | 2 ad · 1 niño · 5 días · cena | 15 | 3 | 180 min | 7800 | 5050 | 5808 | 12850 |
-| 6 | 2 ad · 2 niños · 5 días · almuerzo y cena | 40 | 5 | 270 min | 11100 | 12600 | 14490 | 23700 |
-| 7 | 4 ad · 7 días · almuerzo y cena (tope de 6 recetas) | 56 | 6 | 330 min | 13300 | 21280 | 24472 | 34580 |
-| 8 | 1 ad · 1 día · cena (mínimo) | 1 | 2 | 150 min | 6700 | 380 | 437 | 7080 |
-| 9 | Como el 2, con tarifa 21,55 €/h (redondeo) | 5 | 2 | 150 min | 6588 | 1900 | 2185 | 8488 |
+| # | Entrada | Semanas | Porciones | Recetas | Cocina | Compra/sem. | Servicio/sem. | Servicio | Ahorro | Total |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 2 ad · 2 niños · 5 días · cena | 1 | 20 | 3 | 180 min | 6300 | 15000 | 15000 | 0 | 21300 |
+| 2 | Como el 1 (sin descuento) | 3 | 20 | 3 | 180 min | 6300 | 15000 | 45000 | 0 | 63900 |
+| 3 | Como el 1 (desde 4: 140 €) | 4 | 20 | 3 | 180 min | 6300 | 14000 | 56000 | 4000 | 81200 |
+| 4 | Como el 1 | 5 | 20 | 3 | 180 min | 6300 | 14000 | 70000 | 5000 | 101500 |
+| 5 | Como el 1 (máximo) | 8 | 20 | 3 | 180 min | 6300 | 14000 | 112000 | 8000 | 162400 |
+| 6 | 2 ad · 3 niños · 4 días · cena (5 personas, el tope) | 1 | 20 | 2 | 150 min | 6040 | 15000 | 15000 | 0 | 21040 |
+| 7 | 3 ad · 3 niños · 5 días · cena (6 personas) | 1 | 30 | 3 | 210 min | 9450 | — | sin precio automático | — | — |
+| 8 | Extra: 10 ad · 6 niños · 1 día · cena | 1 | 16 | 2 | 150 min | 5300 | — | sin precio automático | — | — |
+| 9 | Extra: 2 ad · 1 día · almuerzo y cena | 1 | 4 | 2 | 150 min | 1520 | — | sin precio automático | — | — |
+| 10 | 1 ad · 5 días · almuerzo | 1 | 5 | 2 | 150 min | 1900 | 15000 | 15000 | 0 | 16900 |
+| 11 | 0 ad · 2 niños · 3 días · almuerzo (porción de niño) | 1 | 6 | 2 | 150 min | 1500 | 15000 | 15000 | 0 | 16500 |
+| 12 | 2 ad · 2 niños · 5 días · almuerzo y cena | 2 | 40 | 5 | 270 min | 12600 | 15000 | 30000 | 0 | 55200 |
+| 13 | 4 ad · 7 días · almuerzo y cena (tope de 6 recetas) | 1 | 56 | 6 | 330 min | 21280 | 15000 | 15000 | 0 | 36280 |
+| 14 | 1 ad · 1 día · cena (mínimo) | 1 | 1 | 2 | 150 min | 380 | 15000 | 15000 | 0 | 15380 |
+| 15 | Como el 14, con un mínimo de cocina de 240 min | 1 | 1 | 2 | 240 min | 380 | 15000 | 15000 | 0 | 15380 |
+| 16 | Tarifas de Giulia (seed: 160 €, 150 € desde 3 semanas, hasta 6 personas): 3 ad · 3 niños · 5 días · cena | 3 | 30 | 3 | 210 min | 9450 | 15000 | 45000 | 3000 | 73350 |
+| 17 | Sin descuento (la misma tarifa en las dos columnas): como el 1 | 4 | 20 | 3 | 180 min | 6300 | 15000 | 60000 | 0 | 85200 |
+| 18 | Como el 7 (6 personas): sin precio, las semanas quedan en la estimación | 4 | 30 | 3 | 210 min | 9450 | — | sin precio automático | — | — |
 
-(Montos en centavos.)
+(Montos en centavos. Los vectores también fijan la pre-autorización. Los 7, 8, 9 y 18 dicen por qué no hay precio: `people` o `extra`. Además, `validSettings` tiene el mínimo y el máximo de cada check de las columnas de `chef_settings` que lee el motor: los dos motores calculan con cualquiera, y `quote.test.ts` compara la lista con las migraciones.)
 
-- Con los valores actuales el mínimo de 90 min nunca se aplica: la sesión más corta posible es de **150 min** (67 € de servicio). Ver decisiones abiertas.
+- `requests.estimate` guarda el resultado del motor y las tarifas usadas (`pricing`): siempre `weeks`, `autoPrice`, porciones, recetas, minutos y compra; `weeklyServiceCents`, `serviceCents`, `savingsCents` y `totalCents` solo con precio automático. Sin precio, esas claves no van (ni null ni 0) y van `autoPrice: false` y `reason` (`people` o `extra`). Las guardadas antes del precio por semana no tienen `autoPrice`: eran de una semana, con el servicio por hora (`hourly_rate_cents` y `travel_fee_cents`, que siguen en `chef_settings` pero ya no entran en la estimación).
+- La web calcula con `DEFAULT_PRICING`, que es el valor por defecto de `chef_settings` (`quote.test.ts` lo compara con las migraciones y exige que el motor acepte todo lo que la base guarda); el servidor calcula con las tarifas de la cocinera y la pantalla de gracias y los emails muestran las suyas. Mientras la web no lea las tarifas, cambiar una tarifa es un PR: `DEFAULT_PRICING`, el valor por defecto en una migración y la fila de la cocinera.
+- El mínimo de 90 min no se aplica con las porciones reales (la sesión más corta es de 150 min); el vector 15 lo prueba con otro valor.
 
 - Evelyn puede **ajustar el servicio a mano** antes de enviar; se guarda en `quotes.service_cents` y el motivo en `pricing_snapshot`.
 - Al enviar se guarda un **snapshot** con tarifas y resultado: si Evelyn cambia tarifas después, los presupuestos enviados no cambian.
@@ -262,8 +286,8 @@ Implementado en SQL (migración `20261115130000_free_slots.sql`, tests pgTAP `07
 - `get_free_slots`: se muestran hasta 3 horarios por día, separados al menos 2 h (los primeros que cumplen), en los primeros 5 días con lugar.
 - `get_free_days`: cada fecha del rango pedido, con `available` si tiene al menos un horario libre (el calendario de la web). El calendario vale solo para la semana de comidas: con `extra` se puede elegir cualquier día de la ventana (Evelyn confirma la disponibilidad al contactar) y los eventos no usan ni el calendario ni la ventana (5.3).
 - Horario inicial (decisión del dueño del 15/11/2026): lunes a viernes de 9:00 a 15:00 para toda cocinera sin reglas (migración `20261115130100_default_availability.sql`; en un proyecto nuevo, `deploy-supabase.yml` al crear la cuenta), hasta que la app tenga editor de disponibilidad (M5a). La ventana, que en esa decisión seguía en 14 días, pasó el mismo día a 8 semanas (migración `20261115130200_booking_horizon_8_weeks.sql`).
-- A las 9:00 Evelyn empieza la compra, no llega a la casa (D1, decisión del 15/11/2026): las reglas quedan en 9:00–15:00 y la regla de esta sección no cambia. Con 45 min de compra, la primera llegada es a las 10:00 y la cocina dura como máximo 300 min (5 h). Un pedido más largo (el vector 7, de 330 min) no tiene ningún día libre: la web lo explica y deja enviarlo sin fecha, y Evelyn propone una.
-- En Fase 0 no hay filas en `sessions` (las crea el envío de un presupuesto, M4): un día ocupado es un día bloqueado (`availability_exceptions`), que Evelyn carga desde la app (M5a).
+- A las 9:00 Evelyn empieza la compra, no llega a la casa (D1, decisión del 15/11/2026): las reglas quedan en 9:00–15:00 y la regla de esta sección no cambia. Con 45 min de compra, la primera llegada es a las 10:00 y la cocina dura como máximo 300 min (5 h). Un pedido más largo (el vector 13, de 330 min) no tiene ningún día libre: la web lo explica y deja enviarlo sin fecha, y Evelyn propone una.
+- En Fase 0 hay sesiones: las crean las reservas que confirma Evelyn (5.3) y el calendario las descuenta como a cualquier sesión no cancelada. Los días bloqueados (`availability_exceptions`, M5a) quedan para las ausencias.
 - F3: sumar tiempo de traslado según zona de la sesión anterior y la siguiente.
 
 ### 5.3 Estados
@@ -291,16 +315,22 @@ new ──(Evelyn envía presupuesto)──▶ quoted ──(cliente acepta)─�
 | confirmada | `accepted` |
 | rechazada | `rejected` (Evelyn) o `declined` (cliente) |
 
-Si el presupuesto de un evento vence, el pedido pasa a `expired`, como cualquier otro. `extra` queda para la sesión extra de un cliente, con estimación.
+Si el presupuesto de un evento vence, el pedido pasa a `expired`, como cualquier otro. `extra` queda para la sesión extra de un cliente: de una sola semana y sin precio automático (5.1); su estimación guarda porciones, minutos y compra, y Evelyn pasa el precio.
 
 **Pedido especial del menú semanal (M2b)**: queda pendiente hasta que Evelyn lo aprueba o propone una alternativa. Las sugerencias de platos no tienen estado: Evelyn las ve al armar el menú. Los estados y las transiciones del pedido especial se definen con tests primero en su milestone, en la tabla de sugerencias (no en `requests.status`).
 
 **Sesión (`sessions.status`)**
 ```
 held ──(cliente acepta)──▶ confirmed ──(ticket cargado)──▶ shopping_done ──(marcar cocinado)──▶ cooked ──(todo cobrado)──▶ paid
-  └──(vence o rechaza)──▶ cancelled          └──(cancelar)──▶ cancelled
+  │                          └──(marcar cocinado sin ticket)─────────────────────────────────▶ cooked
+  └──(vence o rechaza)──▶ cancelled ◀──(cancelar, desde confirmed o shopping_done)
+cooked ──(deshacer «Cociné»)──▶ confirmed o shopping_done          paid ──(anular el cobro)──▶ cooked
 ```
-`cooked → paid` ocurre solo cuando servicio e insumos están cobrados, y lo decide el **webhook** de Stripe o el registro manual de Evelyn, nunca la app del cliente.
+Son las únicas transiciones válidas: held → confirmed o cancelled; confirmed → shopping_done, cooked o cancelled; shopping_done → cooked o cancelled; cooked → paid, confirmed o shopping_done; paid → cooked. Las aplica la guarda `sessions_guard_update` a todos los roles, también a la service role, y la fecha, la hora y la duración de una sesión cambian solo en `held` o `confirmed` (mover una semana). Se puede marcar «Cociné» antes de cargar el ticket (plan del área de Evelyn): el ticket queda pendiente.
+
+`cooked → paid` ocurre solo cuando servicio e insumos están cobrados, y lo decide el **webhook** de Stripe o el registro manual de Evelyn, nunca la app del cliente. `paid → cooked`, solo al anular un cobro.
+
+**Reservas (hasta M4)**: de 1 a 8 semanas, con una sesión por semana. Evelyn las confirma desde el pedido, o las carga a mano, sin presupuesto ni retención de 48 h, como lo que hoy se acuerda por WhatsApp: las sesiones nacen `confirmed`, el pedido pasa a `accepted` con sus semanas y la ficha de un prospecto, a `trial` (§4, «Reservas»). El precio del servicio de toda la reserva es obligatorio al confirmar (0 vale: sin cargo), porque después ninguna ruta lo cambia. Una semana ya cobrada no se cancela de entrada: una sesión cancelada no se mueve ni se reactiva, así que la app ofrece primero pasarla al final de la reserva y la cancela, con permiso explícito, solo para registrar la devolución (decisión del dueño del 16/11/2026; los cobros manuales llegan con el área de Evelyn).
 
 **Pago (`payments.status`)**: refleja el PaymentIntent de Stripe (`requires_action`, `authorized` = requires_capture, `succeeded`, `canceled`, `failed`) o `pending` para efectivo y transferencia hasta que Evelyn lo confirma.
 
@@ -311,7 +341,7 @@ held ──(cliente acepta)──▶ confirmed ──(ticket cargado)──▶ s
 Stripe permite **una sola captura** por PaymentIntent. Por eso se usa una sola retención por servicio + insumos y una sola captura al final: menos estados, menos webhooks y una comisión fija menos por sesión.
 
 1. Al aceptar el presupuesto: crear `Customer` si no existe y guardar la tarjeta con **SetupIntent** (app: PaymentSheet; web: Stripe Checkout `mode=setup`). Autenticación SCA una vez, uso `off_session`.
-2. **No retener al aceptar**: una autorización de tarjeta suele vencer a los 7 días (a veces antes). Un cron crea la retención **48 h antes de la sesión** (o al momento si falta menos): `PaymentIntent` por `service_cents + preauth_cents`, `capture_method=manual`, `off_session=true`, `confirm=true`.
+2. **No retener al aceptar**: una autorización de tarjeta suele vencer a los 7 días (a veces antes). Un cron crea la retención **48 h antes de la sesión** (o al momento si falta menos): `PaymentIntent` por `service_cents + preauth_cents`, `capture_method=manual`, `off_session=true`, `confirm=true`. En un pedido de varias semanas cada sesión es una semana: su servicio es el de esa semana (5.1). Hasta M6 el pago se acuerda con Evelyn (manual).
 3. Si Stripe pide autenticación (`requires_action`), se notifica al cliente para confirmarla dentro de la app. Si falla, se avisa a Evelyn: la sesión queda marcada "sin pre-autorizar".
 4. Al cargar el ticket: se guarda monto y foto (no se cobra todavía).
 5. Al marcar cocinado: `capture` por `servicio + min(ticket, autorizado − servicio)`. La captura parcial libera el resto sola. En `payments` se guarda el reparto (`service_part_cents`, `groceries_part_cents`).
@@ -367,7 +397,7 @@ Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automá
 - Mínimo necesario: guardar la restricción ("sin lactosa"), no diagnósticos ni historia clínica.
 - Solo la cocinera ve restricciones y direcciones. Nunca se escriben en logs, Sentry ni analytics.
 - Derecho de acceso y borrado: exportar los datos del cliente (JSON) y borrar su cuenta desde la app. Incluye las copias de restricciones en `requests.restrictions` y `quotes.pricing_snapshot`.
-- Conservación: los prospectos que no se convierten se borran con un cron cuando pasan `prospect_retention_days` (90) desde su último pedido. Si la persona pasa a ser clienta (en Fase 0, por WhatsApp), la cocinera la marca como cliente desde el detalle del pedido (ficha en `trial`) y se conserva.
+- Conservación: los prospectos que no se convierten se borran con un cron cuando pasan `prospect_retention_days` (90) desde su último pedido. Si la persona pasa a ser clienta (en Fase 0, por WhatsApp), la cocinera le confirma la reserva o la marca como cliente desde el detalle del pedido: la ficha pasa a `trial` y se conserva.
 - Un envío del formulario público (sin login, email sin verificar) nunca modifica a una persona que ya existe: cada pedido guarda el contacto con que llegó (`requests.contact`) y las restricciones del hogar solo se suman, desde pedidos semanales.
 - Las altas de usuarios van apagadas hasta el área de clientes (M2): la cuenta de la cocinera la crea confirmada el despliegue de Supabase (o el panel) antes de publicar nada, y `promote_to_chef` le cambia la contraseña por una al azar y le cierra las sesiones. En M2 se abren a cualquiera (registro abierto, D3): ese PR cambia esta regla, la de `CLAUDE.md` y el contrato §10.
 - Registro abierto (M2). Antes de abrir las altas:
@@ -386,8 +416,8 @@ Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automá
 **RLS (resumen)**
 | Tabla | Cliente | Cocinera | Anónimo |
 |---|---|---|---|
-| clients, client_restrictions, consents | lee y edita lo propio | todo lo de su `chef_id` | — |
-| requests | crea y lee lo propio | todo | crea vía Edge Function `public-request` |
+| clients, client_restrictions, consents | lee y edita lo propio | todo lo de su `chef_id`, salvo borrar fichas (en cascada se llevaban sus pedidos y sus sesiones) y consentimientos | — |
+| requests | crea y lee lo propio | todo, salvo borrar (un pedido aceptado es el registro de su reserva) | crea vía Edge Function `public-request` |
 | quotes, sessions, session_menu, receipts | lee lo propio | todo | — |
 | payments | lee lo propio | lee todo; escribe solo con efectivo o transferencia | — |
 | prepared_portions | lee y actualiza `count_left` / `discarded_at` | crea y lee | — |
@@ -402,7 +432,7 @@ Precisiones implementadas en M1 (`supabase/migrations/*_rls.sql`):
 - `recurring_plans`: solo lectura para el cliente.
 - Las tarifas (`chef_settings`) no son visibles para clientes: la vista previa y la política de cancelación se exponen con una RPC de solo lectura (M3c, con la pantalla Pedir de la app).
 
-Las escrituras sensibles (estados de sesión, pagos) pasan por Edge Functions con la service role, nunca por updates directos desde la app. Tests de políticas RLS obligatorios (pgTAP o la suite de tests de Supabase).
+Las escrituras sensibles (estados de sesión, pagos) pasan por Edge Functions con la service role, nunca por updates directos desde la app. Las reservas también: la app no crea, mueve ni cancela sesiones, y desde el 16/11/2026 tampoco borra pedidos ni fichas (borrar una ficha se llevaba en cascada sus pedidos, sus sesiones y sus consentimientos). Borrar a una persona es del servidor: la purga de prospectos, el SQL editor (contrato public-request §10.2) y, desde M2, la supresión de la cuenta. Tests de políticas RLS obligatorios (pgTAP o la suite de tests de Supabase).
 
 ---
 
@@ -412,7 +442,7 @@ Ver `docs/prototipo.html`; cambiar de vista con el selector de arriba.
 
 **Cliente**
 - **Inicio**: próxima sesión (menú, estado, botón de pre-autorizar), presupuestos pendientes con Aceptar/Rechazar, pedidos enviados, porciones en la heladera, ingredientes por vencer.
-- **Pedir**: tipo (semana / extra / cambio), personas, días y comidas, restricciones, platos deseados (los incompatibles tachados), presupuesto estimado en vivo, horarios libres, modo de pago, notas.
+- **Pedir**: tipo (semana / extra / cambio), semanas (1 a 8), personas, días y comidas, restricciones, platos deseados (los incompatibles tachados), presupuesto estimado en vivo (precio por semana, 5.1), horarios libres, modo de pago, notas.
 - **Sugerencias de la semana** (cliente activo, M2b): catálogo de temporada con los incompatibles tachados; marca, sin cantidad fija, los platos que le gustan y escribe cambios o pedidos especiales (el campo pide no escribir datos de salud); ve el estado de sus pedidos especiales.
 - **Despensa** (F2): comidas listas (etiquetas) e ingredientes por ubicación, compartir con Evelyn, agregar producto.
 - **Pagos**: método guardado, pendientes, historial con detalle servicio / ticket / pre-autorización.
@@ -423,9 +453,9 @@ Un prospecto con cuenta ve Inicio, Pedir (sin platos deseados) y su perfil; no v
 **Cliente nuevo (web pública)**: explicación en 4 pasos, el mismo formulario de pedido con datos de contacto y consentimiento; después, seguimiento del estado y aceptación del presupuesto, que crea la cuenta si todavía no tiene (desde M2 también puede registrarse antes). **Eventos privados** (M3b): sección propia y formulario con fecha libre, invitados, hora aproximada e idea del evento, sin calendario ni precio (5.3).
 
 **Evelyn** (pensado primero para el celular)
-- **Inicio**: pendientes accionables, cada uno en uno o dos toques (pedidos y eventos nuevos, pedidos especiales por aprobar, próximas sesiones), ocupación de 7 días, ingreso por servicio, por cobrar, retenido y adelantado.
-- **Agenda**: semana, día con línea de tiempo (bloque de compra + bloque de cocina), sesiones y eventos, huecos libres, bloquear día y editor de disponibilidad (estos dos, M5a).
-- **Pedidos**: bandeja de pedidos y eventos (etiqueta y filtro, M3b) con su estado, detalle con control de horario, armado de menú con alérgenos (con las sugerencias del cliente a la vista), sugerencia automática, ajuste de precio, enviar o rechazar.
+- **Hoy** (el inicio después del login, área de Evelyn): la sesión de hoy o la próxima (clienta, horas de compra y llegada, personas, las alergias del pedido resaltadas, «Cómo llegar» y WhatsApp) y pendientes accionables, cada uno en uno o dos toques (pedidos y eventos nuevos, pedidos especiales por aprobar, reservas que terminan, con «Renovar»), ocupación de 7 días, ingreso por servicio, por cobrar, retenido y adelantado.
+- **Agenda**: semana, día con línea de tiempo (bloque de compra + bloque de cocina), sesiones de las reservas y eventos, huecos libres, bloquear día y editor de disponibilidad (estos dos, M5a). Cada sesión abre su ficha: «Semana k de N», mover, cancelar, «Cómo llegar» y WhatsApp.
+- **Pedidos**: bandeja de pedidos y eventos (etiqueta y filtro, M3b) con su estado y una pestaña Reservas (los pedidos aceptados), detalle con control de horario y «Confirmar reserva» (de 1 a 8 semanas, en dos toques), armado de menú con alérgenos (con las sugerencias del cliente a la vista), sugerencia automática, ajuste de precio, enviar o rechazar.
 - **Clientes**: lista y ficha (estado, «Segna come cliente», plan, restricciones, preferencias, cocina, despensa compartida, porciones, historial, ingreso).
 - **Menús de la semana** (M2b): las sugerencias de cada cliente activo y sus pedidos especiales, para aprobar o proponer una alternativa.
 - **Catálogo de platos** (M4a): alta, edición, duplicar, baja (desactivar), alérgenos UE, dieta, temporada, nombres en it/es/en e ingredientes con su cantidad para 4 porciones (o q.b.) y su sección del súper.
@@ -458,8 +488,8 @@ Sin notificaciones entre las 21:00 y las 8:00 (hora de Roma), salvo fallos de pa
 
 ## 9. Criterios de aceptación del MVP
 
-1. Un prospecto pide desde la web sin cuenta y ve el precio y los días en que Evelyn tiene lugar (calendario con `get_free_days`; la hora se acuerda con ella). Si ningún día tiene lugar para su pedido, la web se lo dice y puede enviarlo sin fecha. Un evento se pide sin precio ni calendario (5.3). No puede enviar sin contestar la pregunta de alergias (confirmar que nadie tiene o escribirlas), ni con alergias escritas sin el consentimiento de datos de salud.
-2. El presupuesto mostrado coincide con los 9 vectores de la sección 5.1 en la app, en la web y en el servidor.
+1. Un prospecto pide desde la web sin cuenta, elige de 1 a 8 semanas y ve el precio (por semana, total y ahorro desde 4 semanas, con la compra estimada aparte; con más de 5 personas o en una sesión extra, que el presupuesto se lo prepara Evelyn) y los días en que Evelyn tiene lugar (calendario con `get_free_days`, que marca el mismo día de las semanas siguientes; la hora se acuerda con ella). Si ningún día tiene lugar para su pedido, la web se lo dice y puede enviarlo sin fecha. Un evento se pide sin precio ni calendario (5.3). No puede enviar sin contestar la pregunta de alergias (confirmar que nadie tiene o escribirlas), ni con alergias escritas sin el consentimiento de datos de salud.
+2. El presupuesto mostrado coincide con los vectores de la sección 5.1 (precio por semana) en la app, en la web y en el servidor, y `DEFAULT_PRICING` es el valor por defecto de `chef_settings`.
 3. Dos clientes no pueden reservar horarios superpuestos aunque acepten al mismo tiempo (la restricción `no_overlap` lo impide y la app muestra un error claro). Un horario ofrecido por `get_free_slots` nunca es rechazado por `no_overlap`.
 4. Un presupuesto enviado bloquea el horario 48 h (sesión `held`; un evento, su propio plazo: 5.3) y se libera al vencer o al ser rechazado.
 5. Con `preauth`, la retención (servicio + insumos + margen) se crea 48 h antes; al cocinar se captura servicio + ticket y se libera el resto; con un ticket mayor se cobra la diferencia aparte.
@@ -475,7 +505,7 @@ Sin notificaciones entre las 21:00 y las 8:00 (hora de Roma), salvo fallos de pa
 
 ## 10. Plan de construcción (milestones para Claude Code)
 
-La tabla sigue el orden de trabajo, reordenado el 15/11/2026 con la especificación de la app. Los números son nombres estables (los citan el código y el contrato); los milestones nuevos llevan letra: M3b amplía el pedido de M3, M3c lo lleva a la app (con las cuentas de M2), M5a adelanta la disponibilidad de M5, M4a prepara el menú de M4 y M2b necesita las cuentas de M2. Después del PR del formulario con calendario y pregunta de alergias siguen M3b, M5a, M4a, M2, M3c y M2b.
+La tabla sigue el orden de trabajo, reordenado el 15/11/2026 con la especificación de la app y el 16/11/2026 con el plan del área de Evelyn. Los números son nombres estables (los citan el código y el contrato); los milestones nuevos llevan letra: M3b amplía el pedido de M3, M3c lo lleva a la app (con las cuentas de M2), M5a adelanta la disponibilidad de M5, M4a prepara el menú de M4 y M2b necesita las cuentas de M2. Después del PR del formulario con calendario y pregunta de alergias va el área de Evelyn, que incluye M5a y M4a y llega antes de M2; después siguen M2, M3b, M3c y M2b.
 
 | # | Milestone | Entregable verificable |
 |---|---|---|
@@ -483,14 +513,15 @@ La tabla sigue el orden de trabajo, reordenado el 15/11/2026 con la especificaci
 | M0 | Setup | Repo, Flutter con entornos dev/prod, proyecto Supabase UE, CI en verde, `CLAUDE.md`, `quote.ts` + vectores en TS y Dart |
 | M1 | Esquema y RLS | Migraciones de la sección 4, seeds del prototipo, tests de políticas RLS y de `no_overlap` (incluidas sesiones `held` y margen de un lado) |
 | M3 | Horarios y pedido | `get_free_slots()` y `get_free_days()` con tests; Edge Function `public-request` con la disponibilidad por día; formulario de la web con calendario y pregunta de alergias. La pantalla Pedir de la app va en M3c |
-| M3b | Eventos privados | Tipo `event` (5.3): sección y formulario propios en la web (fecha libre, invitados, hora aproximada, idea), sin estimación en la web ni en los emails; contrato, el check `requests_datos_de_presupuesto`, las validaciones de `submit_public_request` (`invalid_request_type`, `estimate_required`, `invalid_meals`) y los emails, con tests primero; etiqueta y filtro de eventos en la bandeja |
+| — | Área de Evelyn | Plan del 16/11/2026, en PRs chicos con tests primero y cada migración en su propio PR: bloquear días y su horario (M5a); reservas de 1 a 8 semanas, confirmadas desde el pedido o a mano, con una sesión `confirmed` por semana y `pay_mode manual` (sin presupuesto hasta M4); Agenda con las sesiones y su ficha; Hoy; ticket con foto; «Cociné» y cobros manuales (efectivo, transferencia o Satispay); Dinero y gastos; catálogo (M4a), menú de cada sesión y lista de compras |
 | M5a | Disponibilidad en la app | Bloquear y desbloquear días; después, editar el horario semanal (`availability_rules`). Repositorio + providers, textos ARB y tests; reemplaza el horario inicial fijo de 5.2 |
 | M4a | Catálogo de platos | Base: `name_en`, `season_months`, `catalog_visible`, `recipe_ingredients` con cantidad para 4 porciones, `recipe_notes` (notas solo de la cocinera) y `save_recipe` (guardado atómico), con pgTAP; pantalla de Evelyn: alta, edición, duplicar, baja (desactivar), alérgenos UE, dieta, temporada e ingredientes; con tests |
 | M2 | Auth y perfil, con registro abierto | Registro abierto y login con código, con Turnstile en cada pedido de código (también el de Evelyn); ficha `prospect` creada por el servidor; check `clients_prospect_sin_cuenta` relajado y `submit_public_request` limitado a prospectos sin cuenta (test pgTAP); conservación de las cuentas que no pasan a cliente activo (y privacy); RLS del catálogo solo para clientes activos; roles, perfil del hogar, restricciones con consentimiento, borrado de cuenta. Cambia la regla de altas aquí, en `CLAUDE.md` y en el contrato §10 (§6) |
+| M3b | Eventos privados | Tipo `event` (5.3): sección y formulario propios en la web (fecha libre, invitados, hora aproximada, idea), sin estimación en la web ni en los emails; contrato, el check `requests_datos_de_presupuesto`, las validaciones de `submit_public_request` (`invalid_request_type`, `estimate_required`, `invalid_meals`) y los emails, con tests primero; etiqueta y filtro de eventos en la bandeja |
 | M3c | Pedir en la app | Pantalla Pedir del cliente con cuenta (§7): presupuesto estimado en vivo (copia Dart de `quote.ts`) y horarios libres reales; RPC de solo lectura con la vista previa y la política de cancelación (§6); ruta de servidor para `get_free_slots`, que hoy ejecuta solo `service_role` (5.2). Repositorio + providers, textos ARB y tests |
 | M2b | Sugerencias de menú | Cliente activo: sugerencias de la semana (catálogo de temporada sin cantidad fija, incompatibles tachados, nota libre y pedidos especiales). Evelyn: Menús de la semana, con aprobación o alternativa de los pedidos especiales. Tabla propia con RLS, tests primero |
 | M4 | Pedidos y presupuestos | Bandeja, menú con alérgenos y con las sugerencias a la vista, ajuste de precio, envío, aceptación → sesión (y la ficha de un prospecto pasa a `trial`), vencimiento de presupuestos; presupuesto de eventos sin fórmula, con recetas propias y su vencimiento |
-| M5 | Agenda | Semana y día con sesiones y eventos, huecos libres; Inicio de Evelyn con pendientes accionables |
+| M5 | Agenda | Semana y día con sesiones y eventos, huecos libres; Hoy (el inicio de Evelyn) con pendientes accionables |
 | M6 | Pagos | Según 5.4 (D6 abierta: sección 14). Stripe en modo test: SetupIntent (app y Checkout web), pre-autorización programada, captura única al cocinar, diferencia, pago al final, efectivo, webhooks, idempotencia |
 | M7 | Notificaciones | FCM + email + cron, horario silencioso |
 | M8 | Lanzamiento | i18n completo, privacidad en italiano, deploy web, TestFlight y Play interno |
@@ -553,21 +584,21 @@ Verificar con el commercialista antes de cobrar a clientes reales:
 ## 14. Decisiones abiertas
 
 - Identificador de la app y dominio definitivo. El nombre ya está decidido (Radici) y el dominio es `radicicucina.app`. Falta elegir el bundle id antes de la primera subida a las tiendas: no se puede cambiar después de publicar. Hoy sigue el provisorio (`com.sepusola10.mestolo`); los lugares a cambiar están en `app/README.md`.
-- Sesión mínima: hoy es 150 min (67 € de servicio) aunque sea 1 porción. ¿Se mantiene, se baja la base de 60 min o se fija un pedido mínimo?
 - ¿Se pide tarjeta guardada también a los clientes `pay_after` (para poder cobrar la penalidad por cancelación)?
 - Al revocar el consentimiento de salud se borran las restricciones del cliente. ¿Se borran también las copias en pedidos y presupuestos pasados? Pueden servir como prueba de que Evelyn fue informada de una alergia: decidir con quien asesore en privacidad. Mientras tanto se hace lo que dice la privacy: el retiro se procesa con `private.revoke_health_consent`, que borra también las copias de los pedidos (contrato §10.2). Si se decide conservarlas, cambiar la privacy (finalidad y plazo) y esa función.
 - La confirmación de que nadie tiene alergias (`requests.no_allergies = true`) se trata como dato de la solicitud (art. 6.1.b RGPD, sin consentimiento de salud), y así lo dice la privacy `2026-11-16`. Confirmarlo con quien asesore en privacidad: si se la considera dato de salud, también necesitaría el consentimiento explícito.
 - Alergias de otras personas: el formulario pide las de todos los que van a comer (otros adultos de la casa, invitados de un evento), pero el consentimiento del art. 9.2.a RGPD tiene que darlo cada interesado (por un menor, quien tiene su responsabilidad parental). Hoy quien las escribe declara, en la misma casilla del consentimiento de salud, que esas personas están informadas y de acuerdo, y la privacy `2026-11-16` (§5) le pide informarlas (art. 14) y les reconoce a ellas el derecho a pedir el borrado (contrato §10.2). Confirmar con quien asesore en privacidad si alcanza o si hace falta otro mecanismo (por ejemplo, que Evelyn lo confirme con cada invitado de un evento).
-- Tarifas reales. Con los valores de ejemplo, una sesión de 3 h para 4 personas deja 78 € por unas 4,5 h reales (compra + traslados + cocina): unos 17–18 €/h brutos.
+- Tarifas reales: el servicio se decidió el 15 y 16/11/2026 (150 € por semana, 140 € desde 4 semanas, hasta 5 personas, traslado incluido; 5.1). Falta el costo real por porción (3,80 € de adulto y 2,50 € de niño son de ejemplo) para que la compra estimada se acerque al ticket.
+- La web muestra el precio con `DEFAULT_PRICING` y no lee las tarifas de la cocinera (5.1). Cuando la app tenga la pantalla de Tarifas (§7), ¿se exponen a la web (por ejemplo en `GET …/availability`, que cambia el contrato) o cambiar un precio sigue siendo un PR?
 - Zona de cobertura (¿solo Bergamo y primer cinturón?).
-- Pedido mínimo (ej.: 10 porciones) y recargo por zona lejana.
+- Pedido mínimo y recargo por zona lejana: el traslado va incluido en el precio por semana (decisión del 16/11/2026). ¿Hace falta un recargo para las zonas lejanas?
 - ¿Los tápers los pone el cliente o Evelyn (con depósito)?
 - Política de cancelación definitiva.
 - Satispay sí o no en el MVP.
 
 **De la especificación de la app (15/11/2026)**
-- **D5 · Menú semanal recurrente.** La especificación propone un plazo para sugerir platos (hasta un día antes de la primera sesión de la semana) y repetir el menú de la semana anterior si el cliente no sugiere. Sin decidir: queda para M11, con los planes recurrentes. Si se adopta, el plazo va en hora de Roma, Evelyn ve en Inicio quién no sugirió y la repetición vuelve a pasar el control de alérgenos (5.6): nunca copia un plato inactivo, fuera de temporada o que choque con una restricción vigente.
-- **D6 · Pagos.** ¿Cuándo se pagan el servicio y los insumos? La idea original es cobrar los insumos por adelantado; también se habló de packs mensuales de 4 sesiones. Hasta decidirlo vale 5.4 (y el cobro manual de Fase 0). Un anticipo cambia §1, 5.4 y el criterio 5; un pack prepago choca con «Nessun abbonamento» de la portada y con `payments.session_id` obligatorio. Decidir antes de M6, con datos del piloto y el commercialista.
+- **D5 · Menú semanal recurrente.** La especificación propone un plazo para sugerir platos (hasta un día antes de la primera sesión de la semana) y repetir el menú de la semana anterior si el cliente no sugiere. Sin decidir: queda para M11, con los planes recurrentes. Si se adopta, el plazo va en hora de Roma, Evelyn ve en Hoy quién no sugirió y la repetición vuelve a pasar el control de alérgenos (5.6): nunca copia un plato inactivo, fuera de temporada o que choque con una restricción vigente.
+- **D6 · Pagos.** ¿Cuándo se pagan el servicio y los insumos? La idea original es cobrar los insumos por adelantado. Desde el 16/11/2026 un pedido semanal puede ser de varias semanas, con descuento desde 4 (5.1), y el pago se acuerda con Evelyn (manual). Hasta decidirlo vale 5.4 (y el cobro manual de Fase 0). Un anticipo cambia §1, 5.4 y el criterio 5; cobrar varias semanas juntas choca con `payments.session_id` obligatorio, y la portada dice «nessun rinnovo automatico» (antes «Nessun abbonamento»): un pago recurrente también la cambia. Decidir antes de M6, con datos del piloto y el commercialista. Mientras tanto (decisiones del 16/11/2026), una reserva de varias semanas se cobra por sesión: `payments.session_id` sigue obligatorio, y un cobro que cubre varias semanas queda en un pago por sesión con el mismo `group_id` (área de Evelyn, PR de cobros). La compra va aparte, al costo del ticket.
 - **D7 · Contacto directo en la web.** La especificación pide sumar WhatsApp o email. ¿Se suma, y con qué canal? Solo email es posible sin cambiar el contrato (falta elegir la dirección: la privacy ya publica la de Evelyn y `ciao@radicicucina.app` hoy solo envía). Un link de WhatsApp choca con el contrato (§6), que los prohíbe en la web pública, y con el test de la web que lo verifica: sumarlo cambia los dos en el mismo PR.
 - **Control de insumos con vencimiento.** ¿Es la despensa del cliente (Fase 2, M10) o un stock propio de Evelyn? Lo segundo es nuevo y choca con los insumos cobrados por ticket a cada cliente (art. 15, sección 13): verlo con el commercialista.
 - **Aviso push de pedido nuevo de noche.** Entre las 21:00 y las 8:00 no hay notificaciones (§8). ¿El aviso a Evelyn de un pedido o evento nuevo espera a las 8:00 o es una excepción, como los fallos de pago?

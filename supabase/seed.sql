@@ -59,11 +59,15 @@ insert into public.chefs (id, profile_id, display_name, service_area, whatsapp) 
   ('cef00000-0000-4000-8000-000000000002', 'e0000000-0000-4000-8000-000000000002',
    'Giulia', array['Treviglio','Dalmine'], '+393330000002');
 
--- Evelyn: todos los valores por defecto de la spec (2200, 1200, 380, 250, 15 %, 90, 45, 30, 30, 56, 24, 48, 90)
+-- Evelyn: todos los valores por defecto de la spec (2200, 1200, 380, 250, 15 %, 90, 45, 30, 30, 56, 24, 48, 90;
+-- precio por semana: 15000, 14000 desde 4 semanas, hasta 5 personas)
 insert into public.chef_settings (chef_id) values ('cef00000-0000-4000-8000-000000000001');
--- Giulia: tarifas distintas, para que se note si se mezclan datos entre chefs
-insert into public.chef_settings (chef_id, hourly_rate_cents, travel_fee_cents, shop_minutes, gap_minutes)
-values ('cef00000-0000-4000-8000-000000000002', 2500, 1500, 40, 20);
+-- Giulia: tarifas distintas, para que se note si se mezclan datos entre chefs (también las del
+-- precio por semana: 160 €, 150 € desde 3 semanas, hasta 6 personas)
+insert into public.chef_settings (chef_id, hourly_rate_cents, travel_fee_cents, shop_minutes, gap_minutes,
+                                  weekly_rate_cents, weekly_rate_discounted_cents, weekly_discount_min_weeks,
+                                  weekly_rate_max_people)
+values ('cef00000-0000-4000-8000-000000000002', 2500, 1500, 40, 20, 16000, 15000, 3, 6);
 
 -- Evelyn: lunes a viernes de 9 a 15 (dow: 0 = domingo), como en producción (decisión del 15/11/2026;
 -- migración 20261115130100_default_availability.sql)
@@ -272,7 +276,7 @@ insert into public.sessions (id, chef_id, client_id, request_id, date, start_tim
    'preauth', 7800, 3800, 4370, 3925,
    (date_trunc('week', current_date)::date - 5 + time '14:00') at time zone 'Europe/Rome',
    (date_trunc('week', current_date)::date - 5 + time '14:00') at time zone 'Europe/Rome', null, null),
-  -- Bonetti, pasada y cocinada, paga al final. 2 ad · 1 niño · 5 días · cena (vector 5): 15 porciones, 180 min
+  -- Bonetti, pasada y cocinada, paga al final. 2 ad · 1 niño · 5 días · cena: 15 porciones, 180 min
   ('d0000000-0000-4000-8000-000000000002', 'cef00000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000002',
    'b0000000-0000-4000-8000-000000000002', date_trunc('week', current_date)::date - 3, '14:00', 180, 15, 'cooked', null,
    'pay_after', 7800, 5050, 5808, 5310, null, null, null, null),
@@ -280,7 +284,8 @@ insert into public.sessions (id, chef_id, client_id, request_id, date, start_tim
   ('d0000000-0000-4000-8000-000000000003', 'cef00000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000001',
    'b0000000-0000-4000-8000-000000000003', date_trunc('week', current_date)::date + 8, '10:00', 180, 10, 'confirmed', null,
    'preauth', 7800, 3800, 4370, null, null, null, null, null),
-  -- Sara, presupuesto enviado: sesión held que retiene el horario 48 h. 2 ad · 2 niños · 5 días · cena (vector 1)
+  -- Sara, presupuesto enviado: sesión held que retiene el horario 48 h. 2 ad · 2 niños · 5 días · cena (la
+  -- entrada del vector 1; los 7800 son el servicio por hora de antes del precio por semana, no sus 15000)
   ('d0000000-0000-4000-8000-000000000004', 'cef00000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000003',
    'b0000000-0000-4000-8000-000000000004', date_trunc('week', current_date)::date + 10, '15:00', 180, 20, 'held', now() + interval '47 hours',
    'preauth', 7800, 6300, 7245, null, null, null, null, null),

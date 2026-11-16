@@ -6,7 +6,7 @@ import { CONSENT_VERSION, type ErrorCode, type PublicRequestField, type RequestD
 import { FIELD_ORDER, PAGE_FIELDS, fieldError, firstErrorField, translateErrors, validateRequest } from "./validate.ts";
 
 const ALL_FIELDS: readonly PublicRequestField[] = [
-  "payload", "version", "type", "adults", "kids", "people", "days", "meals", "noAllergies", "allergens", "diets",
+  "payload", "version", "type", "adults", "kids", "people", "days", "meals", "weeks", "noAllergies", "allergens", "diets",
   "restrictionsNote", "preferredDate", "slot", "name", "zone", "phone", "email", "whatsappOptIn", "notes",
   "locale", "consentPrivacy", "consentHealth", "turnstileToken", "requestKey",
 ];
@@ -70,6 +70,16 @@ describe("validateRequest (la misma validación del servidor)", () => {
       expect(validate({ adults: 0, kids: 0 }).people?.key).toBe("errors.people");
       expect(validate({ adults: 0, kids: 1 })).toEqual({});
       expect(validate({ adults: 30, kids: 30 })).toEqual({});
+    });
+
+    it("semanas de 1 a 8 en la semana de comidas; en una sesión extra no cuentan (se manda 1)", () => {
+      expect(validate({ weeks: 8 })).toEqual({});
+      expect(validate({ weeks: 9 }).weeks).toEqual({ key: "errors.weeks" });
+      expect(validate({ weeks: 0 }).weeks?.key).toBe("errors.weeks");
+      expect(validate({ weeks: Number.NaN }).weeks?.key).toBe("errors.weeks");
+      expect(validate({ type: "extra", weeks: 9 })).toEqual({});
+      // Va enseguida después del tipo: el selector está debajo de «¿Qué necesitas?».
+      expect(firstErrorField(validate({ weeks: 9, adults: 0, kids: 0 }))).toBe("weeks");
     });
 
     it("días de 1 a 7", () => {
@@ -169,6 +179,16 @@ describe("translateErrors (respuesta 400 del servidor)", () => {
       fields: { name: { key: "errors.nameRequired" } },
       outdated: true,
     });
+  });
+
+  it("las semanas que rechaza el servidor se marcan en su selector; sin el campo (otra versión) también", () => {
+    expect(translateErrors({ weeks: "range" })).toEqual({ fields: { weeks: { key: "errors.weeks" } }, outdated: false });
+    expect(translateErrors({ weeks: "required" }).fields).toEqual({ weeks: { key: "errors.weeks" } });
+  });
+
+  it("una función de antes (solo la versión 2) rechaza la 3 por versión: «página desactualizada», sin campos", () => {
+    // Unos minutos del despliegue: nunca guarda un pedido de varias semanas como si fuera de una.
+    expect(translateErrors({ version: "invalid" })).toEqual({ fields: {}, outdated: true });
   });
 
   it("con la versión rechazada los errores de campo son de otro contrato: solo «página desactualizada»", () => {

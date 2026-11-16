@@ -8,6 +8,7 @@
 // Turnstile + límite por IP + validación (la lectura de disponibilidad: límite por IP propio).
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import {
+  CHEF_SETTINGS_COLUMNS,
   StoreError,
   availableDatesFromRpc,
   chefFromRow,
@@ -90,9 +91,7 @@ function createStore(): PublicRequestStore {
     async loadChef(chefId) {
       const { data, error } = await supabase
         .from("chef_settings")
-        .select(
-          "hourly_rate_cents, travel_fee_cents, adult_portion_cents, kid_portion_cents, preauth_buffer_pct, min_cook_minutes, chefs(display_name)",
-        )
+        .select(CHEF_SETTINGS_COLUMNS)
         .eq("chef_id", chefId)
         .maybeSingle();
       if (error) throw storeError("load_chef", error);

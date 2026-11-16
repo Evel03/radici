@@ -32,6 +32,8 @@ Map<String, dynamic> requestRow({
   String email = 'giulia@example.test',
   String locale = 'it',
   String? clientStatus = 'prospect',
+  // Semanas del pedido (requests.weeks): 1 en los pedidos anteriores al precio por semana.
+  int weeks = 1,
   // Copia del contacto con que llegó el pedido (requests.contact); null en los de la app.
   Object? contact,
   Object? restrictions = const {
@@ -41,6 +43,7 @@ Map<String, dynamic> requestRow({
   },
   // Respuesta a la pregunta de alergias (requests.no_allergies); null en los pedidos anteriores.
   Object? noAllergies,
+  // Por defecto, una estimación de antes del precio por semana (servicio por hora, sin autoPrice).
   Object? estimate = const {
     'adultPortions': 10,
     'kidPortions': 10,
@@ -64,6 +67,7 @@ Map<String, dynamic> requestRow({
   'kids': 2,
   'days': 5,
   'meals': ['dinner'],
+  'weeks': weeks,
   'restrictions': restrictions,
   'no_allergies': noAllergies,
   'notes': 'Citofono: Rossi',
@@ -100,6 +104,7 @@ ChefRequest buildRequest({
   ClientLocale locale = ClientLocale.it,
   RequestRestrictions? restrictions,
   bool? noAllergies,
+  // Por defecto, una estimación de antes del precio por semana (sin autoPrice).
   RequestEstimate? estimate = const RequestEstimate(
     portions: 20,
     recipes: 3,
@@ -111,16 +116,19 @@ ChefRequest buildRequest({
   String chefId = testChefId,
   String clientId = testClientId,
   ClientStatus? clientStatus = ClientStatus.prospect,
+  RequestType type = RequestType.week,
+  int weeks = 1,
 }) => ChefRequest(
   id: id,
   chefId: chefId,
   clientId: clientId,
-  type: RequestType.week,
+  type: type,
   status: status,
   adults: 2,
   kids: 2,
   days: 5,
   meals: const [Meal.dinner],
+  weeks: weeks,
   restrictions: restrictions,
   noAllergies: noAllergies,
   notes: 'Citofono: Rossi',

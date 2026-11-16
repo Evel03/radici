@@ -2,10 +2,14 @@
 // Puro: la página (richiesta.ts) solo pinta lo que devuelve. Fechas "AAAA-MM-DD" de Europe/Rome.
 // La ventana (DATE_WINDOW: de mañana a 8 semanas, dos o tres meses) y la disponibilidad salen del
 // contrato compartido con el servidor.
+// Varias semanas (un menú y una sesión por semana, el mismo día): se elige el día de la primera y el
+// calendario marca el mismo día de las siguientes con su disponibilidad (la de la misma duración de
+// cocina); sessionDays da la lista. Las que caen fuera de la ventana las confirma Evelyn.
 import {
   availabilityDates,
   type AvailabilityResponse,
 } from "../../../supabase/functions/_shared/availability.ts";
+import { weeklyDates } from "./model.ts";
 
 /** Estado de la consulta de disponibilidad (GET <public-request>/availability). */
 export type AvailabilityState =
@@ -34,6 +38,8 @@ export interface CalendarCell {
   day: number;
   status: DayStatus;
   selected: boolean;
+  /** Número de semana del pedido (2 en adelante) si es el mismo día de una semana siguiente; si no, null. */
+  repeat: number | null;
 }
 
 export interface CalendarMonth extends MonthRef {
@@ -52,7 +58,25 @@ export interface CalendarInput {
    * fuera del horario semanal y Evelyn confirma la fecha cuando contacta.
    */
   applies: boolean;
+  /** Semanas del pedido (1 a 8). Solo cuenta en la semana de comidas (applies): una extra es una sola. */
+  weeks: number;
   availability: AvailabilityState;
+}
+
+/**
+ * Estado de cada semana del pedido en la lista de fechas:
+ * - selected: la primera, el día elegido;
+ * - available / unavailable / pending: el mismo día de una semana siguiente, según la disponibilidad;
+ * - unknown: sin disponibilidad (la consulta falló): Evelyn la confirma;
+ * - outside: después de la ventana del calendario: Evelyn la confirma.
+ */
+export type SessionStatus = "selected" | "available" | "unavailable" | "pending" | "unknown" | "outside";
+
+export interface SessionDay {
+  /** 1 es la primera semana. */
+  week: number;
+  date: string;
+  status: SessionStatus;
 }
 
 const pad = (n: number): string => String(n).padStart(2, "0");
@@ -149,14 +173,42 @@ export function dayStatus(date: string, input: CalendarInput): DayStatus {
   return statusOf(date, new Set(availabilityDates(input.today)), input);
 }
 
+/** Las fechas de las sesiones con el día elegido: el de la primera semana y el mismo día de las siguientes. */
+function sessionDates(input: CalendarInput): string[] {
+  if (input.selected === "") return [];
+  return weeklyDates(input.selected, input.applies ? input.weeks : 1);
+}
+
 export function buildMonth(ref: MonthRef, input: CalendarInput): CalendarMonth {
   const window = new Set(availabilityDates(input.today));
+  // Semana de cada fecha siguiente (la 1 es la elegida, que ya va como selected).
+  const repeats = new Map(sessionDates(input).map((date, i) => [date, i + 1] as const).slice(1));
   const cells: CalendarCell[] = [];
   for (let day = 1; day <= daysInMonth(ref.year, ref.month); day++) {
     const date = isoDate(ref.year, ref.month, day);
-    cells.push({ date, day, status: statusOf(date, window, input), selected: date === input.selected });
+    cells.push({
+      date,
+      day,
+      status: statusOf(date, window, input),
+      selected: date === input.selected,
+      repeat: repeats.get(date) ?? null,
+    });
   }
   return { year: ref.year, month: ref.month, leading: mondayIndex(isoDate(ref.year, ref.month, 1)), cells };
+}
+
+/**
+ * La lista de fechas del pedido, una por semana, con su disponibilidad. Vacía sin día elegido. Una
+ * semana siguiente sin disponibilidad cargada por error queda "unknown"; mientras carga, "pending".
+ */
+export function sessionDays(input: CalendarInput): SessionDay[] {
+  const window = new Set(availabilityDates(input.today));
+  return sessionDates(input).map((date, i): SessionDay => {
+    if (i === 0) return { week: 1, date, status: "selected" };
+    if (!window.has(date)) return { week: i + 1, date, status: "outside" };
+    if (input.availability.kind === "error") return { week: i + 1, date, status: "unknown" };
+    return { week: i + 1, date, status: statusOf(date, window, input) };
+  });
 }
 
 /** Si el día elegido sigue valiendo. Mientras carga la disponibilidad se conserva. */

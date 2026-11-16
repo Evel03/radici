@@ -2,7 +2,7 @@
 // (docs/contracts/public-request.md §2). La función es pública: no hace falta apikey ni sesión.
 // Nunca se registran en consola los datos del pedido ni la respuesta.
 import type { MessageKey, Params } from "../i18n/core.ts";
-import type { PublicRequestErrors, PublicRequestPayload } from "./model.ts";
+import { readPublicEstimate, type PublicRequestErrors, type PublicRequestEstimate, type PublicRequestPayload } from "./model.ts";
 
 export const PUBLIC_REQUEST_PATH = "/functions/v1/public-request";
 
@@ -20,22 +20,13 @@ export function publicRequestUrl(supabaseUrl: string): string {
   return `${supabaseUrl.replace(/\/+$/, "")}${PUBLIC_REQUEST_PATH}?forceFunctionRegion=${FUNCTION_REGION}`;
 }
 
-/** Estimación que guarda y devuelve el servidor (calcQuote con las tarifas de la cocinera), en centavos. */
-export interface ServerEstimate {
-  portions: number;
-  recipes: number;
-  cookMinutes: number;
-  serviceCents: number;
-  groceriesEstCents: number;
-  totalCents: number;
-}
-
 export type SubmitOutcome =
   /**
    * 2xx: el pedido quedó guardado (aunque el cuerpo no se pueda leer). `duplicate`: ya estaba guardado
    * de un envío anterior con la misma clave y este no cambió nada (la estimación es la guardada).
+   * `estimate`: la que guardó el servidor (calcQuote con las tarifas de la cocinera), con precio o sin él.
    */
-  | { kind: "created"; requestId: string | null; estimate: ServerEstimate | null; duplicate: boolean }
+  | { kind: "created"; requestId: string | null; estimate: PublicRequestEstimate | null; duplicate: boolean }
   /** 400: errores por campo (códigos del contrato). */
   | { kind: "invalid"; errors: PublicRequestErrors }
   /** 403: Turnstile rechazado. */
@@ -51,18 +42,6 @@ export type SubmitOutcome =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-const ESTIMATE_KEYS = ["portions", "recipes", "cookMinutes", "serviceCents", "groceriesEstCents", "totalCents"] as const;
-
-function readEstimate(body: Record<string, unknown>): ServerEstimate | null {
-  const raw = body["estimate"];
-  if (!isRecord(raw)) return null;
-  const ok = ESTIMATE_KEYS.every((key) => {
-    const value = raw[key];
-    return typeof value === "number" && Number.isInteger(value) && value >= 0;
-  });
-  return ok ? (Object.fromEntries(ESTIMATE_KEYS.map((key) => [key, raw[key]])) as unknown as ServerEstimate) : null;
 }
 
 function readRequestId(body: Record<string, unknown>): string | null {
@@ -99,7 +78,14 @@ export function rateLimitMessage(seconds: number | null): { key: MessageKey; par
 export function interpretResponse(status: number, body: unknown, retryAfter: string | null, now?: Date): SubmitOutcome {
   if (status >= 200 && status < 300) {
     const data = isRecord(body) ? body : {};
-    return { kind: "created", requestId: readRequestId(data), estimate: readEstimate(data), duplicate: data["duplicate"] === true };
+    // La estimación se lee con la función del contrato: con otra forma queda en null y la pantalla de
+    // gracias usa la de la calculadora.
+    return {
+      kind: "created",
+      requestId: readRequestId(data),
+      estimate: readPublicEstimate(data["estimate"]),
+      duplicate: data["duplicate"] === true,
+    };
   }
   if (status === 400) {
     const errors = readErrors(body);

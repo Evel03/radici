@@ -23,12 +23,17 @@ export {
   isValidEmail,
   normalizePhone,
   parsePublicRequest,
+  publicEstimate,
+  readPublicEstimate,
+  weeklyDates,
 } from "../../../supabase/functions/_shared/public_request.ts";
 export type {
   ErrorCode,
   Locale,
   Meal,
+  PricedEstimate,
   PublicRequestErrors,
+  PublicRequestEstimate,
   PublicRequestField,
   PublicRequestPayload,
   RequestType,
@@ -47,7 +52,12 @@ export interface RequestData {
   kids: number;
   days: number;
   meals: MealOption;
-  /** "" si no eligió fecha; si no, "AAAA-MM-DD" (un día libre del calendario). */
+  /**
+   * Semanas del pedido semanal (1 a LIMITS.maxWeeks): un menú y una sesión de cocina por semana, el mismo
+   * día. Con "extra" no se pregunta y se manda 1, aunque el selector haya quedado en otra.
+   */
+  weeks: number;
+  /** "" si no eligió fecha; si no, "AAAA-MM-DD" (un día libre del calendario: el de la primera semana). */
   preferredDate: string;
   name: string;
   zone: string;
@@ -71,6 +81,11 @@ export function mealsOf(option: MealOption): Meal[] {
 
 export function mealsPerDay(option: MealOption): number {
   return mealsOf(option).length;
+}
+
+/** Semanas que valen para el pedido: las elegidas en una semana de comidas; una en una sesión extra. */
+export function weeksOf(data: Pick<RequestData, "type" | "weeks">): number {
+  return data.type === "week" ? data.weeks : 1;
 }
 
 /**

@@ -7,7 +7,7 @@ export const DEFAULT_LANG: Lang = "it";
 /** Locale de Intl para cada idioma (moneda, fechas). */
 export const LOCALES: Readonly<Record<Lang, string>> = { it: "it-IT", es: "es-ES", en: "en-IE" };
 
-/** Claves con puntos ("request.quote.total") derivadas del JSON italiano: el compilador las verifica. */
+/** Claves con puntos ("request.quote.title") derivadas del JSON italiano: el compilador las verifica. */
 type Leaves<T> = {
   [K in keyof T & string]: T[K] extends string ? K : `${K}.${Leaves<T[K]>}`;
 }[keyof T & string];
