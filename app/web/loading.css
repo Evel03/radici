@@ -1,7 +1,7 @@
-/* Indicador de carga mientras se descarga el motor de Flutter (archivo propio:
-   la CSP de /gestione/ no permite estilos inline en el HTML). Mismos colores
-   que el tema (core/theme.dart): fondo y oliva, en claro y en oscuro; lo
-   verifica test/web/gestione_shell_test.dart. */
+/* Pantalla de carga mientras se descarga el motor de Flutter: el ícono de la
+   app y una rueda (archivo propio: la CSP de /gestione/ no permite estilos
+   inline en el HTML). Mismos colores que el tema (core/theme.dart): fondo y
+   oliva, en claro y en oscuro; lo verifica test/web/gestione_shell_test.dart. */
 html,
 body {
   margin: 0;
@@ -20,8 +20,17 @@ body {
   position: fixed;
   inset: 0;
   display: flex;
+  flex-direction: column;
+  gap: 32px;
   align-items: center;
   justify-content: center;
+}
+
+/* El ícono de la pantalla de inicio, con las esquinas de un ícono de iOS. */
+.loading__icon {
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
 }
 
 .loading__spinner {
