@@ -28,7 +28,6 @@ extension RequestLabels on AppLocalizations {
   String slot(PreferredSlot slot) => switch (slot) {
     PreferredSlot.morning => slotMorning,
     PreferredSlot.afternoon => slotAfternoon,
-    PreferredSlot.any => slotAny,
   };
 
   /// "Pranzo", "Cena" o "Pranzo e cena".
