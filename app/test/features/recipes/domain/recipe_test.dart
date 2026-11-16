@@ -50,6 +50,13 @@ void main() {
       expect(recipe.ingredients, isEmpty);
     });
 
+    test('las notas llegan de recipe_notes como lista de cero o una fila (o la fila sola)', () {
+      expect(Recipe.fromJson(recipeRow(notes: 'Senza aglio.')).notes, 'Senza aglio.');
+      expect(Recipe.fromJson(recipeRow(notes: const <Object>[])).notes, isNull, reason: 'sin notas, sin fila');
+      expect(Recipe.fromJson(recipeRow(notes: const {'notes': 'Senza aglio.'})).notes, 'Senza aglio.');
+      expect(Recipe.fromJson(recipeRow(notes: const {'notes': ''})).notes, isNull);
+    });
+
     test('sin traducciones quedan en null; los 12 meses son «todo el año»', () {
       final recipe = Recipe.fromJson(
         recipeRow(nameEs: null, nameEn: null, seasonMonths: [for (var m = 1; m <= 12; m++) m]),
@@ -100,6 +107,14 @@ void main() {
       ('mes 13', recipeRow(seasonMonths: [13])),
       ('días que no son enteros', recipeRow(fridgeDays: '3')),
       ('sin la lista de ingredientes', recipeRow(ingredients: null)),
+      ('dos filas de notas', recipeRow(notes: const [
+        {'notes': 'A'},
+        {'notes': 'B'},
+      ])),
+      ('notas que no son texto', recipeRow(notes: const [
+        {'notes': 3},
+      ])),
+      ('notas que no son una fila', recipeRow(notes: const ['Senza aglio.'])),
     ]) {
       test('fila rota ($label): FormatException', () {
         expect(() => Recipe.fromJson(row), throwsFormatException);

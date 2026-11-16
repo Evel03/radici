@@ -3,10 +3,10 @@
 // chef_id; el filtro explícito es para el índice y para cuando haya más de una
 // cocinera.
 //
-// Un plato se guarda entero con save_recipe (receta, alérgenos e ingredientes
-// en una transacción); nunca se escriben alérgenos ni ingredientes sueltos.
-// Desactivar o reactivar es un update de `active`. Nada de esto se loguea: las
-// notas son de la cocinera.
+// Un plato se guarda entero con save_recipe (receta, alérgenos, ingredientes y
+// notas en una transacción); nunca se escriben alérgenos ni ingredientes
+// sueltos. Desactivar o reactivar es un update de `active`. Nada de esto se
+// loguea: las notas son de la cocinera (recipe_notes, que el cliente no lee).
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/supabase_client.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';

@@ -53,11 +53,14 @@ void main() {
       expect(request.method, 'GET');
       expect(request.url.path, '/rest/v1/recipes');
       final query = request.url.queryParameters;
+      // Las notas, de recipe_notes (solo de la cocinera): recipes ya no las
+      // tiene, porque el cliente lee la fila entera.
       expect(
         query['select'],
         'id,name_it,name_es,name_en,diet,season_months,fridge_days,freezable,'
-        'freezer_days,notes,active,allergens:recipe_allergens(allergen),'
-        'ingredients:recipe_ingredients(position,name,section,quantity,unit)',
+        'freezer_days,active,allergens:recipe_allergens(allergen),'
+        'ingredients:recipe_ingredients(position,name,section,quantity,unit),'
+        'notes:recipe_notes(notes)',
       );
       expect(query['chef_id'], 'eq.$testChefId');
       // Las recetas de un evento (M3b) no son del catálogo.

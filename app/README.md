@@ -125,11 +125,12 @@ repositorios falsos (`test/support/fakes.dart`).
   desactivados al final, cada plato con sus alérgenos, dieta y temporada. El editor pone primero lo
   rápido (nombre en italiano, los 14 alérgenos, dieta y meses con «Tutto l'anno») y después lo
   opcional: nombres en español e inglés, conservación, ingredientes (cantidad entera para 4
-  porciones en g, ml o piezas, o «q.b.»; sección del súper; orden con botones) y notas. Guarda el
-  plato entero con `save_recipe`, con un id generado en el teléfono: un reintento no lo duplica y,
-  si falla, no se pierde lo cargado. No deja guardar un plato vegano con leche, huevos, pescado o
-  mariscos, ni uno vegetariano con pescado o mariscos. Duplicar abre la copia (otro id) para
-  cambiarle el nombre; desactivar y reactivar tienen «Annulla». Un plato nunca se borra.
+  porciones en g, ml o piezas, o «q.b.»; sección del súper; orden con botones) y notas (solo de la
+  cocinera: se leen de `recipe_notes`, que el cliente no lee). Guarda el plato entero con
+  `save_recipe`, con un id generado en el teléfono: un reintento no lo duplica y, si falla, no se
+  pierde lo cargado. No deja guardar un plato vegano con leche, huevos, pescado o mariscos, ni uno
+  vegetariano con pescado o mariscos (`save_recipe` tampoco lo acepta). Duplicar abre la copia (otro
+  id) para cambiarle el nombre; desactivar y reactivar tienen «Annulla». Un plato nunca se borra.
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English) y salir.
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso

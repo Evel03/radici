@@ -8,8 +8,9 @@
 // transacción, así nunca queda con los alérgenos a medio guardar. La lista de
 // compras de una sesión sale de los ingredientes (PR de la lista de compras).
 //
-// Las notas del plato son de la cocinera: nunca se loguean ni salen en
-// toString.
+// Las notas del plato son de la cocinera: viven en recipe_notes, que el
+// cliente no lee (en recipes las vería: la RLS filtra filas, no columnas), y
+// nunca se loguean ni salen en toString.
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
@@ -134,7 +135,7 @@ abstract class Recipe with _$Recipe {
       fridgeDays: fridgeDays,
       freezable: freezable,
       freezerDays: freezerDays,
-      notes: _optionalText(json['notes']),
+      notes: _notesFromJson(json['notes']),
       active: active,
       ingredients: _ingredientsFromJson(ingredients),
     );
@@ -144,13 +145,15 @@ abstract class Recipe with _$Recipe {
   String toString() => 'Recipe($id)';
 }
 
-/// Columnas que la app lee de `recipes`, con los alérgenos y los ingredientes
-/// embebidos (FK compuestas `(recipe_id, chef_id) → recipes (id, chef_id)`).
+/// Columnas que la app lee de `recipes`, con los alérgenos, los ingredientes y
+/// las notas embebidos (FK compuestas `(recipe_id, chef_id) → recipes (id,
+/// chef_id)`). Las notas llegan como una lista de cero o una fila.
 const String recipeColumns =
     'id, name_it, name_es, name_en, diet, season_months, fridge_days, '
-    'freezable, freezer_days, notes, active, '
+    'freezable, freezer_days, active, '
     'allergens:recipe_allergens(allergen), '
-    'ingredients:recipe_ingredients(position, name, section, quantity, unit)';
+    'ingredients:recipe_ingredients(position, name, section, quantity, unit), '
+    'notes:recipe_notes(notes)';
 
 /// El argumento `p` de save_recipe: el plato entero. Los ingredientes van en
 /// orden (la base les pone la posición). Nunca lleva `active` ni
@@ -183,6 +186,21 @@ String? _optionalText(Object? value) {
   if (value == null) return null;
   if (value is! String) throw const FormatException('Texto inválido');
   return value.isEmpty ? null : value;
+}
+
+/// Las notas embebidas de recipe_notes: PostgREST las manda como una lista
+/// (sin notas, vacía); también se acepta la fila sola, por si un día las
+/// detecta como uno a uno.
+String? _notesFromJson(Object? value) {
+  final row = switch (value) {
+    null || [] => null,
+    [final only] => only,
+    List() => throw const FormatException('Más de una fila de recipe_notes'),
+    _ => value,
+  };
+  if (row == null) return null;
+  if (row is! Map) throw const FormatException('Fila de recipe_notes inválida');
+  return _optionalText(row['notes']);
 }
 
 T _known<T extends Enum>(List<T> values, Object? name, String what) {

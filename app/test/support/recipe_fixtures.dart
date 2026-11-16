@@ -8,7 +8,9 @@ const String minestroneId = 'a0000000-0000-4000-8000-000000000003';
 const String frittataId = 'a0000000-0000-4000-8000-000000000010';
 
 /// Fila de PostgREST como la devuelve `select(recipeColumns)`: los alérgenos
-/// y los ingredientes llegan embebidos, en cualquier orden.
+/// y los ingredientes llegan embebidos, en cualquier orden, y las notas como
+/// una lista de cero o una fila de recipe_notes ([notes] de texto se arma así;
+/// otro valor va tal cual).
 Map<String, dynamic> recipeRow({
   String id = lasagneId,
   Object? nameIt = 'Lasagne alla bolognese',
@@ -42,7 +44,13 @@ Map<String, dynamic> recipeRow({
   'fridge_days': fridgeDays,
   'freezable': freezable,
   'freezer_days': freezerDays,
-  'notes': notes,
+  'notes': switch (notes) {
+    null => const <Object>[],
+    String() => [
+      {'notes': notes},
+    ],
+    _ => notes,
+  },
   'active': active,
   'allergens': allergens,
   'ingredients': ingredients,
