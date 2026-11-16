@@ -3,6 +3,7 @@
 // la búsqueda en los tres idiomas y el aviso al volver del editor.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/features/more/presentation/more_screen.dart';
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
@@ -156,6 +157,21 @@ void main() {
     await tester.tap(byKey('load-error-retry'));
     await tester.pumpAndSettle();
     expect(tile(lasagneId), findsOneWidget);
+  });
+
+  testWidgets('al volver a la lista se actualiza sola, sin deslizar (puede haber cambiado en otro dispositivo)', (
+    tester,
+  ) async {
+    final app = await openList(tester);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(MoreScreen), findsOneWidget);
+
+    app.recipes.recipes[lasagneId] = lasagne().copyWith(nameIt: 'Lasagne verdi');
+    await tester.tap(byKey('more-recipes'));
+    await tester.pumpAndSettle();
+    expect(inTile(lasagneId, 'Lasagne verdi'), findsOneWidget);
+    expect(app.recipes.fetchCalls, 2);
   });
 
   testWidgets('deslizar para actualizar trae lo cargado en otro dispositivo', (tester) async {

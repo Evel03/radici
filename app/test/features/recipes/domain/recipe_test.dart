@@ -104,6 +104,9 @@ void main() {
       ('cantidad sin unidad', recipeRow(ingredients: const [
         {'position': 1, 'name': 'A', 'section': 'other', 'quantity': 2, 'unit': null},
       ])),
+      ('unidad sin cantidad', recipeRow(ingredients: const [
+        {'position': 1, 'name': 'A', 'section': 'other', 'quantity': null, 'unit': 'g'},
+      ])),
       ('mes 13', recipeRow(seasonMonths: [13])),
       ('días que no son enteros', recipeRow(fridgeDays: '3')),
       ('sin la lista de ingredientes', recipeRow(ingredients: null)),
@@ -235,6 +238,22 @@ void main() {
         ]),
         [Allergen.crustaceans, Allergen.fish, Allergen.molluscs],
       );
+    });
+
+    // Los conjuntos son literales aparte: el vegano no sale del vegetariano.
+    test('los dos conjuntos completos, contra los 14 alérgenos', () {
+      expect(dietConflicts(Diet.vegan, Allergen.values), [
+        Allergen.crustaceans,
+        Allergen.eggs,
+        Allergen.fish,
+        Allergen.milk,
+        Allergen.molluscs,
+      ]);
+      expect(dietConflicts(Diet.vegetarian, Allergen.values), [
+        Allergen.crustaceans,
+        Allergen.fish,
+        Allergen.molluscs,
+      ]);
     });
 
     test('sin dieta no hay choque', () {

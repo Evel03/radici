@@ -199,6 +199,71 @@ void main() {
     expect(repository.saveCalls.single.ingredients[1].amount, (quantity: 650, unit: IngredientUnit.ml));
   });
 
+  testWidgets('el editor tapa la barra de navegación, nuevo o guardado', (tester) async {
+    final app = await openEditor(tester, location: '/altro/piatti/$lasagneId');
+    expect(byKey('chef-nav-bar'), findsNothing);
+    app.go('/altro/piatti/nuovo');
+    await tester.pumpAndSettle();
+    expect(find.byType(RecipeEditorScreen), findsOneWidget);
+    expect(byKey('chef-nav-bar'), findsNothing);
+  });
+
+  // find.text encuentra el error aunque esté fuera de la pantalla: hitTestable
+  // exige que se pueda tocar.
+  testWidgets('a 375×667, con un error en un ingrediente de abajo, guardar lleva a ese campo', (tester) async {
+    await openEditor(tester, location: '/altro/piatti/$lasagneId', size: const Size(375, 667));
+    await tester.enterText(byKey('recipe-ingredient-quantity-1'), '');
+    await tester.pumpAndSettle();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.drag(byKey('recipe-editor'), const Offset(0, 5000));
+    await tester.pumpAndSettle();
+    final field = find.descendant(of: byKey('recipe-ingredient-quantity-1'), matching: find.byType(EditableText));
+    expect(field.hitTestable(), findsNothing, reason: 'arriba de todo, la fila queda fuera de la pantalla');
+
+    await save(tester);
+    expect(find.text('Scrivi la quantità o scegli «q.b.».'), findsOneWidget);
+    expect(field.hitTestable(), findsOneWidget);
+    expect(repository.saveCalls, isEmpty);
+  });
+
+  testWidgets('«q.b.» borra la cantidad escrita, y al volver a gramos el campo sigue vacío', (tester) async {
+    await openEditor(tester);
+    await tester.enterText(byKey('recipe-name-it'), 'Frittata di zucchine');
+    await tapVisible(tester, byKey('recipe-ingredient-add'));
+    await tester.enterText(byKey('recipe-ingredient-name-0'), 'Zucchine');
+    await tester.enterText(byKey('recipe-ingredient-quantity-0'), '200');
+    TextField quantity() => tester.widget<TextField>(byKey('recipe-ingredient-quantity-0'));
+
+    await choose(tester, 'recipe-ingredient-unit-0', 'q.b.');
+    expect(quantity().controller!.text, isEmpty);
+    expect(quantity().enabled, isFalse);
+
+    await choose(tester, 'recipe-ingredient-unit-0', 'g');
+    expect(quantity().controller!.text, isEmpty, reason: 'lo que se ve es lo que se guarda');
+    expect(quantity().enabled, isTrue);
+    await save(tester);
+    expect(find.text('Scrivi la quantità o scegli «q.b.».'), findsOneWidget);
+    expect(repository.saveCalls, isEmpty);
+  });
+
+  testWidgets('mientras guarda no se puede salir, aunque la copia no tenga cambios', (tester) async {
+    repository.pendingSave = Completer<void>();
+    await openEditor(tester, location: '/altro/piatti/nuovo?copia=$lasagneId');
+    await tester.tap(byKey('recipe-save'));
+    await tester.pump();
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(RecipeEditorScreen), findsOneWidget);
+    expect(byKey('recipe-discard-dialog'), findsNothing, reason: 'no hay nada que descartar');
+
+    repository.pendingSave!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(RecipesScreen), findsOneWidget);
+    expect(repository.recipes[_newId], lasagne().copyWith(id: _newId));
+  });
+
   testWidgets('sin nombre no guarda: marca el campo y avisa', (tester) async {
     await openEditor(tester);
     await save(tester);

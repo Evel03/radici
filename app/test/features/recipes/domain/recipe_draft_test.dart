@@ -73,6 +73,12 @@ void main() {
       expect(copy.id, _newId);
       expect(copy.copyWith(id: risottoId), recipeDraftFrom(risotto()));
     });
+
+    test('toString no muestra las notas (son de la cocinera)', () {
+      final draft = recipeDraftFrom(risotto());
+      expect(draft.toString(), 'RecipeDraft($risottoId)');
+      expect('${[draft]}', isNot(contains('burro')));
+    });
   });
 
   group('validación', () {
@@ -93,6 +99,8 @@ void main() {
       final errors = validateRecipeDraft(draft);
       expect(errors.nameEs, isNull);
       expect(errors.nameEn, TextError.tooLong);
+      expect(validateRecipeDraft(_valid().copyWith(nameEs: 'b' * 121)).nameEs, TextError.tooLong);
+      expect(validateRecipeDraft(_valid().copyWith(nameEs: 'b' * 120)).isEmpty, isTrue);
     });
 
     test('las notas tienen hasta 500 caracteres', () {

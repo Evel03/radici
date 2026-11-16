@@ -308,6 +308,20 @@ void main() {
       expect(inCatalog(_id1), lasagne().copyWith(id: _id1, nameIt: 'Lasagne vegetariane'));
       expect(inCatalog(lasagneId), lasagne());
     });
+
+    // save_recipe no recibe active: el plato nuevo nace activo en la base, y
+    // la lista tiene que decir lo mismo (no heredar el estado del original).
+    test('la copia de un plato desactivado sale activa, en la lista y en el servidor', () async {
+      await start();
+      const copyFrittata = RecipeEditorTarget.copy(frittataId);
+      final editor = open(copyFrittata)..setNameIt('Frittata di zucchine e menta');
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      expect(inCatalog(_id1)!.active, isTrue);
+      expect(repository.recipes[_id1]!.active, isTrue);
+      expect(stateOf(copyFrittata).source!.active, isTrue);
+      expect(inCatalog(frittataId)!.active, isFalse, reason: 'el original sigue desactivado');
+    });
   });
 
   group('desactivar y reactivar', () {

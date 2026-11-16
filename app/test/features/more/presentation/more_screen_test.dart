@@ -159,5 +159,25 @@ void main() {
       expect(find.byType(RecipesScreen), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    // /gestione/ en una computadora: el menú de la cuenta sigue siendo un camino.
+    testWidgets('el menú de la cuenta abre Impostazioni', (tester) async {
+      await openApp(tester, size: const Size(1200, 800));
+      await tester.tap(byKey('account-menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('account-settings'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsScreen), findsOneWidget);
+    });
+
+    testWidgets('y «Esci» del menú de la cuenta cierra la sesión y lleva al login', (tester) async {
+      final app = await openApp(tester, size: const Size(1200, 800));
+      await tester.tap(byKey('account-menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('account-logout'));
+      await tester.pumpAndSettle();
+      expect(app.auth.user, isNull);
+      expect(find.byType(LoginScreen), findsOneWidget);
+    });
   });
 }

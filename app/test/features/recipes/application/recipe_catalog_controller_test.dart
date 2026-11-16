@@ -174,6 +174,24 @@ void main() {
       expect(byId(lasagneId).active, isTrue);
     });
 
+    // Como un servidor que contesta la lectura antes de aplicar el PATCH: la
+    // lectura trae el plato activo mientras desactivar sigue en vuelo.
+    test('si las dos lecturas se cruzan con un desactivar en vuelo, queda lo local', () async {
+      await start();
+      repository.pendingSetActive = Completer<void>();
+      final deactivating = controller().setActive(lasagneId, active: false);
+      await pumpEventQueue();
+      repository.recipes[lasagneId] = lasagne();
+
+      await controller().refresh();
+      expect(repository.fetchCalls, 3, reason: 'la carga y dos lecturas descartadas');
+      expect(byId(lasagneId).active, isFalse, reason: 'queda lo local');
+
+      repository.pendingSetActive!.complete();
+      await deactivating;
+      expect(byId(lasagneId).active, isFalse);
+    });
+
     test('un plato que ya no está en la lista no hace nada', () async {
       await start();
       await controller().setActive('no-existe', active: false);
