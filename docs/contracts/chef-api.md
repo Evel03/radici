@@ -5,7 +5,7 @@ Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cue
 
 ## 1. Para qué
 
-- Es la única puerta de la app de Evelyn para crear, mover y cancelar sesiones: los estados de sesión solo cambian vía Edge Functions, nunca desde la app (CLAUDE.md). La app no tiene privilegios sobre esas filas; la función llama a las funciones SQL `chef_*`, que solo ejecuta `service_role`.
+- Es la única puerta de la app de Evelyn para crear, mover y cancelar sesiones: los estados de sesión solo cambian vía Edge Functions, nunca desde la app (CLAUDE.md). La app no tiene privilegios sobre esas filas, ni puede borrar pedidos o fichas (borrar una ficha se llevaba en cascada su reserva); la función llama a las funciones SQL `chef_*`, que solo ejecuta `service_role`.
 - Una reserva es un pedido aceptado más sus sesiones: una sesión `confirmed` por semana, de 1 a 8 semanas, con `pay_mode = 'manual'` (SPEC §4 y §5.2). Hasta M4 nace sin presupuesto ni retención de 48 h.
 - Rutas (todas `POST https://<ref>.supabase.co/functions/v1/chef/<ruta>`):
 
@@ -58,6 +58,7 @@ Los 409:
 | `{ "error": "requestNotNew", "status": "accepted" }` | el pedido ya no está `new` y no es un reintento; `status` es su estado actual |
 | `{ "error": "sessionNotMovable", "status": "cooked" }` | solo se mueve una sesión `held` o `confirmed`; `status` es el actual |
 | `{ "error": "invalidTransition", "sessionId": uuid }` | al cancelar, esa sesión está `cooked` o `paid`; no se cancela ninguna |
+| `{ "error": "hasPayments", "sessionIds": [uuid] }` | al cancelar sin `allowWithPayments`, esas semanas ya están cobradas; no se cancela ninguna (§6) |
 | `{ "error": "conflict" }` | otro choque (no debería pasar) |
 
 Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato; un número que no es entero), `range`, `tooLong`, `dateOutOfRange`, `sameWeek`, `order`, `weeksOnlyForWeek` y `conflict`. Los campos de un objeto van con punto (`newClient.name`, `household.meals`); `client`, `people` y `cents` agrupan varios.
@@ -78,7 +79,7 @@ Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato;
 | `cookMinutes` | entero de 1 a 720 | minutos de cocina de cada semana. La compra y el margen los copia la base de `chef_settings` |
 | `portions` | entero de 0 a 840 | porciones de cada semana (0 por defecto) |
 | `groceriesEstCents` | entero de 0 a 10 000 000 | compra estimada de cada semana (0 por defecto). La compra va aparte, al costo del ticket |
-| `serviceTotalCents` | entero de 0 a 10 000 000 | precio del servicio de **toda** la reserva, que fija Evelyn (0 por defecto). Se reparte en centavos entre las semanas: los que sobran van a las primeras (500 € en 3 son 166,67 + 166,67 + 166,66) |
+| `serviceTotalCents` | entero de 0 a 10 000 000 | precio del servicio de **toda** la reserva, que fija Evelyn. **Obligatorio** salvo en el `dryRun` (`required`): ninguna ruta lo cambia después. `0` vale (sin cargo); en un `dryRun` sin precio las semanas salen con 0. Se reparte en centavos entre las semanas: los que sobran van a las primeras (500 € en 3 son 166,67 + 166,67 + 166,66) |
 | `requestKey` | uuid | idempotencia. Obligatoria a mano salvo en el `dryRun`; desde un pedido es opcional (ver abajo) |
 | `dryRun` | boolean | `true`: solo devuelve el estado de cada fecha, sin escribir nada |
 
@@ -146,7 +147,8 @@ Respuesta `200`:
 | Campo | Tipo | Regla |
 |---|---|---|
 | `sessionIds` | `uuid[]` | de 1 a 100 (se quitan los repetidos) |
-| `reason` | string | un código snake_case de hasta 40 caracteres, nunca texto libre (el cliente con cuenta puede leer su sesión). Por defecto `chef_cancelled` |
+| `reason` | `"chef_cancelled"` \| `"client_cancelled"` \| `"chef_unavailable"` | uno de estos códigos (`CANCEL_REASONS`), nunca texto libre: el cliente con cuenta puede leer su sesión. Por defecto `chef_cancelled`; `client_cancelled`, lo pidió la clienta; `chef_unavailable`, Evelyn no puede ir |
+| `allowWithPayments` | boolean | `true`: cancela también las semanas ya cobradas, para registrar la devolución (por defecto `false`) |
 
 Respuesta `200`:
 
@@ -156,16 +158,19 @@ Respuesta `200`:
 
 - Pasa a `cancelled` las sesiones `held`, `confirmed` o `shopping_done`, con `cancelled_at` y `cancel_reason`. Una ya cancelada no falla: va en `alreadyCancelled`.
 - Todo o nada: si alguna está `cooked` o `paid`, `409 invalidTransition` con esa sesión y no se cancela ninguna.
-- `withPayments`: las que tenían algún cobro. La app ofrece pasar la semana al final de la reserva o registrar la devolución (decisión 5 del plan; los cobros manuales llegan en el PR 10).
+- **Semanas ya cobradas** (algún pago `succeeded` que no es una devolución; un cobro pendiente no cuenta). Una sesión cancelada no se mueve ni se reactiva, así que sin `allowWithPayments` la función responde `409 hasPayments` con esas semanas y no cancela ninguna. La app ofrece entonces (decisión 5 del plan):
+  1. **Pasar la semana al final de la reserva**, con `/sessions/move` (§5); el cobro queda en esa semana.
+  2. **Cancelarla y devolver el cobro**: repite la cancelación con `allowWithPayments: true` y registra la devolución (los cobros manuales y las devoluciones llegan en el PR 10).
+- `withPayments`: las de la lista que tienen algún cobro, canceladas ahora (con `allowWithPayments`) o antes. Son las que esperan su devolución.
 - Una semana cancelada vuelve a aparecer libre en el calendario de la web (`get_free_days` no cuenta las canceladas).
 
 ## 7. Base de datos
 
 Las funciones son de la migración `20261116150100_bookings.sql` (SPEC §5.2): `security definer`, `search_path = ''`, ejecutables solo por `service_role`. Ninguna escribe en el log.
 
-- `public.chef_create_booking(p_chef_id, p_dates, p_start, p_cook_minutes, p_portions, p_groceries_est_cents, p_service_total_cents, p_request_id, p_client_id, p_new_client, p_type, p_household, p_locale, p_request_key, p_dry_run) → jsonb`
+- `public.chef_create_booking(p_chef_id, p_dates, p_start, p_cook_minutes, p_service_total_cents, p_portions, p_groceries_est_cents, p_request_id, p_client_id, p_new_client, p_type, p_household, p_locale, p_request_key, p_dry_run) → jsonb`. `p_service_total_cents` no tiene valor por defecto (null es `invalid_cents`).
 - `public.chef_move_session(p_chef_id, p_session_id, p_date, p_start, p_cook_minutes, p_dry_run) → jsonb`
-- `public.chef_cancel_sessions(p_chef_id, p_session_ids, p_reason) → jsonb`
+- `public.chef_cancel_sessions(p_chef_id, p_session_ids, p_reason, p_allow_with_payments) → jsonb`
 
 La función pasa los argumentos en snake_case (`toCreateBookingParams`) y convierte las respuestas a camelCase, con las horas en `"HH:MM"`; una respuesta con otra forma da `500` (`unexpected_result`). Los errores de la base:
 
@@ -173,6 +178,7 @@ La función pasa los argumentos en snake_case (`toCreateBookingParams`) y convie
 |---|---|
 | `23P01 slot_taken`, `23505 week_taken` (detalle: la fecha) | `409 slotTaken` / `weekTaken` con `date` |
 | `55000 request_not_new`, `session_not_movable` (detalle: el estado), `invalid_transition` (detalle: la sesión) | `409` con `status` o `sessionId` |
+| `55000 has_payments` (detalle: las sesiones cobradas, separadas por coma) | `409 hasPayments` con `sessionIds` |
 | `P0002 request_not_found`, `client_not_found`, `session_not_found` | `404` |
 | `P0002 chef_not_found` (la cocinera está en `chefs` pero no en `chef_settings`) | `500` |
 | `22023` con un código propio (`invalid_dates`, `dates_same_week`, `invalid_household`, `request_key_conflict`, …) | `400` con su campo; un código desconocido, `payload: "invalid"` |
@@ -180,7 +186,7 @@ La función pasa los argumentos en snake_case (`toCreateBookingParams`) y convie
 | sin código (la base no respondió), `08xxx`, `40xxx`, `53xxx`, `57xxx`, `58xxx` o `PGRST000`–`PGRST003` | `503` |
 | cualquier otro (por ejemplo `PGRST202`: la función SQL no existe, la migración no está desplegada) | `500` |
 
-De un error de la base solo se usan el código, el mensaje si es un código propio en snake_case y el detalle si tiene la forma esperada (una fecha, un estado o un uuid). El mensaje y el detalle de Postgres pueden traer la fila, con datos personales: nunca pasan ni a la respuesta ni al log.
+De un error de la base solo se usan el código, el mensaje si es un código propio en snake_case y el detalle si tiene la forma esperada (una fecha, un estado, un uuid o una lista de hasta 100 uuid). El mensaje y el detalle de Postgres pueden traer la fila, con datos personales: nunca pasan ni a la respuesta ni al log.
 
 ## 8. Configuración
 
@@ -200,7 +206,7 @@ No tiene secretos propios. En local, `npx supabase start` sirve la función con 
 
 ## 10. Logs
 
-Solo evento, ruta, códigos, contadores e ids. Nunca nombres, teléfonos, emails, zonas, direcciones, notas, restricciones, fechas ni tokens (un test espía lo comprueba en todos los caminos, también con errores de la base que traen la fila).
+Solo evento, ruta, códigos, contadores e ids. Nunca nombres, teléfonos, emails, zonas, direcciones, notas, restricciones, fechas ni tokens. Los tests lo comprueban con un espía en todos los caminos del handler: cada evento de esta tabla (salvo `config_incomplete`, que escribe `index.ts` al arrancar, solo con nombres de variables), también con errores de la base que traen la fila, una respuesta de la base que lanza al leerla y un cuerpo que se corta mientras se lee.
 
 | Evento | Campos |
 |---|---|
@@ -219,6 +225,6 @@ Solo evento, ruta, códigos, contadores e ids. Nunca nombres, teléfonos, emails
 
 ## 11. Pruebas
 
-- `npm test`: `supabase/functions/_shared/chef_api.test.ts` (validación), `supabase/functions/chef/handler.test.ts` (401, 403, 400 por campo, 409 con la fecha, `dryRun` que no escribe, reintento con la misma clave, errores de la base y el espía de logs) y el paso del workflow en `supabase/scripts/deploy-supabase.test.ts`.
-- pgTAP `13_bookings`: las funciones SQL (reparto, chequeos, choques, reintentos, transiciones y permisos).
+- `npm test`: `supabase/functions/_shared/chef_api.test.ts` (validación), `supabase/functions/chef/handler.test.ts` (401 antes de leer el cuerpo, 403, 400 por campo, 409 con la fecha o las sesiones cobradas, `dryRun` que no escribe, reintento con la misma clave, la cocinera siempre del token, errores de la base y el espía de logs) y el paso del workflow en `supabase/scripts/deploy-supabase.test.ts`.
+- pgTAP `13_bookings`: las funciones SQL (reparto, chequeos y su prioridad, choques, reintentos, transiciones, mover, cancelar con y sin cobros, y permisos, también que la app no borra fichas).
 - En local, de punta a punta: `npx supabase start` (con `-x` se pueden dejar afuera los servicios que no hacen falta: alcanza con la base, Kong, Auth, PostgREST y el runtime de funciones), un token con `POST /auth/v1/token?grant_type=password` para `evelyn@example.test` (la contraseña del seed) y las llamadas a `/functions/v1/chef/…`.
