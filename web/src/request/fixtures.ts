@@ -6,7 +6,7 @@ import it from "../i18n/it.json";
 import { createSiteI18n } from "../i18n/site.ts";
 import type { RequestData } from "./model.ts";
 
-/** Hoy en Europe/Rome para los tests: la fecha preferida va del 20/10 al 02/11/2026. */
+/** Hoy en Europe/Rome para los tests: la fecha preferida va del 20/10 al 14/12/2026 (8 semanas). */
 export const TODAY = "2026-10-19";
 
 /** Token que generan las sitekeys de prueba de Turnstile. */

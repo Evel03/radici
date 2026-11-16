@@ -5,12 +5,13 @@ import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
 import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
-import { MEAL_OPTIONS, REQUEST_TYPES } from "../request/model.ts";
-import { FIELD_ORDER } from "../request/validate.ts";
+import { DATE_WINDOW, MEAL_OPTIONS, REQUEST_TYPES } from "../request/model.ts";
+import { FIELD_ORDER, fieldError } from "../request/validate.ts";
 import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang, type Lang } from "./core.ts";
 import en from "./en.json";
 import es from "./es.json";
 import itJson from "./it.json";
+import { createSiteI18n } from "./site.ts";
 
 const dicts = { it: flatten(itJson), es: flatten(es), en: flatten(en) };
 const itKeys = Object.keys(dicts.it).sort();
@@ -147,6 +148,43 @@ describe("claves usadas por la web", () => {
       expect(text, file).not.toMatch(/wa\.me|api\.whatsapp\.com|whatsapp:\/\//i);
     }
   });
+});
+
+describe("ventana de la fecha preferida: se dice en semanas", () => {
+  // «Hasta dentro de 56 días» se lee mal: los textos dicen «las próximas 8 semanas», con el número
+  // calculado del contrato (horizonWeeks en site.ts), nunca escrito a mano. Entre el número y la palabra va
+  // un espacio duro (U+00A0): en el teléfono el «8» no queda solo al final de la línea.
+  const WINDOW_KEYS = ["request.dateHint", "request.calendar.noneFree", "errors.date"] as const;
+  const WEEKS: Record<Lang, string> = { it: "settimane", es: "semanas", en: "weeks" };
+  const NBSP = "\u00a0";
+
+  it("la ventana del contrato son semanas enteras", () => {
+    expect(DATE_WINDOW.maxDaysAhead % 7).toBe(0);
+  });
+
+  for (const lang of LANGS) {
+    it(`${lang}: los textos de la ventana usan {horizonWeeks}, sin números escritos a mano`, () => {
+      for (const key of WINDOW_KEYS) {
+        const template = dicts[lang][key] ?? "";
+        expect(placeholders(template), key).toEqual(["horizonWeeks"]);
+        expect(template, key).not.toMatch(/\d/);
+        expect(template, key).toContain(`{horizonWeeks}${NBSP}${WEEKS[lang]}`);
+      }
+      // Ningún texto queda con la ventana en días.
+      for (const [key, template] of Object.entries(dicts[lang])) {
+        expect(placeholders(template), key).not.toContain("horizonDays");
+      }
+    });
+
+    it(`${lang}: dicen las ${DATE_WINDOW.maxDaysAhead / 7} ${WEEKS[lang]}, también el error de la fecha`, () => {
+      const i18n = createSiteI18n(lang, dicts[lang], "Radici");
+      const expected = `${DATE_WINDOW.maxDaysAhead / 7}${NBSP}${WEEKS[lang]}`;
+      expect(i18n.t("request.dateHint")).toContain(expected);
+      expect(i18n.t("request.calendar.noneFree")).toContain(expected);
+      const error = fieldError("preferredDate", "dateOutOfRange");
+      expect(i18n.t(error.key, error.params)).toContain(expected);
+    });
+  }
 });
 
 describe("privacy", () => {

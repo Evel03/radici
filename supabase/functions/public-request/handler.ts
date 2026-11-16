@@ -486,7 +486,7 @@ type Reply = (status: number, body: unknown, extra?: Record<string, string>) => 
 
 /**
  * GET …/availability?minutes=N (contrato §11): para cada día de la ventana del formulario (de mañana
- * a +14, en Roma), si la cocinera tiene al menos un horario libre para esa duración de cocina.
+ * a +56, 8 semanas, en Roma), si la cocinera tiene al menos un horario libre para esa duración de cocina.
  * El 200 y el 400 dependen solo de la URL: caché pública de un minuto. Los errores, no-store.
  */
 async function availabilityRoute(deps: HandlerDeps, request: Request, url: URL, reply: Reply): Promise<Response> {

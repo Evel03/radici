@@ -12,7 +12,8 @@ import { availabilityUrl, fetchAvailability } from "../request/availability.ts";
 import {
   availabilityState,
   buildMonth,
-  initialMonthIndex,
+  calendarNav,
+  coversWindow,
   noFreeDays,
   selectionStillValid,
   windowMonths,
@@ -355,7 +356,8 @@ function startRequestPage(shell: Shell): void {
         // Llegó tarde: mientras tanto cambió la duración.
         if (seq !== availabilitySeq) return;
         const state = availabilityState(response, minutes);
-        if (state.kind === "ready") availabilityCache.set(minutes, state);
+        // Solo si cubre la ventana: la de la función de antes (14 días, durante un despliegue) se vuelve a pedir.
+        if (state.kind === "ready" && coversWindow(state.days, todayInRome())) availabilityCache.set(minutes, state);
         availability = state;
         update();
       });
@@ -366,13 +368,14 @@ function startRequestPage(shell: Shell): void {
     const { i18n } = shell;
     const input = calendarInput(data);
     const months = windowMonths(input.today);
-    if (!monthTouched) monthIndex = initialMonthIndex(input);
-    monthIndex = Math.min(Math.max(monthIndex, 0), months.length - 1);
-    const ref = months[monthIndex];
+    // Dos o tres meses (8 semanas): el mes, el recorte y las flechas salen de calendarNav.
+    const nav = calendarNav(input, monthIndex, monthTouched);
+    monthIndex = nav.index;
+    const ref = months[nav.index];
     if (!ref) return;
     const view = buildMonth(ref, input);
-    calendarEls.prev.disabled = monthIndex === 0;
-    calendarEls.next.disabled = monthIndex === months.length - 1;
+    calendarEls.prev.disabled = !nav.prev;
+    calendarEls.next.disabled = !nav.next;
 
     const signature = JSON.stringify([i18n.lang, view.year, view.month, view.cells.map((c) => `${c.status}${c.selected ? "*" : ""}`)]);
     if (signature !== calendarPainted) {
@@ -726,9 +729,14 @@ function startRequestPage(shell: Shell): void {
     update();
   });
   const moveMonth = (delta: number): void => {
+    // Al llegar al primer o al último mes, la flecha tocada se deshabilita. Si tenía el foco, pasa a la
+    // otra: si no, se iría a body y con teclado o lector de pantalla habría que volver a buscar el calendario.
+    const [clicked, other] = delta < 0 ? [calendarEls.prev, calendarEls.next] : [calendarEls.next, calendarEls.prev];
+    const hadFocus = document.activeElement === clicked;
     monthTouched = true;
     monthIndex += delta;
     renderCalendar(readForm());
+    if (hadFocus && clicked.disabled) (other.disabled ? calendarEls.grid : other).focus({ preventScroll: true });
   };
   calendarEls.prev.addEventListener("click", () => moveMonth(-1));
   calendarEls.next.addEventListener("click", () => moveMonth(1));

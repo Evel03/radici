@@ -347,6 +347,14 @@ test("fecha fuera de la ventana según la fecha de Roma de hoy", async () => {
   const response = await handle(post(payload({ preferredDate: "2026-10-19" })));
   assert.equal(response.status, 400);
   assert.deepEqual(await json(response), { errors: { preferredDate: "dateOutOfRange" } });
+
+  // Hasta 8 semanas: el último día (+56) entra y el siguiente no.
+  const last = harness({ env: { EMAIL_TRANSPORT: "log" } });
+  assert.equal((await last.handle(post(payload({ preferredDate: "2026-12-14" })))).status, 201);
+  await last.settle();
+  const after = await handle(post(payload({ preferredDate: "2026-12-15" })));
+  assert.equal(after.status, 400);
+  assert.deepEqual(await json(after), { errors: { preferredDate: "dateOutOfRange" } });
 });
 
 // ---------------------------------------------------------------------------
@@ -934,20 +942,23 @@ function getAvailability(query: string, headers: Record<string, string> = {}, me
 
 type AvailabilityBody = { days: Array<{ date: string; available: boolean }> };
 
-test("disponibilidad: 200 con los 14 días desde mañana en Roma, marcados según get_free_days", async () => {
+test("disponibilidad: 200 con los 56 días desde mañana en Roma, marcados según get_free_days", async () => {
   const run = harness();
-  run.store.freeDates = ["2026-10-21", "2026-10-22", "2026-11-02"];
+  run.store.freeDates = ["2026-10-21", "2026-10-22", "2026-11-02", "2026-12-14"];
   // forceFunctionRegion lo agrega la web (como en el POST); la función no lo lee.
   const response = await run.handle(getAvailability("?minutes=180&forceFunctionRegion=eu-central-1"));
   assert.equal(response.status, 200);
   const body = await json(response);
-  assert.deepEqual(body, buildAvailabilityResponse("2026-10-19", 180, ["2026-10-21", "2026-10-22", "2026-11-02"]));
+  assert.deepEqual(body, buildAvailabilityResponse("2026-10-19", 180, ["2026-10-21", "2026-10-22", "2026-11-02", "2026-12-14"]));
   const { days } = body as AvailabilityBody;
   assert.equal(days.length, AVAILABILITY_DAYS);
-  assert.deepEqual([days[0]?.date, days[13]?.date], ["2026-10-20", "2026-11-02"]);
-  assert.deepEqual(days.filter((day) => day.available).map((day) => day.date), ["2026-10-21", "2026-10-22", "2026-11-02"]);
-  // De mañana a +14: los mismos días que se pueden elegir en el formulario.
-  assert.deepEqual(run.store.freeDaysCalls, [{ chefId: CHEF_ID, cookMinutes: 180, fromDate: "2026-10-20", days: 14 }]);
+  assert.deepEqual([days[0]?.date, days[55]?.date], ["2026-10-20", "2026-12-14"]);
+  assert.deepEqual(
+    days.filter((day) => day.available).map((day) => day.date),
+    ["2026-10-21", "2026-10-22", "2026-11-02", "2026-12-14"],
+  );
+  // De mañana a +56 (8 semanas): los mismos días que se pueden elegir en el formulario.
+  assert.deepEqual(run.store.freeDaysCalls, [{ chefId: CHEF_ID, cookMinutes: 180, fromDate: "2026-10-20", days: 56 }]);
   assert.equal(run.store.submitted.length, 0);
   assert.equal(run.fetchCalls.length, 0, "es una lectura: sin Turnstile ni avisos");
 });

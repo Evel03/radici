@@ -14,11 +14,11 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(74);
+select plan(78);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
---   C1: valores por defecto (compra 45, margen 30, paso 30, horizonte 14, aviso 24 h) y el
+--   C1: valores por defecto (compra 45, margen 30, paso 30, horizonte 56, aviso 24 h) y el
 --       horario decidido el 15/11/2026: lunes a viernes de 9 a 15.
 --   C2: otra cocinera, todos los días de 9 a 15 (cambios de hora).
 --   C3: para las funciones públicas: todos los días de 8 a 20 y sin aviso mínimo.
@@ -223,15 +223,39 @@ select is(
 update public.chef_settings set min_notice_hours = 24 where chef_id = '7e5f1000-0000-4000-8000-000000000001';
 
 -- =====================================================================
--- 5. Horizonte
+-- 5. Horizonte: de mañana a hoy + booking_horizon_days. Por defecto 56 (8 semanas, decisión del
+--    15/11/2026): la ventana del formulario, DATE_WINDOW.maxDaysAhead en el contrato. Si se separan,
+--    falla availability.test.ts (compara el valor por defecto de las migraciones con el contrato).
+--    Las cocineras que ya existían (en producción, Evelyn en 14) las pasa a 56
+--    private.replace_booking_horizon: la prueba 10_booking_horizon.
 -- =====================================================================
+select col_default_is(
+  'public', 'chef_settings', 'booking_horizon_days', '56'::text,
+  'booking_horizon_days vale 56 por defecto: las 8 semanas del formulario'
+);
+select is(
+  (select array_agg(s.booking_horizon_days order by s.chef_id)
+   from public.chef_settings s
+   where s.chef_id in ('cef00000-0000-4000-8000-000000000001', 'cef00000-0000-4000-8000-000000000002')),
+  array[56, 56],
+  'el valor por defecto llega a las filas nuevas: las cocineras del seed (sembradas sin booking_horizon_days) tienen 56'
+);
+select is(
+  (select max(c.day)
+   from private.free_slot_candidates('7e5f1000-0000-4000-8000-000000000001', 150, '2027-03-02', 90,
+                                     '2027-03-01 08:00 Europe/Rome') as c),
+  date '2027-04-26',
+  'con el valor por defecto, el último día es el lunes 26/04 (hoy + 56) aunque se pidan 90'
+);
+
+update public.chef_settings set booking_horizon_days = 14 where chef_id = '7e5f1000-0000-4000-8000-000000000001';
 select is(
   (select array_agg(distinct c.day order by c.day)
    from private.free_slot_candidates('7e5f1000-0000-4000-8000-000000000001', 150, '2027-03-02', 30,
                                      '2027-03-01 08:00 Europe/Rome') as c),
   array['2027-03-02', '2027-03-04', '2027-03-05', '2027-03-08', '2027-03-09', '2027-03-10',
         '2027-03-11', '2027-03-12', '2027-03-15']::date[],
-  'de mañana a hoy + booking_horizon_days (14): días hábiles sin bloqueo, aunque se pidan 30'
+  'con horizonte de 14 días: de mañana a hoy + 14, días hábiles sin bloqueo, aunque se pidan 30'
 );
 
 update public.chef_settings set booking_horizon_days = 7 where chef_id = '7e5f1000-0000-4000-8000-000000000001';
@@ -242,7 +266,7 @@ select is(
   date '2027-03-08',
   'con horizonte de 7 días, el último es el lunes 08/03 (hoy + 7)'
 );
-update public.chef_settings set booking_horizon_days = 14 where chef_id = '7e5f1000-0000-4000-8000-000000000001';
+update public.chef_settings set booking_horizon_days = default where chef_id = '7e5f1000-0000-4000-8000-000000000001';
 
 select is(
   (select min(c.day)
@@ -480,8 +504,13 @@ select is(
 select is(
   pg_temp.flags(150, pg_temp.today() - 1, 18),
   array['-1:f', '0:f', '1:t', '2:f', '3:t', '4:t', '5:f', '6:t', '7:t', '8:t', '9:t', '10:t', '11:t', '12:t',
-        '13:t', '14:t', '15:f', '16:f'],
-  'get_free_days: cada fecha del rango; con lugar de mañana a hoy + 14, salvo el día bloqueado y el lleno'
+        '13:t', '14:t', '15:t', '16:t'],
+  'get_free_days: cada fecha del rango; con lugar desde mañana, salvo el día bloqueado y el lleno'
+);
+select is(
+  pg_temp.flags(150, pg_temp.today() + 54, 5),
+  array['54:t', '55:t', '56:t', '57:f', '58:f'],
+  'get_free_days: con lugar hasta hoy + 56 (booking_horizon_days por defecto); después del horizonte, no'
 );
 select is(
   pg_temp.flags(600, pg_temp.today() + 1, 14),

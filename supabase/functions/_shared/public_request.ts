@@ -89,8 +89,12 @@ export const TEXT_LIMITS = {
   notes: 500,
 } as const;
 
-/** Fecha preferida: de mañana a +14 días (booking_horizon_days), en Europe/Rome. */
-export const DATE_WINDOW = { minDaysAhead: 1, maxDaysAhead: 14 } as const;
+/**
+ * Fecha preferida: de mañana a +56 días (8 semanas), en Europe/Rome. Es también la ventana de la base
+ * (chef_settings.booking_horizon_days por defecto; availability.test.ts compara las dos). La web la dice
+ * en semanas, así que maxDaysAhead es múltiplo de 7 (lo exige un test de la web).
+ */
+export const DATE_WINDOW = { minDaysAhead: 1, maxDaysAhead: 56 } as const;
 
 /** El servidor rechaza cuerpos más grandes (413). */
 export const MAX_PAYLOAD_BYTES = 8192;

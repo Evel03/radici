@@ -78,12 +78,14 @@ describe("validateRequest (la misma validación del servidor)", () => {
       expect(validate({ days: 7 })).toEqual({});
     });
 
-    it("fecha opcional, de mañana a +14 días (Europe/Rome)", () => {
+    it("fecha opcional, de mañana a +56 días: 8 semanas (Europe/Rome)", () => {
       expect(validate({ preferredDate: "" }).preferredDate).toBeUndefined();
       expect(validate({ preferredDate: "2026-10-20" }).preferredDate).toBeUndefined();
-      expect(validate({ preferredDate: "2026-11-02" }).preferredDate).toBeUndefined();
-      expect(validate({ preferredDate: "2026-10-19" }).preferredDate).toEqual({ key: "errors.date", params: { days: 14 } });
-      expect(validate({ preferredDate: "2026-11-03" }).preferredDate?.key).toBe("errors.date");
+      expect(validate({ preferredDate: "2026-11-03" }).preferredDate).toBeUndefined();
+      expect(validate({ preferredDate: "2026-12-14" }).preferredDate).toBeUndefined();
+      // El texto dice la ventana con {horizonWeeks}, un valor global de la web (i18n/site.ts): sin parámetros.
+      expect(validate({ preferredDate: "2026-10-19" }).preferredDate).toEqual({ key: "errors.date" });
+      expect(validate({ preferredDate: "2026-12-15" }).preferredDate?.key).toBe("errors.date");
       expect(validate({ preferredDate: "2026-02-30" }).preferredDate?.key).toBe("errors.date");
     });
 
@@ -149,6 +151,15 @@ describe("translateErrors (respuesta 400 del servidor)", () => {
       restrictionsNote: { key: "errors.restrictionsRequired" },
       consentHealth: { key: "errors.healthRequired" },
       noAllergies: { key: "errors.invalid" },
+    });
+  });
+
+  it("una fecha que el servidor deja fuera de su ventana se marca en el calendario, sin pedir recargar", () => {
+    // Por ejemplo, unos minutos del despliegue de las 8 semanas: la función de antes (14 días) todavía
+    // rechaza una fecha que esta página deja elegir. El mismo contrato y la misma versión: no hay que recargar.
+    expect(translateErrors({ preferredDate: "dateOutOfRange" })).toEqual({
+      fields: { preferredDate: { key: "errors.date" } },
+      outdated: false,
     });
   });
 
