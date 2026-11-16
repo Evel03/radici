@@ -2,7 +2,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { CONSENT_VERSION } from "../functions/_shared/public_request.ts";
 
 const repo = (path: string): URL => new URL(`../../${path}`, import.meta.url);
 const WORKFLOW = readFileSync(repo(".github/workflows/deploy-supabase.yml"), "utf8");
@@ -133,19 +132,10 @@ test("cuentas: una sola manera de crearlas, confirmadas y con una contraseña al
   assert.match(scriptFunction("members"), /create_user "\$\{email\}"/, "y las de los colaboradores");
 });
 
-test("colaboradores: el aviso de la privacy está atado a la versión vigente del texto (SPEC §14)", () => {
-  // La privacy 2026-11-16 nombra solo a Evelyn y, para la asistencia técnica, a quien gestiona el
-  // sistema. Si cambia la versión, decidir si los colaboradores siguen necesitando este aviso (y sacarlo
-  // junto con este test si la privacy nueva los nombra).
-  const warning = /::warning::CHEF_MEMBER_EMAILS trae .*privacy vigente \((\d{4}-\d{2}-\d{2})\)/.exec(ACCOUNTS_SCRIPT);
-  assert.ok(warning, "deploy-accounts.sh avisa si la lista trae emails");
-  assert.equal(warning[1], CONSENT_VERSION, "la versión del aviso es la vigente (CONSENT_VERSION)");
-});
-
 test("el encabezado del workflow documenta CHEF_MEMBER_EMAILS entre los secretos, con la privacy y cómo aplicarlo", () => {
   const header = WORKFLOW.slice(0, WORKFLOW.indexOf("\nname: "));
   assert.match(header, /CHEF_MEMBER_EMAILS/);
   assert.match(header, /secreto/i);
-  assert.match(header, /SPEC §14/, "antes de cargarlo, la decisión de la privacy");
+  assert.match(header, /SPEC §6/, "quién puede ser colaborador sin cambiar la privacy");
   assert.match(header, /Run\s+#?\s*workflow/, "cambiar el secreto no hace nada hasta correr el workflow");
 });
