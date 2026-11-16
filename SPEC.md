@@ -324,7 +324,7 @@ Son las únicas transiciones válidas: held → confirmed o cancelled; confirmed
 
 `cooked → paid` ocurre solo cuando servicio e insumos están cobrados, y lo decide el **webhook** de Stripe o el registro manual de Evelyn, nunca la app del cliente. `paid → cooked`, solo al anular un cobro.
 
-**Reservas (hasta M4)**: de 1 a 8 semanas, con una sesión por semana. Evelyn las confirma desde el pedido, o las carga a mano, sin presupuesto ni retención de 48 h, como lo que hoy se acuerda por WhatsApp: las sesiones nacen `confirmed`, el pedido pasa a `accepted` con sus semanas y la ficha de un prospecto, a `trial` (§4, «Reservas»).
+**Reservas (hasta M4)**: de 1 a 8 semanas, con una sesión por semana. Evelyn las confirma desde el pedido, o las carga a mano, sin presupuesto ni retención de 48 h, como lo que hoy se acuerda por WhatsApp: las sesiones nacen `confirmed`, el pedido pasa a `accepted` con sus semanas y la ficha de un prospecto, a `trial` (§4, «Reservas»). El precio del servicio de toda la reserva es obligatorio al confirmar (0 vale: sin cargo), porque después ninguna ruta lo cambia. Una semana ya cobrada no se cancela de entrada: una sesión cancelada no se mueve ni se reactiva, así que la app ofrece primero pasarla al final de la reserva y la cancela, con permiso explícito, solo para registrar la devolución (decisión del dueño del 16/11/2026; los cobros manuales llegan con el área de Evelyn).
 
 **Pago (`payments.status`)**: refleja el PaymentIntent de Stripe (`requires_action`, `authorized` = requires_capture, `succeeded`, `canceled`, `failed`) o `pending` para efectivo y transferencia hasta que Evelyn lo confirma.
 
@@ -408,7 +408,7 @@ Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automá
 **RLS (resumen)**
 | Tabla | Cliente | Cocinera | Anónimo |
 |---|---|---|---|
-| clients, client_restrictions, consents | lee y edita lo propio | todo lo de su `chef_id` | — |
+| clients, client_restrictions, consents | lee y edita lo propio | todo lo de su `chef_id`, salvo borrar fichas (en cascada se llevaban sus pedidos y sus sesiones) y consentimientos | — |
 | requests | crea y lee lo propio | todo, salvo borrar (un pedido aceptado es el registro de su reserva) | crea vía Edge Function `public-request` |
 | quotes, sessions, session_menu, receipts | lee lo propio | todo | — |
 | payments | lee lo propio | lee todo; escribe solo con efectivo o transferencia | — |
@@ -424,7 +424,7 @@ Precisiones implementadas en M1 (`supabase/migrations/*_rls.sql`):
 - `recurring_plans`: solo lectura para el cliente.
 - Las tarifas (`chef_settings`) no son visibles para clientes: la vista previa y la política de cancelación se exponen con una RPC de solo lectura (M3c, con la pantalla Pedir de la app).
 
-Las escrituras sensibles (estados de sesión, pagos) pasan por Edge Functions con la service role, nunca por updates directos desde la app. Las reservas también: la app no crea, mueve ni cancela sesiones, y desde el 16/11/2026 tampoco borra pedidos. Tests de políticas RLS obligatorios (pgTAP o la suite de tests de Supabase).
+Las escrituras sensibles (estados de sesión, pagos) pasan por Edge Functions con la service role, nunca por updates directos desde la app. Las reservas también: la app no crea, mueve ni cancela sesiones, y desde el 16/11/2026 tampoco borra pedidos ni fichas (borrar una ficha se llevaba en cascada sus pedidos, sus sesiones y sus consentimientos). Borrar a una persona es del servidor: la purga de prospectos, el SQL editor (contrato public-request §10.2) y, desde M2, la supresión de la cuenta. Tests de políticas RLS obligatorios (pgTAP o la suite de tests de Supabase).
 
 ---
 
