@@ -289,7 +289,6 @@
   "cancelSessionConfirm": "{count, plural, =1{Cancelar la sesión} other{Cancelar {count} sesiones}}",
   "cancelSessionKeep": "Volver",
   "cancelSessionDone": "{count, plural, =1{Sesión cancelada: en 1 o 2 minutos la web vuelve a ofrecer ese día.} other{{count} sesiones canceladas: en 1 o 2 minutos la web vuelve a ofrecer esos días.}}",
-  "cancelSessionSending": "Cancelando…",
   "cancelHasPaymentsTitle": "Semana ya cobrada",
   "cancelHasPaymentsBody": "{count, plural, =1{Esta semana ya está cobrada: no se canceló nada. Una semana cancelada no se puede mover ni reactivar, así que primero puedes pasarla al final de la reserva. Cancelarla con la devolución llega con los cobros.} other{{count} de estas semanas ya están cobradas: no se canceló nada. Una semana cancelada no se puede mover ni reactivar, así que primero puedes pasarlas al final de la reserva. Cancelarlas con la devolución llega con los cobros.}}",
   "agendaSessionCount": "{count, plural, =0{ninguna sesión} =1{1 sesión} other{{count} sesiones}}",

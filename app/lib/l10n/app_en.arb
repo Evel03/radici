@@ -289,7 +289,6 @@
   "cancelSessionConfirm": "{count, plural, =1{Cancel session} other{Cancel {count} sessions}}",
   "cancelSessionKeep": "Go back",
   "cancelSessionDone": "{count, plural, =1{Session cancelled: in 1 or 2 minutes the website offers that day again.} other{{count} sessions cancelled: in 1 or 2 minutes the website offers those days again.}}",
-  "cancelSessionSending": "Cancelling…",
   "cancelHasPaymentsTitle": "Week already paid",
   "cancelHasPaymentsBody": "{count, plural, =1{This week is already paid: nothing was cancelled. A cancelled week can't be moved or restored, so you can first move it to the end of the booking. Cancelling it with a refund comes with payments.} other{{count} of these weeks are already paid: nothing was cancelled. A cancelled week can't be moved or restored, so you can first move them to the end of the booking. Cancelling them with a refund comes with payments.}}",
   "agendaSessionCount": "{count, plural, =0{no sessions} =1{1 session} other{{count} sessions}}",

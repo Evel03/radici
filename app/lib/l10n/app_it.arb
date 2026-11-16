@@ -1349,10 +1349,6 @@
       "count": { "type": "int", "example": "1" }
     }
   },
-  "cancelSessionSending": "Annullamento…",
-  "@cancelSessionSending": {
-    "description": "La barra de la ficha mientras se cancela."
-  },
   "cancelHasPaymentsTitle": "Settimana già pagata",
   "@cancelHasPaymentsTitle": {
     "description": "Título del aviso cuando una semana que se quiso cancelar ya está cobrada (409 hasPayments)."
