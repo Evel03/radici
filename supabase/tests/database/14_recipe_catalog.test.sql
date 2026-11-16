@@ -17,7 +17,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(123);
+select plan(142);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
@@ -93,7 +93,8 @@ as $$
   }'::jsonb
 $$;
 
--- Duplicar, como la app: lee el plato (con la RLS de quien llama) y lo guarda con otro id.
+-- Duplicar, como la app: lee el plato (con la RLS de quien llama) y lo guarda con otro id. Como
+-- recipeSavePayload, no manda active ni catalog_visible: la copia nace con los de la tabla.
 create function pg_temp.copy_of(p_src uuid, p_new_id text, p_suffix text) returns jsonb
 language sql
 as $$
@@ -103,7 +104,6 @@ as $$
     'name_es', r.name_es, 'name_en', r.name_en, 'diet', r.diet, 'season_months', r.season_months,
     'fridge_days', r.fridge_days, 'freezable', r.freezable, 'freezer_days', r.freezer_days,
     'notes', (select n.notes from public.recipe_notes n where n.recipe_id = r.id),
-    'active', r.active, 'catalog_visible', r.catalog_visible,
     'allergens', (select coalesce(jsonb_agg(a.allergen), '[]')
                   from public.recipe_allergens a where a.recipe_id = r.id),
     'ingredients', (select coalesce(jsonb_agg(jsonb_build_object('name', i.name, 'section', i.section,
@@ -146,6 +146,16 @@ exception when others then
   get stacked diagnostics v_detail = pg_exception_detail;
   return sqlstate || ': ' || sqlerrm || coalesce(' (' || nullif(v_detail, '') || ')', '');
 end
+$$;
+
+-- Los errores de guardar el plato 1 con cada uno de p_extras encima (en orden).
+create function pg_temp.errors_of(p_extras text[]) returns text[]
+language sql
+as $$
+  select array_agg(pg_temp.error_of(format(
+           $f$ select public.save_recipe(pg_temp.dish('7e5c6000-0000-4000-8000-000000000001', %L)) $f$, x.extra))
+         order by x.n)
+  from unnest(p_extras) with ordinality as x(extra, n)
 $$;
 
 -- Fotos de un plato para comparar después de un intento fallido (los usuarios simulados las escriben).
@@ -250,8 +260,9 @@ select ok(
   has_table_privilege('service_role', 'public.recipe_ingredients', 'SELECT')
   and has_table_privilege('service_role', 'public.recipe_ingredients', 'INSERT')
   and has_table_privilege('service_role', 'public.recipe_ingredients', 'UPDATE')
-  and has_table_privilege('service_role', 'public.recipe_ingredients', 'DELETE'),
-  'service_role: las cuatro operaciones'
+  and has_table_privilege('service_role', 'public.recipe_ingredients', 'DELETE')
+  and not has_table_privilege('service_role', 'public.recipe_ingredients', 'TRUNCATE,REFERENCES,TRIGGER'),
+  'service_role: las cuatro operaciones y nada más'
 );
 select ok(
   not has_table_privilege('anon', 'public.recipe_notes', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'),
@@ -478,6 +489,40 @@ select is(
   'las notas se guardan recortadas y, si quedan solo espacios, se borran (sin notas, sin fila)'
 );
 
+-- Duplicar un plato desactivado: la app no manda active, así que la copia sale activa.
+select is(
+  public.save_recipe(pg_temp.copy_of('7e5c6000-0000-4000-8000-000000000004',
+                                     '7e5c6000-0000-4000-8000-000000000008', ' (copia)')),
+  '7e5c6000-0000-4000-8000-000000000008'::uuid,
+  'C1 duplica el plato desactivado'
+);
+select is(
+  pg_temp.saved('7e5c6000-0000-4000-8000-000000000008'),
+  pg_temp.saved('7e5c6000-0000-4000-8000-000000000004')
+    || '{"name_it": "Frittata di zucchine e menta (copia)", "active": true}',
+  'la copia sale activa, con las mismas notas, alérgenos e ingredientes'
+);
+
+-- Lo que no viene no se toca, también cuando tiene valor (nombre en inglés, dieta y temporada).
+select is(
+  public.save_recipe(pg_temp.dish('7e5c6000-0000-4000-8000-000000000006',
+                                  '{"name_en": "Courgette frittata", "diet": "vegetarian", "season_months": [7, 6]}')),
+  '7e5c6000-0000-4000-8000-000000000006'::uuid,
+  'C1 crea un plato con nombre en inglés, dieta y temporada'
+);
+select is(
+  public.save_recipe(pg_temp.dish('7e5c6000-0000-4000-8000-000000000006')),
+  '7e5c6000-0000-4000-8000-000000000006'::uuid,
+  'y lo vuelve a guardar sin esas claves'
+);
+select is(
+  pg_temp.saved('7e5c6000-0000-4000-8000-000000000006') - 'allergens' - 'ingredients',
+  '{"name_it": "Frittata di zucchine", "name_es": null, "name_en": "Courgette frittata", "diet": "vegetarian",
+    "season_months": [6, 7], "fridge_days": 3, "freezable": false, "freezer_days": 60,
+    "notes": null, "active": true, "catalog_visible": true}'::jsonb,
+  'el nombre en inglés, la dieta y la temporada siguen como estaban'
+);
+
 -- =====================================================================
 -- 7. Guardado atómico: si algo falla, no cambia nada
 -- =====================================================================
@@ -582,6 +627,43 @@ select is(
   '22023: invalid_payload (fridge_days)',
   'una columna obligatoria no acepta null (si no viene, no se toca)'
 );
+
+-- Cada validación de forma, con su campo (sin ellas, la base guardaría «5» como nombre o «yes» como
+-- true, o daría 22P02 o 23502, que la app toma por un corte de conexión).
+select is(
+  pg_temp.errors_of(array['{"name_es": 5}', '{"name_en": true}', '{"notes": ["x"]}']),
+  array['22023: invalid_payload (name_es)', '22023: invalid_payload (name_en)', '22023: invalid_payload (notes)'],
+  'los nombres traducidos y las notas son texto o null'
+);
+select is(
+  pg_temp.errors_of(array['{"diet": "pescatarian"}', '{"diet": 1}']),
+  array['22023: invalid_payload (diet)', '22023: invalid_payload (diet)'],
+  'la dieta es vegetarian, vegan o null'
+);
+select is(
+  pg_temp.errors_of(array['{"season_months": [1.5]}', '{"season_months": "1"}']),
+  array['22023: invalid_payload (season_months)', '22023: invalid_payload (season_months)'],
+  'los meses son una lista de enteros, o null'
+);
+select is(
+  pg_temp.errors_of(array['{"freezer_days": null}', '{"freezer_days": "30"}', '{"freezer_days": 1.5}']),
+  array['22023: invalid_payload (freezer_days)', '22023: invalid_payload (freezer_days)',
+        '22023: invalid_payload (freezer_days)'],
+  'los días del freezer son un entero (si no vienen, no se tocan)'
+);
+select is(
+  pg_temp.errors_of(array['{"freezable": "true"}', '{"active": "yes"}', '{"catalog_visible": 1}', '{"active": null}']),
+  array['22023: invalid_payload (freezable)', '22023: invalid_payload (active)',
+        '22023: invalid_payload (catalog_visible)', '22023: invalid_payload (active)'],
+  'freezable, active y catalog_visible son true o false'
+);
+select is(
+  pg_temp.errors_of(array['{"ingredients": [{"quantity": 1, "unit": "g"}]}', '{"ingredients": [{"name": 5}]}',
+                          '{"ingredients": [{"name": "Riso"}, {"name": null}]}']),
+  array['22023: invalid_payload (ingredients[0].name)', '22023: invalid_payload (ingredients[0].name)',
+        '22023: invalid_payload (ingredients[1].name)'],
+  'cada ingrediente tiene nombre, y es texto'
+);
 select is(
   pg_temp.error_of($$ select public.save_recipe(pg_temp.dish('7e5c6000-0000-4000-8000-000000000001',
                         '{"months": [1, 2]}')) $$),
@@ -665,6 +747,11 @@ select throws_ok(
   'un nombre de plato de más de 120 caracteres'
 );
 select throws_ok(
+  $$ select public.save_recipe(pg_temp.dish('7e5c6000-0000-4000-8000-000000000001', '{"name_it": "\tProva"}')) $$,
+  '23514', 'new row for relation "recipes" violates check constraint "recipes_name_it_valido"',
+  'un nombre con un tabulador (save_recipe recorta solo espacios: lo frena el check)'
+);
+select throws_ok(
   $$ select public.save_recipe(pg_temp.dish('7e5c6000-0000-4000-8000-000000000001',
        '{"ingredients": [{"name": "  ", "quantity": 1, "unit": "pcs"}]}')) $$,
   '23514', 'new row for relation "recipe_ingredients" violates check constraint "recipe_ingredients_nombre_valido"',
@@ -703,6 +790,44 @@ select throws_ok(
   $$ update public.recipes set name_en = repeat('x', 121) where id = '7e5c6000-0000-4000-8000-000000000009' $$,
   '23514', 'new row for relation "recipes" violates check constraint "recipes_name_en_valido"',
   'un nombre en inglés de más de 120 caracteres'
+);
+select throws_ok(
+  $$ update public.recipes set name_it = ' Prova' where id = '7e5c6000-0000-4000-8000-000000000009' $$,
+  '23514', 'new row for relation "recipes" violates check constraint "recipes_name_it_valido"',
+  'un nombre con espacios al borde'
+);
+select throws_ok(
+  $$ update public.recipes set name_it = E'Prova\nbis' where id = '7e5c6000-0000-4000-8000-000000000009' $$,
+  '23514', 'new row for relation "recipes" violates check constraint "recipes_name_it_valido"',
+  'un nombre con un salto de línea (rompería la lista copiada)'
+);
+select throws_ok(
+  $$ update public.recipes set name_es = 'Prueba ' where id = '7e5c6000-0000-4000-8000-000000000009' $$,
+  '23514', 'new row for relation "recipes" violates check constraint "recipes_name_es_valido"',
+  'un nombre en español con espacios al borde'
+);
+select throws_ok(
+  $$ update public.recipes set name_es = E'Prueba\nbis' where id = '7e5c6000-0000-4000-8000-000000000009' $$,
+  '23514', 'new row for relation "recipes" violates check constraint "recipes_name_es_valido"',
+  'un nombre en español con un salto de línea'
+);
+select throws_ok(
+  $$ update public.recipes set name_en = 'Test ' where id = '7e5c6000-0000-4000-8000-000000000009' $$,
+  '23514', 'new row for relation "recipes" violates check constraint "recipes_name_en_valido"',
+  'un nombre en inglés con espacios al borde'
+);
+select throws_ok(
+  $$ update public.recipes set name_en = E'Test\tx' where id = '7e5c6000-0000-4000-8000-000000000009' $$,
+  '23514', 'new row for relation "recipes" violates check constraint "recipes_name_en_valido"',
+  'un nombre en inglés con un tabulador'
+);
+select is(
+  (select array_agg(m order by m) from generate_series(1, 12) as m
+   where pg_temp.error_of(format(
+           $$ update public.recipes set season_months = '{%s,%s}' where id = '7e5c6000-0000-4000-8000-000000000009' $$,
+           m, m)) is null),
+  null::int[],
+  'ningún mes repetido vale (los doce, uno por uno)'
 );
 select throws_ok(
   $$ insert into public.recipe_ingredients (recipe_id, chef_id, position, name)
