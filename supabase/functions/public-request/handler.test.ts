@@ -548,12 +548,12 @@ test("4 semanas: weeks a la base, estimación con el descuento de la cocinera y 
   assert.deepEqual(run.store.submitted[0]?.estimate, { ...quote, pricing: CHEF.pricing });
   await run.settle();
   const chef = emailText(run, "evelyn@example.test");
-  for (const line of ["Semanas: 4", "Semanas siguientes: 1 de noviembre, 8 de noviembre, 15 de noviembre", "Servicio por semana: 150,00 €",
+  for (const line of ["Semanas: 4", "Semanas siguientes: 1 nov · 8 nov · 15 nov", "Servicio por semana: 150,00 €",
     "Servicio, 4 semanas: 600,00 €", "Ahorro: 40,00 € frente a 160,00 € por semana", "Compra estimada por semana: 63,00 €"]) {
     assert.ok(chef.includes(line), `Evelyn: falta «${line}»`);
   }
   const client = emailText(run, "giulia.pii@example.test");
-  for (const line of ["Settimane: 4", "Settimane successive: 1 novembre, 8 novembre, 15 novembre", "Servizio, 4 settimane: 600,00 €",
+  for (const line of ["Settimane: 4", "Settimane successive: 1 nov · 8 nov · 15 nov", "Servizio, 4 settimane: 600,00 €",
     "Risparmio: 40,00 € rispetto a 160,00 € a settimana", "Spesa stimata a settimana: 63,00 €", "prezzo finale"]) {
     assert.ok(client.includes(line), `cliente: falta «${line}»`);
   }
@@ -589,14 +589,20 @@ test("semanas: sin el campo (versión 3), fuera de rango o en una sesión extra 
   assert.equal(store.hits.length, 0);
 });
 
-test("sin precio automático (más de 5 personas o sesión extra): 201 sin claves de precio, se guarda así y los emails lo dicen", async () => {
-  for (const [overrides, reason, chefLine, clientLine] of [
+test("sin precio automático (más personas que el tope de la cocinera o sesión extra): 201 sin claves de precio, se guarda así y los emails lo dicen", async () => {
+  // Con el tope de la cocinera, no el de DEFAULT_PRICING: con hasta 6 personas en sus tarifas (como Giulia
+  // en el seed), un pedido de 7 dice «más de 6».
+  const upTo6: ChefInfo = { ...CHEF, pricing: { ...CHEF.pricing, weeklyRateMaxPeople: 6 } };
+  for (const [overrides, reason, chefLine, clientLine, chef] of [
     [{ adults: 3, kids: 3 }, "people", "Más de 5 personas: sin precio automático, prepara tú el presupuesto.",
-      "Per più di 5 persone il prezzo del servizio te lo prepara Evelyn."],
+      "Per più di 5 persone il preventivo per il servizio te lo prepara Evelyn.", CHEF],
+    [{ adults: 4, kids: 3 }, "people", "Más de 6 personas: sin precio automático, prepara tú el presupuesto.",
+      "Per più di 6 persone il preventivo per il servizio te lo prepara Evelyn.", upTo6],
     [{ type: "extra" as const }, "extra", "Evento o sesión extra: sin precio automático, prepara tú el presupuesto.",
-      "Per eventi e sessioni extra il prezzo del servizio te lo prepara Evelyn."],
+      "Per eventi e sessioni extra il preventivo per il servizio te lo prepara Evelyn.", CHEF],
   ] as const) {
     const run = harness();
+    run.store.chef = chef;
     const response = await run.handle(post(payload(overrides)));
     assert.equal(response.status, 201, reason);
     const estimate = ((await json(response)) as { estimate: Record<string, unknown> }).estimate;
@@ -610,6 +616,12 @@ test("sin precio automático (más de 5 personas o sesión extra): 201 sin clave
     assert.ok(emailText(run, "evelyn@example.test").includes(chefLine), `${reason}: Evelyn`);
     assert.ok(emailText(run, "giulia.pii@example.test").includes(clientLine), `${reason}: cliente`);
   }
+  // Con ese mismo tope, 6 personas sí tienen precio.
+  const six = harness();
+  six.store.chef = upTo6;
+  const priced = ((await json(await six.handle(post(payload({ adults: 3, kids: 3 }))))) as { estimate: Record<string, unknown> }).estimate;
+  assert.equal(priced["autoPrice"], true);
+  await six.settle();
 });
 
 test("tarifas de la cocinera que el motor no acepta: 500 quote_failed sin guardar nada", async () => {

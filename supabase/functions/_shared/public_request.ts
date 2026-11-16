@@ -389,12 +389,13 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
   const meals = parseSet(MEALS, raw.meals, MEALS.length);
   if (!meals || meals.length === 0) errors.meals = raw.meals === undefined ? "required" : "invalid";
 
-  // Semanas: la versión 3 las manda siempre (sin el campo no se da por 1: nunca se pierden en silencio);
-  // una página de la versión 2 no las manda y su pedido es de una semana (no podía pedir más).
+  // Semanas: desde la versión 3 se mandan siempre (sin el campo no se da por 1: nunca se pierden en
+  // silencio, tampoco cuando la 3 deje de ser la vigente); una página de la versión 2 no las manda y su
+  // pedido es de una semana (no podía pedir más).
   let weeks = 1;
   const weeksRaw = raw.weeks;
   if (weeksRaw === undefined || weeksRaw === null) {
-    if (raw.version === PUBLIC_REQUEST_VERSION) errors.weeks = "required";
+    if (typeof raw.version === "number" && raw.version >= 3) errors.weeks = "required";
   } else if (typeof weeksRaw !== "number" || !Number.isInteger(weeksRaw) || weeksRaw < 1 || weeksRaw > LIMITS.maxWeeks) {
     errors.weeks = "range";
   } else if (weeksRaw > 1 && type === "extra") {

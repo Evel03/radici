@@ -12,7 +12,7 @@
 // identidad de la web (logotipo en texto, paleta del manual de marca) y sin fuentes remotas.
 // Importes con aritmética entera; fechas sin zona horaria (son días de calendario).
 // Precio por semana (SPEC §5.1): con precio automático, el servicio por semana, el de todas las semanas
-// y el ahorro; sin él, quién prepara el precio. La compra estimada siempre aparte, por el ticket.
+// y el ahorro; sin él, quién prepara el presupuesto. La compra estimada siempre aparte, por el ticket.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import { weeklyDates, type Locale, type Meal, type RequestType, type Slot } from "./public_request.ts";
 import type { NoAutoPriceReason } from "./quote.ts";
@@ -116,10 +116,10 @@ interface Messages {
   kids: (n: number) => string;
   join: (a: string, b: string) => string;
   months: readonly string[];
+  /** Los meses abreviados, como los da Intl (it-IT, es-ES, en-GB): para las fechas de las semanas siguientes. */
+  monthsShort: readonly string[];
   weekdays: readonly string[];
   longDate: (weekday: string, day: number, month: string, year: number) => string;
-  /** "30 novembre"; con el año si es otro que el de la primera semana. */
-  dayMonth: (day: number, month: string, year: number | null) => string;
   labels: {
     type: string;
     weeks: string;
@@ -151,7 +151,7 @@ interface Messages {
     preheader: (chef: string) => string;
     greeting: (first: string) => string;
     intro: (chef: string) => string;
-    /** Sin precio automático: quién prepara el precio del servicio, y por qué. */
+    /** Sin precio automático: quién prepara el presupuesto del servicio, y por qué. */
     noAutoPrice: Readonly<Record<NoAutoPriceReason, (chef: string, maxPeople: number) => string>>;
     summaryTitle: string;
     /**
@@ -198,9 +198,9 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
     kids: (n) => (n === 1 ? "1 bambino" : `${n} bambini`),
     join: (a, b) => `${a} e ${b}`,
     months: ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"],
+    monthsShort: ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"],
     weekdays: ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"],
     longDate: (weekday, day, month, year) => `${weekday} ${day} ${month} ${year}`,
-    dayMonth: (day, month, year) => `${day} ${month}${year === null ? "" : ` ${year}`}`,
     labels: {
       type: "Tipo",
       weeks: "Settimane",
@@ -230,8 +230,8 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       intro: (chef) =>
         `Abbiamo ricevuto la tua richiesta. ${chef} ti contatterà al più presto per confermare giorni, orari, menù e prezzo finale.`,
       noAutoPrice: {
-        people: (chef, maxPeople) => `Per più di ${maxPeople} persone il prezzo del servizio te lo prepara ${chef}.`,
-        extra: (chef) => `Per eventi e sessioni extra il prezzo del servizio te lo prepara ${chef}.`,
+        people: (chef, maxPeople) => `Per più di ${maxPeople} persone il preventivo per il servizio te lo prepara ${chef}.`,
+        extra: (chef) => `Per eventi e sessioni extra il preventivo per il servizio te lo prepara ${chef}.`,
       },
       summaryTitle: "La tua richiesta",
       allergiesNone: "Hai confermato che nessuno ha allergie, intolleranze alimentari o celiachia.",
@@ -276,9 +276,9 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
     kids: (n) => (n === 1 ? "1 niño" : `${n} niños`),
     join: (a, b) => `${a} y ${b}`,
     months: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+    monthsShort: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"],
     weekdays: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
     longDate: (weekday, day, month, year) => `${weekday}, ${day} de ${month} de ${year}`,
-    dayMonth: (day, month, year) => `${day} de ${month}${year === null ? "" : ` de ${year}`}`,
     labels: {
       type: "Tipo",
       weeks: "Semanas",
@@ -308,8 +308,8 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       intro: (chef) =>
         `Hemos recibido tu solicitud. ${chef} te contactará lo antes posible para confirmar los días, los horarios, el menú y el precio final.`,
       noAutoPrice: {
-        people: (chef, maxPeople) => `Para más de ${maxPeople} personas, el precio del servicio te lo prepara ${chef}.`,
-        extra: (chef) => `Para eventos y sesiones extra, el precio del servicio te lo prepara ${chef}.`,
+        people: (chef, maxPeople) => `Para más de ${maxPeople} personas, el presupuesto del servicio te lo prepara ${chef}.`,
+        extra: (chef) => `Para eventos y sesiones extra, el presupuesto del servicio te lo prepara ${chef}.`,
       },
       summaryTitle: "Tu solicitud",
       allergiesNone: "Confirmaste que nadie tiene alergias, intolerancias alimentarias ni celiaquía.",
@@ -354,9 +354,9 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
     kids: (n) => (n === 1 ? "1 child" : `${n} children`),
     join: (a, b) => `${a} and ${b}`,
     months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    monthsShort: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"],
     weekdays: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
     longDate: (weekday, day, month, year) => `${weekday} ${day} ${month} ${year}`,
-    dayMonth: (day, month, year) => `${day} ${month}${year === null ? "" : ` ${year}`}`,
     labels: {
       type: "Type",
       weeks: "Weeks",
@@ -386,8 +386,8 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       intro: (chef) =>
         `We've received your request. ${chef} will contact you as soon as possible to confirm the days, times, menu and final price.`,
       noAutoPrice: {
-        people: (chef, maxPeople) => `For more than ${maxPeople} people, ${chef} will prepare the price of the service for you.`,
-        extra: (chef) => `For events and extra sessions, ${chef} will prepare the price of the service for you.`,
+        people: (chef, maxPeople) => `For more than ${maxPeople} people, ${chef} will send you a quote for the service.`,
+        extra: (chef) => `For events and extra sessions, ${chef} will send you a quote for the service.`,
       },
       summaryTitle: "Your request",
       allergiesNone: "You confirmed that nobody has any food allergies, intolerances or coeliac disease.",
@@ -501,13 +501,16 @@ export function formatDateLong(iso: string, locale: Locale): string {
   return messages.longDate(messages.weekdays[date.getUTCDay()] ?? "", day, messages.months[month - 1] ?? "", year);
 }
 
-/** "2026-11-30" → "30 novembre" / "30 de noviembre" / "30 November"; con el año si no es `sameYear`. */
+/**
+ * Fecha corta, como en la web y en la app: "2026-11-30" → "30 nov" / "30 nov" / "30 Nov"; con el año si no
+ * es `sameYear` ("4 gen 2027").
+ */
 export function formatDayMonth(iso: string, locale: Locale, sameYear: number): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!match) return iso;
   const year = Number(match[1]);
-  const messages = MESSAGES[locale];
-  return messages.dayMonth(Number(match[3]), messages.months[Number(match[2]) - 1] ?? "", year === sameYear ? null : year);
+  const month = MESSAGES[locale].monthsShort[Number(match[2]) - 1] ?? "";
+  return `${Number(match[3])} ${month}${year === sameYear ? "" : ` ${year}`}`;
 }
 
 export function formatPeople(adults: number, kids: number, locale: Locale): string {
@@ -733,11 +736,18 @@ function summaryRows(summary: RequestSummary, messages: Messages, locale: Locale
     { label: messages.labels.meals, value: meals },
     { label: messages.labels.date, value: summary.preferredDate ? formatDateLong(summary.preferredDate, locale) : messages.noDate },
   );
-  // Una sesión por semana, el mismo día: las fechas de las semanas siguientes (Evelyn las confirma).
+  // Una sesión por semana, el mismo día: las fechas de las semanas siguientes (Evelyn las confirma). Cortas
+  // y con «·» entre ellas; en el HTML, con espacios duros dentro de cada una y antes del «·» (como la web y
+  // la app): en el teléfono el renglón se corta después de un «·», nunca en medio de una fecha.
   if (summary.preferredDate && summary.weeks > 1) {
     const [first, ...next] = weeklyDates(summary.preferredDate, summary.weeks);
     const year = Number(first?.slice(0, 4));
-    rows.push({ label: messages.labels.nextDates, value: next.map((date) => formatDayMonth(date, locale, year)).join(", ") });
+    const dates = next.map((date) => formatDayMonth(date, locale, year));
+    rows.push({
+      label: messages.labels.nextDates,
+      value: dates.join(" · "),
+      valueHtml: dates.map((date) => escapeHtml(date).replace(/ /g, "&nbsp;")).join("&nbsp;· "),
+    });
   }
   // La web ya no pregunta la franja (manda "any"): solo se muestra si el pedido trae mañana o tarde.
   if (summary.slot !== "any") rows.push({ label: messages.labels.slot, value: messages.slots[summary.slot] });

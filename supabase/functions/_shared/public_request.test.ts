@@ -304,6 +304,10 @@ test("semanas (versión 3): obligatorias, enteras de 1 a 8; más de una solo en 
   const { weeks: _sinSemanas, ...missing } = payload();
   assert.deepEqual(errorsOf(missing), { weeks: "required" });
   assert.deepEqual(errorsOf({ ...payload(), weeks: null }), { weeks: "required" });
+  // Con el 3 escrito, no la constante: cuando la vigente sea la 4 y se siga aceptando la 3, un pedido de
+  // la 3 sin semanas tampoco se guarda de una.
+  assert.deepEqual(errorsOf({ ...missing, version: 3 }), { weeks: "required" });
+  assert.deepEqual(errorsOf({ ...missing, version: 4 }), { version: "invalid", weeks: "required" });
   for (const weeks of [0, 9, 1.5, -1, "3", true]) {
     assert.deepEqual(errorsOf({ ...payload(), weeks }), { weeks: "range" }, String(weeks));
   }

@@ -26,6 +26,9 @@ import {
 
 const REQUEST_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427";
 
+/** Como va en el HTML una lista de fechas siguientes: espacios duros dentro de cada fecha y antes del «·». */
+const nbspHtml = (text: string): string => escapeHtml(text).replace(/ /g, "&nbsp;").replace(/&nbsp;·&nbsp;/g, "&nbsp;· ");
+
 /** 4 semanas desde el domingo 25/10/2026, con la tarifa con descuento (vector 3). */
 const SUMMARY: RequestSummary = {
   requestId: REQUEST_ID,
@@ -245,7 +248,7 @@ const EXPECTED_CLIENT = {
     subject: "Radici: abbiamo ricevuto la tua richiesta",
     lines: ["Grazie, Giulia!", "Evelyn ti contatterà al più presto", "prezzo finale", "Settimana di pasti", "Settimane: 4",
       "2 adulti e 2 bambini", "Giorni a settimana: 5", "Cena", "domenica 25 ottobre 2026", "Pomeriggio",
-      "Settimane successive: 1 novembre, 8 novembre, 15 novembre", "Servizio a settimana: 140,00 €",
+      "Settimane successive: 1 nov · 8 nov · 15 nov", "Servizio a settimana: 140,00 €",
       "Servizio, 4 settimane: 560,00 €", "Risparmio: 40,00 € rispetto a 150,00 € a settimana",
       "Spesa stimata a settimana: 63,00 €", "La spesa si paga a parte, al costo reale dello scontrino"],
   },
@@ -253,7 +256,7 @@ const EXPECTED_CLIENT = {
     subject: "Radici: hemos recibido tu solicitud",
     lines: ["¡Gracias, Giulia!", "Evelyn te contactará lo antes posible", "precio final", "Semana de comidas", "Semanas: 4",
       "2 adultos y 2 niños", "Días por semana: 5", "Cena", "domingo, 25 de octubre de 2026", "Tarde",
-      "Semanas siguientes: 1 de noviembre, 8 de noviembre, 15 de noviembre", "Servicio por semana: 140,00 €",
+      "Semanas siguientes: 1 nov · 8 nov · 15 nov", "Servicio por semana: 140,00 €",
       "Servicio, 4 semanas: 560,00 €", "Ahorro: 40,00 € frente a 150,00 € por semana",
       "Compra estimada por semana: 63,00 €", "La compra se paga aparte, al precio real del ticket"],
   },
@@ -261,7 +264,7 @@ const EXPECTED_CLIENT = {
     subject: "Radici: we've received your request",
     lines: ["Thank you, Giulia!", "Evelyn will contact you as soon as possible", "final price", "A week of meals", "Weeks: 4",
       "2 adults and 2 children", "Days per week: 5", "Dinner", "Sunday 25 October 2026", "Afternoon",
-      "Following weeks: 1 November, 8 November, 15 November", "Service per week: €140.00",
+      "Following weeks: 1 Nov · 8 Nov · 15 Nov", "Service per week: €140.00",
       "Service, 4 weeks: €560.00", "Saving: €40.00 compared with €150.00 a week",
       "Estimated groceries per week: €63.00", "Groceries are paid separately, at the actual receipt cost"],
   },
@@ -274,8 +277,8 @@ for (const locale of LOCALES) {
     assert.equal(email.subject, expected.subject);
     for (const line of expected.lines) {
       assert.ok(email.text.includes(line), `falta en el texto: ${line}`);
-      // En el HTML la etiqueta y el valor de una fila van en dos celdas.
-      for (const part of line.split(": ")) assert.ok(email.html.includes(escapeHtml(part)), `falta en el HTML: ${part}`);
+      // En el HTML la etiqueta y el valor de una fila van en dos celdas (las fechas siguientes, con espacios duros).
+      for (const part of line.split(": ")) assert.ok(email.html.includes(escapeHtml(part)) || email.html.includes(nbspHtml(part)), `falta en el HTML: ${part}`);
     }
     assert.ok(email.html.startsWith("<!doctype html>"));
     assert.ok(email.html.includes(`<html lang="${locale}">`));
@@ -333,17 +336,38 @@ test("varias semanas: el total del servicio destacado y las fechas de las semana
   assert.ok(!noDate.text.includes("Settimane successive"));
   assert.ok(noDate.text.includes("Settimane: 4"));
   const newYear = { ...SUMMARY, weeks: 3, preferredDate: "2026-12-21" };
-  assert.ok(renderClientConfirmation(clientInput({ summary: newYear }), "it").text.includes("Settimane successive: 28 dicembre, 4 gennaio 2027\n"));
-  assert.ok(renderChefNotification(chefInput({ summary: newYear }), "es").text.includes("Semanas siguientes: 28 de diciembre, 4 de enero de 2027\n"));
-  assert.ok(renderChefNotification(chefInput({ summary: newYear }), "en").text.includes("Following weeks: 28 December, 4 January 2027\n"));
+  assert.ok(renderClientConfirmation(clientInput({ summary: newYear }), "it").text.includes("Settimane successive: 28 dic · 4 gen 2027\n"));
+  assert.ok(renderChefNotification(chefInput({ summary: newYear }), "es").text.includes("Semanas siguientes: 28 dic · 4 ene 2027\n"));
+  assert.ok(renderChefNotification(chefInput({ summary: newYear }), "en").text.includes("Following weeks: 28 Dec · 4 Jan 2027\n"));
+});
+
+test("fechas de las semanas siguientes en el HTML: espacios duros dentro de cada fecha y antes del «·» (en el teléfono no se cortan)", () => {
+  // 8 semanas desde el 3/12 (como la hoja del revisor): cruza el año.
+  const eight = { ...SUMMARY, weeks: 8, preferredDate: "2026-12-03" };
+  const LABEL = { it: "Settimane successive", es: "Semanas siguientes", en: "Following weeks" } as const;
+  /** El valor (HTML) de la fila con esa etiqueta. */
+  const cell = (html: string, label: string): string => new RegExp(`>${label}</td><td[^>]*>([^<]*)</td>`).exec(html)?.[1] ?? "";
+  assert.equal(
+    cell(renderChefNotification(chefInput({ summary: eight }), "es").html, LABEL.es),
+    "10&nbsp;dic&nbsp;· 17&nbsp;dic&nbsp;· 24&nbsp;dic&nbsp;· 31&nbsp;dic&nbsp;· 7&nbsp;ene&nbsp;2027&nbsp;· 14&nbsp;ene&nbsp;2027&nbsp;· 21&nbsp;ene&nbsp;2027",
+  );
+  for (const locale of LOCALES) {
+    const html = cell(renderClientConfirmation(clientInput({ summary: eight }), locale).html, LABEL[locale]);
+    // Los únicos espacios que pueden cortar el renglón son los que siguen a un «·»: 7 fechas, 6 cortes posibles.
+    const parts = html.split(" ");
+    assert.equal(parts.length, 7, `${locale}: ${html}`);
+    assert.ok(parts.slice(0, -1).every((part) => part.endsWith("&nbsp;·")), `${locale}: ${html}`);
+  }
+  // El texto plano, con espacios normales.
+  assert.ok(renderChefNotification(chefInput({ summary: eight }), "es").text.includes("Semanas siguientes: 10 dic · 17 dic · 24 dic · 31 dic · 7 ene 2027 · 14 ene 2027 · 21 ene 2027\n"));
 });
 
 const NO_PRICE = {
   people: {
     client: {
-      it: "Per più di 5 persone il prezzo del servizio te lo prepara Evelyn.",
-      es: "Para más de 5 personas, el precio del servicio te lo prepara Evelyn.",
-      en: "For more than 5 people, Evelyn will prepare the price of the service for you.",
+      it: "Per più di 5 persone il preventivo per il servizio te lo prepara Evelyn.",
+      es: "Para más de 5 personas, el presupuesto del servicio te lo prepara Evelyn.",
+      en: "For more than 5 people, Evelyn will send you a quote for the service.",
     },
     chef: {
       it: "Più di 5 persone: senza prezzo automatico, prepara tu il preventivo.",
@@ -353,9 +377,9 @@ const NO_PRICE = {
   },
   extra: {
     client: {
-      it: "Per eventi e sessioni extra il prezzo del servizio te lo prepara Evelyn.",
-      es: "Para eventos y sesiones extra, el precio del servicio te lo prepara Evelyn.",
-      en: "For events and extra sessions, Evelyn will prepare the price of the service for you.",
+      it: "Per eventi e sessioni extra il preventivo per il servizio te lo prepara Evelyn.",
+      es: "Para eventos y sesiones extra, el presupuesto del servicio te lo prepara Evelyn.",
+      en: "For events and extra sessions, Evelyn will send you a quote for the service.",
     },
     chef: {
       it: "Evento o sessione extra: senza prezzo automatico, prepara tu il preventivo.",
@@ -437,9 +461,9 @@ test("Evelyn (it): asunto con el nombre de pila, contacto con links, botón a la
   assert.equal(email.subject, "Nuova richiesta da Giulia");
   for (const line of ["Giulia Rossi", "Città Alta", "+393331234567", "giulia@example.test", "Sì", "Settimana di pasti",
     "Ha indicato restrizioni alimentari: le trovi nell'app.", "Ha lasciato delle note: le trovi nell'app.", "560,00 €",
-    "140,00 €", "1 novembre, 8 novembre, 15 novembre"]) {
+    "140,00 €", "1 nov · 8 nov · 15 nov"]) {
     assert.ok(email.text.includes(line), `falta en el texto: ${line}`);
-    assert.ok(email.html.includes(escapeHtml(line)), `falta en el HTML: ${line}`);
+    assert.ok(email.html.includes(escapeHtml(line)) || email.html.includes(nbspHtml(line)), `falta en el HTML: ${line}`);
   }
   const inbox = `https://radicicucina.app/gestione/#/richieste/${REQUEST_ID}`;
   assert.ok(email.html.includes(`href="${inbox}"`));
