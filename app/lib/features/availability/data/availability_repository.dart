@@ -7,6 +7,7 @@
 //
 // Las notas de los bloqueos son privadas: nada de esto se loguea.
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/rome_time.dart';
@@ -33,7 +34,9 @@ abstract interface class AvailabilityRepository {
     required List<DayToBlock> days,
   });
 
-  /// Quita los bloqueos [ids]. Lanza [AvailabilityFailure].
+  /// Quita los bloqueos [ids]; un id que ya no existe no hace nada. Lanza
+  /// [AvailabilityFailure] (los que se quitaron antes de la falla quedan
+  /// quitados: reintentar los vuelve a mandar sin problema).
   Future<void> unblock({required String chefId, required List<String> ids});
 
   /// Cambia la nota del bloqueo [id] (null la borra). Lanza
@@ -80,6 +83,12 @@ class SupabaseAvailabilityRepository implements AvailabilityRepository {
 
   /// `exception_kind`: hoy solo existe 'blocked'.
   static const String _blocked = 'blocked';
+
+  /// Ids por DELETE. Van en la URL (`id=in.("…",…)`), unos 45 caracteres
+  /// cada uno: con más de unos 180, la línea del pedido pasa de los 8 KB que
+  /// aceptan nginx y Kong (Supabase local o autoalojado; el alojado corta en
+  /// 16 KB) y el servidor contesta 414. De a 100 son unos 4,5 KB.
+  static const int unblockBatchSize = 100;
 
   @override
   Future<AvailabilitySnapshot> fetch({
@@ -141,14 +150,20 @@ class SupabaseAvailabilityRepository implements AvailabilityRepository {
     required String chefId,
     required List<String> ids,
   }) async {
-    if (ids.isEmpty) return;
-    await _guard(
-      () => _client
-          .from(_exceptions)
-          .delete()
-          .eq('chef_id', chefId)
-          .inFilter('id', ids),
-    );
+    // Una tanda después de otra; si una falla, se corta ahí.
+    for (var start = 0; start < ids.length; start += unblockBatchSize) {
+      final batch = ids.sublist(
+        start,
+        math.min(start + unblockBatchSize, ids.length),
+      );
+      await _guard(
+        () => _client
+            .from(_exceptions)
+            .delete()
+            .eq('chef_id', chefId)
+            .inFilter('id', batch),
+      );
+    }
   }
 
   @override

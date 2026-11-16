@@ -174,6 +174,24 @@ void main() {
       expect(snapshot().blocked.keys, [friday]);
       expect(repository.blocked.keys, [friday]);
     });
+
+    test('«Deshacer» quita por id: no toca otro bloqueo del mismo día', () async {
+      await start();
+      final created = await controller().block([wednesday]);
+      // Desde otro dispositivo lo desbloquearon y lo volvieron a bloquear.
+      repository.blocked[wednesday] = BlockedDay(
+        id: 'otro',
+        date: wednesday,
+        note: 'Dentista',
+      );
+      await controller().refresh();
+
+      await controller().undoBlock(created);
+      // Manda el id que creó (ya no existe: no hace nada), nunca el del otro.
+      expect(repository.unblockCalls.single, [created.single.id]);
+      expect(repository.blocked[wednesday]?.id, 'otro');
+      expect(snapshot().blocked[wednesday]?.id, 'otro');
+    });
   });
 
   group('desbloquear', () {
@@ -249,6 +267,13 @@ void main() {
       expect(repository.noteCalls.last, (id: 'b1', note: null));
     });
 
+    test('guardar la misma nota no llama al servidor', () async {
+      repository.blocked[friday] = BlockedDay(id: 'b1', date: friday, note: 'Ferie');
+      await start();
+      await controller().setNote(friday, ' Ferie ');
+      expect(repository.noteCalls, isEmpty);
+    });
+
     test('si falla, vuelve la nota anterior y lanza', () async {
       repository.blocked[friday] = BlockedDay(id: 'b1', date: friday, note: 'Ferie');
       await start();
@@ -296,6 +321,169 @@ void main() {
       repository.failFetch = true;
       await expectLater(controller().refresh(), throwsA(isA<AvailabilityFailure>()));
       expect(snapshot().blocked.keys, [friday]);
+    });
+  });
+
+  // El repositorio falso toma la foto cuando llega la lectura, como la base;
+  // pendingFetch demora solo la respuesta (una red lenta).
+  group('una lectura que se cruza con un cambio', () {
+    test('bloquear mientras se lee: la foto vieja no lo borra y «Deshacer» lo quita', () async {
+      await start();
+      repository.pendingFetch = Completer<void>();
+      final reading = controller().refresh(); // foto sin el miércoles
+      await pumpEventQueue();
+
+      final created = await controller().block([wednesday]);
+      repository.pendingFetch!.complete();
+      await reading;
+
+      expect(snapshot().blocked[wednesday], created.single);
+      expect(repository.fetchCalls, 3, reason: 'la carga, la descartada y otra');
+      await controller().undoBlock(created);
+      expect(repository.unblockCalls.single, [created.single.id]);
+      expect(repository.blocked, isEmpty);
+      expect(snapshot().blocked, isEmpty);
+    });
+
+    test('desbloquear mientras se lee: la foto vieja no lo vuelve a mostrar y «Deshacer» lo vuelve a bloquear', () async {
+      repository.blocked[friday] = BlockedDay(id: 'b1', date: friday, note: 'Ferie');
+      await start();
+      repository.pendingFetch = Completer<void>();
+      final reading = controller().refresh(); // foto con el viernes
+      await pumpEventQueue();
+
+      final removed = await controller().unblock([friday]);
+      repository.pendingFetch!.complete();
+      await reading;
+      expect(snapshot().blocked, isEmpty);
+      expect(repository.blocked, isEmpty);
+
+      await controller().undoUnblock(removed);
+      expect(repository.blockCalls.single, [(date: friday, note: 'Ferie')]);
+      expect(repository.blocked[friday]?.note, 'Ferie');
+      expect(snapshot().blocked[friday]?.note, 'Ferie');
+    });
+
+    test('cambiar la nota mientras se lee: queda la nueva', () async {
+      repository.blocked[friday] = BlockedDay(id: 'b1', date: friday, note: 'Ferie');
+      await start();
+      repository.pendingFetch = Completer<void>();
+      final reading = controller().refresh(); // foto con 'Ferie'
+      await pumpEventQueue();
+
+      await controller().setNote(friday, 'Dentista');
+      repository.pendingFetch!.complete();
+      await reading;
+      expect(snapshot().blocked[friday]?.note, 'Dentista');
+      expect(repository.blocked[friday]?.note, 'Dentista');
+    });
+
+    test('«Deshacer» un bloqueo a medias antes de que vuelva la relectura: queda como en el servidor', () async {
+      await start();
+      // Desde el teléfono, sin que este dispositivo lo sepa:
+      repository.blocked[friday] = BlockedDay(
+        id: 'del-telefono',
+        date: friday,
+        note: 'Dentista',
+      );
+      repository.pendingFetch = Completer<void>();
+
+      final created = await controller().block([wednesday, friday]);
+      // La relectura (para tener la fila del viernes) ya tomó su foto, con
+      // el miércoles; «Deshacer» llega antes que la respuesta.
+      await pumpEventQueue();
+      await controller().undoBlock(created);
+      repository.pendingFetch!.complete();
+      await pumpEventQueue();
+
+      expect(repository.blocked.keys, [friday]);
+      expect(snapshot().blocked.keys, [friday]);
+      expect(snapshot().blocked[friday], repository.blocked[friday]);
+    });
+
+    test('si las dos lecturas se cruzan con un cambio, queda lo local', () async {
+      await start();
+      repository.pendingBlock = Completer<void>();
+      final blocking = controller().block([wednesday]); // espera al servidor
+      await pumpEventQueue();
+
+      await controller().refresh();
+      expect(repository.fetchCalls, 3, reason: 'la carga y dos lecturas descartadas');
+      expect(snapshot().blocked[wednesday], BlockedDay(date: wednesday));
+
+      repository.pendingBlock!.complete();
+      final created = await blocking;
+      expect(snapshot().blocked[wednesday], created.single);
+    });
+  });
+
+  group('un bloqueo de otro dispositivo que no se pudo leer', () {
+    // El viernes ya estaba bloqueado desde el teléfono y la relectura falló
+    // (sin señal): queda bloqueado, pero sin id.
+    Future<void> blockedFromPhoneWithoutId() async {
+      await start();
+      repository.blocked[friday] = BlockedDay(
+        id: 'del-telefono',
+        date: friday,
+        note: 'Dentista',
+      );
+      repository.failFetch = true;
+      expect(await controller().block([friday]), isEmpty);
+      await pumpEventQueue();
+      expect(snapshot().blocked[friday], BlockedDay(date: friday));
+      expect(saving(), isEmpty);
+      repository.failFetch = false;
+    }
+
+    test('«Sblocca» primero lo lee y lo quita por su id', () async {
+      await blockedFromPhoneWithoutId();
+      final removed = await controller().unblock([friday]);
+      expect(removed, [BlockedDay(id: 'del-telefono', date: friday, note: 'Dentista')]);
+      expect(repository.unblockCalls.single, ['del-telefono']);
+      expect(snapshot().blocked, isEmpty);
+    });
+
+    test('si la relectura vuelve a fallar, «Sblocca» lanza (para «Riprova») y no borra nada', () async {
+      await blockedFromPhoneWithoutId();
+      repository.failFetch = true;
+      await expectLater(
+        controller().unblock([friday]),
+        throwsA(isA<AvailabilityFailure>()),
+      );
+      expect(repository.unblockCalls, isEmpty);
+      expect(snapshot().blocked.keys, [friday]);
+    });
+
+    test('guardar la nota primero lo lee y la guarda en su fila', () async {
+      await blockedFromPhoneWithoutId();
+      await controller().setNote(friday, 'Ferie');
+      expect(repository.noteCalls.single, (id: 'del-telefono', note: 'Ferie'));
+      expect(snapshot().blocked[friday]?.note, 'Ferie');
+    });
+
+    test('si esa lectura se cruza con otro cambio, «Sblocca» y la nota lanzan (para «Riprova») sin tocar nada', () async {
+      await blockedFromPhoneWithoutId();
+      repository.pendingBlock = Completer<void>();
+      final blocking = controller().block([wednesday]); // espera al servidor
+      await pumpEventQueue();
+
+      await expectLater(
+        controller().unblock([friday]),
+        throwsA(isA<AvailabilityFailure>()),
+      );
+      await expectLater(
+        controller().setNote(friday, 'Ferie'),
+        throwsA(isA<AvailabilityFailure>()),
+      );
+      expect(repository.unblockCalls, isEmpty);
+      expect(repository.noteCalls, isEmpty);
+      expect(snapshot().blocked[friday], BlockedDay(date: friday));
+
+      repository.pendingBlock!.complete();
+      await blocking;
+      // Ya sin cambios en curso, se lee y se quita por su id.
+      expect(await controller().unblock([friday]), hasLength(1));
+      expect(repository.unblockCalls.single, ['del-telefono']);
     });
   });
 

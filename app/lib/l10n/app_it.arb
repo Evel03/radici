@@ -792,9 +792,13 @@
   "@availabilityNoteLabel": {
     "description": "Etiqueta del campo de la nota de un día bloqueado: es privada, la web no la muestra."
   },
-  "availabilityNoteHint": "Es.: ferie. Niente dati sanitari.",
+  "availabilityNoteHint": "Es.: ferie",
   "@availabilityNoteHint": {
-    "description": "Ejemplo dentro del campo de la nota. Pide no escribir datos de salud."
+    "description": "Ejemplo dentro del campo de la nota (se ve solo con el campo vacío y enfocado). El pedido de no escribir datos de salud va aparte, en availabilityNoteHelper."
+  },
+  "availabilityNoteHelper": "Non scrivere dati sulla salute.",
+  "@availabilityNoteHelper": {
+    "description": "Debajo del campo de la nota de un día bloqueado, siempre visible (SPEC: las notas libres piden no escribir datos de salud). Hasta dos renglones."
   },
   "availabilityAddNote": "Aggiungi nota",
   "@availabilityAddNote": {
@@ -839,7 +843,7 @@
   },
   "blockRangeTitle": "Dal {start} al {end}",
   "@blockRangeTitle": {
-    "description": "Título del diálogo del rango elegido.",
+    "description": "Título del diálogo del rango elegido. Si el rango es de un solo día, la app muestra solo la fecha.",
     "placeholders": {
       "start": { "type": "String", "example": "21 dic 2026" },
       "end": { "type": "String", "example": "6 gen 2027" }
@@ -854,7 +858,7 @@
   },
   "blockRangeWorkingDays": "{count, plural, =0{nessuno in cui lavori} =1{1 in cui lavori} other{{count} in cui lavori}}",
   "@blockRangeWorkingDays": {
-    "description": "Diálogo del rango, segunda parte del resumen: cuántos tienen horario.",
+    "description": "Diálogo del rango, segunda parte del resumen: cuántos tienen horario (\"13 in cui lavori\"; en inglés, \"13 working days\").",
     "placeholders": {
       "count": { "type": "int", "example": "13" }
     }

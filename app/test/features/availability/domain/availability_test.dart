@@ -284,6 +284,19 @@ void main() {
       expect(past.canBlock || past.canUnblock, isFalse);
     });
 
+    test('un día pasado que estuvo bloqueado queda como pasado, sin la nota', () {
+      final friday = CalendarDate(2026, 10, 16);
+      final day = agendaDayAvailability(
+        day: friday,
+        today: today,
+        snapshot: snapshot(blocked: [BlockedDay(id: 'b1', date: friday, note: 'Ferie')]),
+      );
+      expect(day.status, DayStatus.past);
+      expect(day.blocked, isNull);
+      expect(day.note, isNull);
+      expect(day.canBlock || day.canUnblock, isFalse);
+    });
+
     test('marca el feriado del día (también el patrono de Bergamo)', () {
       expect(
         agendaDayAvailability(

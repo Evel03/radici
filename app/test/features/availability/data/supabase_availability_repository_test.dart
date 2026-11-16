@@ -182,6 +182,48 @@ void main() {
       expect(server.requests, isEmpty);
     });
 
+    // Los ids van en la URL: con un año entero, un solo DELETE pasaría de los
+    // 8 KB que aceptan nginx y Kong en la línea del pedido (414).
+    test('un año de ids sale en tandas de 100, cada DELETE con la URL corta', () async {
+      server.handler = (_) async => http.Response('', 204);
+      final ids = [
+        for (var i = 0; i < 366; i++)
+          '7e5b3000-0000-4000-8000-${i.toString().padLeft(12, '0')}',
+      ];
+
+      await repository.unblock(chefId: testChefId, ids: ids);
+
+      expect(server.requests, hasLength(4));
+      final sent = [
+        for (final request in server.requests)
+          for (final match in RegExp(
+            '"([^"]+)"',
+          ).allMatches(request.url.queryParameters['id']!))
+            match.group(1),
+      ];
+      expect(sent, ids, reason: 'todos, en orden y una sola vez');
+      for (final request in server.requests) {
+        expect(request.method, 'DELETE');
+        expect(request.url.queryParameters['chef_id'], 'eq.$testChefId');
+        expect(request.url.toString().length, lessThan(6000));
+      }
+    });
+
+    test('si una tanda falla da unavailable y no manda las que siguen', () async {
+      server.handler = (_) async => server.requests.length == 2
+          ? jsonResponse({'message': 'URI Too Long'}, status: 414)
+          : http.Response('', 204);
+
+      await expectLater(
+        repository.unblock(
+          chefId: testChefId,
+          ids: [for (var i = 0; i < 250; i++) 'b$i'],
+        ),
+        _failure(AvailabilityFailureKind.unavailable),
+      );
+      expect(server.requests, hasLength(2));
+    });
+
     test('un error de permisos da unavailable', () async {
       server.handler = (_) async => jsonResponse(
         {'message': 'permission denied', 'code': '42501'},

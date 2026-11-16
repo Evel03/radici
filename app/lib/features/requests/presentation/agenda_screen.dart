@@ -203,11 +203,27 @@ class _AgendaToolbar extends ConsumerWidget {
   }
 }
 
-class _MonthView extends ConsumerWidget {
+class _MonthView extends ConsumerStatefulWidget {
   const _MonthView();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_MonthView> createState() => _MonthViewState();
+}
+
+class _MonthViewState extends ConsumerState<_MonthView> {
+  /// El título del día elegido y su tarjeta.
+  final GlobalKey _dayKey = GlobalKey();
+
+  /// Elige [day] y trae su tarjeta a la vista: en un teléfono, con un mes de
+  /// seis semanas, queda debajo de la pantalla (o la tapa el botón flotante).
+  void _select(CalendarDate day) {
+    ref.read(agendaControllerProvider.notifier).select(day);
+    final dayContext = _dayKey.currentContext;
+    if (dayContext != null) revealAgendaCard(dayContext);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final formats = RequestFormats(context);
@@ -248,12 +264,19 @@ class _MonthView extends ConsumerWidget {
                     day: day,
                     inMonth: day.isSameMonth(selected),
                     count: byDate[day]?.length ?? 0,
+                    onTap: () => _select(day),
                   ),
                 ),
             ],
           ),
-        _SectionTitle(formats.longDate(selected)),
-        DayAvailabilityCard(day: selected),
+        Column(
+          key: _dayKey,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _SectionTitle(formats.longDate(selected)),
+            DayAvailabilityCard(day: selected),
+          ],
+        ),
         if (dayRequests.isEmpty)
           _EmptyText(l10n.agendaNoRequestsDay, key: const ValueKey('agenda-day-empty'))
         else
@@ -265,11 +288,17 @@ class _MonthView extends ConsumerWidget {
 }
 
 class _DayCell extends ConsumerWidget {
-  const _DayCell({required this.day, required this.inMonth, required this.count});
+  const _DayCell({
+    required this.day,
+    required this.inMonth,
+    required this.count,
+    required this.onTap,
+  });
 
   final CalendarDate day;
   final bool inMonth;
   final int count;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -315,16 +344,18 @@ class _DayCell extends ConsumerWidget {
       child: InkWell(
         key: ValueKey('agenda-day-${day.toIso()}'),
         customBorder: const CircleBorder(),
-        onTap: () => ref.read(agendaControllerProvider.notifier).select(day),
+        onTap: onTap,
         child: SizedBox(
           height: 52,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Sin alignment: así el Stack ocupa todo el círculo y el punto
+              // del feriado queda debajo del número (con alignment, el Stack
+              // medía lo que el texto y el punto caía sobre las cifras).
               Container(
                 width: 32,
                 height: 32,
-                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isSelected

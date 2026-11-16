@@ -2,6 +2,7 @@
 // cuántos pedidos lo preferían y los botones para bloquearlo o desbloquearlo,
 // con su nota privada. En la vista de semana va compacta.
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +12,75 @@ import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/availability/presentation/availability_actions.dart';
 import 'package:radici/features/availability/presentation/availability_labels.dart';
 import 'package:radici/features/availability/presentation/note_dialog.dart';
+import 'package:radici/features/requests/presentation/request_labels.dart';
 import 'package:radici/l10n/app_localizations.dart';
+
+/// Lo que tarda en entrar un aviso (SnackBar, 250 ms), que mientras tanto
+/// empuja hacia arriba el botón flotante.
+const Duration _snackBarEntrance = Duration(milliseconds: 300);
+
+/// Desplaza la lista lo justo para que la caja de [context] se vea entera y
+/// por encima del botón flotante de la agenda. Con [afterSnackBar], espera a
+/// que termine de entrar el aviso que se acaba de mostrar: a 375×667, el de
+/// «Annulla» sube el botón hasta dejar 120 px ocupados abajo, y el de error
+/// (dos renglones), 140.
+void revealAgendaCard(BuildContext context, {bool afterSnackBar = false}) {
+  final binding = WidgetsBinding.instance;
+  Duration? start;
+  void afterFrame(Duration timeStamp) {
+    if (!context.mounted) return;
+    final elapsed = timeStamp - (start ??= timeStamp);
+    if (afterSnackBar && elapsed < _snackBarEntrance) {
+      binding
+        ..addPostFrameCallback(afterFrame)
+        ..scheduleFrame();
+      return;
+    }
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return;
+    box.showOnScreen(
+      rect: Offset.zero &
+          Size(box.size.width, box.size.height + _clearance(context)),
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  binding.addPostFrameCallback(afterFrame);
+}
+
+/// Cuánto ocupa, desde abajo de la lista que contiene a [context], el botón
+/// flotante con lo que tenga debajo (el aviso, si hay uno), más un margen.
+double _clearance(BuildContext context) {
+  final list = Scrollable.maybeOf(context)?.context.findRenderObject();
+  final fabTop = _floatingButtonTop(context);
+  if (list is! RenderBox || !list.hasSize || fabTop == null) return 0;
+  final listBottom = list.localToGlobal(Offset(0, list.size.height)).dy;
+  return math.max(0, listBottom - fabTop) + 8;
+}
+
+/// El borde de arriba del botón flotante del Scaffold de [context] (el más
+/// alto, si hay varios), en coordenadas de la pantalla. Se busca en el árbol
+/// porque Scaffold.geometryOf solo se puede leer mientras se pinta.
+double? _floatingButtonTop(BuildContext context) {
+  final scaffold = Scaffold.maybeOf(context);
+  if (scaffold == null) return null;
+  double? top;
+  void visit(Element element) {
+    if (element.widget is FloatingActionButton) {
+      final box = element.renderObject;
+      if (box is RenderBox && box.attached && box.hasSize) {
+        final y = box.localToGlobal(Offset.zero).dy;
+        top = math.min(top ?? y, y);
+      }
+      return;
+    }
+    element.visitChildren(visit);
+  }
+
+  scaffold.context.visitChildElements(visit);
+  return top;
+}
 
 class DayAvailabilityCard extends ConsumerWidget {
   const DayAvailabilityCard({super.key, required this.day, this.compact = false});
@@ -23,11 +92,23 @@ class DayAvailabilityCard extends ConsumerWidget {
   /// ([AvailabilityLoadState]).
   final bool compact;
 
+  /// Corre [action] y vuelve a traer la tarjeta a la vista: cambió de alto
+  /// (otros botones, la nota) y el aviso que aparece empuja hacia arriba el
+  /// botón flotante.
+  Future<void> _run(
+    BuildContext context,
+    Future<void> Function(AvailabilityActions actions) action,
+  ) async {
+    await action(AvailabilityActions.of(context));
+    if (context.mounted) revealAgendaCard(context, afterSnackBar: true);
+  }
+
   Future<void> _editNote(BuildContext context, String? current) async {
     final actions = AvailabilityActions.of(context);
     final note = await showNoteDialog(context, initial: current);
     if (note == null) return;
     await actions.setNote(day, note);
+    if (context.mounted) revealAgendaCard(context, afterSnackBar: true);
   }
 
   @override
@@ -62,16 +143,21 @@ class DayAvailabilityCard extends ConsumerWidget {
         !compact &&
         info.requestCount > 0 &&
         (info.status == DayStatus.open || info.status == DayStatus.blocked);
+    // En la semana hay un botón igual en cada día: VoiceOver dice también la
+    // fecha (en la tarjeta del mes, el título de arriba ya la dice).
+    String? spokenWithDate(String label) =>
+        compact ? '$label, ${RequestFormats(context).longDate(day)}' : null;
 
     final buttons = <Widget>[
       if (info.canBlock)
         _actionButton(
           key: ValueKey('availability-block-$iso'),
           label: l10n.availabilityBlockDay,
+          semanticsLabel: spokenWithDate(l10n.availabilityBlockDay),
           tonal: !compact,
           onPressed: saving
               ? null
-              : () => unawaited(AvailabilityActions.of(context).block([day])),
+              : () => unawaited(_run(context, (a) => a.block([day]))),
         ),
       if (info.canUnblock && !compact)
         TextButton.icon(
@@ -87,8 +173,11 @@ class DayAvailabilityCard extends ConsumerWidget {
           key: ValueKey('availability-unblock-$iso'),
           onPressed: saving
               ? null
-              : () => unawaited(AvailabilityActions.of(context).unblock([day])),
-          child: Text(l10n.availabilityUnblockDay),
+              : () => unawaited(_run(context, (a) => a.unblock([day]))),
+          child: Text(
+            l10n.availabilityUnblockDay,
+            semanticsLabel: spokenWithDate(l10n.availabilityUnblockDay),
+          ),
         ),
       if (saving)
         const SizedBox.square(
@@ -153,11 +242,15 @@ class DayAvailabilityCard extends ConsumerWidget {
   Widget _actionButton({
     required Key key,
     required String label,
+    required String? semanticsLabel,
     required bool tonal,
     required VoidCallback? onPressed,
-  }) => tonal
-      ? FilledButton.tonal(key: key, onPressed: onPressed, child: Text(label))
-      : OutlinedButton(key: key, onPressed: onPressed, child: Text(label));
+  }) {
+    final text = Text(label, semanticsLabel: semanticsLabel);
+    return tonal
+        ? FilledButton.tonal(key: key, onPressed: onPressed, child: text)
+        : OutlinedButton(key: key, onPressed: onPressed, child: text);
+  }
 }
 
 /// Mientras carga, una barra fina; si no se pudo cargar, el aviso con

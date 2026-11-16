@@ -74,6 +74,9 @@ void main() {
         // botón tonal «Blocca questo giorno».
         ('día bloqueado', s.onSurface, s.surfaceContainerHighest),
         ('botón tonal', s.onSecondaryContainer, s.secondaryContainer),
+        // En la semana, «Blocca»/«Sblocca» van con borde (texto primary)
+        // también sobre la tarjeta de hoy.
+        ('botón con borde en la tarjeta de hoy', s.primary, s.secondaryContainer),
         (
           'etiquetas de restricciones',
           s.onTertiaryContainer,
@@ -83,6 +86,8 @@ void main() {
         ('sobre error', s.onError, s.error),
         ('aviso de error', s.onErrorContainer, s.errorContainer),
         ('snackbar', s.onInverseSurface, s.inverseSurface),
+        // «Annulla» y «Riprova» del aviso (M3: inversePrimary).
+        ('acción del aviso', s.inversePrimary, s.inverseSurface),
         ('texto en tarjetas', s.onSurface, build().cardTheme.color!),
         (
           'secundario en tarjetas',

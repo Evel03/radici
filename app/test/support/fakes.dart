@@ -255,7 +255,9 @@ List<AvailabilityRule> weekdayRules() => [
 ];
 
 /// Horario y días bloqueados "en el servidor", en memoria. Como la base,
-/// bloquear un día que ya está bloqueado no lo toca ni lo devuelve.
+/// bloquear un día que ya está bloqueado no lo toca ni lo devuelve, y cada
+/// pedido se aplica (o la lectura toma su foto) en cuanto llega: los
+/// `pending…` demoran solo la respuesta, como una red lenta.
 class FakeAvailabilityRepository implements AvailabilityRepository {
   FakeAvailabilityRepository({
     List<AvailabilityRule>? rules,
@@ -273,8 +275,9 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
   bool failUnblock = false;
   bool failNote = false;
 
-  /// Si no es null, [fetch], [block] o [unblock] esperan a que se complete
-  /// (para ver el estado mientras carga o mientras se guarda).
+  /// Si no es null, la respuesta de [fetch], [block] o [unblock] espera a que
+  /// se complete (para ver el estado mientras carga o mientras se guarda, o
+  /// una respuesta que llega después de otra).
   Completer<void>? pendingFetch;
   Completer<void>? pendingBlock;
   Completer<void>? pendingUnblock;
@@ -297,16 +300,18 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
   }) async {
     fetchCalls++;
     fetchedFrom.add(from);
-    final pending = pendingFetch;
-    if (pending != null) await pending.future;
-    if (failFetch) throw _unavailable;
-    return AvailabilitySnapshot(
+    final fail = failFetch;
+    final snapshot = AvailabilitySnapshot(
       rules: List.of(rules),
       blocked: {
         for (final entry in blocked.entries)
           if (!entry.key.isBefore(from)) entry.key: entry.value,
       },
     );
+    final pending = pendingFetch;
+    if (pending != null) await pending.future;
+    if (fail) throw _unavailable;
+    return snapshot;
   }
 
   @override
@@ -315,20 +320,23 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
     required List<DayToBlock> days,
   }) async {
     blockCalls.add(List.of(days));
+    final fail = failBlock;
+    final created = <BlockedDay>[];
+    if (!fail) {
+      for (final day in days) {
+        if (blocked.containsKey(day.date)) continue;
+        final row = BlockedDay(
+          id: 'block-${_nextId++}',
+          date: day.date,
+          note: day.note,
+        );
+        blocked[day.date] = row;
+        created.add(row);
+      }
+    }
     final pending = pendingBlock;
     if (pending != null) await pending.future;
-    if (failBlock) throw _unavailable;
-    final created = <BlockedDay>[];
-    for (final day in days) {
-      if (blocked.containsKey(day.date)) continue;
-      final row = BlockedDay(
-        id: 'block-${_nextId++}',
-        date: day.date,
-        note: day.note,
-      );
-      blocked[day.date] = row;
-      created.add(row);
-    }
+    if (fail) throw _unavailable;
     return created;
   }
 
@@ -338,10 +346,11 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
     required List<String> ids,
   }) async {
     unblockCalls.add(List.of(ids));
+    final fail = failUnblock;
+    if (!fail) blocked.removeWhere((_, day) => ids.contains(day.id));
     final pending = pendingUnblock;
     if (pending != null) await pending.future;
-    if (failUnblock) throw _unavailable;
-    blocked.removeWhere((_, day) => ids.contains(day.id));
+    if (fail) throw _unavailable;
   }
 
   @override

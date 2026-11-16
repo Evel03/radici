@@ -1,5 +1,6 @@
-// Diálogo de un rango de días: resumen ("17 giorni · 13 in cui lavori · 3 già
-// bloccati"), nota con letra de 16 px o más y las tres salidas.
+// Diálogo de un rango de días: título, resumen ("17 giorni · 13 in cui lavori
+// · 3 già bloccati"), nota con letra de 16 px o más (que se sigue viendo con
+// el teclado abierto a 375×667) y las tres salidas.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
@@ -59,27 +60,112 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  final note = find.byKey(const ValueKey('block-range-note'));
+
   testWidgets('del 21/12 al 6/1: resumen, «Sblocca 3 giorni» y «Blocca 14 giorni»', (
     tester,
   ) async {
     await open(tester, summaryWith(holidays), (_) {});
 
     expect(find.byType(BlockRangeDialog), findsOneWidget);
-    expect(find.text('Dal 21 dic 2026 al 6 gen 2027'), findsOneWidget);
+    // Cada fecha con espacios que no cortan: el renglón se parte entre las
+    // fechas, no en medio de una.
+    expect(find.text('Dal 21\u00a0dic\u00a02026 al 6\u00a0gen\u00a02027'), findsOneWidget);
     expect(find.text('17 giorni · 13 in cui lavori · 3 già bloccati'), findsOneWidget);
     expect(find.text('Sblocca 3 giorni'), findsOneWidget);
     expect(find.text('Blocca 14 giorni'), findsOneWidget);
     expect(find.text('Annulla'), findsOneWidget);
-    // La nota: letra de 16 px o más (si no, iOS hace zoom).
-    expect(find.byKey(const ValueKey('block-range-note')), findsOneWidget);
+    // La nota: letra de 16 px o más (si no, iOS hace zoom), el ejemplo como
+    // pista y, siempre a la vista (también sin foco), que no lleve datos de
+    // salud.
+    expect(note, findsOneWidget);
     expectReadableInputs(tester);
+    final decoration = tester.widget<TextField>(note).decoration!;
+    expect(decoration.hintText, 'Es.: ferie');
+    expect(find.text('Non scrivere dati sulla salute.'), findsOneWidget);
+    expect(decoration.helperMaxLines, 2);
+  });
+
+  testWidgets('arriba, desplazable, nota de hasta 200 letras con mayúscula al empezar', (
+    tester,
+  ) async {
+    await open(tester, summaryWith(holidays), (_) {});
+    final dialog = tester.widget<AlertDialog>(
+      find.byKey(const ValueKey('block-range-dialog')),
+    );
+    expect(dialog.alignment, Alignment.topCenter);
+    expect(dialog.scrollable, isTrue);
+    expect(
+      tester.widget<TextField>(note).textCapitalization,
+      TextCapitalization.sentences,
+    );
+
+    await tester.enterText(note, 'x' * 250);
+    final editable = find.descendant(of: note, matching: find.byType(EditableText));
+    expect(tester.widget<EditableText>(editable).controller.text, hasLength(maxNoteLength));
+  });
+
+  // El teclado de un iPhone SE con predicciones y la barra de formulario
+  // ocupa unos 300 pt; Flutter web lo informa como viewInsets.
+  for (final locale in const [Locale('es'), Locale('it')]) {
+    testWidgets('a 375×667 con el teclado abierto, la nota se ve y «Blocca» queda a mano (${locale.languageCode})', (
+      tester,
+    ) async {
+      setSurfaceSize(tester, const Size(375, 667));
+      await open(tester, summaryWith(holidays), (_) {}, locale: locale);
+      await tester.tap(note);
+      await tester.pump();
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+
+      final scroll = find.descendant(
+        of: find.byKey(const ValueKey('block-range-dialog')),
+        matching: find.byType(SingleChildScrollView),
+      );
+      final visible = tester.getRect(note).intersect(tester.getRect(scroll));
+      expect(visible.height, greaterThanOrEqualTo(48));
+      expect(
+        find.descendant(of: note, matching: find.byType(EditableText)).hitTestable(),
+        findsOneWidget,
+      );
+      final confirm = find.byKey(const ValueKey('block-range-confirm'));
+      expect(confirm.hitTestable(), findsOneWidget);
+      expect(tester.getRect(confirm).bottom, lessThanOrEqualTo(667 - 300));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('un solo día: el título es la fecha, sin «Dal … al …»', (tester) async {
+    final day = CalendarDate(2026, 11, 18);
+    await pumpLocalized(
+      tester,
+      Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showBlockRangeDialog(
+              context,
+              first: day,
+              last: day,
+              summary: summarizeRange(day, day, AvailabilitySnapshot(rules: weekdayRules())),
+            ),
+            child: const Text('apri'),
+          ),
+        ),
+      ),
+      locale: const Locale('es'),
+    );
+    await tester.tap(find.text('apri'));
+    await tester.pumpAndSettle();
+    expect(find.text('18\u00a0nov\u00a02026'), findsOneWidget);
+    expect(find.text('1 día · 1 en el que trabajas'), findsOneWidget);
+    expect(find.text('Bloquear 1 día'), findsOneWidget);
   });
 
   testWidgets('«Blocca» devuelve la nota escrita', (tester) async {
     BlockRangeChoice? choice;
     await open(tester, summaryWith(holidays), (c) => choice = c);
 
-    await tester.enterText(find.byKey(const ValueKey('block-range-note')), 'Ferie di Natale');
+    await tester.enterText(note, 'Ferie di Natale');
     await tester.tap(find.byKey(const ValueKey('block-range-confirm')));
     await tester.pumpAndSettle();
 
@@ -117,7 +203,7 @@ void main() {
     await open(tester, summaryWith(everyDay), (_) {});
     expect(find.text('Sblocca 17 giorni'), findsOneWidget);
     expect(find.byKey(const ValueKey('block-range-confirm')), findsNothing);
-    expect(find.byKey(const ValueKey('block-range-note')), findsNothing);
+    expect(note, findsNothing);
   });
 
   testWidgets('un fin de semana solo: «nessuno in cui lavori»', (tester) async {
@@ -151,13 +237,13 @@ void main() {
   for (final (locale, title, line) in [
     (
       const Locale('es'),
-      'Del 21 dic 2026 al 6 ene 2027',
-      '17 días · 13 que trabajas · 3 ya bloqueados',
+      'Del 21\u00a0dic\u00a02026 al 6\u00a0ene\u00a02027',
+      '17 días · 13 en los que trabajas · 3 ya bloqueados',
     ),
     (
       const Locale('en'),
-      'From Dec 21, 2026 to Jan 6, 2027',
-      '17 days · 13 you work · 3 already blocked',
+      'From Dec\u00a021,\u00a02026 to Jan\u00a06,\u00a02027',
+      '17 days · 13 working days · 3 already blocked',
     ),
   ]) {
     testWidgets('en ${locale.languageCode}', (tester) async {

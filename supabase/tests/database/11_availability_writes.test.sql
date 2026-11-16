@@ -13,7 +13,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(20);
+select plan(22);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS): dos cocineras y un cliente de C1. C1 trabaja los 7 días
@@ -101,6 +101,16 @@ select throws_ok(
   '42501', null,
   'C1 no bloquea días de C2'
 );
+-- Como lo manda la app (on conflict do nothing) y sobre un día que C2 ya bloqueó: la política se
+-- evalúa antes que el conflicto, así que tampoco hay un «do nothing» silencioso que delate el
+-- bloqueo de C2.
+select throws_ok(
+  $$ insert into public.availability_exceptions (chef_id, date, kind, note)
+     values ('7e5b1000-0000-4000-8000-000000000002', (now() at time zone 'Europe/Rome')::date + 3, 'blocked', null)
+     on conflict (chef_id, date, kind) do nothing $$,
+  '42501', null,
+  'C1 no bloquea días de C2 ni con upsert, ni sobre un día que C2 ya bloqueó'
+);
 select lives_ok(
   $$ update public.availability_exceptions set note = 'Vacanze'
      where chef_id = '7e5b1000-0000-4000-8000-000000000001'
@@ -116,6 +126,12 @@ select is_empty(
   $$ update public.availability_exceptions set note = 'x'
      where chef_id = '7e5b1000-0000-4000-8000-000000000002' returning id $$,
   'C1 no edita los de C2 (no los ve)'
+);
+select throws_ok(
+  $$ update public.availability_exceptions set chef_id = '7e5b1000-0000-4000-8000-000000000002'
+     where chef_id = '7e5b1000-0000-4000-8000-000000000001' $$,
+  '42501', null,
+  'C1 no le pasa un bloqueo suyo a C2'
 );
 select is_empty(
   $$ delete from public.availability_exceptions
@@ -150,13 +166,15 @@ select throws_ok(
 );
 
 -- =====================================================================
--- La web (get_free_days, que corre con la service role) deja de ofrecerlos
+-- La web (get_free_days, que corre con la service role) deja de ofrecerlos.
+-- 120 minutos de cocina: con holgura en la ventana de 9 a 15 aunque cambie el tiempo de compra
+-- por defecto (chef_settings.shop_minutes), así lo único que cambia la respuesta son los bloqueos.
 -- =====================================================================
 reset role;
 
 select results_eq(
   $$ select available from public.get_free_days(
-       '7e5b1000-0000-4000-8000-000000000001', 300, (now() at time zone 'Europe/Rome')::date + 3, 3) $$,
+       '7e5b1000-0000-4000-8000-000000000001', 120, (now() at time zone 'Europe/Rome')::date + 3, 3) $$,
   $$ values (false), (true), (false) $$,
   'la web no ofrece los días bloqueados desde la app: D no, el siguiente sí, D + 2 no'
 );
@@ -180,7 +198,7 @@ reset role;
 
 select is(
   (select available from public.get_free_days(
-     '7e5b1000-0000-4000-8000-000000000001', 300, (now() at time zone 'Europe/Rome')::date + 3, 1)),
+     '7e5b1000-0000-4000-8000-000000000001', 120, (now() at time zone 'Europe/Rome')::date + 3, 1)),
   true,
   'desbloqueado, la web lo vuelve a ofrecer'
 );

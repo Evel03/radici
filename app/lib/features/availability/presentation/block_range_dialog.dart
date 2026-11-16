@@ -110,10 +110,21 @@ class _BlockRangeDialogState extends State<BlockRangeDialog> {
 
   void _close(BlockRangeChoice? choice) => Navigator.of(context).pop(choice);
 
+  /// "Dal 21 dic 2026 al 6 gen 2027", o solo la fecha si es un día. Cada
+  /// fecha va con espacios que no cortan: el renglón se parte entre las
+  /// fechas, nunca en medio de una.
+  String _title(AppLocalizations l10n) {
+    final formats = RequestFormats(context);
+    String date(CalendarDate day) =>
+        formats.dayMonthYear(day).replaceAll(' ', '\u00a0');
+    return widget.first == widget.last
+        ? date(widget.first)
+        : l10n.blockRangeTitle(date(widget.first), date(widget.last));
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final formats = RequestFormats(context);
     final summary = widget.summary;
     final toBlock = summary.toBlock.length;
     final blocked = summary.alreadyBlocked.length;
@@ -123,40 +134,63 @@ class _BlockRangeDialogState extends State<BlockRangeDialog> {
       if (blocked > 0) l10n.blockRangeAlreadyBlocked(blocked),
     ].join(' · ');
 
+    // El alto del teclado se descuenta acá, en el mismo cuadro en que llega:
+    // el Dialog lo animaría (100 ms) y el campo enfocado buscaría su lugar
+    // antes de tiempo, con el diálogo todavía alto, y quedaría debajo del
+    // teclado.
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: MediaQuery.removeViewInsets(
+        context: context,
+        removeBottom: true,
+        child: _dialog(l10n, counts, toBlock: toBlock, blocked: blocked),
+      ),
+    );
+  }
+
+  Widget _dialog(
+    AppLocalizations l10n,
+    String counts, {
+    required int toBlock,
+    required int blocked,
+  }) {
     return AlertDialog(
       key: const ValueKey('block-range-dialog'),
-      // Arriba: el teclado de iOS no tapa la nota ni los botones.
       alignment: Alignment.topCenter,
+      // Con el teclado abierto el diálogo se achica: el título y la nota se
+      // desplazan (el campo enfocado queda a la vista) y los botones quedan
+      // fijos abajo. Sin esto, a 375×667 la nota quedaba en una franja de
+      // unos pocos píxeles.
+      scrollable: true,
+      // Más chico que el de los otros diálogos: son dos fechas.
+      titleTextStyle: Theme.of(context).textTheme.titleLarge,
       // En un teléfono los tres botones no entran en una fila y se apilan.
       actionsOverflowButtonSpacing: 8,
-      title: Text(
-        l10n.blockRangeTitle(
-          formats.dayMonthYear(widget.first),
-          formats.dayMonthYear(widget.last),
-        ),
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(counts, key: const ValueKey('block-range-summary')),
-            if (toBlock > 0) ...[
-              const SizedBox(height: 16),
-              TextField(
-                key: const ValueKey('block-range-note'),
-                controller: _note,
-                maxLength: maxNoteLength,
-                textCapitalization: TextCapitalization.sentences,
-                textInputAction: TextInputAction.done,
-                decoration: InputDecoration(
-                  labelText: l10n.availabilityNoteLabel,
-                  hintText: l10n.availabilityNoteHint,
-                ),
+      title: Text(_title(l10n)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(counts, key: const ValueKey('block-range-summary')),
+          if (toBlock > 0) ...[
+            const SizedBox(height: 16),
+            TextField(
+              key: const ValueKey('block-range-note'),
+              controller: _note,
+              maxLength: maxNoteLength,
+              textCapitalization: TextCapitalization.sentences,
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(
+                labelText: l10n.availabilityNoteLabel,
+                hintText: l10n.availabilityNoteHint,
+                // Fuera de la pista: se ve siempre (también sin foco) y no
+                // se corta en una línea.
+                helperText: l10n.availabilityNoteHelper,
+                helperMaxLines: 2,
               ),
-            ],
+            ),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(

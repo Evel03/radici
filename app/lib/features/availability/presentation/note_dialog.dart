@@ -58,6 +58,9 @@ class _NoteDialogState extends State<NoteDialog> {
         decoration: InputDecoration(
           labelText: l10n.availabilityNoteLabel,
           hintText: l10n.availabilityNoteHint,
+          // Fuera de la pista: se ve siempre, también sin foco.
+          helperText: l10n.availabilityNoteHelper,
+          helperMaxLines: 2,
         ),
       ),
       actions: [

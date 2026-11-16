@@ -2,6 +2,8 @@
 // bloqueó. Bloquear y desbloquear se ven enseguida y vuelven atrás si el
 // servidor falla; cada acción devuelve lo que cambió, para «Deshacer».
 // Entre dos dispositivos alcanza con deslizar para actualizar (sin Realtime).
+// Una lectura que se cruza con un cambio de este dispositivo puede ser de
+// antes de que el servidor lo guardara: no pisa lo local (ver refresh).
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -66,6 +68,17 @@ class AvailabilityController extends AsyncNotifier<AvailabilitySnapshot> {
 
   String? get _chefId => ref.read(currentChefProvider)?.chefId;
 
+  /// Suma uno cuando un cambio empieza y otro cuando termina: si cambió
+  /// mientras se leía, la lectura puede ser de antes del cambio.
+  int _changes = 0;
+
+  /// Cambios que todavía esperan al servidor.
+  int _changesInFlight = 0;
+
+  static const _unavailable = AvailabilityFailure(
+    AvailabilityFailureKind.unavailable,
+  );
+
   @override
   Future<AvailabilitySnapshot> build() async {
     final chefId = ref.watch(
@@ -106,31 +119,31 @@ class AvailabilityController extends AsyncNotifier<AvailabilitySnapshot> {
     };
     if (toSave.isEmpty) return const [];
 
-    _update(
-      add: [
-        for (final day in toSave.values)
-          BlockedDay(date: day.date, note: day.note),
-      ],
-    );
-    _saving._add(toSave.keys);
-    try {
-      final created = await _repository.block(
-        chefId: chefId,
-        days: toSave.values.toList(),
+    final created = await _change(toSave.keys, () async {
+      _update(
+        add: [
+          for (final day in toSave.values)
+            BlockedDay(date: day.date, note: day.note),
+        ],
       );
-      if (ref.mounted) {
-        _update(add: created);
-        // Los que no volvieron ya los había bloqueado otro dispositivo: siguen
-        // bloqueados y se leen sus filas (id y nota).
-        if (created.length < toSave.length) unawaited(_reloadQuietly());
+      try {
+        final created = await _repository.block(
+          chefId: chefId,
+          days: toSave.values.toList(),
+        );
+        if (ref.mounted) _update(add: created);
+        return created;
+      } on Object {
+        if (ref.mounted) _update(removeUnsaved: toSave.keys);
+        rethrow;
       }
-      return created;
-    } on Object {
-      if (ref.mounted) _update(removeUnsaved: toSave.keys);
-      rethrow;
-    } finally {
-      if (ref.mounted) _saving._remove(toSave.keys);
+    });
+    // Los que no volvieron ya los había bloqueado otro dispositivo: siguen
+    // bloqueados y se leen sus filas (id y nota).
+    if (ref.mounted && created.length < toSave.length) {
+      unawaited(_reloadQuietly());
     }
+    return created;
   }
 
   /// Desbloquea [dates]. Se ve enseguida. Devuelve los bloqueos quitados, con
@@ -144,43 +157,49 @@ class AvailabilityController extends AsyncNotifier<AvailabilitySnapshot> {
     if (targets.any((day) => day.id == null)) {
       // Un bloqueo de otro dispositivo que todavía no se leyó: primero se lee.
       await refresh();
+      if (!ref.mounted) return const [];
       targets = _blockedOn(wanted);
+      // La lectura se descartó (se cruzó con otro cambio): que se reintente.
+      if (targets.any((day) => day.id == null)) throw _unavailable;
     }
-    targets = [
-      for (final day in targets)
-        if (day.id != null) day,
-    ];
     if (targets.isEmpty) return const [];
 
     final days = [for (final day in targets) day.date];
-    _update(remove: days);
-    _saving._add(days);
-    try {
-      await _repository.unblock(
-        chefId: chefId,
-        ids: [for (final day in targets) day.id!],
-      );
-      return targets;
-    } on Object {
-      if (ref.mounted) _update(add: targets);
-      rethrow;
-    } finally {
-      if (ref.mounted) _saving._remove(days);
-    }
+    await _change(days, () async {
+      _update(remove: days);
+      try {
+        await _repository.unblock(
+          chefId: chefId,
+          ids: [for (final day in targets) day.id!],
+        );
+      } on Object {
+        if (ref.mounted) _update(add: targets);
+        rethrow;
+      }
+    });
+    return targets;
   }
 
-  /// Deshace un [block]: quita solo los bloqueos que creó, nunca uno que ya
-  /// existía. Errores como en [unblock].
+  /// Deshace un [block]: quita solo los bloqueos que creó, por id (nunca uno
+  /// que ya existía), aunque la foto local ya no los tenga. Si falla, la
+  /// foto vuelve a como estaba y se relanza [AvailabilityFailure].
   Future<void> undoBlock(List<BlockedDay> created) async {
-    final ids = {
-      for (final day in created)
-        if (day.id != null) day.id,
-    };
-    final blocked = state.value?.blocked.values ?? const <BlockedDay>[];
-    await unblock([
-      for (final day in blocked)
-        if (ids.contains(day.id)) day.date,
-    ]);
+    final chefId = _chefId;
+    final ids = {for (final day in created) ?day.id};
+    if (chefId == null || ids.isEmpty) return;
+    final shown = [
+      for (final day in state.value?.blocked.values ?? const <BlockedDay>[])
+        if (ids.contains(day.id)) day,
+    ];
+    await _change([for (final day in created) day.date], () async {
+      _update(remove: [for (final day in shown) day.date]);
+      try {
+        await _repository.unblock(chefId: chefId, ids: ids.toList());
+      } on Object {
+        if (ref.mounted) _update(add: shown);
+        rethrow;
+      }
+    });
   }
 
   /// Cambia la nota del día bloqueado [date] (vacía = sin nota). Se ve
@@ -192,8 +211,12 @@ class AvailabilityController extends AsyncNotifier<AvailabilitySnapshot> {
     if (chefId == null) return;
     var day = state.value?.blocked[date];
     if (day != null && day.id == null) {
+      // Un bloqueo de otro dispositivo que todavía no se leyó: primero se lee.
       await refresh();
+      if (!ref.mounted) return;
       day = state.value?.blocked[date];
+      // La lectura se descartó (se cruzó con otro cambio): que se reintente.
+      if (day != null && day.id == null) throw _unavailable;
     }
     final id = day?.id;
     if (day == null || id == null) return;
@@ -201,32 +224,61 @@ class AvailabilityController extends AsyncNotifier<AvailabilitySnapshot> {
     if (clean == day.note) return;
 
     final previous = day;
-    _update(add: [previous.copyWith(note: clean)]);
-    _saving._add([date]);
     try {
-      await _repository.updateNote(chefId: chefId, id: id, note: clean);
-    } on Object catch (error) {
-      if (ref.mounted) {
-        _update(add: [previous]);
-        if (error is AvailabilityFailure &&
-            error.kind == AvailabilityFailureKind.notFound) {
-          unawaited(_reloadQuietly());
+      await _change([date], () async {
+        _update(add: [previous.copyWith(note: clean)]);
+        try {
+          await _repository.updateNote(chefId: chefId, id: id, note: clean);
+        } on Object {
+          if (ref.mounted) _update(add: [previous]);
+          rethrow;
         }
+      });
+    } on AvailabilityFailure catch (error) {
+      if (ref.mounted && error.kind == AvailabilityFailureKind.notFound) {
+        unawaited(_reloadQuietly());
       }
       rethrow;
-    } finally {
-      if (ref.mounted) _saving._remove([date]);
     }
   }
 
-  /// Vuelve a leer todo (deslizar para actualizar). Si falla, queda lo que
-  /// había y se relanza [AvailabilityFailure].
+  /// Vuelve a leer todo (deslizar para actualizar). Si la lectura se cruzó
+  /// con un cambio (empezó, terminó o sigue esperando al servidor), puede ser
+  /// de antes de que el servidor lo guardara: se descarta y se lee una vez
+  /// más; si esa también se cruza, queda lo local hasta el próximo deslizar.
+  /// Si falla, queda lo que había y se relanza [AvailabilityFailure].
   Future<void> refresh() async {
     final chefId = _chefId;
     if (chefId == null) return;
-    final from = blockedDaysFrom(ref.read(romeTodayProvider));
-    final fresh = await _repository.fetch(chefId: chefId, from: from);
-    if (ref.mounted) state = AsyncData(fresh);
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final changes = _changes;
+      final from = blockedDaysFrom(ref.read(romeTodayProvider));
+      final fresh = await _repository.fetch(chefId: chefId, from: from);
+      if (!ref.mounted) return;
+      if (_changesInFlight == 0 && changes == _changes) {
+        state = AsyncData(fresh);
+        return;
+      }
+    }
+  }
+
+  /// Corre [body], un cambio que espera al servidor: sus [days] quedan
+  /// «guardando» y una lectura que se cruce con él no pisa la foto.
+  Future<T> _change<T>(
+    Iterable<CalendarDate> days,
+    Future<T> Function() body,
+  ) async {
+    final saving = days.toList();
+    _changes++;
+    _changesInFlight++;
+    _saving._add(saving);
+    try {
+      return await body();
+    } finally {
+      _changes++;
+      _changesInFlight--;
+      if (ref.mounted) _saving._remove(saving);
+    }
   }
 
   Future<void> _reloadQuietly() async {
