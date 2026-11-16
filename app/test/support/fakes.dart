@@ -16,6 +16,10 @@ import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/sessions/data/sessions_repository.dart';
+import 'package:radici/features/sessions/domain/cooking_session.dart';
+import 'package:radici/features/sessions/domain/session_api.dart';
+import 'package:radici/features/sessions/domain/session_booking.dart';
 
 import 'request_fixtures.dart';
 
@@ -513,6 +517,238 @@ class FakeBookingsRepository implements BookingsRepository {
           ? current.client.copyWith(status: ClientStatus.trial)
           : current.client,
     );
+  }
+}
+
+/// Las sesiones "en el servidor", en memoria: la lectura (con la RLS, solo
+/// las de la cocinera) y la Edge Function chef para mover y cancelar, con las
+/// mismas reglas que la base (contrato chef-api §5 y §6): solo se mueve una
+/// held o confirmed; una semana con otra sesión viva de la misma reserva da
+/// weekTaken; una fecha marcada busy en [statuses] da slotTaken; cancelar es
+/// todo o nada (cooked o paid dan invalidTransition; las de [paid], sin
+/// permiso, hasPayments). Las fallas y las respuestas lentas se controlan por
+/// campo; los `pending…` demoran solo la respuesta.
+class FakeSessionsRepository implements SessionsRepository {
+  FakeSessionsRepository([Iterable<CookingSession> sessions = const []])
+    : sessions = {for (final session in sessions) session.id: session};
+
+  /// Sesiones guardadas, por id.
+  final Map<String, CookingSession> sessions;
+
+  /// Estado de cada fecha en el chequeo (ok por defecto).
+  final Map<CalendarDate, BookingDayStatus> statuses = {};
+
+  /// La primera llegada de cualquier día (null: día sin horario).
+  ClockTime? suggestedStart = const ClockTime.hm(10, 0);
+
+  /// Sesiones con un cobro.
+  final Set<String> paid = {};
+
+  /// Si no son null, la operación falla con esto.
+  SessionFailure? fetchFailure;
+  SessionFailure? checkFailure;
+  SessionFailure? moveFailure;
+  SessionFailure? cancelFailure;
+
+  /// Si no son null, la respuesta espera a que se completen.
+  Completer<void>? pendingFetch;
+  Completer<void>? pendingCheck;
+  Completer<void>? pendingMove;
+  Completer<void>? pendingCancel;
+
+  int fetchCalls = 0;
+  final List<CalendarDate> fetchedFrom = [];
+  final List<String> bookingFetches = [];
+  final List<String> sessionFetches = [];
+  final List<MoveSessionRequest> moveCalls = [];
+  final List<CancelSessionsRequest> cancelCalls = [];
+
+  List<MoveSessionRequest> get checks => [
+    for (final call in moveCalls)
+      if (call.dryRun) call,
+  ];
+
+  List<MoveSessionRequest> get moves => [
+    for (final call in moveCalls)
+      if (!call.dryRun) call,
+  ];
+
+  List<CookingSession> _sorted(Iterable<CookingSession> list) =>
+      list.toList()..sort(compareSessions);
+
+  Future<void> _read() async {
+    final pending = pendingFetch;
+    if (pending != null) await pending.future;
+    final failure = fetchFailure;
+    if (failure != null) throw failure;
+  }
+
+  @override
+  Future<List<CookingSession>> fetchSessions({
+    required String chefId,
+    required CalendarDate from,
+  }) async {
+    fetchCalls++;
+    fetchedFrom.add(from);
+    final found = _sorted(
+      sessions.values.where(
+        (s) => s.chefId == chefId && !s.date.isBefore(from),
+      ),
+    );
+    await _read();
+    return found;
+  }
+
+  @override
+  Future<CookingSession?> fetchSession(String id) async {
+    sessionFetches.add(id);
+    final found = sessions[id];
+    await _read();
+    return found;
+  }
+
+  @override
+  Future<List<CookingSession>> fetchBookingSessions({
+    required String chefId,
+    required String requestId,
+  }) async {
+    bookingFetches.add(requestId);
+    final found = _sorted(
+      sessions.values.where(
+        (s) => s.chefId == chefId && s.requestId == requestId,
+      ),
+    );
+    await _read();
+    return found;
+  }
+
+  @override
+  Future<MoveSessionResult> moveSession(MoveSessionRequest request) async {
+    moveCalls.add(request);
+    final pending = request.dryRun ? pendingCheck : pendingMove;
+    final failure = request.dryRun ? checkFailure : moveFailure;
+    final session = sessions[request.sessionId];
+    MoveSessionResult? result;
+    SessionFailure? refused;
+    if (failure != null) {
+      refused = failure;
+    } else if (session == null) {
+      refused = const SessionFailure(SessionFailureKind.notFound);
+    } else if (!session.canMove) {
+      refused = SessionFailure(
+        SessionFailureKind.notMovable,
+        status: session.status,
+      );
+    } else {
+      final weekTaken =
+          session.requestId != null &&
+          sessions.values.any(
+            (other) =>
+                other.id != session.id &&
+                other.requestId == session.requestId &&
+                other.isLive &&
+                other.weekStart == request.date.startOfWeek,
+          );
+      final status = statuses[request.date] ?? BookingDayStatus.ok;
+      result = MoveSessionResult(
+        dryRun: request.dryRun,
+        sessionId: session.id,
+        requestId: session.requestId,
+        date: request.date,
+        start: request.start ?? session.start,
+        cookMinutes: request.cookMinutes ?? session.cookMinutes,
+        status: status,
+        suggestedStart: suggestedStart,
+        weekTaken: weekTaken,
+      );
+      if (!request.dryRun) {
+        if (status == BookingDayStatus.busy) {
+          refused = SessionFailure(
+            SessionFailureKind.slotTaken,
+            date: request.date,
+          );
+        } else if (weekTaken) {
+          refused = SessionFailure(
+            SessionFailureKind.weekTaken,
+            date: request.date,
+          );
+        } else {
+          sessions[session.id] = session.copyWith(
+            date: result.date,
+            start: result.start,
+            cookMinutes: result.cookMinutes,
+          );
+        }
+      }
+    }
+    if (pending != null) await pending.future;
+    if (refused != null) throw refused;
+    return result!;
+  }
+
+  @override
+  Future<CancelSessionsResult> cancelSessions(
+    CancelSessionsRequest request,
+  ) async {
+    cancelCalls.add(request);
+    final ids = {...request.sessionIds};
+    final found = [for (final id in ids) ?sessions[id]];
+    SessionFailure? refused = cancelFailure;
+    CancelSessionsResult? result;
+    if (refused == null && found.length != ids.length) {
+      refused = const SessionFailure(SessionFailureKind.notFound);
+    }
+    final blocked = found.where(
+      (s) => s.status == SessionStatus.cooked || s.status == SessionStatus.paid,
+    );
+    if (refused == null && blocked.isNotEmpty) {
+      refused = SessionFailure(
+        SessionFailureKind.invalidTransition,
+        sessionIds: [blocked.first.id],
+      );
+    }
+    final withPayments = [
+      for (final s in found)
+        if (paid.contains(s.id) && s.canCancel) s.id,
+    ];
+    if (refused == null &&
+        withPayments.isNotEmpty &&
+        !request.allowWithPayments) {
+      refused = SessionFailure(
+        SessionFailureKind.hasPayments,
+        sessionIds: withPayments,
+      );
+    }
+    if (refused == null) {
+      final already = [
+        for (final s in found)
+          if (!s.isLive) s.id,
+      ];
+      final cancelled = [
+        for (final s in found)
+          if (s.canCancel) s.id,
+      ];
+      for (final id in cancelled) {
+        sessions[id] = sessions[id]!.copyWith(
+          status: SessionStatus.cancelled,
+          cancelReason: request.reason.code,
+          cancelledAt: DateTime.utc(2026, 10, 19, 12),
+        );
+      }
+      result = CancelSessionsResult(
+        cancelled: cancelled,
+        alreadyCancelled: already,
+        withPayments: [
+          for (final s in found)
+            if (paid.contains(s.id)) s.id,
+        ],
+        hadPayments: withPayments.isNotEmpty,
+      );
+    }
+    final pending = pendingCancel;
+    if (pending != null) await pending.future;
+    if (refused != null) throw refused;
+    return result!;
   }
 }
 
