@@ -74,6 +74,13 @@ test("preflight de un origen permitido: métodos, cabeceras y caché", () => {
   assert.equal(headers["Vary"], "Origin");
 });
 
+test("cada función puede pasar sus métodos (chef: solo POST); sin origen permitido, ninguno", () => {
+  const chef = corsHeaders("https://radicicucina.app", RULES, { preflight: true, methods: "POST, OPTIONS" });
+  assert.equal(chef["Access-Control-Allow-Methods"], "POST, OPTIONS");
+  assert.equal(chef["Access-Control-Allow-Headers"], CORS_ALLOWED_HEADERS);
+  assert.deepEqual(corsKeys(corsHeaders("https://evil.example", RULES, { preflight: true, methods: "POST, OPTIONS" })), []);
+});
+
 test("respuesta normal a un origen permitido: expone Retry-After", () => {
   const headers = corsHeaders("http://localhost:5173", RULES, { preflight: false });
   assert.equal(headers["Access-Control-Allow-Origin"], "http://localhost:5173");
