@@ -15,6 +15,9 @@ function view(lang: Lang, overrides: Partial<RequestData> = {}): QuoteBoxView {
 /** Intl separa el importe del € con un espacio duro: en el test se escribe con uno normal. */
 const money = (text: string): string => text.replace(/ €/g, " €");
 
+/** El ahorro: la tarifa va pegada a «a settimana» (en el teléfono la palabra no queda sola en un renglón). */
+const glued = (text: string): string => text.replace(/ (a|por) (settimana|semana|week)./, " $1 $2.");
+
 describe("recuadro del precio del formulario (quoteBoxView)", () => {
   it("1 semana: el precio del servicio destacado, sin fila por semana ni ahorro; la compra y las porciones de la semana", () => {
     expect(view("it")).toEqual({
@@ -41,20 +44,20 @@ describe("recuadro del precio del formulario (quoteBoxView)", () => {
       manual: null,
       total: { label: "Servizio, 4 settimane", value: money("560,00 €") },
       weekly: money("140,00 €"),
-      savings: money("Risparmi 40,00 € rispetto a 150,00 € a settimana."),
+      savings: glued(money("Risparmi 40,00 € rispetto a 150,00 € a settimana.")),
       groceries: { label: "Spesa stimata a settimana", value: money("63,00 €") },
       portions: { label: "Porzioni a settimana", value: "20" },
     });
     expect(view("es", { weeks: 4 })).toMatchObject({
       total: { label: "Servicio, 4 semanas", value: money("560,00 €") },
       weekly: money("140,00 €"),
-      savings: money("Ahorras 40,00 € frente a 150,00 € por semana."),
+      savings: glued(money("Ahorras 40,00 € frente a 150,00 € por semana.")),
       groceries: { label: "Compra estimada por semana" },
     });
     expect(view("en", { weeks: 8 })).toMatchObject({
       total: { label: "Service, 8 weeks", value: "€1,120.00" },
       weekly: "€140.00",
-      savings: "You save €80.00 compared with €150.00 a week.",
+      savings: glued("You save €80.00 compared with €150.00 a week."),
       groceries: { label: "Estimated groceries per week", value: "€63.00" },
     });
   });

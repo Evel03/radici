@@ -238,7 +238,7 @@
       "service": "Service price",
       "serviceWeeks": "Service, {weeks} weeks",
       "weekly": "Service per week",
-      "savings": "You save {amount} compared with {weeklyRate} a week.",
+      "savings": "You save {amount} compared with {weeklyRate} a week.",
       "groceries": "Estimated groceries",
       "groceriesWeekly": "Estimated groceries per week",
       "manualPeople": "For more than {maxPeople} people, Evelyn will send you a quote for the service.",

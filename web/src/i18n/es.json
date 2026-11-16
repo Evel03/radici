@@ -238,7 +238,7 @@
       "service": "Precio del servicio",
       "serviceWeeks": "Servicio, {weeks} semanas",
       "weekly": "Servicio por semana",
-      "savings": "Ahorras {amount} frente a {weeklyRate} por semana.",
+      "savings": "Ahorras {amount} frente a {weeklyRate} por semana.",
       "groceries": "Compra estimada",
       "groceriesWeekly": "Compra estimada por semana",
       "manualPeople": "Para más de {maxPeople} personas, el presupuesto del servicio te lo prepara Evelyn.",
