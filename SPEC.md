@@ -82,7 +82,7 @@ La ficha (`clients.status`, una por cocinera) se muestra con dos estados (decisi
 - **Presupuesto estimado instantáneo** al pedir (fórmula 5.1) y horarios libres reales (5.2); los eventos, sin precio automático.
 - Formulario público para clientes nuevos (web), con la pregunta de alergias (desde el 15/11/2026): confirmar que nadie tiene o escribirlas, con consentimiento de datos de salud.
 - **Bandeja de pedidos** de Evelyn: armar menú con control de alérgenos, ajustar precio, enviar presupuesto.
-- **Catálogo de platos** de Evelyn (M4a): unos 20 platos con alérgenos, temporada y nombre en it/es/en; alta, baja (desactivar) y rotación por temporada.
+- **Catálogo de platos** de Evelyn (M4a): unos 20 platos con alérgenos, temporada, nombre en it/es/en e ingredientes con su cantidad para 4 porciones (de ahí sale la lista de compras); alta, duplicar, baja (desactivar) y rotación por temporada.
 - **Sugerencias del menú semanal** (M2b): el cliente activo marca, sin cantidad fija, platos del catálogo de temporada que le gustan y puede pedir cambios o platos especiales en un campo libre; Evelyn decide y arma el menú (5.1, 5.6).
 - Aceptación del presupuesto → sesión agendada (con protección contra doble reserva).
 - **Agenda** (semana + día con línea de tiempo, con sesiones y eventos). La **disponibilidad** semanal y el **bloqueo de días** llegan antes, con M5a (Fase 0).
@@ -95,11 +95,11 @@ La ficha (`clients.status`, una por cocinera) se muestra con dos estados (decisi
 - **Porciones en la heladera**: etiquetas digitales por plato con fecha de elaboración y "consumir antes de", contador de porciones, aviso el día antes.
 - **Despensa compartida**: ingredientes con vencimiento cargados por el cliente; Evelyn ve "usar primero" al armar el menú.
 - **Planes recurrentes** (semanal / cada 2 semanas) que generan la próxima sesión automáticamente. Con ellos se decide el plazo para sugerir platos y qué pasa si el cliente no sugiere (D5, sección 14).
-- Recetario completo: tiempos de conservación de cada plato para las porciones (el catálogo con los 14 alérgenos UE y la temporada se adelanta a la Fase 1, M4a).
+- Recetario completo: tiempos de conservación de cada plato para las porciones (el catálogo con los 14 alérgenos UE, la temporada y los ingredientes se adelanta a la Fase 1, M4a).
 
 ### Fase 3 — Escala y administración
 - Facturación electrónica (API tipo Fatture in Cloud o Aruba → SDI). Decidir con el commercialista.
-- Lista de compras automática a partir de las recetas del menú.
+- Lista de compras automática a partir de las recetas del menú: se adelanta al área de Evelyn, antes de M2, y además se puede editar (decisión del dueño del 16/11/2026; §4, «Catálogo de platos»).
 - Carga de despensa por código de barras u OCR del ticket.
 - Etiquetas imprimibles con QR para los tápers.
 - Satispay como medio de pago al final (evaluar si su API sirve para este flujo).
@@ -153,6 +153,8 @@ create type payment_status  as enum ('requires_action','authorized','succeeded',
 create type storage_loc     as enum ('fridge','freezer','pantry');
 create type allergen        as enum ('gluten','crustaceans','eggs','fish','peanuts','soy','milk','nuts','celery','mustard','sesame','sulphites','lupin','molluscs'); -- 14 del Reg. UE 1169/2011
 create type diet            as enum ('vegetarian','vegan');
+create type shopping_section as enum ('produce','meat_fish','dairy_eggs','bakery','pantry','frozen','other'); -- sección del súper, en el orden del recorrido (M4a)
+create type ingredient_unit  as enum ('g','ml','pcs');  -- unidad de la cantidad de un ingrediente (M4a)
 ```
 
 | Tabla | Columnas principales |
@@ -166,7 +168,8 @@ create type diet            as enum ('vegetarian','vegan');
 | `client_restrictions` | client_id, allergen null, diet null (una fila por restricción) |
 | `consents` | id, client_id, kind ('health_data','privacy','marketing'), text_version, granted_at, revoked_at |
 | `recurring_plans` (F2) | id, client_id, freq ('weekly','biweekly'), dow, start_time, days, meals text[], active |
-| `recipes` | id, chef_id, name_it, name_es, name_en (M4a), fridge_days, freezable, freezer_days (60), diet null, season_months smallint[] null (M4a: meses 1–12 en que se ofrece; null = todo el año), notes, active (dar de baja = desactivar: una receta usada no se borra) |
+| `recipes` | id, chef_id, name_it, name_es, name_en (M4a), fridge_days, freezable, freezer_days (60), diet null, season_months smallint[] null (M4a: meses 1–12 en que se ofrece, sin repetir; null = todo el año), notes, active (dar de baja = desactivar: una receta usada no se borra), catalog_visible (M4a; false = receta de un evento, que no se ofrece en el catálogo: 5.3). Nombres sin espacios al borde y de hasta 120 caracteres; uno traducido vacío es null |
+| `recipe_ingredients` (M4a) | recipe_id, chef_id, position (1–50: el orden en el plato), name (hasta 80 caracteres), section (`shopping_section`; 'other' por defecto), quantity int null (para 4 porciones, de 1 a 100000), unit null (`ingredient_unit`). quantity y unit van juntas, o ninguna de las dos para «q.b.» (como la sal). Solo de la cocinera |
 | `recipe_allergens` | recipe_id, allergen |
 | `requests` | id, chef_id, client_id (siempre, también para prospectos), type, status, adults, kids, days, meals text[], restrictions jsonb, wishes uuid[], notes, preferred_date, preferred_start, pay_mode, target_session_id null (para 'change'), text (para 'change'), created_at; del pedido de la web además preferred_slot, locale, whatsapp_opt_in, estimate, source, seen_at, request_key, contact jsonb (el contacto con que llegó) y no_allergies (la pregunta de alergias: true = nadie tiene, false = las escribió y van en restrictions, null = sin respuesta; contrato §3) |
 | `quotes` | id, request_id, session_id (la sesión `held` que reserva el horario), version, menu uuid[], cook_minutes, portions, service_cents, groceries_est_cents, preauth_cents, pricing_snapshot jsonb, allergen_override text null, slot_date, slot_start, hold_until, sent_at, accepted_at |
@@ -179,7 +182,9 @@ create type diet            as enum ('vegetarian','vegan');
 | `push_tokens` | profile_id, token, platform |
 | `notifications` | id, profile_id, kind, payload jsonb, channel, scheduled_for, sent_at |
 
-Sugerencias del menú semanal (M2b): tabla propia por cliente y semana (platos sugeridos, sin cantidad fija, y nota libre con los pedidos especiales y su estado), con `chef_id`, clave foránea compuesta con `clients`, RLS y grants en su propia migración; se diseña con tests primero. Un menú de evento usa recetas creadas para el evento, con sus alérgenos, que no se ofrecen en el catálogo (5.3).
+Sugerencias del menú semanal (M2b): tabla propia por cliente y semana (platos sugeridos, sin cantidad fija, y nota libre con los pedidos especiales y su estado), con `chef_id`, clave foránea compuesta con `clients`, RLS y grants en su propia migración; se diseña con tests primero. Un menú de evento usa recetas creadas para el evento, con sus alérgenos, que no se ofrecen en el catálogo (`catalog_visible = false`, 5.3).
+
+**Catálogo de platos** (M4a; migración `20261116170000_recipe_catalog.sql`, tests pgTAP `14_recipe_catalog`): cada ingrediente de un plato lleva su cantidad para 4 porciones, entera, en g, ml o piezas, o «q.b.», sin cantidad ni unidad. Así la lista de compras de una sesión es automática y editable (decisión del dueño del 16/11/2026): sale del menú de la sesión por las porciones y Evelyn la edita (área de Evelyn, PR de la lista de compras). Un plato se guarda entero con `save_recipe(p jsonb)`, en una transacción: la receta, sus alérgenos y sus ingredientes (las dos listas se reemplazan enteras), así nunca queda con los alérgenos a medio guardar. Es security invoker (corre con la RLS de la cocinera) y solo la ejecuta `authenticated`. El id lo genera la app, así un reintento no duplica el plato. Una clave que no viene no se toca; `allergens` e `ingredients` son obligatorias (`[]` es «ninguno»). Errores: `not_a_chef` (42501), `invalid_payload` (22023, con el campo en el detalle), `recipe_not_found` (P0002: el id es de otra cocinera) y los checks de las tablas (23514). Duplicar no tiene función propia: es guardar con un id nuevo el plato cargado. Dar de baja es `active = false`: una receta usada en un menú no se puede borrar (`session_menu` la protege con restrict).
 
 **Anti doble reserva** (obligatorio, no confiar solo en la app):
 
@@ -335,6 +340,7 @@ Al marcar cocinado se genera el cobro de servicio + ticket; el cliente paga en l
 
 ### 5.6 Alérgenos
 - Recetas etiquetadas con los 14 alérgenos UE y dieta (vegetariana / vegana).
+- Un plato se guarda entero, en una transacción (`save_recipe`, §4): nunca queda con los alérgenos a medio guardar, porque el menú y sus alertas dependen de ellos.
 - Al armar un menú, cualquier receta que choque con una restricción del cliente se marca en rojo. **Enviar presupuesto con un conflicto exige una confirmación explícita** de Evelyn (ej.: "adapto la receta sin lácteos") que queda guardada en el presupuesto.
 - La celiaquía exige nota de contaminación cruzada visible en la sesión.
 - Sugerencias (M2b): el cliente ve tachados los platos que chocan con sus restricciones guardadas y no puede sugerirlos. Sugerir no cambia el control: Evelyn arma el menú con la marca en rojo y la confirmación explícita de arriba.
@@ -387,7 +393,7 @@ Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automá
 | chef_settings, availability_* | — | CRUD | días libres solo vía la Edge Function `public-request` (`GET …/availability`) |
 
 Precisiones implementadas en M1 (`supabase/migrations/*_rls.sql`):
-- `recipes`: el cliente lee las recetas activas de su cocinera (para elegir platos deseados). Desde M2, solo un cliente activo (`trial` o `active`), con tests: un prospecto con cuenta no las ve.
+- `recipes`: el cliente lee las recetas activas y visibles en el catálogo (`catalog_visible`) de su cocinera, para elegir platos deseados: no las desactivadas ni las de eventos. Desde M2, solo un cliente activo (`trial` o `active`), con tests: un prospecto con cuenta no las ve. `recipe_ingredients` es solo de la cocinera: el cliente no lee ingredientes.
 - `consents`: el cliente los otorga y revoca; la cocinera los lee y puede registrar una revocación, pero no otorga en nombre del cliente. Nadie los borra desde la app. Un consentimiento revocado no se reactiva: se otorga uno nuevo.
 - `clients`: el cliente no crea su propia ficha (con el registro abierto de M2 la crea el servidor, en `prospect`). El estado lo cambia solo la cocinera (y el servidor al aceptar el primer presupuesto, M4); `share_pantry`, solo el cliente.
 - `profiles`: el perfil se crea por trigger siempre con rol `client`; nadie cambia su propio rol.
@@ -420,10 +426,10 @@ Un prospecto con cuenta ve Inicio, Pedir (sin platos deseados) y su perfil; no v
 - **Pedidos**: bandeja de pedidos y eventos (etiqueta y filtro, M3b) con su estado, detalle con control de horario, armado de menú con alérgenos (con las sugerencias del cliente a la vista), sugerencia automática, ajuste de precio, enviar o rechazar.
 - **Clientes**: lista y ficha (estado, «Segna come cliente», plan, restricciones, preferencias, cocina, despensa compartida, porciones, historial, ingreso).
 - **Menús de la semana** (M2b): las sugerencias de cada cliente activo y sus pedidos especiales, para aprobar o proponer una alternativa.
-- **Catálogo de platos** (M4a): alta, edición, baja (desactivar), alérgenos UE, dieta, temporada y nombres en it/es/en.
+- **Catálogo de platos** (M4a): alta, edición, duplicar, baja (desactivar), alérgenos UE, dieta, temporada, nombres en it/es/en e ingredientes con su cantidad para 4 porciones (o q.b.) y su sección del súper.
 - **Cobros**: para cobrar, falta pre-autorizar, próximas, cobradas.
 - **Tarifas**: parámetros de la sección 5.1 con ejemplos en vivo.
-- **Detalle de sesión**: progreso, menú con conservación y alertas, "usar primero", pago, carga de ticket con foto, marcar cocinado, registrar pago, cancelar.
+- **Detalle de sesión**: progreso, menú con conservación y alertas, "usar primero", lista de compras (sale sola del menú y se edita), pago, carga de ticket con foto, marcar cocinado, registrar pago, cancelar.
 
 ---
 
@@ -477,7 +483,7 @@ La tabla sigue el orden de trabajo, reordenado el 15/11/2026 con la especificaci
 | M3 | Horarios y pedido | `get_free_slots()` y `get_free_days()` con tests; Edge Function `public-request` con la disponibilidad por día; formulario de la web con calendario y pregunta de alergias. La pantalla Pedir de la app va en M3c |
 | M3b | Eventos privados | Tipo `event` (5.3): sección y formulario propios en la web (fecha libre, invitados, hora aproximada, idea), sin estimación en la web ni en los emails; contrato, el check `requests_datos_de_presupuesto`, las validaciones de `submit_public_request` (`invalid_request_type`, `estimate_required`, `invalid_meals`) y los emails, con tests primero; etiqueta y filtro de eventos en la bandeja |
 | M5a | Disponibilidad en la app | Bloquear y desbloquear días; después, editar el horario semanal (`availability_rules`). Repositorio + providers, textos ARB y tests; reemplaza el horario inicial fijo de 5.2 |
-| M4a | Catálogo de platos | Migración con `name_en` y `season_months`; pantalla de Evelyn: alta, edición, baja (desactivar), alérgenos UE, dieta y temporada; con tests |
+| M4a | Catálogo de platos | Base: `name_en`, `season_months`, `catalog_visible`, `recipe_ingredients` con cantidad para 4 porciones y `save_recipe` (guardado atómico), con pgTAP; pantalla de Evelyn: alta, edición, duplicar, baja (desactivar), alérgenos UE, dieta, temporada e ingredientes; con tests |
 | M2 | Auth y perfil, con registro abierto | Registro abierto y login con código, con Turnstile en cada pedido de código (también el de Evelyn); ficha `prospect` creada por el servidor; check `clients_prospect_sin_cuenta` relajado y `submit_public_request` limitado a prospectos sin cuenta (test pgTAP); conservación de las cuentas que no pasan a cliente activo (y privacy); RLS del catálogo solo para clientes activos; roles, perfil del hogar, restricciones con consentimiento, borrado de cuenta. Cambia la regla de altas aquí, en `CLAUDE.md` y en el contrato §10 (§6) |
 | M3c | Pedir en la app | Pantalla Pedir del cliente con cuenta (§7): presupuesto estimado en vivo (copia Dart de `quote.ts`) y horarios libres reales; RPC de solo lectura con la vista previa y la política de cancelación (§6); ruta de servidor para `get_free_slots`, que hoy ejecuta solo `service_role` (5.2). Repositorio + providers, textos ARB y tests |
 | M2b | Sugerencias de menú | Cliente activo: sugerencias de la semana (catálogo de temporada sin cantidad fija, incompatibles tachados, nota libre y pedidos especiales). Evelyn: Menús de la semana, con aprobación o alternativa de los pedidos especiales. Tabla propia con RLS, tests primero |
