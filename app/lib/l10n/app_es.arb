@@ -240,6 +240,7 @@
   "allergenLupin": "Altramuces",
   "allergenMolluscs": "Moluscos",
   "contactWhatsAppMessage": "Hola {name}, soy {chef} de {brand}. Recibí tu solicitud y te escribo para organizarnos.",
+  "contactWhatsAppMessageOnBehalf": "Hola {name}, te escribo de parte de {chef} de {brand}: recibimos tu solicitud y queremos organizarnos contigo.",
   "contactEmailSubject": "Tu solicitud a {brand}",
   "contactEmailGreeting": "Hola {name}:",
   "routeNotFound": "Página no encontrada.",

@@ -98,7 +98,9 @@ repositorios falsos (`test/support/fakes.dart`).
   `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz pasa al idioma del perfil
   (ver [Idioma](#idioma)). Un colaborador de la cocinera (`chef_members`) entra igual, con su
   cuenta: ve y hace lo mismo que ella, e Impostazioni dice «Collaboratore di Evelyn» en lugar del
-  nombre.
+  nombre. El WhatsApp que le prepara el detalle de un pedido sale de su propio teléfono, así que
+  escribe de parte de ella («ti scrivo da parte di Evelyn di Radici», `contactWhatsAppMessageOnBehalf`)
+  en lugar de «sono Evelyn».
 - **Richieste**: pestañas Nuove (sin `seen_at`), Viste y Rifiutate, con contador de nuevas.
 - **Franja**: la bandeja, el detalle y la agenda muestran mañana o tarde si el pedido la trae. La web
   ya no la pregunta y manda `any`, que la app lee como sin franja y no muestra (como los emails).
@@ -162,9 +164,12 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   confirmado, le cambia la contraseña por una al azar y le cierra las sesiones (nadie que haya
   registrado antes ese email entra como cocinera); por eso el workflow no la vuelve a correr. Si
   Evelyn ya tenía la app abierta cuando se corrió, tiene que salir y volver a entrar con el código.
-- Colaboradores: sus cuentas también las crea el workflow, en cada despliegue, con el secreto
-  `CHEF_MEMBER_EMAILS` (la lista manda; contrato §10.1). En local, `marco@example.test` es
-  colaborador de Evelyn en el seed.
+- Colaboradores: sus cuentas también las crea el workflow, en cada despliegue (en su último paso), con
+  el secreto `CHEF_MEMBER_EMAILS` (la lista manda; contrato §10.1). Cambiar el secreto no hace nada
+  hasta correr Deploy Supabase a mano. **Antes de cargar el primero en producción**, la decisión de
+  privacy de SPEC §14: un colaborador ve también las alergias y las direcciones, y la privacy vigente
+  nombra solo a Evelyn y, para la asistencia técnica, a quien gestiona el sistema. En local,
+  `marco@example.test` es colaborador de Evelyn en el seed.
 
 ## Web `/gestione/`
 

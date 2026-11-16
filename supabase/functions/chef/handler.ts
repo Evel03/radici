@@ -442,7 +442,14 @@ export interface ChefHandlerDeps {
 
 type Reply = (status: number, body: unknown, extra?: Record<string, string>) => Response;
 
-type AuthResult = { ok: true; chefId: string } | { ok: false; status: number; body: ChefErrorBody; headers?: Record<string, string> };
+/**
+ * Quién llama: su usuario (la cocinera o un colaborador suyo) y la cocina con que trabaja. El usuario va
+ * en los logs de lo que cambia (con colaboradores, la cocina son varias cuentas); las funciones SQL
+ * reciben solo la cocina.
+ */
+type Caller = { chefId: string; userId: string };
+
+type AuthResult = ({ ok: true } & Caller) | { ok: false; status: number; body: ChefErrorBody; headers?: Record<string, string> };
 
 const UNAUTHORIZED: AuthResult = { ok: false, status: 401, body: { error: "unauthorized" }, headers: { "WWW-Authenticate": "Bearer" } };
 
@@ -489,7 +496,7 @@ async function authenticate(deps: ChefHandlerDeps, request: Request, route: Chef
     log("info", "forbidden", { route, userId });
     return { ok: false, status: 403, body: { error: "forbidden" } };
   }
-  return { ok: true, chefId };
+  return { ok: true, chefId, userId };
 }
 
 function invalidPayload(log: Logger, route: ChefRoute, failure: { errors: ChefApiErrors; date?: string }, reply: Reply): Response {
@@ -520,7 +527,7 @@ function unexpectedResult(log: Logger, op: string, reply: Reply): Response {
   return reply(500, { error: "server" });
 }
 
-async function bookingsRoute(deps: ChefHandlerDeps, chefId: string, input: unknown, reply: Reply): Promise<Response> {
+async function bookingsRoute(deps: ChefHandlerDeps, caller: Caller, input: unknown, reply: Reply): Promise<Response> {
   const { log } = deps;
   const route = CHEF_ROUTES.bookings;
   const parsed = parseBookingRequest(input, { today: romeToday(deps.now()) });
@@ -528,7 +535,7 @@ async function bookingsRoute(deps: ChefHandlerDeps, chefId: string, input: unkno
 
   let data: unknown;
   try {
-    data = await deps.store.createBooking(toCreateBookingParams(chefId, parsed.value));
+    data = await deps.store.createBooking(toCreateBookingParams(caller.chefId, parsed.value));
   } catch (error) {
     return dbFailure(log, route, "create_booking", error, reply);
   }
@@ -537,14 +544,19 @@ async function bookingsRoute(deps: ChefHandlerDeps, chefId: string, input: unkno
   if (result.dryRun) return reply(200, result);
   if (result.duplicate) {
     // Reintento de una reserva ya guardada: la misma respuesta, sin crear nada.
-    log("info", "booking_duplicate", { requestId: result.requestId });
+    log("info", "booking_duplicate", { requestId: result.requestId, userId: caller.userId });
     return reply(201, result);
   }
-  log("info", "booking_created", { requestId: result.requestId, sessions: result.weeks.length, client: parsed.value.client.kind });
+  log("info", "booking_created", {
+    requestId: result.requestId,
+    sessions: result.weeks.length,
+    client: parsed.value.client.kind,
+    userId: caller.userId,
+  });
   return reply(201, result);
 }
 
-async function moveRoute(deps: ChefHandlerDeps, chefId: string, input: unknown, reply: Reply): Promise<Response> {
+async function moveRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, input: unknown, reply: Reply): Promise<Response> {
   const { log } = deps;
   const route = CHEF_ROUTES.moveSession;
   const parsed = parseMoveSessionRequest(input, { today: romeToday(deps.now()) });
@@ -566,11 +578,11 @@ async function moveRoute(deps: ChefHandlerDeps, chefId: string, input: unknown, 
   }
   const result = moveSessionResponseFromRpc(data);
   if (!result || result.dryRun !== dryRun) return unexpectedResult(log, "move_session", reply);
-  if (!result.dryRun) log("info", "session_moved", { sessionId: result.sessionId });
+  if (!result.dryRun) log("info", "session_moved", { sessionId: result.sessionId, userId });
   return reply(200, result);
 }
 
-async function cancelRoute(deps: ChefHandlerDeps, chefId: string, input: unknown, reply: Reply): Promise<Response> {
+async function cancelRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, input: unknown, reply: Reply): Promise<Response> {
   const { log } = deps;
   const route = CHEF_ROUTES.cancelSessions;
   const parsed = parseCancelSessionsRequest(input);
@@ -593,6 +605,7 @@ async function cancelRoute(deps: ChefHandlerDeps, chefId: string, input: unknown
     cancelled: result.cancelled.length,
     alreadyCancelled: result.alreadyCancelled.length,
     withPayments: result.withPayments.length,
+    userId,
   });
   return reply(200, result);
 }
@@ -646,11 +659,11 @@ export function createChefHandler(deps: ChefHandlerDeps): (request: Request) => 
 
       switch (route) {
         case CHEF_ROUTES.bookings:
-          return await bookingsRoute(deps, auth.chefId, input, reply);
+          return await bookingsRoute(deps, auth, input, reply);
         case CHEF_ROUTES.moveSession:
-          return await moveRoute(deps, auth.chefId, input, reply);
+          return await moveRoute(deps, auth, input, reply);
         case CHEF_ROUTES.cancelSessions:
-          return await cancelRoute(deps, auth.chefId, input, reply);
+          return await cancelRoute(deps, auth, input, reply);
         default:
           return reply(404, { error: "notFound" });
       }

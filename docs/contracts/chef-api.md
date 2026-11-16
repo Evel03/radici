@@ -23,7 +23,7 @@ Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cue
   1. toma el token de `Authorization: Bearer <token>` y exige que sea un JWT (tres partes base64url, hasta 8 KB). Una clave de API da `401` sin llamar a Auth;
   2. lo valida con Auth (`auth.getUser`): firma, vencimiento y que la sesión siga abierta. Si Auth lo rechaza (4xx), `401`; si no responde (429, 5xx o red), `503`;
   3. busca la cocina del usuario con `public.chef_id_for_user` (migración `20261116190000_chef_members.sql`, solo `service_role`): la de la que es dueña (`chefs.profile_id`) o colaborador (`chef_members`). Es la misma regla de la RLS (`current_chef_id()` la usa con `auth.uid()`). Si no es de ninguna, `403`; una respuesta con otra forma (ni un uuid ni null), `500` y `unexpected_result`.
-- Quién llama: la cocinera o un colaborador suyo (SPEC §1 y §6), cada uno con su sesión. Un colaborador hace lo mismo que ella con la cocina de ella: las funciones SQL reciben el mismo `chef_id`. Sale de la lista (`CHEF_MEMBER_EMAILS`, contrato public-request §10.1) y pierde el acceso en el acto: su cuenta se borra y Auth rechaza su token (`401`), y si la cuenta queda (la de una ficha de cliente), `chef_id_for_user` ya no le da cocina (`403`).
+- Quién llama: la cocinera o un colaborador suyo (SPEC §1 y §6), cada uno con su sesión. Un colaborador hace lo mismo que ella con la cocina de ella: las funciones SQL reciben el mismo `chef_id`. Cuando el despliegue que aplica la lista lo saca (`CHEF_MEMBER_EMAILS`, contrato public-request §10.1: cambiar el secreto no hace nada hasta correr Deploy Supabase), pierde el acceso en el acto: su cuenta se borra y Auth rechaza su token (`401`), y si la cuenta queda (la de una ficha de cliente, o una que no se pudo borrar), `chef_id_for_user` ya no le da cocina (`403`).
 - Las funciones SQL reciben siempre el `chef_id` que sale del token, nunca uno del cuerpo.
 - La app llama con `functions.invoke('chef/bookings', body: …)` (supabase-js o supabase_flutter), que manda `Authorization: Bearer <access token de la sesión>` y `apikey: <clave publicable>`. Para que la función corra en Frankfurt, como la web (contrato public-request §2), va `?forceFunctionRegion=eu-central-1` en la URL; la cabecera `x-region` no, porque CORS no la permite.
 - CORS: `ALLOWED_ORIGINS`, **la misma variable que `public-request`** (contrato public-request §4). El preflight permite `POST, OPTIONS` y las cabeceras de supabase-js (`authorization`, `x-client-info`, `apikey`, `content-type`, …). Un origen que no está en la lista no recibe cabeceras CORS: el navegador no deja pasar la llamada. La app nativa no manda `Origin` y no la afecta.
@@ -215,10 +215,12 @@ Solo evento, ruta, códigos, contadores e ids. Nunca nombres, teléfonos, emails
 | `forbidden` | `route`, `userId` |
 | `invalid_payload` | `route`, `fields` (los nombres de los campos con error) |
 | `rejected` | `route`, `status`, `error`, `code` (SQLSTATE), `message` (el código propio) |
-| `booking_created` | `requestId`, `sessions`, `client` (`request`, `client` o `newClient`) |
-| `booking_duplicate` | `requestId` |
-| `session_moved` | `sessionId` |
-| `sessions_cancelled` | `cancelled`, `alreadyCancelled`, `withPayments` (cantidades) |
+| `booking_created` | `requestId`, `sessions`, `client` (`request`, `client` o `newClient`), `userId` |
+| `booking_duplicate` | `requestId`, `userId` |
+| `session_moved` | `sessionId`, `userId` |
+| `sessions_cancelled` | `cancelled`, `alreadyCancelled`, `withPayments` (cantidades), `userId` |
+
+`userId` es el usuario del token: la cocinera o el colaborador que hizo el cambio (con colaboradores, la cocina son varias cuentas; SPEC §6).
 | `db_error` | `op`, `code` y, si lo hay, `message` (el código propio) |
 | `unexpected_result` | `op` (también `load_chef`, si `chef_id_for_user` responde algo que no es un uuid ni null) |
 | `unexpected_error` | `error` (el tipo, nunca el mensaje) |
@@ -226,6 +228,6 @@ Solo evento, ruta, códigos, contadores e ids. Nunca nombres, teléfonos, emails
 
 ## 11. Pruebas
 
-- `npm test`: `supabase/functions/_shared/chef_api.test.ts` (validación), `supabase/functions/chef/handler.test.ts` (401 antes de leer el cuerpo, 403, un colaborador que entra con la cocina de ella, una cocina con otra forma → 500, 400 por campo, 409 con la fecha o las sesiones cobradas, `dryRun` que no escribe, reintento con la misma clave, la cocinera siempre del token, que `index.ts` use `chef_id_for_user`, errores de la base y el espía de logs) y el paso del workflow en `supabase/scripts/deploy-supabase.test.ts`.
+- `npm test`: `supabase/functions/_shared/chef_api.test.ts` (validación), `supabase/functions/chef/handler.test.ts` (401 antes de leer el cuerpo, 403, un colaborador que entra con la cocina de ella y queda en los logs con su propio `userId`, una cocina con otra forma → 500, 400 por campo, 409 con la fecha o las sesiones cobradas, `dryRun` que no escribe, reintento con la misma clave, la cocinera siempre del token, que `index.ts` use `chef_id_for_user` y le pase su respuesta tal cual al handler, errores de la base y el espía de logs) y el paso del workflow en `supabase/scripts/deploy-supabase.test.ts`.
 - pgTAP `13_bookings`: las funciones SQL (reparto, chequeos y su prioridad, choques, reintentos, transiciones, mover, cancelar con y sin cobros, y permisos, también que la app no borra fichas). `15_chef_members`: `chef_id_for_user` (quién es de qué cocina, solo `service_role`) y lo que ve y hace un colaborador.
 - En local, de punta a punta: `npx supabase start` (con `-x` se pueden dejar afuera los servicios que no hacen falta: alcanza con la base, Kong, Auth, PostgREST y el runtime de funciones), un token con `POST /auth/v1/token?grant_type=password` para `evelyn@example.test` (la contraseña del seed) y las llamadas a `/functions/v1/chef/…`. Con `marco@example.test`, su colaborador en el seed, las mismas llamadas actúan sobre la cocina de Evelyn.

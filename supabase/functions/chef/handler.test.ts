@@ -459,6 +459,19 @@ test("un colaborador de la cocinera entra con la cocina de la que es colaborador
     "las funciones SQL reciben la cocina de la cocinera, la misma que con el token de ella",
   );
   assert.ok(!logs.some((entry) => entry.event === "forbidden"));
+  // Con varias cuentas en la cocina, el log de lo que cambia dice quién lo hizo (un id, como el del 403).
+  for (const event of ["booking_created", "session_moved", "sessions_cancelled"]) {
+    assert.equal(logs.find((entry) => entry.event === event)?.fields["userId"], USER_MEMBER, event);
+  }
+});
+
+test("los logs de lo que cambia llevan el usuario de quien llama: con el token de la cocinera, el de ella", async () => {
+  const { handle, logs } = harness();
+  assert.equal((await handle(post("/bookings", manualBody()))).status, 201);
+  assert.equal((await handle(post("/bookings", manualBody()))).status, 201, "el reintento con la misma clave");
+  for (const event of ["booking_created", "booking_duplicate"]) {
+    assert.equal(logs.find((entry) => entry.event === event)?.fields["userId"], USER_EVELYN, event);
+  }
 });
 
 test("la cocina del usuario con otra forma (ni un uuid ni null): 500 unexpected_result, sin leer el cuerpo ni tocar nada", async () => {
@@ -1116,7 +1129,12 @@ test("index.ts: la cocina del usuario sale de public.chef_id_for_user (la dueña
   // index.ts no corre en Node (Deno y supabase-js): esto cuida que use la regla de la base, la misma
   // de las políticas (15_chef_members), y no una consulta propia que dejaría afuera a los colaboradores.
   const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
-  assert.match(index, /supabase\.rpc\("chef_id_for_user", \{ p_user_id: userId \}\)/);
+  // La respuesta va tal cual al handler (chefIdFromRpc la interpreta): leerle un campo, como la forma de
+  // antes ({ id }), daría null y un 403 a todos, también a Evelyn.
+  assert.match(
+    index,
+    /const \{ data, error \} = await supabase\.rpc\("chef_id_for_user", \{ p_user_id: userId \}\);\s*if \(error\) throw storeErrorFrom\("load_chef", error\);\s*return data;/,
+  );
   assert.ok(!index.includes('from("chefs")'), "sin consultas propias a chefs");
   assert.ok(!index.includes('from("chef_members")'), "ni a chef_members");
 });

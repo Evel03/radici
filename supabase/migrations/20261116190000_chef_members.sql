@@ -37,6 +37,8 @@
 --   5. private.sync_chef_members(p_emails, p_chef_id): deploy-supabase.yml la corre en cada despliegue
 --      con la lista del secreto CHEF_MEMBER_EMAILS, después de crear las cuentas que falten. La lista
 --      manda: agrega a los que faltan y saca a los que ya no están.
+--   6. receipts.uploaded_by: con varias cuentas del lado de la cocina, el autor de un ticket es quien
+--      lo sube desde la app, y no cambia después.
 --
 -- El rol de profiles: un colaborador queda con rol chef, como la dueña, para que la app lo lleve al
 -- área de la cocinera. El rol no abre nada en la base: ninguna política ni función lo mira (quién es
@@ -217,6 +219,9 @@ comment on table public.profiles is
 --     conoce y sus sesiones, refresh tokens y factores MFA cerrados, para que solo entre quien recibe
 --     el código. Quien ya era colaborador no se toca (un despliegue no le cierra la sesión).
 -- Devuelve {members, added, kept, removed, accounts_deleted} y deja en el log solo esos contadores.
+-- Pero si la sincronización falla (cualquiera de los errores de arriba), Postgres registra la sentencia
+-- entera, con los emails, en el log de la base del proyecto (log_min_error_statement = error), que ven
+-- solo los administradores del proyecto en el panel de Supabase; el log de GitHub no los muestra.
 -- Nadie más que el dueño (postgres): deploy-supabase.yml por la Management API, o el SQL editor.
 -- ---------------------------------------------------------------------
 create function private.sync_chef_members(p_emails text[], p_chef_id uuid default null)
@@ -360,7 +365,7 @@ begin
     v_added := v_added + 1;
   end loop;
 
-  -- Solo contadores: nunca emails en los logs.
+  -- Solo contadores, nunca emails (si algo falla antes, Postgres registra la sentencia: ver arriba).
   raise log 'sync_chef_members: members=% added=% kept=% removed=% accounts_deleted=%',
     cardinality(v_emails), v_added, v_kept, v_removed, v_deleted;
 
@@ -378,3 +383,35 @@ comment on function private.sync_chef_members(text[], uuid) is
   'Colaboradores de una cocina (la única, si p_chef_id es null) según la lista p_emails, que manda: agrega a los que faltan (rol chef, contraseña al azar y sesiones cerradas), deja a los que siguen sin tocarlos y saca a los que no están (su cuenta se borra, salvo la de una ficha de cliente, que queda como client y sin sesiones). Valida todo antes de cambiar nada. Devuelve {members, added, kept, removed, accounts_deleted}. Solo el dueño (deploy-supabase.yml, SQL editor).';
 
 revoke all on function private.sync_chef_members(text[], uuid) from public, anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------
+-- 6. receipts.uploaded_by: quién subió cada ticket
+-- La columna la puede escribir authenticated (los privilegios de receipts son de toda la tabla,
+-- 20261019130000) y no tiene valor por defecto. Con la dueña y sus colaboradores en la misma cocina,
+-- desde la app el autor de un ticket es siempre quien tiene la sesión, y un cambio posterior (de
+-- cualquiera de la cocina) no se lo cambia. La service role y postgres (Edge Functions, SQL editor)
+-- escriben lo que les pasan. Si la cuenta de quien lo subió se borra, queda sin autor (set null).
+-- ---------------------------------------------------------------------
+create function public.receipts_set_uploaded_by()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if current_user = 'authenticated' then
+    if tg_op = 'INSERT' then
+      new.uploaded_by := auth.uid();
+    else
+      new.uploaded_by := old.uploaded_by;
+    end if;
+  end if;
+  return new;
+end
+$$;
+
+create trigger receipts_set_uploaded_by
+  before insert or update on public.receipts
+  for each row execute function public.receipts_set_uploaded_by();
+
+revoke all on function public.receipts_set_uploaded_by() from public, anon, authenticated;

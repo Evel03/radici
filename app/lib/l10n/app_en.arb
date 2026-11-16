@@ -240,6 +240,7 @@
   "allergenLupin": "Lupin",
   "allergenMolluscs": "Molluscs",
   "contactWhatsAppMessage": "Hi {name}, this is {chef} from {brand}. I got your request and I'm writing to sort out the details.",
+  "contactWhatsAppMessageOnBehalf": "Hi {name}, I'm writing on behalf of {chef} from {brand}: we got your request and would like to sort out the details with you.",
   "contactEmailSubject": "Your request to {brand}",
   "contactEmailGreeting": "Hi {name},",
   "routeNotFound": "Page not found.",

@@ -1,8 +1,8 @@
 // Colaboradores de la cocinera en producción: la lista del secreto CHEF_MEMBER_EMAILS (emails
-// separados por coma). deploy-supabase.yml la aplica en cada despliegue, en el paso «Cuentas de la
-// cocinera y sus colaboradores»: crea las cuentas que faltan y llama a private.sync_chef_members
-// (migración 20261116190000_chef_members.sql), que agrega a los que faltan y saca a los que ya no
-// están. La lista manda: vacía o sin cargar, la cocina se queda sin colaboradores.
+// separados por coma). deploy-supabase.yml la aplica en cada despliegue, en el paso «Colaboradores de
+// la cocinera» (deploy-accounts.sh members, al lado): crea las cuentas que faltan y llama a
+// private.sync_chef_members (migración 20261116190000_chef_members.sql), que agrega a los que faltan y
+// saca a los que ya no están. La lista manda: vacía o sin cargar, la cocina se queda sin colaboradores.
 //
 // Valida cada email antes de que llegue a una consulta (solo letras, números y . _ + - antes de la
 // @; nada de comillas, barras ni espacios; tampoco %, que GitHub interpreta en ::add-mask::) y nunca
