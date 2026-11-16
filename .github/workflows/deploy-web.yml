@@ -9,6 +9,9 @@
 #   En una vista previa /gestione/ se compila sin backend (modo dev): es código sin revisar en una URL
 #   pública y no se conecta a los datos de producción (contrato §8).
 # Antes de publicar corre los tests de la web (npm test) y de la app (flutter analyze + flutter test).
+# Cada deploy (producción y vistas previas) compila /gestione/ con su id (BUILD_ID, el commit) y publica
+# el mismo en gestione/build.json: la app los compara y avisa cuando hay una versión nueva. En
+# producción, después de publicar, comprueba que /gestione/ llegue con Cache-Control: no-cache.
 #
 # Necesita, en Settings → Secrets and variables → Actions del repo:
 # - secreto  CLOUDFLARE_API_TOKEN   token con solo "Account > Cloudflare Pages > Edit"
@@ -222,9 +225,27 @@ jobs:
           flutter analyze
           flutter test
 
+      # Id de este build: los 7 primeros caracteres del commit que se publica (el mismo de
+      # --commit-hash). Se compila en la app (--dart-define=BUILD_ID) y va en gestione/build.json; la
+      # app los compara al abrir y al volver a primer plano, y avisa si hay una versión nueva
+      # (app/README.md, "Web /gestione/").
+      - name: App - id del build
+        env:
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          build_id="${COMMIT_SHA:0:7}"
+          if ! [[ "${build_id}" =~ ^[0-9a-f]{7}$ ]]; then
+            echo "::error::No se pudo armar el id del build con el commit."
+            exit 1
+          fi
+          echo "BUILD_ID=${build_id}" >> "${GITHUB_ENV}"
+          echo "Id del build: ${build_id}"
+
       # La misma app de Android/iOS compilada para la web (app/README.md, "Web /gestione/"):
       # --no-web-resources-cdn: CanvasKit sale del propio sitio (la CSP de /gestione/* solo permite 'self').
       # --csp: main.dart.js sin código generado en tiempo de ejecución.
+      # BUILD_ID: el id del paso anterior, en producción y en las vistas previas.
       # Solo producción (main) conecta la bandeja al Supabase de producción. Una vista previa es código
       # sin revisar en una URL pública: va en modo dev y sin backend (muestra "Backend non configurato").
       - name: App - build web para /gestione/
@@ -241,11 +262,13 @@ jobs:
             defines=(--dart-define=APP_ENV=dev)
             echo "::notice::Vista previa: /gestione/ se compila sin backend (no se conecta a los datos de producción)."
           fi
-          flutter build web --release --base-href /gestione/ --no-web-resources-cdn --csp "${defines[@]}"
+          flutter build web --release --base-href /gestione/ --no-web-resources-cdn --csp \
+            "--dart-define=BUILD_ID=${BUILD_ID}" "${defines[@]}"
 
       # A dist/gestione/, sin lo que un build JS con CanvasKit nunca carga (42 MB → ~18 MB): los
       # renderers skwasm, wimp y webparagraph, los símbolos de depuración y el service worker (no se
       # registra). Se conservan canvaskit/ (Safari, Firefox) y canvaskit/chromium/ (Chrome, Edge).
+      # Suma build.json con el id del build (el de version.json no sirve: es siempre 1.0.0+1).
       - name: Copiar /gestione/ al sitio
         run: |
           set -euo pipefail
@@ -270,7 +293,15 @@ jobs:
             exit 1
           fi
 
-          for f in index.html flutter_bootstrap.js main.dart.js canvaskit/canvaskit.js canvaskit/canvaskit.wasm \
+          # El aviso de versión nueva compara el id compilado con este: sin el id en main.dart.js, la app
+          # nunca avisaría.
+          if ! grep -qF "\"${BUILD_ID}\"" "${out}/main.dart.js"; then
+            echo "::error::main.dart.js no tiene el id del build (${BUILD_ID}): revisar --dart-define=BUILD_ID en el build de la app."
+            exit 1
+          fi
+          printf '{"buildId":"%s"}\n' "${BUILD_ID}" > "${out}/build.json"
+
+          for f in index.html flutter_bootstrap.js main.dart.js build.json canvaskit/canvaskit.js canvaskit/canvaskit.wasm \
                    canvaskit/chromium/canvaskit.js canvaskit/chromium/canvaskit.wasm; do
             if [ ! -s "${out}/${f}" ]; then
               echo "::error::Falta dist/gestione/${f}"
@@ -372,5 +403,63 @@ jobs:
             echo "- Entorno: ${{ steps.deploy.outputs.pages-environment }}"
             echo "- Deploy: ${{ steps.deploy.outputs.deployment-url }}"
             echo "- Alias: ${{ steps.deploy.outputs.pages-deployment-alias-url }}"
-            echo "- Bandeja de Evelyn: ${{ steps.deploy.outputs.deployment-url }}/gestione/"
+            echo "- Bandeja de Evelyn: ${{ steps.deploy.outputs.deployment-url }}/gestione/ (versión ${BUILD_ID})"
           } >> "${GITHUB_STEP_SUMMARY}"
+
+      # Producción: los archivos de /gestione/ no llevan hash en el nombre, así que el navegador tiene que
+      # revalidarlos en cada carga (Cache-Control: no-cache, de _headers). Si Cloudflare los pisa con su
+      # caché del navegador (Browser Cache TTL distinto de «Respect Existing Headers», contrato §10.1,
+      # paso 9), «Aggiorna» recarga y Evelyn sigue con la versión vieja: el run queda en rojo.
+      # Primero espera a que el dominio sirva este deploy (build.json con este id; si no llega, solo
+      # avisa). Hasta 6 intentos por archivo, cada 10 s (para probarlo a mano contra otro servidor:
+      # CACHE_CHECK_ATTEMPTS y CACHE_CHECK_PAUSE). Imprime solo el estado HTTP, Cache-Control y el id.
+      - name: Comprobar la caché de /gestione/ en el dominio
+        if: env.HAS_CF_TOKEN == 'true' && github.event_name != 'pull_request' && github.ref_name == 'main'
+        env:
+          SITE_URL: ${{ vars.VITE_SITE_URL }}
+        run: |
+          set -uo pipefail
+          site="${SITE_URL%/}"
+          if ! [[ "${site}" =~ ^https?://[^/[:space:]]+$ ]]; then
+            echo "::error::VITE_SITE_URL tiene que ser el origen del sitio (https://…, sin ruta): sin él no se puede comprobar la caché de /gestione/."
+            exit 1
+          fi
+          attempts="${CACHE_CHECK_ATTEMPTS:-6}"
+          pause="${CACHE_CHECK_PAUSE:-10}"
+
+          live=false
+          for attempt in $(seq 1 "${attempts}"); do
+            published=$(curl -sS -m 20 "${site}/gestione/build.json?t=$(date +%s)" 2>/dev/null \
+              | jq -r '.buildId // empty' 2>/dev/null || true)
+            echo "/gestione/build.json (intento ${attempt}/${attempts}): ${published:-sin id}"
+            if [ "${published}" = "${BUILD_ID}" ]; then live=true; break; fi
+            if [ "${attempt}" -lt "${attempts}" ]; then sleep "${pause}"; fi
+          done
+          if [ "${live}" != true ]; then
+            echo "::warning::${site}/gestione/build.json no muestra este build (${BUILD_ID}): la app instalada no va a avisar que hay una versión nueva hasta que lo muestre."
+          fi
+
+          failed=0
+          for path in gestione/main.dart.js gestione/flutter_bootstrap.js; do
+            ok=false
+            for attempt in $(seq 1 "${attempts}"); do
+              headers=$(curl -sS --compressed -m 30 -o /dev/null -D - "${site}/${path}" 2>/dev/null | tr -d '\r')
+              status=$(printf '%s\n' "${headers}" | awk 'NR == 1 { print $2 }')
+              cache=$(printf '%s\n' "${headers}" \
+                | awk 'tolower($1) == "cache-control:" { sub(/^[^:]*:[ \t]*/, ""); print }' | paste -sd ',' -)
+              echo "/${path} (intento ${attempt}/${attempts}): HTTP ${status:-sin respuesta}, Cache-Control: ${cache:-ninguno}"
+              if [ "${status}" = "200" ] && printf '%s' "${cache}" | tr 'A-Z' 'a-z' | tr -d ' ' | tr ',' '\n' | grep -qx 'no-cache'; then
+                ok=true
+                break
+              fi
+              if [ "${attempt}" -lt "${attempts}" ]; then sleep "${pause}"; fi
+            done
+            if [ "${ok}" = true ]; then continue; fi
+            failed=1
+            if [ "${status}" != "200" ]; then
+              echo "::error::${site}/${path} respondió HTTP ${status:-sin respuesta}: no se pudo comprobar su caché."
+            else
+              echo "::error::${site}/${path} llega con Cache-Control: ${cache:-ninguno}, sin no-cache: Evelyn seguiría con la versión vieja aunque recargue. En Cloudflare, Caching → Configuration → Browser Cache TTL: «Respect Existing Headers» (contrato §10.1, paso 9)."
+            fi
+          done
+          exit "${failed}"
