@@ -99,7 +99,6 @@
   "requestStatusResolved": "Resolved",
   "slotMorning": "Morning",
   "slotAfternoon": "Afternoon",
-  "slotAny": "Either",
   "requestSourceWeb": "From the website",
   "requestSourceApp": "From the app",
   "requestDetailTitle": "Request",

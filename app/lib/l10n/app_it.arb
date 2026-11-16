@@ -436,10 +436,6 @@
   "@slotAfternoon": {
     "description": "Franja preferida: tarde."
   },
-  "slotAny": "Indifferente",
-  "@slotAny": {
-    "description": "Franja preferida: cualquiera."
-  },
   "requestSourceWeb": "Dal sito",
   "@requestSourceWeb": {
     "description": "Origen del pedido: formulario de la web."
