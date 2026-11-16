@@ -29,6 +29,7 @@ function rows(lang: "it" | "es" | "en", overrides: Partial<RequestData> = {}, es
   return Object.fromEntries(summaryRows(data, estimate === undefined ? local(data) : estimate, i18nFor(lang)).map((r) => [r.label, r.value]));
 }
 
+const nbsp = (text: string): string => text.replace(/ /g, " ");
 const euros = (text: string): RegExp => new RegExp(`^${text.replace(/[  ]/g, "[ \\u00a0]")}$`);
 
 describe("peopleText", () => {
@@ -63,13 +64,14 @@ describe("summaryRows (pantalla de gracias)", () => {
     const data = { weeks: 4, preferredDate: "2026-11-23" };
     const it_ = rows("it", data);
     expect(it_["Settimane"]).toBe("4");
-    expect(it_["Giorni (uno a settimana)"]).toBe("lun 23 nov · lun 30 nov · lun 7 dic · lun 14 dic");
+    // Espacios duros dentro de cada fecha: en el teléfono no se corta "lun" de "23 nov".
+    expect(it_["Giorni (uno a settimana)"]).toBe(["lun 23 nov", "lun 30 nov", "lun 7 dic", "lun 14 dic"].map(nbsp).join(" · "));
     expect(it_["Giorno preferito"]).toBeUndefined();
     expect(it_["Prezzo a settimana"]).toMatch(euros("140,00 €"));
     expect(it_["Prezzo per 4 settimane"]).toMatch(euros("560,00 €"));
     expect(it_["Risparmi"]).toMatch(euros("40,00 €"));
     const en = rows("en", data);
-    expect(en["Days (one a week)"]).toBe("Mon, 23 Nov · Mon, 30 Nov · Mon, 7 Dec · Mon, 14 Dec");
+    expect(en["Days (one a week)"]).toBe(["Mon, 23 Nov", "Mon, 30 Nov", "Mon, 7 Dec", "Mon, 14 Dec"].map(nbsp).join(" · "));
     expect(en["Price for 4 weeks"]).toBe("€560.00");
     expect(en["You save"]).toBe("€40.00");
     expect(rows("es", data)["Precio por 4 semanas"]).toMatch(euros("560,00 €"));

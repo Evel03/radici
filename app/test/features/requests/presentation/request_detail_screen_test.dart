@@ -311,7 +311,12 @@ void main() {
       );
       expect(textOf(tester, 'detail-weeks'), '4');
       expect(find.text('Giorni a settimana'), findsOneWidget);
-      expect(textOf(tester, 'detail-next-dates'), 'lun 30 nov · lun 7 dic · lun 14 dic');
+      expect(
+        textOf(tester, 'detail-next-dates'),
+        ['lun 30 nov', 'lun 7 dic', 'lun 14 dic']
+            .map((date) => date.replaceAll(' ', '\u00a0'))
+            .join(' · '),
+      );
       expect(find.text('Prezzo per 4 settimane'), findsOneWidget);
       expect(textOf(tester, 'detail-estimate-total'), '560,00 €');
       expect(textOf(tester, 'detail-estimate-weekly'), '140,00 €');

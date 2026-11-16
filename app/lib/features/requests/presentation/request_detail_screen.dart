@@ -336,13 +336,16 @@ class _RequestDetail extends ConsumerWidget {
               label: l10n.detailPreferredDate,
               value: date == null ? l10n.requestNoDate : formats.longDate(date),
             ),
-            // El mismo día de cada semana siguiente.
+            // El mismo día de cada semana siguiente. Espacios duros dentro de
+            // cada fecha: la línea se corta entre dos fechas, no en medio.
             if (date != null && request.weeks > 1)
               _InfoRow(
                 label: l10n.detailNextDates,
                 value: [
                   for (var week = 1; week < request.weeks; week++)
-                    formats.shortDate(date.addDays(7 * week)),
+                    formats
+                        .shortDate(date.addDays(7 * week))
+                        .replaceAll(' ', '\u00a0'),
                 ].join(' · '),
                 valueKey: const ValueKey('detail-next-dates'),
               ),

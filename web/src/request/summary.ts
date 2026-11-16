@@ -61,9 +61,10 @@ export function summaryRows(data: RequestData, estimate: PublicRequestEstimate |
     { label: t("request.summary.meals"), value: t(`request.meals.${data.meals}`) },
   );
   if (data.preferredDate && weeks > 1) {
-    // Una sesión por semana, el mismo día: las fechas de todas las semanas. Con «·» entre fechas: en
-    // inglés la fecha corta ya lleva coma ("Mon, 23 Nov").
-    const dates = weeklyDates(data.preferredDate, weeks).map((date) => formatShortDate(date, locale));
+    // Una sesión por semana, el mismo día: las fechas de todas las semanas. Con «·» entre fechas (en
+    // inglés la fecha corta ya lleva coma: "Mon, 23 Nov") y espacios duros dentro de cada una: en el
+    // teléfono la línea se corta entre dos fechas, nunca en medio de una.
+    const dates = weeklyDates(data.preferredDate, weeks).map((date) => formatShortDate(date, locale).replace(/ /g, "\u00a0"));
     rows.push({ label: t("request.summary.dates"), value: dates.join(" · ") });
   } else {
     rows.push({
