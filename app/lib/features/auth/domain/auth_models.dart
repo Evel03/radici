@@ -20,12 +20,17 @@ abstract class AppUser with _$AppUser {
 /// `profiles.role`.
 enum AccountRole { chef, client }
 
-/// Ficha de la cocinera (`public.chefs`).
+/// Ficha de la cocina con que trabaja el usuario (`public.chefs`): la suya o,
+/// si es colaborador, la de la cocinera (`public.chef_members`).
 @freezed
 abstract class ChefAccount with _$ChefAccount {
   const factory ChefAccount({
     required String chefId,
     required String displayName,
+
+    /// true si el usuario es un colaborador de la cocinera y no ella: ve y
+    /// hace lo mismo; Impostazioni lo dice («Colaborador de Evelyn»).
+    @Default(false) bool collaborator,
   }) = _ChefAccount;
 }
 
@@ -80,7 +85,9 @@ enum AccountFailureKind {
   /// Sin conexión o error del servidor: se puede reintentar.
   unavailable,
 
-  /// Rol `chef` sin fila en `chefs` (falta correr promote_to_chef completo).
+  /// Rol `chef` sin cocina: ni dueña en `chefs` ni colaborador en
+  /// `chef_members` (falta correr promote_to_chef completo, o salió de la
+  /// lista de colaboradores).
   chefNotConfigured,
 }
 

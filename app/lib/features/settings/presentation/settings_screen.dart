@@ -16,8 +16,14 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    // Un colaborador trabaja en la cocina de ella: «Colaborador de Evelyn».
     final (name, email) = switch (ref.watch(sessionControllerProvider)) {
-      ChefSession(:final chef, :final user) => (chef.displayName, user.email),
+      ChefSession(:final chef, :final user) => (
+        chef.collaborator
+            ? l10n.settingsCollaboratorOf(chef.displayName)
+            : chef.displayName,
+        user.email,
+      ),
       _ => (null, null),
     };
     final buildId = ref.watch(buildIdProvider);

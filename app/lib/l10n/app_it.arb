@@ -359,6 +359,13 @@
   "@settingsAccountSection": {
     "description": "Sección con la cuenta y el botón para salir."
   },
+  "settingsCollaboratorOf": "Collaboratore di {chefName}",
+  "@settingsCollaboratorOf": {
+    "description": "Impostazioni → Account, en lugar del nombre de la cocinera, cuando entró un colaborador suyo (chef_members): ve y hace lo mismo que ella con su propia cuenta.",
+    "placeholders": {
+      "chefName": { "type": "String", "example": "Evelyn" }
+    }
+  },
   "settingsVersion": "Versione {buildId}",
   "@settingsVersion": {
     "description": "Al pie de Impostazioni: qué versión de /gestione/ está abierta (el id del build, los 7 primeros caracteres del commit). No aparece en la app de iOS ni de Android.",

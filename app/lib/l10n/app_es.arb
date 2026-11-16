@@ -80,6 +80,7 @@
   "settingsLanguageSection": "Idioma de la app",
   "settingsLanguageHelp": "Se aplica a tu cuenta, también en tus otros dispositivos.",
   "settingsAccountSection": "Cuenta",
+  "settingsCollaboratorOf": "Colaborador de {chefName}",
   "settingsVersion": "Versión {buildId}",
   "languageOptionEs": "Español",
   "languageOptionIt": "Italiano",
