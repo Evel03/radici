@@ -15,6 +15,8 @@ interface Fixture {
   }>;
   invalid: Array<{ label: string; input: QuoteInput }>;
   invalidSettings: Array<{ label: string; settings: Partial<PricingSettings> }>;
+  /** El mínimo y el máximo de cada check de chef_settings: los dos motores calculan con cualquiera. */
+  validSettings: Array<{ label: string; settings: Partial<PricingSettings> }>;
 }
 
 const fixture: Fixture = JSON.parse(
@@ -47,6 +49,8 @@ test("los vectores cubren 1, 3, 4, 5 y 8 semanas, 5 y 6 personas y una sesión e
   assert.ok(fixture.vectors.some((v) => !v.settings && v.input.type === "week" && people(v) === 5 && v.expected["autoPrice"] === true));
   assert.ok(fixture.vectors.some((v) => !v.settings && v.input.type === "week" && people(v) === 6 && v.expected["autoPrice"] === false));
   assert.ok(fixture.vectors.some((v) => v.input.type === "extra" && v.expected["reason"] === "extra"));
+  // Sin precio, las semanas del pedido quedan en la estimación: lo fija la tabla compartida (también para Dart).
+  assert.ok(fixture.vectors.some((v) => v.expected["autoPrice"] === false && v.input.weeks > 1 && v.expected["weeks"] === v.input.weeks));
 });
 
 for (const c of fixture.invalid) {
@@ -59,6 +63,24 @@ for (const c of fixture.invalidSettings) {
   test(`tarifas inválidas: ${c.label}`, () => {
     const input: QuoteInput = { type: "week", adults: 2, kids: 0, days: 1, meals: 1, weeks: 1 };
     assert.throws(() => calcQuote(input, { ...DEFAULT_PRICING, ...c.settings }), RangeError);
+  });
+}
+
+/** Entradas con que se prueban las tarifas válidas: la de siempre, la más chica, la más grande y una extra. */
+const VALID_SETTINGS_INPUTS: readonly QuoteInput[] = [
+  { type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 4 },
+  { type: "week", adults: 1, kids: 0, days: 1, meals: 1, weeks: 1 },
+  { type: "week", adults: LIMITS.maxPeople, kids: LIMITS.maxPeople, days: LIMITS.maxDays, meals: LIMITS.maxMeals, weeks: LIMITS.maxWeeks },
+  { type: "extra", adults: 2, kids: 0, days: 1, meals: 1, weeks: 1 },
+];
+
+for (const c of fixture.validSettings) {
+  test(`tarifas válidas (un extremo de chef_settings): ${c.label}`, () => {
+    const settings: PricingSettings = { ...DEFAULT_PRICING, ...c.settings };
+    for (const input of VALID_SETTINGS_INPUTS) {
+      const q = calcQuote(input, settings);
+      assert.equal(q.autoPrice, input.type === "week" && input.adults + input.kids <= settings.weeklyRateMaxPeople, JSON.stringify(input));
+    }
   });
 }
 
@@ -172,17 +194,24 @@ test("DEFAULT_PRICING es el valor por defecto de chef_settings: la web calcula l
   }
 });
 
+let allMigrations: string | null = null;
+
+/** Lo que el check de la columna deja guardar: [mínimo, máximo] o, con un `>=`, solo el mínimo. */
+function checkBounds(column: string): number[] {
+  const between = new RegExp(`check\\s*\\(\\s*${column}\\s+between\\s+(\\d+)\\s+and\\s+(\\d+)\\s*\\)`, "i");
+  const atLeast = new RegExp(`check\\s*\\(\\s*${column}\\s*>=\\s*(\\d+)\\s*\\)`, "i");
+  allMigrations ??= migrations().map((m) => m.sql).join("\n");
+  const sql = allMigrations;
+  const range = between.exec(sql);
+  const min = atLeast.exec(sql);
+  assert.ok(range || min, `sin check en chef_settings.${column}`);
+  return range ? [Number(range[1]), Number(range[2])] : [Number(min?.[1])];
+}
+
 test("el motor acepta todo lo que la base guarda en chef_settings: ninguna fila válida da quote_failed", () => {
   const input: QuoteInput = { type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 4 };
   for (const [key, column] of Object.entries(COLUMNS) as Array<[keyof PricingSettings, string]>) {
-    const between = new RegExp(`check\\s*\\(\\s*${column}\\s+between\\s+(\\d+)\\s+and\\s+(\\d+)\\s*\\)`, "i");
-    const atLeast = new RegExp(`check\\s*\\(\\s*${column}\\s*>=\\s*(\\d+)\\s*\\)`, "i");
-    const sql = migrations().map((m) => m.sql).join("\n");
-    const range = between.exec(sql);
-    const min = atLeast.exec(sql);
-    assert.ok(range || min, `sin check en chef_settings.${column}`);
-    const values = range ? [Number(range[1]), Number(range[2])] : [Number(min?.[1])];
-    for (const value of values) {
+    for (const value of checkBounds(column)) {
       const settings: PricingSettings = { ...DEFAULT_PRICING, [key]: value };
       // El check chef_settings_descuento_no_supera_tarifa: la tarifa con descuento nunca supera a la normal.
       if (key === "weeklyRateDiscountedCents") settings.weeklyRateCents = Math.max(settings.weeklyRateCents, value);
@@ -192,4 +221,25 @@ test("el motor acepta todo lo que la base guarda en chef_settings: ninguna fila 
   }
   // Las semanas que se pueden pedir son las de requests_semanas_validas (1 a 8).
   assert.match(migrations().map((m) => m.sql).join("\n"), new RegExp(`check\\s*\\(\\s*weeks\\s+between\\s+1\\s+and\\s+${LIMITS.maxWeeks}\\s*\\)`, "i"));
+});
+
+test("validSettings de quote_vectors.json tiene el mínimo y el máximo de cada check de chef_settings (la copia Dart los recorre)", () => {
+  // La copia Dart no lee las migraciones: recorre esta lista. Si un check cambia, la lista tiene que cambiar.
+  for (const [key, column] of Object.entries(COLUMNS) as Array<[keyof PricingSettings, string]>) {
+    for (const value of checkBounds(column)) {
+      assert.ok(
+        fixture.validSettings.some((c) => c.settings[key] === value),
+        `validSettings no tiene ${key} = ${value} (check de chef_settings.${column})`,
+      );
+    }
+  }
+  // Y cada caso es una fila que la base guarda: la tarifa con descuento nunca supera a la normal.
+  for (const c of fixture.validSettings) {
+    const settings: PricingSettings = { ...DEFAULT_PRICING, ...c.settings };
+    assert.ok(settings.weeklyRateDiscountedCents <= settings.weeklyRateCents, c.label);
+    for (const [key, column] of Object.entries(COLUMNS) as Array<[keyof PricingSettings, string]>) {
+      const [min = 0, max = Number.POSITIVE_INFINITY] = checkBounds(column);
+      assert.ok(settings[key] >= min && settings[key] <= max, `${c.label}: ${key}`);
+    }
+  }
 });

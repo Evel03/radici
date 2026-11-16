@@ -1,5 +1,5 @@
 {
-  "description": "Vectores de SPEC.md §5.1 (precio por semana, decisiones del dueño del 15 y 16/11/2026). Los pasan quote.ts (TS) y la copia en Dart de la app. Montos en centavos; porciones, recetas, minutos y compra son de una semana (una sesión). Sin precio automático (autoPrice false) no hay weeklyServiceCents, serviceCents, savingsCents ni totalCents.",
+  "description": "Vectores de SPEC.md §5.1 (precio por semana, decisiones del dueño del 15 y 16/11/2026). Los pasan quote.ts (TS) y la copia en Dart de la app. Montos en centavos; porciones, recetas, minutos y compra son de una semana (una sesión). Sin precio automático (autoPrice false) no hay weeklyServiceCents, serviceCents, savingsCents ni totalCents. validSettings: el mínimo y el máximo de cada check de chef_settings (quote.test.ts los compara con las migraciones); con cualquiera, los dos motores calculan sin lanzar.",
   "defaultSettings": {
     "weeklyRateCents": 15000,
     "weeklyRateDiscountedCents": 14000,
@@ -115,6 +115,12 @@
       "settings": { "weeklyRateDiscountedCents": 15000 },
       "input": { "type": "week", "adults": 2, "kids": 2, "days": 5, "meals": 1, "weeks": 4 },
       "expected": { "weeks": 4, "portions": 20, "recipes": 3, "cookMinutes": 180, "groceriesEstCents": 6300, "preauthCents": 7245, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 60000, "savingsCents": 0, "totalCents": 85200 }
+    },
+    {
+      "id": 18,
+      "label": "Como el 7, 4 semanas (6 personas: sin precio automático; las semanas del pedido quedan en la estimación)",
+      "input": { "type": "week", "adults": 3, "kids": 3, "days": 5, "meals": 1, "weeks": 4 },
+      "expected": { "weeks": 4, "portions": 30, "recipes": 3, "cookMinutes": 210, "groceriesEstCents": 9450, "preauthCents": 10868, "autoPrice": false, "reason": "people" }
     }
   ],
   "invalid": [
@@ -143,5 +149,19 @@
     { "label": "margen de más de 100 %", "settings": { "preauthBufferPct": 101 } },
     { "label": "mínimo de cocina de más de 24 h", "settings": { "minCookMinutes": 1441 } },
     { "label": "tarifa con decimales", "settings": { "weeklyRateCents": 15000.5 } }
+  ],
+  "validSettings": [
+    { "label": "tarifas en 0 (las dos)", "settings": { "weeklyRateCents": 0, "weeklyRateDiscountedCents": 0 } },
+    { "label": "tarifas de 10.000 € (el máximo; el descuento igual a la tarifa)", "settings": { "weeklyRateCents": 1000000, "weeklyRateDiscountedCents": 1000000 } },
+    { "label": "descuento desde 1 semana", "settings": { "weeklyDiscountMinWeeks": 1 } },
+    { "label": "descuento desde 8 semanas", "settings": { "weeklyDiscountMinWeeks": 8 } },
+    { "label": "precio automático hasta 1 persona", "settings": { "weeklyRateMaxPeople": 1 } },
+    { "label": "precio automático hasta 60 personas", "settings": { "weeklyRateMaxPeople": 60 } },
+    { "label": "porciones en 0", "settings": { "adultPortionCents": 0, "kidPortionCents": 0 } },
+    { "label": "porciones de 1000 € (el máximo)", "settings": { "adultPortionCents": 100000, "kidPortionCents": 100000 } },
+    { "label": "margen de 0 %", "settings": { "preauthBufferPct": 0 } },
+    { "label": "margen de 100 %", "settings": { "preauthBufferPct": 100 } },
+    { "label": "sin mínimo de cocina", "settings": { "minCookMinutes": 0 } },
+    { "label": "mínimo de cocina de 24 h", "settings": { "minCookMinutes": 1440 } }
   ]
 }

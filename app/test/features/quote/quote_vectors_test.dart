@@ -43,6 +43,7 @@ void main() {
   final vectors = _objects(fixture['vectors']);
   final invalid = _objects(fixture['invalid']);
   final invalidSettings = _objects(fixture['invalidSettings']);
+  final validSettings = _objects(fixture['validSettings']);
 
   test('defaultPricing coincide con defaultSettings del fixture', () {
     expect(defaultPricing, PricingSettings.fromJson(defaultSettings));
@@ -50,10 +51,11 @@ void main() {
     expect(defaultPricing.toJson(), defaultSettings);
   });
 
-  test('el fixture tiene vectores, entradas y tarifas inválidas', () {
+  test('el fixture tiene vectores, entradas y tarifas inválidas y válidas', () {
     expect(vectors, isNotEmpty);
     expect(invalid, isNotEmpty);
     expect(invalidSettings, isNotEmpty);
+    expect(validSettings, isNotEmpty);
   });
 
   group('vectores', () {
@@ -132,6 +134,63 @@ void main() {
     }
   });
 
+  // El mínimo y el máximo de cada check de chef_settings (quote.test.ts
+  // compara la lista con las migraciones): cuando la app calcule con las
+  // tarifas de la cocinera, ninguna fila que la base guarda hace lanzar.
+  group('tarifas válidas (los extremos de chef_settings) no lanzan', () {
+    const inputs = [
+      QuoteInput(
+        type: QuoteType.week,
+        adults: 2,
+        kids: 2,
+        days: 5,
+        meals: 1,
+        weeks: 4,
+      ),
+      QuoteInput(
+        type: QuoteType.week,
+        adults: 1,
+        kids: 0,
+        days: 1,
+        meals: 1,
+        weeks: 1,
+      ),
+      QuoteInput(
+        type: QuoteType.week,
+        adults: QuoteLimits.maxPeople,
+        kids: QuoteLimits.maxPeople,
+        days: QuoteLimits.maxDays,
+        meals: QuoteLimits.maxMeals,
+        weeks: QuoteLimits.maxWeeks,
+      ),
+      QuoteInput(
+        type: QuoteType.extra,
+        adults: 2,
+        kids: 0,
+        days: 1,
+        meals: 1,
+        weeks: 1,
+      ),
+    ];
+    for (final c in validSettings) {
+      test('${c['label']}', () {
+        final settings = PricingSettings.fromJson({
+          ...defaultSettings,
+          ...c['settings'] as Map<String, dynamic>,
+        });
+        for (final input in inputs) {
+          final quote = calcQuote(input, settings);
+          expect(
+            quote.autoPrice,
+            input.type == QuoteType.week &&
+                input.adults + input.kids <= settings.weeklyRateMaxPeople,
+            reason: '$input',
+          );
+        }
+      });
+    }
+  });
+
   test('un decimal entero (2.0) se acepta, como Number.isInteger', () {
     final input = QuoteInput.fromJson(const {
       'type': 'week',
@@ -155,6 +214,12 @@ void main() {
         weeklyRateDiscountedCents: 15000,
         weeklyDiscountMinWeeks: 3,
         weeklyRateMaxPeople: 6,
+      ),
+      defaultPricing.copyWith(
+        weeklyRateCents: 14999,
+        weeklyRateDiscountedCents: 13333,
+        weeklyDiscountMinWeeks: 1,
+        weeklyRateMaxPeople: 60,
       ),
     ];
     for (final settings in settingsList) {
