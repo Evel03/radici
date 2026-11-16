@@ -193,7 +193,7 @@
   "availabilityUnblockedDone": "{count, plural, =1{Día desbloqueado.} other{{count} días desbloqueados.}}",
   "availabilitySaveFailed": "No se pudo guardar. Revisa la conexión y vuelve a intentarlo.",
   "availabilityLoadFailed": "No se pudieron cargar los días bloqueados.",
-  "availabilityNoteLabel": "Nota (solo la ves tú)",
+  "availabilityNoteLabel": "Nota (los clientes no la ven)",
   "availabilityNoteHint": "Ej.: vacaciones",
   "availabilityNoteHelper": "No escribas datos de salud.",
   "availabilityAddNote": "Agregar nota",

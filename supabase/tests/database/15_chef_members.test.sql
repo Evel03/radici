@@ -8,7 +8,8 @@
 -- vuelve la cocinera dueña, y nunca ve otra cocina. No hay segunda cocinera: la ficha de chefs es
 -- una sola. La lista la define el despliegue (private.sync_chef_members, secreto CHEF_MEMBER_EMAILS).
 --
---   1. La regla de las políticas (estructural): auth.uid() directo solo en las de identidad propia.
+--   1. La regla de las políticas (estructural): auth.uid() directo solo en las de identidad propia y
+--      en la edición de la ficha pública (solo de la dueña).
 --   2. Tabla, privilegios y funciones.
 --   3. Quién es quién (chef_id_for_user, current_chef_id, is_chef_of).
 --   4. El colaborador: ve y hace lo mismo que la cocinera (también el catálogo de platos), y nada de
@@ -50,7 +51,7 @@ select set_eq(
             ('public', 'profiles',      'profiles: el usuario edita el suyo'),
             ('public', 'profiles',      'profiles: el usuario lee el suyo'),
             ('public', 'push_tokens',   'push_tokens: el usuario gestiona los suyos') $$,
-  'auth.uid() directo solo en las políticas de identidad propia de la lista: el lado de la cocinera pasa por current_chef_id() o is_chef_of()'
+  'auth.uid() directo solo en las políticas de la lista (identidad propia y la edición de la ficha pública): el resto del lado de la cocinera pasa por current_chef_id() o is_chef_of()'
 );
 
 select is(

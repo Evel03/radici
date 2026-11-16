@@ -97,8 +97,8 @@ repositorios falsos (`test/support/fakes.dart`).
   cocinera, con la ficha de su cocina (`current_chef_id()`, la misma función que la RLS, y su fila de
   `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz pasa al idioma del perfil
   (ver [Idioma](#idioma)). Un colaborador de la cocinera (`chef_members`) entra igual, con su
-  cuenta: ve y hace lo mismo que ella, e Impostazioni dice «Collaboratore di Evelyn» en lugar del
-  nombre. El WhatsApp que le prepara el detalle de un pedido sale de su propio teléfono, así que
+  cuenta: ve y hace lo mismo que ella, e Impostazioni y el menú de la cuenta dicen «Collaboratore di
+  Evelyn» en lugar del nombre (`chefAccountTitle`). El WhatsApp que le prepara el detalle de un pedido sale de su propio teléfono, así que
   escribe de parte de ella («ti scrivo da parte di Evelyn di Radici», `contactWhatsAppMessageOnBehalf`)
   en lugar de «sono Evelyn».
 - **Richieste**: pestañas Nuove (sin `seen_at`), Viste y Rifiutate, con contador de nuevas.
@@ -109,7 +109,8 @@ repositorios falsos (`test/support/fakes.dart`).
   medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
   Si estaba elegido "hoy", la agenda pasa al día nuevo; si no, respeta el día elegido.
   Días bloqueados (`availability_exceptions`, sin migración: la RLS y los grants ya estaban): la
-  tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada, y el botón
+  tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada (los clientes no la
+  ven; la cocinera y sus colaboradores, sí), y el botón
   «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
   existía). La web deja de ofrecerlos en 1 o 2 minutos (`get_free_days` los descuenta; la
   disponibilidad se cachea 60 s). Marca los feriados nacionales (Pasquetta calculada; San Francesco

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/auth/presentation/chef_account_title.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
@@ -125,7 +126,7 @@ class ChefAccountMenuButton extends ConsumerWidget {
       _ => null,
     };
     final chefName = switch (session) {
-      ChefSession(:final chef) => chef.displayName,
+      ChefSession(:final chef) => chefAccountTitle(l10n, chef),
       _ => null,
     };
 

@@ -193,7 +193,7 @@
   "availabilityUnblockedDone": "{count, plural, =1{Day unblocked.} other{{count} days unblocked.}}",
   "availabilitySaveFailed": "Couldn't save. Check your connection and try again.",
   "availabilityLoadFailed": "Couldn't load your blocked days.",
-  "availabilityNoteLabel": "Note (only you can see it)",
+  "availabilityNoteLabel": "Note (clients can't see it)",
   "availabilityNoteHint": "E.g. holiday",
   "availabilityNoteHelper": "Don't write health information.",
   "availabilityAddNote": "Add note",

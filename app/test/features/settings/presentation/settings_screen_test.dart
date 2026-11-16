@@ -227,6 +227,47 @@ void main() {
     expect(find.text('Iniciaste sesión como ${chefUser.email}'), findsOneWidget);
   });
 
+  // El menú de la cuenta dice lo mismo que Impostazioni. A 1200×800, como
+  // /gestione/ en una computadora, que es donde siempre está el menú.
+  for (final collaborator in [false, true]) {
+    testWidgets(
+      'menú de la cuenta: '
+      '${collaborator ? '«Colaborador de Evelyn»' : 'el nombre de la cocinera'}'
+      ' y con qué email entró',
+      (tester) async {
+        await pumpChefApp(
+          tester,
+          requests: FakeChefRequestsRepository(const []),
+          accounts: FakeAccountRepository(
+            chefAccountData.copyWith(
+              chef: chefAccount.copyWith(collaborator: collaborator),
+              language: AppLanguage.es,
+            ),
+          ),
+          size: const Size(1200, 800),
+          overrides: [languageCacheProvider.overrideWithValue(cache)],
+        );
+        await tester.tap(find.byKey(const ValueKey('account-menu')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.widgetWithText(
+            ListTile,
+            collaborator ? 'Colaborador de Evelyn' : 'Evelyn',
+          ),
+          findsOneWidget,
+        );
+        if (!collaborator) {
+          expect(find.textContaining('Colaborador'), findsNothing);
+        }
+        expect(
+          find.text('Iniciaste sesión como ${chefUser.email}'),
+          findsOneWidget,
+        );
+      },
+    );
+  }
+
   testWidgets('Impostazioni dice la versión de /gestione/ (el id del build)', (
     tester,
   ) async {

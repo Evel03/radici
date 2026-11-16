@@ -361,7 +361,7 @@
   },
   "settingsCollaboratorOf": "Collaboratore di {chefName}",
   "@settingsCollaboratorOf": {
-    "description": "Impostazioni → Account, en lugar del nombre de la cocinera, cuando entró un colaborador suyo (chef_members): ve y hace lo mismo que ella con su propia cuenta.",
+    "description": "Nombre de la cuenta (Impostazioni → Account y el menú de la cuenta) en lugar del nombre de la cocinera, cuando entró un colaborador suyo (chef_members): ve y hace lo mismo que ella con su propia cuenta.",
     "placeholders": {
       "chefName": { "type": "String", "example": "Evelyn" }
     }
@@ -874,9 +874,9 @@
   "@availabilityLoadFailed": {
     "description": "La agenda no pudo leer el horario y los días bloqueados. Va con el botón Riprova."
   },
-  "availabilityNoteLabel": "Nota (la vedi solo tu)",
+  "availabilityNoteLabel": "Nota (i clienti non la vedono)",
   "@availabilityNoteLabel": {
-    "description": "Etiqueta del campo de la nota de un día bloqueado: es privada, la web no la muestra."
+    "description": "Etiqueta del campo de la nota de un día bloqueado: es privada, la web no la muestra. La ven la cocinera y sus colaboradores, por eso no dice «solo tu»."
   },
   "availabilityNoteHint": "Es.: ferie",
   "@availabilityNoteHint": {

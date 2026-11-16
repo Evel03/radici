@@ -29,7 +29,8 @@ abstract class ChefAccount with _$ChefAccount {
     required String displayName,
 
     /// true si el usuario es un colaborador de la cocinera y no ella: ve y
-    /// hace lo mismo; Impostazioni lo dice («Colaborador de Evelyn»).
+    /// hace lo mismo; Impostazioni y el menú de la cuenta lo dicen
+    /// («Colaborador de Evelyn», chefAccountTitle).
     @Default(false) bool collaborator,
   }) = _ChefAccount;
 }

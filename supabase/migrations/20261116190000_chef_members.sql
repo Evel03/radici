@@ -217,7 +217,8 @@ comment on table public.profiles is
 --     queda como cuenta de cliente (rol client) y se le cierran las sesiones.
 --   * Entra quien falta: rol chef y su fila; como en promote_to_chef, una contraseña al azar que nadie
 --     conoce y sus sesiones, refresh tokens y factores MFA cerrados, para que solo entre quien recibe
---     el código. Quien ya era colaborador no se toca (un despliegue no le cierra la sesión).
+--     el código. A quien ya era colaborador no se le cambia la contraseña ni se le cierra la sesión;
+--     solo vuelve a rol chef si alguien se lo cambió a mano.
 -- Devuelve {members, added, kept, removed, accounts_deleted} y deja en el log solo esos contadores.
 -- Pero si la sincronización falla (cualquiera de los errores de arriba), Postgres registra la sentencia
 -- entera, con los emails, en el log de la base del proyecto (log_min_error_statement = error), que ven
@@ -339,7 +340,7 @@ begin
     delete from auth.refresh_tokens t where t.user_id = v_member.profile_id::text; -- por si queda alguno sin sesión
   end loop;
 
-  -- Entran los que faltan; los que ya estaban, no se tocan.
+  -- Entran los que faltan; a los que ya estaban no se les cambia la contraseña ni la sesión.
   foreach v_email in array v_emails loop
     select u.id into v_user_id from auth.users u where lower(u.email) = v_email;
 
@@ -380,7 +381,7 @@ end
 $$;
 
 comment on function private.sync_chef_members(text[], uuid) is
-  'Colaboradores de una cocina (la única, si p_chef_id es null) según la lista p_emails, que manda: agrega a los que faltan (rol chef, contraseña al azar y sesiones cerradas), deja a los que siguen sin tocarlos y saca a los que no están (su cuenta se borra, salvo la de una ficha de cliente, que queda como client y sin sesiones). Valida todo antes de cambiar nada. Devuelve {members, added, kept, removed, accounts_deleted}. Solo el dueño (deploy-supabase.yml, SQL editor).';
+  'Colaboradores de una cocina (la única, si p_chef_id es null) según la lista p_emails, que manda: agrega a los que faltan (rol chef, contraseña al azar y sesiones cerradas), a los que siguen no les cambia la contraseña ni la sesión (solo les devuelve el rol chef) y saca a los que no están (su cuenta se borra; si es la de una ficha de cliente o no se puede borrar, queda como client y sin sesiones). Valida todo antes de cambiar nada. Devuelve {members, added, kept, removed, accounts_deleted}. Solo el dueño (deploy-supabase.yml, SQL editor).';
 
 revoke all on function private.sync_chef_members(text[], uuid) from public, anon, authenticated, service_role;
 
