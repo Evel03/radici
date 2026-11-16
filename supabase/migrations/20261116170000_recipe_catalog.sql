@@ -9,21 +9,27 @@
 --
 --   1. recipes: name_en, season_months (meses de 1 a 12, sin repetir; null = todo el año),
 --      catalog_visible (false = receta de un evento, M3b: no se ofrece en el catálogo) y checks de
---      los nombres. El cliente lee solo las activas y visibles en el catálogo.
+--      los nombres. El cliente lee solo las activas y visibles en el catálogo, y solo los alérgenos
+--      de esas recetas.
 --   2. recipe_ingredients: los ingredientes de cada plato, solo de la cocinera.
---   3. public.save_recipe(p jsonb): guarda un plato entero (receta, alérgenos e ingredientes) en una
---      transacción. Un plato nunca queda con los alérgenos a medio guardar: el menú y sus alertas
---      dependen de ellos. Security invoker: corre con los privilegios y la RLS de quien llama.
+--   3. recipe_notes: las notas de cada plato, solo de la cocinera. Salen de recipes.notes, que el
+--      cliente podía leer (la RLS filtra filas, no columnas).
+--   4. public.save_recipe(p jsonb): guarda un plato entero (receta, alérgenos, ingredientes y notas)
+--      en una transacción. Un plato nunca queda con los alérgenos a medio guardar: el menú y sus
+--      alertas dependen de ellos. Security invoker: corre con los privilegios y la RLS de quien
+--      llama.
 --
 -- Duplicar un plato no tiene función propia: la app ya tiene el plato cargado para editarlo y lo
 -- guarda con save_recipe con un id nuevo (y el nombre que elija Evelyn). Sale atómico e idempotente,
 -- como cualquier guardado.
 --
--- Despliegue: ningún código la usa todavía (la pantalla llega con el PR 13b). Los checks de los
--- nombres se validan contra las filas que ya existan. En producción no debería haber recetas
--- (ninguna pantalla las crea todavía); si alguna tuviera un nombre vacío, con espacios al borde,
--- con caracteres de control o de más de 120 caracteres, db push falla en ese check y hay que
--- corregirla a mano antes de volver a desplegar.
+-- Despliegue:
+--   * Ningún código la usa todavía (la pantalla llega con el PR 13b), y recipes.notes tampoco: sus
+--     datos pasan a recipe_notes y la columna se borra.
+--   * Los checks de los nombres se validan contra las filas que ya existan. En producción no
+--     debería haber recetas (ninguna pantalla las crea todavía); si alguna tuviera un nombre vacío,
+--     con espacios al borde, con caracteres de control o de más de 120 caracteres, db push falla en
+--     ese check y hay que corregirla a mano antes de volver a desplegar.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -86,6 +92,15 @@ create policy "recipes: el cliente lee las del catálogo de su cocinera"
   on public.recipes for select to authenticated
   using (active and catalog_visible and chef_id in (select public.current_client_chef_ids()));
 
+-- Y los alérgenos solo de las recetas que ve: no los de una desactivada ni los de un evento de otra
+-- clienta. La subconsulta corre con la RLS de recipes, así que sigue sola a sus políticas (también
+-- a la de «las recetas del menú de mis sesiones» que va a hacer falta en M3b/M4). La cocinera sigue
+-- con la suya («la cocinera gestiona los suyos»).
+drop policy "recipe_allergens: el cliente lee los de su cocinera" on public.recipe_allergens;
+create policy "recipe_allergens: el cliente lee los de las recetas que ve"
+  on public.recipe_allergens for select to authenticated
+  using (recipe_id in (select r.id from public.recipes r));
+
 -- ---------------------------------------------------------------------
 -- 2. recipe_ingredients
 --
@@ -139,7 +154,43 @@ revoke all on table public.recipe_ingredients from public, anon, authenticated, 
 grant select, insert, update, delete on table public.recipe_ingredients to authenticated, service_role;
 
 -- ---------------------------------------------------------------------
--- 3. public.save_recipe(p jsonb)
+-- 3. recipe_notes
+--
+-- Las notas de un plato son de la cocinera (la app dice «solo las ves tú»). En recipes las leería
+-- cualquier cliente de su catálogo: la RLS filtra filas, no columnas, y cocinera y clientes son el
+-- mismo rol (authenticated, con select sobre la tabla entera). Por eso van en una tabla aparte, solo
+-- de la cocinera, como recipe_ingredients: una fila por plato con notas; sin notas, sin fila.
+-- ---------------------------------------------------------------------
+create table public.recipe_notes (
+  recipe_id  uuid primary key,
+  chef_id    uuid not null,
+  notes      text not null,
+  foreign key (recipe_id, chef_id) references public.recipes (id, chef_id) on delete cascade,
+  constraint recipe_notes_no_vacias check (notes <> '' and notes = btrim(notes))
+);
+
+comment on table public.recipe_notes is
+  'Notas de un plato, solo de la cocinera (el cliente no las lee). Una fila por plato con notas; sin notas, sin fila. Se escriben con save_recipe.';
+
+alter table public.recipe_notes enable row level security;
+
+create policy "recipe_notes: la cocinera gestiona las suyas"
+  on public.recipe_notes for all to authenticated
+  using (chef_id = (select public.current_chef_id()))
+  with check (chef_id = (select public.current_chef_id()));
+
+-- Los mismos privilegios que recipe_ingredients: la app con RLS y la service role; anon, nada.
+revoke all on table public.recipe_notes from public, anon, authenticated, service_role;
+grant select, insert, update, delete on table public.recipe_notes to authenticated, service_role;
+
+-- Las notas que ya hubiera pasan a la tabla nueva (recortadas; una vacía no es nota) y la columna
+-- se borra: ninguna pantalla ni función la usa.
+insert into public.recipe_notes (recipe_id, chef_id, notes)
+select r.id, r.chef_id, btrim(r.notes) from public.recipes r where btrim(r.notes) <> '';
+alter table public.recipes drop column notes;
+
+-- ---------------------------------------------------------------------
+-- 4. public.save_recipe(p jsonb)
 --
 -- p: el plato completo, como lo arma la app.
 --   id               uuid (texto). Obligatorio: lo genera la app, así un reintento no duplica.
@@ -148,7 +199,7 @@ grant select, insert, update, delete on table public.recipe_ingredients to authe
 --   diet             'vegetarian', 'vegan' o null.
 --   season_months    [1..12] sin repetir, o null (todo el año).
 --   fridge_days, freezer_days  enteros; freezable, active, catalog_visible  booleanos (no null).
---   notes            texto o null ("" también es null).
+--   notes            texto o null ("" también es null). Van en recipe_notes.
 --   allergens        lista de alérgenos (los 14 del enum). Obligatoria: [] es «ninguno».
 --   ingredients      lista, en orden, de {name, section?, quantity?, unit?}. Obligatoria.
 --                    section: una de shopping_section ('other' si no viene). quantity y unit,
@@ -156,17 +207,25 @@ grant select, insert, update, delete on table public.recipe_ingredients to authe
 -- Una clave escalar que no viene no se toca (en un plato nuevo, el valor por defecto de la
 -- columna): una versión vieja de la app no reactiva un plato ni pasa una receta de evento al
 -- catálogo por no conocer la clave. null borra donde la columna lo admite. allergens e ingredients
--- se reemplazan enteros; las claves desconocidas se ignoran.
+-- se reemplazan enteros. Una clave desconocida (también dentro de un ingrediente) es un error: si se
+-- ignorara, un nombre cambiado de un solo lado perdería el dato en silencio. La app lee c_keys y
+-- c_ingredient_keys de este archivo en un test (recipe_save_contract_test.dart).
+--
+-- La dieta no contradice los alérgenos (SPEC §5.6): un plato vegano no lleva leche, huevos,
+-- pescado, crustáceos ni moluscos, y uno vegetariano no lleva pescado, crustáceos ni moluscos. Si
+-- no, se le ofrecería a un cliente con esa dieta (el control por dieta mira la etiqueta del plato).
 --
 -- Errores:
 --   42501 not_a_chef         quien llama no es cocinera.
---   22023 invalid_payload    tipo o forma inválidos; DETAIL dice el campo (p. ej.
---                            "ingredients[2].unit", contando desde 0). Se valida antes de escribir.
+--   22023 invalid_payload    tipo, forma o clave inválidos, o una dieta que contradice los
+--                            alérgenos; DETAIL dice el campo (p. ej. "ingredients[2].unit",
+--                            contando desde 0, o "diet"). Se valida antes de escribir, salvo la
+--                            dieta: se mira con la fila ya bloqueada, porque puede no venir en p.
 --   P0002 recipe_not_found   el id es de un plato que la RLS no deja ver (de otra cocinera).
 --   23514                    los checks de recipes y recipe_ingredients (nombres, meses, cantidad y
 --                            unidad, hasta 50 ingredientes): el mensaje dice cuál.
--- Cualquier error deshace todo: la receta, los alérgenos y los ingredientes quedan como estaban.
--- Devuelve el id del plato.
+-- Cualquier error deshace todo: la receta, los alérgenos, los ingredientes y las notas quedan como
+-- estaban. Devuelve el id del plato.
 -- ---------------------------------------------------------------------
 create function public.save_recipe(p jsonb)
 returns uuid
@@ -176,6 +235,11 @@ security invoker
 set search_path = ''
 as $$
 declare
+  -- Las claves que entiende: cualquier otra es invalid_payload.
+  c_keys constant text[] := array['id', 'name_it', 'name_es', 'name_en', 'diet', 'season_months',
+                                  'fridge_days', 'freezable', 'freezer_days', 'notes', 'active',
+                                  'catalog_visible', 'allergens', 'ingredients'];
+  c_ingredient_keys constant text[] := array['name', 'section', 'quantity', 'unit'];
   v_chef_id     uuid := public.current_chef_id();
   v_id          uuid;
   v_name_it     text;
@@ -200,6 +264,11 @@ begin
 
   if jsonb_typeof(p) is distinct from 'object' then
     raise exception 'invalid_payload' using errcode = '22023', detail = 'p';
+  end if;
+
+  select min(k) into v_key from jsonb_object_keys(p) as k where k <> all (c_keys);
+  if v_key is not null then
+    raise exception 'invalid_payload' using errcode = '22023', detail = v_key;
   end if;
 
   if jsonb_typeof(p -> 'id') is distinct from 'string'
@@ -291,6 +360,10 @@ begin
     if jsonb_typeof(v_item) <> 'object' then
       raise exception 'invalid_payload' using errcode = '22023', detail = format('ingredients[%s]', v_i);
     end if;
+    select min(k) into v_key from jsonb_object_keys(v_item) as k where k <> all (c_ingredient_keys);
+    if v_key is not null then
+      raise exception 'invalid_payload' using errcode = '22023', detail = format('ingredients[%s].%s', v_i, v_key);
+    end if;
     if jsonb_typeof(v_item -> 'name') is distinct from 'string' then
       raise exception 'invalid_payload' using errcode = '22023', detail = format('ingredients[%s].name', v_i);
     end if;
@@ -327,12 +400,23 @@ begin
       fridge_days     = case when p ? 'fridge_days'     then v_fridge    else r.fridge_days end,
       freezable       = case when p ? 'freezable'       then v_freezable else r.freezable end,
       freezer_days    = case when p ? 'freezer_days'    then v_freezer   else r.freezer_days end,
-      notes           = case when p ? 'notes'           then v_notes     else r.notes end,
       active          = case when p ? 'active'          then v_active    else r.active end,
       catalog_visible = case when p ? 'catalog_visible' then v_visible   else r.catalog_visible end
   where r.id = v_id;
   if not found then
     raise exception 'recipe_not_found' using errcode = 'P0002';
+  end if;
+
+  -- La dieta que queda (la de p o, si no vino, la guardada) contra los alérgenos nuevos.
+  if exists (
+    select 1 from public.recipes r
+    where r.id = v_id
+      and ((r.diet = 'vegan'
+            and v_allergens && array['milk', 'eggs', 'fish', 'crustaceans', 'molluscs']::public.allergen[])
+           or (r.diet = 'vegetarian'
+               and v_allergens && array['fish', 'crustaceans', 'molluscs']::public.allergen[]))
+  ) then
+    raise exception 'invalid_payload' using errcode = '22023', detail = 'diet';
   end if;
 
   -- 2. Alérgenos, enteros.
@@ -349,12 +433,24 @@ begin
          (t.e ->> 'unit')::public.ingredient_unit
   from jsonb_array_elements(p -> 'ingredients') with ordinality as t(e, o);
 
+  -- 4. Notas, solo de la cocinera: si vienen, se reemplazan (null o "" las borra); si no, no se
+  --    tocan.
+  if p ? 'notes' then
+    if v_notes is null then
+      delete from public.recipe_notes n where n.recipe_id = v_id;
+    else
+      insert into public.recipe_notes (recipe_id, chef_id, notes)
+      values (v_id, v_chef_id, v_notes)
+      on conflict (recipe_id) do update set notes = excluded.notes;
+    end if;
+  end if;
+
   return v_id;
 end
 $$;
 
 comment on function public.save_recipe(jsonb) is
-  'Guarda un plato entero en una transacción (PR 13a): la receta (si el id no existe la crea; el id lo genera la app, así un reintento no duplica), sus alérgenos y sus ingredientes, que se reemplazan enteros. Una clave escalar que no viene no se toca. Security invoker: corre con la RLS de quien llama. Errores: 42501 not_a_chef; 22023 invalid_payload (DETAIL: el campo); P0002 recipe_not_found; 23514 los checks de recipes y recipe_ingredients. Duplicar = guardar con un id nuevo. Devuelve el id.';
+  'Guarda un plato entero en una transacción (PR 13a): la receta (si el id no existe la crea; el id lo genera la app, así un reintento no duplica), sus alérgenos y sus ingredientes, que se reemplazan enteros, y sus notas (recipe_notes, solo de la cocinera). Una clave escalar que no viene no se toca; una desconocida es un error. La dieta no puede contradecir los alérgenos. Security invoker: corre con la RLS de quien llama. Errores: 42501 not_a_chef; 22023 invalid_payload (DETAIL: el campo, o "diet"); P0002 recipe_not_found; 23514 los checks de recipes y recipe_ingredients. Duplicar = guardar con un id nuevo. Devuelve el id.';
 
 -- La app (authenticated); la RLS decide qué filas. anon y service_role no la ejecutan (service_role
 -- no tiene cocinera: current_chef_id() es null).
