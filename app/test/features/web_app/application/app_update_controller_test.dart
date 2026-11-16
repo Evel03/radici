@@ -146,13 +146,36 @@ void main() {
     expect(updateAvailable(), isFalse);
   });
 
+  test('si se descarta mientras lee build.json: no lanza', () async {
+    repository
+      ..published = 'def5678'
+      ..pending = Completer<void>();
+    // A mano (no .test): se descarta en medio de la lectura.
+    final own = ProviderContainer(
+      retry: noRetry,
+      overrides: [
+        buildIdProvider.overrideWithValue('abc1234'),
+        publishedBuildRepositoryProvider.overrideWithValue(repository),
+        browserProvider.overrideWithValue(browser),
+        clockProvider.overrideWithValue(() => now),
+      ],
+    );
+    final check = own.read(appUpdateControllerProvider.notifier).check();
+    own.dispose();
+    repository.pending!.complete();
+    await check;
+  });
+
   testWidgets('si build.json no responde en 15 s, se da por perdido y a los '
       '5 minutos se vuelve a mirar', (tester) async {
     repository.pending = Completer<void>();
     open();
-    final first = controller().check();
+    // Sin esperar el future: si faltara el timeout no terminaría nunca y el
+    // test se colgaría hasta el límite de testWidgets (10 minutos).
+    var done = false;
+    unawaited(controller().check().then((_) => done = true));
     await tester.pump(updateCheckTimeout);
-    await first;
+    expect(done, isTrue);
     expect(updateAvailable(), isFalse);
 
     repository

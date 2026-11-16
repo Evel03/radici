@@ -36,9 +36,10 @@
 <body>
   <!-- Se ve mientras carga el motor; flutter_bootstrap.js lo saca al arrancar.
        El ícono y la rueda, sin texto: antes de Flutter no hay traducciones
-       (VoiceOver lee la marca, igual en todos los idiomas). -->
+       (VoiceOver lee la marca, igual en todos los idiomas). El ícono de 512 px:
+       a 96 px en un iPhone con 3 píxeles por punto hacen falta 288. -->
   <div id="loading" class="loading" role="progressbar" aria-label="Radici">
-    <img class="loading__icon" src="icons/Icon-192.png" alt="" width="96" height="96">
+    <img class="loading__icon" src="icons/Icon-512.png" alt="" width="96" height="96">
     <div class="loading__spinner"></div>
   </div>
   <script src="flutter_bootstrap.js" async></script>

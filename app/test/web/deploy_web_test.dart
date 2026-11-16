@@ -62,6 +62,7 @@ void main() {
 
   test('producción, después de publicar: /gestione/ tiene que llegar con no-cache', () {
     const name = 'Comprobar la caché de /gestione/ en el dominio';
+    const script = '.github/scripts/check-gestione-cache.sh';
     expect(
       workflow.indexOf('- name: $name'),
       greaterThan(workflow.indexOf('- name: Publicar\n')),
@@ -70,7 +71,12 @@ void main() {
     final runIf = condition(check)!;
     expect(runIf, contains("github.event_name != 'pull_request'"));
     expect(runIf, contains("github.ref_name == 'main'"));
-    expect(check, contains('gestione/main.dart.js gestione/flutter_bootstrap.js'));
-    expect(check, contains("grep -qx 'no-cache'"));
+    // El script, con sus tests en el npm test de la raíz
+    // (.github/scripts/check-gestione-cache.test.ts).
+    expect(check, contains('run: bash "\${GITHUB_WORKSPACE}/$script"'));
+    final checker = findRepoFile(script).readAsStringSync();
+    expect(checker, contains('gestione/main.dart.js gestione/flutter_bootstrap.js'));
+    // Un cambio solo en el script también dispara el workflow (push y PR).
+    expect('- "$script"'.allMatches(workflow), hasLength(2));
   });
 }

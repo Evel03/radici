@@ -76,7 +76,9 @@ class _WebAppNoticesState extends ConsumerState<WebAppNotices> {
           const SizedBox.shrink()
         else
           // Los avisos ocupan el borde superior y su SafeArea: la pantalla de
-          // abajo no reserva ese margen otra vez.
+          // abajo no reserva ese margen otra vez. (Flutter web 3.47 informa
+          // siempre un margen 0, así que hoy no cambia nada; queda correcto si
+          // la vista algún día informa la muesca.)
           Material(
             color: Theme.of(context).colorScheme.surface,
             child: SafeArea(
@@ -88,10 +90,17 @@ class _WebAppNoticesState extends ConsumerState<WebAppNotices> {
             ),
           ),
         Expanded(
-          child: MediaQuery.removePadding(
-            context: context,
-            removeTop: notices.isNotEmpty,
-            child: widget.child,
+          // Un contenedor de semántica propio para la app de abajo: cada ruta
+          // pone su barrera en un BlockSemantics, que descarta lo pintado
+          // antes dentro del mismo contenedor. Sin esto VoiceOver no vería los
+          // avisos (ni podría tocar «Aggiorna» o «Chiudi»).
+          child: Semantics(
+            container: true,
+            child: MediaQuery.removePadding(
+              context: context,
+              removeTop: notices.isNotEmpty,
+              child: widget.child,
+            ),
           ),
         ),
       ],
@@ -112,13 +121,17 @@ class _UpdateBanner extends ConsumerWidget {
       key: const ValueKey('update-banner'),
       color: colors.primaryContainer,
       child: Padding(
-        padding: const EdgeInsetsDirectional.fromSTEB(16, 4, 8, 4),
+        // 8 abajo: «Aggiorna» queda a 8 px de lo de abajo (las acciones de la
+        // barra de cada pantalla, como «Salva» del calendario de rango).
+        padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 8, 8),
         child: Row(
           children: [
             Icon(Icons.new_releases_outlined, color: colors.onPrimaryContainer),
             const SizedBox(width: 12),
             Expanded(
+              // Un nodo propio que VoiceOver anuncia al aparecer.
               child: Semantics(
+                container: true,
                 liveRegion: true,
                 child: Text(
                   l10n.updateAvailable,
@@ -151,7 +164,8 @@ class _InstallHintCard extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      // 8 abajo: «Chiudi» queda a 8 px de lo de abajo.
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Card(
         key: const ValueKey('install-hint'),
         margin: EdgeInsets.zero,
@@ -183,7 +197,12 @@ class _InstallHintCard extends ConsumerWidget {
                   onPressed: ref
                       .read(installHintControllerProvider.notifier)
                       .dismiss,
-                  child: Text(l10n.actionClose),
+                  // VoiceOver: «Chiudi il promemoria», distinto de otros
+                  // «Chiudi» de la pantalla (empieza con el texto visible).
+                  child: Text(
+                    l10n.actionClose,
+                    semanticsLabel: l10n.installHintClose,
+                  ),
                 ),
               ),
             ],

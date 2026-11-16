@@ -133,6 +133,37 @@ void main() {
     expect(browser.flags, {installHintDismissedKey: '1'});
   });
 
+  testWidgets('VoiceOver lee la tarjeta y puede cerrarla («Chiudi il promemoria», '
+      'distinto de otros «Chiudi»); el login sigue a su alcance', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await openLogin(tester);
+
+    expect(
+      find.bySemanticsLabel(
+        "Per non dover accedere di nuovo, apri Radici dall'icona nella "
+        'schermata Home.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('Chiudi il promemoria'), findsOneWidget);
+    expect(find.bySemanticsLabel('Inviami il codice'), findsOneWidget);
+
+    tester.semantics.tap(find.semantics.byLabel('Chiudi il promemoria'));
+    await tester.pumpAndSettle();
+    expect(hint(), findsNothing);
+    expect(browser.flags, {installHintDismissedKey: '1'});
+    semantics.dispose();
+  });
+
+  testWidgets('«Chiudi» queda a 8 px o más de lo que hay abajo', (tester) async {
+    await openLogin(tester);
+    final below = tester.getTopLeft(find.byType(AppBar)).dy;
+    expect(
+      below - tester.getRect(closeButton()).bottom,
+      greaterThanOrEqualTo(8),
+    );
+  });
+
   testWidgets('ya cerrado antes en este dispositivo: no vuelve', (tester) async {
     browser.flags[installHintDismissedKey] = '1';
     await openLogin(tester);
@@ -185,6 +216,20 @@ void main() {
       findsOneWidget,
     );
   });
+
+  for (final (locale, label) in const [
+    (Locale('es', 'AR'), 'Cerrar el recordatorio'),
+    (Locale('en', 'GB'), 'Close reminder'),
+  ]) {
+    testWidgets('lo que lee VoiceOver en «Chiudi» ($locale): $label', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await openLogin(tester, locale: locale);
+      expect(find.bySemanticsLabel(label), findsOneWidget);
+      semantics.dispose();
+    });
+  }
 
   testWidgets('con una versión nueva en Safari: los dos avisos, primero la versión', (
     tester,

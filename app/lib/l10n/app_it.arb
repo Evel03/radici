@@ -26,6 +26,10 @@
   "@installHint": {
     "description": "Tarjeta que se puede cerrar, en el iPhone o el iPad en el navegador (fuera de la app agregada a la pantalla de inicio): el botón del email abre Safari, que tiene otra sesión. «Schermata Home» es el nombre de iOS. Trata de «tú»."
   },
+  "installHintClose": "Chiudi il promemoria",
+  "@installHintClose": {
+    "description": "Lo que lee VoiceOver en el botón «Chiudi» (actionClose) de esa tarjeta, para distinguirlo de otros «Chiudi» de la pantalla. Tiene que empezar con el texto visible del botón."
+  },
 
   "homeHeadline": "Cucina di casa, a casa tua",
   "@homeHeadline": {

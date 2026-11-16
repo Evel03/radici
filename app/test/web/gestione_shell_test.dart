@@ -93,11 +93,16 @@ void main() {
     expect(end, greaterThan(start));
     final loading = html.substring(start, end);
 
+    // El de 512 px: se muestra a 96 px y en un iPhone con 3 píxeles por
+    // punto hacen falta 288 (el de 192 se vería borroso).
     expect(
       loading,
-      contains('<img class="loading__icon" src="icons/Icon-192.png" alt=""'),
+      contains(
+        '<img class="loading__icon" src="icons/Icon-512.png" alt="" '
+        'width="96" height="96">',
+      ),
     );
-    expect(findRepoFile('app/web/icons/Icon-192.png').existsSync(), isTrue);
+    expect(findRepoFile('app/web/icons/Icon-512.png').existsSync(), isTrue);
     expect(
       loading.replaceAll(RegExp(r'<[^>]*>'), '').trim(),
       isEmpty,

@@ -6,6 +6,7 @@
   "updateAvailable": "A new version is available",
   "updateReload": "Update",
   "installHint": "To avoid signing in again, open Radici from the icon on your Home Screen.",
+  "installHintClose": "Close reminder",
   "homeHeadline": "Home cooking, at your home",
   "homeBody": "Evelyn does the shopping, cooks at your place for several days and leaves everything in portions labelled with dish and date.",
   "homeQuoteCta": "Get a quote",

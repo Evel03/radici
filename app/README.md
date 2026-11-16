@@ -188,7 +188,10 @@ hace falta: sin `BUILD_ID` la app no avisa nada.
   de cualquier pantalla. Nunca recarga sola: «Aggiorna» recarga la página. Sin red, con una respuesta
   rara o sin `BUILD_ID` (flutter run, tests, iOS y Android) no avisa nada. Impostazioni dice
   «Versione abc1234». `version.json` no sirve: el build no pasa `--build-number` y siempre dice
-  `1.0.0+1`.
+  `1.0.0+1`. El id es el del commit, no el del contenido: un deploy que solo cambia la web pública
+  también muestra el aviso, y volver a publicar el mismo commit (por ejemplo, después de cambiar
+  `SUPABASE_URL` o `SUPABASE_PUBLISHABLE_KEY`, que quedan compiladas) no lo muestra: ahí hay que
+  recargar a mano.
 - **Aviso de Safari**: el botón del email abre el navegador, que tiene otra sesión que la app de la
   pantalla de inicio. En el iPhone o el iPad fuera de la app instalada (`navigator.standalone` y
   `display-mode: standalone`), una tarjeta arriba de cualquier pantalla, también del login: «Para no
@@ -199,7 +202,10 @@ hace falta: sin `BUILD_ID` la app no avisa nada.
   (`lib/core/browser.dart`): en iOS, Android y los tests en la VM se usa `browser_stub.dart`, que no
   hace nada. Los avisos aparecen desde el segundo cuadro: en la web, runApp arma la app antes del
   primer layout y un cambio de foco en ese momento mide los botones (con uno sin tamaño, «RenderBox
-  was not laid out»).
+  was not laid out»). La app de abajo va en su propio contenedor de semántica: la barrera de cada
+  ruta (un `BlockSemantics`) descarta lo pintado antes en el mismo contenedor, y sin eso VoiceOver no
+  vería los avisos. Sus botones quedan a 8 px o más de lo de abajo (las acciones de cada barra,
+  como «Salva» del calendario de rango).
 - **iPhone** (`web/index.html`, `web/manifest.json`): `<meta name="viewport">` solo para la pantalla
   de carga (al arrancar, Flutter pone el suyo; por eso tampoco va `viewport-fit=cover`),
   `apple-mobile-web-app-capable` y la barra de estado `default`; en la carga, el ícono y la rueda, sin
@@ -243,7 +249,7 @@ base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-re
   cambió). En Cloudflare, Browser Cache TTL tiene que quedar en «Respect Existing Headers» (contrato
   §10.1, paso 9): con el valor de fábrica llegaba `max-age=14400` y «Aggiorna» recargaba la versión
   vieja. Cada deploy de producción comprueba que `main.dart.js` y `flutter_bootstrap.js` lleguen con
-  `no-cache` y, si no, queda en rojo (contrato §8).
+  `no-cache` y, si no, queda en rojo (`.github/scripts/check-gestione-cache.sh`, contrato §8).
 
 ## Estructura
 

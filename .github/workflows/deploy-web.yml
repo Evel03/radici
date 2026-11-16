@@ -38,12 +38,14 @@ on:
       - "app/**"
       - "supabase/functions/_shared/**"
       - ".github/workflows/deploy-web.yml"
+      - ".github/scripts/check-gestione-cache.sh"
   pull_request:
     paths:
       - "web/**"
       - "app/**"
       - "supabase/functions/_shared/**"
       - ".github/workflows/deploy-web.yml"
+      - ".github/scripts/check-gestione-cache.sh"
   workflow_dispatch:
 
 # Un grupo por PR y otro por rama: un PR (también desde un fork, cuya rama suele llamarse main) nunca
@@ -375,12 +377,14 @@ jobs:
 
       # Producción: ¿la función acepta pedidos desde el sitio? Solo avisa (el backend lo despliega otro
       # workflow, que puede estar todavía corriendo). OPTIONS no pasa por el límite por IP ni por la base.
+      # Sin -e (el shell de Actions lo trae): un error de curl también es solo un aviso, y no saltea los
+      # pasos que siguen.
       - name: Comprobar CORS de public-request desde el sitio
         if: env.HAS_CF_TOKEN == 'true' && (github.head_ref || github.ref_name) == 'main'
         env:
           SITE_URL: ${{ vars.VITE_SITE_URL }}
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           site="${SITE_URL%/}"
           if [ -z "${site}" ] || [ -z "${SUPABASE_URL}" ]; then
             echo "::notice::Sin VITE_SITE_URL o SUPABASE_URL: no se comprueba CORS."
@@ -410,56 +414,11 @@ jobs:
       # revalidarlos en cada carga (Cache-Control: no-cache, de _headers). Si Cloudflare los pisa con su
       # caché del navegador (Browser Cache TTL distinto de «Respect Existing Headers», contrato §10.1,
       # paso 9), «Aggiorna» recarga y Evelyn sigue con la versión vieja: el run queda en rojo.
-      # Primero espera a que el dominio sirva este deploy (build.json con este id; si no llega, solo
-      # avisa). Hasta 6 intentos por archivo, cada 10 s (para probarlo a mano contra otro servidor:
-      # CACHE_CHECK_ATTEMPTS y CACHE_CHECK_PAUSE). Imprime solo el estado HTTP, Cache-Control y el id.
+      # El script espera a que el dominio sirva este deploy (build.json con este id; si no llega, solo
+      # avisa) y prueba cada archivo hasta 6 veces, cada 10 s; un corte de curl es un intento más.
+      # Tiene tests contra un servidor local (check-gestione-cache.test.ts, npm test en la raíz).
       - name: Comprobar la caché de /gestione/ en el dominio
         if: env.HAS_CF_TOKEN == 'true' && github.event_name != 'pull_request' && github.ref_name == 'main'
         env:
           SITE_URL: ${{ vars.VITE_SITE_URL }}
-        run: |
-          set -uo pipefail
-          site="${SITE_URL%/}"
-          if ! [[ "${site}" =~ ^https?://[^/[:space:]]+$ ]]; then
-            echo "::error::VITE_SITE_URL tiene que ser el origen del sitio (https://…, sin ruta): sin él no se puede comprobar la caché de /gestione/."
-            exit 1
-          fi
-          attempts="${CACHE_CHECK_ATTEMPTS:-6}"
-          pause="${CACHE_CHECK_PAUSE:-10}"
-
-          live=false
-          for attempt in $(seq 1 "${attempts}"); do
-            published=$(curl -sS -m 20 "${site}/gestione/build.json?t=$(date +%s)" 2>/dev/null \
-              | jq -r '.buildId // empty' 2>/dev/null || true)
-            echo "/gestione/build.json (intento ${attempt}/${attempts}): ${published:-sin id}"
-            if [ "${published}" = "${BUILD_ID}" ]; then live=true; break; fi
-            if [ "${attempt}" -lt "${attempts}" ]; then sleep "${pause}"; fi
-          done
-          if [ "${live}" != true ]; then
-            echo "::warning::${site}/gestione/build.json no muestra este build (${BUILD_ID}): la app instalada no va a avisar que hay una versión nueva hasta que lo muestre."
-          fi
-
-          failed=0
-          for path in gestione/main.dart.js gestione/flutter_bootstrap.js; do
-            ok=false
-            for attempt in $(seq 1 "${attempts}"); do
-              headers=$(curl -sS --compressed -m 30 -o /dev/null -D - "${site}/${path}" 2>/dev/null | tr -d '\r')
-              status=$(printf '%s\n' "${headers}" | awk 'NR == 1 { print $2 }')
-              cache=$(printf '%s\n' "${headers}" \
-                | awk 'tolower($1) == "cache-control:" { sub(/^[^:]*:[ \t]*/, ""); print }' | paste -sd ',' -)
-              echo "/${path} (intento ${attempt}/${attempts}): HTTP ${status:-sin respuesta}, Cache-Control: ${cache:-ninguno}"
-              if [ "${status}" = "200" ] && printf '%s' "${cache}" | tr 'A-Z' 'a-z' | tr -d ' ' | tr ',' '\n' | grep -qx 'no-cache'; then
-                ok=true
-                break
-              fi
-              if [ "${attempt}" -lt "${attempts}" ]; then sleep "${pause}"; fi
-            done
-            if [ "${ok}" = true ]; then continue; fi
-            failed=1
-            if [ "${status}" != "200" ]; then
-              echo "::error::${site}/${path} respondió HTTP ${status:-sin respuesta}: no se pudo comprobar su caché."
-            else
-              echo "::error::${site}/${path} llega con Cache-Control: ${cache:-ninguno}, sin no-cache: Evelyn seguiría con la versión vieja aunque recargue. En Cloudflare, Caching → Configuration → Browser Cache TTL: «Respect Existing Headers» (contrato §10.1, paso 9)."
-            fi
-          done
-          exit "${failed}"
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/check-gestione-cache.sh"
