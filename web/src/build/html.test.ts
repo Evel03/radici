@@ -62,11 +62,14 @@ describe("renderPage con las páginas reales", () => {
     });
   }
 
-  it("la landing muestra el ejemplo calculado con el motor (vector 1)", () => {
+  it("la landing muestra el ejemplo calculado con el motor (vector 3: 4 semanas) y el precio por semana", () => {
     const out = renderPage(indexHtml, { i18n, config: baseConfig, pagePath: "/", partials });
-    expect(out).toMatch(/78,00\s€/);
+    expect(out).toMatch(/140,00\s€/);
+    expect(out).toMatch(/560,00\s€/);
+    expect(out).toMatch(/40,00\s€/);
     expect(out).toMatch(/63,00\s€/);
-    expect(out).toMatch(/141,00\s€/);
+    expect(out).toMatch(/150,00\s€ a settimana/);
+    expect(out).toContain("Senza rinnovo automatico");
   });
 
   it("las frases de los recuadros de la portada se leen: lista con nombre, sin aria-hidden encima", () => {

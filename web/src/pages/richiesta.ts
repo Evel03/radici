@@ -7,7 +7,7 @@ import "../styles/request.css";
 import { LIMITS } from "../engine.ts";
 import type { MessageKey, Params } from "../i18n/core.ts";
 import { todayInRome } from "../lib/dates.ts";
-import { formatCents, formatIsoDate } from "../lib/format.ts";
+import { formatCents, formatIsoDate, formatShortDate } from "../lib/format.ts";
 import { availabilityUrl, fetchAvailability } from "../request/availability.ts";
 import {
   availabilityState,
@@ -16,13 +16,24 @@ import {
   coversWindow,
   noFreeDays,
   selectionStillValid,
+  sessionDays,
   windowMonths,
   type AvailabilityState,
   type CalendarInput,
   type CalendarMonth,
   type DayStatus,
+  type SessionStatus,
 } from "../request/calendar.ts";
-import { MEAL_OPTIONS, REQUEST_TYPES, TEXT_LIMITS, isOneOf, type RequestData } from "../request/model.ts";
+import {
+  MEAL_OPTIONS,
+  REQUEST_TYPES,
+  TEXT_LIMITS,
+  isOneOf,
+  publicEstimate,
+  weeksOf,
+  type PublicRequestEstimate,
+  type RequestData,
+} from "../request/model.ts";
 import { buildPayload, type PayloadOptions } from "../request/payload.ts";
 import { computeQuote } from "../request/quote.ts";
 import { createRequestKeys, doneViewFor, type DoneView } from "../request/request-key.ts";
@@ -51,6 +62,7 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
 /** Controles a marcar con aria-invalid para cada error (los grupos de opciones no tienen uno solo). */
 const CONTROLS: Readonly<Record<FieldName, readonly string[]>> = {
   type: [],
+  weeks: [],
   adults: ["adults"],
   kids: ["kids"],
   people: ["adults", "kids"],
@@ -82,6 +94,8 @@ const doneDetails = byId("done-details");
 const doneSummary = byId("done-summary");
 // La nota de alergias y su consentimiento: se ocultan si marca que nadie tiene (y no se mandan).
 const allergyDetails = byId("allergy-details");
+// Las semanas son del pedido semanal: con "extra" se oculta y se manda 1.
+const weeksPanel = byId("weeks-panel");
 const configWarning = byId("config-warning");
 const formError = byId("form-error");
 const formErrorText = byId("form-error-text");
@@ -95,10 +109,17 @@ const turnstileRetry = byId<HTMLButtonElement>("turnstile-retry");
 const quoteBody = byId("quote-body");
 const quoteInvalid = byId("quote-invalid");
 const quoteOut = {
+  manual: byId("q-manual"),
+  totalRow: byId("q-total-row"),
+  totalLabel: byId("q-total-label"),
   total: byId("q-total"),
-  service: byId("q-service"),
+  weeklyRow: byId("q-weekly-row"),
+  weekly: byId("q-weekly"),
+  groceriesLabel: byId("q-groceries-label"),
   groceries: byId("q-groceries"),
+  portionsLabel: byId("q-portions-label"),
   portions: byId("q-portions"),
+  savings: byId("q-savings"),
 };
 const calendarEls = {
   grid: byId("calendar-grid"),
@@ -111,6 +132,9 @@ const calendarEls = {
   chosenText: byId("calendar-chosen-text"),
   clear: byId<HTMLButtonElement>("calendar-clear"),
   input: byId<HTMLInputElement>("preferredDate"),
+  legendRepeat: byId("calendar-legend-repeat"),
+  sessions: byId("calendar-sessions"),
+  sessionList: byId("calendar-session-list"),
 };
 
 /** Nombre accesible de cada día del calendario según su estado. */
@@ -119,6 +143,16 @@ const DAY_LABELS: Readonly<Record<DayStatus, MessageKey>> = {
   unavailable: "request.calendar.dayUnavailable",
   pending: "request.calendar.dayPending",
   outside: "request.calendar.dayUnavailable",
+};
+
+/** Qué dice la lista de fechas de cada semana (y el nombre accesible del día de una semana siguiente). */
+const SESSION_STATUS: Readonly<Record<SessionStatus, MessageKey>> = {
+  selected: "request.calendar.sessionStatus.selected",
+  available: "request.calendar.sessionStatus.available",
+  unavailable: "request.calendar.sessionStatus.unavailable",
+  pending: "request.calendar.sessionStatus.pending",
+  unknown: "request.calendar.sessionStatus.unknown",
+  outside: "request.calendar.sessionStatus.outside",
 };
 
 /** "novembre 2026" → "Novembre 2026" (Intl da el mes en minúscula en italiano y español). */
@@ -184,12 +218,15 @@ function readForm(): RequestData {
   };
   const type = str("type");
   const meals = str("meals");
+  const weeks = str("weeks");
   return {
     type: isOneOf(REQUEST_TYPES, type) ? type : "week",
     adults: int("adults"),
     kids: int("kids"),
     days: int("days"),
     meals: isOneOf(MEAL_OPTIONS, meals) ? meals : "dinner",
+    // Siempre hay una marcada (la 1 viene marcada en el HTML); lo que no sea un número lo rechaza la validación.
+    weeks: weeks === "" ? 1 : Number(weeks),
     // Campo oculto que llena el calendario.
     preferredDate: str("preferredDate"),
     name: str("name"),
@@ -289,7 +326,7 @@ function startRequestPage(shell: Shell): void {
   let success: {
     data: RequestData | null;
     email: string | null;
-    estimate: { totalCents: number } | null;
+    estimate: PublicRequestEstimate | null;
     replay: DoneView["replay"];
   } | null = null;
   let turnstile: TurnstileWidget | null = null;
@@ -318,6 +355,7 @@ function startRequestPage(shell: Shell): void {
     today: todayInRome(),
     selected: data.preferredDate,
     applies: data.type === "week",
+    weeks: weeksOf(data),
     availability,
   });
 
@@ -376,8 +414,16 @@ function startRequestPage(shell: Shell): void {
     const view = buildMonth(ref, input);
     calendarEls.prev.disabled = !nav.prev;
     calendarEls.next.disabled = !nav.next;
+    // Las semanas siguientes del pedido: su estado en la lista (y en el nombre accesible de su día).
+    const sessions = sessionDays(input);
+    const sessionStatus = new Map(sessions.map((session) => [session.date, session.status] as const));
 
-    const signature = JSON.stringify([i18n.lang, view.year, view.month, view.cells.map((c) => `${c.status}${c.selected ? "*" : ""}`)]);
+    const signature = JSON.stringify([
+      i18n.lang,
+      view.year,
+      view.month,
+      view.cells.map((c) => `${c.status}${c.selected ? "*" : ""}${c.repeat ?? ""}${sessionStatus.get(c.date) ?? ""}`),
+    ]);
     if (signature !== calendarPainted) {
       calendarPainted = signature;
       const active = document.activeElement;
@@ -400,7 +446,18 @@ function startRequestPage(shell: Shell): void {
         btn.dataset["status"] = cell.status;
         btn.disabled = cell.status !== "available";
         btn.setAttribute("aria-pressed", String(cell.selected));
-        btn.setAttribute("aria-label", i18n.t(DAY_LABELS[cell.status], { date: formatIsoDate(cell.date, i18n.locale) }));
+        const date = formatIsoDate(cell.date, i18n.locale);
+        const repeatStatus = cell.repeat === null ? undefined : sessionStatus.get(cell.date);
+        if (cell.repeat !== null && repeatStatus) {
+          // El mismo día de una semana siguiente: se marca y se dice qué semana es y si está libre.
+          btn.dataset["repeat"] = String(cell.repeat);
+          btn.setAttribute(
+            "aria-label",
+            i18n.t("request.calendar.dayRepeat", { date, week: cell.repeat, status: i18n.t(SESSION_STATUS[repeatStatus]) }),
+          );
+        } else {
+          btn.setAttribute("aria-label", i18n.t(DAY_LABELS[cell.status], { date }));
+        }
         btn.textContent = String(cell.day);
         nodes.push(btn);
       }
@@ -423,18 +480,70 @@ function startRequestPage(shell: Shell): void {
       calendarEls.chosenText,
       data.preferredDate ? i18n.t("request.calendar.chosen", { date: formatIsoDate(data.preferredDate, i18n.locale) }) : "",
     );
+    renderSessions(sessions);
   };
 
+  /** Lista de fechas, una por semana, debajo del calendario: solo con más de una semana y un día elegido. */
+  let sessionsPainted = "";
+  const renderSessions = (sessions: ReturnType<typeof sessionDays>): void => {
+    const { i18n } = shell;
+    const several = sessions.length > 1;
+    calendarEls.sessions.hidden = !several;
+    calendarEls.legendRepeat.hidden = !several;
+    const signature = JSON.stringify([i18n.lang, sessions]);
+    if (signature === sessionsPainted) return;
+    sessionsPainted = signature;
+    calendarEls.sessionList.replaceChildren(
+      ...(several ? sessions : []).map((session) => {
+        const item = document.createElement("li");
+        item.className = "calendar__session";
+        item.dataset["status"] = session.status;
+        const when = document.createElement("span");
+        when.className = "calendar__session-date";
+        // Fecha corta: la lista llega a 8 renglones en el teléfono y la ventana nunca pasa de un año.
+        when.textContent = i18n.t("request.calendar.sessionWeek", { week: session.week, date: formatShortDate(session.date, i18n.locale) });
+        const status = document.createElement("span");
+        status.className = "calendar__session-status";
+        status.textContent = i18n.t(SESSION_STATUS[session.status]);
+        item.append(when, " ", status);
+        return item;
+      }),
+    );
+  };
+
+  /**
+   * Recuadro del precio: con precio automático, el servicio de todas las semanas (destacado), el de cada
+   * semana y el ahorro desde el descuento; sin él (más personas o una sesión extra), que lo prepara Evelyn.
+   * La compra estimada siempre, aparte.
+   */
   const renderQuote = (data: RequestData): void => {
     const { i18n } = shell;
     const quote = computeQuote(data);
     quoteBody.hidden = quote === null;
     quoteInvalid.hidden = quote !== null;
     if (!quote) return;
-    setText(quoteOut.total, formatCents(quote.totalCents, i18n.locale));
-    setText(quoteOut.service, formatCents(quote.serviceCents, i18n.locale));
-    setText(quoteOut.groceries, formatCents(quote.groceriesEstCents, i18n.locale));
+    const money = (cents: number): string => formatCents(cents, i18n.locale);
+    // Las porciones y la compra son de una semana; en una sesión extra, de esa sesión.
+    const weekly = data.type === "week";
+    setText(quoteOut.groceriesLabel, i18n.t(weekly ? "request.quote.groceriesWeekly" : "request.quote.groceries"));
+    setText(quoteOut.groceries, money(quote.groceriesEstCents));
+    setText(quoteOut.portionsLabel, i18n.t(weekly ? "request.quote.portionsWeekly" : "request.quote.portions"));
     setText(quoteOut.portions, String(quote.portions));
+    quoteOut.manual.hidden = quote.autoPrice;
+    quoteOut.totalRow.hidden = !quote.autoPrice;
+    if (!quote.autoPrice) {
+      setText(quoteOut.manual, i18n.t(quote.reason === "extra" ? "request.quote.manualExtra" : "request.quote.manualPeople"));
+      quoteOut.weeklyRow.hidden = true;
+      quoteOut.savings.hidden = true;
+      return;
+    }
+    setText(quoteOut.totalLabel, quote.weeks > 1 ? i18n.t("request.quote.serviceWeeks", { weeks: quote.weeks }) : i18n.t("request.quote.service"));
+    setText(quoteOut.total, money(quote.serviceCents));
+    // Con una semana el precio por semana es el total: no se repite.
+    quoteOut.weeklyRow.hidden = quote.weeks === 1;
+    setText(quoteOut.weekly, money(quote.weeklyServiceCents));
+    quoteOut.savings.hidden = quote.savingsCents === 0;
+    setText(quoteOut.savings, quote.savingsCents > 0 ? i18n.t("request.quote.savings", { amount: money(quote.savingsCents) }) : "");
   };
 
   const turnstileError = (): FieldError | null => {
@@ -557,13 +666,15 @@ function startRequestPage(shell: Shell): void {
    * @param view lo que tiene guardado el servidor (doneViewFor): en un reintento con cambios, los datos
    * del envío que llegó (la estimación del servidor es la de ese pedido), nunca los del formulario.
    */
-  const showDone = (view: DoneView, estimate: { totalCents: number } | null): void => {
+  const showDone = (view: DoneView, estimate: PublicRequestEstimate | null): void => {
     phase = "done";
     const { data } = view;
+    // Si el servidor no devolvió estimación (o con otra forma), la de la calculadora.
+    const local = data ? computeQuote(data) : null;
     success = {
       data,
       email: data ? emailOf(data) : null,
-      estimate: data ? (estimate ?? computeQuote(data)) : null,
+      estimate: data ? (estimate ?? (local ? publicEstimate(local) : null)) : null,
       replay: view.replay,
     };
     renderDone();
@@ -693,6 +804,8 @@ function startRequestPage(shell: Shell): void {
     keys.edited(JSON.stringify(data));
     // Lo escrito se conserva si vuelve a desmarcar la casilla, pero oculto no se manda (buildPayload).
     allergyDetails.hidden = data.noAllergies;
+    // Lo mismo las semanas: con "extra" se ocultan y se manda 1.
+    weeksPanel.hidden = data.type !== "week";
     syncSteppers();
     renderQuote(data);
     renderCalendar(data);

@@ -17,6 +17,7 @@ import {
   monthNav,
   noFreeDays,
   selectionStillValid,
+  sessionDays,
   windowMonths,
   type AvailabilityState,
   type CalendarInput,
@@ -30,7 +31,7 @@ function ready(free: string[], today = TODAY): AvailabilityState {
 }
 
 function input(overrides: Partial<CalendarInput> = {}): CalendarInput {
-  return { today: TODAY, selected: "", applies: true, availability: ready(["2026-11-17", "2026-11-20"]), ...overrides };
+  return { today: TODAY, selected: "", applies: true, weeks: 1, availability: ready(["2026-11-17", "2026-11-20"]), ...overrides };
 }
 
 /** Lo que recibe la web: la respuesta pasada por JSON y leída con parseAvailabilityResponse. */
@@ -167,9 +168,9 @@ describe("mes armado", () => {
     const month = buildMonth({ year: 2026, month: 11 }, input({ selected: "2026-11-20" }));
     expect(month.leading).toBe(6);
     expect(month.cells).toHaveLength(30);
-    expect(month.cells[0]).toEqual({ date: "2026-11-01", day: 1, status: "outside", selected: false });
-    expect(month.cells[16]).toEqual({ date: "2026-11-17", day: 17, status: "available", selected: false });
-    expect(month.cells[19]).toEqual({ date: "2026-11-20", day: 20, status: "available", selected: true });
+    expect(month.cells[0]).toEqual({ date: "2026-11-01", day: 1, status: "outside", selected: false, repeat: null });
+    expect(month.cells[16]).toEqual({ date: "2026-11-17", day: 17, status: "available", selected: false, repeat: null });
+    expect(month.cells[19]).toEqual({ date: "2026-11-20", day: 20, status: "available", selected: true, repeat: null });
     // Del 16 al 30 están en la ventana: 15 días, 2 libres.
     expect(month.cells.filter((c) => c.status === "unavailable")).toHaveLength(13);
   });
@@ -210,7 +211,7 @@ describe("selección", () => {
 
   it("mes inicial: el del elegido, si no el primero con días libres, si no el primero", () => {
     const today = "2026-11-25"; // ventana: 26/11/2026 a 20/01/2027
-    const base = { today, selected: "", applies: true };
+    const base = { today, selected: "", applies: true, weeks: 1 };
     expect(initialMonthIndex({ ...base, availability: ready(["2026-11-27"], today) })).toBe(0);
     expect(initialMonthIndex({ ...base, availability: ready(["2026-12-02"], today) })).toBe(1);
     expect(initialMonthIndex({ ...base, availability: ready(["2027-01-05", "2027-01-20"], today) })).toBe(2);
@@ -221,7 +222,7 @@ describe("selección", () => {
 
   it("mes inicial a fin de año: la ventana del 21/12/2026 al 14/02/2027", () => {
     const today = "2026-12-20";
-    const base = { today, selected: "", applies: true };
+    const base = { today, selected: "", applies: true, weeks: 1 };
     expect(initialMonthIndex({ ...base, availability: ready(["2027-02-01"], today) })).toBe(2);
     expect(initialMonthIndex({ ...base, availability: ready(["2027-01-04", "2027-02-01"], today) })).toBe(1);
     expect(initialMonthIndex({ ...base, availability: ready(["2026-12-21"], today) })).toBe(0);
@@ -248,7 +249,7 @@ describe("flechas del calendario", () => {
 
   it("calendarNav: el mes inicial mientras el cliente no usó las flechas; después, el que eligió", () => {
     const today = "2026-11-25"; // ventana: 26/11/2026 a 20/01/2027, tres meses
-    const state = { today, selected: "", applies: true, availability: ready(["2026-12-02"], today) };
+    const state = { today, selected: "", applies: true, weeks: 1, availability: ready(["2026-12-02"], today) };
     expect(calendarNav(state, 0, false)).toEqual({ index: 1, prev: true, next: true }); // el del primer día libre
     expect(calendarNav(state, 2, false)).toEqual({ index: 1, prev: true, next: true });
     expect(calendarNav(state, 2, true)).toEqual({ index: 2, prev: true, next: false });
@@ -259,8 +260,65 @@ describe("flechas del calendario", () => {
     // Domingo 29/11/2026: de noviembre a enero. Lunes 30/11: de diciembre a enero.
     expect(windowMonths("2026-11-29")).toHaveLength(3);
     expect(windowMonths("2026-11-30")).toEqual([{ year: 2026, month: 12 }, { year: 2027, month: 1 }]);
-    const after = { today: "2026-11-30", selected: "", applies: true, availability: ready([], "2026-11-30") };
+    const after = { today: "2026-11-30", selected: "", applies: true, weeks: 1, availability: ready([], "2026-11-30") };
     // El cliente estaba en enero (el tercero): enero sigue siendo el último.
     expect(calendarNav(after, 2, true)).toEqual({ index: 1, prev: true, next: false });
+  });
+});
+
+describe("varias semanas: el mismo día de las semanas siguientes", () => {
+  // Ventana del 16/11/2026 al 10/01/2027. Libres: los lunes 23/11, 30/11 y 14/12 (el 7/12 no).
+  const free = ready(["2026-11-23", "2026-11-30", "2026-12-14", "2027-01-04"]);
+  const fourWeeks = input({ selected: "2026-11-23", weeks: 4, availability: free });
+
+  it("el calendario marca las semanas siguientes con su número y su disponibilidad", () => {
+    const november = buildMonth({ year: 2026, month: 11 }, fourWeeks);
+    expect(november.cells[22]).toMatchObject({ date: "2026-11-23", selected: true, repeat: null });
+    expect(november.cells[29]).toMatchObject({ date: "2026-11-30", status: "available", selected: false, repeat: 2 });
+    const december = buildMonth({ year: 2026, month: 12 }, fourWeeks);
+    expect(december.cells[6]).toMatchObject({ date: "2026-12-07", status: "unavailable", repeat: 3 });
+    expect(december.cells[13]).toMatchObject({ date: "2026-12-14", status: "available", repeat: 4 });
+    // Solo esas: el 21/12 sería la quinta semana.
+    expect(december.cells.filter((cell) => cell.repeat !== null).map((cell) => cell.day)).toEqual([7, 14]);
+  });
+
+  it("la lista de fechas: la primera es la elegida; las de fuera de la ventana las confirma Evelyn", () => {
+    expect(sessionDays(fourWeeks)).toEqual([
+      { week: 1, date: "2026-11-23", status: "selected" },
+      { week: 2, date: "2026-11-30", status: "available" },
+      { week: 3, date: "2026-12-07", status: "unavailable" },
+      { week: 4, date: "2026-12-14", status: "available" },
+    ]);
+    // 8 semanas desde el 7/12: la ventana termina el 10/01, así que las del 11/01 en adelante quedan fuera.
+    const eight = sessionDays(input({ selected: "2026-12-07", weeks: 8, availability: ready(["2026-12-07", "2027-01-04"]) }));
+    expect(eight.map((day) => day.status)).toEqual([
+      "selected", "unavailable", "unavailable", "unavailable", "available", "outside", "outside", "outside",
+    ]);
+    expect(eight.at(-1)).toEqual({ week: 8, date: "2027-01-25", status: "outside" });
+    // Fuera de la ventana también se marcan en el calendario (si se ve ese mes): no se pueden elegir.
+    const january = buildMonth({ year: 2027, month: 1 }, input({ selected: "2026-12-07", weeks: 8 }));
+    expect(january.cells.filter((cell) => cell.repeat !== null).map((cell) => [cell.day, cell.status, cell.repeat])).toEqual([
+      [4, "unavailable", 5], [11, "outside", 6], [18, "outside", 7], [25, "outside", 8],
+    ]);
+  });
+
+  it("sin disponibilidad (error), mientras carga, sin fecha o con una sola semana", () => {
+    expect(sessionDays(input({ selected: "2026-11-23", weeks: 2, availability: { kind: "error" } })).map((d) => d.status)).toEqual(["selected", "unknown"]);
+    expect(sessionDays(input({ selected: "2026-11-23", weeks: 2, availability: { kind: "loading" } })).map((d) => d.status)).toEqual(["selected", "pending"]);
+    expect(sessionDays(input({ selected: "", weeks: 4 }))).toEqual([]);
+    expect(sessionDays(input({ selected: "2026-11-17", weeks: 1 }))).toEqual([{ week: 1, date: "2026-11-17", status: "selected" }]);
+    expect(buildMonth({ year: 2026, month: 11 }, input({ selected: "2026-11-17" })).cells.every((cell) => cell.repeat === null)).toBe(true);
+  });
+
+  it("eventos y sesiones extra: una sola fecha, sin semanas siguientes", () => {
+    const extra = input({ selected: "2026-11-18", weeks: 4, applies: false });
+    expect(sessionDays(extra)).toEqual([{ week: 1, date: "2026-11-18", status: "selected" }]);
+    expect(buildMonth({ year: 2026, month: 11 }, extra).cells.every((cell) => cell.repeat === null)).toBe(true);
+  });
+
+  it("las semanas siguientes no cambian qué día se puede elegir ni si la elección sigue valiendo", () => {
+    expect(selectionStillValid(fourWeeks)).toBe(true);
+    expect(dayStatus("2026-12-07", fourWeeks)).toBe("unavailable");
+    expect(noFreeDays(fourWeeks)).toBe(false);
   });
 });

@@ -29,8 +29,20 @@ describe("buildPayload", () => {
     expect(result.value.noAllergies).toBe(true);
     expect(result.value.consents).toEqual({ privacy: CONSENT_VERSION, health: null });
     // La estimación del servidor coincide con la de la calculadora de la web (vector 1).
-    expect(result.estimate.totalCents).toBe(computeQuote(validRequest())?.totalCents);
-    expect(result.estimate.totalCents).toBe(14100);
+    expect(result.estimate).toEqual(computeQuote(validRequest()));
+    expect(result.estimate.autoPrice && result.estimate.serviceCents).toBe(15000);
+  });
+
+  it("manda las semanas del pedido semanal; una sesión extra, siempre 1", () => {
+    const four = serverParse(validRequest({ weeks: 4 }));
+    expect(four.ok && four.value.weeks).toBe(4);
+    expect(four.ok && four.estimate).toEqual(computeQuote(validRequest({ weeks: 4 })));
+    expect(buildPayload(validRequest({ weeks: 4 }), { locale: "it", turnstileToken: "t" }).weeks).toBe(4);
+    // El selector puede haber quedado en otra semana si después eligió "extra": no se manda.
+    expect(buildPayload(validRequest({ type: "extra", weeks: 4 }), { locale: "it", turnstileToken: "t" }).weeks).toBe(1);
+    expect(serverParse(validRequest({ type: "extra", weeks: 4 })).ok).toBe(true);
+    for (let weeks = 1; weeks <= 8; weeks++) expect(serverParse(validRequest({ weeks })).ok, String(weeks)).toBe(true);
+    expect(serverParse(validRequest({ weeks: 9 })).ok).toBe(false);
   });
 
   it("arma el JSON del contrato (versión, idioma, token, comidas y fecha; franja siempre indiferente)", () => {
@@ -38,10 +50,12 @@ describe("buildPayload", () => {
       validRequest({ meals: "both", preferredDate: "2026-10-26", whatsappOptIn: true }),
       { locale: "es", turnstileToken: TEST_TOKEN },
     );
+    expect(PUBLIC_REQUEST_VERSION).toBe(3);
     expect(payload).toMatchObject({
       version: PUBLIC_REQUEST_VERSION,
       type: "week",
       meals: ["lunch", "dinner"],
+      weeks: 1,
       preferredDate: "2026-10-26",
       slot: "any",
       whatsappOptIn: true,

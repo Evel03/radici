@@ -12,7 +12,19 @@ import {
 } from "./submit.ts";
 
 const URL_ = "https://abcdefgh.supabase.co/functions/v1/public-request";
-const ESTIMATE = { portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300, totalCents: 14100 };
+// La del 201 de la versión 3 (vector 3: 4 semanas).
+const ESTIMATE = {
+  weeks: 4,
+  portions: 20,
+  recipes: 3,
+  cookMinutes: 180,
+  groceriesEstCents: 6300,
+  autoPrice: true,
+  weeklyServiceCents: 14000,
+  serviceCents: 56000,
+  savingsCents: 4000,
+  totalCents: 81200,
+} as const;
 const payload = buildPayload(validRequest(), { locale: "it", turnstileToken: TEST_TOKEN });
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
@@ -52,6 +64,11 @@ describe("interpretResponse (contrato §2)", () => {
     ).toEqual({ kind: "created", requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE, duplicate: true });
     // Solo cuenta el booleano true.
     expect(interpretResponse(201, { requestId: "x", estimate: ESTIMATE, duplicate: "true" }, null)).toMatchObject({ duplicate: false });
+  });
+
+  it("201 sin precio automático: la estimación sin claves de precio, con el motivo", () => {
+    const unpriced = { weeks: 1, portions: 16, recipes: 2, cookMinutes: 150, groceriesEstCents: 5300, autoPrice: false, reason: "extra" };
+    expect(interpretResponse(201, { requestId: "abc", estimate: unpriced }, null)).toMatchObject({ kind: "created", estimate: unpriced });
   });
 
   it("201 con un cuerpo raro igual es éxito (el pedido ya está guardado)", () => {

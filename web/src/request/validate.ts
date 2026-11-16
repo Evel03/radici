@@ -18,6 +18,7 @@ import { buildPayload, type PayloadOptions } from "./payload.ts";
 /** Campos con mensaje propio (err-<campo>) en el formulario, en el orden de la página. */
 export const FIELD_ORDER = [
   "type",
+  "weeks",
   "adults",
   "kids",
   "people",
@@ -92,6 +93,10 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
       return { key: "errors.range", params: { min: 0, max: LIMITS.maxPeople } };
     case "days":
       return { key: "errors.range", params: { min: 1, max: LIMITS.maxDays } };
+    case "weeks":
+      // El selector solo ofrece de 1 a LIMITS.maxWeeks ({maxWeeks}, valor global de la web) y una sesión
+      // extra manda 1: este error solo llega con un HTML viejo o alterado.
+      return { key: "errors.weeks" };
     case "people":
       return { key: "errors.people" };
     case "meals":

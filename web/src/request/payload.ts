@@ -8,6 +8,7 @@ import {
   cleanOneLine,
   hasHealthData,
   mealsOf,
+  weeksOf,
   type Locale,
   type PublicRequestPayload,
   type RequestData,
@@ -30,6 +31,8 @@ export function buildPayload(data: RequestData, opts: PayloadOptions): PublicReq
     kids: data.kids,
     days: data.days,
     meals: mealsOf(data.meals),
+    // Una sesión extra es de una semana: lo que haya quedado en el selector no se manda.
+    weeks: weeksOf(data),
     noAllergies: data.noAllergies,
     // Las alergias llegan escritas: los alérgenos y las dietas del contrato van vacíos.
     allergens: [],
