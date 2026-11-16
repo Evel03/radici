@@ -37,6 +37,13 @@ describe("formato", () => {
     expect(formatCents(8488, "it-IT")).toMatch(/^84,88\s€$/);
   });
 
+  it("los miles van separados también con 4 cifras, como en el email y en la app (8 semanas: 1120 €)", () => {
+    expect(formatCents(112000, "it-IT")).toMatch(/^1\.120,00\s€$/);
+    expect(formatCents(112000, "es-ES")).toMatch(/^1\.120,00\s€$/);
+    expect(formatCents(112000, "en-IE")).toBe("€1,120.00");
+    expect(formatCents(1000000, "it-IT")).toMatch(/^10\.000,00\s€$/);
+  });
+
   it("rechaza importes no enteros", () => {
     expect(() => formatCents(10.5, "it-IT")).toThrow(RangeError);
   });

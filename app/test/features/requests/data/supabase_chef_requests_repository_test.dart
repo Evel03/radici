@@ -52,7 +52,8 @@ void main() {
       final query = request.url.queryParameters;
       expect(
         query['select'],
-        'id,chef_id,client_id,type,status,adults,kids,days,meals,'
+        // weeks: requests.weeks (20261116120000_weekly_pricing.sql).
+        'id,chef_id,client_id,type,status,adults,kids,days,meals,weeks,'
         'restrictions,no_allergies,notes,preferred_date,preferred_slot,locale,'
         'whatsapp_opt_in,estimate,source,seen_at,created_at,contact,'
         'client:clients(display_name,contact_email,contact_phone,zone,status)',

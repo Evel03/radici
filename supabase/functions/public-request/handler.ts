@@ -23,6 +23,7 @@ import {
 } from "../_shared/availability.ts";
 import { clientIp, hashSubject, rateLimitSubject } from "../_shared/client_ip.ts";
 import { corsHeaders, parseAllowedOrigins, type OriginRule } from "../_shared/cors.ts";
+import { isJsonContentType, logStoreError, readBodyLimited, type Logger } from "../_shared/edge.ts";
 import {
   allergyAnswer,
   brandFromMailFrom,
@@ -40,6 +41,8 @@ import {
   isIsoDate,
   isOneOf,
   parsePublicRequest,
+  publicEstimate,
+  readPublicEstimate,
   romeToday,
   type Allergen,
   type Diet,
@@ -53,6 +56,11 @@ import { calcQuote, type PricingSettings, type Quote } from "../_shared/quote.ts
 import { sendWithResend, type EmailMessage } from "../_shared/resend.ts";
 import { verifyTurnstile } from "../_shared/turnstile.ts";
 import { sendWhatsAppTemplate, whatsAppConfigFrom, type WhatsAppConfig } from "../_shared/whatsapp.ts";
+
+// Logs, errores de la base y clave de servicio: comunes a las Edge Functions (_shared/edge.ts).
+// Se siguen exportando desde acá para index.ts y los tests.
+export { StoreError, consoleLogger, resolveServiceKey, safeDbMessage } from "../_shared/edge.ts";
+export type { LogFields, LogLevel, LogValue, Logger } from "../_shared/edge.ts";
 
 /** Contrato §2: más de 5 por hora o 20 por día por IP → 429. */
 export const RATE_LIMITS = { perHour: 5, perDay: 20 } as const;
@@ -155,41 +163,6 @@ export function configWarnings(config: PublicRequestConfig): string[] {
   return warnings;
 }
 
-/**
- * Clave con permisos de servicio para el cliente de Supabase. Primero la clave secreta nueva
- * (SUPABASE_SECRET_KEYS, JSON con nombre → clave; se usa "default"), después las variables de
- * compatibilidad. Las claves service_role (JWT) dejan de existir a fines de 2026.
- */
-export function resolveServiceKey(get: (name: string) => string | undefined): string | null {
-  const keys = get("SUPABASE_SECRET_KEYS");
-  if (keys) {
-    try {
-      const parsed: unknown = JSON.parse(keys);
-      const key = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>)["default"] : null;
-      if (typeof key === "string" && key) return key;
-    } catch {
-      // JSON roto: se prueba con las otras variables.
-    }
-  }
-  return get("SUPABASE_SECRET_KEY") || get("SUPABASE_SERVICE_ROLE_KEY") || null;
-}
-
-// ---------------------------------------------------------------------------
-// Logs: solo valores simples, nunca objetos con datos del pedido
-// ---------------------------------------------------------------------------
-
-export type LogLevel = "info" | "warn" | "error";
-export type LogValue = string | number | boolean | null | readonly string[];
-export type LogFields = Readonly<Record<string, LogValue>>;
-export type Logger = (level: LogLevel, event: string, fields?: LogFields) => void;
-
-export const consoleLogger: Logger = (level, event, fields = {}) => {
-  const line = JSON.stringify({ level, event, ...fields });
-  if (level === "error") console.error(line);
-  else if (level === "warn") console.warn(line);
-  else console.info(line);
-};
-
 // ---------------------------------------------------------------------------
 // Acceso a la base (index.ts lo implementa con supabase-js y la clave secreta)
 // ---------------------------------------------------------------------------
@@ -199,7 +172,10 @@ export interface ChefInfo {
   pricing: PricingSettings;
 }
 
-/** Lo que se guarda en requests.estimate: calcQuote con las tarifas usadas. */
+/**
+ * Lo que se guarda en requests.estimate: calcQuote con las tarifas usadas. Siempre trae weeks, autoPrice,
+ * las porciones, los minutos y la compra; las claves del precio, solo con precio automático (SPEC §5.1).
+ */
 export type StoredEstimate = Quote & { pricing: PricingSettings };
 
 /** Argumento `p` de public.submit_public_request (snake_case, como la base). */
@@ -210,6 +186,8 @@ export interface SubmitPublicRequestParams {
   kids: number;
   days: number;
   meals: Meal[];
+  /** requests.weeks: 1 a 8, y 1 si no es un pedido semanal (migración 20261116120000_weekly_pricing.sql). */
+  weeks: number;
   /** Respuesta a la pregunta de alergias: true = nadie tiene; false = las escribió (requests.no_allergies). */
   no_allergies: boolean;
   allergens: Allergen[];
@@ -262,28 +240,14 @@ export interface PublicRequestStore {
   freeDays(chefId: string, cookMinutes: number, fromDate: string, days: number): Promise<string[]>;
 }
 
-/** Error de la base sin datos: operación, SQLSTATE y, como mucho, un código propio en snake_case. */
-export class StoreError extends Error {
-  readonly op: string;
-  readonly code: string | null;
-  readonly safeMessage: string | null;
-
-  constructor(op: string, code: string | null, safeMessage: string | null) {
-    super(`db_error:${op}`);
-    this.name = "StoreError";
-    this.op = op;
-    this.code = code;
-    this.safeMessage = safeMessage;
-  }
-}
-
 /**
- * Los mensajes de Postgres pueden traer la fila (con datos personales). Solo pasan los códigos
- * propios de las funciones SQL, que son identificadores (ej. health_consent_required).
+ * Columnas de chef_settings que lee la función: las tarifas del motor (PricingSettings) y el nombre de la
+ * cocinera. Las del precio por semana son de 20261116120000_weekly_pricing.sql: sin esa migración la
+ * consulta falla (500, load_chef) y no se guarda ningún pedido de varias semanas como si fuera de una.
+ * Un solo literal, sin concatenar: supabase-js lee el tipo del select del texto.
  */
-export function safeDbMessage(message: string | null | undefined): string | null {
-  return message && /^[a-z][a-z0-9_]{2,63}$/.test(message) ? message : null;
-}
+export const CHEF_SETTINGS_COLUMNS =
+  "weekly_rate_cents, weekly_rate_discounted_cents, weekly_discount_min_weeks, weekly_rate_max_people, adult_portion_cents, kid_portion_cents, preauth_buffer_pct, min_cook_minutes, chefs(display_name)";
 
 /** Fila de chef_settings con el nombre de la cocinera embebido (chefs.display_name). */
 export function chefFromRow(row: Readonly<Record<string, unknown>>): ChefInfo {
@@ -298,8 +262,10 @@ export function chefFromRow(row: Readonly<Record<string, unknown>>): ChefInfo {
   return {
     displayName: typeof name === "string" && name.trim() ? name.trim() : "Evelyn",
     pricing: {
-      hourlyRateCents: int("hourly_rate_cents"),
-      travelFeeCents: int("travel_fee_cents"),
+      weeklyRateCents: int("weekly_rate_cents"),
+      weeklyRateDiscountedCents: int("weekly_rate_discounted_cents"),
+      weeklyDiscountMinWeeks: int("weekly_discount_min_weeks"),
+      weeklyRateMaxPeople: int("weekly_rate_max_people"),
       adultPortionCents: int("adult_portion_cents"),
       kidPortionCents: int("kid_portion_cents"),
       preauthBufferPct: int("preauth_buffer_pct"),
@@ -342,6 +308,7 @@ export function toSubmitParams(chefId: string, value: NormalizedPublicRequest, e
     kids: value.kids,
     days: value.days,
     meals: value.meals,
+    weeks: value.weeks,
     no_allergies: value.noAllergies,
     allergens: value.allergens,
     diets: value.diets,
@@ -362,42 +329,6 @@ export function toSubmitParams(chefId: string, value: NormalizedPublicRequest, e
   };
 }
 
-/** Estimación del cuerpo del 201 (contrato §2). */
-export interface ResponseEstimate {
-  portions: number;
-  recipes: number;
-  cookMinutes: number;
-  serviceCents: number;
-  groceriesEstCents: number;
-  totalCents: number;
-}
-
-const RESPONSE_ESTIMATE_KEYS = ["portions", "recipes", "cookMinutes", "serviceCents", "groceriesEstCents", "totalCents"] as const;
-
-export function responseEstimate(quote: Quote): ResponseEstimate {
-  return {
-    portions: quote.portions,
-    recipes: quote.recipes,
-    cookMinutes: quote.cookMinutes,
-    serviceCents: quote.serviceCents,
-    groceriesEstCents: quote.groceriesEstCents,
-    totalCents: quote.totalCents,
-  };
-}
-
-/** La estimación guardada en requests.estimate, o null si le falta algo (enteros ≥ 0). */
-export function responseEstimateFromStored(stored: unknown): ResponseEstimate | null {
-  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return null;
-  const record = stored as Record<string, unknown>;
-  const result: Partial<Record<(typeof RESPONSE_ESTIMATE_KEYS)[number], number>> = {};
-  for (const key of RESPONSE_ESTIMATE_KEYS) {
-    const value = record[key];
-    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return null;
-    result[key] = value;
-  }
-  return result as ResponseEstimate;
-}
-
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
@@ -414,52 +345,6 @@ export interface HandlerDeps {
   sleep: (ms: number) => Promise<void>;
   /** UUID nuevo (clave de idempotencia de Turnstile). */
   newId: () => string;
-}
-
-function isJsonContentType(value: string | null): boolean {
-  return (value ?? "").split(";")[0]?.trim().toLowerCase() === "application/json";
-}
-
-type BodyResult = { ok: true; text: string } | { ok: false; reason: "tooLarge" | "invalid" };
-
-/** Lee el cuerpo sin pasar de `max` bytes (también si no viene Content-Length). */
-async function readBodyLimited(request: Request, max: number): Promise<BodyResult> {
-  const declared = request.headers.get("content-length");
-  if (declared !== null && Number(declared) > max) return { ok: false, reason: "tooLarge" };
-  if (!request.body) return { ok: true, text: "" };
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      await reader.cancel().catch(() => {});
-      return { ok: false, reason: "tooLarge" };
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return { ok: true, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
-  } catch {
-    return { ok: false, reason: "invalid" };
-  }
-}
-
-function logStoreError(log: Logger, error: unknown, op: string): void {
-  if (error instanceof StoreError) {
-    log("error", "db_error", error.safeMessage ? { op: error.op, code: error.code, message: error.safeMessage } : { op: error.op, code: error.code });
-  } else {
-    log("error", "db_error", { op, code: null });
-  }
 }
 
 type ChefResolution = { ok: true; chefId: string } | { ok: false; reason: "db_error" | "unresolved" };
@@ -652,10 +537,11 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
       if (saved.duplicate) {
         // Reintento de un pedido ya guardado: el mismo id y la estimación guardada, ningún aviso, y
         // duplicate: true para que la web no muestre como enviado lo que se cambió después (contrato §2).
+        // La guardada puede ser de antes del precio por semana: readPublicEstimate la lee igual.
         log("info", "request_duplicate", { requestId });
-        const stored = responseEstimateFromStored(saved.storedEstimate);
+        const stored = readPublicEstimate(saved.storedEstimate);
         if (!stored) log("warn", "stored_estimate_invalid", { requestId });
-        return reply(201, { requestId, estimate: stored ?? responseEstimate(estimate), duplicate: true });
+        return reply(201, { requestId, estimate: stored ?? publicEstimate(estimate), duplicate: true });
       }
       log("info", "request_saved", { requestId });
 
@@ -665,7 +551,7 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
         }),
       );
 
-      return reply(201, { requestId, estimate: responseEstimate(estimate) });
+      return reply(201, { requestId, estimate: publicEstimate(estimate) });
     } catch (error) {
       // Solo el tipo de error: el mensaje podría traer datos del pedido.
       log("error", "unexpected_error", { error: error instanceof Error ? error.name : "unknown" });
@@ -688,7 +574,7 @@ interface NotifyContext {
 type Recipient = "chef" | "client";
 
 function summaryOf(context: NotifyContext): RequestSummary {
-  const { value, estimate } = context;
+  const { value, estimate, chef } = context;
   return {
     requestId: context.requestId,
     type: value.type,
@@ -696,16 +582,26 @@ function summaryOf(context: NotifyContext): RequestSummary {
     kids: value.kids,
     days: value.days,
     meals: value.meals,
+    weeks: value.weeks,
     preferredDate: value.preferredDate,
     slot: value.slot,
     allergies: allergyAnswer(value.noAllergies, value.hasRestrictions),
-    estimate: {
-      portions: estimate.portions,
-      cookMinutes: estimate.cookMinutes,
-      serviceCents: estimate.serviceCents,
-      groceriesEstCents: estimate.groceriesEstCents,
-      totalCents: estimate.totalCents,
-    },
+    // El precio con las tarifas de la cocinera: el mismo que se guardó y que vio el 201.
+    estimate: estimate.autoPrice
+      ? {
+          autoPrice: true,
+          weeklyServiceCents: estimate.weeklyServiceCents,
+          serviceCents: estimate.serviceCents,
+          savingsCents: estimate.savingsCents,
+          regularWeeklyCents: chef.pricing.weeklyRateCents,
+          groceriesEstCents: estimate.groceriesEstCents,
+        }
+      : {
+          autoPrice: false,
+          reason: estimate.reason,
+          maxPeople: chef.pricing.weeklyRateMaxPeople,
+          groceriesEstCents: estimate.groceriesEstCents,
+        },
   };
 }
 

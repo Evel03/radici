@@ -12,7 +12,13 @@ import '../../../support/request_fixtures.dart';
 void main() {
   FakeChefRequestsRepository sample() => FakeChefRequestsRepository([
     buildRequest(id: 'new-1', name: 'Giulia Rossi', createdAt: DateTime.utc(2026, 10, 19, 9)),
-    buildRequest(id: 'new-2', name: 'Marco Bianchi', noDate: true, createdAt: DateTime.utc(2026, 10, 19, 8)),
+    buildRequest(
+      id: 'new-2',
+      name: 'Marco Bianchi',
+      noDate: true,
+      weeks: 4,
+      createdAt: DateTime.utc(2026, 10, 19, 8),
+    ),
     buildRequest(
       id: 'seen-1',
       name: 'Anna Verdi',
@@ -62,6 +68,18 @@ void main() {
     expect(
       find.descendant(of: tile('new-2'), matching: find.textContaining('Senza data')),
       findsOneWidget,
+    );
+    // Un pedido de varias semanas lo dice; uno de una semana, no.
+    expect(
+      find.descendant(
+        of: tile('new-2'),
+        matching: find.textContaining('Settimana di pasti · 4 settimane · 4 persone'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: tile('new-1'), matching: find.textContaining('settimane')),
+      findsNothing,
     );
   });
 

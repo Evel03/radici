@@ -4,6 +4,7 @@ import 'package:radici/features/quote/presentation/quote_calculator_screen.dart'
 
 import '../../support/pump_app.dart';
 
+/// Espacio duro: el formato de moneda lo pone entre el importe y el €.
 const _nbsp = ' ';
 
 String _textOf(WidgetTester tester, String key) =>
@@ -22,9 +23,9 @@ Future<void> _tap(WidgetTester tester, String key, {int times = 1}) async {
 
 void main() {
   // Pantalla de teléfono (dp) para que todo el desglose entre sin scroll.
-  const phone = Size(400, 1000);
+  const phone = Size(400, 1100);
 
-  testWidgets('con la entrada por defecto muestra el desglose del vector 1', (
+  testWidgets('con la entrada por defecto muestra el precio por semana del vector 1', (
     tester,
   ) async {
     setSurfaceSize(tester, phone);
@@ -33,47 +34,85 @@ void main() {
     expect(_textOf(tester, 'quote-adults-value'), '2');
     expect(_textOf(tester, 'quote-kids-value'), '2');
     expect(_textOf(tester, 'quote-days-value'), '5');
+    expect(_textOf(tester, 'quote-weeks-value'), '1');
     expect(_textOf(tester, 'quote-portions'), '20');
     expect(_textOf(tester, 'quote-recipes'), '3');
-    expect(_textOf(tester, 'quote-service'), '78,00$_nbsp€');
     expect(_textOf(tester, 'quote-groceries'), '63,00$_nbsp€');
-    expect(_textOf(tester, 'quote-hold'), '150,45$_nbsp€');
-    expect(_textOf(tester, 'quote-total'), '141,00$_nbsp€');
+    expect(_textOf(tester, 'quote-total'), '150,00$_nbsp€');
+    expect(find.text('Prezzo del servizio'), findsOneWidget);
+    // Con una semana no se repite el precio por semana, ni hay ahorro.
+    expect(find.byKey(const ValueKey('quote-weekly')), findsNothing);
+    expect(find.byKey(const ValueKey('quote-savings')), findsNothing);
+    // El pago se acuerda con Evelyn: ya no se muestra una retención en la tarjeta.
+    expect(find.byKey(const ValueKey('quote-hold')), findsNothing);
+    expect(
+      _textOf(tester, 'quote-footnote'),
+      contains('fino a 5 persone'),
+    );
+    expect(_textOf(tester, 'quote-footnote'), contains('140,00$_nbsp€'));
   });
 
   testWidgets('no muestra el tiempo de cocina, como la web', (tester) async {
     setSurfaceSize(tester, phone);
     await pumpLocalized(tester, const QuoteCalculatorScreen());
 
-    // Vector 1: 180 min de cocina. El motor los usa para el servicio, pero el
+    // Vector 1: 180 min de cocina. El motor los usa para los horarios, pero el
     // cliente no los ve (sí Evelyn, en el detalle del pedido).
     expect(find.text('Tempo in cucina'), findsNothing);
     expect(find.text('180 min'), findsNothing);
     expect(find.byKey(const ValueKey('quote-cook-minutes')), findsNothing);
   });
 
-  testWidgets('tocar + en adultos actualiza el total', (tester) async {
+  testWidgets('4 semanas: el total, el precio por semana con descuento y el ahorro', (
+    tester,
+  ) async {
     setSurfaceSize(tester, phone);
     await pumpLocalized(tester, const QuoteCalculatorScreen());
 
-    await _tap(tester, 'quote-adults-increment');
+    await _tap(tester, 'quote-weeks-increment', times: 3);
 
-    // 3 ad · 2 niños · 5 días · cena: servicio 78 € + spesa 82 €.
-    expect(_textOf(tester, 'quote-adults-value'), '3');
-    expect(_textOf(tester, 'quote-portions'), '25');
-    expect(_textOf(tester, 'quote-total'), '160,00$_nbsp€');
+    expect(_textOf(tester, 'quote-weeks-value'), '4');
+    expect(find.text('Servizio, 4 settimane'), findsOneWidget);
+    expect(find.text('Servizio a settimana'), findsOneWidget);
+    expect(_textOf(tester, 'quote-total'), '560,00$_nbsp€');
+    expect(_textOf(tester, 'quote-weekly'), '140,00$_nbsp€');
+    expect(_textOf(tester, 'quote-savings'), '40,00$_nbsp€');
+    // La compra sigue siendo de una semana.
+    expect(_textOf(tester, 'quote-groceries'), '63,00$_nbsp€');
   });
 
-  testWidgets('elegir pranzo e cena duplica las comidas', (tester) async {
+  testWidgets('los días y las comidas no cambian el servicio, sí la compra', (
+    tester,
+  ) async {
     setSurfaceSize(tester, phone);
     await pumpLocalized(tester, const QuoteCalculatorScreen());
 
     await tester.tap(find.byKey(const ValueKey('quote-meal-lunchAndDinner')));
     await tester.pumpAndSettle();
 
-    // Vector 6.
+    // Como el vector 12, con una semana.
     expect(_textOf(tester, 'quote-portions'), '40');
-    expect(_textOf(tester, 'quote-total'), '237,00$_nbsp€');
+    expect(_textOf(tester, 'quote-groceries'), '126,00$_nbsp€');
+    expect(_textOf(tester, 'quote-total'), '150,00$_nbsp€');
+  });
+
+  testWidgets('con 6 personas el presupuesto lo prepara Evelyn', (tester) async {
+    setSurfaceSize(tester, phone);
+    await pumpLocalized(tester, const QuoteCalculatorScreen());
+
+    await _tap(tester, 'quote-adults-increment');
+    // 3 adultos y 2 niños: todavía con precio.
+    expect(_textOf(tester, 'quote-total'), '150,00$_nbsp€');
+    expect(_textOf(tester, 'quote-groceries'), '82,00$_nbsp€');
+
+    await _tap(tester, 'quote-kids-increment');
+    expect(find.byKey(const ValueKey('quote-total')), findsNothing);
+    expect(
+      _textOf(tester, 'quote-no-auto-price'),
+      'Per più di 5 persone il preventivo per il servizio te lo prepara Evelyn.',
+    );
+    // La compra estimada se sigue viendo.
+    expect(_textOf(tester, 'quote-groceries'), '94,50$_nbsp€');
   });
 
   testWidgets('los botones se deshabilitan en los límites', (tester) async {
@@ -91,6 +130,12 @@ void main() {
     expect(_textOf(tester, 'quote-days-value'), '1');
     expect(_enabled(tester, 'quote-days-decrement'), isFalse);
     expect(_enabled(tester, 'quote-days-increment'), isTrue);
+
+    // Semanas: de 1 (mínimo) a 8 (máximo).
+    expect(_enabled(tester, 'quote-weeks-decrement'), isFalse);
+    await _tap(tester, 'quote-weeks-increment', times: 7);
+    expect(_textOf(tester, 'quote-weeks-value'), '8');
+    expect(_enabled(tester, 'quote-weeks-increment'), isFalse);
 
     // Niños: 2 → 0.
     await _tap(tester, 'quote-kids-decrement', times: 2);
@@ -118,7 +163,8 @@ void main() {
     await expectLater(tester, meetsGuideline(textContrastGuideline));
     // Los botones + y − se anuncian con el nombre del contador.
     expect(find.byTooltip('Adulti: aumenta'), findsOneWidget);
-    expect(find.byTooltip('Giorni: diminuisci'), findsOneWidget);
+    expect(find.byTooltip('Giorni a settimana: diminuisci'), findsOneWidget);
+    expect(find.byTooltip('Settimane: aumenta'), findsOneWidget);
     handle.dispose();
   });
 

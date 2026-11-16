@@ -33,6 +33,29 @@ test("migraciones: versión de 14 cifras y ninguna repetida (el CLI la usa como 
   assert.deepEqual(repeated, [], "cambiarle la versión a una de las dos (una libre, posterior a la última)");
 });
 
+test("función chef: se despliega después de las migraciones y de los secretos, con verify_jwt = true", () => {
+  // chef llama a las funciones chef_* de la migración de reservas (db push tiene que correr antes) y
+  // usa ALLOWED_ORIGINS, que carga el paso de los secretos (contrato chef-api.md §9).
+  const migrations = WORKFLOW.indexOf("- name: Migraciones (db push)");
+  const secrets = WORKFLOW.indexOf("- name: Secretos de la función");
+  const chef = WORKFLOW.indexOf("- name: Desplegar chef");
+  assert.ok(migrations !== -1 && secrets !== -1, "están los pasos de las migraciones y de los secretos");
+  assert.ok(chef > migrations && chef > secrets, "chef se despliega después de db push y de los secretos");
+
+  const run = step("Desplegar chef");
+  assert.match(run, /if: env\.HAS_SUPABASE == 'true'/);
+  assert.match(run, /supabase functions deploy chef --project-ref "\$\{SUPABASE_PROJECT_REF\}" --use-api/);
+  assert.ok(!run.includes("--no-verify-jwt"), "el chequeo de JWT de la plataforma queda prendido");
+
+  // verify_jwt sale de config.toml: con JWT para chef (la llama la app con la sesión de Evelyn), sin
+  // JWT para public-request (la llama gente sin cuenta).
+  const config = readFileSync(repo("supabase/config.toml"), "utf8");
+  const section = (name: string): string => new RegExp(`\\[functions\\.${name}\\]\\n([\\s\\S]*?)(?:\\n\\[|$)`).exec(config)?.[1] ?? "";
+  assert.match(section("chef"), /^enabled = true$/m);
+  assert.match(section("chef"), /^verify_jwt = true$/m);
+  assert.match(section("public-request"), /^verify_jwt = false$/m);
+});
+
 test("cuenta de la cocinera: recibe el horario inicial justo después de promote_to_chef", () => {
   // db push corre antes de que exista la cocinera: en un proyecto nuevo la migración
   // 20261115130100_default_availability.sql no encuentra a nadie y, sin reglas, el calendario de la

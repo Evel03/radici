@@ -10,6 +10,9 @@
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
+  <!-- Solo para la pantalla de carga (en el iPhone, sin esto se ve chiquita):
+       al arrancar, Flutter pone su propio viewport. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Radici: richieste e agenda di Evelyn.">
   <!-- Área privada: que no la indexe ningún buscador. -->
   <meta name="robots" content="noindex, nofollow">
@@ -17,7 +20,10 @@
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5ede1">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#11140e">
 
+  <!-- Agregada a la pantalla de inicio: se abre sin la barra del navegador
+       (apple-…: Safari de iOS), con la barra de estado de siempre. -->
   <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Radici">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
@@ -28,8 +34,12 @@
   <title>Radici · Gestione</title>
 </head>
 <body>
-  <!-- Se ve mientras carga el motor; flutter_bootstrap.js lo saca al arrancar. -->
-  <div id="loading" class="loading" role="progressbar" aria-label="Caricamento">
+  <!-- Se ve mientras carga el motor; flutter_bootstrap.js lo saca al arrancar.
+       El ícono y la rueda, sin texto: antes de Flutter no hay traducciones
+       (VoiceOver lee la marca, igual en todos los idiomas). El ícono de 512 px:
+       a 96 px en un iPhone con 3 píxeles por punto hacen falta 288. -->
+  <div id="loading" class="loading" role="progressbar" aria-label="Radici">
+    <img class="loading__icon" src="icons/Icon-512.png" alt="" width="96" height="96">
     <div class="loading__spinner"></div>
   </div>
   <script src="flutter_bootstrap.js" async></script>

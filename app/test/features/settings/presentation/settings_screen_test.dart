@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/app_language.dart';
+import 'package:radici/core/build_id.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
@@ -203,6 +204,37 @@ void main() {
     );
     expect(find.byType(LoginScreen), findsOneWidget);
     expect(find.text('Envíame el código'), findsOneWidget);
+  });
+
+  testWidgets('Impostazioni dice la versión de /gestione/ (el id del build)', (
+    tester,
+  ) async {
+    await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository(const []),
+      accounts: profileIn(AppLanguage.es),
+      location: '/impostazioni',
+      overrides: [
+        languageCacheProvider.overrideWithValue(cache),
+        buildIdProvider.overrideWithValue('abc1234'),
+      ],
+    );
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.text('Versión abc1234'), findsOneWidget);
+  });
+
+  testWidgets('sin id del build (flutter run, iOS y Android): no dice versión', (
+    tester,
+  ) async {
+    await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository(const []),
+      accounts: profileIn(AppLanguage.es),
+      location: '/impostazioni',
+      overrides: [languageCacheProvider.overrideWithValue(cache)],
+    );
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.textContaining('Versión'), findsNothing);
   });
 
   for (final language in AppLanguage.values) {

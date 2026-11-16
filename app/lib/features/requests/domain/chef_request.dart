@@ -10,6 +10,9 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/phone.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/quote/domain/quote.dart' show NoAutoPriceReason;
+
+export 'package:radici/features/quote/domain/quote.dart' show NoAutoPriceReason;
 
 part 'chef_request.freezed.dart';
 part 'chef_request.g.dart';
@@ -31,8 +34,11 @@ enum RequestStatus {
   resolved,
 }
 
-/// `requests.preferred_slot`.
-enum PreferredSlot { morning, afternoon, any }
+/// `requests.preferred_slot`, cuando el pedido trae mañana o tarde. La web ya
+/// no pregunta la franja y manda `any` (sin preferencia): se lee como null,
+/// igual que un pedido sin franja, y no se muestra (los emails tampoco la
+/// muestran).
+enum PreferredSlot { morning, afternoon }
 
 /// `requests.locale`: idioma del cliente (mensajes de WhatsApp y emails).
 enum ClientLocale { it, es, en }
@@ -132,22 +138,42 @@ abstract class RequestRestrictions with _$RequestRestrictions {
 /// Estimación guardada al crear el pedido (`requests.estimate`): el resultado
 /// de `calcQuote` (quote.ts, en camelCase) con las tarifas de ese momento.
 /// Montos en centavos. Cualquier campo que falte queda en null.
+///
+/// Desde el precio por semana (SPEC §5.1) trae `weeks` y `autoPrice`, y el
+/// precio solo si lo hay: el servicio por semana, el de todas las semanas y el
+/// ahorro; sin precio, el motivo. Las guardadas antes no tienen `autoPrice`
+/// (eran de una semana, con el servicio por hora y el total).
 @Freezed(fromJson: false, toJson: false)
 abstract class RequestEstimate with _$RequestEstimate {
   const factory RequestEstimate({
+    int? weeks,
     int? portions,
     int? recipes,
     int? cookMinutes,
+
+    /// true o false desde el precio por semana; null en las de antes.
+    bool? autoPrice,
+    NoAutoPriceReason? reason,
+    int? weeklyServiceCents,
     int? serviceCents,
+    int? savingsCents,
+
+    /// Compra estimada (de una semana desde el precio por semana).
     int? groceriesEstCents,
+
+    /// Servicio y compra: lo que mostraban los pedidos de antes.
     int? totalCents,
+
+    /// Hasta cuántas personas había precio automático con esas tarifas
+    /// (`pricing.weeklyRateMaxPeople`), para decir por qué no lo hay.
+    int? maxPeople,
   }) = _RequestEstimate;
 
   const RequestEstimate._();
 
   factory RequestEstimate.fromJson(Map<String, dynamic> json) {
-    int? read(String key) {
-      final value = json[key];
+    int? readFrom(Map<dynamic, dynamic> map, String key) {
+      final value = map[key];
       if (value is int) return value;
       // Un número JSON entero puede llegar como double (14100.0).
       if (value is double && value.isFinite && value == value.roundToDouble()) {
@@ -156,17 +182,37 @@ abstract class RequestEstimate with _$RequestEstimate {
       return null;
     }
 
+    int? read(String key) => readFrom(json, key);
+    final autoPrice = json['autoPrice'];
+    final reason = json['reason'];
+    final pricing = json['pricing'];
     return RequestEstimate(
+      weeks: read('weeks'),
       portions: read('portions'),
       recipes: read('recipes'),
       cookMinutes: read('cookMinutes'),
+      autoPrice: autoPrice is bool ? autoPrice : null,
+      reason: NoAutoPriceReason.values.where((r) => r.name == reason).firstOrNull,
+      weeklyServiceCents: read('weeklyServiceCents'),
       serviceCents: read('serviceCents'),
+      savingsCents: read('savingsCents'),
       groceriesEstCents: read('groceriesEstCents'),
       totalCents: read('totalCents'),
+      maxPeople: pricing is Map ? readFrom(pricing, 'weeklyRateMaxPeople') : null,
     );
   }
 
+  /// Guardada antes del precio por semana (sin `autoPrice`): una semana, con
+  /// el servicio por hora y el total.
+  bool get isLegacy => autoPrice == null;
+
+  /// Hay precio automático: el de las guardadas antes también (siempre lo
+  /// tenían).
+  bool get hasAutoPrice => autoPrice ?? true;
+
   bool get isEmpty =>
+      autoPrice == null &&
+      weeks == null &&
       portions == null &&
       recipes == null &&
       cookMinutes == null &&
@@ -223,7 +269,7 @@ abstract class RequestClient with _$RequestClient {
 /// y la ficha del cliente embebida
 /// (FK `requests (client_id, chef_id) → clients (id, chef_id)`).
 const String chefRequestColumns =
-    'id, chef_id, client_id, type, status, adults, kids, days, meals, '
+    'id, chef_id, client_id, type, status, adults, kids, days, meals, weeks, '
     'restrictions, no_allergies, notes, preferred_date, preferred_slot, locale, '
     'whatsapp_opt_in, estimate, source, seen_at, created_at, contact, '
     'client:clients(display_name, contact_email, contact_phone, zone, status)';
@@ -261,6 +307,10 @@ abstract class ChefRequest with _$ChefRequest {
     int? kids,
     int? days,
     @JsonKey(fromJson: _mealsFromJson) @Default(<Meal>[]) List<Meal> meals,
+
+    /// Semanas de un pedido semanal (`requests.weeks`, 1 a 8): una sesión
+    /// por semana, el mismo día. 1 en los demás y en los pedidos anteriores.
+    @Default(1) int weeks,
     RequestRestrictions? restrictions,
 
     /// Respuesta a la pregunta de alergias de la web (`requests.no_allergies`):
