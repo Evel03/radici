@@ -257,9 +257,9 @@ describe("precio por semana: los textos no escriben números, salen de DEFAULT_P
     });
   }
 
-  it("«Nessun abbonamento» pasa a «senza rinnovo automatico», y sus pares en es y en", () => {
+  it("«Nessun abbonamento» pasa a «nessun rinnovo automatico», y sus pares en es y en", () => {
     const expected: Record<Lang, { now: string; before: RegExp }> = {
-      it: { now: "Senza rinnovo automatico", before: /abbonament/i },
+      it: { now: "Nessun rinnovo automatico, nessun costo nascosto", before: /abbonament/i },
       es: { now: "Sin renovación automática", before: /suscripci/i },
       en: { now: "No automatic renewal", before: /subscription/i },
     };

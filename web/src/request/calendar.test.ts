@@ -304,6 +304,11 @@ describe("varias semanas: el mismo día de las semanas siguientes", () => {
 
   it("sin disponibilidad (error), mientras carga, sin fecha o con una sola semana", () => {
     expect(sessionDays(input({ selected: "2026-11-23", weeks: 2, availability: { kind: "error" } })).map((d) => d.status)).toEqual(["selected", "unknown"]);
+    // Con error, las semanas que caen después de la ventana (termina el 10/01) siguen siendo «fuera del
+    // calendario», no «te lo confirma Evelyn» a secas.
+    expect(sessionDays(input({ selected: "2026-12-07", weeks: 8, availability: { kind: "error" } })).map((d) => d.status)).toEqual([
+      "selected", "unknown", "unknown", "unknown", "unknown", "outside", "outside", "outside",
+    ]);
     expect(sessionDays(input({ selected: "2026-11-23", weeks: 2, availability: { kind: "loading" } })).map((d) => d.status)).toEqual(["selected", "pending"]);
     expect(sessionDays(input({ selected: "", weeks: 4 }))).toEqual([]);
     expect(sessionDays(input({ selected: "2026-11-17", weeks: 1 }))).toEqual([{ week: 1, date: "2026-11-17", status: "selected" }]);

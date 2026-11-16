@@ -302,7 +302,8 @@
 
           <aside id="quote" class="quote" aria-labelledby="quote-title">
             <h2 id="quote-title" class="quote__title" data-i18n="request.quote.title"></h2>
-            <!-- Los rótulos que dependen del pedido (semanas, semana o sesión) los pone richiesta.ts. -->
+            <!-- Lo que se ve y los rótulos que dependen del pedido (semanas, semana o sesión) los decide
+                 quoteBoxView (src/request/quote-box.ts). El servicio y su ahorro primero; la compra, aparte. -->
             <div id="quote-body">
               <p id="q-manual" class="quote__manual" aria-live="polite" hidden></p>
               <dl class="quote__list">
@@ -314,6 +315,9 @@
                   <dt data-i18n="request.quote.weekly"></dt>
                   <dd id="q-weekly"></dd>
                 </div>
+              </dl>
+              <p id="q-savings" class="quote__savings" hidden></p>
+              <dl class="quote__list quote__list--apart">
                 <div class="quote__row">
                   <dt id="q-groceries-label"></dt>
                   <dd id="q-groceries"></dd>
@@ -323,7 +327,6 @@
                   <dd id="q-portions"></dd>
                 </div>
               </dl>
-              <p id="q-savings" class="quote__savings" hidden></p>
               <p class="quote__note" data-i18n="request.quote.note"></p>
             </div>
             <p id="quote-invalid" class="quote__invalid" data-i18n="request.quote.invalid" hidden></p>

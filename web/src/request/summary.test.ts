@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { i18nFor, validRequest } from "./fixtures.ts";
 import { publicEstimate, type PublicRequestEstimate, type RequestData } from "./model.ts";
 import { computeQuote } from "./quote.ts";
-import { peopleText, summaryRows } from "./summary.ts";
+import { doneEstimate, peopleText, summaryRows } from "./summary.ts";
 
 /** La que devuelve el servidor para el vector 1 (una semana). */
 const ONE_WEEK: PublicRequestEstimate = {
@@ -67,30 +67,34 @@ describe("summaryRows (pantalla de gracias)", () => {
     // Espacios duros dentro de cada fecha: en el teléfono no se corta "lun" de "23 nov".
     expect(it_["Giorni (uno a settimana)"]).toBe(["lun 23 nov", "lun 30 nov", "lun 7 dic", "lun 14 dic"].map(nbsp).join(" · "));
     expect(it_["Giorno preferito"]).toBeUndefined();
-    expect(it_["Prezzo a settimana"]).toMatch(euros("140,00 €"));
-    expect(it_["Prezzo per 4 settimane"]).toMatch(euros("560,00 €"));
+    // Los mismos rótulos que el recuadro, la portada y el email: «Servizio a settimana», «Servizio, 4 settimane».
+    expect(it_["Servizio a settimana"]).toMatch(euros("140,00 €"));
+    expect(it_["Servizio, 4 settimane"]).toMatch(euros("560,00 €"));
     expect(it_["Risparmi"]).toMatch(euros("40,00 €"));
     const en = rows("en", data);
     expect(en["Days (one a week)"]).toBe(["Mon, 23 Nov", "Mon, 30 Nov", "Mon, 7 Dec", "Mon, 14 Dec"].map(nbsp).join(" · "));
-    expect(en["Price for 4 weeks"]).toBe("€560.00");
+    expect(en["Service, 4 weeks"]).toBe("€560.00");
+    expect(en["Service per week"]).toBe("€140.00");
     expect(en["You save"]).toBe("€40.00");
-    expect(rows("es", data)["Precio por 4 semanas"]).toMatch(euros("560,00 €"));
+    expect(rows("es", data)["Servicio, 4 semanas"]).toMatch(euros("560,00 €"));
+    expect(rows("es", data)["Servicio por semana"]).toMatch(euros("140,00 €"));
     // Sin fecha: «a convenir», también con varias semanas.
     expect(rows("es", { weeks: 4 })["Día preferido"]).toBe("A convenir");
   });
 
   it("3 semanas: sin descuento ni ahorro", () => {
     const three = rows("it", { weeks: 3 });
-    expect(three["Prezzo per 3 settimane"]).toMatch(euros("450,00 €"));
+    expect(three["Servizio, 3 settimane"]).toMatch(euros("450,00 €"));
     expect(three["Risparmi"]).toBeUndefined();
   });
 
-  it("sin precio automático: más de 5 personas o una sesión extra, «te lo prepara Evelyn», con la compra", () => {
+  it("sin precio automático: más de 5 personas o una sesión extra, «Preventivo di Evelyn», con la compra", () => {
     const six = rows("it", { adults: 3, kids: 3 });
-    expect(six["Prezzo del servizio"]).toBe("Te lo prepara Evelyn");
+    expect(six["Prezzo del servizio"]).toBe("Preventivo di Evelyn");
     expect(six["Spesa stimata a settimana"]).toMatch(euros("94,50 €"));
+    expect(rows("en", { adults: 3, kids: 3 })["Service price"]).toBe("Evelyn will send a quote");
     const extra = rows("es", { type: "extra", weeks: 4 });
-    expect(extra["Precio del servicio"]).toBe("Te lo prepara Evelyn");
+    expect(extra["Precio del servicio"]).toBe("Presupuesto de Evelyn");
     // Una sesión extra no tiene semanas: sin la fila, y sus días no son «por semana».
     expect(extra["Semanas"]).toBeUndefined();
     expect(extra["Días"]).toBe("5");
@@ -126,5 +130,24 @@ describe("summaryRows (pantalla de gracias)", () => {
     for (const secret of ["citofono", "Redona", "Giulia", "333", "lattosio"]) {
       expect(text).not.toContain(secret);
     }
+  });
+});
+
+describe("doneEstimate (qué estimación muestra la pantalla de gracias)", () => {
+  it("la del servidor, tal cual (con las tarifas de la cocinera)", () => {
+    const fromServer = { ...ONE_WEEK, serviceCents: 16000, weeklyServiceCents: 16000 };
+    expect(doneEstimate(validRequest(), fromServer)).toBe(fromServer);
+  });
+
+  it("si el 201 no la trajo (o vino con otra forma), la de la calculadora con los datos de ese pedido", () => {
+    expect(doneEstimate(validRequest({ weeks: 4 }), null)).toEqual(local(validRequest({ weeks: 4 })));
+    expect(doneEstimate(validRequest({ weeks: 4 }), null)).toMatchObject({ weeks: 4, serviceCents: 56000, savingsCents: 4000 });
+    expect(doneEstimate(validRequest({ adults: 3, kids: 3 }), null)).toMatchObject({ autoPrice: false, reason: "people" });
+  });
+
+  it("sin los datos del pedido (no se sabe qué guardó el servidor), ninguna; con datos que el motor no acepta, tampoco", () => {
+    expect(doneEstimate(null, ONE_WEEK)).toBeNull();
+    expect(doneEstimate(null, null)).toBeNull();
+    expect(doneEstimate(validRequest({ adults: 0, kids: 0 }), null)).toBeNull();
   });
 });

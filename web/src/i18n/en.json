@@ -79,7 +79,7 @@
       "title": "How you pay",
       "intro": "Two separate items, always clear. No automatic renewal, no hidden costs.",
       "serviceTitle": "The service, by the week",
-      "serviceText": "{weeklyRate} a week for a household of up to {maxPeople} people, whatever the days and meals: Evelyn does the shopping, comes to you (travel included) and cooks. From {discountWeeks} weeks, {discountRate} a week. For more people or for an event, Evelyn prepares the quote for you.",
+      "serviceText": "{weeklyRate} a week for a household of up to {maxPeople} people, whatever the days and meals: Evelyn does the shopping, comes to you (travel included) and cooks. From {discountWeeks} weeks, {discountRate} a week. For more people or for an event, Evelyn will prepare a quote for you.",
       "groceriesTitle": "Groceries, at cost",
       "groceriesText": "You pay what the ingredients really cost, as on the supermarket receipt, with no mark-up. You always get to see the receipt.",
       "methodsTitle": "How you can pay",
@@ -88,7 +88,7 @@
       "exampleText": "{exAdults} adults and {exKids} children, dinner {exDays} days a week, for {exWeeks} weeks: {exPortions} portions a week.",
       "exampleWeekly": "Service per week",
       "exampleWeeklyValue": "{exWeekly}",
-      "exampleGroceries": "Estimated groceries per week",
+      "exampleGroceries": "Estimated groceries per week, paid separately",
       "exampleGroceriesValue": "{exGroceries}",
       "exampleTotal": "Service, {exWeeks} weeks",
       "exampleTotalValue": "{exService}",
@@ -109,7 +109,7 @@
       "q1": "Which areas do you cover?",
       "a1": "Bergamo and the surrounding area. Put your area in the request and we'll tell you straight away if we can get there.",
       "qPrice": "How much does it cost?",
-      "aPrice": "The service costs {weeklyRate} a week for a household of up to {maxPeople} people, with groceries paid separately at receipt cost. From {discountWeeks} weeks it costs {discountRate} a week. For more people, or for an event or an extra session, Evelyn prepares the price for you.",
+      "aPrice": "The service costs {weeklyRate} a week for a household of up to {maxPeople} people, with groceries paid separately at receipt cost. From {discountWeeks} weeks it costs {discountRate} a week. For more people, or for an event or an extra session, Evelyn will send you a quote.",
       "qWeeks": "Can I book several weeks?",
       "aWeeks": "Yes, up to {maxWeeks} weeks: each week a menu and a cooking session, on the same day of the week. No automatic renewal: at the end, if you want to carry on, just send a new request.",
       "q2": "How long does a session take?",
@@ -149,7 +149,7 @@
     },
     "typeHint": {
       "week": "Lunches or dinners for several days, in fridge-ready portions.",
-      "extra": "A dinner with friends, a party, an extra session: Evelyn prepares the price for you."
+      "extra": "A dinner with friends, a party, an extra session: Evelyn will send you a quote."
     },
     "weeksLegend": "How many weeks?",
     "weeksHint": "One menu and one cooking session a week, on the same day. From {discountWeeks} weeks, {discountRate} a week instead of {weeklyRate}.",
@@ -201,7 +201,7 @@
         "unavailable": "taken: Evelyn will suggest another day that week",
         "pending": "checking…",
         "unknown": "Evelyn will confirm it",
-        "outside": "beyond the calendar: Evelyn will confirm it"
+        "outside": "outside the calendar: Evelyn will confirm it"
       }
     },
     "contactLegend": "Your details",
@@ -236,16 +236,16 @@
     "quote": {
       "title": "Estimated quote",
       "service": "Service price",
-      "serviceWeeks": "Price for {weeks} weeks",
-      "weekly": "Per week",
+      "serviceWeeks": "Service, {weeks} weeks",
+      "weekly": "Service per week",
       "savings": "You save {amount} compared with {weeklyRate} a week.",
       "groceries": "Estimated groceries",
-      "groceriesWeekly": "Groceries per week",
-      "manualPeople": "For more than {maxPeople} people, Evelyn will prepare the price of the service for you.",
-      "manualExtra": "For events and extra sessions, Evelyn will prepare the price of the service for you.",
+      "groceriesWeekly": "Estimated groceries per week",
+      "manualPeople": "For more than {maxPeople} people, Evelyn will send you a quote for the service.",
+      "manualExtra": "For events and extra sessions, Evelyn will send you a quote for the service.",
       "portions": "Portions",
       "portionsWeekly": "Portions per week",
-      "note": "This is an estimate: Evelyn will confirm the final price. Groceries are paid separately, at the actual receipt cost.",
+      "note": "Evelyn confirms the final price. Groceries are paid separately, as per the receipt.",
       "invalid": "Add at least one person and 1 to {maxDays} days to see the estimate."
     },
     "done": {
@@ -271,10 +271,10 @@
       "allergiesNone": "None",
       "allergiesListed": "Listed: Evelyn will take them into account",
       "service": "Service price",
-      "weeklyService": "Price per week",
-      "serviceWeeks": "Price for {weeks} weeks",
+      "weeklyService": "Service per week",
+      "serviceWeeks": "Service, {weeks} weeks",
       "savings": "You save",
-      "servicePending": "Evelyn will prepare it",
+      "servicePending": "Evelyn will send a quote",
       "groceries": "Estimated groceries",
       "groceriesWeekly": "Estimated groceries per week",
       "adultsOne": "1 adult",

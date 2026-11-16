@@ -88,11 +88,11 @@
       "exampleText": "{exAdults} adultos y {exKids} niños, cena {exDays} días por semana, durante {exWeeks} semanas: {exPortions} porciones por semana.",
       "exampleWeekly": "Servicio por semana",
       "exampleWeeklyValue": "{exWeekly}",
-      "exampleGroceries": "Compra estimada por semana",
+      "exampleGroceries": "Compra estimada por semana, aparte",
       "exampleGroceriesValue": "{exGroceries}",
       "exampleTotal": "Servicio, {exWeeks} semanas",
       "exampleTotalValue": "{exService}",
-      "exampleNote": "Ahorras {exSavings} frente a {weeklyRate} por semana. La compra se paga aparte: la real es la del ticket.",
+      "exampleNote": "Ahorras {exSavings} frente a {weeklyRate} por semana. La compra se paga aparte: la compra real es la del ticket.",
       "exampleCta": "Calcula el tuyo"
     },
     "who": {
@@ -109,7 +109,7 @@
       "q1": "¿A qué zonas llega el servicio?",
       "a1": "A Bérgamo y alrededores. Indica tu zona en la solicitud y te decimos enseguida si podemos llegar.",
       "qPrice": "¿Cuánto cuesta?",
-      "aPrice": "El servicio cuesta {weeklyRate} por semana para una familia de hasta {maxPeople} personas, con la compra aparte, al precio del ticket. Desde {discountWeeks} semanas cuesta {discountRate} por semana. Para más personas, o para un evento o una sesión extra, el precio te lo prepara Evelyn.",
+      "aPrice": "El servicio cuesta {weeklyRate} por semana para una familia de hasta {maxPeople} personas, con la compra aparte, al precio del ticket. Desde {discountWeeks} semanas cuesta {discountRate} por semana. Para más personas, o para un evento o una sesión extra, el presupuesto te lo prepara Evelyn.",
       "qWeeks": "¿Puedo reservar varias semanas?",
       "aWeeks": "Sí, hasta {maxWeeks} semanas: cada semana un menú y una sesión de cocina, el mismo día de la semana. Sin renovación automática: al terminar, si quieres seguir, envías una nueva solicitud.",
       "q2": "¿Cuánto dura una sesión?",
@@ -149,7 +149,7 @@
     },
     "typeHint": {
       "week": "Almuerzos o cenas para varios días, en porciones para la nevera.",
-      "extra": "Una cena con amigos, una fiesta, una sesión más: el precio te lo prepara Evelyn."
+      "extra": "Una cena con amigos, una fiesta, una sesión más: el presupuesto te lo prepara Evelyn."
     },
     "weeksLegend": "¿Cuántas semanas?",
     "weeksHint": "Un menú y una sesión de cocina por semana, el mismo día. Desde {discountWeeks} semanas, {discountRate} por semana en lugar de {weeklyRate}.",
@@ -201,7 +201,7 @@
         "unavailable": "ocupado: Evelyn te propondrá otro día de esa semana",
         "pending": "consultando…",
         "unknown": "te lo confirma Evelyn",
-        "outside": "más allá del calendario: te lo confirma Evelyn"
+        "outside": "fuera del calendario: te lo confirma Evelyn"
       }
     },
     "contactLegend": "Tus datos",
@@ -236,16 +236,16 @@
     "quote": {
       "title": "Presupuesto estimado",
       "service": "Precio del servicio",
-      "serviceWeeks": "Precio por {weeks} semanas",
-      "weekly": "Por semana",
+      "serviceWeeks": "Servicio, {weeks} semanas",
+      "weekly": "Servicio por semana",
       "savings": "Ahorras {amount} frente a {weeklyRate} por semana.",
       "groceries": "Compra estimada",
-      "groceriesWeekly": "Compra por semana",
-      "manualPeople": "Para más de {maxPeople} personas, el precio del servicio te lo prepara Evelyn.",
-      "manualExtra": "Para eventos y sesiones extra, el precio del servicio te lo prepara Evelyn.",
+      "groceriesWeekly": "Compra estimada por semana",
+      "manualPeople": "Para más de {maxPeople} personas, el presupuesto del servicio te lo prepara Evelyn.",
+      "manualExtra": "Para eventos y sesiones extra, el presupuesto del servicio te lo prepara Evelyn.",
       "portions": "Porciones",
       "portionsWeekly": "Porciones por semana",
-      "note": "Es una estimación: Evelyn te confirma el precio final. La compra se paga aparte, al precio real del ticket.",
+      "note": "El precio final lo confirma Evelyn. La compra se paga aparte, según el ticket.",
       "invalid": "Indica al menos una persona y de 1 a {maxDays} días para ver la estimación."
     },
     "done": {
@@ -271,10 +271,10 @@
       "allergiesNone": "Ninguna",
       "allergiesListed": "Indicadas: Evelyn las tendrá en cuenta",
       "service": "Precio del servicio",
-      "weeklyService": "Precio por semana",
-      "serviceWeeks": "Precio por {weeks} semanas",
+      "weeklyService": "Servicio por semana",
+      "serviceWeeks": "Servicio, {weeks} semanas",
       "savings": "Ahorras",
-      "servicePending": "Te lo prepara Evelyn",
+      "servicePending": "Presupuesto de Evelyn",
       "groceries": "Compra estimada",
       "groceriesWeekly": "Compra estimada por semana",
       "adultsOne": "1 adulto",

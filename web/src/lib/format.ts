@@ -5,7 +5,11 @@ export function formatCents(cents: number, locale: string): string {
   if (!Number.isInteger(cents)) throw new RangeError(`Importe no entero en centavos: ${cents}`);
   let fmt = currencyFormatters.get(locale);
   if (!fmt) {
-    fmt = new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" });
+    // Miles siempre separados: it-IT y es-ES no agrupan los importes de 4 cifras ("1120,00 €") y el email y
+    // la app sí ("1.120,00 €"). Un navegador sin Intl.NumberFormat v3 lo toma como true (agrupa como antes).
+    // "always" es de ES2023 y la web compila con la lib de ES2022: de ahí la conversión.
+    const useGrouping = "always" as unknown as boolean;
+    fmt = new Intl.NumberFormat(locale, { style: "currency", currency: "EUR", useGrouping });
     currencyFormatters.set(locale, fmt);
   }
   // La división es solo para mostrar: ningún cálculo usa este valor.

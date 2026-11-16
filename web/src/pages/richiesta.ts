@@ -7,7 +7,7 @@ import "../styles/request.css";
 import { LIMITS } from "../engine.ts";
 import type { MessageKey, Params } from "../i18n/core.ts";
 import { todayInRome } from "../lib/dates.ts";
-import { formatCents, formatIsoDate, formatShortDate } from "../lib/format.ts";
+import { formatIsoDate, formatShortDate } from "../lib/format.ts";
 import { availabilityUrl, fetchAvailability } from "../request/availability.ts";
 import {
   availabilityState,
@@ -24,21 +24,22 @@ import {
   type DayStatus,
   type SessionStatus,
 } from "../request/calendar.ts";
+import { hiddenPanels, weeksFromForm } from "../request/form.ts";
 import {
   MEAL_OPTIONS,
   REQUEST_TYPES,
   TEXT_LIMITS,
   isOneOf,
-  publicEstimate,
   weeksOf,
   type PublicRequestEstimate,
   type RequestData,
 } from "../request/model.ts";
 import { buildPayload, type PayloadOptions } from "../request/payload.ts";
+import { quoteBoxView } from "../request/quote-box.ts";
 import { computeQuote } from "../request/quote.ts";
 import { createRequestKeys, doneViewFor, type DoneView } from "../request/request-key.ts";
 import { publicRequestUrl, rateLimitMessage, sendPublicRequest, type SubmitOutcome } from "../request/submit.ts";
-import { summaryRows } from "../request/summary.ts";
+import { doneEstimate, summaryRows } from "../request/summary.ts";
 import { loadTurnstileScript, mountTurnstile, type TurnstileWidget } from "../request/turnstile.ts";
 import {
   FIELD_ORDER,
@@ -225,8 +226,7 @@ function readForm(): RequestData {
     kids: int("kids"),
     days: int("days"),
     meals: isOneOf(MEAL_OPTIONS, meals) ? meals : "dinner",
-    // Siempre hay una marcada (la 1 viene marcada en el HTML); lo que no sea un número lo rechaza la validación.
-    weeks: weeks === "" ? 1 : Number(weeks),
+    weeks: weeksFromForm(weeks),
     // Campo oculto que llena el calendario.
     preferredDate: str("preferredDate"),
     name: str("name"),
@@ -511,39 +511,26 @@ function startRequestPage(shell: Shell): void {
     );
   };
 
-  /**
-   * Recuadro del precio: con precio automático, el servicio de todas las semanas (destacado), el de cada
-   * semana y el ahorro desde el descuento; sin él (más personas o una sesión extra), que lo prepara Evelyn.
-   * La compra estimada siempre, aparte.
-   */
+  /** Recuadro del precio: lo que se ve lo decide quoteBoxView (src/request/quote-box.ts); acá se pinta. */
   const renderQuote = (data: RequestData): void => {
-    const { i18n } = shell;
     const quote = computeQuote(data);
     quoteBody.hidden = quote === null;
     quoteInvalid.hidden = quote !== null;
     if (!quote) return;
-    const money = (cents: number): string => formatCents(cents, i18n.locale);
-    // Las porciones y la compra son de una semana; en una sesión extra, de esa sesión.
-    const weekly = data.type === "week";
-    setText(quoteOut.groceriesLabel, i18n.t(weekly ? "request.quote.groceriesWeekly" : "request.quote.groceries"));
-    setText(quoteOut.groceries, money(quote.groceriesEstCents));
-    setText(quoteOut.portionsLabel, i18n.t(weekly ? "request.quote.portionsWeekly" : "request.quote.portions"));
-    setText(quoteOut.portions, String(quote.portions));
-    quoteOut.manual.hidden = quote.autoPrice;
-    quoteOut.totalRow.hidden = !quote.autoPrice;
-    if (!quote.autoPrice) {
-      setText(quoteOut.manual, i18n.t(quote.reason === "extra" ? "request.quote.manualExtra" : "request.quote.manualPeople"));
-      quoteOut.weeklyRow.hidden = true;
-      quoteOut.savings.hidden = true;
-      return;
-    }
-    setText(quoteOut.totalLabel, quote.weeks > 1 ? i18n.t("request.quote.serviceWeeks", { weeks: quote.weeks }) : i18n.t("request.quote.service"));
-    setText(quoteOut.total, money(quote.serviceCents));
-    // Con una semana el precio por semana es el total: no se repite.
-    quoteOut.weeklyRow.hidden = quote.weeks === 1;
-    setText(quoteOut.weekly, money(quote.weeklyServiceCents));
-    quoteOut.savings.hidden = quote.savingsCents === 0;
-    setText(quoteOut.savings, quote.savingsCents > 0 ? i18n.t("request.quote.savings", { amount: money(quote.savingsCents) }) : "");
+    const view = quoteBoxView(quote, data.type, shell.i18n);
+    setText(quoteOut.groceriesLabel, view.groceries.label);
+    setText(quoteOut.groceries, view.groceries.value);
+    setText(quoteOut.portionsLabel, view.portions.label);
+    setText(quoteOut.portions, view.portions.value);
+    quoteOut.manual.hidden = view.manual === null;
+    setText(quoteOut.manual, view.manual ?? "");
+    quoteOut.totalRow.hidden = view.total === null;
+    setText(quoteOut.totalLabel, view.total?.label ?? "");
+    setText(quoteOut.total, view.total?.value ?? "");
+    quoteOut.weeklyRow.hidden = view.weekly === null;
+    setText(quoteOut.weekly, view.weekly ?? "");
+    quoteOut.savings.hidden = view.savings === null;
+    setText(quoteOut.savings, view.savings ?? "");
   };
 
   const turnstileError = (): FieldError | null => {
@@ -669,12 +656,11 @@ function startRequestPage(shell: Shell): void {
   const showDone = (view: DoneView, estimate: PublicRequestEstimate | null): void => {
     phase = "done";
     const { data } = view;
-    // Si el servidor no devolvió estimación (o con otra forma), la de la calculadora.
-    const local = data ? computeQuote(data) : null;
     success = {
       data,
       email: data ? emailOf(data) : null,
-      estimate: data ? (estimate ?? (local ? publicEstimate(local) : null)) : null,
+      // La del servidor o, si no vino (o con otra forma), la de la calculadora (summary.ts).
+      estimate: doneEstimate(data, estimate),
       replay: view.replay,
     };
     renderDone();
@@ -802,10 +788,11 @@ function startRequestPage(shell: Shell): void {
     }
     const data = readForm();
     keys.edited(JSON.stringify(data));
-    // Lo escrito se conserva si vuelve a desmarcar la casilla, pero oculto no se manda (buildPayload).
-    allergyDetails.hidden = data.noAllergies;
-    // Lo mismo las semanas: con "extra" se ocultan y se manda 1.
-    weeksPanel.hidden = data.type !== "week";
+    // Lo escrito se conserva si vuelve a desmarcar la casilla, pero oculto no se manda (buildPayload). Lo
+    // mismo las semanas: con "extra" se ocultan y se manda 1.
+    const hidden = hiddenPanels(data);
+    allergyDetails.hidden = hidden.allergyDetails;
+    weeksPanel.hidden = hidden.weeks;
     syncSteppers();
     renderQuote(data);
     renderCalendar(data);

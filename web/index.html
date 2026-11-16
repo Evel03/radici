@@ -216,18 +216,20 @@
             <article class="card card--example">
               <h3 class="card__title" data-i18n="landing.pricing.exampleTitle"></h3>
               <p data-i18n="landing.pricing.exampleText"></p>
+              <!-- El servicio por semana, el de las semanas (destacado) y, separada al final, la compra: que no se
+                   lea como una suma (html.test.ts fija el orden). -->
               <dl class="example">
                 <div class="example__row">
                   <dt data-i18n="landing.pricing.exampleWeekly"></dt>
                   <dd data-i18n="landing.pricing.exampleWeeklyValue"></dd>
                 </div>
-                <div class="example__row">
-                  <dt data-i18n="landing.pricing.exampleGroceries"></dt>
-                  <dd data-i18n="landing.pricing.exampleGroceriesValue"></dd>
-                </div>
                 <div class="example__row example__row--total">
                   <dt data-i18n="landing.pricing.exampleTotal"></dt>
                   <dd data-i18n="landing.pricing.exampleTotalValue"></dd>
+                </div>
+                <div class="example__row example__row--apart">
+                  <dt data-i18n="landing.pricing.exampleGroceries"></dt>
+                  <dd data-i18n="landing.pricing.exampleGroceriesValue"></dd>
                 </div>
               </dl>
               <p class="small" data-i18n="landing.pricing.exampleNote"></p>

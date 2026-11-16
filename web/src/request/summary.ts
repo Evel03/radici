@@ -3,7 +3,20 @@
 // alergias (ninguna o indicadas, nunca cuáles): nada de contacto ni de salud.
 import type { I18n } from "../i18n/core.ts";
 import { formatCents, formatIsoDate, formatShortDate } from "../lib/format.ts";
-import { weeklyDates, weeksOf, type PublicRequestEstimate, type RequestData, type RequestType } from "./model.ts";
+import { publicEstimate, weeklyDates, weeksOf, type PublicRequestEstimate, type RequestData, type RequestType } from "./model.ts";
+import { computeQuote } from "./quote.ts";
+
+/**
+ * La estimación que muestra la pantalla de gracias: la del servidor (con las tarifas de la cocinera) o, si
+ * no vino (o vino con otra forma), la de la calculadora con los datos de ese pedido. Sin los datos (no se
+ * sabe qué guardó el servidor), ninguna.
+ */
+export function doneEstimate(data: RequestData | null, fromServer: PublicRequestEstimate | null): PublicRequestEstimate | null {
+  if (!data) return null;
+  if (fromServer) return fromServer;
+  const local = computeQuote(data);
+  return local ? publicEstimate(local) : null;
+}
 
 export interface SummaryRow {
   label: string;

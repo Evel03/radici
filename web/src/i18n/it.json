@@ -77,7 +77,7 @@
     },
     "pricing": {
       "title": "Come si paga",
-      "intro": "Due voci separate e sempre chiare. Senza rinnovo automatico, nessun costo nascosto.",
+      "intro": "Due voci separate e sempre chiare. Nessun rinnovo automatico, nessun costo nascosto.",
       "serviceTitle": "Il servizio, a settimana",
       "serviceText": "{weeklyRate} a settimana per una famiglia fino a {maxPeople} persone, qualunque siano i giorni e i pasti: Evelyn fa la spesa, viene da te (spostamento compreso) e cucina. Da {discountWeeks} settimane, {discountRate} a settimana. Per più persone o per un evento, il preventivo te lo prepara Evelyn.",
       "groceriesTitle": "La spesa, al costo",
@@ -88,7 +88,7 @@
       "exampleText": "{exAdults} adulti e {exKids} bambini, cena {exDays} giorni a settimana, per {exWeeks} settimane: {exPortions} porzioni a settimana.",
       "exampleWeekly": "Servizio a settimana",
       "exampleWeeklyValue": "{exWeekly}",
-      "exampleGroceries": "Spesa stimata a settimana",
+      "exampleGroceries": "Spesa stimata a settimana, a parte",
       "exampleGroceriesValue": "{exGroceries}",
       "exampleTotal": "Servizio, {exWeeks} settimane",
       "exampleTotalValue": "{exService}",
@@ -109,7 +109,7 @@
       "q1": "In quali zone lavorate?",
       "a1": "A Bergamo e dintorni. Indica la tua zona nella richiesta: ti diciamo subito se riusciamo ad arrivare.",
       "qPrice": "Quanto costa?",
-      "aPrice": "Il servizio costa {weeklyRate} a settimana per una famiglia fino a {maxPeople} persone, con la spesa a parte, al costo dello scontrino. Da {discountWeeks} settimane costa {discountRate} a settimana. Per più persone, o per un evento o una sessione extra, il prezzo te lo prepara Evelyn.",
+      "aPrice": "Il servizio costa {weeklyRate} a settimana per una famiglia fino a {maxPeople} persone, con la spesa a parte, al costo dello scontrino. Da {discountWeeks} settimane costa {discountRate} a settimana. Per più persone, o per un evento o una sessione extra, il preventivo te lo prepara Evelyn.",
       "qWeeks": "Posso prenotare più settimane?",
       "aWeeks": "Sì, fino a {maxWeeks} settimane: ogni settimana un menù e una sessione di cucina, lo stesso giorno della settimana. Senza rinnovo automatico: alla fine, se vuoi continuare, mandi una nuova richiesta.",
       "q2": "Quanto dura una sessione?",
@@ -149,7 +149,7 @@
     },
     "typeHint": {
       "week": "Pranzi o cene per più giorni, in porzioni da frigo.",
-      "extra": "Una cena con amici, una festa, una sessione in più: il prezzo te lo prepara Evelyn."
+      "extra": "Una cena con amici, una festa, una sessione in più: il preventivo te lo prepara Evelyn."
     },
     "weeksLegend": "Per quante settimane?",
     "weeksHint": "Un menù e una sessione di cucina a settimana, lo stesso giorno. Da {discountWeeks} settimane, {discountRate} a settimana invece di {weeklyRate}.",
@@ -201,7 +201,7 @@
         "unavailable": "occupato: Evelyn ti proporrà un altro giorno di quella settimana",
         "pending": "sto verificando…",
         "unknown": "te lo conferma Evelyn",
-        "outside": "oltre il calendario: te lo conferma Evelyn"
+        "outside": "fuori dal calendario: te lo conferma Evelyn"
       }
     },
     "contactLegend": "I tuoi dati",
@@ -236,16 +236,16 @@
     "quote": {
       "title": "Preventivo stimato",
       "service": "Prezzo del servizio",
-      "serviceWeeks": "Prezzo per {weeks} settimane",
-      "weekly": "A settimana",
+      "serviceWeeks": "Servizio, {weeks} settimane",
+      "weekly": "Servizio a settimana",
       "savings": "Risparmi {amount} rispetto a {weeklyRate} a settimana.",
       "groceries": "Spesa stimata",
-      "groceriesWeekly": "Spesa a settimana",
-      "manualPeople": "Per più di {maxPeople} persone il prezzo del servizio te lo prepara Evelyn.",
-      "manualExtra": "Per eventi e sessioni extra il prezzo del servizio te lo prepara Evelyn.",
+      "groceriesWeekly": "Spesa stimata a settimana",
+      "manualPeople": "Per più di {maxPeople} persone il preventivo per il servizio te lo prepara Evelyn.",
+      "manualExtra": "Per eventi e sessioni extra il preventivo per il servizio te lo prepara Evelyn.",
       "portions": "Porzioni",
       "portionsWeekly": "Porzioni a settimana",
-      "note": "È una stima: Evelyn ti conferma il prezzo finale. La spesa si paga a parte, al costo reale dello scontrino.",
+      "note": "Il prezzo finale lo conferma Evelyn. La spesa si paga a parte, secondo lo scontrino.",
       "invalid": "Indica almeno una persona e da 1 a {maxDays} giorni per vedere la stima."
     },
     "done": {
@@ -271,10 +271,10 @@
       "allergiesNone": "Nessuna",
       "allergiesListed": "Indicate: Evelyn ne terrà conto",
       "service": "Prezzo del servizio",
-      "weeklyService": "Prezzo a settimana",
-      "serviceWeeks": "Prezzo per {weeks} settimane",
+      "weeklyService": "Servizio a settimana",
+      "serviceWeeks": "Servizio, {weeks} settimane",
       "savings": "Risparmi",
-      "servicePending": "Te lo prepara Evelyn",
+      "servicePending": "Preventivo di Evelyn",
       "groceries": "Spesa stimata",
       "groceriesWeekly": "Spesa stimata a settimana",
       "adultsOne": "1 adulto",
