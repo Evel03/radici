@@ -196,16 +196,17 @@ test("DEFAULT_PRICING es el valor por defecto de chef_settings: la web calcula l
 
 let allMigrations: string | null = null;
 
-/** Lo que el check de la columna deja guardar: [mínimo, máximo] o, con un `>=`, solo el mínimo. */
-function checkBounds(column: string): number[] {
+/**
+ * Lo que el check de la columna deja guardar: [mínimo, máximo]. El motor tiene un máximo para cada
+ * tarifa: una columna sin tope en la base (solo `>=`) guardaría valores con los que cada pedido da
+ * quote_failed, así que falla.
+ */
+function checkBounds(column: string): [number, number] {
   const between = new RegExp(`check\\s*\\(\\s*${column}\\s+between\\s+(\\d+)\\s+and\\s+(\\d+)\\s*\\)`, "i");
-  const atLeast = new RegExp(`check\\s*\\(\\s*${column}\\s*>=\\s*(\\d+)\\s*\\)`, "i");
   allMigrations ??= migrations().map((m) => m.sql).join("\n");
-  const sql = allMigrations;
-  const range = between.exec(sql);
-  const min = atLeast.exec(sql);
-  assert.ok(range || min, `sin check en chef_settings.${column}`);
-  return range ? [Number(range[1]), Number(range[2])] : [Number(min?.[1])];
+  const range = between.exec(allMigrations);
+  assert.ok(range, `chef_settings.${column} sin check con mínimo y máximo (between): la base guardaría valores que el motor rechaza`);
+  return [Number(range[1]), Number(range[2])];
 }
 
 test("el motor acepta todo lo que la base guarda en chef_settings: ninguna fila válida da quote_failed", () => {
@@ -238,7 +239,7 @@ test("validSettings de quote_vectors.json tiene el mínimo y el máximo de cada 
     const settings: PricingSettings = { ...DEFAULT_PRICING, ...c.settings };
     assert.ok(settings.weeklyRateDiscountedCents <= settings.weeklyRateCents, c.label);
     for (const [key, column] of Object.entries(COLUMNS) as Array<[keyof PricingSettings, string]>) {
-      const [min = 0, max = Number.POSITIVE_INFINITY] = checkBounds(column);
+      const [min, max] = checkBounds(column);
       assert.ok(settings[key] >= min && settings[key] <= max, `${c.label}: ${key}`);
     }
   }
