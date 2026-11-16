@@ -40,6 +40,8 @@ import {
   isIsoDate,
   isOneOf,
   parsePublicRequest,
+  publicEstimate,
+  readPublicEstimate,
   romeToday,
   type Allergen,
   type Diet,
@@ -199,7 +201,10 @@ export interface ChefInfo {
   pricing: PricingSettings;
 }
 
-/** Lo que se guarda en requests.estimate: calcQuote con las tarifas usadas. */
+/**
+ * Lo que se guarda en requests.estimate: calcQuote con las tarifas usadas. Siempre trae weeks, autoPrice,
+ * las porciones, los minutos y la compra; las claves del precio, solo con precio automático (SPEC §5.1).
+ */
 export type StoredEstimate = Quote & { pricing: PricingSettings };
 
 /** Argumento `p` de public.submit_public_request (snake_case, como la base). */
@@ -210,6 +215,8 @@ export interface SubmitPublicRequestParams {
   kids: number;
   days: number;
   meals: Meal[];
+  /** requests.weeks: 1 a 8, y 1 si no es un pedido semanal (migración 20261116120000_weekly_pricing.sql). */
+  weeks: number;
   /** Respuesta a la pregunta de alergias: true = nadie tiene; false = las escribió (requests.no_allergies). */
   no_allergies: boolean;
   allergens: Allergen[];
@@ -285,6 +292,15 @@ export function safeDbMessage(message: string | null | undefined): string | null
   return message && /^[a-z][a-z0-9_]{2,63}$/.test(message) ? message : null;
 }
 
+/**
+ * Columnas de chef_settings que lee la función: las tarifas del motor (PricingSettings) y el nombre de la
+ * cocinera. Las del precio por semana son de 20261116120000_weekly_pricing.sql: sin esa migración la
+ * consulta falla (500, load_chef) y no se guarda ningún pedido de varias semanas como si fuera de una.
+ */
+// Un solo literal (sin concatenar): supabase-js lee el tipo del select del texto.
+export const CHEF_SETTINGS_COLUMNS =
+  "weekly_rate_cents, weekly_rate_discounted_cents, weekly_discount_min_weeks, weekly_rate_max_people, adult_portion_cents, kid_portion_cents, preauth_buffer_pct, min_cook_minutes, chefs(display_name)";
+
 /** Fila de chef_settings con el nombre de la cocinera embebido (chefs.display_name). */
 export function chefFromRow(row: Readonly<Record<string, unknown>>): ChefInfo {
   const int = (name: string): number => {
@@ -298,8 +314,10 @@ export function chefFromRow(row: Readonly<Record<string, unknown>>): ChefInfo {
   return {
     displayName: typeof name === "string" && name.trim() ? name.trim() : "Evelyn",
     pricing: {
-      hourlyRateCents: int("hourly_rate_cents"),
-      travelFeeCents: int("travel_fee_cents"),
+      weeklyRateCents: int("weekly_rate_cents"),
+      weeklyRateDiscountedCents: int("weekly_rate_discounted_cents"),
+      weeklyDiscountMinWeeks: int("weekly_discount_min_weeks"),
+      weeklyRateMaxPeople: int("weekly_rate_max_people"),
       adultPortionCents: int("adult_portion_cents"),
       kidPortionCents: int("kid_portion_cents"),
       preauthBufferPct: int("preauth_buffer_pct"),
@@ -342,6 +360,7 @@ export function toSubmitParams(chefId: string, value: NormalizedPublicRequest, e
     kids: value.kids,
     days: value.days,
     meals: value.meals,
+    weeks: value.weeks,
     no_allergies: value.noAllergies,
     allergens: value.allergens,
     diets: value.diets,
@@ -360,42 +379,6 @@ export function toSubmitParams(chefId: string, value: NormalizedPublicRequest, e
     estimate,
     request_key: value.requestKey,
   };
-}
-
-/** Estimación del cuerpo del 201 (contrato §2). */
-export interface ResponseEstimate {
-  portions: number;
-  recipes: number;
-  cookMinutes: number;
-  serviceCents: number;
-  groceriesEstCents: number;
-  totalCents: number;
-}
-
-const RESPONSE_ESTIMATE_KEYS = ["portions", "recipes", "cookMinutes", "serviceCents", "groceriesEstCents", "totalCents"] as const;
-
-export function responseEstimate(quote: Quote): ResponseEstimate {
-  return {
-    portions: quote.portions,
-    recipes: quote.recipes,
-    cookMinutes: quote.cookMinutes,
-    serviceCents: quote.serviceCents,
-    groceriesEstCents: quote.groceriesEstCents,
-    totalCents: quote.totalCents,
-  };
-}
-
-/** La estimación guardada en requests.estimate, o null si le falta algo (enteros ≥ 0). */
-export function responseEstimateFromStored(stored: unknown): ResponseEstimate | null {
-  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return null;
-  const record = stored as Record<string, unknown>;
-  const result: Partial<Record<(typeof RESPONSE_ESTIMATE_KEYS)[number], number>> = {};
-  for (const key of RESPONSE_ESTIMATE_KEYS) {
-    const value = record[key];
-    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return null;
-    result[key] = value;
-  }
-  return result as ResponseEstimate;
 }
 
 // ---------------------------------------------------------------------------
@@ -652,10 +635,11 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
       if (saved.duplicate) {
         // Reintento de un pedido ya guardado: el mismo id y la estimación guardada, ningún aviso, y
         // duplicate: true para que la web no muestre como enviado lo que se cambió después (contrato §2).
+        // La guardada puede ser de antes del precio por semana: readPublicEstimate la lee igual.
         log("info", "request_duplicate", { requestId });
-        const stored = responseEstimateFromStored(saved.storedEstimate);
+        const stored = readPublicEstimate(saved.storedEstimate);
         if (!stored) log("warn", "stored_estimate_invalid", { requestId });
-        return reply(201, { requestId, estimate: stored ?? responseEstimate(estimate), duplicate: true });
+        return reply(201, { requestId, estimate: stored ?? publicEstimate(estimate), duplicate: true });
       }
       log("info", "request_saved", { requestId });
 
@@ -665,7 +649,7 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
         }),
       );
 
-      return reply(201, { requestId, estimate: responseEstimate(estimate) });
+      return reply(201, { requestId, estimate: publicEstimate(estimate) });
     } catch (error) {
       // Solo el tipo de error: el mensaje podría traer datos del pedido.
       log("error", "unexpected_error", { error: error instanceof Error ? error.name : "unknown" });
@@ -688,7 +672,7 @@ interface NotifyContext {
 type Recipient = "chef" | "client";
 
 function summaryOf(context: NotifyContext): RequestSummary {
-  const { value, estimate } = context;
+  const { value, estimate, chef } = context;
   return {
     requestId: context.requestId,
     type: value.type,
@@ -696,16 +680,26 @@ function summaryOf(context: NotifyContext): RequestSummary {
     kids: value.kids,
     days: value.days,
     meals: value.meals,
+    weeks: value.weeks,
     preferredDate: value.preferredDate,
     slot: value.slot,
     allergies: allergyAnswer(value.noAllergies, value.hasRestrictions),
-    estimate: {
-      portions: estimate.portions,
-      cookMinutes: estimate.cookMinutes,
-      serviceCents: estimate.serviceCents,
-      groceriesEstCents: estimate.groceriesEstCents,
-      totalCents: estimate.totalCents,
-    },
+    // El precio con las tarifas de la cocinera: el mismo que se guardó y que vio el 201.
+    estimate: estimate.autoPrice
+      ? {
+          autoPrice: true,
+          weeklyServiceCents: estimate.weeklyServiceCents,
+          serviceCents: estimate.serviceCents,
+          savingsCents: estimate.savingsCents,
+          regularWeeklyCents: chef.pricing.weeklyRateCents,
+          groceriesEstCents: estimate.groceriesEstCents,
+        }
+      : {
+          autoPrice: false,
+          reason: estimate.reason,
+          maxPeople: chef.pricing.weeklyRateMaxPeople,
+          groceriesEstCents: estimate.groceriesEstCents,
+        },
   };
 }
 
