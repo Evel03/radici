@@ -43,6 +43,7 @@ Map<String, dynamic> requestRow({
   },
   // Respuesta a la pregunta de alergias (requests.no_allergies); null en los pedidos anteriores.
   Object? noAllergies,
+  // Por defecto, una estimación de antes del precio por semana (servicio por hora, sin autoPrice).
   Object? estimate = const {
     'adultPortions': 10,
     'kidPortions': 10,
@@ -103,6 +104,7 @@ ChefRequest buildRequest({
   ClientLocale locale = ClientLocale.it,
   RequestRestrictions? restrictions,
   bool? noAllergies,
+  // Por defecto, una estimación de antes del precio por semana (sin autoPrice).
   RequestEstimate? estimate = const RequestEstimate(
     portions: 20,
     recipes: 3,

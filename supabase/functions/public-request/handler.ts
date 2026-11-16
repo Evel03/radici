@@ -296,8 +296,8 @@ export function safeDbMessage(message: string | null | undefined): string | null
  * Columnas de chef_settings que lee la función: las tarifas del motor (PricingSettings) y el nombre de la
  * cocinera. Las del precio por semana son de 20261116120000_weekly_pricing.sql: sin esa migración la
  * consulta falla (500, load_chef) y no se guarda ningún pedido de varias semanas como si fuera de una.
+ * Un solo literal, sin concatenar: supabase-js lee el tipo del select del texto.
  */
-// Un solo literal (sin concatenar): supabase-js lee el tipo del select del texto.
 export const CHEF_SETTINGS_COLUMNS =
   "weekly_rate_cents, weekly_rate_discounted_cents, weekly_discount_min_weeks, weekly_rate_max_people, adult_portion_cents, kid_portion_cents, preauth_buffer_pct, min_cook_minutes, chefs(display_name)";
 
