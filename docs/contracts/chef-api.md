@@ -6,7 +6,7 @@ Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cue
 ## 1. Para qué
 
 - Es la única puerta de la app de Evelyn para crear, mover y cancelar sesiones: los estados de sesión solo cambian vía Edge Functions, nunca desde la app (CLAUDE.md). La app no tiene privilegios sobre esas filas, ni puede borrar pedidos o fichas (borrar una ficha se llevaba en cascada su reserva); la función llama a las funciones SQL `chef_*`, que solo ejecuta `service_role`.
-- Una reserva es un pedido aceptado más sus sesiones: una sesión `confirmed` por semana, de 1 a 8 semanas, con `pay_mode = 'manual'` (SPEC §4 y §5.2). Hasta M4 nace sin presupuesto ni retención de 48 h.
+- Una reserva es un pedido aceptado más sus sesiones: una sesión `confirmed` por semana, de 1 a 8 semanas, con `pay_mode = 'manual'` (SPEC §4 y §5.3). Hasta M4 nace sin presupuesto ni retención de 48 h.
 - Rutas (todas `POST https://<ref>.supabase.co/functions/v1/chef/<ruta>`):
 
 | Ruta | Función SQL | Qué hace |
@@ -166,7 +166,7 @@ Respuesta `200`:
 
 ## 7. Base de datos
 
-Las funciones son de la migración `20261116150100_bookings.sql` (SPEC §5.2): `security definer`, `search_path = ''`, ejecutables solo por `service_role`. Ninguna escribe en el log.
+Las funciones son de la migración `20261116150100_bookings.sql` (SPEC §4, «Reservas»): `security definer`, `search_path = ''`, ejecutables solo por `service_role`. Ninguna escribe en el log.
 
 - `public.chef_create_booking(p_chef_id, p_dates, p_start, p_cook_minutes, p_service_total_cents, p_portions, p_groceries_est_cents, p_request_id, p_client_id, p_new_client, p_type, p_household, p_locale, p_request_key, p_dry_run) → jsonb`. `p_service_total_cents` no tiene valor por defecto (null es `invalid_cents`).
 - `public.chef_move_session(p_chef_id, p_session_id, p_date, p_start, p_cook_minutes, p_dry_run) → jsonb`
