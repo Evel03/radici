@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  CANCEL_REASONS,
   CHEF_ROUTES,
   DEFAULT_CANCEL_REASON,
   MAX_CANCEL_SESSIONS,
@@ -51,6 +52,7 @@ function manual(overrides: Record<string, unknown> = {}): Record<string, unknown
     dates: ["2026-11-23"],
     start: "10:00",
     cookMinutes: 240,
+    serviceTotalCents: 15000,
     requestKey: REQUEST_KEY.toUpperCase(),
     ...overrides,
   };
@@ -73,6 +75,7 @@ test("rutas y límites del contrato", () => {
   assert.equal(MAX_PORTIONS, 840);
   assert.equal(MAX_CENTS, 10_000_000);
   assert.equal(MAX_CANCEL_SESSIONS, 100, "igual que chef_cancel_sessions");
+  assert.deepEqual(CANCEL_REASONS, ["chef_cancelled", "client_cancelled", "chef_unavailable"], "los mismos que acepta chef_cancel_sessions");
   assert.equal(DEFAULT_CANCEL_REASON, "chef_cancelled");
 });
 
@@ -112,12 +115,21 @@ test("reserva desde un pedido: valores normalizados y los opcionales por defecto
     dryRun: false,
   });
 
-  const minimal = parseBookingRequest({ requestId: REQUEST_ID.toUpperCase(), dates: ["2026-11-23"], start: "10:00", cookMinutes: 90 }, OPTS);
+  const minimal = parseBookingRequest({ requestId: REQUEST_ID.toUpperCase(), dates: ["2026-11-23"], start: "10:00", cookMinutes: 90, serviceTotalCents: 0 }, OPTS);
   assert.ok(minimal.ok);
   assert.equal(minimal.value.client.kind === "request" && minimal.value.client.requestId, REQUEST_ID, "uuid en minúsculas");
   assert.equal(minimal.value.portions, 0);
   assert.equal(minimal.value.groceriesEstCents, 0);
-  assert.equal(minimal.value.serviceTotalCents, 0, "el precio lo fija Evelyn; sin precio, 0 (como el default de la base)");
+  assert.equal(minimal.value.serviceTotalCents, 0, "un 0 explícito vale: sin cargo");
+});
+
+test("precio del servicio: obligatorio salvo en el dryRun (ninguna ruta lo cambia después)", () => {
+  assert.deepEqual(errorsOf(parseBookingRequest(fromRequest({ serviceTotalCents: undefined }), OPTS)), { serviceTotalCents: "required" });
+  assert.deepEqual(errorsOf(parseBookingRequest(fromRequest({ serviceTotalCents: null }), OPTS)), { serviceTotalCents: "required" });
+  assert.deepEqual(errorsOf(parseBookingRequest(manual({ serviceTotalCents: undefined }), OPTS)), { serviceTotalCents: "required" }, "a mano también");
+  const dry = parseBookingRequest(fromRequest({ serviceTotalCents: undefined, dryRun: true }), OPTS);
+  assert.ok(dry.ok, "la hoja hace el dryRun antes de que Evelyn cargue el precio");
+  assert.equal(dry.value.serviceTotalCents, 0);
 });
 
 test("desde un pedido: el hogar y el idioma no se usan (son del pedido); el tipo, si viene, se valida", () => {
@@ -146,7 +158,7 @@ test("reserva a mano con ficha nueva: texto limpio, teléfono E.164, email en mi
     cookMinutes: 240,
     portions: 0,
     groceriesEstCents: 0,
-    serviceTotalCents: 0,
+    serviceTotalCents: 15000,
     requestKey: REQUEST_KEY,
     dryRun: false,
   });
@@ -197,6 +209,7 @@ test("a mano: tipo, hogar e idioma", () => {
   const household = (fields: Record<string, unknown>) => manual({ household: { adults: 2, kids: 0, days: 5, meals: ["dinner"], ...fields } });
   assert.deepEqual(errorsOf(parseBookingRequest(household({ adults: 0, kids: 0 }), OPTS)), { people: "range" });
   assert.deepEqual(errorsOf(parseBookingRequest(household({ adults: 31 }), OPTS)), { "household.adults": "range" });
+  assert.deepEqual(errorsOf(parseBookingRequest(household({ kids: 31 }), OPTS)), { "household.kids": "range" });
   assert.deepEqual(errorsOf(parseBookingRequest(household({ kids: 1.5 }), OPTS)), { "household.kids": "invalid" });
   assert.deepEqual(errorsOf(parseBookingRequest(household({ days: 0 }), OPTS)), { "household.days": "range" });
   assert.deepEqual(errorsOf(parseBookingRequest(household({ days: undefined }), OPTS)), { "household.days": "required" });
@@ -232,7 +245,13 @@ test("fechas: formato real, dentro de un año de hoy, una por semana ISO y en or
   const sameWeek = bad(["2026-11-23", "2026-11-27"]);
   assert.deepEqual(errorsOf(sameWeek), { dates: "sameWeek" });
   assert.equal(!sameWeek.ok && sameWeek.date, "2026-11-27");
-  assert.deepEqual(errorsOf(bad(["2026-11-30", "2026-11-23"])), { dates: "order" });
+  const order = bad(["2026-11-30", "2026-11-23"]);
+  assert.deepEqual(errorsOf(order), { dates: "order" });
+  assert.equal(!order.ok && order.date, "2026-11-23", "order también dice la fecha que falla");
+  // Viernes y lunes de la misma semana: desordenadas, pero primero cuenta la semana repetida.
+  const both = bad(["2026-11-27", "2026-11-23"]);
+  assert.deepEqual(errorsOf(both), { dates: "sameWeek" });
+  assert.equal(!both.ok && both.date, "2026-11-23");
   assert.ok(parseBookingRequest(fromRequest({ dates: ["2026-11-22", "2026-11-23"] }), OPTS).ok, "domingo y lunes son semanas distintas");
 });
 
@@ -320,6 +339,8 @@ test("mover: validaciones", () => {
   assert.deepEqual(move({ date: "2027-11-18" }), { date: "dateOutOfRange" });
   assert.deepEqual(move({ start: "9:00" }), { start: "invalid" });
   assert.deepEqual(move({ cookMinutes: 0 }), { cookMinutes: "range" });
+  assert.deepEqual(move({ cookMinutes: MAX_COOK_MINUTES + 1 }), { cookMinutes: "range" });
+  assert.ok(parseMoveSessionRequest({ sessionId: SESSION_ID, date: "2026-11-25", cookMinutes: MAX_COOK_MINUTES }, OPTS).ok);
   assert.deepEqual(move({ cookMinutes: 60.5 }), { cookMinutes: "invalid" });
   assert.deepEqual(move({ dryRun: 1 }), { dryRun: "invalid" });
 });
@@ -328,17 +349,23 @@ test("mover: validaciones", () => {
 // POST /sessions/cancel
 // ---------------------------------------------------------------------------
 
-test("cancelar: ids en minúsculas y sin repetir; motivo por defecto", () => {
+test("cancelar: ids en minúsculas y sin repetir; motivo por defecto y sin cancelar semanas cobradas", () => {
   const other = "5e550000-0000-4000-8000-000000000004";
   const result = parseCancelSessionsRequest({ sessionIds: [SESSION_ID.toUpperCase(), other, SESSION_ID] });
   assert.ok(result.ok);
-  assert.deepEqual(result.value, { sessionIds: [SESSION_ID, other], reason: DEFAULT_CANCEL_REASON });
-  const reason = parseCancelSessionsRequest({ sessionIds: [SESSION_ID], reason: "client_cancelled" });
-  assert.ok(reason.ok);
-  assert.equal(reason.value.reason, "client_cancelled");
+  assert.deepEqual(result.value, { sessionIds: [SESSION_ID, other], reason: DEFAULT_CANCEL_REASON, allowWithPayments: false });
+  for (const code of CANCEL_REASONS) {
+    const reason = parseCancelSessionsRequest({ sessionIds: [SESSION_ID], reason: code });
+    assert.ok(reason.ok, code);
+    assert.equal(reason.value.reason, code);
+  }
+  const paid = parseCancelSessionsRequest({ sessionIds: [SESSION_ID], allowWithPayments: true });
+  assert.ok(paid.ok);
+  assert.equal(paid.value.allowWithPayments, true, "con permiso, para registrar la devolución");
+  assert.deepEqual(errorsOf(parseCancelSessionsRequest({ sessionIds: [SESSION_ID], allowWithPayments: "true" })), { allowWithPayments: "invalid" });
 });
 
-test("cancelar: de 1 a 100 sesiones y un motivo que es un código, nunca texto libre", () => {
+test("cancelar: de 1 a 100 sesiones y un motivo de la lista, nunca texto libre", () => {
   assert.deepEqual(errorsOf(parseCancelSessionsRequest({})), { sessionIds: "required" });
   assert.deepEqual(errorsOf(parseCancelSessionsRequest({ sessionIds: [] })), { sessionIds: "range" });
   const many = Array.from({ length: MAX_CANCEL_SESSIONS + 1 }, (_, i) => `5e550000-0000-4000-8000-${String(i).padStart(12, "0")}`);
@@ -346,7 +373,8 @@ test("cancelar: de 1 a 100 sesiones y un motivo que es un código, nunca texto l
   assert.ok(parseCancelSessionsRequest({ sessionIds: many.slice(0, MAX_CANCEL_SESSIONS) }).ok);
   assert.deepEqual(errorsOf(parseCancelSessionsRequest({ sessionIds: [SESSION_ID, "x"] })), { sessionIds: "invalid" });
   assert.deepEqual(errorsOf(parseCancelSessionsRequest({ sessionIds: SESSION_ID })), { sessionIds: "invalid" });
-  for (const reason of ["Se enfermó la clienta", "1abc", "x".repeat(41), "chef-cancelled", 7]) {
+  // Una frase en snake_case o un código del sistema (hold_expired, declined) tampoco: la clienta con cuenta lee su sesión.
+  for (const reason of ["Se enfermó la clienta", "1abc", "x".repeat(41), "chef-cancelled", 7, "clienta_maleducada_no_paga", "hold_expired", "declined", "CHEF_CANCELLED"]) {
     assert.deepEqual(errorsOf(parseCancelSessionsRequest({ sessionIds: [SESSION_ID], reason })), { reason: "invalid" }, String(reason));
   }
 });

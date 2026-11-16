@@ -16,11 +16,13 @@ import {
   CHEF_MAX_PAYLOAD_BYTES,
   CHEF_ROUTES,
   DAY_STATUSES,
+  MAX_CANCEL_SESSIONS,
   parseBookingRequest,
   parseCancelSessionsRequest,
   parseMoveSessionRequest,
   type BookingResponse,
   type BookingWeek,
+  type CancelReason,
   type CancelSessionsResponse,
   type ChefApiErrorCode,
   type ChefApiErrors,
@@ -110,7 +112,8 @@ export type MoveSessionParams = {
 export type CancelSessionsParams = {
   p_chef_id: string;
   p_session_ids: string[];
-  p_reason: string;
+  p_reason: CancelReason;
+  p_allow_with_payments: boolean;
 };
 
 export interface ChefStore {
@@ -165,8 +168,9 @@ const DATE_DETAIL_CODES = new Set(["slot_taken", "week_taken", "dates_same_week"
 
 /**
  * El detalle de los errores propios de las funciones SQL, solo si tiene la forma esperada: la fecha
- * del choque, el estado actual o la sesión que impide cancelar. Cualquier otro detalle (el de
- * Postgres puede traer la fila, con datos personales) se descarta.
+ * del choque, el estado actual, la sesión que impide cancelar o las sesiones ya cobradas (ids
+ * separados por coma, como mucho MAX_CANCEL_SESSIONS). Cualquier otro detalle (el de Postgres
+ * puede traer la fila, con datos personales) se descarta.
  */
 export function safeDbDetail(message: string | null, detail: unknown): string | null {
   if (message === null || typeof detail !== "string") return null;
@@ -174,6 +178,10 @@ export function safeDbDetail(message: string | null, detail: unknown): string | 
   if (message === "request_not_new") return isOneOf(REQUEST_STATUSES, detail) ? detail : null;
   if (message === "session_not_movable") return isOneOf(SESSION_STATUSES, detail) ? detail : null;
   if (message === "invalid_transition") return isUuid(detail) ? detail.toLowerCase() : null;
+  if (message === "has_payments") {
+    const ids = detail.split(",");
+    return ids.length <= MAX_CANCEL_SESSIONS && ids.every(isUuid) ? detail.toLowerCase() : null;
+  }
   return null;
 }
 
@@ -253,6 +261,9 @@ export function dbErrorReply(error: unknown): ErrorReply {
     }
     if (message === "invalid_transition") {
       return { status: 409, body: detail ? { error: "invalidTransition", sessionId: detail } : { error: "invalidTransition" } };
+    }
+    if (message === "has_payments") {
+      return { status: 409, body: detail ? { error: "hasPayments", sessionIds: detail.split(",") } : { error: "hasPayments" } };
     }
     return { status: 409, body: { error: "conflict" } };
   }
@@ -544,7 +555,12 @@ async function cancelRoute(deps: ChefHandlerDeps, chefId: string, input: unknown
 
   let data: unknown;
   try {
-    data = await deps.store.cancelSessions({ p_chef_id: chefId, p_session_ids: parsed.value.sessionIds, p_reason: parsed.value.reason });
+    data = await deps.store.cancelSessions({
+      p_chef_id: chefId,
+      p_session_ids: parsed.value.sessionIds,
+      p_reason: parsed.value.reason,
+      p_allow_with_payments: parsed.value.allowWithPayments,
+    });
   } catch (error) {
     return dbFailure(log, route, "cancel_sessions", error, reply);
   }

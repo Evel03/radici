@@ -368,6 +368,28 @@ test("Content-Type que no es JSON: 415; cuerpo de más de 8 KB: 413; JSON roto o
 // Autenticación: 401, 403, configuración
 // ---------------------------------------------------------------------------
 
+test("sin token válido no se lee el cuerpo: 401 antes que el tipo (415), el tamaño (413) y el JSON (400)", async () => {
+  const { handle, store } = harness();
+  const big = JSON.stringify({ ...bookingBody(), relleno: "x".repeat(9000) });
+  const cases: Array<[string, Request]> = [
+    ["text/plain", post("/bookings", bookingBody(), { token: null, headers: { "content-type": "text/plain" } })],
+    // La plataforma (verify_jwt) deja pasar las claves de API: es lo que de verdad llega sin JWT.
+    ["clave de API y text/plain", post("/bookings", bookingBody(), { token: null, headers: { authorization: "Bearer sb_publishable_abc123", "content-type": "text/plain" } })],
+    ["Content-Length 9000", post("/bookings", bookingBody(), { token: null, headers: { "content-length": "9000" } })],
+    ["más de 8 KB sin Content-Length", post("/bookings", null, { token: null, raw: big })],
+    ["clave de API y más de 8 KB", post("/bookings", null, { token: null, raw: big, headers: { authorization: "Bearer sb_publishable_abc123" } })],
+    ["JSON roto", post("/bookings", null, { token: null, raw: "{no es json" })],
+  ];
+  for (const [name, request] of cases) {
+    const response = await handle(request);
+    assert.equal(response.status, 401, name);
+    assert.deepEqual(await json(response), { error: "unauthorized" }, name);
+    assert.equal(request.bodyUsed, false, `${name}: el cuerpo no se leyó`);
+  }
+  assert.deepEqual(store.tokens, [], "ninguno llega a Auth");
+  assert.equal(store.bookingCalls.length, 0);
+});
+
 test("401 sin token, con otro esquema, con algo que no es un JWT o con un token que Auth rechaza", async () => {
   const { handle, store, logs } = harness();
   const cases: Array<[Record<string, string>, string]> = [
@@ -449,15 +471,17 @@ test("sin SUPABASE_URL o sin la clave secreta: 500 antes de autenticar, y el log
 // POST /bookings
 // ---------------------------------------------------------------------------
 
-test("400 por campo: 0 o 9 semanas, centavos no enteros y dos fechas en la misma semana, sin llamar a la base", async () => {
+test("400 por campo: 0 o 9 semanas, centavos no enteros, sin precio y fechas en la misma semana o desordenadas, sin llamar a la base", async () => {
   const { handle, store, logs } = harness();
   const nine = ["2026-11-23", "2026-11-30", "2026-12-07", "2026-12-14", "2026-12-21", "2026-12-28", "2027-01-04", "2027-01-11", "2027-01-18"];
   const cases: Array<[Record<string, unknown>, unknown]> = [
     [{ dates: [] }, { errors: { dates: "range" } }],
     [{ dates: nine }, { errors: { dates: "range" } }],
     [{ serviceTotalCents: 560.5 }, { errors: { serviceTotalCents: "invalid" } }],
+    [{ serviceTotalCents: undefined }, { errors: { serviceTotalCents: "required" } }],
     [{ groceriesEstCents: 75.5 }, { errors: { groceriesEstCents: "invalid" } }],
     [{ dates: ["2026-11-23", "2026-11-27"] }, { errors: { dates: "sameWeek" }, date: "2026-11-27" }],
+    [{ dates: ["2026-11-30", "2026-11-23"] }, { errors: { dates: "order" }, date: "2026-11-23" }],
   ];
   for (const [overrides, expected] of cases) {
     const response = await handle(post("/bookings", bookingBody(overrides)));
@@ -510,6 +534,19 @@ test("confirmar un pedido: 201 con las 4 semanas; la base recibe todo en snake_c
     })),
   });
   assert.ok(logs.some((entry) => entry.event === "booking_created" && entry.fields["requestId"] === REQUEST_ID && entry.fields["sessions"] === 4 && entry.fields["client"] === "request"));
+});
+
+test("la cocinera sale siempre del token: un chefId o p_chef_id en el cuerpo se ignora, en todas las rutas", async () => {
+  const { handle, store } = harness();
+  const other = "cef00000-0000-4000-8000-0000000000ff";
+  const intruder = { chefId: other, p_chef_id: other, chef_id: other };
+  assert.equal((await handle(post("/bookings", bookingBody(intruder)))).status, 201);
+  assert.equal((await handle(post("/sessions/move", { sessionId: SESSION_ID, date: "2026-11-25", ...intruder }))).status, 200);
+  assert.equal((await handle(post("/sessions/cancel", { sessionIds: [SESSION_ID], ...intruder }))).status, 200);
+  assert.deepEqual(
+    [store.bookingCalls[0]?.p_chef_id, store.moveCalls[0]?.p_chef_id, store.cancelCalls[0]?.p_chef_id],
+    [CHEF_ID, CHEF_ID, CHEF_ID],
+  );
 });
 
 test("reserva a mano con ficha nueva: la base recibe la ficha limpia, el hogar, el idioma y la clave", async () => {
@@ -664,12 +701,14 @@ test("validaciones de la base (22023): 400 con el campo, por si la función y la
     assert.equal(response.status, 400, message);
     assert.deepEqual(await json(response), expected);
   }
-  // Otros errores de datos o checks: 400 genérico.
-  const check = harness();
-  check.store.failures.set("create_booking", storeErrorFrom("create_booking", { code: "23514", message: 'new row for relation "requests" violates check constraint "x"' }));
-  const response = await check.handle(post("/bookings", bookingBody()));
-  assert.equal(response.status, 400);
-  assert.deepEqual(await json(response), { errors: { payload: "invalid" } });
+  // Otros errores de datos, checks o not null: 400 genérico.
+  for (const code of ["23514", "23502", "22P02", "22007"]) {
+    const check = harness();
+    check.store.failures.set("create_booking", storeErrorFrom("create_booking", { code, message: 'new row for relation "requests" violates check constraint "x"' }));
+    const response = await check.handle(post("/bookings", bookingBody()));
+    assert.equal(response.status, 400, code);
+    assert.deepEqual(await json(response), { errors: { payload: "invalid" } }, code);
+  }
 });
 
 test("errores de la base: caída o reintentable → 503, el resto → 500; el log lleva solo operación y código", async () => {
@@ -679,6 +718,8 @@ test("errores de la base: caída o reintentable → 503, el resto → 500; el lo
     ["08006", 503],
     ["40001", 503],
     ["57014", 503],
+    ["53300", 503],
+    ["58000", 503],
     ["PGRST000", 503],
     ["PGRST003", 503],
     ["PGRST202", 500],
@@ -698,12 +739,80 @@ test("errores de la base: caída o reintentable → 503, el resto → 500; el lo
 });
 
 test("respuesta de la base con otra forma: 500 y unexpected_result", async () => {
-  for (const raw of [null, [], { dry_run: false }, { dry_run: false, duplicate: false, request_id: "x", client_id: null, weeks: [] }]) {
+  // Bien formada, pero de un dryRun cuando se pidió crear (o al revés): tampoco se confía en ella.
+  const dryAnswer = { dry_run: true, duplicate: false, request_id: REQUEST_ID, client_id: CLIENT_ID, weeks: [] };
+  for (const [raw, body] of [
+    [null, bookingBody()],
+    [[], bookingBody()],
+    [{ dry_run: false }, bookingBody()],
+    [{ dry_run: false, duplicate: false, request_id: "x", client_id: null, weeks: [] }, bookingBody()],
+    [dryAnswer, bookingBody()],
+    [{ ...dryAnswer, dry_run: false }, bookingBody({ dryRun: true })],
+  ] as const) {
     const run = harness();
     run.store.raw = raw;
-    const response = await run.handle(post("/bookings", bookingBody()));
+    const response = await run.handle(post("/bookings", body));
     assert.equal(response.status, 500, JSON.stringify(raw));
+    assert.deepEqual(await json(response), { error: "server" });
     assert.ok(run.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "create_booking"));
+  }
+
+  const move = {
+    dry_run: false,
+    session_id: SESSION_ID,
+    request_id: REQUEST_ID,
+    date: "2026-11-25",
+    start_time: "10:00:00",
+    cook_minutes: 240,
+    status: "ok",
+    suggested_start: "10:00:00",
+    week_taken: false,
+  };
+  for (const raw of [{ ...move, dry_run: true }, { ...move, session_id: "x" }, { ...move, request_id: "x" }]) {
+    const run = harness();
+    run.store.raw = raw;
+    const response = await run.handle(post("/sessions/move", { sessionId: SESSION_ID, date: "2026-11-25" }));
+    assert.equal(response.status, 500, JSON.stringify(raw));
+    assert.ok(run.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "move_session"));
+  }
+});
+
+test("un error fuera de la base (el cuerpo que se corta, una respuesta que explota al leerla): 500 y unexpected_error solo con el tipo", async () => {
+  const secret = "Mariaxyz Bianchiqwe, Via Segretissima 42, NOTA-SALUD-zzz";
+
+  // El cliente corta mientras se lee el cuerpo.
+  const stream = harness();
+  const cut = new Request(`${BASE}/bookings`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: ORIGIN, authorization: `Bearer ${TOKEN_EVELYN}` },
+    body: new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error(secret));
+      },
+    }),
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+  const cutResponse = await stream.handle(cut);
+  assert.equal(cutResponse.status, 500);
+  assert.deepEqual(await json(cutResponse), { error: "server" });
+
+  // La respuesta de la base lanza al leerla.
+  const getter = harness();
+  getter.store.raw = Object.defineProperty({}, "dry_run", {
+    enumerable: true,
+    get() {
+      throw new Error(secret);
+    },
+  });
+  const getterResponse = await getter.handle(post("/bookings", bookingBody()));
+  assert.equal(getterResponse.status, 500);
+
+  for (const run of [stream, getter]) {
+    const entry = run.logs.find((log) => log.event === "unexpected_error");
+    assert.ok(entry);
+    assert.deepEqual(entry.fields, { error: "Error" });
+    assert.equal(entry.level, "error");
+    assert.ok(!JSON.stringify(run.logs).includes("Mariaxyz"));
   }
 });
 
@@ -783,7 +892,9 @@ test("cancelar: 200 con las canceladas, las ya canceladas y las que tenían cobr
   const { handle, store, logs } = harness();
   const response = await handle(post("/sessions/cancel", { sessionIds: [SESSION_ID, OTHER_SESSION_ID.toUpperCase()] }));
   assert.equal(response.status, 200);
-  assert.deepEqual(store.cancelCalls, [{ p_chef_id: CHEF_ID, p_session_ids: [SESSION_ID, OTHER_SESSION_ID], p_reason: "chef_cancelled" }]);
+  assert.deepEqual(store.cancelCalls, [
+    { p_chef_id: CHEF_ID, p_session_ids: [SESSION_ID, OTHER_SESSION_ID], p_reason: "chef_cancelled", p_allow_with_payments: false },
+  ]);
   assert.deepEqual(await json(response), {
     cancelled: [SESSION_ID, OTHER_SESSION_ID],
     alreadyCancelled: [],
@@ -792,9 +903,12 @@ test("cancelar: 200 con las canceladas, las ya canceladas y las que tenían cobr
   });
   assert.ok(logs.some((entry) => entry.event === "sessions_cancelled" && entry.fields["cancelled"] === 2 && entry.fields["withPayments"] === 0));
 
+  // Con permiso (Evelyn va a registrar la devolución), la semana cobrada se cancela.
   const paid = harness();
   paid.store.raw = { cancelled: [SESSION_ID], already_cancelled: [OTHER_SESSION_ID], with_payments: [SESSION_ID], had_payments: true };
-  const withPayments = await paid.handle(post("/sessions/cancel", { sessionIds: [SESSION_ID, OTHER_SESSION_ID], reason: "client_cancelled" }));
+  const withPayments = await paid.handle(
+    post("/sessions/cancel", { sessionIds: [SESSION_ID, OTHER_SESSION_ID], reason: "client_cancelled", allowWithPayments: true }),
+  );
   assert.deepEqual(await json(withPayments), {
     cancelled: [SESSION_ID],
     alreadyCancelled: [OTHER_SESSION_ID],
@@ -802,6 +916,26 @@ test("cancelar: 200 con las canceladas, las ya canceladas y las que tenían cobr
     hadPayments: true,
   });
   assert.equal(paid.store.cancelCalls[0]?.p_reason, "client_cancelled");
+  assert.equal(paid.store.cancelCalls[0]?.p_allow_with_payments, true);
+});
+
+test("cancelar una semana ya cobrada sin permiso: 409 hasPayments con las sesiones, para ofrecer antes pasarla al final", async () => {
+  const run = harness();
+  run.store.failures.set(
+    "cancel_sessions",
+    storeErrorFrom("cancel_sessions", { code: "55000", message: "has_payments", details: `${SESSION_ID},${OTHER_SESSION_ID.toUpperCase()}` }),
+  );
+  const response = await run.handle(post("/sessions/cancel", { sessionIds: [SESSION_ID, OTHER_SESSION_ID] }));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await json(response), { error: "hasPayments", sessionIds: [SESSION_ID, OTHER_SESSION_ID] });
+  assert.ok(run.logs.some((entry) => entry.event === "rejected" && entry.fields["error"] === "hasPayments" && entry.fields["code"] === "55000"));
+
+  // Un detalle que no son ids no se repite.
+  const odd = harness();
+  odd.store.failures.set("cancel_sessions", storeErrorFrom("cancel_sessions", { code: "55000", message: "has_payments", details: "Mariaxyz pagó 140 €" }));
+  const oddResponse = await odd.handle(post("/sessions/cancel", { sessionIds: [SESSION_ID] }));
+  assert.equal(oddResponse.status, 409);
+  assert.deepEqual(await json(oddResponse), { error: "hasPayments" });
 });
 
 test("cancelar una cocinada o pagada: 409 invalidTransition con la sesión; motivo con texto libre: 400", async () => {
@@ -852,19 +986,58 @@ test("los logs nunca llevan nombre, teléfono, email, zona, dirección, notas, r
   conflict.store.failures.set("create_booking", storeErrorFrom("create_booking", { code: "23P01", message: "slot_taken", details: "2026-11-30" }));
   await conflict.handle(post("/bookings", manualBody()));
 
+  // Quién llama: sin token, token rechazado, quien no es la cocinera y Auth caída.
+  const auth = harness();
+  await auth.handle(post("/bookings", manualBody(), { token: null }));
+  await auth.handle(post("/bookings", manualBody(), { token: TOKEN_REJECTED }));
+  await auth.handle(post("/bookings", manualBody(), { token: TOKEN_CLIENT }));
+  const authDown = harness();
+  authDown.store.failures.set("get_user", new StoreError("get_user", "503", null));
+  await authDown.handle(post("/bookings", manualBody()));
+
+  const config = harness({ env: { SUPABASE_URL: undefined } });
+  await config.handle(post("/bookings", manualBody()));
+
+  // Respuestas de la base con otra forma y errores fuera de la base.
+  const shape = harness();
+  shape.store.raw = { dry_run: false, nombre: "Mariaxyz Bianchiqwe" };
+  await shape.handle(post("/bookings", manualBody()));
+  const getter = harness();
+  getter.store.raw = Object.defineProperty({}, "dry_run", {
+    enumerable: true,
+    get() {
+      throw new Error("Mariaxyz Bianchiqwe, Via Segretissima 42, NOTA-SALUD-zzz");
+    },
+  });
+  await getter.handle(post("/bookings", manualBody()));
+
+  // Mover y cancelar con errores de la base que traen fechas o datos.
+  const sessionErrors = harness();
+  sessionErrors.store.failures.set("move_session", storeErrorFrom("move_session", { code: "23P01", message: "slot_taken", details: "2026-11-30" }));
+  await sessionErrors.handle(post("/sessions/move", { sessionId: SESSION_ID, date: "2026-11-30" }));
+  sessionErrors.store.failures.set("cancel_sessions", storeErrorFrom("cancel_sessions", { code: "55000", message: "has_payments", details: "Mariaxyz" }));
+  await sessionErrors.handle(post("/sessions/cancel", { sessionIds: [SESSION_ID] }));
+
   const markers = [
     "Mariaxyz", "Bianchiqwe", "765", "4321", "maria.pii", "ZonaPrivadaKkk", "Segretissima", "NOTA-LIBRE", "NOTA-SALUD",
-    "2026-11-23", "2026-11-30", TOKEN_EVELYN,
+    "2026-11-23", "2026-11-30", TOKEN_EVELYN, TOKEN_REJECTED, TOKEN_CLIENT,
   ];
-  for (const run of [success, dbError, crash, invalid, conflict]) {
+  const runs = [success, dbError, crash, invalid, conflict, auth, authDown, config, shape, getter, sessionErrors];
+  for (const run of runs) {
     const text = JSON.stringify(run.logs);
     assert.ok(run.logs.length > 0);
     for (const marker of markers) {
       assert.ok(!text.includes(marker), `el log lleva ${marker}: ${text}`);
     }
   }
-  assert.ok(success.logs.some((entry) => entry.event === "booking_created"));
-  assert.ok(success.logs.some((entry) => entry.event === "booking_duplicate"));
+  // Todos los eventos del handler pasaron por el espía (contrato §10).
+  const events = new Set(runs.flatMap((run) => run.logs.map((entry) => entry.event)));
+  for (const event of [
+    "auth_rejected", "forbidden", "invalid_payload", "rejected", "booking_created", "booking_duplicate", "session_moved",
+    "sessions_cancelled", "db_error", "unexpected_result", "unexpected_error", "config_missing",
+  ]) {
+    assert.ok(events.has(event), `falta el camino ${event}`);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -905,6 +1078,10 @@ test("safeDbDetail: solo la fecha, el estado o el id que esperamos de cada códi
   assert.equal(safeDbDetail("invalid_dates", "De 1 a 8 fechas."), null);
   assert.equal(safeDbDetail(null, "2026-11-30"), null);
   assert.equal(safeDbDetail("slot_taken", 20261130), null);
+  assert.equal(safeDbDetail("has_payments", `${SESSION_ID},${OTHER_SESSION_ID.toUpperCase()}`), `${SESSION_ID},${OTHER_SESSION_ID}`);
+  assert.equal(safeDbDetail("has_payments", `${SESSION_ID},Mariaxyz`), null);
+  assert.equal(safeDbDetail("has_payments", `${SESSION_ID},`), null);
+  assert.equal(safeDbDetail("has_payments", Array.from({ length: 101 }, () => SESSION_ID).join(",")), null, "como mucho 100");
 });
 
 test("storeErrorFrom: código, mensaje solo si es un identificador propio y detalle filtrado", () => {

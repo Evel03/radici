@@ -46,10 +46,14 @@ export const DATE_RANGE_DAYS = 366;
 export const CHEF_MAX_PAYLOAD_BYTES = 8192;
 /** Largo máximo de la dirección de una ficha nueva. */
 export const ADDRESS_MAX = 200;
-/** Motivo de cancelación por defecto. Siempre un código: el cliente con cuenta puede leer su sesión. */
-export const DEFAULT_CANCEL_REASON = "chef_cancelled";
-/** Como chef_cancel_sessions: snake_case, hasta 40 caracteres. */
-const CANCEL_REASON_PATTERN = /^[a-z][a-z_]{0,39}$/;
+/**
+ * Motivos de cancelación, los mismos que acepta chef_cancel_sessions. Siempre uno de estos códigos,
+ * nunca texto libre: el cliente con cuenta puede leer su sesión. chef_cancelled (por defecto),
+ * client_cancelled (lo pidió la clienta) y chef_unavailable (Evelyn no puede ir).
+ */
+export const CANCEL_REASONS = ["chef_cancelled", "client_cancelled", "chef_unavailable"] as const;
+export type CancelReason = (typeof CANCEL_REASONS)[number];
+export const DEFAULT_CANCEL_REASON: CancelReason = "chef_cancelled";
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /**
@@ -103,7 +107,10 @@ export interface BookingPayload {
   portions?: number;
   /** Compra estimada de cada semana, en centavos (0 por defecto). */
   groceriesEstCents?: number;
-  /** Precio del servicio de toda la reserva, en centavos, que fija Evelyn; se reparte entre las semanas. */
+  /**
+   * Precio del servicio de toda la reserva, en centavos, que fija Evelyn; se reparte entre las
+   * semanas. Obligatorio salvo en el dryRun (ninguna ruta lo cambia después); 0 vale: sin cargo.
+   */
   serviceTotalCents?: number;
   /** UUID por intento: hace idempotente el reintento. Obligatoria a mano (salvo en el dryRun). */
   requestKey?: string;
@@ -125,8 +132,13 @@ export interface MoveSessionPayload {
 /** POST /sessions/cancel: cancelar una o varias semanas (todo o nada). */
 export interface CancelSessionsPayload {
   sessionIds: string[];
-  /** Código snake_case (por defecto chef_cancelled), nunca texto libre. */
-  reason?: string;
+  /** Uno de CANCEL_REASONS (por defecto chef_cancelled), nunca texto libre. */
+  reason?: CancelReason;
+  /**
+   * true: cancela también las semanas ya cobradas, para registrar la devolución. Sin esto, una
+   * semana cobrada da 409 hasPayments: una cancelada ya no se puede pasar al final de la reserva.
+   */
+  allowWithPayments?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +196,8 @@ export interface NormalizedMoveSession {
 export interface NormalizedCancelSessions {
   /** En minúsculas y sin repetir, en el orden recibido. */
   sessionIds: string[];
-  reason: string;
+  reason: CancelReason;
+  allowWithPayments: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -234,7 +247,8 @@ export type ChefApiField =
   | "sessionId"
   | "date"
   | "sessionIds"
-  | "reason";
+  | "reason"
+  | "allowWithPayments";
 
 export type ChefApiErrors = Partial<Record<ChefApiField, ChefApiErrorCode>>;
 
@@ -286,7 +300,10 @@ export interface MoveSessionResponse {
 export interface CancelSessionsResponse {
   cancelled: string[];
   alreadyCancelled: string[];
-  /** Las que tenían algún cobro: la app ofrece pasar la semana al final de la reserva o devolverlo. */
+  /**
+   * Las de la lista con algún cobro (canceladas ahora, con allowWithPayments, o antes): esperan su
+   * devolución. Pasarlas al final de la reserva se ofrece antes de cancelar (409 hasPayments).
+   */
   withPayments: string[];
   hadPayments: boolean;
 }
@@ -306,14 +323,15 @@ export type ChefErrorCode =
   | "requestNotNew"
   | "sessionNotMovable"
   | "invalidTransition"
+  | "hasPayments"
   | "conflict"
   | "server"
   | "unavailable";
 
-/** Cuerpo de un error: `errors` por campo (400) o un `error` con, según el caso, la fecha, el estado o la sesión. */
+/** Cuerpo de un error: `errors` por campo (400) o un `error` con, según el caso, la fecha, el estado o las sesiones. */
 export type ChefErrorBody =
   | { errors: ChefApiErrors; date?: string }
-  | { error: ChefErrorCode; date?: string; status?: string; sessionId?: string };
+  | { error: ChefErrorCode; date?: string; status?: string; sessionId?: string; sessionIds?: string[] };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -559,6 +577,9 @@ export function parseBookingRequest(input: unknown, opts: { today: string }): Ch
     absent(input[field]) ? 0 : readInt(errors, field, input[field], 0, max) ?? 0;
   const portions = optionalInt("portions", MAX_PORTIONS);
   const groceriesEstCents = optionalInt("groceriesEstCents", MAX_CENTS);
+  // El precio lo fija Evelyn al confirmar y ninguna ruta lo cambia después: sin él no se crea nada
+  // (0 vale: sin cargo). En el dryRun puede faltar (las semanas salen con 0).
+  if (absent(input["serviceTotalCents"]) && !dryRun) errors.serviceTotalCents = "required";
   const serviceTotalCents = optionalInt("serviceTotalCents", MAX_CENTS);
 
   let requestKey: string | null = null;
@@ -631,13 +652,20 @@ export function parseCancelSessionsRequest(input: unknown): ChefParseResult<Norm
   else if (!raw.every((id) => typeof id === "string" && isUuid(id))) errors.sessionIds = "invalid";
   else sessionIds = [...new Set(raw.map((id) => String(id).toLowerCase()))];
 
-  let reason = DEFAULT_CANCEL_REASON;
+  let reason: CancelReason = DEFAULT_CANCEL_REASON;
   const rawReason = input["reason"];
   if (!absent(rawReason)) {
-    if (typeof rawReason === "string" && CANCEL_REASON_PATTERN.test(rawReason)) reason = rawReason;
+    if (isOneOf(CANCEL_REASONS, rawReason)) reason = rawReason;
     else errors.reason = "invalid";
   }
 
+  let allowWithPayments = false;
+  const rawAllow = input["allowWithPayments"];
+  if (!absent(rawAllow)) {
+    if (typeof rawAllow === "boolean") allowWithPayments = rawAllow;
+    else errors.allowWithPayments = "invalid";
+  }
+
   if (Object.keys(errors).length > 0 || sessionIds === null) return failure(errors);
-  return { ok: true, value: { sessionIds, reason } };
+  return { ok: true, value: { sessionIds, reason, allowWithPayments } };
 }
