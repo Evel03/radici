@@ -26,6 +26,10 @@ dependencies:
   supabase_flutter: ^2.18.3
   # WhatsApp (wa.me), llamada (tel:) y email (mailto:) desde el detalle del pedido.
   url_launcher: ^6.3.3
+  # Solo en la web (lib/core/browser_web.dart, detrás de un import condicional):
+  # build.json sin caché, recargar y el aviso de Safari. Ya venía con
+  # url_launcher y shared_preferences.
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_test:

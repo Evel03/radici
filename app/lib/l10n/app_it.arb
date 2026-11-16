@@ -14,6 +14,18 @@
   "@backendNotConfigured": {
     "description": "Aviso discreto en desarrollo cuando no hay SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY."
   },
+  "updateAvailable": "C'è una nuova versione",
+  "@updateAvailable": {
+    "description": "Aviso arriba de todas las pantallas de /gestione/ cuando se publicó una versión nueva (el build.json publicado no es el de la app abierta). La app nunca recarga sola."
+  },
+  "updateReload": "Aggiorna",
+  "@updateReload": {
+    "description": "Botón del aviso de versión nueva: recarga la página y carga la versión nueva."
+  },
+  "installHint": "Per non dover accedere di nuovo, apri Radici dall'icona nella schermata Home.",
+  "@installHint": {
+    "description": "Tarjeta que se puede cerrar, en el iPhone o el iPad en el navegador (fuera de la app agregada a la pantalla de inicio): el botón del email abre Safari, que tiene otra sesión. «Schermata Home» es el nombre de iOS. Trata de «tú»."
+  },
 
   "homeHeadline": "Cucina di casa, a casa tua",
   "@homeHeadline": {
@@ -307,6 +319,16 @@
   "settingsAccountSection": "Account",
   "@settingsAccountSection": {
     "description": "Sección con la cuenta y el botón para salir."
+  },
+  "settingsVersion": "Versione {buildId}",
+  "@settingsVersion": {
+    "description": "Al pie de Impostazioni: qué versión de /gestione/ está abierta (el id del build, los 7 primeros caracteres del commit). No aparece en la app de iOS ni de Android.",
+    "placeholders": {
+      "buildId": {
+        "type": "String",
+        "example": "abc1234"
+      }
+    }
   },
   "languageOptionEs": "Español",
   "@languageOptionEs": {
