@@ -1,7 +1,7 @@
 # Despliega el backend de Supabase a producción: la configuración de Auth (desde config.toml y la
 # plantilla del código), migraciones (db push), la cuenta de la cocinera con su horario inicial la
-# primera vez, secretos de la Edge Function y la función public-request. Contrato:
-# docs/contracts/public-request.md §8.
+# primera vez, secretos de las Edge Functions y las funciones public-request y chef (el área de
+# Evelyn). Contratos: docs/contracts/public-request.md §8 y docs/contracts/chef-api.md §9.
 # - push a main que toque supabase/** (o este archivo) → producción
 # - workflow_dispatch → a mano, desde la pestaña Actions
 # Antes de tocar producción corre los tests de TypeScript y los de la base (pgTAP, base local).
@@ -22,7 +22,8 @@
 #     solo si hay más de una cocinera.
 #   · CHEF_LOCALE: idioma de los avisos a Evelyn; por defecto es (español).
 #   · ALLOWED_ORIGINS: https://radicicucina.app, sin las vistas previas *.pages.dev (se
-#     construyen con este mismo backend y crearían pedidos reales; contrato §4).
+#     construyen con este mismo backend y crearían pedidos reales; contrato §4). La usa también la
+#     función chef: cada origen de la lista puede llamarla con la sesión de Evelyn.
 # Orden del primer despliegue (contrato §10): antes de publicar la web (o una vista previa), las altas
 # apagadas y la cuenta de Evelyn creada y confirmada. Lo hace este workflow: Auth en cada despliegue,
 # y la cuenta (con CHEF_LOGIN_EMAIL y CHEF_DISPLAY_NAME) solo mientras no haya ninguna cocinera.
@@ -427,6 +428,38 @@ jobs:
         # --use-api: el bundle lo arma Supabase, sin Docker.
         run: supabase functions deploy public-request --project-ref "${SUPABASE_PROJECT_REF}" --use-api
 
+      # El área de Evelyn (docs/contracts/chef-api.md): reservas, mover y cancelar sesiones. Va después
+      # de db push porque llama a las funciones chef_* de la migración de reservas. verify_jwt = true
+      # sale de supabase/config.toml ([functions.chef]): la plataforma exige un JWT y la función valida
+      # además que sea de la cocinera. No tiene secretos propios: usa ALLOWED_ORIGINS (la misma variable
+      # que public-request, cargada en "Secretos de la función") y la URL y la clave secreta que pone
+      # Supabase. Cualquier origen de ALLOWED_ORIGINS puede llamarla con la sesión de Evelyn: avisa si
+      # hay alguno además del de PUBLIC_SITE_URL (por ejemplo, un dominio viejo).
+      - name: Desplegar chef
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PUBLIC_SITE_URL:-}" ] && [ -n "${ALLOWED_ORIGINS:-}" ]; then
+            site="${PUBLIC_SITE_URL%/}"
+            extra=()
+            IFS=',' read -ra origins <<< "${ALLOWED_ORIGINS}"
+            for origin in "${origins[@]}"; do
+              origin="$(xargs <<< "${origin}")"
+              origin="${origin%/}"
+              if [ -n "${origin}" ] && [ "${origin}" != "${site}" ]; then
+                extra+=("${origin}")
+              fi
+            done
+            if [ "${#extra[@]}" -gt 0 ]; then
+              echo "::warning::ALLOWED_ORIGINS tiene orígenes además de ${site} (${extra[*]}): desde ellos también se puede usar la función chef con la sesión de Evelyn. Dejar solo el del sitio (contrato chef-api.md §2)."
+            fi
+          fi
+          supabase functions deploy chef --project-ref "${SUPABASE_PROJECT_REF}" --use-api
+
       - name: Resumen
         if: env.HAS_SUPABASE == 'true'
         env:
@@ -435,5 +468,5 @@ jobs:
           {
             echo "### Backend desplegado"
             echo "- Migraciones aplicadas con db push"
-            echo "- Función: https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/public-request"
+            echo "- Funciones: https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/public-request y …/functions/v1/chef"
           } >> "${GITHUB_STEP_SUMMARY}"
