@@ -157,6 +157,48 @@ void main() {
     });
   }
 
+  // El teclado de un iPhone SE con predicciones y la barra de formulario ocupa
+  // unos 300 pt; el de un iPhone de 390×844, unos 336. Flutter web lo informa
+  // como viewInsets, y Scaffold no sube la barra de abajo.
+  for (final locale in const [Locale('es', 'ES'), Locale('it', 'IT')]) {
+    testWidgets('a 375×667, escribiendo el nombre con el teclado abierto, «Salva» queda arriba del teclado (${locale.languageCode})', (
+      tester,
+    ) async {
+      await openEditor(tester, size: const Size(375, 667), locale: locale);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+      await tester.enterText(byKey('recipe-name-it'), 'Polpette al sugo');
+      await tester.pump();
+
+      final save = byKey('recipe-save');
+      expect(save.hitTestable(), findsOneWidget);
+      expect(tester.getRect(save).bottom, lessThanOrEqualTo(667 - 300));
+      expect(tester.getSize(save).height, greaterThanOrEqualTo(48));
+      expect(
+        find.descendant(of: byKey('recipe-name-it'), matching: find.byType(EditableText)).hitTestable(),
+        findsOneWidget,
+        reason: 'el campo que se escribe sigue a la vista',
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('a 390×844, con el teclado abierto en una cantidad, «Salva» queda a mano y guarda', (tester) async {
+    await openEditor(tester, location: '/altro/piatti/$lasagneId', size: const Size(390, 844));
+    final quantity = byKey('recipe-ingredient-quantity-1');
+    await tapVisible(tester, quantity);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+    await tester.pumpAndSettle();
+    await tester.enterText(quantity, '650');
+    await tester.pump();
+
+    final save = byKey('recipe-save');
+    expect(tester.getRect(save).bottom, lessThanOrEqualTo(844 - 336));
+    await tester.tap(save.hitTestable());
+    await tester.pumpAndSettle();
+    expect(repository.saveCalls.single.ingredients[1].amount, (quantity: 650, unit: IngredientUnit.ml));
+  });
+
   testWidgets('sin nombre no guarda: marca el campo y avisa', (tester) async {
     await openEditor(tester);
     await save(tester);

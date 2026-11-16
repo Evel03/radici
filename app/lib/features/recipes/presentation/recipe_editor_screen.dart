@@ -2,9 +2,9 @@
 // el nombre en italiano (el que ven los clientes), los alérgenos, la dieta y
 // la temporada; después lo opcional: nombres en español e inglés,
 // conservación, ingredientes con su cantidad para 4 porciones y notas.
-// «Salva» queda abajo, siempre a mano. Un plato guardado se puede duplicar y
-// desactivar (nunca se borra). Solo muestra providers: la lógica está en
-// RecipeEditorController.
+// «Salva» queda abajo, siempre a mano (con el teclado abierto, justo arriba de
+// él). Un plato guardado se puede duplicar y desactivar (nunca se borra). Solo
+// muestra providers: la lógica está en RecipeEditorController.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -671,7 +671,10 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
   }
 }
 
-/// «Salva», abajo y a lo ancho: a mano con el pulgar.
+/// «Salva», abajo y a lo ancho: a mano con el pulgar. Con el teclado abierto
+/// queda justo arriba de él: Scaffold no sube la barra de abajo (solo achica
+/// el cuerpo), así que el margen del teclado lo pone la barra misma. Sigue
+/// siendo la barra de abajo para que los avisos salgan encima.
 class _SaveBar extends StatelessWidget {
   const _SaveBar({required this.saving, required this.onSave});
 
@@ -687,25 +690,28 @@ class _SaveBar extends StatelessWidget {
         color: theme.colorScheme.surface,
         border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
       ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Center(
-            heightFactor: 1,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  key: const ValueKey('recipe-save'),
-                  onPressed: saving ? null : onSave,
-                  child: saving
-                      ? const SizedBox.square(
-                          dimension: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(l10n.actionSave),
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Center(
+              heightFactor: 1,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    key: const ValueKey('recipe-save'),
+                    onPressed: saving ? null : onSave,
+                    child: saving
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(l10n.actionSave),
+                  ),
                 ),
               ),
             ),
