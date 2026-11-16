@@ -62,11 +62,25 @@ describe("renderPage con las páginas reales", () => {
     });
   }
 
-  it("la landing muestra el ejemplo calculado con el motor (vector 1)", () => {
+  it("la landing muestra el ejemplo calculado con el motor (vector 3: 4 semanas) y el precio por semana", () => {
     const out = renderPage(indexHtml, { i18n, config: baseConfig, pagePath: "/", partials });
-    expect(out).toMatch(/78,00\s€/);
+    expect(out).toMatch(/140,00\s€/);
+    expect(out).toMatch(/560,00\s€/);
+    expect(out).toMatch(/40,00\s€/);
     expect(out).toMatch(/63,00\s€/);
-    expect(out).toMatch(/141,00\s€/);
+    expect(out).toMatch(/150,00\s€ a settimana/);
+    expect(out).toContain("Nessun rinnovo automatico");
+  });
+
+  it("el ejemplo de la portada no se lee como una suma: servicio por semana, servicio de las semanas (destacado) y la compra aparte, al final", () => {
+    const out = renderPage(indexHtml, { i18n, config: baseConfig, pagePath: "/", partials });
+    const example = /<dl class="example">([\s\S]*?)<\/dl>/.exec(out)?.[1] ?? "";
+    const rows = [...example.matchAll(/<div class="([^"]+)">\s*<dt data-i18n="landing\.pricing\.(\w+)"/g)].map(([, cls = "", key = ""]) => ({ cls, key }));
+    expect(rows.map((row) => row.key)).toEqual(["exampleWeekly", "exampleTotal", "exampleGroceries"]);
+    // El destacado es el servicio, y la compra queda separada (no debajo del destacado como si fuera parte).
+    expect(rows[1]?.cls).toContain("example__row--total");
+    expect(rows[2]?.cls).toContain("example__row--apart");
+    expect(example).toMatch(/Spesa stimata a settimana, a[\s ]parte/);
   });
 
   it("las frases de los recuadros de la portada se leen: lista con nombre, sin aria-hidden encima", () => {

@@ -5,7 +5,10 @@ import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
 import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
+import { DEFAULT_PRICING, LIMITS } from "../engine.ts";
+import { formatCents } from "../lib/format.ts";
 import { DATE_WINDOW, MEAL_OPTIONS, REQUEST_TYPES } from "../request/model.ts";
+import { exampleQuote, EXAMPLE_INPUT } from "../request/quote.ts";
 import { FIELD_ORDER, fieldError } from "../request/validate.ts";
 import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang, type Lang } from "./core.ts";
 import en from "./en.json";
@@ -70,6 +73,13 @@ describe("claves usadas por la web", () => {
       [...requestHtml.matchAll(new RegExp(`name="${name}" value="([^"]+)"`, "g"))].map((m) => m[1] ?? "");
     expect(values("meals")).toEqual([...MEAL_OPTIONS]);
     expect(values("type")).toEqual([...REQUEST_TYPES]);
+    // Las semanas: de 1 a LIMITS.maxWeeks (el check requests_semanas_validas), la 1 marcada, y cada opción
+    // dice su número (no es un texto que traducir).
+    const weeks = Array.from({ length: LIMITS.maxWeeks }, (_, i) => String(i + 1));
+    expect(values("weeks")).toEqual(weeks);
+    for (const n of weeks) {
+      expect(requestHtml, n).toMatch(new RegExp(`name="weeks" value="${n}"${n === "1" ? " checked" : ""} /><span class="choice__title">${n}</span>`));
+    }
     // El día se elige en el calendario (con la disponibilidad de Evelyn): ni franja ni selector de fecha nativo.
     expect(requestHtml).not.toContain('name="slot"');
     expect(requestHtml).not.toContain('type="date"');
@@ -185,6 +195,79 @@ describe("ventana de la fecha preferida: se dice en semanas", () => {
       expect(i18n.t(error.key, error.params)).toContain(expected);
     });
   }
+});
+
+describe("precio por semana: los textos no escriben números, salen de DEFAULT_PRICING", () => {
+  // Decisiones del dueño del 15 y 16/11/2026. Si cambia una tarifa (DEFAULT_PRICING, que es la de la base
+  // por defecto), cambian todos los textos: ninguno la escribe a mano.
+  const PRICE_KEYS = [
+    "landing.pricing.serviceText",
+    "landing.pricing.exampleText",
+    "landing.pricing.exampleTotal",
+    "landing.pricing.exampleNote",
+    "landing.faq.aPrice",
+    "landing.faq.aWeeks",
+    "request.weeksHint",
+    "request.quote.serviceWeeks",
+    "request.quote.savings",
+    "request.quote.manualPeople",
+    "request.summary.serviceWeeks",
+    "errors.weeks",
+  ] as const;
+  const UNITS: Record<Lang, { weeks: string; people: string }> = {
+    it: { weeks: "settimane", people: "persone" },
+    es: { weeks: "semanas", people: "personas" },
+    en: { weeks: "weeks", people: "people" },
+  };
+  const NBSP = " ";
+
+  for (const lang of LANGS) {
+    it(`${lang}: sin números escritos a mano; entre el número y la unidad, espacio duro`, () => {
+      for (const key of PRICE_KEYS) {
+        const template = dicts[lang][key] ?? "";
+        expect(template, key).not.toBe("");
+        expect(template, key).not.toMatch(/\d/);
+        for (const unit of Object.values(UNITS[lang])) {
+          // "{maxPeople} persone" o "{weeks} settimane": el número no queda solo al final de la línea.
+          expect(template, key).not.toMatch(new RegExp(`\\} ${unit}`));
+        }
+      }
+      expect(dicts[lang]["landing.faq.aWeeks"]).toContain(`{maxWeeks}${NBSP}${UNITS[lang].weeks}`);
+      expect(dicts[lang]["landing.pricing.serviceText"]).toContain(`{maxPeople}${NBSP}${UNITS[lang].people}`);
+    });
+
+    it(`${lang}: los textos dicen las tarifas del motor (150 € y 140 € desde 4 semanas, hasta 5 personas)`, () => {
+      const i18n = createSiteI18n(lang, dicts[lang], "Radici");
+      const money = (cents: number): string => formatCents(cents, i18n.locale);
+      const service = i18n.t("landing.pricing.serviceText");
+      expect(service).toContain(money(DEFAULT_PRICING.weeklyRateCents));
+      expect(service).toContain(money(DEFAULT_PRICING.weeklyRateDiscountedCents));
+      expect(service).toContain(`${DEFAULT_PRICING.weeklyDiscountMinWeeks}${NBSP}${UNITS[lang].weeks}`);
+      expect(service).toContain(`${DEFAULT_PRICING.weeklyRateMaxPeople}${NBSP}${UNITS[lang].people}`);
+      expect(i18n.t("landing.faq.aWeeks")).toContain(`${LIMITS.maxWeeks}${NBSP}${UNITS[lang].weeks}`);
+      expect(i18n.t("request.weeksHint")).toContain(money(DEFAULT_PRICING.weeklyRateDiscountedCents));
+      // El ejemplo de la portada sale del motor: 4 semanas a 140 €, 560 € y 40 € de ahorro.
+      const example = exampleQuote();
+      expect(i18n.t("landing.pricing.exampleText")).toContain(`${EXAMPLE_INPUT.weeks}${NBSP}${UNITS[lang].weeks}`);
+      expect(i18n.t("landing.pricing.exampleWeeklyValue")).toBe(money(example.weeklyServiceCents));
+      expect(i18n.t("landing.pricing.exampleTotalValue")).toBe(money(example.serviceCents));
+      expect(i18n.t("landing.pricing.exampleNote")).toContain(money(example.savingsCents));
+      expect(i18n.t("landing.pricing.exampleGroceriesValue")).toBe(money(example.groceriesEstCents));
+      expect(i18n.t("request.quote.savings", { amount: money(example.savingsCents) })).toContain(money(DEFAULT_PRICING.weeklyRateCents));
+    });
+  }
+
+  it("«Nessun abbonamento» pasa a «nessun rinnovo automatico», y sus pares en es y en", () => {
+    const expected: Record<Lang, { now: string; before: RegExp }> = {
+      it: { now: "Nessun rinnovo automatico, nessun costo nascosto", before: /abbonament/i },
+      es: { now: "Sin renovación automática", before: /suscripci/i },
+      en: { now: "No automatic renewal", before: /subscription/i },
+    };
+    for (const lang of LANGS) {
+      expect(dicts[lang]["landing.pricing.intro"], lang).toContain(expected[lang].now);
+      expect(JSON.stringify(dicts[lang]), lang).not.toMatch(expected[lang].before);
+    }
+  });
 });
 
 describe("privacy", () => {

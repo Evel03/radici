@@ -16,6 +16,7 @@ Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y est
 - Dinero siempre en centavos (int). Nunca double para importes. La fórmula de presupuesto usa solo enteros.
 - Fechas y horas de negocio en Europe/Rome. Guardar timestamptz.
 - Presupuesto: fuente de verdad `quote.ts`; la copia Dart (`app/lib/features/quote/`) es vista previa y pasa los mismos vectores.
+- Precio por semana (15 y 16/11/2026, SPEC §5.1): pedido semanal de 1 a 8 semanas, servicio por semana (descuento desde `weekly_discount_min_weeks`), traslado incluido y compra aparte; sin precio automático con más de `weekly_rate_max_people` personas o en `extra`. `DEFAULT_PRICING` es el valor por defecto de `chef_settings` (un test lo exige): la web calcula con él, el servidor con las tarifas de la cocinera. El tiempo de cocina no entra en el precio, solo en los horarios.
 - Horarios: `get_free_slots()` y `get_free_days()` en SQL, sobre un generador común (`private.free_slot_candidates`). Su regla de choque es idéntica a `no_overlap` (margen de un solo lado). Solo las ejecuta `service_role`: la web lee los días por `public-request` (`GET …/availability`), nunca por RPC anónima. Horario inicial: lunes a viernes de 9 a 15 (15/11/2026), hasta que la app tenga editor.
 - Presupuestos enviados = sesiones `held` con `hold_until`, protegidas por `no_overlap`.
 - Estados de sesión y pagos solo cambian vía Edge Functions o webhooks de Stripe, nunca desde la app.

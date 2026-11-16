@@ -74,6 +74,24 @@
               <p class="field__error" id="err-type" hidden></p>
             </fieldset>
 
+            <!-- Semanas del pedido semanal (1 a LIMITS.maxWeeks, el test de i18n compara las opciones): un menú y
+                 una sesión por semana. Con "extra" se oculta y se manda 1. -->
+            <fieldset class="panel" id="weeks-panel" aria-describedby="hint-weeks err-weeks">
+              <legend class="panel__title" data-i18n="request.weeksLegend"></legend>
+              <p class="field__hint" id="hint-weeks" data-i18n="request.weeksHint"></p>
+              <div class="choices choices--weeks">
+                <label class="choice choice--number"><input type="radio" name="weeks" value="1" checked /><span class="choice__title">1</span></label>
+                <label class="choice choice--number"><input type="radio" name="weeks" value="2" /><span class="choice__title">2</span></label>
+                <label class="choice choice--number"><input type="radio" name="weeks" value="3" /><span class="choice__title">3</span></label>
+                <label class="choice choice--number"><input type="radio" name="weeks" value="4" /><span class="choice__title">4</span></label>
+                <label class="choice choice--number"><input type="radio" name="weeks" value="5" /><span class="choice__title">5</span></label>
+                <label class="choice choice--number"><input type="radio" name="weeks" value="6" /><span class="choice__title">6</span></label>
+                <label class="choice choice--number"><input type="radio" name="weeks" value="7" /><span class="choice__title">7</span></label>
+                <label class="choice choice--number"><input type="radio" name="weeks" value="8" /><span class="choice__title">8</span></label>
+              </div>
+              <p class="field__error" id="err-weeks" hidden></p>
+            </fieldset>
+
             <fieldset class="panel" aria-describedby="err-people">
               <legend class="panel__title" data-i18n="request.peopleLegend"></legend>
               <div class="steppers">
@@ -165,12 +183,18 @@
                   <li><span class="calendar__swatch"></span><span data-i18n="request.calendar.available"></span></li>
                   <li><span class="calendar__swatch calendar__swatch--unavailable"></span><span data-i18n="request.calendar.unavailable"></span></li>
                   <li><span class="calendar__swatch calendar__swatch--selected"></span><span data-i18n="request.calendar.selected"></span></li>
+                  <li id="calendar-legend-repeat" hidden><span class="calendar__swatch calendar__swatch--repeat"></span><span data-i18n="request.calendar.repeat"></span></li>
                 </ul>
                 <p class="calendar__status" id="calendar-status" role="status"></p>
                 <p class="calendar__chosen" id="calendar-chosen" hidden>
                   <span id="calendar-chosen-text"></span>
                   <button class="calendar__clear" id="calendar-clear" type="button" data-i18n="request.calendar.clear"></button>
                 </p>
+                <!-- Con más de una semana: el mismo día de cada semana siguiente, con su disponibilidad. -->
+                <div class="calendar__sessions" id="calendar-sessions" hidden>
+                  <p class="calendar__sessions-title" id="calendar-sessions-title" data-i18n="request.calendar.sessionsTitle"></p>
+                  <ol class="calendar__session-list" id="calendar-session-list" aria-labelledby="calendar-sessions-title"></ol>
+                </div>
                 <p class="field__hint" id="hint-preferredDate" data-i18n="request.dateHint"></p>
                 <p class="field__error" id="err-preferredDate" hidden></p>
                 <input id="preferredDate" name="preferredDate" type="hidden" value="" />
@@ -278,22 +302,28 @@
 
           <aside id="quote" class="quote" aria-labelledby="quote-title">
             <h2 id="quote-title" class="quote__title" data-i18n="request.quote.title"></h2>
+            <!-- Lo que se ve y los rótulos que dependen del pedido (semanas, semana o sesión) los decide
+                 quoteBoxView (src/request/quote-box.ts). El servicio y su ahorro primero; la compra, aparte. -->
             <div id="quote-body">
+              <p id="q-manual" class="quote__manual" aria-live="polite" hidden></p>
               <dl class="quote__list">
-                <div class="quote__row quote__row--total">
-                  <dt data-i18n="request.quote.total"></dt>
+                <div class="quote__row quote__row--total" id="q-total-row">
+                  <dt id="q-total-label"></dt>
                   <dd id="q-total" aria-live="polite"></dd>
                 </div>
-                <div class="quote__row">
-                  <dt data-i18n="request.quote.service"></dt>
-                  <dd id="q-service"></dd>
+                <div class="quote__row" id="q-weekly-row">
+                  <dt data-i18n="request.quote.weekly"></dt>
+                  <dd id="q-weekly"></dd>
                 </div>
+              </dl>
+              <p id="q-savings" class="quote__savings" hidden></p>
+              <dl class="quote__list quote__list--apart">
                 <div class="quote__row">
-                  <dt data-i18n="request.quote.groceries"></dt>
+                  <dt id="q-groceries-label"></dt>
                   <dd id="q-groceries"></dd>
                 </div>
                 <div class="quote__row quote__row--portions">
-                  <dt data-i18n="request.quote.portions"></dt>
+                  <dt id="q-portions-label"></dt>
                   <dd id="q-portions"></dd>
                 </div>
               </dl>

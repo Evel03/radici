@@ -11,16 +11,33 @@
 // HTML simple con estilos en línea, sin imágenes remotas ni seguimiento, más texto plano. Con la
 // identidad de la web (logotipo en texto, paleta del manual de marca) y sin fuentes remotas.
 // Importes con aritmética entera; fechas sin zona horaria (son días de calendario).
+// Precio por semana (SPEC §5.1): con precio automático, el servicio por semana, el de todas las semanas
+// y el ahorro; sin él, quién prepara el presupuesto. La compra estimada siempre aparte, por el ticket.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
-import type { Locale, Meal, RequestType, Slot } from "./public_request.ts";
+import { weeklyDates, type Locale, type Meal, type RequestType, type Slot } from "./public_request.ts";
+import type { NoAutoPriceReason } from "./quote.ts";
 
-export interface EstimateSummary {
-  portions: number;
-  cookMinutes: number;
-  serviceCents: number;
-  groceriesEstCents: number;
-  totalCents: number;
-}
+/** Lo que el email dice del precio: la estimación del motor con las tarifas de la cocinera. */
+export type EstimateSummary =
+  | {
+      autoPrice: true;
+      /** Servicio de cada semana. */
+      weeklyServiceCents: number;
+      /** Servicio de todas las semanas. */
+      serviceCents: number;
+      savingsCents: number;
+      /** La tarifa por semana sin descuento: frente a qué es el ahorro. */
+      regularWeeklyCents: number;
+      /** Compra estimada de una semana (o de la sesión). */
+      groceriesEstCents: number;
+    }
+  | {
+      autoPrice: false;
+      reason: NoAutoPriceReason;
+      /** Hasta cuántas personas hay precio automático: por qué este pedido no lo tiene. */
+      maxPeople: number;
+      groceriesEstCents: number;
+    };
 
 /**
  * Qué contestó el cliente a la pregunta de alergias, sin decir cuáles:
@@ -48,7 +65,9 @@ export interface RequestSummary {
   kids: number;
   days: number;
   meals: readonly Meal[];
-  /** "AAAA-MM-DD" o null. */
+  /** Semanas del pedido semanal (una sesión por semana); 1 en una sesión extra. */
+  weeks: number;
+  /** "AAAA-MM-DD" o null: el día de la primera semana. Las siguientes, el mismo día de cada semana. */
   preferredDate: string | null;
   slot: Slot;
   /** Qué contestó sobre alergias, nunca cuáles. */
@@ -97,20 +116,33 @@ interface Messages {
   kids: (n: number) => string;
   join: (a: string, b: string) => string;
   months: readonly string[];
+  /** Los meses abreviados, como los da Intl (it-IT, es-ES, en-GB): para las fechas de las semanas siguientes. */
+  monthsShort: readonly string[];
   weekdays: readonly string[];
   longDate: (weekday: string, day: number, month: string, year: number) => string;
   labels: {
     type: string;
+    weeks: string;
     people: string;
     days: string;
+    /** Los días de un pedido semanal son de cada semana. */
+    daysPerWeek: string;
     meals: string;
     date: string;
+    /** Las fechas de las semanas siguientes (el mismo día de cada semana). */
+    nextDates: string;
     slot: string;
     service: string;
+    weeklyService: string;
+    /** El servicio de todas las semanas (más de una). */
+    serviceWeeks: (weeks: number) => string;
+    savings: string;
     groceries: string;
-    total: string;
+    groceriesWeekly: string;
     reference: string;
   };
+  /** "40,00 € rispetto a 150,00 € a settimana". */
+  savingsValue: (savings: string, regular: string) => string;
   noDate: string;
   estimateTitle: string;
   estimateNote: string;
@@ -119,6 +151,8 @@ interface Messages {
     preheader: (chef: string) => string;
     greeting: (first: string) => string;
     intro: (chef: string) => string;
+    /** Sin precio automático: quién prepara el presupuesto del servicio, y por qué. */
+    noAutoPrice: Readonly<Record<NoAutoPriceReason, (chef: string, maxPeople: number) => string>>;
     summaryTitle: string;
     /**
      * Confirmó que nadie tiene alergias: se lo repite, para que vea si se equivocó. Con alergias escritas
@@ -145,6 +179,8 @@ interface Messages {
     yes: string;
     no: string;
     summaryTitle: string;
+    /** Sin precio automático: que prepare ella el presupuesto, y por qué. */
+    noAutoPrice: Readonly<Record<NoAutoPriceReason, (maxPeople: number) => string>>;
     /** Una línea por respuesta: nadie tiene, las ve en la app, o que pregunte (pedido sin respuesta). */
     allergies: Readonly<Record<AllergyAnswer, string>>;
     notes: string;
@@ -162,28 +198,41 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
     kids: (n) => (n === 1 ? "1 bambino" : `${n} bambini`),
     join: (a, b) => `${a} e ${b}`,
     months: ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"],
+    monthsShort: ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"],
     weekdays: ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"],
     longDate: (weekday, day, month, year) => `${weekday} ${day} ${month} ${year}`,
     labels: {
       type: "Tipo",
+      weeks: "Settimane",
       people: "Persone",
       days: "Giorni",
+      daysPerWeek: "Giorni a settimana",
       meals: "Pasti",
       date: "Giorno preferito",
+      nextDates: "Settimane successive",
       slot: "Fascia oraria",
       service: "Servizio",
+      weeklyService: "Servizio a settimana",
+      serviceWeeks: (weeks) => `Servizio, ${weeks} settimane`,
+      savings: "Risparmio",
       groceries: "Spesa stimata",
-      total: "Totale stimato",
+      groceriesWeekly: "Spesa stimata a settimana",
       reference: "Riferimento",
     },
+    savingsValue: (savings, regular) => `${savings} rispetto a ${regular} a settimana`,
     noDate: "Nessuna preferenza",
     estimateTitle: "Preventivo stimato",
-    estimateNote: "La spesa si paga al costo reale dello scontrino; questa è una stima.",
+    estimateNote: "La spesa si paga a parte, al costo reale dello scontrino. Questa è una stima.",
     client: {
       subject: (brand) => `${brand}: abbiamo ricevuto la tua richiesta`,
       preheader: (chef) => `${chef} ti contatterà al più presto.`,
       greeting: (first) => (first ? `Grazie, ${first}!` : "Grazie!"),
-      intro: (chef) => `Abbiamo ricevuto la tua richiesta. ${chef} ti contatterà al più presto per confermare giorno, orario e menù.`,
+      intro: (chef) =>
+        `Abbiamo ricevuto la tua richiesta. ${chef} ti contatterà al più presto per confermare giorni, orari, menù e prezzo finale.`,
+      noAutoPrice: {
+        people: (chef, maxPeople) => `Per più di ${maxPeople} persone il preventivo per il servizio te lo prepara ${chef}.`,
+        extra: (chef) => `Per eventi e sessioni extra il preventivo per il servizio te lo prepara ${chef}.`,
+      },
       summaryTitle: "La tua richiesta",
       allergiesNone: "Hai confermato che nessuno ha allergie, intolleranze alimentari o celiachia.",
       reply: "Vuoi aggiungere o cambiare qualcosa? Rispondi a questa email.",
@@ -205,6 +254,10 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       yes: "Sì",
       no: "No",
       summaryTitle: "Richiesta",
+      noAutoPrice: {
+        people: (maxPeople) => `Più di ${maxPeople} persone: senza prezzo automatico, prepara tu il preventivo.`,
+        extra: () => "Evento o sessione extra: senza prezzo automatico, prepara tu il preventivo.",
+      },
       allergies: {
         none: "Ha confermato che nessuno ha allergie, intolleranze o celiachia.",
         listed: "Ha indicato restrizioni alimentari: le trovi nell'app.",
@@ -223,28 +276,41 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
     kids: (n) => (n === 1 ? "1 niño" : `${n} niños`),
     join: (a, b) => `${a} y ${b}`,
     months: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+    monthsShort: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"],
     weekdays: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
     longDate: (weekday, day, month, year) => `${weekday}, ${day} de ${month} de ${year}`,
     labels: {
       type: "Tipo",
+      weeks: "Semanas",
       people: "Personas",
       days: "Días",
+      daysPerWeek: "Días por semana",
       meals: "Comidas",
       date: "Día preferido",
+      nextDates: "Semanas siguientes",
       slot: "Franja horaria",
       service: "Servicio",
+      weeklyService: "Servicio por semana",
+      serviceWeeks: (weeks) => `Servicio, ${weeks} semanas`,
+      savings: "Ahorro",
       groceries: "Compra estimada",
-      total: "Total estimado",
+      groceriesWeekly: "Compra estimada por semana",
       reference: "Referencia",
     },
+    savingsValue: (savings, regular) => `${savings} frente a ${regular} por semana`,
     noDate: "Sin preferencia",
     estimateTitle: "Presupuesto estimado",
-    estimateNote: "La compra se paga al precio real del ticket; esto es una estimación.",
+    estimateNote: "La compra se paga aparte, al precio real del ticket. Esto es una estimación.",
     client: {
       subject: (brand) => `${brand}: hemos recibido tu solicitud`,
       preheader: (chef) => `${chef} te contactará lo antes posible.`,
       greeting: (first) => (first ? `¡Gracias, ${first}!` : "¡Gracias!"),
-      intro: (chef) => `Hemos recibido tu solicitud. ${chef} te contactará lo antes posible para confirmar el día, el horario y el menú.`,
+      intro: (chef) =>
+        `Hemos recibido tu solicitud. ${chef} te contactará lo antes posible para confirmar los días, los horarios, el menú y el precio final.`,
+      noAutoPrice: {
+        people: (chef, maxPeople) => `Para más de ${maxPeople} personas, el presupuesto del servicio te lo prepara ${chef}.`,
+        extra: (chef) => `Para eventos y sesiones extra, el presupuesto del servicio te lo prepara ${chef}.`,
+      },
       summaryTitle: "Tu solicitud",
       allergiesNone: "Confirmaste que nadie tiene alergias, intolerancias alimentarias ni celiaquía.",
       reply: "¿Quieres añadir o cambiar algo? Responde a este email.",
@@ -266,6 +332,10 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       yes: "Sí",
       no: "No",
       summaryTitle: "Solicitud",
+      noAutoPrice: {
+        people: (maxPeople) => `Más de ${maxPeople} personas: sin precio automático, prepara tú el presupuesto.`,
+        extra: () => "Evento o sesión extra: sin precio automático, prepara tú el presupuesto.",
+      },
       allergies: {
         none: "Confirmó que nadie tiene alergias, intolerancias ni celiaquía.",
         listed: "Indicó restricciones alimentarias: las ves en la app.",
@@ -284,28 +354,41 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
     kids: (n) => (n === 1 ? "1 child" : `${n} children`),
     join: (a, b) => `${a} and ${b}`,
     months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    monthsShort: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"],
     weekdays: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
     longDate: (weekday, day, month, year) => `${weekday} ${day} ${month} ${year}`,
     labels: {
       type: "Type",
+      weeks: "Weeks",
       people: "People",
       days: "Days",
+      daysPerWeek: "Days per week",
       meals: "Meals",
       date: "Preferred day",
+      nextDates: "Following weeks",
       slot: "Time of day",
       service: "Service",
+      weeklyService: "Service per week",
+      serviceWeeks: (weeks) => `Service, ${weeks} weeks`,
+      savings: "Saving",
       groceries: "Estimated groceries",
-      total: "Estimated total",
+      groceriesWeekly: "Estimated groceries per week",
       reference: "Reference",
     },
+    savingsValue: (savings, regular) => `${savings} compared with ${regular} a week`,
     noDate: "No preference",
     estimateTitle: "Estimated quote",
-    estimateNote: "Groceries are charged at the actual receipt cost; this is an estimate.",
+    estimateNote: "Groceries are paid separately, at the actual receipt cost. This is an estimate.",
     client: {
       subject: (brand) => `${brand}: we've received your request`,
       preheader: (chef) => `${chef} will contact you as soon as possible.`,
       greeting: (first) => (first ? `Thank you, ${first}!` : "Thank you!"),
-      intro: (chef) => `We've received your request. ${chef} will contact you as soon as possible to confirm the day, time and menu.`,
+      intro: (chef) =>
+        `We've received your request. ${chef} will contact you as soon as possible to confirm the days, times, menu and final price.`,
+      noAutoPrice: {
+        people: (chef, maxPeople) => `For more than ${maxPeople} people, ${chef} will send you a quote for the service.`,
+        extra: (chef) => `For events and extra sessions, ${chef} will send you a quote for the service.`,
+      },
       summaryTitle: "Your request",
       allergiesNone: "You confirmed that nobody has any food allergies, intolerances or coeliac disease.",
       reply: "Want to add or change something? Just reply to this email.",
@@ -327,6 +410,10 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       yes: "Yes",
       no: "No",
       summaryTitle: "Request",
+      noAutoPrice: {
+        people: (maxPeople) => `More than ${maxPeople} people: no automatic price, prepare the quote yourself.`,
+        extra: () => "Event or extra session: no automatic price, prepare the quote yourself.",
+      },
       allergies: {
         none: "They confirmed that nobody has any allergies, intolerances or coeliac disease.",
         listed: "They mentioned dietary restrictions: see them in the app.",
@@ -412,6 +499,18 @@ export function formatDateLong(iso: string, locale: Locale): string {
   if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return iso;
   const messages = MESSAGES[locale];
   return messages.longDate(messages.weekdays[date.getUTCDay()] ?? "", day, messages.months[month - 1] ?? "", year);
+}
+
+/**
+ * Fecha corta, como en la web y en la app: "2026-11-30" → "30 nov" / "30 nov" / "30 Nov"; con el año si no
+ * es `sameYear` ("4 gen 2027").
+ */
+export function formatDayMonth(iso: string, locale: Locale, sameYear: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  const year = Number(match[1]);
+  const month = MESSAGES[locale].monthsShort[Number(match[2]) - 1] ?? "";
+  return `${Number(match[3])} ${month}${year === sameYear ? "" : ` ${year}`}`;
 }
 
 export function formatPeople(adults: number, kids: number, locale: Locale): string {
@@ -628,36 +727,66 @@ function render(doc: EmailDocument): RenderedEmail {
 
 function summaryRows(summary: RequestSummary, messages: Messages, locale: Locale): Row[] {
   const meals = summary.meals.length > 1 ? messages.meals.both : messages.meals[summary.meals[0] ?? "dinner"];
-  const rows: Row[] = [
-    { label: messages.labels.type, value: messages.types[summary.type] },
+  const rows: Row[] = [{ label: messages.labels.type, value: messages.types[summary.type] }];
+  // Las semanas son del pedido semanal: una sesión extra es una sola.
+  if (summary.type === "week") rows.push({ label: messages.labels.weeks, value: String(summary.weeks) });
+  rows.push(
     { label: messages.labels.people, value: formatPeople(summary.adults, summary.kids, locale) },
-    { label: messages.labels.days, value: String(summary.days) },
+    { label: summary.type === "week" ? messages.labels.daysPerWeek : messages.labels.days, value: String(summary.days) },
     { label: messages.labels.meals, value: meals },
     { label: messages.labels.date, value: summary.preferredDate ? formatDateLong(summary.preferredDate, locale) : messages.noDate },
-  ];
+  );
+  // Una sesión por semana, el mismo día: las fechas de las semanas siguientes (Evelyn las confirma). Cortas
+  // y con «·» entre ellas; en el HTML, con espacios duros dentro de cada una y antes del «·» (como la web y
+  // la app): en el teléfono el renglón se corta después de un «·», nunca en medio de una fecha.
+  if (summary.preferredDate && summary.weeks > 1) {
+    const [first, ...next] = weeklyDates(summary.preferredDate, summary.weeks);
+    const year = Number(first?.slice(0, 4));
+    const dates = next.map((date) => formatDayMonth(date, locale, year));
+    rows.push({
+      label: messages.labels.nextDates,
+      value: dates.join(" · "),
+      valueHtml: dates.map((date) => escapeHtml(date).replace(/ /g, "&nbsp;")).join("&nbsp;· "),
+    });
+  }
   // La web ya no pregunta la franja (manda "any"): solo se muestra si el pedido trae mañana o tarde.
   if (summary.slot !== "any") rows.push({ label: messages.labels.slot, value: messages.slots[summary.slot] });
   return rows;
 }
 
-function estimateBlocks(summary: RequestSummary, messages: Messages, locale: Locale): Block[] {
+/** Fila con el importe destacado (el servicio que se paga). */
+function strongRow(label: string, cents: number, locale: Locale): Row {
+  const value = formatCents(cents, locale);
+  return { label, value, valueHtml: `<strong>${escapeHtml(value)}</strong>` };
+}
+
+/**
+ * El precio: con precio automático, el servicio (por semana y de todas las semanas, y el ahorro si hay
+ * descuento); sin él, `noPrice` dice quién prepara el precio. La compra estimada siempre, aparte.
+ */
+function estimateBlocks(summary: RequestSummary, messages: Messages, locale: Locale, noPrice: string): Block[] {
   const { estimate } = summary;
-  return [
-    { kind: "title", text: messages.estimateTitle },
-    {
-      kind: "rows",
-      rows: [
-        { label: messages.labels.service, value: formatCents(estimate.serviceCents, locale) },
-        { label: messages.labels.groceries, value: formatCents(estimate.groceriesEstCents, locale) },
-        {
-          label: messages.labels.total,
-          value: formatCents(estimate.totalCents, locale),
-          valueHtml: `<strong>${escapeHtml(formatCents(estimate.totalCents, locale))}</strong>`,
-        },
-      ],
-    },
-    { kind: "note", text: messages.estimateNote },
-  ];
+  const money = (cents: number): string => formatCents(cents, locale);
+  const rows: Row[] = [];
+  if (estimate.autoPrice) {
+    if (summary.weeks > 1) {
+      rows.push({ label: messages.labels.weeklyService, value: money(estimate.weeklyServiceCents) });
+      rows.push(strongRow(messages.labels.serviceWeeks(summary.weeks), estimate.serviceCents, locale));
+    } else {
+      rows.push(strongRow(messages.labels.service, estimate.serviceCents, locale));
+    }
+    if (estimate.savingsCents > 0) {
+      rows.push({ label: messages.labels.savings, value: messages.savingsValue(money(estimate.savingsCents), money(estimate.regularWeeklyCents)) });
+    }
+  }
+  rows.push({
+    label: summary.type === "week" ? messages.labels.groceriesWeekly : messages.labels.groceries,
+    value: money(estimate.groceriesEstCents),
+  });
+  const blocks: Block[] = [{ kind: "title", text: messages.estimateTitle }];
+  if (!estimate.autoPrice) blocks.push({ kind: "paragraph", text: noPrice });
+  blocks.push({ kind: "rows", rows }, { kind: "note", text: messages.estimateNote });
+  return blocks;
 }
 
 /** Confirmación al cliente, en su idioma. */
@@ -673,7 +802,10 @@ export function renderClientConfirmation(input: ClientConfirmationInput, locale:
   // De las alergias, solo "nadie tiene", para que vea si se equivocó. "Hay alergias" no sale hacia una
   // dirección que nadie verificó (es un dato de salud); sin respuesta, tampoco se dice nada.
   if (summary.allergies === "none") blocks.push({ kind: "note", text: messages.client.allergiesNone });
-  blocks.push(...estimateBlocks(summary, messages, locale));
+  const noPrice = summary.estimate.autoPrice
+    ? ""
+    : messages.client.noAutoPrice[summary.estimate.reason](input.chefName, summary.estimate.maxPeople);
+  blocks.push(...estimateBlocks(summary, messages, locale, noPrice));
   blocks.push({ kind: "paragraph", text: messages.client.reply });
   if (privacyUrl) blocks.push({ kind: "link", label: messages.client.privacy, href: privacyUrl });
   blocks.push({ kind: "note", text: `${messages.labels.reference}: ${summary.requestId.slice(0, 8)}` });
@@ -719,7 +851,8 @@ export function renderChefNotification(input: ChefNotificationInput, locale: Loc
     { kind: "note", text: messages.chef.allergies[summary.allergies] },
   ];
   if (input.hasNotes) blocks.push({ kind: "note", text: messages.chef.notes });
-  blocks.push(...estimateBlocks(summary, messages, locale));
+  const noPrice = summary.estimate.autoPrice ? "" : messages.chef.noAutoPrice[summary.estimate.reason](summary.estimate.maxPeople);
+  blocks.push(...estimateBlocks(summary, messages, locale, noPrice));
   if (inboxUrl) blocks.push({ kind: "button", label: messages.chef.button, href: inboxRequestUrl(inboxUrl, summary.requestId) });
 
   return render({

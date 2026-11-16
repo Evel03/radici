@@ -88,6 +88,72 @@ void main() {
     expect(estimate.totalCents, 14100);
   });
 
+  test('la estimación de antes del precio por semana: servicio por hora, sin autoPrice, con precio', () {
+    final estimate = ChefRequest.fromJson(requestRow()).estimate!;
+    expect(estimate.isLegacy, isTrue);
+    expect(estimate.hasAutoPrice, isTrue);
+    expect(estimate.weeks, isNull);
+    expect(ChefRequest.fromJson(requestRow()).weeks, 1);
+  });
+
+  test('semanas del pedido (requests.weeks); sin la columna, 1', () {
+    expect(ChefRequest.fromJson(requestRow(weeks: 4)).weeks, 4);
+    expect(ChefRequest.fromJson(requestRow()..remove('weeks')).weeks, 1);
+    expect(chefRequestColumns, contains('weeks'));
+  });
+
+  test('la estimación con precio por semana: semanas, servicio por semana, total y ahorro', () {
+    final estimate = ChefRequest.fromJson(
+      requestRow(
+        weeks: 4,
+        estimate: const {
+          'weeks': 4,
+          'portions': 20,
+          'recipes': 3,
+          'cookMinutes': 180,
+          'groceriesEstCents': 6300,
+          'preauthCents': 7245,
+          'autoPrice': true,
+          'weeklyServiceCents': 14000,
+          'serviceCents': 56000,
+          'savingsCents': 4000,
+          'totalCents': 81200,
+          'pricing': {'weeklyRateCents': 15000, 'weeklyRateMaxPeople': 5},
+        },
+      ),
+    ).estimate!;
+    expect(estimate.isLegacy, isFalse);
+    expect(estimate.hasAutoPrice, isTrue);
+    expect(estimate.weeks, 4);
+    expect(estimate.weeklyServiceCents, 14000);
+    expect(estimate.serviceCents, 56000);
+    expect(estimate.savingsCents, 4000);
+    expect(estimate.groceriesEstCents, 6300);
+    expect(estimate.maxPeople, 5);
+    expect(estimate.reason, isNull);
+  });
+
+  test('sin precio automático: el motivo y la compra, sin servicio', () {
+    RequestEstimate read(String reason) => RequestEstimate.fromJson({
+      'weeks': 1,
+      'portions': 30,
+      'recipes': 3,
+      'cookMinutes': 210,
+      'groceriesEstCents': 9450,
+      'autoPrice': false,
+      'reason': reason,
+      'pricing': {'weeklyRateMaxPeople': 6},
+    });
+    final people = read('people');
+    expect(people.hasAutoPrice, isFalse);
+    expect(people.reason, NoAutoPriceReason.people);
+    expect(people.maxPeople, 6);
+    expect(people.serviceCents, isNull);
+    expect(people.isEmpty, isFalse);
+    expect(read('extra').reason, NoAutoPriceReason.extra);
+    expect(read('otro').reason, isNull, reason: 'un motivo desconocido no rompe');
+  });
+
   test('estimación parcial o con números raros: lo que falta queda en null', () {
     final estimate = RequestEstimate.fromJson(const {
       'totalCents': 14100.0,

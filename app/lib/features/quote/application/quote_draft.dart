@@ -19,9 +19,10 @@ enum MealPlan {
 }
 
 /// Contadores que el cliente ajusta con + y −.
-enum QuoteCounter { adults, kids, days }
+enum QuoteCounter { adults, kids, days, weeks }
 
-/// Borrador del pedido mientras el cliente lo arma.
+/// Borrador del pedido mientras el cliente lo arma: una semana de comidas
+/// (la calculadora no ofrece la sesión extra, que no tiene precio automático).
 ///
 /// Las reglas de límites viven acá (no en los widgets), así los botones
 /// se deshabilitan exactamente cuando el motor rechazaría el valor.
@@ -30,8 +31,13 @@ abstract class QuoteDraft with _$QuoteDraft {
   const factory QuoteDraft({
     required int adults,
     required int kids,
+
+    /// Días de comidas de cada semana.
     required int days,
     required MealPlan mealPlan,
+
+    /// Semanas del pedido (1 a [QuoteLimits.maxWeeks]): una sesión por semana.
+    required int weeks,
   }) = _QuoteDraft;
 
   const QuoteDraft._();
@@ -42,25 +48,30 @@ abstract class QuoteDraft with _$QuoteDraft {
     kids: 2,
     days: 5,
     mealPlan: MealPlan.dinner,
+    weeks: 1,
   );
 
   QuoteInput toInput() => QuoteInput(
+    type: QuoteType.week,
     adults: adults,
     kids: kids,
     days: days,
     meals: mealPlan.mealsPerDay,
+    weeks: weeks,
   );
 
   int valueOf(QuoteCounter counter) => switch (counter) {
     QuoteCounter.adults => adults,
     QuoteCounter.kids => kids,
     QuoteCounter.days => days,
+    QuoteCounter.weeks => weeks,
   };
 
   bool canIncrement(QuoteCounter counter) => switch (counter) {
     QuoteCounter.adults => adults < QuoteLimits.maxPeople,
     QuoteCounter.kids => kids < QuoteLimits.maxPeople,
     QuoteCounter.days => days < QuoteLimits.maxDays,
+    QuoteCounter.weeks => weeks < QuoteLimits.maxWeeks,
   };
 
   /// Tiene que quedar al menos una persona (adultos + niños ≥ 1).
@@ -68,11 +79,13 @@ abstract class QuoteDraft with _$QuoteDraft {
     QuoteCounter.adults => adults > 0 && adults + kids > 1,
     QuoteCounter.kids => kids > 0 && adults + kids > 1,
     QuoteCounter.days => days > 1,
+    QuoteCounter.weeks => weeks > 1,
   };
 
   QuoteDraft withValue(QuoteCounter counter, int value) => switch (counter) {
     QuoteCounter.adults => copyWith(adults: value),
     QuoteCounter.kids => copyWith(kids: value),
     QuoteCounter.days => copyWith(days: value),
+    QuoteCounter.weeks => copyWith(weeks: value),
   };
 }

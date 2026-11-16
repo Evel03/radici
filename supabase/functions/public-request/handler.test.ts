@@ -4,13 +4,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AVAILABILITY_DAYS, AVAILABILITY_PATH, buildAvailabilityResponse } from "../_shared/availability.ts";
 import { hashSubject } from "../_shared/client_ip.ts";
-import { CONSENT_VERSION, PUBLIC_REQUEST_VERSION, type PublicRequestPayload } from "../_shared/public_request.ts";
+import { CONSENT_VERSION, PUBLIC_REQUEST_VERSION, publicEstimate, type PublicRequestPayload } from "../_shared/public_request.ts";
 import { DEFAULT_PRICING, calcQuote } from "../_shared/quote.ts";
 import { RESEND_API_URL } from "../_shared/resend.ts";
 import { TURNSTILE_VERIFY_URL } from "../_shared/turnstile.ts";
 import {
   AVAILABILITY_CACHE_CONTROL,
   AVAILABILITY_RATE_LIMITS,
+  CHEF_SETTINGS_COLUMNS,
   DEFAULT_CHEF_LOCALE,
   RATE_LIMITS,
   StoreError,
@@ -22,7 +23,6 @@ import {
   missingRequiredConfig,
   readConfig,
   resolveServiceKey,
-  responseEstimateFromStored,
   safeDbMessage,
   submitResultFromRpc,
   type ChefInfo,
@@ -71,6 +71,7 @@ function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPa
     kids: 2,
     days: 5,
     meals: ["dinner"],
+    weeks: 1,
     noAllergies: false,
     allergens: ["milk"],
     diets: [],
@@ -90,7 +91,11 @@ function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPa
   };
 }
 
-const CHEF: ChefInfo = { displayName: "Evelyn", pricing: { ...DEFAULT_PRICING, hourlyRateCents: 2500 } };
+// Tarifas distintas de las de la web (DEFAULT_PRICING): el servidor calcula con las de la cocinera.
+const CHEF: ChefInfo = {
+  displayName: "Evelyn",
+  pricing: { ...DEFAULT_PRICING, weeklyRateCents: 16000, weeklyRateDiscountedCents: 15000 },
+};
 
 /** Id del n-ésimo pedido guardado (el primero, REQUEST_ID). */
 function requestIdFor(n: number): string {
@@ -475,17 +480,21 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.match(response.headers.get("content-type") ?? "", /^application\/json/);
 
-  const quote = calcQuote({ adults: 2, kids: 2, days: 5, meals: 1 }, CHEF.pricing);
-  assert.notEqual(quote.serviceCents, 7800, "con 25 €/h el servicio no es el del vector 1");
+  const quote = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 }, CHEF.pricing);
+  assert.ok(quote.autoPrice && quote.serviceCents === 16000, "con 160 € por semana el servicio no es el del vector 1");
   assert.deepEqual(await json(response), {
     requestId: REQUEST_ID,
     estimate: {
-      portions: quote.portions,
-      recipes: quote.recipes,
-      cookMinutes: quote.cookMinutes,
-      serviceCents: quote.serviceCents,
-      groceriesEstCents: quote.groceriesEstCents,
-      totalCents: quote.totalCents,
+      weeks: 1,
+      portions: 20,
+      recipes: 3,
+      cookMinutes: 180,
+      groceriesEstCents: 6300,
+      autoPrice: true,
+      weeklyServiceCents: 16000,
+      serviceCents: 16000,
+      savingsCents: 0,
+      totalCents: 22300,
     },
   });
 
@@ -496,6 +505,7 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
     kids: 2,
     days: 5,
     meals: ["dinner"],
+    weeks: 1,
     no_allergies: false,
     allergens: ["milk"],
     diets: [],
@@ -515,6 +525,112 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
     request_key: null,
   });
   assert.equal(background.length, 1, "los envíos van en segundo plano");
+});
+
+// ---------------------------------------------------------------------------
+// Precio por semana (contrato v3)
+// ---------------------------------------------------------------------------
+
+/** Texto de un email por destinatario (después de settle). */
+function emailText(run: Harness, to: string): string {
+  const call = run.fetchCalls.find((item) => item.url === RESEND_API_URL && (item.body as { to: string[] }).to[0] === to);
+  return String((call?.body as Record<string, unknown> | undefined)?.["text"] ?? "");
+}
+
+test("4 semanas: weeks a la base, estimación con el descuento de la cocinera y los emails con las semanas, las fechas y el precio", async () => {
+  const run = harness();
+  const response = await run.handle(post(payload({ weeks: 4 })));
+  assert.equal(response.status, 201);
+  const quote = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 4 }, CHEF.pricing);
+  assert.deepEqual((await json(response) as { estimate: unknown }).estimate, publicEstimate(quote));
+  assert.ok(quote.autoPrice && quote.weeklyServiceCents === 15000 && quote.serviceCents === 60000 && quote.savingsCents === 4000);
+  assert.equal(run.store.submitted[0]?.weeks, 4);
+  assert.deepEqual(run.store.submitted[0]?.estimate, { ...quote, pricing: CHEF.pricing });
+  await run.settle();
+  const chef = emailText(run, "evelyn@example.test");
+  for (const line of ["Semanas: 4", "Semanas siguientes: 1 nov · 8 nov · 15 nov", "Servicio por semana: 150,00 €",
+    "Servicio, 4 semanas: 600,00 €", "Ahorro: 40,00 € frente a 160,00 € por semana", "Compra estimada por semana: 63,00 €"]) {
+    assert.ok(chef.includes(line), `Evelyn: falta «${line}»`);
+  }
+  const client = emailText(run, "giulia.pii@example.test");
+  for (const line of ["Settimane: 4", "Settimane successive: 1 nov · 8 nov · 15 nov", "Servizio, 4 settimane: 600,00 €",
+    "Risparmio: 40,00 € rispetto a 160,00 € a settimana", "Spesa stimata a settimana: 63,00 €", "prezzo finale"]) {
+    assert.ok(client.includes(line), `cliente: falta «${line}»`);
+  }
+});
+
+test("versión 2 (la web de antes, sin weeks): se guarda de una semana con la estimación nueva", async () => {
+  const run = harness({ env: { EMAIL_TRANSPORT: "log" } });
+  const { weeks: _sinSemanas, ...v2 } = payload({ version: 2 });
+  const response = await run.handle(post(v2));
+  assert.equal(response.status, 201);
+  assert.equal(run.store.submitted[0]?.weeks, 1);
+  const body = (await json(response)) as { estimate: Record<string, unknown> };
+  // Las seis claves que lee la página de la versión 2 siguen en la respuesta.
+  for (const key of ["portions", "recipes", "cookMinutes", "serviceCents", "groceriesEstCents", "totalCents"]) {
+    assert.equal(typeof body.estimate[key], "number", key);
+  }
+  await run.settle();
+});
+
+test("semanas: sin el campo (versión 3), fuera de rango o en una sesión extra → 400 sin tocar la base", async () => {
+  const { handle, store } = harness();
+  const { weeks: _sinSemanas, ...missing } = payload();
+  for (const [body, errors] of [
+    [missing, { weeks: "required" }],
+    [payload({ weeks: 9 }), { weeks: "range" }],
+    [payload({ weeks: 0 }), { weeks: "range" }],
+    [payload({ type: "extra", weeks: 2 }), { weeks: "invalid" }],
+  ] as const) {
+    const response = await handle(post(body));
+    assert.equal(response.status, 400, JSON.stringify(errors));
+    assert.deepEqual(await json(response), { errors });
+  }
+  assert.equal(store.hits.length, 0);
+});
+
+test("sin precio automático (más personas que el tope de la cocinera o sesión extra): 201 sin claves de precio, se guarda así y los emails lo dicen", async () => {
+  // Con el tope de la cocinera, no el de DEFAULT_PRICING: con hasta 6 personas en sus tarifas (como Giulia
+  // en el seed), un pedido de 7 dice «más de 6».
+  const upTo6: ChefInfo = { ...CHEF, pricing: { ...CHEF.pricing, weeklyRateMaxPeople: 6 } };
+  for (const [overrides, reason, chefLine, clientLine, chef] of [
+    [{ adults: 3, kids: 3 }, "people", "Más de 5 personas: sin precio automático, prepara tú el presupuesto.",
+      "Per più di 5 persone il preventivo per il servizio te lo prepara Evelyn.", CHEF],
+    [{ adults: 4, kids: 3 }, "people", "Más de 6 personas: sin precio automático, prepara tú el presupuesto.",
+      "Per più di 6 persone il preventivo per il servizio te lo prepara Evelyn.", upTo6],
+    [{ type: "extra" as const }, "extra", "Evento o sesión extra: sin precio automático, prepara tú el presupuesto.",
+      "Per eventi e sessioni extra il preventivo per il servizio te lo prepara Evelyn.", CHEF],
+  ] as const) {
+    const run = harness();
+    run.store.chef = chef;
+    const response = await run.handle(post(payload(overrides)));
+    assert.equal(response.status, 201, reason);
+    const estimate = ((await json(response)) as { estimate: Record<string, unknown> }).estimate;
+    assert.equal(estimate["autoPrice"], false);
+    assert.equal(estimate["reason"], reason);
+    for (const key of ["weeklyServiceCents", "serviceCents", "savingsCents", "totalCents"]) {
+      assert.ok(!(key in estimate), `${reason}: el 201 no lleva ${key}`);
+      assert.ok(!(key in (run.store.submitted[0]?.estimate ?? {})), `${reason}: no se guarda ${key}`);
+    }
+    await run.settle();
+    assert.ok(emailText(run, "evelyn@example.test").includes(chefLine), `${reason}: Evelyn`);
+    assert.ok(emailText(run, "giulia.pii@example.test").includes(clientLine), `${reason}: cliente`);
+  }
+  // Con ese mismo tope, 6 personas sí tienen precio.
+  const six = harness();
+  six.store.chef = upTo6;
+  const priced = ((await json(await six.handle(post(payload({ adults: 3, kids: 3 }))))) as { estimate: Record<string, unknown> }).estimate;
+  assert.equal(priced["autoPrice"], true);
+  await six.settle();
+});
+
+test("tarifas de la cocinera que el motor no acepta: 500 quote_failed sin guardar nada", async () => {
+  const run = harness();
+  run.store.chef = { displayName: "Evelyn", pricing: { ...DEFAULT_PRICING, weeklyRateDiscountedCents: 99999 } };
+  const response = await run.handle(post(payload()));
+  assert.equal(response.status, 500);
+  assert.ok(run.logs.some((entry) => entry.event === "quote_failed"));
+  assert.equal(run.store.submitted.length, 0);
 });
 
 test("segundo plano: aviso a Evelyn en su idioma, confirmación al cliente en el suyo, WhatsApp y notificación marcada", async () => {
@@ -795,22 +911,39 @@ test("dos envíos simultáneos con la misma requestKey: los dos 201 iguales, un 
   assert.equal(whatsAppCalls(run).length, 1);
 });
 
-test("duplicado: responde con la estimación guardada aunque hoy las tarifas den otra", async () => {
+test("duplicado: responde con la estimación guardada aunque hoy las tarifas den otra (y aunque pida otras semanas)", async () => {
   const run = harness();
-  // El original se guardó con otras tarifas (o la cocinera las cambió después).
-  const stored = { portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300, totalCents: 14100, pricing: DEFAULT_PRICING };
+  // El original se guardó con las tarifas de entonces (o la cocinera las cambió después).
+  const original = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 4 }, DEFAULT_PRICING);
+  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: { ...original, pricing: DEFAULT_PRICING } });
+  const response = await run.handle(post(payload({ requestKey: REQUEST_KEY, weeks: 2 })));
+  await run.settle();
+  assert.equal(response.status, 201);
+  assert.deepEqual(await json(response), { requestId: REQUEST_ID, estimate: publicEstimate(original), duplicate: true });
+  assert.equal(run.fetchCalls.filter((call) => call.url !== TURNSTILE_VERIFY_URL).length, 0, "ni emails ni WhatsApp");
+  assert.deepEqual(run.store.marked, []);
+});
+
+test("duplicado de un pedido guardado antes del precio por semana: la estimación por hora, como una semana con precio", async () => {
+  const run = harness();
+  // La forma de requests.estimate de antes: calcQuote con la tarifa por hora, sin weeks ni autoPrice.
+  const stored = {
+    adultPortions: 10, kidPortions: 10, portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300,
+    preauthCents: 7245, holdCents: 15045, totalCents: 14100,
+    pricing: { hourlyRateCents: 2200, travelFeeCents: 1200, adultPortionCents: 380, kidPortionCents: 250, preauthBufferPct: 15, minCookMinutes: 90 },
+  };
   run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: stored });
   const response = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
-  await run.settle();
   assert.equal(response.status, 201);
   assert.deepEqual(await json(response), {
     requestId: REQUEST_ID,
-    estimate: { portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300, totalCents: 14100 },
+    estimate: {
+      weeks: 1, portions: 20, recipes: 3, cookMinutes: 180, groceriesEstCents: 6300,
+      autoPrice: true, weeklyServiceCents: 7800, serviceCents: 7800, savingsCents: 0, totalCents: 14100,
+    },
     duplicate: true,
   });
-  assert.notEqual(calcQuote({ adults: 2, kids: 2, days: 5, meals: 1 }, CHEF.pricing).serviceCents, 7800, "la de hoy sería otra");
-  assert.equal(run.fetchCalls.filter((call) => call.url !== TURNSTILE_VERIFY_URL).length, 0, "ni emails ni WhatsApp");
-  assert.deepEqual(run.store.marked, []);
+  assert.ok(!run.logs.some((entry) => entry.event === "stored_estimate_invalid"));
 });
 
 test("duplicado con una estimación guardada rota: responde con la calculada y lo avisa en el log", async () => {
@@ -818,8 +951,8 @@ test("duplicado con una estimación guardada rota: responde con la calculada y l
   run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: { totalCents: "x" } });
   const response = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
   assert.equal(response.status, 201);
-  const quote = calcQuote({ adults: 2, kids: 2, days: 5, meals: 1 }, CHEF.pricing);
-  assert.equal((await json(response) as { estimate: { totalCents: number } }).estimate.totalCents, quote.totalCents);
+  const quote = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 }, CHEF.pricing);
+  assert.deepEqual((await json(response) as { estimate: unknown }).estimate, publicEstimate(quote));
   assert.ok(run.logs.some((entry) => entry.event === "stored_estimate_invalid" && entry.level === "warn"));
 });
 
@@ -843,14 +976,6 @@ test("submitResultFromRpc: solo acepta {request_id uuid, duplicate bool, estimat
   assert.deepEqual(submitResultFromRpc({ request_id: REQUEST_ID, duplicate: false }), { requestId: REQUEST_ID, duplicate: false, storedEstimate: null });
   for (const bad of [REQUEST_ID, null, [], { request_id: "x", duplicate: false }, { request_id: REQUEST_ID }, { request_id: REQUEST_ID, duplicate: "no" }]) {
     assert.equal(submitResultFromRpc(bad), null, JSON.stringify(bad));
-  }
-});
-
-test("responseEstimateFromStored: los seis enteros del 201, sin pricing", () => {
-  const stored = { portions: 5, recipes: 2, cookMinutes: 150, serviceCents: 6700, groceriesEstCents: 1900, totalCents: 8600, pricing: DEFAULT_PRICING };
-  assert.deepEqual(responseEstimateFromStored(stored), { portions: 5, recipes: 2, cookMinutes: 150, serviceCents: 6700, groceriesEstCents: 1900, totalCents: 8600 });
-  for (const bad of [null, "x", [], { ...stored, totalCents: 1.5 }, { ...stored, recipes: undefined }, { ...stored, portions: -1 }]) {
-    assert.equal(responseEstimateFromStored(bad), null, JSON.stringify(bad));
   }
 });
 
@@ -1189,10 +1314,13 @@ test("resolveServiceKey: clave secreta nueva (default), después las variables d
   assert.equal(resolveServiceKey(from({})), null);
 });
 
-test("chefFromRow: tarifas de chef_settings y nombre de la cocinera", () => {
+test("chefFromRow: tarifas de chef_settings (precio por semana) y nombre de la cocinera", () => {
+  // Las de Giulia en el seed: 160 €, 150 € desde 3 semanas, hasta 6 personas.
   const row = {
-    hourly_rate_cents: 2500,
-    travel_fee_cents: 1500,
+    weekly_rate_cents: 16000,
+    weekly_rate_discounted_cents: 15000,
+    weekly_discount_min_weeks: 3,
+    weekly_rate_max_people: 6,
     adult_portion_cents: 400,
     kid_portion_cents: 260,
     preauth_buffer_pct: 10,
@@ -1201,11 +1329,28 @@ test("chefFromRow: tarifas de chef_settings y nombre de la cocinera", () => {
   };
   assert.deepEqual(chefFromRow(row), {
     displayName: "Evelyn",
-    pricing: { hourlyRateCents: 2500, travelFeeCents: 1500, adultPortionCents: 400, kidPortionCents: 260, preauthBufferPct: 10, minCookMinutes: 60 },
+    pricing: {
+      weeklyRateCents: 16000,
+      weeklyRateDiscountedCents: 15000,
+      weeklyDiscountMinWeeks: 3,
+      weeklyRateMaxPeople: 6,
+      adultPortionCents: 400,
+      kidPortionCents: 260,
+      preauthBufferPct: 10,
+      minCookMinutes: 60,
+    },
   });
   assert.equal(chefFromRow({ ...row, chefs: [{ display_name: "Eve" }] }).displayName, "Eve");
   assert.equal(chefFromRow({ ...row, chefs: null }).displayName, "Evelyn", "sin nombre: Evelyn");
-  assert.throws(() => chefFromRow({ ...row, hourly_rate_cents: "2500" }), TypeError);
+  assert.throws(() => chefFromRow({ ...row, weekly_rate_cents: "16000" }), TypeError);
+  // Sin las columnas del precio por semana (la base sin 20261116120000_weekly_pricing.sql) no hay tarifas.
+  const { weekly_rate_max_people: _sinTope, ...old } = row;
+  assert.throws(() => chefFromRow(old), TypeError);
+  // El select de index.ts pide exactamente lo que lee chefFromRow.
+  assert.deepEqual(
+    CHEF_SETTINGS_COLUMNS.split(",").map((column) => column.trim()).sort(),
+    [...Object.keys(row).filter((key) => key !== "chefs"), "chefs(display_name)"].sort(),
+  );
 });
 
 test("safeDbMessage: solo pasan los códigos propios (snake_case), nunca textos con datos", () => {

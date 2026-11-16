@@ -7,4 +7,10 @@ export {
   LIMITS,
   validateInput,
 } from "../../supabase/functions/_shared/quote.ts";
-export type { PricingSettings, Quote, QuoteInput } from "../../supabase/functions/_shared/quote.ts";
+export type {
+  NoAutoPriceReason,
+  PricedQuote,
+  PricingSettings,
+  Quote,
+  QuoteInput,
+} from "../../supabase/functions/_shared/quote.ts";
