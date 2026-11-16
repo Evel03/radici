@@ -14,6 +14,8 @@ import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
+import 'package:radici/features/recipes/data/recipes_repository.dart';
+import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
@@ -513,6 +515,74 @@ class FakeBookingsRepository implements BookingsRepository {
           ? current.client.copyWith(status: ClientStatus.trial)
           : current.client,
     );
+  }
+}
+
+/// Catálogo "en el servidor", en memoria. Como save_recipe, guardar crea o
+/// reemplaza el plato entero y nunca cambia si está activo. Cada pedido se
+/// aplica (o la lectura toma su foto) en cuanto llega: los `pending…` demoran
+/// solo la respuesta, como una red lenta.
+class FakeRecipesRepository implements RecipesRepository {
+  FakeRecipesRepository([Iterable<Recipe> recipes = const []])
+    : recipes = {for (final recipe in recipes) recipe.id: recipe};
+
+  /// Platos guardados, por id.
+  final Map<String, Recipe> recipes;
+
+  bool failFetch = false;
+
+  /// Si no es null, [save] falla con este error (y no guarda nada).
+  RecipesFailureKind? saveFailure;
+  bool failSetActive = false;
+
+  Completer<void>? pendingFetch;
+  Completer<void>? pendingSave;
+  Completer<void>? pendingSetActive;
+
+  int fetchCalls = 0;
+
+  /// Cada plato recibido por [save], en orden (también los que fallaron).
+  final List<Recipe> saveCalls = [];
+  final List<({String id, bool active})> setActiveCalls = [];
+
+  @override
+  Future<List<Recipe>> fetchCatalog({required String chefId}) async {
+    fetchCalls++;
+    final fail = failFetch;
+    final snapshot = recipes.values.toList();
+    final pending = pendingFetch;
+    if (pending != null) await pending.future;
+    if (fail) throw const RecipesFailure(RecipesFailureKind.unavailable);
+    return snapshot;
+  }
+
+  @override
+  Future<void> save(Recipe recipe) async {
+    saveCalls.add(recipe);
+    final failure = saveFailure;
+    if (failure == null) {
+      final current = recipes[recipe.id];
+      recipes[recipe.id] = recipe.copyWith(active: current?.active ?? true);
+    }
+    final pending = pendingSave;
+    if (pending != null) await pending.future;
+    if (failure != null) throw RecipesFailure(failure);
+  }
+
+  @override
+  Future<void> setActive({
+    required String chefId,
+    required String id,
+    required bool active,
+  }) async {
+    setActiveCalls.add((id: id, active: active));
+    final fail = failSetActive;
+    final current = recipes[id];
+    if (!fail && current != null) recipes[id] = current.copyWith(active: active);
+    final pending = pendingSetActive;
+    if (pending != null) await pending.future;
+    if (fail) throw const RecipesFailure(RecipesFailureKind.unavailable);
+    if (current == null) throw const RecipesFailure(RecipesFailureKind.notFound);
   }
 }
 

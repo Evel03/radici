@@ -1,8 +1,9 @@
 // Impostazioni de la cocinera: idioma de la app (se guarda en su perfil y
-// vale en todos sus dispositivos) y cuenta.
+// vale en todos sus dispositivos), cuenta y, en la web, la versión abierta.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:radici/core/build_id.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/settings/presentation/language_selector.dart';
@@ -19,6 +20,7 @@ class SettingsScreen extends ConsumerWidget {
       ChefSession(:final chef, :final user) => (chef.displayName, user.email),
       _ => (null, null),
     };
+    final buildId = ref.watch(buildIdProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -63,6 +65,19 @@ class SettingsScreen extends ConsumerWidget {
                 title: Text(l10n.actionLogout),
                 onTap: ref.read(sessionControllerProvider.notifier).signOut,
               ),
+              // Qué versión de /gestione/ está abierta (el id del build): para
+              // comprobar que «Aggiorna» trajo la nueva.
+              if (buildId.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+                  child: Text(
+                    l10n.settingsVersion(buildId),
+                    key: const ValueKey('settings-version'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
