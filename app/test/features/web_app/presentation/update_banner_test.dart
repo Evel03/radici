@@ -149,4 +149,21 @@ void main() {
     expect(banner(), findsOneWidget);
     expect(browser.reloads, 0);
   });
+
+  testWidgets('cuando aparece el aviso, la pantalla de abajo sigue como estaba '
+      '(en la pestaña elegida)', (tester) async {
+    published.published = 'abc1234';
+    await openInbox(tester);
+    await tester.tap(find.byKey(const ValueKey('inbox-tab-seen')));
+    await tester.pumpAndSettle();
+    int selectedTab() =>
+        DefaultTabController.of(tester.element(find.byType(TabBar))).index;
+    expect(selectedTab(), 1);
+
+    published.published = 'def5678';
+    now = testNow.add(const Duration(minutes: 5));
+    await backToForeground(tester);
+    expect(banner(), findsOneWidget);
+    expect(selectedTab(), 1);
+  });
 }

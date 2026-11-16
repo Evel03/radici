@@ -38,7 +38,7 @@ class RadiciApp extends ConsumerWidget {
       builder: (context, child) {
         // El aviso de pedidos nuevos escucha desde acá, encima de todas las
         // rutas (ver NewRequestAlertListener). Arriba, los avisos de la web:
-        // versión nueva (ver WebAppNotices).
+        // versión nueva y Safari fuera de la app instalada (ver WebAppNotices).
         final content = WebAppNotices(
           child: NewRequestAlertListener(
             child: child ?? const SizedBox.shrink(),

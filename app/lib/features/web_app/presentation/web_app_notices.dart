@@ -68,8 +68,8 @@ class _WebAppNoticesState extends ConsumerState<WebAppNotices> {
       if (_firstFrameDone && showInstallHint) const _InstallHintCard(),
     ];
 
-    // La misma estructura con o sin avisos: si cambiara, la app de abajo (el
-    // router y sus pantallas) se armaría de nuevo y perdería dónde estaba.
+    // La misma estructura con o sin avisos: la app de abajo (el router y sus
+    // pantallas) no cambia de lugar en el árbol cuando aparece o se va uno.
     return Column(
       children: [
         if (notices.isEmpty)
