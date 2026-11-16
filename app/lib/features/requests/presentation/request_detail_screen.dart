@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/money.dart';
+import 'package:radici/features/quote/domain/quote.dart' show defaultPricing;
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/application/contact_actions.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
@@ -230,6 +231,7 @@ class _RequestDetail extends ConsumerWidget {
 
     final date = request.preferredDate;
     final slot = request.preferredSlot;
+    final weekly = request.type == RequestType.week;
     final restrictions = request.restrictions ?? const RequestRestrictions();
     final notes = request.notes?.trim() ?? '';
     final client = request.client;
@@ -309,12 +311,22 @@ class _RequestDetail extends ConsumerWidget {
 
             _Section(title: l10n.detailSectionRequest),
             _InfoRow(label: l10n.detailType, value: l10n.requestType(request.type)),
+            // Un pedido semanal: cuántas semanas (una sesión por semana).
+            if (weekly)
+              _InfoRow(
+                label: l10n.quoteWeeks,
+                value: '${request.weeks}',
+                valueKey: const ValueKey('detail-weeks'),
+              ),
             if (request.adults != null)
               _InfoRow(label: l10n.quoteAdults, value: '${request.adults}'),
             if (request.kids != null)
               _InfoRow(label: l10n.quoteKids, value: '${request.kids}'),
             if (request.days != null)
-              _InfoRow(label: l10n.quoteDays, value: '${request.days}'),
+              _InfoRow(
+                label: weekly ? l10n.quoteDaysPerWeek : l10n.quoteDays,
+                value: '${request.days}',
+              ),
             if (request.meals.isNotEmpty)
               _InfoRow(
                 label: l10n.quoteMealsSection,
@@ -324,6 +336,16 @@ class _RequestDetail extends ConsumerWidget {
               label: l10n.detailPreferredDate,
               value: date == null ? l10n.requestNoDate : formats.longDate(date),
             ),
+            // El mismo día de cada semana siguiente.
+            if (date != null && request.weeks > 1)
+              _InfoRow(
+                label: l10n.detailNextDates,
+                value: [
+                  for (var week = 1; week < request.weeks; week++)
+                    formats.shortDate(date.addDays(7 * week)),
+                ].join(' · '),
+                valueKey: const ValueKey('detail-next-dates'),
+              ),
             if (slot != null)
               _InfoRow(label: l10n.detailPreferredSlot, value: l10n.slot(slot)),
 
@@ -374,7 +396,7 @@ class _RequestDetail extends ConsumerWidget {
             ),
 
             _Section(title: l10n.detailSectionEstimate),
-            _Estimate(estimate: request.estimate),
+            _Estimate(estimate: request.estimate, weekly: weekly),
 
             _Section(title: l10n.detailSectionContact),
             if (client.contactPhone case final phone?) ...[
@@ -471,10 +493,17 @@ class _RequestDetail extends ConsumerWidget {
   }
 }
 
+/// La estimación guardada. Desde el precio por semana: el servicio por semana,
+/// el de todas las semanas y el ahorro, o por qué no hay precio automático; la
+/// compra estimada aparte. Las de antes (servicio por hora): servicio, compra y
+/// total, como se guardaron.
 class _Estimate extends StatelessWidget {
-  const _Estimate({required this.estimate});
+  const _Estimate({required this.estimate, required this.weekly});
 
   final RequestEstimate? estimate;
+
+  /// Pedido semanal: la compra es de cada semana.
+  final bool weekly;
 
   @override
   Widget build(BuildContext context) {
@@ -486,6 +515,8 @@ class _Estimate extends StatelessWidget {
     }
     final locale = Localizations.localeOf(context).toString();
     String money(int cents) => formatCents(cents, locale: locale);
+    final weeks = estimate.weeks ?? 1;
+    final savings = estimate.savingsCents ?? 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -496,17 +527,61 @@ class _Estimate extends StatelessWidget {
           _InfoRow(label: l10n.quoteRecipes, value: '$recipes'),
         if (estimate.cookMinutes case final minutes?)
           _InfoRow(label: l10n.quoteCookTime, value: l10n.quoteMinutes(minutes)),
-        if (estimate.serviceCents case final cents?)
-          _InfoRow(label: l10n.quoteService, value: money(cents)),
-        if (estimate.groceriesEstCents case final cents?)
-          _InfoRow(label: l10n.quoteGroceries, value: money(cents)),
-        if (estimate.totalCents case final cents?)
-          _InfoRow(
-            label: l10n.quoteTotal,
-            value: money(cents),
-            valueKey: const ValueKey('detail-estimate-total'),
-            emphasized: true,
+        if (!estimate.hasAutoPrice)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              estimate.reason == NoAutoPriceReason.extra
+                  ? l10n.detailNoAutoPriceExtra
+                  : l10n.detailNoAutoPricePeople(
+                      estimate.maxPeople ??
+                          defaultPricing.weeklyRateMaxPeople,
+                    ),
+              key: const ValueKey('detail-no-auto-price'),
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
+        if (estimate.isLegacy) ...[
+          if (estimate.serviceCents case final cents?)
+            _InfoRow(label: l10n.quoteService, value: money(cents)),
+          if (estimate.groceriesEstCents case final cents?)
+            _InfoRow(label: l10n.quoteGroceries, value: money(cents)),
+          if (estimate.totalCents case final cents?)
+            _InfoRow(
+              label: l10n.quoteTotal,
+              value: money(cents),
+              valueKey: const ValueKey('detail-estimate-total'),
+              emphasized: true,
+            ),
+        ] else ...[
+          if (weeks > 1 && estimate.weeklyServiceCents != null)
+            _InfoRow(
+              label: l10n.quoteWeeklyService,
+              value: money(estimate.weeklyServiceCents!),
+              valueKey: const ValueKey('detail-estimate-weekly'),
+            ),
+          if (estimate.serviceCents case final cents?)
+            _InfoRow(
+              label: l10n.quoteServiceTotal(weeks),
+              value: money(cents),
+              valueKey: const ValueKey('detail-estimate-total'),
+              emphasized: true,
+            ),
+          if (savings > 0)
+            _InfoRow(
+              label: l10n.quoteSavings,
+              value: money(savings),
+              valueKey: const ValueKey('detail-estimate-savings'),
+            ),
+          if (estimate.groceriesEstCents case final cents?)
+            _InfoRow(
+              label: weekly ? l10n.quoteGroceriesWeekly : l10n.quoteGroceries,
+              value: money(cents),
+              valueKey: const ValueKey('detail-estimate-groceries'),
+            ),
+        ],
         const SizedBox(height: 4),
         Text(
           l10n.detailEstimateFootnote,

@@ -2,6 +2,7 @@
 // rechazo). Verifica los links exactos que se abren.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 
@@ -280,6 +281,116 @@ void main() {
       expect(find.byKey(const ValueKey('action-mark-client')), findsNothing);
       expect(find.byKey(const ValueKey('detail-prospect-notice')), findsNothing);
       expect(find.byKey(const ValueKey('detail-client-kept')), findsOneWidget);
+    });
+  });
+
+  group('precio por semana', () {
+    String textOf(WidgetTester tester, String key) =>
+        tester.widget<Text>(find.byKey(ValueKey(key))).data!;
+
+    testWidgets('4 semanas: las semanas, las fechas siguientes, el precio por semana, el total, el ahorro y la compra', (tester) async {
+      await openDetail(
+        tester,
+        buildRequest(
+          weeks: 4,
+          preferredDate: CalendarDate(2026, 11, 23),
+          estimate: const RequestEstimate(
+            weeks: 4,
+            portions: 20,
+            recipes: 3,
+            cookMinutes: 180,
+            autoPrice: true,
+            weeklyServiceCents: 14000,
+            serviceCents: 56000,
+            savingsCents: 4000,
+            groceriesEstCents: 6300,
+            totalCents: 81200,
+            maxPeople: 5,
+          ),
+        ),
+      );
+      expect(textOf(tester, 'detail-weeks'), '4');
+      expect(find.text('Giorni a settimana'), findsOneWidget);
+      expect(textOf(tester, 'detail-next-dates'), 'lun 30 nov · lun 7 dic · lun 14 dic');
+      expect(find.text('Prezzo per 4 settimane'), findsOneWidget);
+      expect(textOf(tester, 'detail-estimate-total'), '560,00 €');
+      expect(textOf(tester, 'detail-estimate-weekly'), '140,00 €');
+      expect(textOf(tester, 'detail-estimate-savings'), '40,00 €');
+      expect(textOf(tester, 'detail-estimate-groceries'), '63,00 €');
+      expect(find.text('Spesa stimata a settimana'), findsOneWidget);
+      // Evelyn sí ve el tiempo de cocina (es de cada sesión).
+      expect(find.text('180 min'), findsOneWidget);
+      // El total de servicio y compra (81200) no se muestra: la compra va aparte.
+      expect(find.text('812,00 €'), findsNothing);
+    });
+
+    testWidgets('una semana: solo el precio del servicio, sin fechas siguientes ni ahorro', (tester) async {
+      await openDetail(
+        tester,
+        buildRequest(
+          estimate: const RequestEstimate(
+            weeks: 1,
+            portions: 20,
+            autoPrice: true,
+            weeklyServiceCents: 15000,
+            serviceCents: 15000,
+            savingsCents: 0,
+            groceriesEstCents: 6300,
+            totalCents: 21300,
+          ),
+        ),
+      );
+      expect(textOf(tester, 'detail-weeks'), '1');
+      expect(find.text('Prezzo del servizio'), findsOneWidget);
+      expect(textOf(tester, 'detail-estimate-total'), '150,00 €');
+      expect(find.byKey(const ValueKey('detail-next-dates')), findsNothing);
+      expect(find.byKey(const ValueKey('detail-estimate-weekly')), findsNothing);
+      expect(find.byKey(const ValueKey('detail-estimate-savings')), findsNothing);
+    });
+
+    testWidgets('sin precio automático: más personas que el tope (con el de sus tarifas) o una sesión extra', (tester) async {
+      await openDetail(
+        tester,
+        buildRequest(
+          estimate: const RequestEstimate(
+            weeks: 2,
+            portions: 30,
+            autoPrice: false,
+            reason: NoAutoPriceReason.people,
+            groceriesEstCents: 9450,
+            maxPeople: 6,
+          ),
+        ),
+      );
+      expect(
+        textOf(tester, 'detail-no-auto-price'),
+        'Più di 6 persone: senza prezzo automatico, prepara tu il preventivo.',
+      );
+      expect(find.byKey(const ValueKey('detail-estimate-total')), findsNothing);
+      expect(textOf(tester, 'detail-estimate-groceries'), '94,50 €');
+    });
+
+    testWidgets('sesión extra: sin semanas, días sin «a settimana» y la compra de la sesión', (tester) async {
+      await openDetail(
+        tester,
+        buildRequest(
+          type: RequestType.extra,
+          estimate: const RequestEstimate(
+            weeks: 1,
+            portions: 16,
+            autoPrice: false,
+            reason: NoAutoPriceReason.extra,
+            groceriesEstCents: 5300,
+          ),
+        ),
+      );
+      expect(find.byKey(const ValueKey('detail-weeks')), findsNothing);
+      expect(find.text('Giorni'), findsOneWidget);
+      expect(
+        textOf(tester, 'detail-no-auto-price'),
+        'Evento o sessione extra: senza prezzo automatico, prepara tu il preventivo.',
+      );
+      expect(find.text('Spesa stimata'), findsOneWidget);
     });
   });
 

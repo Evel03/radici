@@ -1,5 +1,8 @@
 // Calculadora de presupuesto: vista previa de la pantalla "Pedir" (SPEC.md §7).
 // Solo muestra lo que dan los providers; el cálculo vive en el motor.
+// Precio por semana (SPEC §5.1): el servicio de todas las semanas, el de cada
+// semana y el ahorro desde el descuento; con más personas que el tope, que el
+// precio lo prepara Evelyn. La compra estimada, por semana y aparte.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/money.dart';
@@ -31,19 +34,21 @@ class QuoteCalculatorScreen extends StatelessWidget {
                 ),
                 _CounterRow(counter: QuoteCounter.kids, label: l10n.quoteKids),
                 const SizedBox(height: 8),
-                _CounterRow(counter: QuoteCounter.days, label: l10n.quoteDays),
+                _CounterRow(
+                  counter: QuoteCounter.weeks,
+                  label: l10n.quoteWeeks,
+                ),
+                _CounterRow(
+                  counter: QuoteCounter.days,
+                  label: l10n.quoteDaysPerWeek,
+                ),
                 const SizedBox(height: 8),
                 _SectionHeader(l10n.quoteMealsSection),
                 const _MealPlanSelector(),
                 const SizedBox(height: 24),
                 const _QuoteBreakdown(),
                 const SizedBox(height: 12),
-                Text(
-                  l10n.quoteFootnote,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
+                const _Footnote(),
               ],
             ),
           ),
@@ -172,7 +177,7 @@ class _MealPlanSelector extends ConsumerWidget {
 }
 
 /// Desglose en vivo del presupuesto. Sin tiempo de cocina, como en la web: el
-/// motor lo usa para el precio, pero el cliente no lo ve.
+/// motor lo usa para los horarios, pero el cliente no lo ve.
 class _QuoteBreakdown extends ConsumerWidget {
   const _QuoteBreakdown();
 
@@ -180,8 +185,12 @@ class _QuoteBreakdown extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final quote = ref.watch(quoteProvider);
+    final pricing = ref.watch(pricingSettingsProvider);
     final locale = Localizations.localeOf(context).toString();
     String money(int cents) => formatCents(cents, locale: locale);
+    final serviceCents = quote.serviceCents;
+    final weeklyServiceCents = quote.weeklyServiceCents;
+    final savingsCents = quote.savingsCents ?? 0;
 
     return Card(
       margin: EdgeInsets.zero,
@@ -201,35 +210,73 @@ class _QuoteBreakdown extends ConsumerWidget {
               value: '${quote.recipes}',
               valueKey: const ValueKey('quote-recipes'),
             ),
-            const Divider(height: 24),
             _BreakdownRow(
-              label: l10n.quoteService,
-              value: money(quote.serviceCents),
-              valueKey: const ValueKey('quote-service'),
-            ),
-            _BreakdownRow(
-              label: l10n.quoteGroceries,
+              label: l10n.quoteGroceriesWeekly,
               value: money(quote.groceriesEstCents),
               valueKey: const ValueKey('quote-groceries'),
             ),
-            _BreakdownRow(
-              label: l10n.quoteHold,
-              value: money(quote.holdCents),
-              valueKey: const ValueKey('quote-hold'),
-            ),
             const Divider(height: 24),
-            // liveRegion: el lector de pantalla anuncia el total al cambiar.
-            Semantics(
-              liveRegion: true,
-              child: _BreakdownRow(
-                label: l10n.quoteTotal,
-                value: money(quote.totalCents),
-                valueKey: const ValueKey('quote-total'),
-                emphasized: true,
+            if (serviceCents == null)
+              // Sin precio automático (más personas que el tope): lo prepara
+              // Evelyn. liveRegion: el lector de pantalla lo anuncia al cambiar.
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  l10n.quoteNoAutoPrice(pricing.weeklyRateMaxPeople),
+                  key: const ValueKey('quote-no-auto-price'),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              )
+            else ...[
+              if (quote.weeks > 1 && weeklyServiceCents != null)
+                _BreakdownRow(
+                  label: l10n.quoteWeeklyService,
+                  value: money(weeklyServiceCents),
+                  valueKey: const ValueKey('quote-weekly'),
+                ),
+              if (savingsCents > 0)
+                _BreakdownRow(
+                  label: l10n.quoteSavings,
+                  value: money(savingsCents),
+                  valueKey: const ValueKey('quote-savings'),
+                ),
+              // liveRegion: el lector de pantalla anuncia el total al cambiar.
+              Semantics(
+                liveRegion: true,
+                child: _BreakdownRow(
+                  label: l10n.quoteServiceTotal(quote.weeks),
+                  value: money(serviceCents),
+                  valueKey: const ValueKey('quote-total'),
+                  emphasized: true,
+                ),
               ),
-            ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Nota bajo el desglose, con los números de las tarifas.
+class _Footnote extends ConsumerWidget {
+  const _Footnote();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final pricing = ref.watch(pricingSettingsProvider);
+    final locale = Localizations.localeOf(context).toString();
+    final theme = Theme.of(context);
+    return Text(
+      l10n.quoteFootnote(
+        pricing.weeklyRateMaxPeople,
+        pricing.weeklyDiscountMinWeeks,
+        formatCents(pricing.weeklyRateDiscountedCents, locale: locale),
+      ),
+      key: const ValueKey('quote-footnote'),
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
       ),
     );
   }
