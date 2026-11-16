@@ -341,6 +341,7 @@ Al marcar cocinado se genera el cobro de servicio + ticket; el cliente paga en l
 ### 5.6 Alérgenos
 - Recetas etiquetadas con los 14 alérgenos UE y dieta (vegetariana / vegana).
 - Un plato se guarda entero, en una transacción (`save_recipe`, §4): nunca queda con los alérgenos a medio guardar, porque el menú y sus alertas dependen de ellos.
+- La dieta no puede contradecir los alérgenos: la app no deja guardar un plato vegano con leche, huevos, pescado, crustáceos o moluscos, ni uno vegetariano con pescado, crustáceos o moluscos. Si no, se le ofrecería a un cliente con esa dieta (el control por dieta mira la etiqueta del plato).
 - Al armar un menú, cualquier receta que choque con una restricción del cliente se marca en rojo. **Enviar presupuesto con un conflicto exige una confirmación explícita** de Evelyn (ej.: "adapto la receta sin lácteos") que queda guardada en el presupuesto.
 - La celiaquía exige nota de contaminación cruzada visible en la sesión.
 - Sugerencias (M2b): el cliente ve tachados los platos que chocan con sus restricciones guardadas y no puede sugerirlos. Sugerir no cambia el control: Evelyn arma el menú con la marca en rojo y la confirmación explícita de arriba.
