@@ -1,10 +1,19 @@
 // Agenda: pedidos por fecha preferida en vista mensual o semanal, con la
-// franja (mañana, tarde, indistinto), y la lista "senza data".
+// franja (mañana, tarde, indistinto), la lista "senza data" y la
+// disponibilidad de cada día: bloqueados (la web no los ofrece), feriados y
+// el botón «Blocca giorni» para un rango.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/availability/application/availability_controller.dart';
+import 'package:radici/features/availability/data/availability_repository.dart';
+import 'package:radici/features/availability/domain/availability.dart';
+import 'package:radici/features/availability/presentation/availability_labels.dart';
+import 'package:radici/features/availability/presentation/block_range_dialog.dart';
+import 'package:radici/features/availability/presentation/day_availability_card.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/agenda.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
@@ -19,28 +28,83 @@ class AgendaScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final inbox = ref.watch(chefInboxProvider);
-    final agenda = ref.watch(agendaControllerProvider);
 
-    final Widget body;
-    if (inbox.hasError && !inbox.hasValue) {
-      body = LoadErrorView(
-        message: l10n.inboxLoadError,
-        onRetry: () => ref.invalidate(chefInboxProvider),
-      );
-    } else {
-      body = Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+    // Sus propios avisos: así el de «Annulla» empuja hacia arriba el botón
+    // flotante en lugar de taparlo (con el ScaffoldMessenger de la app, el
+    // aviso sale en el Scaffold de afuera, el de la barra de navegación).
+    return ScaffoldMessenger(
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(l10n.navAgenda),
+          actions: const [ChefAccountMenuButton()],
+        ),
+        body: inbox.hasError && !inbox.hasValue
+            ? LoadErrorView(
+                message: l10n.inboxLoadError,
+                onRetry: () => ref.invalidate(chefInboxProvider),
+              )
+            : const _AgendaList(),
+        floatingActionButton: const BlockRangeButton(),
+      ),
+    );
+  }
+}
+
+class _AgendaList extends ConsumerWidget {
+  const _AgendaList();
+
+  /// Deslizar para actualizar: la bandeja y la disponibilidad juntas. Si
+  /// alguna falla, queda lo que había y se avisa.
+  Future<void> _refresh(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final message = AppLocalizations.of(context).inboxRefreshError;
+    final inbox = ref.read(chefInboxProvider.notifier);
+    final availability = ref.read(availabilityControllerProvider.notifier);
+    final results = await Future.wait([
+      _attempt(inbox.refresh),
+      _attempt(availability.refresh),
+    ]);
+    if (results.contains(false) && messenger.mounted) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  static Future<bool> _attempt(Future<void> Function() refresh) async {
+    try {
+      await refresh();
+      return true;
+    } on RequestsFailure {
+      return false;
+    } on AvailabilityFailure {
+      return false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final loading = ref.watch(
+      chefInboxProvider.select((inbox) => inbox.isLoading && !inbox.hasValue),
+    );
+    final view = ref.watch(agendaControllerProvider.select((s) => s.view));
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: RefreshIndicator(
+          onRefresh: () => _refresh(context, ref),
           child: ListView(
             key: const ValueKey('agenda'),
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
+            // Deslizar para actualizar aunque todo entre en la pantalla.
+            physics: const AlwaysScrollableScrollPhysics(),
+            // Abajo, lugar para el botón flotante: no tapa nada.
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
             children: [
-              if (inbox.isLoading && !inbox.hasValue)
-                const LinearProgressIndicator(),
+              if (loading) const LinearProgressIndicator(),
               const _AgendaToolbar(),
               const SizedBox(height: 8),
-              switch (agenda.view) {
+              switch (view) {
                 AgendaView.month => const _MonthView(),
                 AgendaView.week => const _WeekView(),
               },
@@ -49,15 +113,7 @@ class AgendaScreen extends ConsumerWidget {
             ],
           ),
         ),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.navAgenda),
-        actions: const [ChefAccountMenuButton()],
       ),
-      body: body,
     );
   }
 }
@@ -147,11 +203,27 @@ class _AgendaToolbar extends ConsumerWidget {
   }
 }
 
-class _MonthView extends ConsumerWidget {
+class _MonthView extends ConsumerStatefulWidget {
   const _MonthView();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_MonthView> createState() => _MonthViewState();
+}
+
+class _MonthViewState extends ConsumerState<_MonthView> {
+  /// El título del día elegido y su tarjeta.
+  final GlobalKey _dayKey = GlobalKey();
+
+  /// Elige [day] y trae su tarjeta a la vista: en un teléfono, con un mes de
+  /// seis semanas, queda debajo de la pantalla (o la tapa el botón flotante).
+  void _select(CalendarDate day) {
+    ref.read(agendaControllerProvider.notifier).select(day);
+    final dayContext = _dayKey.currentContext;
+    if (dayContext != null) revealAgendaCard(dayContext);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final formats = RequestFormats(context);
@@ -192,11 +264,19 @@ class _MonthView extends ConsumerWidget {
                     day: day,
                     inMonth: day.isSameMonth(selected),
                     count: byDate[day]?.length ?? 0,
+                    onTap: () => _select(day),
                   ),
                 ),
             ],
           ),
-        _SectionTitle(formats.longDate(selected)),
+        Column(
+          key: _dayKey,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _SectionTitle(formats.longDate(selected)),
+            DayAvailabilityCard(day: selected),
+          ],
+        ),
         if (dayRequests.isEmpty)
           _EmptyText(l10n.agendaNoRequestsDay, key: const ValueKey('agenda-day-empty'))
         else
@@ -208,11 +288,17 @@ class _MonthView extends ConsumerWidget {
 }
 
 class _DayCell extends ConsumerWidget {
-  const _DayCell({required this.day, required this.inMonth, required this.count});
+  const _DayCell({
+    required this.day,
+    required this.inMonth,
+    required this.count,
+    required this.onTap,
+  });
 
   final CalendarDate day;
   final bool inMonth;
   final int count;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -224,6 +310,12 @@ class _DayCell extends ConsumerWidget {
       agendaControllerProvider.select((s) => s.selectedDay == day),
     );
     final isToday = ref.watch(romeTodayProvider) == day;
+    final availability = ref.watch(agendaDayAvailabilityProvider(day));
+    final isBlocked = availability?.status == DayStatus.blocked;
+    // El punto: un feriado en un día de trabajo que no pasó ni está bloqueado.
+    final holiday = availability?.status == DayStatus.open
+        ? availability?.holiday
+        : null;
 
     final Color numberColor;
     if (isSelected) {
@@ -237,37 +329,72 @@ class _DayCell extends ConsumerWidget {
       numberColor = colors.onSurface;
     }
 
+    final label = [
+      formats.longDate(day),
+      l10n.agendaDayCount(count),
+      if (isBlocked) l10n.availabilityBlockedA11y,
+      if (holiday != null) l10n.holidayLine(holiday),
+    ].join(', ');
+
     return Semantics(
       button: true,
       selected: isSelected,
-      label: '${formats.longDate(day)}, ${l10n.agendaDayCount(count)}',
+      label: label,
       excludeSemantics: true,
       child: InkWell(
         key: ValueKey('agenda-day-${day.toIso()}'),
         customBorder: const CircleBorder(),
-        onTap: () => ref.read(agendaControllerProvider.notifier).select(day),
+        onTap: onTap,
         child: SizedBox(
           height: 52,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Sin alignment: así el Stack ocupa todo el círculo y el punto
+              // del feriado queda debajo del número (con alignment, el Stack
+              // medía lo que el texto y el punto caía sobre las cifras).
               Container(
                 width: 32,
                 height: 32,
-                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isSelected ? colors.primary : null,
+                  color: isSelected
+                      ? colors.primary
+                      : isBlocked
+                      ? colors.surfaceContainerHighest
+                      : null,
                   border: isToday && !isSelected
                       ? Border.all(color: colors.primary, width: 1.5)
                       : null,
                 ),
-                child: Text(
-                  '${day.day}',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: numberColor,
-                    fontWeight: isToday ? FontWeight.w700 : null,
-                  ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Text(
+                      '${day.day}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: numberColor,
+                        fontWeight: isToday ? FontWeight.w700 : null,
+                        // Tachado: la señal de bloqueado que no depende del color.
+                        decoration: isBlocked ? TextDecoration.lineThrough : null,
+                        decorationColor: numberColor,
+                        decorationThickness: 2,
+                      ),
+                    ),
+                    if (holiday != null)
+                      Positioned(
+                        bottom: 3,
+                        child: Container(
+                          key: ValueKey('agenda-day-holiday-${day.toIso()}'),
+                          width: 4,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isSelected ? colors.onPrimary : colors.tertiary,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(height: 2),
@@ -309,6 +436,8 @@ class _WeekView extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // La carga y los errores de la disponibilidad, una sola vez.
+        const AvailabilityLoadState(),
         for (final day in weekDays(selected))
           Card(
             key: ValueKey('agenda-week-day-${day.toIso()}'),
@@ -329,6 +458,7 @@ class _WeekView extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  DayAvailabilityCard(day: day, compact: true),
                   for (final request in byDate[day] ?? const <ChefRequest>[])
                     RequestTile(request: request, showSlotOnly: true),
                 ],

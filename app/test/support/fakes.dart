@@ -5,9 +5,12 @@ import 'dart:async';
 import 'package:mocktail/mocktail.dart';
 import 'package:radici/core/app_language.dart';
 import 'package:radici/core/link_launcher.dart';
+import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
+import 'package:radici/features/availability/data/availability_repository.dart';
+import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
@@ -238,6 +241,131 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
       },
     );
     return controller.stream;
+  }
+}
+
+/// Lunes a viernes de 9 a 15: el horario de Evelyn (decisión del 15/11/2026).
+List<AvailabilityRule> weekdayRules() => [
+  for (var weekday = 1; weekday <= 5; weekday++)
+    AvailabilityRule(
+      weekday: weekday,
+      start: const Duration(hours: 9),
+      end: const Duration(hours: 15),
+    ),
+];
+
+/// Horario y días bloqueados "en el servidor", en memoria. Como la base,
+/// bloquear un día que ya está bloqueado no lo toca ni lo devuelve, y cada
+/// pedido se aplica (o la lectura toma su foto) en cuanto llega: los
+/// `pending…` demoran solo la respuesta, como una red lenta.
+class FakeAvailabilityRepository implements AvailabilityRepository {
+  FakeAvailabilityRepository({
+    List<AvailabilityRule>? rules,
+    Iterable<BlockedDay> blocked = const [],
+  }) : rules = rules ?? weekdayRules(),
+       blocked = {for (final day in blocked) day.date: day};
+
+  List<AvailabilityRule> rules;
+
+  /// Bloqueos guardados, por fecha (siempre con id).
+  final Map<CalendarDate, BlockedDay> blocked;
+
+  bool failFetch = false;
+  bool failBlock = false;
+  bool failUnblock = false;
+  bool failNote = false;
+
+  /// Si no es null, la respuesta de [fetch], [block] o [unblock] espera a que
+  /// se complete (para ver el estado mientras carga o mientras se guarda, o
+  /// una respuesta que llega después de otra).
+  Completer<void>? pendingFetch;
+  Completer<void>? pendingBlock;
+  Completer<void>? pendingUnblock;
+
+  int fetchCalls = 0;
+  final List<CalendarDate> fetchedFrom = [];
+  final List<List<DayToBlock>> blockCalls = [];
+  final List<List<String>> unblockCalls = [];
+  final List<({String id, String? note})> noteCalls = [];
+  int _nextId = 1;
+
+  static const _unavailable = AvailabilityFailure(
+    AvailabilityFailureKind.unavailable,
+  );
+
+  @override
+  Future<AvailabilitySnapshot> fetch({
+    required String chefId,
+    required CalendarDate from,
+  }) async {
+    fetchCalls++;
+    fetchedFrom.add(from);
+    final fail = failFetch;
+    final snapshot = AvailabilitySnapshot(
+      rules: List.of(rules),
+      blocked: {
+        for (final entry in blocked.entries)
+          if (!entry.key.isBefore(from)) entry.key: entry.value,
+      },
+    );
+    final pending = pendingFetch;
+    if (pending != null) await pending.future;
+    if (fail) throw _unavailable;
+    return snapshot;
+  }
+
+  @override
+  Future<List<BlockedDay>> block({
+    required String chefId,
+    required List<DayToBlock> days,
+  }) async {
+    blockCalls.add(List.of(days));
+    final fail = failBlock;
+    final created = <BlockedDay>[];
+    if (!fail) {
+      for (final day in days) {
+        if (blocked.containsKey(day.date)) continue;
+        final row = BlockedDay(
+          id: 'block-${_nextId++}',
+          date: day.date,
+          note: day.note,
+        );
+        blocked[day.date] = row;
+        created.add(row);
+      }
+    }
+    final pending = pendingBlock;
+    if (pending != null) await pending.future;
+    if (fail) throw _unavailable;
+    return created;
+  }
+
+  @override
+  Future<void> unblock({
+    required String chefId,
+    required List<String> ids,
+  }) async {
+    unblockCalls.add(List.of(ids));
+    final fail = failUnblock;
+    if (!fail) blocked.removeWhere((_, day) => ids.contains(day.id));
+    final pending = pendingUnblock;
+    if (pending != null) await pending.future;
+    if (fail) throw _unavailable;
+  }
+
+  @override
+  Future<void> updateNote({
+    required String chefId,
+    required String id,
+    String? note,
+  }) async {
+    noteCalls.add((id: id, note: note));
+    if (failNote) throw _unavailable;
+    final entry = blocked.entries.where((e) => e.value.id == id).firstOrNull;
+    if (entry == null) {
+      throw const AvailabilityFailure(AvailabilityFailureKind.notFound);
+    }
+    blocked[entry.key] = entry.value.copyWith(note: note);
   }
 }
 

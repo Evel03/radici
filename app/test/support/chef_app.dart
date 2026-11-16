@@ -7,6 +7,7 @@ import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/router.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 
 import 'fakes.dart';
@@ -20,6 +21,7 @@ class ChefApp {
     this.accounts,
     this.requests,
     this.launcher,
+    this.availability,
   );
 
   final ProviderContainer container;
@@ -27,6 +29,7 @@ class ChefApp {
   final FakeAccountRepository accounts;
   final FakeChefRequestsRepository requests;
   final FakeLinkLauncher launcher;
+  final FakeAvailabilityRepository availability;
 
   /// Navega como si se abriera un enlace a [location].
   void go(String location) => container.read(routerProvider).go(location);
@@ -34,11 +37,14 @@ class ChefApp {
 
 /// Monta la app con Evelyn logueada. [location] abre una ruta directa (como
 /// el botón del email: `INBOX_URL#/richieste/<id>`). [accounts] es su perfil
-/// (por defecto, sin idioma: manda el dispositivo).
+/// (por defecto, sin idioma: manda el dispositivo). [availability] es su
+/// horario y sus días bloqueados (por defecto, lunes a viernes de 9 a 15 y
+/// sin bloqueos).
 Future<ChefApp> pumpChefApp(
   WidgetTester tester, {
   required FakeChefRequestsRepository requests,
   FakeAccountRepository? accounts,
+  FakeAvailabilityRepository? availability,
   String? location,
   Size size = const Size(400, 900),
   List<Locale> deviceLocales = const [Locale('it', 'IT')],
@@ -48,6 +54,7 @@ Future<ChefApp> pumpChefApp(
   setSurfaceSize(tester, size);
   final auth = FakeAuthRepository(user: chefUser);
   final account = accounts ?? FakeAccountRepository(chefAccountData);
+  final days = availability ?? FakeAvailabilityRepository();
   final launcher = FakeLinkLauncher();
   final container = await pumpRadiciApp(
     tester,
@@ -57,11 +64,12 @@ Future<ChefApp> pumpChefApp(
       authRepositoryProvider.overrideWithValue(auth),
       accountRepositoryProvider.overrideWithValue(account),
       chefRequestsRepositoryProvider.overrideWithValue(requests),
+      availabilityRepositoryProvider.overrideWithValue(days),
       linkLauncherProvider.overrideWithValue(launcher),
       ...overrides,
     ],
   );
-  final app = ChefApp(container, auth, account, requests, launcher);
+  final app = ChefApp(container, auth, account, requests, launcher, days);
   if (location != null) {
     app.go(location);
     await tester.pumpAndSettle();

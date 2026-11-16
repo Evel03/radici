@@ -146,6 +146,14 @@
   "@actionLogout": {
     "description": "Cierra la sesión."
   },
+  "actionUndo": "Annulla",
+  "@actionUndo": {
+    "description": "Acción del aviso que deshace lo último que se hizo (bloquear o desbloquear días). En italiano es la palabra de siempre para deshacer, como en Gmail."
+  },
+  "actionSave": "Salva",
+  "@actionSave": {
+    "description": "Botón que guarda un diálogo (la nota de un día bloqueado)."
+  },
 
   "loginTitle": "Accedi",
   "@loginTitle": {
@@ -729,6 +737,204 @@
     "placeholders": {
       "count": { "type": "int", "example": "2" }
     }
+  },
+
+  "availabilityDayOpen": "Orario {hours}: il sito lo offre se c'è posto.",
+  "@availabilityDayOpen": {
+    "description": "Tarjeta del día en la agenda, día con horario y sin bloquear: el horario de ese día de la semana y que la web lo ofrece si queda lugar.",
+    "placeholders": {
+      "hours": { "type": "String", "example": "09:00–15:00" }
+    }
+  },
+  "availabilityDayBlocked": "Giorno bloccato: il sito non lo offre.",
+  "@availabilityDayBlocked": {
+    "description": "Tarjeta del día, día bloqueado por la cocinera: la web no lo ofrece."
+  },
+  "availabilityDayClosed": "Non lavori in questo giorno della settimana.",
+  "@availabilityDayClosed": {
+    "description": "Tarjeta del día, día de la semana sin horario (por ejemplo, el sábado)."
+  },
+  "availabilityDayPast": "Giorno passato.",
+  "@availabilityDayPast": {
+    "description": "Tarjeta del día, un día que ya pasó (hoy no cuenta: se puede bloquear)."
+  },
+  "availabilityBlockDay": "Blocca questo giorno",
+  "@availabilityBlockDay": {
+    "description": "Botón de la tarjeta del día: la web deja de ofrecerlo."
+  },
+  "availabilityUnblockDay": "Sblocca",
+  "@availabilityUnblockDay": {
+    "description": "Botón de la tarjeta de un día bloqueado: la web lo vuelve a ofrecer."
+  },
+  "availabilityBlockedDone": "{count, plural, =1{Giorno bloccato.} other{{count} giorni bloccati.}}",
+  "@availabilityBlockedDone": {
+    "description": "Aviso después de bloquear uno o varios días, con el botón para deshacer.",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "availabilityUnblockedDone": "{count, plural, =1{Giorno sbloccato.} other{{count} giorni sbloccati.}}",
+  "@availabilityUnblockedDone": {
+    "description": "Aviso después de desbloquear uno o varios días, con el botón para deshacer.",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "availabilitySaveFailed": "Non è stato possibile salvare. Controlla la connessione e riprova.",
+  "@availabilitySaveFailed": {
+    "description": "No se pudo bloquear, desbloquear o guardar la nota: el día vuelve a como estaba. Va con el botón Riprova."
+  },
+  "availabilityLoadFailed": "Impossibile caricare i giorni bloccati.",
+  "@availabilityLoadFailed": {
+    "description": "La agenda no pudo leer el horario y los días bloqueados. Va con el botón Riprova."
+  },
+  "availabilityNoteLabel": "Nota (la vedi solo tu)",
+  "@availabilityNoteLabel": {
+    "description": "Etiqueta del campo de la nota de un día bloqueado: es privada, la web no la muestra."
+  },
+  "availabilityNoteHint": "Es.: ferie",
+  "@availabilityNoteHint": {
+    "description": "Ejemplo dentro del campo de la nota (se ve solo con el campo vacío y enfocado). El pedido de no escribir datos de salud va aparte, en availabilityNoteHelper."
+  },
+  "availabilityNoteHelper": "Non scrivere dati sulla salute.",
+  "@availabilityNoteHelper": {
+    "description": "Debajo del campo de la nota de un día bloqueado, siempre visible (SPEC: las notas libres piden no escribir datos de salud). Hasta dos renglones."
+  },
+  "availabilityAddNote": "Aggiungi nota",
+  "@availabilityAddNote": {
+    "description": "Botón de un día bloqueado sin nota."
+  },
+  "availabilityEditNote": "Modifica nota",
+  "@availabilityEditNote": {
+    "description": "Botón de un día bloqueado con nota."
+  },
+  "availabilityRequestsThatDay": "{count, plural, =1{1 richiesta preferiva questo giorno: bloccarlo non la rifiuta.} other{{count} richieste preferivano questo giorno: bloccarlo non le rifiuta.}}",
+  "@availabilityRequestsThatDay": {
+    "description": "Tarjeta del día: pedidos activos que eligieron ese día. Bloquearlo no los rechaza (se gestionan desde el pedido).",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "availabilityHoliday": "Festività: {name}",
+  "@availabilityHoliday": {
+    "description": "Tarjeta y celda del calendario: el día es feriado nacional.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Immacolata Concezione" }
+    }
+  },
+  "availabilityLocalHoliday": "Festività locale: {name}",
+  "@availabilityLocalHoliday": {
+    "description": "Tarjeta y celda del calendario: el día es feriado solo en Bergamo (el patrono), no en toda Italia.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Sant'Alessandro, patrono di Bergamo" }
+    }
+  },
+  "availabilityBlockedA11y": "bloccato",
+  "@availabilityBlockedA11y": {
+    "description": "Se suma al texto accesible de un día bloqueado del calendario (\"martedì 8 dicembre 2026, nessuna richiesta, bloccato\")."
+  },
+  "blockRangeAction": "Blocca giorni",
+  "@blockRangeAction": {
+    "description": "Botón flotante de la agenda: bloquear un rango de días (vacaciones)."
+  },
+  "blockRangePickerHelp": "Tocca il primo e l'ultimo giorno",
+  "@blockRangePickerHelp": {
+    "description": "Encabezado del calendario para elegir el rango. Para un solo día, se toca dos veces."
+  },
+  "blockRangeTitle": "Dal {start} al {end}",
+  "@blockRangeTitle": {
+    "description": "Título del diálogo del rango elegido. Si el rango es de un solo día, la app muestra solo la fecha.",
+    "placeholders": {
+      "start": { "type": "String", "example": "21 dic 2026" },
+      "end": { "type": "String", "example": "6 gen 2027" }
+    }
+  },
+  "blockRangeTotalDays": "{count, plural, =1{1 giorno} other{{count} giorni}}",
+  "@blockRangeTotalDays": {
+    "description": "Diálogo del rango, primera parte del resumen: cuántos días tiene (\"17 giorni · 13 in cui lavori · 3 già bloccati\").",
+    "placeholders": {
+      "count": { "type": "int", "example": "17" }
+    }
+  },
+  "blockRangeWorkingDays": "{count, plural, =0{nessuno in cui lavori} =1{1 in cui lavori} other{{count} in cui lavori}}",
+  "@blockRangeWorkingDays": {
+    "description": "Diálogo del rango, segunda parte del resumen: cuántos tienen horario (\"13 in cui lavori\"; en inglés, \"13 working days\").",
+    "placeholders": {
+      "count": { "type": "int", "example": "13" }
+    }
+  },
+  "blockRangeAlreadyBlocked": "{count, plural, =1{1 già bloccato} other{{count} già bloccati}}",
+  "@blockRangeAlreadyBlocked": {
+    "description": "Diálogo del rango, última parte del resumen (solo si hay alguno): cuántos ya estaban bloqueados.",
+    "placeholders": {
+      "count": { "type": "int", "example": "3" }
+    }
+  },
+  "blockRangeConfirm": "{count, plural, =1{Blocca 1 giorno} other{Blocca {count} giorni}}",
+  "@blockRangeConfirm": {
+    "description": "Botón del diálogo del rango: bloquea los días que faltan.",
+    "placeholders": {
+      "count": { "type": "int", "example": "14" }
+    }
+  },
+  "blockRangeUnblock": "{count, plural, =1{Sblocca 1 giorno} other{Sblocca {count} giorni}}",
+  "@blockRangeUnblock": {
+    "description": "Botón del diálogo del rango: desbloquea los días bloqueados del rango.",
+    "placeholders": {
+      "count": { "type": "int", "example": "3" }
+    }
+  },
+  "holidayNewYear": "Capodanno",
+  "@holidayNewYear": {
+    "description": "Feriado nacional: 1 de enero."
+  },
+  "holidayEpiphany": "Epifania",
+  "@holidayEpiphany": {
+    "description": "Feriado nacional: 6 de enero."
+  },
+  "holidayEasterMonday": "Lunedì dell'Angelo (Pasquetta)",
+  "@holidayEasterMonday": {
+    "description": "Feriado nacional: el lunes después de Pascua."
+  },
+  "holidayLiberation": "Festa della Liberazione",
+  "@holidayLiberation": {
+    "description": "Feriado nacional: 25 de abril."
+  },
+  "holidayLabour": "Festa del Lavoro",
+  "@holidayLabour": {
+    "description": "Feriado nacional: 1 de mayo."
+  },
+  "holidayRepublic": "Festa della Repubblica",
+  "@holidayRepublic": {
+    "description": "Feriado nacional: 2 de junio."
+  },
+  "holidayAssumption": "Ferragosto",
+  "@holidayAssumption": {
+    "description": "Feriado nacional: 15 de agosto (Asunción)."
+  },
+  "holidaySaintAlexander": "Sant'Alessandro, patrono di Bergamo",
+  "@holidaySaintAlexander": {
+    "description": "Feriado local de Bergamo (no nacional): 26 de agosto, el patrono de la ciudad."
+  },
+  "holidaySaintFrancis": "San Francesco d'Assisi",
+  "@holidaySaintFrancis": {
+    "description": "Feriado nacional desde 2026 (legge n. 151/2025): 4 de octubre, patrono de Italia."
+  },
+  "holidayAllSaints": "Ognissanti",
+  "@holidayAllSaints": {
+    "description": "Feriado nacional: 1 de noviembre."
+  },
+  "holidayImmaculate": "Immacolata Concezione",
+  "@holidayImmaculate": {
+    "description": "Feriado nacional: 8 de diciembre."
+  },
+  "holidayChristmas": "Natale",
+  "@holidayChristmas": {
+    "description": "Feriado nacional: 25 de diciembre."
+  },
+  "holidayStStephen": "Santo Stefano",
+  "@holidayStStephen": {
+    "description": "Feriado nacional: 26 de diciembre."
   },
 
   "dietVegetarian": "Vegetariana",
