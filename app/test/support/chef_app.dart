@@ -8,6 +8,7 @@ import 'package:radici/core/router.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/availability/data/availability_repository.dart';
+import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 
 import 'fakes.dart';
@@ -22,6 +23,7 @@ class ChefApp {
     this.requests,
     this.launcher,
     this.availability,
+    this.bookings,
   );
 
   final ProviderContainer container;
@@ -30,6 +32,7 @@ class ChefApp {
   final FakeChefRequestsRepository requests;
   final FakeLinkLauncher launcher;
   final FakeAvailabilityRepository availability;
+  final FakeBookingsRepository bookings;
 
   /// Navega como si se abriera un enlace a [location].
   void go(String location) => container.read(routerProvider).go(location);
@@ -39,12 +42,15 @@ class ChefApp {
 /// el botón del email: `INBOX_URL#/richieste/<id>`). [accounts] es su perfil
 /// (por defecto, sin idioma: manda el dispositivo). [availability] es su
 /// horario y sus días bloqueados (por defecto, lunes a viernes de 9 a 15 y
-/// sin bloqueos).
+/// sin bloqueos). [bookings] es la Edge Function de las reservas (por
+/// defecto, todo libre y la llegada sugerida a las 10:00; al confirmar, el
+/// pedido pasa a `accepted` en [requests]).
 Future<ChefApp> pumpChefApp(
   WidgetTester tester, {
   required FakeChefRequestsRepository requests,
   FakeAccountRepository? accounts,
   FakeAvailabilityRepository? availability,
+  FakeBookingsRepository? bookings,
   String? location,
   Size size = const Size(400, 900),
   List<Locale> deviceLocales = const [Locale('it', 'IT')],
@@ -55,6 +61,7 @@ Future<ChefApp> pumpChefApp(
   final auth = FakeAuthRepository(user: chefUser);
   final account = accounts ?? FakeAccountRepository(chefAccountData);
   final days = availability ?? FakeAvailabilityRepository();
+  final booking = bookings ?? FakeBookingsRepository(requests: requests);
   final launcher = FakeLinkLauncher();
   final container = await pumpRadiciApp(
     tester,
@@ -65,11 +72,20 @@ Future<ChefApp> pumpChefApp(
       accountRepositoryProvider.overrideWithValue(account),
       chefRequestsRepositoryProvider.overrideWithValue(requests),
       availabilityRepositoryProvider.overrideWithValue(days),
+      bookingsRepositoryProvider.overrideWithValue(booking),
       linkLauncherProvider.overrideWithValue(launcher),
       ...overrides,
     ],
   );
-  final app = ChefApp(container, auth, account, requests, launcher, days);
+  final app = ChefApp(
+    container,
+    auth,
+    account,
+    requests,
+    launcher,
+    days,
+    booking,
+  );
   if (location != null) {
     app.go(location);
     await tester.pumpAndSettle();

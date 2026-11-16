@@ -226,6 +226,43 @@ class ChefInboxController extends AsyncNotifier<List<ChefRequest>> {
     ]);
   }
 
+  /// Se confirmó una reserva desde [requestId] (Edge Function chef): como en
+  /// la base, el pedido pasa a `accepted` con sus [weeks] semanas (y visto) y
+  /// la ficha, de prospecto a cliente, en todos sus pedidos. Pasa a la
+  /// pestaña «Prenotazioni».
+  void applyBooking(String requestId, {required int weeks}) {
+    if (!ref.mounted) return;
+    final current = state.value;
+    final booked = current?.where((r) => r.id == requestId).firstOrNull;
+    if (current == null || booked == null) {
+      unawaited(_reload(requestId));
+      return;
+    }
+    final now = ref.read(clockProvider)().toUtc();
+    RequestClient asCustomer(RequestClient client) =>
+        client.status == ClientStatus.prospect
+        ? client.copyWith(status: ClientStatus.trial)
+        : client;
+    state = AsyncData([
+      for (final r in current)
+        if (r.id == requestId)
+          r.copyWith(
+            status: RequestStatus.accepted,
+            weeks: weeks,
+            seenAt: r.seenAt ?? now,
+            client: asCustomer(r.client),
+          )
+        else if (r.clientId == booked.clientId)
+          r.copyWith(client: asCustomer(r.client))
+        else
+          r,
+    ]);
+  }
+
+  /// Vuelve a leer [requestId] del servidor (cambió en otro dispositivo). Si
+  /// falla, queda lo local.
+  Future<void> reload(String requestId) => _reload(requestId);
+
   Future<void> _changeStatus(
     String requestId,
     Future<void> Function(String id) change,

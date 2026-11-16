@@ -12,6 +12,7 @@ import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/presentation/client_area_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
+import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/home/presentation/home_screen.dart';
 import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
 import 'package:radici/features/requests/presentation/agenda_screen.dart';
@@ -92,6 +93,20 @@ final routerProvider = Provider<GoRouter>((ref) {
                         requestId: state.pathParameters['id']!,
                       ),
                     ),
+                    routes: [
+                      // «Conferma prenotazione», a pantalla completa (con X).
+                      GoRoute(
+                        path: AppRoutes.bookingSegment,
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) => MaterialPage<void>(
+                          key: state.pageKey,
+                          fullscreenDialog: true,
+                          child: ConfirmBookingScreen(
+                            requestId: state.pathParameters['id']!,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

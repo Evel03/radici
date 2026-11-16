@@ -24,6 +24,13 @@ abstract final class AppRoutes {
   static String requestDetail(String id) =>
       '$requests/${Uri.encodeComponent(id)}';
 
+  /// Hoja «Conferma prenotazione» de un pedido (a pantalla completa, sobre
+  /// el detalle).
+  static const String bookingSegment = 'prenota';
+
+  static String requestBooking(String id) =>
+      '${requestDetail(id)}/$bookingSegment';
+
   /// Parámetro con la ruta a la que volver después de entrar.
   static const String fromParam = 'from';
 }

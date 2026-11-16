@@ -1,4 +1,5 @@
-// Bandeja "Richieste": nuevas, vistas y rechazadas (contrato §7).
+// Bandeja "Richieste": nuevas, vistas, reservas (los pedidos aceptados) y
+// rechazadas (contrato §7).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,19 +27,21 @@ class InboxScreen extends ConsumerWidget {
         appBar: AppBar(
           title: Text(l10n.navRequests),
           actions: const [ChefAccountMenuButton()],
+          // Cuatro pestañas: cada una con el ancho de su texto (con ancho
+          // fijo, «Rechazadas» o «Prenotazioni» se cortarían en un teléfono).
+          // En un teléfono de 375 entran las cuatro; si no, la barra se
+          // desliza y siempre muestra la elegida.
           bottom: TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 12),
             tabs: [
               Tab(
                 key: const ValueKey('inbox-tab-new'),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Flexible(
-                      child: Text(
-                        l10n.inboxTabNew,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+                    Text(l10n.inboxTabNew),
                     if (newCount > 0) ...[
                       const SizedBox(width: 6),
                       Badge.count(
@@ -52,6 +55,10 @@ class InboxScreen extends ConsumerWidget {
               Tab(
                 key: const ValueKey('inbox-tab-seen'),
                 text: l10n.inboxTabSeen,
+              ),
+              Tab(
+                key: const ValueKey('inbox-tab-bookings'),
+                text: l10n.inboxTabBookings,
               ),
               Tab(
                 key: const ValueKey('inbox-tab-rejected'),
@@ -100,6 +107,7 @@ class _RequestList extends ConsumerWidget {
     final empty = switch (tab) {
       InboxTab.fresh => l10n.inboxEmptyNew,
       InboxTab.seen => l10n.inboxEmptySeen,
+      InboxTab.bookings => l10n.inboxEmptyBookings,
       InboxTab.rejected => l10n.inboxEmptyRejected,
     };
 

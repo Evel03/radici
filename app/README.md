@@ -96,7 +96,8 @@ repositorios falsos (`test/support/fakes.dart`).
 - Después del login se lee el perfil (`profiles.role` y `profiles.locale`): `chef` → área de la
   cocinera (con su fila de `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz
   pasa al idioma del perfil (ver [Idioma](#idioma)).
-- **Richieste**: pestañas Nuove (sin `seen_at`), Viste y Rifiutate, con contador de nuevas.
+- **Richieste**: pestañas Nuove (sin `seen_at`), Viste, Prenotazioni (los pedidos `accepted`: una
+  reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de nuevas.
 - **Agenda**: mes y semana por `preferred_date` con la franja, más la lista "Senza data". "Hoy"
   (Europe/Rome) cambia a la medianoche sin reabrir la app: se vuelve a mirar la fecha a la
   medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
@@ -114,6 +115,20 @@ repositorios falsos (`test/support/fakes.dart`).
   Si la persona es todavía un prospecto, avisa que sus datos se borran 90 días después de su último
   pedido y ofrece **Segna come cliente** (con confirmación): la ficha pasa a `trial` y se conserva
   (contrato §9).
+- **Conferma prenotazione** (`features/bookings/`): desde el detalle de un pedido `new`, una hoja a
+  pantalla completa que lo convierte en una reserva de 1 a 8 semanas (una sesión `confirmed` por
+  semana). Es la primera llamada de la app a una Edge Function: `BookingsRepository` hace
+  `functions.invoke('chef/bookings')` con la sesión de Evelyn y `?forceFunctionRegion=eu-central-1`
+  (nunca la cabecera `x-region`, que CORS no permite) y traduce los errores a `BookingFailure` sin
+  loguear nada (contrato `docs/contracts/chef-api.md`). Prellena las semanas con `requests.weeks`,
+  las fechas cada 7 días desde la preferida (cambiar la primera mueve todas), la llegada que sugiere
+  el `dryRun`, los minutos de la estimación (tope de 300) y el precio de la estimación (con las
+  tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
+  se pasa a centavos sin `double` (`parseEuroCents`). Cada cambio vuelve a pedir el `dryRun`: cada
+  semana dice si está libre, un aviso (bloqueado, sin horario, fuera de horario, pasada) o si choca,
+  y con un choque no deja confirmar. Una `requestKey` por hoja, la misma en los reintentos, con el
+  botón deshabilitado mientras envía. Al confirmar, el WhatsApp para la clienta en su idioma, con
+  las fechas y la hora (sin dirección ni alergias).
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
@@ -125,8 +140,9 @@ repositorios falsos (`test/support/fakes.dart`).
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
 
 Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace del email a Evelyn):
-`/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`, `/agenda`,
-`/impostazioni`, más `/` y `/preventivo` (públicas). En la web `/` lleva al login.
+`/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`,
+`/richieste/:id/prenota`, `/agenda`, `/impostazioni`, más `/` y `/preventivo` (públicas). En la web
+`/` lleva al login.
 
 ### Requisitos en Supabase
 

@@ -372,6 +372,10 @@
   "@inboxTabRejected": {
     "description": "Pestaña de pedidos rechazados."
   },
+  "inboxTabBookings": "Prenotazioni",
+  "@inboxTabBookings": {
+    "description": "Pestaña de las reservas: los pedidos aceptados (una reserva confirmada desde el pedido). Dejan de estar en Viste."
+  },
   "inboxEmptyNew": "Nessuna richiesta nuova.",
   "@inboxEmptyNew": {
     "description": "Pestaña Nuove vacía."
@@ -383,6 +387,10 @@
   "inboxEmptyRejected": "Nessuna richiesta rifiutata.",
   "@inboxEmptyRejected": {
     "description": "Pestaña Rifiutate vacía."
+  },
+  "inboxEmptyBookings": "Nessuna prenotazione. Le confermi dal dettaglio di una richiesta nuova.",
+  "@inboxEmptyBookings": {
+    "description": "Pestaña de reservas vacía: dice dónde se confirman."
   },
   "inboxLoadError": "Impossibile caricare le richieste. Controlla la connessione e riprova.",
   "@inboxLoadError": {
@@ -735,6 +743,232 @@
   "markClientConflict": "La scheda è cambiata nel frattempo: controlla i dati aggiornati.",
   "@markClientConflict": {
     "description": "La ficha ya no era un prospecto (por ejemplo, se marcó desde otro dispositivo)."
+  },
+
+  "actionConfirmBooking": "Conferma prenotazione",
+  "@actionConfirmBooking": {
+    "description": "Botón del detalle de un pedido nuevo y título de la hoja que lo convierte en una reserva (de 1 a 8 semanas, una sesión por semana)."
+  },
+  "bookingDatesSection": "Date",
+  "@bookingDatesSection": {
+    "description": "Hoja «Confirmar reserva»: encabezado de la lista de fechas, una por semana."
+  },
+  "bookingWeekTitle": "Settimana {week} · {date}",
+  "@bookingWeekTitle": {
+    "description": "Hoja «Confirmar reserva»: una semana de la reserva y su fecha.",
+    "placeholders": {
+      "week": { "type": "int", "example": "1" },
+      "date": { "type": "String", "example": "lun 23 nov" }
+    }
+  },
+  "bookingChangeDate": "Cambia la data della settimana {week}",
+  "@bookingChangeDate": {
+    "description": "Texto accesible y tooltip del botón que abre el calendario para cambiar la fecha de una semana.",
+    "placeholders": {
+      "week": { "type": "int", "example": "2" }
+    }
+  },
+  "bookingDatesHelp": "Se cambi la prima data si spostano tutte; le altre si cambiano una alla volta. Gli avvisi non impediscono di confermare, una sovrapposizione sì.",
+  "@bookingDatesHelp": {
+    "description": "Debajo de las fechas: cómo se cambian y qué impide confirmar (solo un choque con otra sesión)."
+  },
+  "bookingStatusOk": "Libero",
+  "@bookingStatusOk": {
+    "description": "Estado de una semana según el servidor: todo bien."
+  },
+  "bookingStatusBusy": "Si sovrappone a un'altra sessione",
+  "@bookingStatusBusy": {
+    "description": "Estado de una semana: choca con otra sesión. Impide confirmar."
+  },
+  "bookingStatusPast": "Data passata",
+  "@bookingStatusPast": {
+    "description": "Aviso de una semana: la fecha ya pasó (sirve para cargar lo ya hecho)."
+  },
+  "bookingStatusBlocked": "Giorno bloccato",
+  "@bookingStatusBlocked": {
+    "description": "Aviso de una semana: el día está bloqueado en la agenda (puede ser el que se bloqueó por esta sesión)."
+  },
+  "bookingStatusClosed": "Non lavori quel giorno",
+  "@bookingStatusClosed": {
+    "description": "Aviso de una semana: ese día de la semana no tiene horario."
+  },
+  "bookingStatusOutside": "Fuori dal tuo orario",
+  "@bookingStatusOutside": {
+    "description": "Aviso de una semana: la compra empieza antes de la apertura o la cocina termina después del cierre."
+  },
+  "bookingStatusChecking": "Verifica in corso…",
+  "@bookingStatusChecking": {
+    "description": "Estado de una semana mientras se pregunta al servidor."
+  },
+  "bookingChecksFailed": "Non è stato possibile verificare le date. Puoi confermare lo stesso: il server le ricontrolla.",
+  "@bookingChecksFailed": {
+    "description": "No se pudo preguntar al servidor el estado de las fechas. Va con el botón Riprova."
+  },
+  "bookingDateSameWeek": "Stessa settimana della data precedente: una sessione a settimana.",
+  "@bookingDateSameWeek": {
+    "description": "Error de una fecha: cae en la misma semana (lunes a domingo) que la anterior."
+  },
+  "bookingDateOrder": "Deve venire dopo la data precedente.",
+  "@bookingDateOrder": {
+    "description": "Error de una fecha: es anterior a la de la semana anterior."
+  },
+  "bookingDateOutOfRange": "Troppo lontana: al massimo un anno da oggi.",
+  "@bookingDateOutOfRange": {
+    "description": "Error de una fecha: a más de un año de hoy (hacia adelante o hacia atrás)."
+  },
+  "bookingStartSection": "Ora di arrivo",
+  "@bookingStartSection": {
+    "description": "Hoja «Confirmar reserva»: encabezado de las horas de llegada (la misma todas las semanas)."
+  },
+  "bookingStartSuggested": "Suggerita: {time} (apertura più il tempo della spesa).",
+  "@bookingStartSuggested": {
+    "description": "Debajo de las horas de llegada: la que sugiere el servidor, la primera que ofrece el calendario de la web.",
+    "placeholders": {
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "bookingStartOther": "Altra ora",
+  "@bookingStartOther": {
+    "description": "Chip que abre el reloj para elegir otra hora de llegada."
+  },
+  "bookingCookHelp": "Dalla stima, al massimo {max} min.",
+  "@bookingCookHelp": {
+    "description": "Debajo del tiempo de cocina: sale de la estimación y tiene un tope.",
+    "placeholders": {
+      "max": { "type": "int", "example": "300" }
+    }
+  },
+  "bookingPriceLabel": "Prezzo del servizio, tutte le settimane",
+  "@bookingPriceLabel": {
+    "description": "Etiqueta del campo del precio del servicio de toda la reserva (lo fija Evelyn; la compra va aparte)."
+  },
+  "bookingPricePerWeek": "= {amount} a settimana",
+  "@bookingPricePerWeek": {
+    "description": "Debajo del precio de una reserva de varias semanas: lo que queda por semana (división exacta).",
+    "placeholders": {
+      "amount": { "type": "String", "example": "140,00 €" }
+    }
+  },
+  "bookingPricePerWeekApprox": "≈ {amount} a settimana",
+  "@bookingPricePerWeekApprox": {
+    "description": "Como bookingPricePerWeek cuando la división no es exacta (los centavos que sobran van a las primeras semanas).",
+    "placeholders": {
+      "amount": { "type": "String", "example": "166,67 €" }
+    }
+  },
+  "bookingPriceRequired": "Scrivi il prezzo che hai concordato.",
+  "@bookingPriceRequired": {
+    "description": "Debajo del precio vacío (sin precio automático, o lo borró): hay que escribirlo para confirmar."
+  },
+  "bookingPriceInvalid": "Scrivi un importo valido, per esempio 560 o 560,50.",
+  "@bookingPriceInvalid": {
+    "description": "Error del precio: no es un importe."
+  },
+  "bookingPriceTooHigh": "Al massimo {max}.",
+  "@bookingPriceTooHigh": {
+    "description": "Error del precio: pasa el tope.",
+    "placeholders": {
+      "max": { "type": "String", "example": "100.000,00 €" }
+    }
+  },
+  "bookingGroceriesNote": "La spesa si paga a parte, in base allo scontrino.",
+  "@bookingGroceriesNote": {
+    "description": "Nota debajo del precio: la compra no está incluida."
+  },
+  "bookingConfirmAction": "{count, plural, =1{Conferma prenotazione} other{Conferma {count} settimane}}",
+  "@bookingConfirmAction": {
+    "description": "Botón principal de la hoja: crea la reserva con sus semanas.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" }
+    }
+  },
+  "bookingSending": "Conferma in corso…",
+  "@bookingSending": {
+    "description": "El botón principal mientras se manda la reserva."
+  },
+  "bookingErrorSlotTaken": "La settimana del {date} si sovrappone a un'altra sessione: non è stato creato nulla. Cambia quella data o l'ora.",
+  "@bookingErrorSlotTaken": {
+    "description": "Error al confirmar: una semana choca con otra sesión; no se creó ninguna.",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 30 nov" }
+    }
+  },
+  "bookingErrorWeekTaken": "La settimana del {date} ha già una sessione di questa prenotazione: non è stato creato nulla.",
+  "@bookingErrorWeekTaken": {
+    "description": "Error al confirmar: esa semana ya tiene una sesión de la misma reserva.",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 30 nov" }
+    }
+  },
+  "bookingErrorNotNew": "Questa richiesta è già «{status}»: non è stato creato nulla.",
+  "@bookingErrorNotNew": {
+    "description": "El pedido ya no está nuevo (se confirmó o rechazó en otro dispositivo). status es su estado, con el texto de la bandeja.",
+    "placeholders": {
+      "status": { "type": "String", "example": "Accettata" }
+    }
+  },
+  "bookingErrorNotFound": "Questa richiesta non esiste più.",
+  "@bookingErrorNotFound": {
+    "description": "El pedido ya no existe en el servidor."
+  },
+  "bookingErrorForbidden": "Il tuo account non può confermare prenotazioni.",
+  "@bookingErrorForbidden": {
+    "description": "El usuario no es la cocinera (403)."
+  },
+  "bookingErrorUnauthorized": "La sessione è scaduta: esci e rientra.",
+  "@bookingErrorUnauthorized": {
+    "description": "La sesión venció o se cerró (401)."
+  },
+  "bookingErrorInvalid": "Alcuni dati non sono validi: controllali e riprova.",
+  "@bookingErrorInvalid": {
+    "description": "El servidor rechazó algún campo (400)."
+  },
+  "bookingErrorConflict": "Non è stato possibile confermare per una sovrapposizione: controlla le date e riprova.",
+  "@bookingErrorConflict": {
+    "description": "Otro choque al confirmar (409)."
+  },
+  "bookingErrorUnavailable": "Non è stato possibile confermare. Controlla la connessione e riprova: se era già confermata, non si duplica.",
+  "@bookingErrorUnavailable": {
+    "description": "Sin conexión o el servidor no respondió. El reintento usa la misma clave: no duplica la reserva."
+  },
+  "bookingDoneTitle": "Prenotazione confermata",
+  "@bookingDoneTitle": {
+    "description": "Hoja después de confirmar: título."
+  },
+  "bookingDoneBody": "{count, plural, =1{Sessione creata. Tra 1 o 2 minuti il sito non offre più quell'orario.} other{{count} sessioni create. Tra 1 o 2 minuti il sito non offre più quegli orari.}}",
+  "@bookingDoneBody": {
+    "description": "Hoja después de confirmar: se crearon las sesiones y la web deja de ofrecer esos horarios (la disponibilidad se cachea 60 s).",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" }
+    }
+  },
+  "bookingDoneDuplicate": "Era già confermata: non si è duplicato nulla.",
+  "@bookingDoneDuplicate": {
+    "description": "Después de confirmar, si el servidor dice que era un reintento de una reserva ya guardada."
+  },
+  "bookingSendWhatsApp": "Manda la conferma su WhatsApp",
+  "@bookingSendWhatsApp": {
+    "description": "Botón después de confirmar: abre WhatsApp con el mensaje a la clienta, en su idioma, con las fechas y la hora."
+  },
+  "bookingNoPhone": "Senza un numero valido non si può mandare su WhatsApp.",
+  "@bookingNoPhone": {
+    "description": "Después de confirmar, si el pedido no tiene un teléfono que se pueda usar."
+  },
+  "bookingDoneClose": "Fatto",
+  "@bookingDoneClose": {
+    "description": "Botón que cierra la hoja después de confirmar."
+  },
+  "bookingWhatsAppMessage": "{count, plural, =1{Ciao {name}, sono {chef} di {brand}. Ti confermo la sessione di cucina di {dates}, con arrivo alle {time}. A presto!} other{Ciao {name}, sono {chef} di {brand}. Ti confermo le {count} sessioni di cucina, con arrivo alle {time}:\n{dates}\nA presto!}}",
+  "@bookingWhatsAppMessage": {
+    "description": "Mensaje de WhatsApp a la clienta al confirmar la reserva, en SU idioma (requests.locale). Solo fechas y hora: nunca dirección ni alergias. dates: una fecha, o una por línea con viñeta.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" },
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "time": { "type": "String", "example": "10:00" },
+      "dates": { "type": "String", "example": "• lunedì 23 novembre\n• lunedì 30 novembre" }
+    }
   },
 
   "newRequestBanner": "Nuova richiesta da {name}",

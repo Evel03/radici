@@ -164,6 +164,13 @@ abstract class RequestEstimate with _$RequestEstimate {
     /// Hasta cuántas personas había precio automático con esas tarifas
     /// (`pricing.weeklyRateMaxPeople`), para decir por qué no lo hay.
     int? maxPeople,
+
+    /// Las tarifas por semana con que se calculó (`pricing`: las de
+    /// chef_settings al crear el pedido): con ellas «Confirmar reserva»
+    /// propone el precio de otra cantidad de semanas. null en las de antes.
+    int? weeklyRateCents,
+    int? weeklyRateDiscountedCents,
+    int? weeklyDiscountMinWeeks,
   }) = _RequestEstimate;
 
   const RequestEstimate._();
@@ -183,6 +190,8 @@ abstract class RequestEstimate with _$RequestEstimate {
     final autoPrice = json['autoPrice'];
     final reason = json['reason'];
     final pricing = json['pricing'];
+    int? readPricing(String key) =>
+        pricing is Map ? readFrom(pricing, key) : null;
     return RequestEstimate(
       weeks: read('weeks'),
       portions: read('portions'),
@@ -195,7 +204,10 @@ abstract class RequestEstimate with _$RequestEstimate {
       savingsCents: read('savingsCents'),
       groceriesEstCents: read('groceriesEstCents'),
       totalCents: read('totalCents'),
-      maxPeople: pricing is Map ? readFrom(pricing, 'weeklyRateMaxPeople') : null,
+      maxPeople: readPricing('weeklyRateMaxPeople'),
+      weeklyRateCents: readPricing('weeklyRateCents'),
+      weeklyRateDiscountedCents: readPricing('weeklyRateDiscountedCents'),
+      weeklyDiscountMinWeeks: readPricing('weeklyDiscountMinWeeks'),
     );
   }
 
@@ -343,8 +355,12 @@ abstract class ChefRequest with _$ChefRequest {
   factory ChefRequest.fromJson(Map<String, dynamic> json) =>
       _$ChefRequestFromJson(_withRequestContact(json));
 
-  /// Nueva para la bandeja: Evelyn todavía no la abrió.
-  bool get isNew => seenAt == null && status != RequestStatus.rejected;
+  /// Nueva para la bandeja: Evelyn todavía no la abrió (y no es una reserva:
+  /// esas van a su pestaña aunque no tengan `seen_at`, como las del seed).
+  bool get isNew =>
+      seenAt == null &&
+      status != RequestStatus.rejected &&
+      status != RequestStatus.accepted;
 
   bool get isRejected => status == RequestStatus.rejected;
 
@@ -353,6 +369,14 @@ abstract class ChefRequest with _$ChefRequest {
 
   /// Un rechazo de la cocinera se puede deshacer (vuelve a `new`).
   bool get canUndoReject => status == RequestStatus.rejected;
+
+  /// «Confirmar reserva»: solo desde un pedido nuevo (chef_create_booking
+  /// exige `new`) y que no sea un cambio de una sesión.
+  bool get canConfirmBooking =>
+      status == RequestStatus.newRequest && type != RequestType.change;
+
+  /// Ya es una reserva confirmada (pestaña «Prenotazioni» de la bandeja).
+  bool get isBooking => status == RequestStatus.accepted;
 
   /// La persona es todavía un prospecto: la cocinera la puede marcar como
   /// cliente (ficha en `trial`), así sus datos no se borran a los 90 días

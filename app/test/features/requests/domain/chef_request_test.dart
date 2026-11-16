@@ -118,7 +118,12 @@ void main() {
           'serviceCents': 56000,
           'savingsCents': 4000,
           'totalCents': 81200,
-          'pricing': {'weeklyRateCents': 15000, 'weeklyRateMaxPeople': 5},
+          'pricing': {
+            'weeklyRateCents': 15000,
+            'weeklyRateDiscountedCents': 14000,
+            'weeklyDiscountMinWeeks': 4,
+            'weeklyRateMaxPeople': 5,
+          },
         },
       ),
     ).estimate!;
@@ -131,6 +136,17 @@ void main() {
     expect(estimate.groceriesEstCents, 6300);
     expect(estimate.maxPeople, 5);
     expect(estimate.reason, isNull);
+    // Las tarifas por semana con que se calculó (para otra cantidad de semanas).
+    expect(estimate.weeklyRateCents, 15000);
+    expect(estimate.weeklyRateDiscountedCents, 14000);
+    expect(estimate.weeklyDiscountMinWeeks, 4);
+  });
+
+  test('una estimación de antes no trae tarifas por semana', () {
+    final legacy = ChefRequest.fromJson(requestRow()).estimate!;
+    expect(legacy.weeklyRateCents, isNull);
+    expect(legacy.weeklyRateDiscountedCents, isNull);
+    expect(legacy.weeklyDiscountMinWeeks, isNull);
   });
 
   test('sin precio automático: el motivo y la compra, sin servicio', () {
@@ -238,10 +254,12 @@ void main() {
   });
 
   group('reglas', () {
-    test('nuevo = sin abrir y no rechazado', () {
+    test('nuevo = sin abrir, no rechazado y que no es una reserva', () {
       expect(buildRequest().isNew, isTrue);
       expect(buildRequest(seenAt: testNow).isNew, isFalse);
       expect(buildRequest(status: RequestStatus.rejected).isNew, isFalse);
+      // Una reserva sin seen_at (como las del seed) no cuenta como nueva.
+      expect(buildRequest(status: RequestStatus.accepted).isNew, isFalse);
     });
 
     test('solo un pedido en estado new se puede rechazar', () {
@@ -249,6 +267,23 @@ void main() {
       expect(buildRequest(seenAt: testNow).canReject, isTrue);
       for (final status in RequestStatus.values.skip(1)) {
         expect(buildRequest(status: status).canReject, isFalse, reason: '$status');
+      }
+    });
+
+    test('«Confirmar reserva» solo desde un pedido nuevo que no es un cambio', () {
+      expect(buildRequest().canConfirmBooking, isTrue);
+      expect(buildRequest(seenAt: testNow).canConfirmBooking, isTrue);
+      expect(buildRequest(type: RequestType.extra).canConfirmBooking, isTrue);
+      expect(buildRequest(type: RequestType.change).canConfirmBooking, isFalse);
+      for (final status in RequestStatus.values.skip(1)) {
+        expect(buildRequest(status: status).canConfirmBooking, isFalse, reason: '$status');
+      }
+    });
+
+    test('una reserva es un pedido aceptado', () {
+      expect(buildRequest(status: RequestStatus.accepted).isBooking, isTrue);
+      for (final status in RequestStatus.values.where((s) => s != RequestStatus.accepted)) {
+        expect(buildRequest(status: status).isBooking, isFalse, reason: '$status');
       }
     });
 

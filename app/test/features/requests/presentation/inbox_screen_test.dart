@@ -1,6 +1,7 @@
 // Bandeja: pestañas, contador, lista y navegación al detalle.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
@@ -32,9 +33,26 @@ void main() {
       seenAt: DateTime.utc(2026, 10, 17, 10),
       createdAt: DateTime.utc(2026, 10, 17, 9),
     ),
+    // Una reserva confirmada (pedido aceptado) de 4 semanas.
+    buildRequest(
+      id: 'booked-1',
+      name: 'Sara Gialli',
+      status: RequestStatus.accepted,
+      weeks: 4,
+      seenAt: DateTime.utc(2026, 10, 16, 10),
+      createdAt: DateTime.utc(2026, 10, 16, 9),
+    ),
   ]);
 
   Finder tile(String id) => find.byKey(ValueKey('request-$id'));
+
+  /// Toca una pestaña; la barra se desliza si no entra entera.
+  Future<void> openTab(WidgetTester tester, String key) async {
+    await tester.ensureVisible(find.byKey(ValueKey(key)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey(key)));
+    await tester.pumpAndSettle();
+  }
 
   testWidgets('nuevas primero, con contador en la pestaña y en la navegación', (
     tester,
@@ -83,17 +101,38 @@ void main() {
     );
   });
 
-  testWidgets('pestañas Viste y Rifiutate', (tester) async {
+  testWidgets('pestañas Viste, Prenotazioni y Rifiutate', (tester) async {
     await pumpChefApp(tester, requests: sample());
 
-    await tester.tap(find.byKey(const ValueKey('inbox-tab-seen')));
-    await tester.pumpAndSettle();
+    await openTab(tester, 'inbox-tab-seen');
     expect(tile('seen-1'), findsOneWidget);
     expect(tile('new-1'), findsNothing);
+    // Una reserva ya no está en Viste.
+    expect(tile('booked-1'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('inbox-tab-rejected')));
-    await tester.pumpAndSettle();
+    await openTab(tester, 'inbox-tab-bookings');
+    expect(find.text('Prenotazioni'), findsOneWidget);
+    expect(tile('booked-1'), findsOneWidget);
+    expect(tile('seen-1'), findsNothing);
+    expect(
+      find.descendant(
+        of: tile('booked-1'),
+        matching: find.textContaining('Settimana di pasti · 4 settimane'),
+      ),
+      findsOneWidget,
+    );
+
+    await openTab(tester, 'inbox-tab-rejected');
     expect(tile('rejected-1'), findsOneWidget);
+    expect(tile('booked-1'), findsNothing);
+  });
+
+  testWidgets('cuatro pestañas, cada una con el ancho de su texto', (tester) async {
+    await pumpChefApp(tester, requests: sample());
+    final tabBar = tester.widget<TabBar>(find.byType(TabBar));
+    expect(tabBar.tabs, hasLength(4));
+    expect(tabBar.isScrollable, isTrue);
+    expect(tabBar.tabAlignment, TabAlignment.start);
   });
 
   testWidgets('pestañas vacías', (tester) async {
@@ -103,6 +142,49 @@ void main() {
       find.byKey(const ValueKey('new-requests-badge')).first,
     );
     expect(badge.isLabelVisible, isFalse);
+
+    // La de reservas dice dónde se confirman.
+    await openTab(tester, 'inbox-tab-bookings');
+    expect(
+      find.text('Nessuna prenotazione. Le confermi dal dettaglio di una richiesta nuova.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('confirmar una reserva la pasa de Viste a Prenotazioni', (tester) async {
+    final app = await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([
+        buildRequest(
+          id: 'req-1',
+          weeks: 4,
+          preferredDate: CalendarDate(2026, 11, 23),
+          estimate: fourWeeksEstimate,
+          seenAt: testNow,
+        ),
+      ]),
+    );
+    await openTab(tester, 'inbox-tab-seen');
+    await tester.tap(tile('req-1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('action-confirm-booking')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('booking-confirm')));
+    await tester.pumpAndSettle();
+    expect(app.bookings.confirmations, hasLength(1));
+
+    await tester.tap(find.byKey(const ValueKey('booking-done-close')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    expect(tile('req-1'), findsNothing, reason: 'ya no está en Viste');
+    await openTab(tester, 'inbox-tab-bookings');
+    expect(tile('req-1'), findsOneWidget);
+    expect(
+      find.descendant(of: tile('req-1'), matching: find.textContaining('4 settimane')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('abrir un pedido lo marca visto y baja el contador', (tester) async {
