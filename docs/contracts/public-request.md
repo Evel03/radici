@@ -118,10 +118,10 @@ Migraciones: `20261019120000_public_requests.sql`, `20261019130000_api_grants.sq
 | `estimate` | jsonb | resultado de `calcQuote` con las tarifas de `chef_settings` al crear + `pricing` usado (SPEC §5.1): siempre `weeks`, `autoPrice`, porciones, recetas, minutos y compra; `weeklyServiceCents`, `serviceCents`, `savingsCents` y `totalCents` solo con precio automático (sin precio, `reason`). Las de antes del 16/11/2026 no tienen `autoPrice` (una semana, servicio por hora) |
 | `source` | text not null default `app`, check in (`web`,`app`) | origen |
 | `seen_at` | timestamptz | Evelyn lo abrió |
-| `request_key` | uuid | `requestKey` de la web; índice único `(chef_id, request_key)` donde no es null. Los pedidos de la app no la llevan |
+| `request_key` | uuid | `requestKey` de la web; índice único `(chef_id, request_key)` donde no es null. También la lleva el pedido de una reserva a mano (`source = 'app'`): la clave de idempotencia de `chef_create_booking`, que comparte el índice con las de la web (SPEC §4, «Reservas»). Los pedidos que la app crea directamente no la llevan |
 | `contact` | jsonb (objeto) | contacto tal como llegó con el pedido: `{ "name", "zone", "phone" (E.164), "email" }`. Lo escribe solo `submit_public_request`; la app lo muestra en lugar de la ficha (§7). Null en los pedidos de la app |
 | `no_allergies` | boolean | respuesta a la pregunta de alergias: `true` = nadie tiene; `false` = las escribió (van en `restrictions`); null = sin respuesta (pedidos de la app, de la web anteriores a la versión 2 o con el consentimiento de salud retirado). Check: `true` nunca va con `restrictions`. Lo escribe solo `submit_public_request`; la app lo lee (§7) |
-| `weeks` | smallint not null default 1, check entre 1 y 8 (`requests_semanas_validas`) y 1 si `type` no es `week` (`requests_semanas_solo_week`) | semanas del pedido semanal: un menú y una sesión de cocina por semana. 1 en los demás y en los pedidos anteriores (eran de una semana). Lo escribe solo `submit_public_request`; la app lo lee y un pedido creado desde la app queda en 1 |
+| `weeks` | smallint not null default 1, check entre 1 y 8 (`requests_semanas_validas`) y 1 si `type` no es `week` (`requests_semanas_solo_week`) | semanas del pedido semanal: un menú y una sesión de cocina por semana. 1 en los demás y en los pedidos anteriores (eran de una semana). Lo escriben `submit_public_request` (`p.weeks`) y `chef_create_booking` (SPEC §4, «Reservas»): al confirmar una reserva desde un pedido, las semanas que se crearon; el pedido de una reserva a mano (`source = 'app'`) nace con ellas. La app lo lee y no lo escribe (privilegios por columna): un pedido que crea directamente queda en 1 |
 
 `chef_settings`: la función lee las tarifas del motor con la clave secreta (`CHEF_SETTINGS_COLUMNS` en `handler.ts`: las cuatro del precio por semana de `20261116120000_weekly_pricing.sql`, las porciones, el margen y el mínimo de cocina; ya no la tarifa por hora ni el fijo de traslado). Sin esa migración la lectura falla (`500`, `db_error` con `op: load_chef`) y no se guarda ningún pedido.
 
@@ -330,6 +330,7 @@ La privacy promete acceso, rectificación, supresión, portabilidad, oposición 
   select jsonb_pretty(jsonb_build_object(
     'fichas',          (select jsonb_agg(to_jsonb(cl)) from public.clients cl where cl.id in (select id from persona)),
     'pedidos',         (select jsonb_agg(to_jsonb(r)) from public.requests r where r.client_id in (select id from persona)),
+    'sesiones',        (select jsonb_agg(to_jsonb(s) order by s.date, s.start_time) from public.sessions s where s.client_id in (select id from persona)),
     'consentimientos', (select jsonb_agg(to_jsonb(c)) from public.consents c where c.client_id in (select id from persona)),
     'restricciones',   (select jsonb_agg(to_jsonb(cr)) from public.client_restrictions cr where cr.client_id in (select id from persona))));
   ```
@@ -348,7 +349,7 @@ La privacy promete acceso, rectificación, supresión, portabilidad, oposición 
   `update public.requests set restrictions = null, no_allergies = null where id = '<request_id>';`
 - Datos de salud escritos en las notas libres (sin consentimiento; la privacy §5 dice que se borran):
   `update public.requests set notes = null where id = '<request_id>';`
-- Borrar a una persona (supresión; también un pedido de prueba). En cascada se van sus pedidos, presupuestos, consentimientos, restricciones y sesiones canceladas. Si tiene pagos registrados falla (son registro contable): conservar solo eso y consultar. Un cliente con cuenta se borra con su cuenta (M2).
+- Borrar a una persona (supresión; también un pedido de prueba). En cascada se van sus pedidos, presupuestos, consentimientos, restricciones y todas sus sesiones, no solo las canceladas: también las semanas por venir de una reserva, cuyos días vuelven a quedar libres en el calendario de la web. Si tiene pagos registrados falla (son registro contable): conservar solo eso y consultar. Un cliente con cuenta se borra con su cuenta (M2).
 
   ```sql
   begin;
