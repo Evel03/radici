@@ -1,8 +1,10 @@
 {
-  "description": "Vectores de SPEC.md §5.1. Los pasan quote.ts (TS) y la copia en Dart de la app. Montos en centavos.",
+  "description": "Vectores de SPEC.md §5.1 (precio por semana, decisiones del dueño del 15 y 16/11/2026). Los pasan quote.ts (TS) y la copia en Dart de la app. Montos en centavos; porciones, recetas, minutos y compra son de una semana (una sesión). Sin precio automático (autoPrice false) no hay weeklyServiceCents, serviceCents, savingsCents ni totalCents.",
   "defaultSettings": {
-    "hourlyRateCents": 2200,
-    "travelFeeCents": 1200,
+    "weeklyRateCents": 15000,
+    "weeklyRateDiscountedCents": 14000,
+    "weeklyDiscountMinWeeks": 4,
+    "weeklyRateMaxPeople": 5,
     "adultPortionCents": 380,
     "kidPortionCents": 250,
     "preauthBufferPct": 15,
@@ -11,67 +13,135 @@
   "vectors": [
     {
       "id": 1,
-      "label": "2 ad · 2 niños · 5 días · cena",
-      "input": { "adults": 2, "kids": 2, "days": 5, "meals": 1 },
-      "expected": { "portions": 20, "recipes": 3, "cookMinutes": 180, "serviceCents": 7800, "groceriesEstCents": 6300, "preauthCents": 7245, "holdCents": 15045, "totalCents": 14100 }
+      "label": "2 ad · 2 niños · 5 días · cena · 1 semana",
+      "input": { "type": "week", "adults": 2, "kids": 2, "days": 5, "meals": 1, "weeks": 1 },
+      "expected": { "weeks": 1, "portions": 20, "recipes": 3, "cookMinutes": 180, "groceriesEstCents": 6300, "preauthCents": 7245, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 15000, "savingsCents": 0, "totalCents": 21300 }
     },
     {
       "id": 2,
-      "label": "1 ad · 5 días · almuerzo",
-      "input": { "adults": 1, "kids": 0, "days": 5, "meals": 1 },
-      "expected": { "portions": 5, "recipes": 2, "cookMinutes": 150, "serviceCents": 6700, "groceriesEstCents": 1900, "preauthCents": 2185, "holdCents": 8885, "totalCents": 8600 }
+      "label": "Como el 1, 3 semanas (sin descuento)",
+      "input": { "type": "week", "adults": 2, "kids": 2, "days": 5, "meals": 1, "weeks": 3 },
+      "expected": { "weeks": 3, "portions": 20, "recipes": 3, "cookMinutes": 180, "groceriesEstCents": 6300, "preauthCents": 7245, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 45000, "savingsCents": 0, "totalCents": 63900 }
     },
     {
       "id": 3,
-      "label": "10 ad · 6 niños · 1 día · cena",
-      "input": { "adults": 10, "kids": 6, "days": 1, "meals": 1 },
-      "expected": { "portions": 16, "recipes": 2, "cookMinutes": 150, "serviceCents": 6700, "groceriesEstCents": 5300, "preauthCents": 6095, "holdCents": 12795, "totalCents": 12000 }
+      "label": "Como el 1, 4 semanas (desde 4: 140 € por semana)",
+      "input": { "type": "week", "adults": 2, "kids": 2, "days": 5, "meals": 1, "weeks": 4 },
+      "expected": { "weeks": 4, "portions": 20, "recipes": 3, "cookMinutes": 180, "groceriesEstCents": 6300, "preauthCents": 7245, "autoPrice": true, "weeklyServiceCents": 14000, "serviceCents": 56000, "savingsCents": 4000, "totalCents": 81200 }
     },
     {
       "id": 4,
-      "label": "2 ad · 3 niños · 4 días · cena",
-      "input": { "adults": 2, "kids": 3, "days": 4, "meals": 1 },
-      "expected": { "portions": 20, "recipes": 2, "cookMinutes": 150, "serviceCents": 6700, "groceriesEstCents": 6040, "preauthCents": 6946, "holdCents": 13646, "totalCents": 12740 }
+      "label": "Como el 1, 5 semanas (sigue en 140 € por semana)",
+      "input": { "type": "week", "adults": 2, "kids": 2, "days": 5, "meals": 1, "weeks": 5 },
+      "expected": { "weeks": 5, "portions": 20, "recipes": 3, "cookMinutes": 180, "groceriesEstCents": 6300, "preauthCents": 7245, "autoPrice": true, "weeklyServiceCents": 14000, "serviceCents": 70000, "savingsCents": 5000, "totalCents": 101500 }
     },
     {
       "id": 5,
-      "label": "2 ad · 1 niño · 5 días · cena",
-      "input": { "adults": 2, "kids": 1, "days": 5, "meals": 1 },
-      "expected": { "portions": 15, "recipes": 3, "cookMinutes": 180, "serviceCents": 7800, "groceriesEstCents": 5050, "preauthCents": 5808, "holdCents": 13608, "totalCents": 12850 }
+      "label": "Como el 1, 8 semanas (máximo)",
+      "input": { "type": "week", "adults": 2, "kids": 2, "days": 5, "meals": 1, "weeks": 8 },
+      "expected": { "weeks": 8, "portions": 20, "recipes": 3, "cookMinutes": 180, "groceriesEstCents": 6300, "preauthCents": 7245, "autoPrice": true, "weeklyServiceCents": 14000, "serviceCents": 112000, "savingsCents": 8000, "totalCents": 162400 }
     },
     {
       "id": 6,
-      "label": "2 ad · 2 niños · 5 días · almuerzo y cena",
-      "input": { "adults": 2, "kids": 2, "days": 5, "meals": 2 },
-      "expected": { "portions": 40, "recipes": 5, "cookMinutes": 270, "serviceCents": 11100, "groceriesEstCents": 12600, "preauthCents": 14490, "holdCents": 25590, "totalCents": 23700 }
+      "label": "2 ad · 3 niños · 4 días · cena · 1 semana (5 personas: el tope del precio automático)",
+      "input": { "type": "week", "adults": 2, "kids": 3, "days": 4, "meals": 1, "weeks": 1 },
+      "expected": { "weeks": 1, "portions": 20, "recipes": 2, "cookMinutes": 150, "groceriesEstCents": 6040, "preauthCents": 6946, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 15000, "savingsCents": 0, "totalCents": 21040 }
     },
     {
       "id": 7,
-      "label": "4 ad · 7 días · almuerzo y cena (tope de 6 recetas)",
-      "input": { "adults": 4, "kids": 0, "days": 7, "meals": 2 },
-      "expected": { "portions": 56, "recipes": 6, "cookMinutes": 330, "serviceCents": 13300, "groceriesEstCents": 21280, "preauthCents": 24472, "holdCents": 37772, "totalCents": 34580 }
+      "label": "3 ad · 3 niños · 5 días · cena · 1 semana (6 personas: sin precio automático)",
+      "input": { "type": "week", "adults": 3, "kids": 3, "days": 5, "meals": 1, "weeks": 1 },
+      "expected": { "weeks": 1, "portions": 30, "recipes": 3, "cookMinutes": 210, "groceriesEstCents": 9450, "preauthCents": 10868, "autoPrice": false, "reason": "people" }
     },
     {
       "id": 8,
-      "label": "1 ad · 1 día · cena (mínimo)",
-      "input": { "adults": 1, "kids": 0, "days": 1, "meals": 1 },
-      "expected": { "portions": 1, "recipes": 2, "cookMinutes": 150, "serviceCents": 6700, "groceriesEstCents": 380, "preauthCents": 437, "holdCents": 7137, "totalCents": 7080 }
+      "label": "Evento o sesión extra: 10 ad · 6 niños · 1 día · cena (sin precio automático)",
+      "input": { "type": "extra", "adults": 10, "kids": 6, "days": 1, "meals": 1, "weeks": 1 },
+      "expected": { "weeks": 1, "portions": 16, "recipes": 2, "cookMinutes": 150, "groceriesEstCents": 5300, "preauthCents": 6095, "autoPrice": false, "reason": "extra" }
     },
     {
       "id": 9,
-      "label": "Como el 2, con tarifa 21,55 €/h (redondeo mitad hacia arriba)",
-      "settings": { "hourlyRateCents": 2155 },
-      "input": { "adults": 1, "kids": 0, "days": 5, "meals": 1 },
-      "expected": { "portions": 5, "recipes": 2, "cookMinutes": 150, "serviceCents": 6588, "groceriesEstCents": 1900, "preauthCents": 2185, "holdCents": 8773, "totalCents": 8488 }
+      "label": "Sesión extra de 2 personas: tampoco tiene precio automático",
+      "input": { "type": "extra", "adults": 2, "kids": 0, "days": 1, "meals": 2, "weeks": 1 },
+      "expected": { "weeks": 1, "portions": 4, "recipes": 2, "cookMinutes": 150, "groceriesEstCents": 1520, "preauthCents": 1748, "autoPrice": false, "reason": "extra" }
+    },
+    {
+      "id": 10,
+      "label": "Compra estimada: 1 ad · 5 días · almuerzo · 1 semana",
+      "input": { "type": "week", "adults": 1, "kids": 0, "days": 5, "meals": 1, "weeks": 1 },
+      "expected": { "weeks": 1, "portions": 5, "recipes": 2, "cookMinutes": 150, "groceriesEstCents": 1900, "preauthCents": 2185, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 15000, "savingsCents": 0, "totalCents": 16900 }
+    },
+    {
+      "id": 11,
+      "label": "Compra estimada con porción de niño: 0 ad · 2 niños · 3 días · almuerzo · 1 semana",
+      "input": { "type": "week", "adults": 0, "kids": 2, "days": 3, "meals": 1, "weeks": 1 },
+      "expected": { "weeks": 1, "portions": 6, "recipes": 2, "cookMinutes": 150, "groceriesEstCents": 1500, "preauthCents": 1725, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 15000, "savingsCents": 0, "totalCents": 16500 }
+    },
+    {
+      "id": 12,
+      "label": "Compra estimada con almuerzo y cena: 2 ad · 2 niños · 5 días · 2 semanas (el servicio no cambia con las comidas)",
+      "input": { "type": "week", "adults": 2, "kids": 2, "days": 5, "meals": 2, "weeks": 2 },
+      "expected": { "weeks": 2, "portions": 40, "recipes": 5, "cookMinutes": 270, "groceriesEstCents": 12600, "preauthCents": 14490, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 30000, "savingsCents": 0, "totalCents": 55200 }
+    },
+    {
+      "id": 13,
+      "label": "4 ad · 7 días · almuerzo y cena · 1 semana (tope de 6 recetas, 330 min)",
+      "input": { "type": "week", "adults": 4, "kids": 0, "days": 7, "meals": 2, "weeks": 1 },
+      "expected": { "weeks": 1, "portions": 56, "recipes": 6, "cookMinutes": 330, "groceriesEstCents": 21280, "preauthCents": 24472, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 15000, "savingsCents": 0, "totalCents": 36280 }
+    },
+    {
+      "id": 14,
+      "label": "1 ad · 1 día · cena · 1 semana (mínimo)",
+      "input": { "type": "week", "adults": 1, "kids": 0, "days": 1, "meals": 1, "weeks": 1 },
+      "expected": { "weeks": 1, "portions": 1, "recipes": 2, "cookMinutes": 150, "groceriesEstCents": 380, "preauthCents": 437, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 15000, "savingsCents": 0, "totalCents": 15380 }
+    },
+    {
+      "id": 15,
+      "label": "Como el 14, con un mínimo de cocina de 240 min (el mínimo se aplica)",
+      "settings": { "minCookMinutes": 240 },
+      "input": { "type": "week", "adults": 1, "kids": 0, "days": 1, "meals": 1, "weeks": 1 },
+      "expected": { "weeks": 1, "portions": 1, "recipes": 2, "cookMinutes": 240, "groceriesEstCents": 380, "preauthCents": 437, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 15000, "savingsCents": 0, "totalCents": 15380 }
+    },
+    {
+      "id": 16,
+      "label": "Tarifas de Giulia (seed): 160 €, 150 € desde 3 semanas, hasta 6 personas · 3 ad · 3 niños · 5 días · cena · 3 semanas",
+      "settings": { "weeklyRateCents": 16000, "weeklyRateDiscountedCents": 15000, "weeklyDiscountMinWeeks": 3, "weeklyRateMaxPeople": 6 },
+      "input": { "type": "week", "adults": 3, "kids": 3, "days": 5, "meals": 1, "weeks": 3 },
+      "expected": { "weeks": 3, "portions": 30, "recipes": 3, "cookMinutes": 210, "groceriesEstCents": 9450, "preauthCents": 10868, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 45000, "savingsCents": 3000, "totalCents": 73350 }
+    },
+    {
+      "id": 17,
+      "label": "Sin descuento (la misma tarifa en las dos columnas): como el 1, 4 semanas a 150 €",
+      "settings": { "weeklyRateDiscountedCents": 15000 },
+      "input": { "type": "week", "adults": 2, "kids": 2, "days": 5, "meals": 1, "weeks": 4 },
+      "expected": { "weeks": 4, "portions": 20, "recipes": 3, "cookMinutes": 180, "groceriesEstCents": 6300, "preauthCents": 7245, "autoPrice": true, "weeklyServiceCents": 15000, "serviceCents": 60000, "savingsCents": 0, "totalCents": 85200 }
     }
   ],
   "invalid": [
-    { "label": "sin personas", "input": { "adults": 0, "kids": 0, "days": 5, "meals": 1 } },
-    { "label": "0 días", "input": { "adults": 2, "kids": 0, "days": 0, "meals": 1 } },
-    { "label": "8 días", "input": { "adults": 2, "kids": 0, "days": 8, "meals": 1 } },
-    { "label": "3 comidas", "input": { "adults": 2, "kids": 0, "days": 5, "meals": 3 } },
-    { "label": "adultos decimales", "input": { "adults": 1.5, "kids": 0, "days": 5, "meals": 1 } },
-    { "label": "niños negativos", "input": { "adults": 2, "kids": -1, "days": 5, "meals": 1 } },
-    { "label": "31 adultos", "input": { "adults": 31, "kids": 0, "days": 1, "meals": 1 } }
+    { "label": "sin personas", "input": { "type": "week", "adults": 0, "kids": 0, "days": 5, "meals": 1, "weeks": 1 } },
+    { "label": "0 días", "input": { "type": "week", "adults": 2, "kids": 0, "days": 0, "meals": 1, "weeks": 1 } },
+    { "label": "8 días", "input": { "type": "week", "adults": 2, "kids": 0, "days": 8, "meals": 1, "weeks": 1 } },
+    { "label": "3 comidas", "input": { "type": "week", "adults": 2, "kids": 0, "days": 5, "meals": 3, "weeks": 1 } },
+    { "label": "adultos decimales", "input": { "type": "week", "adults": 1.5, "kids": 0, "days": 5, "meals": 1, "weeks": 1 } },
+    { "label": "niños negativos", "input": { "type": "week", "adults": 2, "kids": -1, "days": 5, "meals": 1, "weeks": 1 } },
+    { "label": "31 adultos", "input": { "type": "week", "adults": 31, "kids": 0, "days": 1, "meals": 1, "weeks": 1 } },
+    { "label": "0 semanas", "input": { "type": "week", "adults": 2, "kids": 0, "days": 5, "meals": 1, "weeks": 0 } },
+    { "label": "9 semanas", "input": { "type": "week", "adults": 2, "kids": 0, "days": 5, "meals": 1, "weeks": 9 } },
+    { "label": "semanas decimales", "input": { "type": "week", "adults": 2, "kids": 0, "days": 5, "meals": 1, "weeks": 1.5 } },
+    { "label": "sesión extra de 2 semanas (solo el pedido semanal tiene semanas)", "input": { "type": "extra", "adults": 2, "kids": 0, "days": 1, "meals": 1, "weeks": 2 } },
+    { "label": "tipo desconocido", "input": { "type": "change", "adults": 2, "kids": 0, "days": 5, "meals": 1, "weeks": 1 } }
+  ],
+  "invalidSettings": [
+    { "label": "tarifa por semana negativa", "settings": { "weeklyRateCents": -1, "weeklyRateDiscountedCents": 0 } },
+    { "label": "tarifa por semana de más de 10.000 €", "settings": { "weeklyRateCents": 1000001 } },
+    { "label": "tarifa con descuento mayor que la tarifa", "settings": { "weeklyRateDiscountedCents": 15001 } },
+    { "label": "descuento desde 0 semanas", "settings": { "weeklyDiscountMinWeeks": 0 } },
+    { "label": "descuento desde 9 semanas", "settings": { "weeklyDiscountMinWeeks": 9 } },
+    { "label": "precio automático hasta 0 personas", "settings": { "weeklyRateMaxPeople": 0 } },
+    { "label": "precio automático hasta 61 personas", "settings": { "weeklyRateMaxPeople": 61 } },
+    { "label": "porción de adulto de más de 1000 €", "settings": { "adultPortionCents": 100001 } },
+    { "label": "margen de más de 100 %", "settings": { "preauthBufferPct": 101 } },
+    { "label": "mínimo de cocina de más de 24 h", "settings": { "minCookMinutes": 1441 } },
+    { "label": "tarifa con decimales", "settings": { "weeklyRateCents": 15000.5 } }
   ]
 }
