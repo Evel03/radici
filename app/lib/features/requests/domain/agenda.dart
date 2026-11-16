@@ -1,5 +1,7 @@
 // Cálculos de la agenda: cuadrícula del mes, días de la semana y pedidos por
-// fecha preferida. Dart puro. Las semanas empiezan el lunes (Italia).
+// fecha preferida (los que todavía no son una reserva: las reservas se ven
+// por sus sesiones, features/sessions). Dart puro. Las semanas empiezan el
+// lunes (Italia).
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
@@ -41,7 +43,8 @@ int _bySlotThenCreated(ChefRequest a, ChefRequest b) {
 }
 
 /// Pedidos activos con fecha preferida, agrupados por fecha y ordenados por
-/// franja (mañana, tarde, indistinto) y llegada.
+/// franja (mañana, tarde, indistinto) y llegada. Las reservas no: la agenda
+/// muestra sus sesiones.
 Map<CalendarDate, List<ChefRequest>> requestsByPreferredDate(
   Iterable<ChefRequest> requests,
 ) {

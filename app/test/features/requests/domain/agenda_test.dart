@@ -85,6 +85,17 @@ void main() {
       noDate: true,
       status: RequestStatus.rejected,
     );
+    // Reservas: la agenda muestra sus sesiones, no la fecha preferida.
+    final booked = buildRequest(
+      id: 'booked',
+      preferredDate: CalendarDate(2026, 10, 23),
+      status: RequestStatus.accepted,
+    );
+    final bookedNoDate = buildRequest(
+      id: 'booked-no-date',
+      noDate: true,
+      status: RequestStatus.accepted,
+    );
     final all = [
       any,
       afternoon,
@@ -95,9 +106,11 @@ void main() {
       noDateOld,
       noDateNew,
       noDateRejected,
+      booked,
+      bookedNoDate,
     ];
 
-    test('agrupa por fecha, ordena por franja y llegada, sin rechazados', () {
+    test('agrupa por fecha, ordena por franja y llegada, sin rechazados ni reservas', () {
       final byDate = requestsByPreferredDate(all);
       expect(byDate.keys, unorderedEquals([day, CalendarDate(2026, 10, 22)]));
       expect(byDate[day]!.map((r) => r.id), [
@@ -108,7 +121,7 @@ void main() {
       ]);
     });
 
-    test('senza data: activos sin fecha, el que espera hace más, primero', () {
+    test('senza data: activos sin fecha (sin reservas), el que espera hace más, primero', () {
       expect(requestsWithoutDate(all).map((r) => r.id), [
         'no-date-old',
         'no-date-new',

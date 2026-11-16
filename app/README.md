@@ -100,16 +100,46 @@ repositorios falsos (`test/support/fakes.dart`).
   `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
   nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos
   y no la tapa.
-- **Agenda**: mes y semana por `preferred_date` con la franja, más la lista "Senza data". "Hoy"
+- **Agenda**: mes y semana con las **sesiones** (`features/sessions/`): en el mes, un punto por
+  sesión en la celda (el texto accesible las cuenta) y, al tocar el día, sus bloques junto a la
+  tarjeta del día; en la semana, bloques «Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00» con
+  las horas de cada sesión (`start_time`, `shop_minutes` y `cook_minutes` guardados en ella; nada
+  fijo). Cada bloque abre la ficha de la sesión. `SessionsRepository` las lee con la RLS («la
+  cocinera lee las suyas»), con la ficha (`clients`, y sus `client_restrictions`) y el pedido de la
+  reserva embebidos por el nombre de la FK (`requests.target_session_id` también apunta a
+  `sessions`), desde el lunes de la primera semana del mes de hoy (o del mes elegido, si es
+  anterior). Los pedidos que todavía no son una reserva siguen por `preferred_date` con la franja,
+  más la lista "Senza data"; los `accepted` ya no (se ven por sus sesiones). "Hoy"
   (Europe/Rome) cambia a la medianoche sin reabrir la app: se vuelve a mirar la fecha a la
   medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
-  Si estaba elegido "hoy", la agenda pasa al día nuevo; si no, respeta el día elegido.
+  Si estaba elegido "hoy", la agenda pasa al día nuevo; si no, respeta el día elegido. Deslizar
+  para actualizar vuelve a leer la bandeja, la disponibilidad y las sesiones (sin Realtime de
+  sesiones).
   Días bloqueados (`availability_exceptions`, sin migración: la RLS y los grants ya estaban): la
   tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada, y el botón
   «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
   existía). La web deja de ofrecerlos en 1 o 2 minutos (`get_free_days` los descuenta; la
   disponibilidad se cachea 60 s). Marca los feriados nacionales (Pasquetta calculada; San Francesco
-  desde 2026, legge n. 151/2025) y Sant'Alessandro (26/8) como festivo local de Bergamo.
+  desde 2026, legge n. 151/2025) y Sant'Alessandro (26/8) como festivo local de Bergamo. Un día con
+  sesiones (y el rango que las incluya) avisa que bloquearlo no las cancela.
+- **Ficha de la sesión** (`/sessioni/:id`, a pantalla completa): el día, «Settimana k di N» (sin
+  contar las canceladas), las horas, «Come arrivare» (la dirección de la ficha en Apple Maps en el
+  iPhone, también en `/gestione/` con Safari, y en Google Maps en el resto; sin dirección queda
+  deshabilitado y lo dice: el formulario web no la pide), WhatsApp en el idioma de la clienta (la
+  fecha y la hora, nunca la dirección ni las alergias) y llamar; las alergias de la ficha y del
+  pedido, con la nota del pedido resaltada y, con gluten, la de contaminación cruzada (SPEC §5.6);
+  los datos de la clienta y las semanas de la reserva (cada una abre su ficha). Abajo, **Mover**:
+  el calendario y una hoja (`/sessioni/:id/sposta`) que pide el `dryRun` de
+  `POST chef/sessions/move` antes de confirmar (libre, un aviso, un choque o la semana con otra
+  sesión de la reserva, que ofrece «Passa alla fine della prenotazione»: una por semana); al mover,
+  la ficha ofrece «Annulla», que la devuelve a su fecha y hora. Y **Cancelar**
+  (`POST chef/sessions/cancel`), con confirmación, el motivo (la lista cerrada del contrato,
+  preseleccionado el neutro `chef_cancelled`: la clienta con cuenta puede leerlo) y «anche le
+  successive». Un 409 `hasPayments` se explica sin cancelar nada y ofrece pasarla al final de la
+  reserva; la cancelación con devolución llega con los cobros (PR 10). Lo que devuelve la función
+  se aplica en la agenda y en la ficha sin volver a leer; los errores se traducen a
+  `SessionFailure` sin loguear nada (contrato `docs/contracts/chef-api.md` §5 y §6). Los modelos
+  no imprimen la dirección, las alergias ni las notas en `toString`.
 - **Detalle**: todos los datos (también las restricciones), la estimación guardada y las acciones:
   WhatsApp (`https://wa.me/<número sin +>?text=…` en el idioma del cliente), llamar (`tel:`),
   email (`mailto:`), rechazar (`new` → `rejected`) y deshacer el rechazo (`rejected` → `new`;
@@ -151,8 +181,9 @@ repositorios falsos (`test/support/fakes.dart`).
 
 Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace del email a Evelyn):
 `/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`,
-`/richieste/:id/prenota`, `/agenda`, `/impostazioni`, más `/` y `/preventivo` (públicas). En la web
-`/` lleva al login.
+`/richieste/:id/prenota`, `/agenda`, `/sessioni/:id`, `/sessioni/:id/sposta` (con `?data=AAAA-MM-DD`
+si la fecha ya se eligió), `/impostazioni`, más `/` y `/preventivo` (públicas). En la web `/` lleva
+al login.
 
 ### Requisitos en Supabase
 

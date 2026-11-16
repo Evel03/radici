@@ -36,6 +36,7 @@ void main() {
     RangeSummary summary,
     void Function(BlockRangeChoice?) result, {
     Locale locale = const Locale('it'),
+    int sessionDays = 0,
   }) async {
     await pumpLocalized(
       tester,
@@ -48,6 +49,7 @@ void main() {
                 first: first,
                 last: last,
                 summary: summary,
+                sessionDays: sessionDays,
               ),
             ),
             child: const Text('apri'),
@@ -61,6 +63,21 @@ void main() {
   }
 
   final note = find.byKey(const ValueKey('block-range-note'));
+
+  testWidgets('si algunos días del rango tienen sesiones, avisa que bloquearlos no las cancela', (
+    tester,
+  ) async {
+    await open(tester, summaryWith(const []), (_) {}, sessionDays: 2);
+    expect(
+      find.text('2 di questi giorni hanno sessioni: bloccarli non le annulla.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('sin sesiones en el rango, no dice nada de sesiones', (tester) async {
+    await open(tester, summaryWith(const []), (_) {});
+    expect(find.byKey(const ValueKey('block-range-sessions')), findsNothing);
+  });
 
   testWidgets('del 21/12 al 6/1: resumen, «Sblocca 3 giorni» y «Blocca 14 giorni»', (
     tester,

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:radici/core/platform.dart';
+import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/presentation/client_area_screen.dart';
@@ -19,6 +20,8 @@ import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
+import 'package:radici/features/sessions/presentation/move_session_screen.dart';
 import 'package:radici/features/settings/presentation/settings_screen.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
@@ -71,6 +74,31 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.settings,
         pageBuilder: (context, state) => _page(state, const SettingsScreen()),
+      ),
+      // La ficha de una sesión, también fuera de las pestañas (tapa la barra;
+      // se abre con push desde la agenda).
+      GoRoute(
+        path: '${AppRoutes.sessions}/:id',
+        pageBuilder: (context, state) => _page(
+          state,
+          CookingSessionScreen(sessionId: state.pathParameters['id']!),
+        ),
+        routes: [
+          // «Sposta la sessione», a pantalla completa (con X).
+          GoRoute(
+            path: AppRoutes.sessionMoveSegment,
+            pageBuilder: (context, state) => MaterialPage<void>(
+              key: state.pageKey,
+              fullscreenDialog: true,
+              child: MoveSessionScreen(
+                sessionId: state.pathParameters['id']!,
+                date: _dateOrNull(
+                  state.uri.queryParameters[AppRoutes.dateParam],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       StatefulShellRoute.indexedStack(
         pageBuilder: (context, state, navigationShell) =>
@@ -134,6 +162,16 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 Page<void> _page(GoRouterState state, Widget child) =>
     MaterialPage<void>(key: state.pageKey, child: child);
+
+/// Una fecha "AAAA-MM-DD" de la URL, o null si falta o no es una fecha.
+CalendarDate? _dateOrNull(String? value) {
+  if (value == null) return null;
+  try {
+    return CalendarDate.parse(value);
+  } on FormatException {
+    return null;
+  }
+}
 
 class _RouterRefresh extends ChangeNotifier {
   void notify() => notifyListeners();

@@ -1054,6 +1054,338 @@
     }
   },
 
+  "sessionTitle": "Sessione",
+  "@sessionTitle": {
+    "description": "Título de la ficha de una sesión de cocina mientras carga (después va el nombre de la clienta)."
+  },
+  "sessionNotFound": "Questa sessione non esiste o non è più disponibile.",
+  "@sessionNotFound": {
+    "description": "Ficha de una sesión que no existe (o no es de esta cocinera)."
+  },
+  "sessionLoadError": "Impossibile caricare la sessione. Controlla la connessione e riprova.",
+  "@sessionLoadError": {
+    "description": "La ficha de la sesión no se pudo leer. Va con el botón Riprova."
+  },
+  "sessionsLoadFailed": "Impossibile caricare le sessioni.",
+  "@sessionsLoadFailed": {
+    "description": "Agenda: no se pudieron leer las sesiones de la cocinera. Va con el botón Riprova."
+  },
+  "sessionStatusHeld": "In attesa di conferma",
+  "@sessionStatusHeld": {
+    "description": "Estado de una sesión held: preventivo enviado, el horario queda retenido hasta que la clienta acepte."
+  },
+  "sessionStatusConfirmed": "Confermata",
+  "@sessionStatusConfirmed": {
+    "description": "Estado de una sesión confirmed."
+  },
+  "sessionStatusShoppingDone": "Spesa fatta",
+  "@sessionStatusShoppingDone": {
+    "description": "Estado de una sesión shopping_done (ya se cargó el ticket de la compra)."
+  },
+  "sessionStatusCooked": "Cucinata",
+  "@sessionStatusCooked": {
+    "description": "Estado de una sesión cooked."
+  },
+  "sessionStatusPaid": "Pagata",
+  "@sessionStatusPaid": {
+    "description": "Estado de una sesión paid (servicio y compra cobrados)."
+  },
+  "sessionStatusCancelled": "Annullata",
+  "@sessionStatusCancelled": {
+    "description": "Estado de una sesión cancelled."
+  },
+  "sessionTimes": "Spesa dalle {shop} · Arrivo {arrival} · fino alle {end}",
+  "@sessionTimes": {
+    "description": "Horas de una sesión, salidas de lo guardado en ella: la compra empieza antes de llegar a la casa y la cocina termina a {end}.",
+    "placeholders": {
+      "shop": { "type": "String", "example": "09:15" },
+      "arrival": { "type": "String", "example": "10:00" },
+      "end": { "type": "String", "example": "13:00" }
+    }
+  },
+  "sessionWeekOf": "Settimana {week} di {weeks}",
+  "@sessionWeekOf": {
+    "description": "Posición de la sesión en su reserva, sin contar las semanas canceladas.",
+    "placeholders": {
+      "week": { "type": "int", "example": "2" },
+      "weeks": { "type": "int", "example": "4" }
+    }
+  },
+  "sessionDirections": "Come arrivare",
+  "@sessionDirections": {
+    "description": "Botón de la ficha de la sesión: abre la dirección de la clienta en Mapas, con el camino."
+  },
+  "sessionNoAddress": "Nessun indirizzo nella scheda: chiedilo alla cliente.",
+  "@sessionNoAddress": {
+    "description": "La ficha de la clienta no tiene dirección (el formulario web no la pide): «Come arrivare» queda deshabilitado."
+  },
+  "sessionSectionAllergies": "Allergie e diete",
+  "@sessionSectionAllergies": {
+    "description": "Sección de la ficha de la sesión: alérgenos y dietas de la ficha y de la solicitud, y la nota de alergias de la solicitud."
+  },
+  "sessionAllergyNote": "Nota della richiesta",
+  "@sessionAllergyNote": {
+    "description": "Etiqueta de la nota de alergias que escribió la clienta en la solicitud (texto libre, se muestra resaltada)."
+  },
+  "sessionCrossContamination": "Celiachia: evita la contaminazione crociata. Utensili, pentole e superfici puliti o separati, niente farina in giro.",
+  "@sessionCrossContamination": {
+    "description": "Nota de contaminación cruzada (SPEC §5.6) en una sesión con gluten en la ficha o en la solicitud."
+  },
+  "sessionSectionClient": "Cliente",
+  "@sessionSectionClient": {
+    "description": "Sección de la ficha de la sesión con los datos de la clienta."
+  },
+  "sessionAddress": "Indirizzo",
+  "@sessionAddress": {
+    "description": "Etiqueta de la dirección de la clienta."
+  },
+  "sessionKitchenNotes": "Note sulla cucina",
+  "@sessionKitchenNotes": {
+    "description": "Etiqueta de las notas de la ficha sobre la cocina de la casa (horno, dónde están las cosas…)."
+  },
+  "sessionSectionWeeks": "Settimane della prenotazione",
+  "@sessionSectionWeeks": {
+    "description": "Sección de la ficha de la sesión con todas las semanas de su reserva (también las canceladas)."
+  },
+  "sessionMoveAction": "Sposta",
+  "@sessionMoveAction": {
+    "description": "Botón de la ficha de la sesión: elegir otra fecha (y hora)."
+  },
+  "sessionCancelAction": "Annulla sessione",
+  "@sessionCancelAction": {
+    "description": "Botón de la ficha de la sesión: cancelarla (con confirmación)."
+  },
+  "sessionWhatsAppMessage": "Ciao {name}, sono {chef} di {brand}. Ti scrivo per la sessione di {date}, con arrivo alle {time}.",
+  "@sessionWhatsAppMessage": {
+    "description": "WhatsApp a la clienta desde la ficha de la sesión, en SU idioma (requests.locale). Solo fecha y hora: nunca dirección ni alergias.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "date": { "type": "String", "example": "mercoledì 25 novembre" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "cancelReasonClient": "L'ha chiesto la cliente",
+  "@cancelReasonClient": {
+    "description": "Motivo de cancelación client_cancelled (lista cerrada: la clienta con cuenta puede leerlo)."
+  },
+  "cancelReasonUnavailable": "Non posso andare",
+  "@cancelReasonUnavailable": {
+    "description": "Motivo de cancelación chef_unavailable: la cocinera no puede ir."
+  },
+  "cancelReasonOther": "Altro motivo",
+  "@cancelReasonOther": {
+    "description": "Motivo de cancelación chef_cancelled (el de por defecto)."
+  },
+  "moveSessionTitle": "Sposta la sessione",
+  "@moveSessionTitle": {
+    "description": "Título de la hoja para mover una sesión a otra fecha u hora."
+  },
+  "moveSessionNow": "Adesso: {date}, arrivo alle {time}",
+  "@moveSessionNow": {
+    "description": "Hoja «Sposta»: la fecha y la hora actuales de la sesión.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 25 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "moveSessionNewDate": "Nuova data",
+  "@moveSessionNewDate": {
+    "description": "Hoja «Sposta»: título de la fecha nueva."
+  },
+  "moveSessionPickerHelp": "Nuova data della sessione",
+  "@moveSessionPickerHelp": {
+    "description": "Encabezado del calendario para elegir la fecha nueva de la sesión."
+  },
+  "moveChecksFailed": "Non è stato possibile verificare la data. Puoi spostarla comunque: il server la ricontrolla.",
+  "@moveChecksFailed": {
+    "description": "Hoja «Sposta»: no se pudo pedir el chequeo de la fecha. Va con Riprova."
+  },
+  "moveToEnd": "Passa alla fine della prenotazione",
+  "@moveToEnd": {
+    "description": "Botón: mover la sesión a la semana después de la última de su reserva (cuando la semana elegida ya tiene otra sesión de la reserva)."
+  },
+  "moveToEndDate": "Una sessione per settimana: diventerebbe {date}, la settimana dopo l'ultima.",
+  "@moveToEndDate": {
+    "description": "Debajo del botón «Passa alla fine…»: la regla (una sesión por semana) y a qué fecha pasaría.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 23 dic" }
+    }
+  },
+  "moveSameAsNow": "Scegli un'altra data o un'altra ora.",
+  "@moveSameAsNow": {
+    "description": "Barra de la hoja «Sposta»: la fecha y la hora elegidas son las de ahora."
+  },
+  "moveBlockClash": "Si sovrappone a un'altra sessione: scegli un'altra data o un'altra ora.",
+  "@moveBlockClash": {
+    "description": "Barra de la hoja «Sposta»: la fecha choca con otra sesión y no se puede mover ahí."
+  },
+  "moveBlockWeekTaken": "Quella settimana ha già una sessione di questa prenotazione.",
+  "@moveBlockWeekTaken": {
+    "description": "Barra de la hoja «Sposta»: la semana ya tiene otra sesión de la reserva."
+  },
+  "moveSummary": "{date}, arrivo alle {time}",
+  "@moveSummary": {
+    "description": "Barra de la hoja «Sposta»: a dónde se va a mover.",
+    "placeholders": {
+      "date": { "type": "String", "example": "gio 3 dic" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "moveConfirm": "Sposta a {date}",
+  "@moveConfirm": {
+    "description": "Botón principal de la hoja «Sposta».",
+    "placeholders": {
+      "date": { "type": "String", "example": "gio 3 dic" }
+    }
+  },
+  "moveSending": "Spostamento…",
+  "@moveSending": {
+    "description": "El botón mientras se mueve la sesión."
+  },
+  "sessionErrorSlotTaken": "{date} si sovrappone a un'altra sessione: non è stato spostato niente.",
+  "@sessionErrorSlotTaken": {
+    "description": "Al mover: la fecha choca con otra sesión (409 slotTaken).",
+    "placeholders": {
+      "date": { "type": "String", "example": "gio 3 dic" }
+    }
+  },
+  "sessionErrorWeekTaken": "La settimana di {date} ha già una sessione di questa prenotazione: non è stato spostato niente.",
+  "@sessionErrorWeekTaken": {
+    "description": "Al mover: esa semana ya tiene otra sesión de la reserva (409 weekTaken).",
+    "placeholders": {
+      "date": { "type": "String", "example": "gio 3 dic" }
+    }
+  },
+  "sessionErrorNotMovable": "Questa sessione è «{status}»: non si può più spostare.",
+  "@sessionErrorNotMovable": {
+    "description": "Al mover: la sesión ya no está held ni confirmed (409 sessionNotMovable). status: su estado.",
+    "placeholders": {
+      "status": { "type": "String", "example": "Cucinata" }
+    }
+  },
+  "sessionErrorNotMovableUnknown": "Questa sessione non si può più spostare.",
+  "@sessionErrorNotMovableUnknown": {
+    "description": "Como sessionErrorNotMovable, sin un estado conocido."
+  },
+  "sessionErrorInvalidTransition": "Una delle sessioni è già cucinata o pagata: non ne è stata annullata nessuna.",
+  "@sessionErrorInvalidTransition": {
+    "description": "Al cancelar: alguna está cooked o paid (409 invalidTransition); es todo o nada."
+  },
+  "sessionErrorNotFound": "La sessione non esiste più.",
+  "@sessionErrorNotFound": {
+    "description": "Al mover o cancelar: la sesión ya no existe (404)."
+  },
+  "sessionErrorForbidden": "Il tuo account non può modificare le sessioni.",
+  "@sessionErrorForbidden": {
+    "description": "Al mover o cancelar: el usuario no es la cocinera (403)."
+  },
+  "sessionErrorConflict": "Non è stato possibile per un conflitto: aggiorna e riprova.",
+  "@sessionErrorConflict": {
+    "description": "Al mover o cancelar: otro 409."
+  },
+  "sessionErrorMoveUnavailable": "Non è stato possibile spostarla. Controlla la connessione e riprova.",
+  "@sessionErrorMoveUnavailable": {
+    "description": "Al mover: sin conexión o el servidor no responde. Reintentar no duplica nada."
+  },
+  "sessionErrorCancelUnavailable": "Non è stato possibile annullarla. Controlla la connessione e riprova: se era già annullata, non cambia niente.",
+  "@sessionErrorCancelUnavailable": {
+    "description": "Al cancelar: sin conexión o el servidor no responde. Va con Riprova."
+  },
+  "sessionMovedDone": "Sessione spostata a {date}, arrivo alle {time}.",
+  "@sessionMovedDone": {
+    "description": "Aviso después de mover la sesión, con el botón para deshacer.",
+    "placeholders": {
+      "date": { "type": "String", "example": "gio 3 dic" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "sessionMoveUndone": "Spostamento annullato.",
+  "@sessionMoveUndone": {
+    "description": "Aviso después de deshacer el movimiento: la sesión volvió a su fecha y hora."
+  },
+  "sessionMoveUndoFailed": "Non è stato possibile annullare lo spostamento.",
+  "@sessionMoveUndoFailed": {
+    "description": "No se pudo deshacer el movimiento. Va con Riprova."
+  },
+  "cancelSessionTitle": "Annullare la sessione di {date}?",
+  "@cancelSessionTitle": {
+    "description": "Título de la confirmación de cancelar una sesión.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 25 nov" }
+    }
+  },
+  "cancelSessionBody": "Il giorno torna libero sul sito in 1 o 2 minuti. Una sessione annullata non si può riattivare.",
+  "@cancelSessionBody": {
+    "description": "Confirmación de cancelar: qué pasa (la web vuelve a ofrecer el día) y que no se deshace."
+  },
+  "cancelSessionReason": "Motivo",
+  "@cancelSessionReason": {
+    "description": "Título de los motivos de cancelación (lista cerrada, nunca texto libre)."
+  },
+  "cancelSessionFollowing": "{count, plural, =1{Annulla anche la successiva} other{Annulla anche le {count} successive}}",
+  "@cancelSessionFollowing": {
+    "description": "Casilla de la confirmación: cancelar también las semanas siguientes de la reserva.",
+    "placeholders": {
+      "count": { "type": "int", "example": "3" }
+    }
+  },
+  "cancelSessionConfirm": "{count, plural, =1{Annulla la sessione} other{Annulla {count} sessioni}}",
+  "@cancelSessionConfirm": {
+    "description": "Botón que confirma la cancelación.",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "cancelSessionKeep": "Indietro",
+  "@cancelSessionKeep": {
+    "description": "Botón para cerrar la confirmación sin cancelar nada (no se usa «Annulla» para no confundirlo con cancelar la sesión)."
+  },
+  "cancelSessionDone": "{count, plural, =1{Sessione annullata: in 1 o 2 minuti il sito torna a offrire quel giorno.} other{{count} sessioni annullate: in 1 o 2 minuti il sito torna a offrire quei giorni.}}",
+  "@cancelSessionDone": {
+    "description": "Aviso después de cancelar.",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "cancelSessionSending": "Annullamento…",
+  "@cancelSessionSending": {
+    "description": "La barra de la ficha mientras se cancela."
+  },
+  "cancelHasPaymentsTitle": "Settimana già pagata",
+  "@cancelHasPaymentsTitle": {
+    "description": "Título del aviso cuando una semana que se quiso cancelar ya está cobrada (409 hasPayments)."
+  },
+  "cancelHasPaymentsBody": "{count, plural, =1{Questa settimana è già pagata: non è stato annullato niente. Una settimana annullata non si può spostare né riattivare, quindi prima puoi passarla alla fine della prenotazione. Annullarla con il rimborso arriverà con gli incassi.} other{{count} di queste settimane sono già pagate: non è stato annullato niente. Una settimana annullata non si può spostare né riattivare, quindi prima puoi passarle alla fine della prenotazione. Annullarle con il rimborso arriverà con gli incassi.}}",
+  "@cancelHasPaymentsBody": {
+    "description": "Aviso de hasPayments: no se canceló nada; se puede pasar la semana al final de la reserva (decisión 5 del plan). La cancelación con devolución llega con los cobros.",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "agendaSessionCount": "{count, plural, =0{nessuna sessione} =1{1 sessione} other{{count} sessioni}}",
+  "@agendaSessionCount": {
+    "description": "Texto accesible de un día del calendario con sesiones.",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "availabilitySessionsThatDay": "{count, plural, =1{1 sessione in questo giorno: bloccarlo non la annulla.} other{{count} sessioni in questo giorno: bloccarlo non le annulla.}}",
+  "@availabilitySessionsThatDay": {
+    "description": "Tarjeta del día en la agenda: el día tiene sesiones; bloquearlo no las cancela (se cancelan desde su ficha).",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "blockRangeSessionDays": "{count, plural, =1{1 di questi giorni ha sessioni: bloccarlo non le annulla.} other{{count} di questi giorni hanno sessioni: bloccarli non le annulla.}}",
+  "@blockRangeSessionDays": {
+    "description": "Diálogo del rango a bloquear: cuántos días del rango tienen sesiones.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+
   "newRequestBanner": "Nuova richiesta da {name}",
   "@newRequestBanner": {
     "description": "Aviso emergente de un pedido nuevo.",

@@ -12,6 +12,7 @@ import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/availability/presentation/availability_actions.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 /// Lo que eligió la cocinera en el resumen del rango.
@@ -55,11 +56,15 @@ Future<void> pickAndBlockRange(BuildContext context) async {
   final first = CalendarDate.fromDateTime(range.start);
   final last = CalendarDate.fromDateTime(range.end);
   final summary = summarizeRange(first, last, snapshot);
+  // Los días del rango con sesiones: bloquearlos no las cancela.
+  final sessions = container.read(agendaSessionsByDateProvider);
+  final sessionDays = summary.dates.where(sessions.containsKey).length;
   final choice = await showBlockRangeDialog(
     context,
     first: first,
     last: last,
     summary: summary,
+    sessionDays: sessionDays,
   );
   switch (choice) {
     case BlockRangeBlock(:final note):
@@ -71,16 +76,23 @@ Future<void> pickAndBlockRange(BuildContext context) async {
   }
 }
 
-/// Muestra el resumen del rango de [first] a [last]. Devuelve lo que se eligió,
-/// o null si se canceló.
+/// Muestra el resumen del rango de [first] a [last] ([sessionDays]: cuántos
+/// de sus días tienen sesiones). Devuelve lo que se eligió, o null si se
+/// canceló.
 Future<BlockRangeChoice?> showBlockRangeDialog(
   BuildContext context, {
   required CalendarDate first,
   required CalendarDate last,
   required RangeSummary summary,
+  int sessionDays = 0,
 }) => showDialog<BlockRangeChoice>(
   context: context,
-  builder: (_) => BlockRangeDialog(first: first, last: last, summary: summary),
+  builder: (_) => BlockRangeDialog(
+    first: first,
+    last: last,
+    summary: summary,
+    sessionDays: sessionDays,
+  ),
 );
 
 class BlockRangeDialog extends StatefulWidget {
@@ -89,11 +101,15 @@ class BlockRangeDialog extends StatefulWidget {
     required this.first,
     required this.last,
     required this.summary,
+    this.sessionDays = 0,
   });
 
   final CalendarDate first;
   final CalendarDate last;
   final RangeSummary summary;
+
+  /// Días del rango con sesiones: bloquearlos no las cancela.
+  final int sessionDays;
 
   @override
   State<BlockRangeDialog> createState() => _BlockRangeDialogState();
@@ -172,6 +188,13 @@ class _BlockRangeDialogState extends State<BlockRangeDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(counts, key: const ValueKey('block-range-summary')),
+          if (widget.sessionDays > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.blockRangeSessionDays(widget.sessionDays),
+              key: const ValueKey('block-range-sessions'),
+            ),
+          ],
           if (toBlock > 0) ...[
             const SizedBox(height: 16),
             TextField(

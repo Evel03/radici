@@ -4,6 +4,7 @@
 // En la web (/gestione/) las rutas van en el fragmento: /gestione/#/richieste.
 // Así un enlace directo (el botón del email a Evelyn: INBOX_URL#/richieste/<id>)
 // funciona sin reglas de reescritura en Cloudflare Pages.
+import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 
 /// Rutas (en italiano, como las de la web).
@@ -31,6 +32,22 @@ abstract final class AppRoutes {
   static String requestBooking(String id) =>
       '${requestDetail(id)}/$bookingSegment';
 
+  /// Ficha de una sesión de cocina (a pantalla completa, sobre la agenda).
+  static const String sessions = '/sessioni';
+
+  static String sessionDetail(String id) =>
+      '$sessions/${Uri.encodeComponent(id)}';
+
+  /// Hoja «Sposta la sessione» (a pantalla completa, sobre la ficha).
+  static const String sessionMoveSegment = 'sposta';
+
+  /// Parámetro con la fecha nueva ya elegida ("AAAA-MM-DD").
+  static const String dateParam = 'data';
+
+  static String sessionMove(String id, {CalendarDate? date}) =>
+      '${sessionDetail(id)}/$sessionMoveSegment'
+      '${date == null ? '' : '?$dateParam=${date.toIso()}'}';
+
   /// Parámetro con la ruta a la que volver después de entrar.
   static const String fromParam = 'from';
 }
@@ -40,6 +57,7 @@ bool isChefPath(String path) =>
     path == AppRoutes.requests ||
     path.startsWith('${AppRoutes.requests}/') ||
     path == AppRoutes.agenda ||
+    path.startsWith('${AppRoutes.sessions}/') ||
     path == AppRoutes.settings;
 
 /// A dónde redirigir [location] según [session], o null para quedarse.

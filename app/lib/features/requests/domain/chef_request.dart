@@ -383,12 +383,13 @@ abstract class ChefRequest with _$ChefRequest {
   /// (contrato §9).
   bool get canMarkClient => client.status == ClientStatus.prospect;
 
-  /// Cuenta para la agenda: pedidos en curso (no rechazados, vencidos ni
-  /// cerrados).
+  /// Cuenta para la agenda por su fecha preferida: pedidos en curso que
+  /// todavía no son una reserva. Una reserva (`accepted`) ya tiene sus
+  /// sesiones, que la agenda muestra en su día; los rechazados, vencidos o
+  /// cerrados no cuentan.
   bool get isActive => switch (status) {
-    RequestStatus.newRequest ||
-    RequestStatus.quoted ||
-    RequestStatus.accepted => true,
+    RequestStatus.newRequest || RequestStatus.quoted => true,
+    RequestStatus.accepted ||
     RequestStatus.declined ||
     RequestStatus.rejected ||
     RequestStatus.expired ||
