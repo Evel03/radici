@@ -322,8 +322,10 @@ begin
         v_deleted := v_deleted + 1;
         continue;
       exception
-        when foreign_key_violation then
-          null;  -- algo la referencia sin cascada: queda como cuenta de cliente (abajo)
+        -- Algo la referencia sin cascada, o el rol no puede borrar en auth: queda como cuenta de
+        -- cliente (abajo), igual sin acceso. El aviso de usuarios del despliegue la cuenta de más.
+        when foreign_key_violation or insufficient_privilege then
+          null;
       end;
     end if;
 
