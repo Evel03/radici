@@ -1,5 +1,5 @@
 {
-  "description": "Vectores de SPEC.md §5.1 (precio por semana, decisiones del dueño del 15 y 16/11/2026). Los pasan quote.ts (TS) y la copia en Dart de la app. Montos en centavos; porciones, recetas, minutos y compra son de una semana (una sesión). Sin precio automático (autoPrice false) no hay weeklyServiceCents, serviceCents, savingsCents ni totalCents. validSettings: el mínimo y el máximo de cada check de chef_settings (quote.test.ts los compara con las migraciones); con cualquiera, los dos motores calculan sin lanzar.",
+  "description": "Vectores de SPEC.md §5.1 (precio por semana, decisiones del dueño del 15 y 16/11/2026). Los pasan quote.ts (TS) y la copia en Dart de la app. Montos en centavos; porciones, recetas, minutos y compra son de una semana (una sesión). Sin precio automático (autoPrice false) no hay weeklyServiceCents, serviceCents, savingsCents ni totalCents. validSettings: el mínimo y el máximo de cada check de las columnas de chef_settings que lee el motor (quote.test.ts los compara con las migraciones); con cualquiera, los dos motores calculan sin lanzar.",
   "defaultSettings": {
     "weeklyRateCents": 15000,
     "weeklyRateDiscountedCents": 14000,

@@ -15,7 +15,7 @@ interface Fixture {
   }>;
   invalid: Array<{ label: string; input: QuoteInput }>;
   invalidSettings: Array<{ label: string; settings: Partial<PricingSettings> }>;
-  /** El mínimo y el máximo de cada check de chef_settings: los dos motores calculan con cualquiera. */
+  /** El mínimo y el máximo de cada check de las columnas de chef_settings que lee el motor: los dos motores calculan con cualquiera. */
   validSettings: Array<{ label: string; settings: Partial<PricingSettings> }>;
 }
 
@@ -224,7 +224,7 @@ test("el motor acepta todo lo que la base guarda en chef_settings: ninguna fila 
   assert.match(migrations().map((m) => m.sql).join("\n"), new RegExp(`check\\s*\\(\\s*weeks\\s+between\\s+1\\s+and\\s+${LIMITS.maxWeeks}\\s*\\)`, "i"));
 });
 
-test("validSettings de quote_vectors.json tiene el mínimo y el máximo de cada check de chef_settings (la copia Dart los recorre)", () => {
+test("validSettings de quote_vectors.json tiene el mínimo y el máximo de cada check de las columnas de chef_settings que lee el motor (la copia Dart los recorre)", () => {
   // La copia Dart no lee las migraciones: recorre esta lista. Si un check cambia, la lista tiene que cambiar.
   for (const [key, column] of Object.entries(COLUMNS) as Array<[keyof PricingSettings, string]>) {
     for (const value of checkBounds(column)) {

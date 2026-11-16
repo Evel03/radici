@@ -134,9 +134,10 @@ void main() {
     }
   });
 
-  // El mínimo y el máximo de cada check de chef_settings (quote.test.ts
-  // compara la lista con las migraciones): cuando la app calcule con las
-  // tarifas de la cocinera, ninguna fila que la base guarda hace lanzar.
+  // El mínimo y el máximo de cada check de las columnas de chef_settings que
+  // lee el motor (quote.test.ts compara la lista con las migraciones): cuando
+  // la app calcule con las tarifas de la cocinera, ninguna fila que la base
+  // guarda hace lanzar.
   group('tarifas válidas (los extremos de chef_settings) no lanzan', () {
     const inputs = [
       QuoteInput(
