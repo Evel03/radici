@@ -61,9 +61,12 @@ insert into public.chefs (id, profile_id, display_name, service_area, whatsapp) 
 
 -- Evelyn: todos los valores por defecto de la spec (2200, 1200, 380, 250, 15 %, 90, 45, 30, 30, 56, 24, 48, 90)
 insert into public.chef_settings (chef_id) values ('cef00000-0000-4000-8000-000000000001');
--- Giulia: tarifas distintas, para que se note si se mezclan datos entre chefs
-insert into public.chef_settings (chef_id, hourly_rate_cents, travel_fee_cents, shop_minutes, gap_minutes)
-values ('cef00000-0000-4000-8000-000000000002', 2500, 1500, 40, 20);
+-- Giulia: tarifas distintas, para que se note si se mezclan datos entre chefs (también las del
+-- precio por semana: 160 €, 150 € desde 3 semanas, hasta 6 personas)
+insert into public.chef_settings (chef_id, hourly_rate_cents, travel_fee_cents, shop_minutes, gap_minutes,
+                                  weekly_rate_cents, weekly_rate_discounted_cents, weekly_discount_min_weeks,
+                                  weekly_rate_max_people)
+values ('cef00000-0000-4000-8000-000000000002', 2500, 1500, 40, 20, 16000, 15000, 3, 6);
 
 -- Evelyn: lunes a viernes de 9 a 15 (dow: 0 = domingo), como en producción (decisión del 15/11/2026;
 -- migración 20261115130100_default_availability.sql)
