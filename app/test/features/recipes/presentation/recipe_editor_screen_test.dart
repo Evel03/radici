@@ -322,6 +322,40 @@ void main() {
     ]);
   });
 
+  // Sin onEditingComplete, «Siguiente» iría a lo próximo en el orden de
+  // lectura: el botón de quitar de la misma fila (y el teclado se cerraría).
+  for (final locale in const [Locale('es', 'ES'), Locale('it', 'IT')]) {
+    testWidgets('«Siguiente» en el nombre de un ingrediente lleva a su cantidad, con el teclado abierto (${locale.languageCode})', (
+      tester,
+    ) async {
+      await openEditor(tester, size: const Size(375, 667), locale: locale);
+      await tester.enterText(byKey('recipe-name-it'), 'Frittata di zucchine');
+      await tapVisible(tester, byKey('recipe-ingredient-add'));
+      final name = byKey('recipe-ingredient-name-0');
+      expect(tester.widget<TextField>(name).textInputAction, TextInputAction.next);
+      await tester.enterText(name, 'Zucchine');
+      await tester.testTextInput.receiveAction(TextInputAction.next);
+      await tester.pump();
+
+      final quantity = find.descendant(
+        of: byKey('recipe-ingredient-quantity-0'),
+        matching: find.byType(EditableText),
+      );
+      expect(tester.widget<EditableText>(quantity).focusNode.hasFocus, isTrue);
+      expect(tester.testTextInput.isVisible, isTrue, reason: 'el teclado sigue abierto');
+      expect(byKey('recipe-ingredient-0'), findsOneWidget, reason: 'la fila no se quitó');
+    });
+  }
+
+  testWidgets('con «q.b.», el nombre del ingrediente cierra el teclado (no hay cantidad que escribir)', (tester) async {
+    await openEditor(tester, location: '/altro/piatti/$lasagneId');
+    // La fila 2 (Sale) es q.b.; la 0 lleva cantidad.
+    expect(tester.widget<TextField>(byKey('recipe-ingredient-name-2')).textInputAction, TextInputAction.done);
+    expect(tester.widget<TextField>(byKey('recipe-ingredient-name-0')).textInputAction, TextInputAction.next);
+    await choose(tester, 'recipe-ingredient-unit-0', 'q.b.');
+    expect(tester.widget<TextField>(byKey('recipe-ingredient-name-0')).textInputAction, TextInputAction.done);
+  });
+
   testWidgets('un ingrediente con unidad y sin cantidad no se guarda', (tester) async {
     await openEditor(tester);
     await tester.enterText(byKey('recipe-name-it'), 'Frittata di zucchine');

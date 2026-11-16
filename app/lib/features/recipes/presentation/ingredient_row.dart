@@ -23,6 +23,10 @@ class IngredientRowControllers {
   final TextEditingController quantity;
   final FocusNode nameFocus = FocusNode();
 
+  /// «Siguiente» en el nombre lleva acá (si no, iría al botón de quitar, que
+  /// es lo próximo en el orden de lectura, y el teclado se cerraría).
+  final FocusNode quantityFocus = FocusNode();
+
   /// Para llevar la fila a la vista (al agregarla o si tiene un error).
   final GlobalKey anchor = GlobalKey();
 
@@ -30,6 +34,7 @@ class IngredientRowControllers {
     name.dispose();
     quantity.dispose();
     nameFocus.dispose();
+    quantityFocus.dispose();
   }
 }
 
@@ -108,7 +113,10 @@ class IngredientRow extends StatelessWidget {
                     controller: controllers.name,
                     focusNode: controllers.nameFocus,
                     textCapitalization: TextCapitalization.sentences,
-                    textInputAction: TextInputAction.next,
+                    // Con «q.b.» no hay cantidad que escribir: «Fine» cierra
+                    // el teclado.
+                    textInputAction: toTaste ? TextInputAction.done : TextInputAction.next,
+                    onEditingComplete: toTaste ? null : controllers.quantityFocus.requestFocus,
                     onChanged: onNameChanged,
                     decoration: InputDecoration(
                       labelText: '${position + 1}. ${l10n.recipeIngredientName}',
@@ -133,6 +141,7 @@ class IngredientRow extends StatelessWidget {
                   child: TextField(
                     key: ValueKey('recipe-ingredient-quantity-$key'),
                     controller: controllers.quantity,
+                    focusNode: controllers.quantityFocus,
                     enabled: !toTaste,
                     keyboardType: TextInputType.number,
                     inputFormatters: [
