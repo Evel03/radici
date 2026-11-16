@@ -29,6 +29,12 @@ class WebAppNotices extends ConsumerStatefulWidget {
 class _WebAppNoticesState extends ConsumerState<WebAppNotices> {
   late final AppLifecycleListener _lifecycle;
 
+  /// Los avisos aparecen desde el segundo cuadro. En la web, runApp arma la
+  /// app antes del primer layout y en ese momento el foco de la página puede
+  /// pedir el primer elemento por orden de lectura, que mide cada botón: el de
+  /// un aviso todavía no tendría tamaño («RenderBox was not laid out»).
+  bool _firstFrameDone = false;
+
   @override
   void initState() {
     super.initState();
@@ -38,7 +44,9 @@ class _WebAppNoticesState extends ConsumerState<WebAppNotices> {
     // Al abrir, después del primer cuadro: un provider no cambia mientras se
     // construye la pantalla.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _checkForUpdate();
+      if (!mounted) return;
+      setState(() => _firstFrameDone = true);
+      _checkForUpdate();
     });
   }
 
@@ -53,9 +61,11 @@ class _WebAppNoticesState extends ConsumerState<WebAppNotices> {
 
   @override
   Widget build(BuildContext context) {
+    final updateAvailable = ref.watch(appUpdateControllerProvider);
+    final showInstallHint = ref.watch(installHintControllerProvider);
     final notices = [
-      if (ref.watch(appUpdateControllerProvider)) const _UpdateBanner(),
-      if (ref.watch(installHintControllerProvider)) const _InstallHintCard(),
+      if (_firstFrameDone && updateAvailable) const _UpdateBanner(),
+      if (_firstFrameDone && showInstallHint) const _InstallHintCard(),
     ];
 
     // La misma estructura con o sin avisos: si cambiara, la app de abajo (el

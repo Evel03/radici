@@ -1,9 +1,16 @@
 // Aviso de Safari, arriba del login y del área de Evelyn: el botón del email
 // abre Safari, que tiene otra sesión que la app de la pantalla de inicio.
+import 'dart:ui' show ViewFocusDirection, ViewFocusEvent, ViewFocusState;
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/app.dart';
 import 'package:radici/core/browser.dart';
 import 'package:radici/core/build_id.dart';
+import 'package:radici/core/clock.dart';
+import 'package:radici/core/env.dart';
+import 'package:radici/core/platform.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
@@ -48,6 +55,51 @@ void main() {
   Finder closeButton() => find.byKey(const ValueKey('install-hint-close'));
 
   setUp(() => browser = FakeBrowser(info: iPhoneInSafari));
+
+  testWidgets('arranque: el aviso llega en el segundo cuadro, así un cambio de foco antes del '
+      'primer layout no lo encuentra sin medir', (tester) async {
+    // En la web, runApp arma la app antes del primer layout, y en ese momento
+    // el foco de la página puede pedir el primer elemento por orden de
+    // lectura, que mide los botones: el del aviso todavía no tiene tamaño
+    // («RenderBox was not laid out», visto en Edge con /gestione/).
+    setSurfaceSize(tester, const Size(375, 667));
+    tester.platformDispatcher.localesTestValue = const [Locale('it', 'IT')];
+    addTearDown(tester.platformDispatcher.clearLocalesTestValue);
+    await tester.pumpWidget(
+      ProviderScope(
+        retry: noRetry,
+        overrides: [
+          appEnvProvider.overrideWithValue(
+            const AppEnv(environment: AppEnvironment.prod),
+          ),
+          isWebProvider.overrideWithValue(true),
+          clockProvider.overrideWithValue(() => testNow),
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+          accountRepositoryProvider.overrideWithValue(
+            FakeAccountRepository(chefAccountData),
+          ),
+          chefRequestsRepositoryProvider.overrideWithValue(
+            FakeChefRequestsRepository(const []),
+          ),
+          browserProvider.overrideWithValue(browser),
+        ],
+        child: const RadiciApp(),
+      ),
+      phase: EnginePhase.build,
+    );
+    expect(hint(), findsNothing);
+    tester.binding.handleViewFocusChanged(
+      ViewFocusEvent(
+        viewId: tester.view.viewId,
+        state: ViewFocusState.focused,
+        direction: ViewFocusDirection.forward,
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    expect(hint(), findsOneWidget);
+    expect(find.byType(LoginScreen), findsOneWidget);
+  });
 
   testWidgets('login en Safari del iPhone: el aviso arriba, sin tapar el campo del email', (
     tester,
