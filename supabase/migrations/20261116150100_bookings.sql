@@ -13,7 +13,8 @@
 --
 --   1. requests y clients: la app ya no borra pedidos ni fichas (borrar una ficha se llevaba en
 --      cascada su reserva). requests.weeks ya existe (20261116120000_weekly_pricing.sql) y una
---      reserva la reescribe con las semanas que se crearon.
+--      reserva la reescribe con las semanas que se crearon. Los comentarios de requests.weeks y
+--      requests.request_key suman a chef_create_booking, que también las escribe.
 --   2. sessions: shopping_done_at, cooked_at, week_start (generada) y una sesión viva por semana de
 --      cada pedido (índice único sessions_una_por_semana).
 --   3. sessions_guard_update: solo las transiciones de estado válidas, y fecha, hora y duración
@@ -47,6 +48,14 @@
 -- ---------------------------------------------------------------------
 revoke delete on public.requests from authenticated;
 revoke delete on public.clients  from authenticated;
+
+-- chef_create_booking (5a) también escribe requests.weeks (al confirmar desde un pedido, las semanas
+-- que se crearon; el pedido de una reserva a mano nace con ellas) y requests.request_key (la clave
+-- de una reserva a mano). Sus comentarios decían que solo las escribe submit_public_request.
+comment on column public.requests.weeks is
+  'Semanas del pedido semanal (type = week), de 1 a 8: un menú y una sesión de cocina por semana. 1 en todo lo demás (extra, change) y en los pedidos anteriores al precio por semanas. La escriben submit_public_request (p.weeks) y chef_create_booking (al confirmar una reserva, las semanas que se crearon; el pedido de una reserva a mano nace con ellas); la app la lee y no la escribe.';
+comment on column public.requests.request_key is
+  'Clave de idempotencia, única por cocinera: la requestKey del formulario web (la escribe submit_public_request) o la de una reserva a mano (p_request_key de chef_create_booking, en un pedido source app). Null en los pedidos que la app crea directamente.';
 
 -- ---------------------------------------------------------------------
 -- 2. sessions: columnas nuevas y una sesión por semana
