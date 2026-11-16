@@ -4,6 +4,7 @@
 // (lo demás lo prueba supabase/tests/database/13_bookings.test.sql).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { StoreError, type LogFields } from "../_shared/edge.ts";
 import {
   CHEF_CORS_METHODS,
@@ -12,6 +13,7 @@ import {
   bookingResponseFromRpc,
   cancelSessionsResponseFromRpc,
   chefConfigWarnings,
+  chefIdFromRpc,
   createChefHandler,
   dbErrorReply,
   moveSessionResponseFromRpc,
@@ -28,6 +30,8 @@ import {
 
 const CHEF_ID = "cef00000-0000-4000-8000-000000000001";
 const USER_EVELYN = "e0000000-0000-4000-8000-000000000001";
+/** Un colaborador de Evelyn (chef_members): entra con la cocina de ella. */
+const USER_MEMBER = "e0000000-0000-4000-8000-0000000000c1";
 const USER_CLIENT = "c0000000-0000-4000-8000-000000000001";
 const REQUEST_ID = "5e550000-0000-4000-8000-000000000001";
 const CLIENT_ID = "5e550000-0000-4000-8000-000000000002";
@@ -52,6 +56,7 @@ function jwt(subject: string): string {
   return `${part({ alg: "ES256", typ: "JWT" })}.${part({ sub: subject, role: "authenticated" })}.ZmlybWE`;
 }
 const TOKEN_EVELYN = jwt(USER_EVELYN);
+const TOKEN_MEMBER = jwt(USER_MEMBER);
 const TOKEN_CLIENT = jwt(USER_CLIENT);
 const TOKEN_REJECTED = jwt("vencido");
 
@@ -83,9 +88,14 @@ interface FakeSession {
 class FakeStore implements ChefStore {
   users = new Map<string, string>([
     [TOKEN_EVELYN, USER_EVELYN],
+    [TOKEN_MEMBER, USER_MEMBER],
     [TOKEN_CLIENT, USER_CLIENT],
   ]);
-  chefs = new Map<string, string>([[USER_EVELYN, CHEF_ID]]);
+  /** Lo que devuelve public.chef_id_for_user por usuario: la cocina de la dueña y la de su colaborador. */
+  chefs = new Map<string, unknown>([
+    [USER_EVELYN, CHEF_ID],
+    [USER_MEMBER, CHEF_ID],
+  ]);
   failures = new Map<Op, unknown>();
   tokens: string[] = [];
   chefLookups: string[] = [];
@@ -112,10 +122,10 @@ class FakeStore implements ChefStore {
     return this.users.get(token) ?? null;
   }
 
-  async chefIdForUser(userId: string): Promise<string | null> {
+  async chefIdForUser(userId: string): Promise<unknown> {
     this.chefLookups.push(userId);
     this.fail("load_chef");
-    return this.chefs.get(userId) ?? null;
+    return this.chefs.has(userId) ? this.chefs.get(userId) : null;
   }
 
   async createBooking(params: CreateBookingParams): Promise<unknown> {
@@ -431,6 +441,40 @@ test("403 para un usuario válido que no es la cocinera, en todas las rutas, sin
   }
   assert.deepEqual(store.chefLookups, [USER_CLIENT, USER_CLIENT, USER_CLIENT], "la cocinera se busca por el usuario del token");
   assert.equal(store.bookingCalls.length + store.moveCalls.length + store.cancelCalls.length, 0);
+});
+
+test("un colaborador de la cocinera entra con la cocina de la que es colaborador, en todas las rutas", async () => {
+  const { handle, store, logs } = harness();
+  const booking = await handle(post("/bookings", bookingBody(), { token: TOKEN_MEMBER }));
+  assert.equal(booking.status, 201);
+  const move = await handle(post("/sessions/move", { sessionId: SESSION_ID, date: "2026-11-25" }, { token: TOKEN_MEMBER }));
+  assert.equal(move.status, 200);
+  const cancel = await handle(post("/sessions/cancel", { sessionIds: [SESSION_ID] }, { token: TOKEN_MEMBER }));
+  assert.equal(cancel.status, 200);
+
+  assert.deepEqual(store.chefLookups, [USER_MEMBER, USER_MEMBER, USER_MEMBER], "la cocina sale de su propio usuario");
+  assert.deepEqual(
+    [store.bookingCalls[0]?.p_chef_id, store.moveCalls[0]?.p_chef_id, store.cancelCalls[0]?.p_chef_id],
+    [CHEF_ID, CHEF_ID, CHEF_ID],
+    "las funciones SQL reciben la cocina de la cocinera, la misma que con el token de ella",
+  );
+  assert.ok(!logs.some((entry) => entry.event === "forbidden"));
+});
+
+test("la cocina del usuario con otra forma (ni un uuid ni null): 500 unexpected_result, sin leer el cuerpo ni tocar nada", async () => {
+  // Por ejemplo, la forma de antes ({ id }, la fila de chefs) o la función SQL cambiada por otra cosa.
+  for (const raw of [{ id: CHEF_ID }, "no-es-un-uuid", CHEF_ID.toUpperCase(), 42, [CHEF_ID], undefined]) {
+    const { handle, store, logs } = harness();
+    store.chefs.set(USER_EVELYN, raw);
+    const request = post("/bookings", bookingBody());
+    const response = await handle(request);
+    assert.equal(response.status, 500, JSON.stringify(raw));
+    assert.deepEqual(await json(response), { error: "server" });
+    assert.equal(request.bodyUsed, false, "el cuerpo no se leyó");
+    assert.equal(store.bookingCalls.length, 0);
+    assert.ok(logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "load_chef"));
+    assert.ok(!logs.some((entry) => entry.event === "forbidden"), "no es un 403: la base respondió algo que no se entiende");
+  }
 });
 
 test("Auth o la base caídas al autenticar: 503; un error de permisos: 500; sin detalles", async () => {
@@ -1058,6 +1102,23 @@ test("bearerToken: solo «Bearer <JWT>» (tres partes base64url)", () => {
   for (const header of [null, "", "Bearer", "Bearer ", `Basic ${TOKEN_EVELYN}`, "Bearer sb_secret_abc", "Bearer a.b", `Bearer ${TOKEN_EVELYN} extra`, `Bearer ${"a".repeat(9000)}.b.c`]) {
     assert.equal(bearerToken(header), null, String(header).slice(0, 40));
   }
+});
+
+test("chefIdFromRpc: el uuid que devuelve public.chef_id_for_user, null (sin cocina) u otra forma (undefined)", () => {
+  assert.equal(chefIdFromRpc(CHEF_ID), CHEF_ID);
+  assert.equal(chefIdFromRpc(null), null);
+  for (const raw of [undefined, "", "no-es-un-uuid", CHEF_ID.toUpperCase(), ` ${CHEF_ID}`, 1, true, { id: CHEF_ID }, [CHEF_ID]]) {
+    assert.equal(chefIdFromRpc(raw), undefined, JSON.stringify(raw));
+  }
+});
+
+test("index.ts: la cocina del usuario sale de public.chef_id_for_user (la dueña o un colaborador), no de chefs", () => {
+  // index.ts no corre en Node (Deno y supabase-js): esto cuida que use la regla de la base, la misma
+  // de las políticas (15_chef_members), y no una consulta propia que dejaría afuera a los colaboradores.
+  const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  assert.match(index, /supabase\.rpc\("chef_id_for_user", \{ p_user_id: userId \}\)/);
+  assert.ok(!index.includes('from("chefs")'), "sin consultas propias a chefs");
+  assert.ok(!index.includes('from("chef_members")'), "ni a chef_members");
 });
 
 test("authFailureKind: Auth rechaza el token (4xx) o no responde (429, 5xx, red)", () => {

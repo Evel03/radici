@@ -5,8 +5,9 @@
 //
 // Con JWT: verify_jwt = true en supabase/config.toml ([functions.chef]). Ese chequeo de la
 // plataforma también deja pasar las claves de API, así que la función valida además el token con
-// Auth (auth.getUser) y busca la ficha de cocinera del usuario (chefs.profile_id) antes de tocar
-// nada. CORS: ALLOWED_ORIGINS, la misma variable que public-request.
+// Auth (auth.getUser) y busca la cocina del usuario con public.chef_id_for_user (la de la que es
+// dueña o colaborador: la misma regla que las políticas) antes de tocar nada. CORS: ALLOWED_ORIGINS,
+// la misma variable que public-request.
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { StoreError, consoleLogger, resolveServiceKey } from "../_shared/edge.ts";
 import {
@@ -41,8 +42,8 @@ function createStore(): ChefStore {
     };
   }
 
-  // Clave secreta (sin RLS): solo para validar el token, buscar a la cocinera y llamar a las chef_*,
-  // siempre con el chef_id que sale del token.
+  // Clave secreta (sin RLS): solo para validar el token, buscar la cocina del usuario y llamar a las
+  // chef_*, siempre con el chef_id que sale del token.
   const supabase = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
@@ -59,10 +60,11 @@ function createStore(): ChefStore {
     },
 
     async chefIdForUser(userId) {
-      const { data, error } = await supabase.from("chefs").select("id").eq("profile_id", userId).maybeSingle();
+      // La cocina de la que es dueña (chefs.profile_id) o colaborador (chef_members), o null: el
+      // handler la interpreta (chefIdFromRpc).
+      const { data, error } = await supabase.rpc("chef_id_for_user", { p_user_id: userId });
       if (error) throw storeErrorFrom("load_chef", error);
-      const id = (data as { id?: unknown } | null)?.id;
-      return typeof id === "string" ? id : null;
+      return data;
     },
 
     async createBooking(params) {
