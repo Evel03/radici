@@ -94,6 +94,12 @@ void main() {
           s.onSurfaceVariant,
           build().cardTheme.color!,
         ),
+        // «Chiudi» del aviso de Safari (/gestione/), en su tarjeta.
+        (
+          'botones de texto en tarjetas',
+          s.primary,
+          build().cardTheme.color!,
+        ),
       ]) {
         expect(
           _contrast(fg, bg),

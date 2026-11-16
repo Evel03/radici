@@ -34,8 +34,11 @@ enum RequestStatus {
   resolved,
 }
 
-/// `requests.preferred_slot`.
-enum PreferredSlot { morning, afternoon, any }
+/// `requests.preferred_slot`, cuando el pedido trae mañana o tarde. La web ya
+/// no pregunta la franja y manda `any` (sin preferencia): se lee como null,
+/// igual que un pedido sin franja, y no se muestra (los emails tampoco la
+/// muestran).
+enum PreferredSlot { morning, afternoon }
 
 /// `requests.locale`: idioma del cliente (mensajes de WhatsApp y emails).
 enum ClientLocale { it, es, en }

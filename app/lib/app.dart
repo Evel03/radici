@@ -6,6 +6,7 @@ import 'package:radici/core/router.dart';
 import 'package:radici/core/theme.dart';
 import 'package:radici/features/requests/presentation/new_request_alert_listener.dart';
 import 'package:radici/features/settings/application/language_controller.dart';
+import 'package:radici/features/web_app/presentation/web_app_notices.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 /// Idiomas soportados. El primero es el de respaldo cuando el idioma del
@@ -36,9 +37,12 @@ class RadiciApp extends ConsumerWidget {
       routerConfig: ref.watch(routerProvider),
       builder: (context, child) {
         // El aviso de pedidos nuevos escucha desde acá, encima de todas las
-        // rutas (ver NewRequestAlertListener).
-        final content = NewRequestAlertListener(
-          child: child ?? const SizedBox.shrink(),
+        // rutas (ver NewRequestAlertListener). Arriba, los avisos de la web:
+        // versión nueva y Safari fuera de la app instalada (ver WebAppNotices).
+        final content = WebAppNotices(
+          child: NewRequestAlertListener(
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
         if (!showBackendNotice) return content;
         return Column(
