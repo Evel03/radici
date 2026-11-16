@@ -243,6 +243,32 @@ void main() {
         {'message': 'Not found'},
         _failure(BookingFailureKind.unavailable),
       ),
+      // Un cuerpo que la app no debería mandar: no se arregla reintentando.
+      (
+        'otro método',
+        405,
+        {'error': 'method'},
+        _failure(BookingFailureKind.invalid),
+      ),
+      (
+        'cuerpo de más de 8 KB',
+        413,
+        {'error': 'tooLarge'},
+        _failure(BookingFailureKind.invalid),
+      ),
+      (
+        'cuerpo que no es JSON',
+        415,
+        {'error': 'contentType'},
+        _failure(BookingFailureKind.invalid),
+      ),
+      // Demasiados pedidos (la plataforma): se puede reintentar.
+      (
+        'demasiados pedidos',
+        429,
+        {'message': 'Too many requests'},
+        _failure(BookingFailureKind.unavailable),
+      ),
       (
         'la base no responde',
         503,
@@ -286,6 +312,21 @@ void main() {
 
     test('una respuesta 201 con otra forma', () async {
       server.handler = (_) async => jsonResponse({'ok': true}, status: 201);
+      await expectLater(
+        repository.createBooking(confirmation()),
+        _failure(BookingFailureKind.unavailable),
+      );
+    });
+
+    test('una semana con un dato de otro tipo (sessionId numérico)', () async {
+      final body = {
+        ...created(),
+        'weeks': [
+          for (final week in created()['weeks']! as List<Object?>)
+            {...week! as Map<String, Object?>, 'sessionId': 7},
+        ],
+      };
+      server.handler = (_) async => jsonResponse(body, status: 201);
       await expectLater(
         repository.createBooking(confirmation()),
         _failure(BookingFailureKind.unavailable),

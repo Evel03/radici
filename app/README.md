@@ -96,8 +96,10 @@ repositorios falsos (`test/support/fakes.dart`).
 - Después del login se lee el perfil (`profiles.role` y `profiles.locale`): `chef` → área de la
   cocinera (con su fila de `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz
   pasa al idioma del perfil (ver [Idioma](#idioma)).
-- **Richieste**: pestañas Nuove (sin `seen_at`), Viste, Prenotazioni (los pedidos `accepted`: una
-  reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de nuevas.
+- **Richieste**: pestañas Nuove (sin `seen_at` y no aceptadas), Viste, Prenotazioni (los pedidos
+  `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
+  nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos
+  y no la tapa.
 - **Agenda**: mes y semana por `preferred_date` con la franja, más la lista "Senza data". "Hoy"
   (Europe/Rome) cambia a la medianoche sin reabrir la app: se vuelve a mirar la fecha a la
   medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
@@ -124,11 +126,19 @@ repositorios falsos (`test/support/fakes.dart`).
   las fechas cada 7 días desde la preferida (cambiar la primera mueve todas), la llegada que sugiere
   el `dryRun`, los minutos de la estimación (tope de 300) y el precio de la estimación (con las
   tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
-  se pasa a centavos sin `double` (`parseEuroCents`). Cada cambio vuelve a pedir el `dryRun`: cada
-  semana dice si está libre, un aviso (bloqueado, sin horario, fuera de horario, pasada) o si choca,
-  y con un choque no deja confirmar. Una `requestKey` por hoja, la misma en los reintentos, con el
-  botón deshabilitado mientras envía. Al confirmar, el WhatsApp para la clienta en su idioma, con
-  las fechas y la hora (sin dirección ni alergias).
+  se pasa a centavos sin `double` (`parseEuroCents`). Cada cambio de fechas, hora o minutos vuelve a
+  pedir el `dryRun`: cada semana dice si está libre, un aviso (bloqueado, sin horario, fuera de
+  horario, pasada) o si choca, y con un choque no deja confirmar. La barra de abajo, siempre a la
+  vista (también con el teclado), muestra arriba del botón el precio que se va a confirmar, lo que
+  queda por semana y la llegada, con «Modifica», que lleva al campo del precio (en un teléfono el
+  campo queda fuera de la vista, y después ninguna ruta cambia el precio); si algo impide confirmar,
+  dice qué (la semana que choca, una fecha o el precio) con «Vedi», que lleva hasta ahí. Una
+  `requestKey` por hoja, la misma en los reintentos; mientras envía no se puede cambiar nada. Si la
+  confirmación se queda sin respuesta (pudo haberse guardado), la hoja queda igual hasta
+  «Riprova», que manda lo mismo: el servidor reconoce el reintento por las fechas y la hora, y con
+  otros datos diría que el pedido ya no está nuevo. Si lo guardado no coincide con lo que tenía la
+  hoja (otro dispositivo confirmó las mismas fechas con otro precio), lo avisa. Al confirmar, el
+  WhatsApp para la clienta en su idioma, con las fechas y la hora (sin dirección ni alergias).
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.

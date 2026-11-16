@@ -145,6 +145,8 @@ int? suggestedServiceCents(RequestEstimate? estimate, {required int weeks}) {
   final discounted = estimate.weeklyRateDiscountedCents;
   final discountFrom = estimate.weeklyDiscountMinWeeks;
   if (rate == null || discounted == null || discountFrom == null) return null;
+  // La misma regla que calcQuote (quote.ts y su copia Dart): el descuento vale
+  // desde discountFrom semanas, incluida (4 semanas son 560 €, no 600 €).
   return (weeks >= discountFrom ? discounted : rate) * weeks;
 }
 

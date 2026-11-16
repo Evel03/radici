@@ -379,13 +379,28 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
 /// [closedDays]) con la llegada sugerida [suggestedStart] (ninguna en un día
 /// sin horario), evaluada con la hora pedida o, sin hora, con la sugerida. La
 /// confirmación devuelve las sesiones creadas y, si tiene [requests], pasa el
-/// pedido a `accepted` como la base. Las fallas y las respuestas lentas se
-/// controlan por campo.
+/// pedido a `accepted` como la base. Como la base, con un pedido que ya no está
+/// `new` en [requests] el dryRun y la confirmación dan requestNotNew, salvo el
+/// reintento de una reserva guardada aquí con las mismas fechas y hora, que
+/// devuelve lo guardado con `duplicate` (contrato chef-api §4). Las fallas y
+/// las respuestas lentas se controlan por campo.
 class FakeBookingsRepository implements BookingsRepository {
   FakeBookingsRepository({this.requests});
 
   /// Los pedidos "en el servidor" que actualiza una confirmación.
   final FakeChefRequestsRepository? requests;
+
+  /// Reservas guardadas, por pedido.
+  final Map<String, BookingResult> saved = {};
+
+  /// La próxima confirmación se guarda pero su respuesta se pierde
+  /// (unavailable): la base la tiene y la app no lo sabe.
+  bool loseNextConfirmResponse = false;
+
+  /// Con true, cada dryRun espera su propio Completer de [heldChecks], para
+  /// completar las respuestas en otro orden que los pedidos.
+  bool holdEachCheck = false;
+  final List<Completer<void>> heldChecks = [];
 
   final List<BookingRequest> calls = [];
 
@@ -417,12 +432,30 @@ class FakeBookingsRepository implements BookingsRepository {
   @override
   Future<BookingResult> createBooking(BookingRequest request) async {
     calls.add(request);
+    if (request.dryRun && holdEachCheck) {
+      final gate = Completer<void>();
+      heldChecks.add(gate);
+      await gate.future;
+    }
     final pending = request.dryRun ? pendingChecks : pendingConfirm;
     if (pending != null) await pending.future;
     final failure = request.dryRun ? checksFailure : confirmFailure;
     if (failure != null) throw failure;
-    if (!request.dryRun) _accept(request);
-    return BookingResult(
+    final current = requests?.requests[request.requestId];
+    if (current != null && current.status != RequestStatus.newRequest) {
+      final booked = saved[request.requestId];
+      if (!request.dryRun &&
+          booked != null &&
+          _sameDatesAndStart(booked, request)) {
+        return booked.copyWith(duplicate: true);
+      }
+      // Los demás estados se escriben igual que en la base.
+      throw BookingFailure(
+        BookingFailureKind.requestNotNew,
+        requestStatus: current.status.name,
+      );
+    }
+    final result = BookingResult(
       dryRun: request.dryRun,
       duplicate: !request.dryRun && duplicate,
       requestId: request.requestId,
@@ -432,7 +465,23 @@ class FakeBookingsRepository implements BookingsRepository {
           _week(request, i, date),
       ],
     );
+    if (!request.dryRun) {
+      _accept(request);
+      saved[request.requestId] = result.copyWith(duplicate: false);
+      if (loseNextConfirmResponse) {
+        loseNextConfirmResponse = false;
+        throw const BookingFailure(BookingFailureKind.unavailable);
+      }
+    }
+    return result;
   }
+
+  static bool _sameDatesAndStart(BookingResult booked, BookingRequest request) =>
+      booked.weeks.length == request.dates.length &&
+      [
+        for (final (i, week) in booked.weeks.indexed)
+          week.date == request.dates[i] && week.start == request.start,
+      ].every((same) => same);
 
   BookingWeek _week(BookingRequest request, int index, CalendarDate date) {
     final closed = closedDays.contains(date);

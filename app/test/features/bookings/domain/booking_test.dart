@@ -172,6 +172,18 @@ void main() {
             {...week(), 'serviceCents': 140.5},
           ],
         },
+        {...good, 'clientId': 5},
+        {...good, 'duplicate': 'x'},
+        {
+          ...good,
+          'weeks': [
+            {...week(), 'cookMinutes': '240'},
+          ],
+        },
+        {
+          ...good,
+          'weeks': [week(sessionId: 5)],
+        },
       ]) {
         expect(
           () => BookingResult.fromResponse(bad),
@@ -179,6 +191,54 @@ void main() {
           reason: '$bad',
         );
       }
+    });
+  });
+
+  group('lo guardado contra lo que se mandó (un reintento devuelve lo guardado)', () {
+    final sent = BookingRequest(
+      requestId: requestId,
+      dates: [monday, monday.addDays(7)],
+      start: const ClockTime.hm(10, 0),
+      cookMinutes: 240,
+      serviceTotalCents: 30001,
+      requestKey: '7e5b3000-0000-4000-8000-000000000001',
+    );
+
+    BookingResult saved({
+      List<CalendarDate>? dates,
+      ClockTime start = const ClockTime.hm(10, 0),
+      int cookMinutes = 240,
+      List<int> cents = const [15001, 15000],
+    }) => BookingResult(
+      dryRun: false,
+      duplicate: true,
+      requestId: requestId,
+      weeks: [
+        for (final (i, date) in (dates ?? sent.dates).indexed)
+          BookingWeek(
+            date: date,
+            start: start,
+            cookMinutes: cookMinutes,
+            status: BookingDayStatus.ok,
+            serviceCents: cents[i],
+            sessionId: 's$i',
+          ),
+      ],
+    );
+
+    test('igual: las mismas fechas, hora, minutos y total (repartido)', () {
+      expect(saved().matches(sent), isTrue);
+    });
+
+    test('otro precio, otros minutos, otra hora u otras fechas: no', () {
+      expect(saved(cents: const [12500, 12500]).matches(sent), isFalse);
+      expect(saved(cookMinutes: 200).matches(sent), isFalse);
+      expect(saved(start: const ClockTime.hm(11, 0)).matches(sent), isFalse);
+      expect(
+        saved(dates: [monday, monday.addDays(8)]).matches(sent),
+        isFalse,
+      );
+      expect(saved(dates: [monday], cents: const [30001]).matches(sent), isFalse);
     });
   });
 }

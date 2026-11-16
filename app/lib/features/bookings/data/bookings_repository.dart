@@ -115,7 +115,9 @@ class SupabaseBookingsRepository implements BookingsRepository {
     }
     try {
       return BookingResult.fromResponse(response.data);
-    } on FormatException {
+    } on Object {
+      // Una respuesta con otra forma (FormatException o, si se escapara un
+      // dato de otro tipo, un TypeError): la hoja nunca queda esperando.
       throw const BookingFailure(BookingFailureKind.unavailable);
     }
   }

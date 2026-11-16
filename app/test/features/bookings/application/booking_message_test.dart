@@ -47,15 +47,16 @@ void main() {
     expect(uri.host, 'wa.me');
     expect(uri.path, '/393331234567');
     final text = uri.queryParameters['text']!;
+    // La hora va después de la lista: «alle 10:00:» antes de la lista se
+    // leía raro.
     expect(
       text,
-      'Ciao Giulia, sono Evelyn di Radici. Ti confermo le 4 sessioni di cucina, '
-      'con arrivo alle 10:00:\n'
+      'Ciao Giulia, sono Evelyn di Radici. Ti confermo le 4 sessioni di cucina:\n'
       '• lunedì 23 novembre\n'
       '• lunedì 30 novembre\n'
       '• lunedì 7 dicembre\n'
       '• lunedì 14 dicembre\n'
-      'A presto!',
+      'Arrivo alle 10:00. A presto!',
     );
     // Ni la nota de alergias, ni las notas (el portero), ni la zona.
     for (final secret in ['funghi', 'Citofono', 'Città Alta', 'Rossi']) {
@@ -74,10 +75,30 @@ void main() {
       chefName: 'Evelyn',
     )!;
     expect(uri.path, '/34612345678');
+    // En prosa, sin la coma de intl («del lunes, 23 de noviembre»).
     expect(
       uri.queryParameters['text'],
       'Hola Lucía, soy Evelyn de Radici. Te confirmo la sesión de cocina del '
-      'lunes, 23 de noviembre, con llegada a las 10:00. ¡Hasta pronto!',
+      'lunes 23 de noviembre, con llegada a las 10:00. ¡Hasta pronto!',
+    );
+  });
+
+  test('clienta hispanohablante, varias semanas', () {
+    final uri = bookingWhatsAppUri(
+      request: buildRequest(
+        name: 'Lucía Fernández',
+        phone: '+34 612 345 678',
+        locale: ClientLocale.es,
+      ),
+      result: _booked(weeklyDates(monday, 2)),
+      chefName: 'Evelyn',
+    )!;
+    expect(
+      uri.queryParameters['text'],
+      'Hola Lucía, soy Evelyn de Radici. Te confirmo las 2 sesiones de cocina:\n'
+      '• lunes 23 de noviembre\n'
+      '• lunes 30 de noviembre\n'
+      'Llego a las 10:00. ¡Hasta pronto!',
     );
   });
 
@@ -90,10 +111,10 @@ void main() {
     expect(
       uri.queryParameters['text'],
       "Hi Emma, this is Evelyn from Radici. I'm confirming your 2 cooking "
-      'sessions, arriving at 10:00:\n'
+      'sessions:\n'
       '• Monday, November 23\n'
       '• Monday, November 30\n'
-      'See you soon!',
+      "I'll arrive at 10:00. See you soon!",
     );
   });
 

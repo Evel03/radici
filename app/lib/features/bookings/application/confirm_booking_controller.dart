@@ -8,7 +8,10 @@
 // Function chef: el estado de cada semana (ok, un aviso o un choque). Con un
 // choque no deja confirmar. La confirmación lleva una clave por intento (una
 // por hoja), la misma en sus reintentos: el servidor no duplica la reserva.
-// Nada de esto se loguea.
+// Si una confirmación se queda sin respuesta (pudo haberse guardado), la hoja
+// no cambia hasta reintentarla con lo mismo: desde un pedido, el servidor
+// reconoce el reintento por las fechas y la hora, y con otros datos diría que
+// el pedido ya no está nuevo. Nada de esto se loguea.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,6 +63,22 @@ enum BookingPriceIssue {
   tooHigh,
 }
 
+/// Lo que impide confirmar y que Evelyn tiene que arreglar.
+enum BookingBlockKind {
+  /// Una fecha que no se puede mandar (misma semana, orden o muy lejos).
+  date,
+
+  /// Una semana choca con otra sesión.
+  clash,
+
+  /// Falta el precio o no se puede usar ([BookingPriceIssue]).
+  price,
+}
+
+/// Lo primero que impide confirmar: [week] es la semana (desde 0) de
+/// [BookingBlockKind.date] y [BookingBlockKind.clash]; null en el precio.
+typedef BookingBlocker = ({BookingBlockKind kind, int? week});
+
 /// Fallas después de las cuales la hoja no puede confirmar nada.
 const Set<BookingFailureKind> _blockingFailures = {
   BookingFailureKind.requestNotNew,
@@ -106,6 +125,11 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
 
     /// Se está mandando la confirmación.
     @Default(false) bool sending,
+
+    /// La última confirmación que se mandó: la que se reintenta si se quedó
+    /// sin respuesta ([retryPending]) y con la que se compara lo guardado
+    /// ([savedDiffers]).
+    BookingRequest? sent,
 
     /// La última falla (del dryRun o de la confirmación), o null.
     BookingFailure? failure,
@@ -169,6 +193,20 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
   bool get blocked =>
       failure != null && _blockingFailures.contains(failure!.kind);
 
+  /// Se mandó la confirmación y no hubo respuesta: pudo haber quedado
+  /// guardada. Hasta reintentarla la hoja no cambia, y el reintento manda lo
+  /// mismo ([sent]). Desde un pedido el servidor reconoce el reintento solo
+  /// por las fechas y la hora (contrato chef-api §4): con otros datos diría
+  /// que el pedido ya no está nuevo aunque la reserva exista, y un precio
+  /// distinto se perdería sin aviso.
+  bool get retryPending =>
+      sent != null &&
+      result == null &&
+      failure?.kind == BookingFailureKind.unavailable;
+
+  /// Nada se puede cambiar: se está mandando o se espera el reintento.
+  bool get frozen => sending || retryPending;
+
   bool get canConfirm =>
       result == null &&
       !sending &&
@@ -178,6 +216,37 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
       priceIssue == null &&
       checksCurrent &&
       !hasClash;
+
+  /// Lo primero que impide confirmar y que Evelyn tiene que arreglar, en el
+  /// orden de la hoja: una fecha que no se puede mandar, una semana que choca
+  /// o el precio. La barra de abajo lo dice, porque en un teléfono la causa
+  /// puede quedar fuera de la vista. null si no hay (también mientras el
+  /// dryRun no volvió).
+  BookingBlocker? get blocker {
+    final date = dateIssues.indexWhere((issue) => issue != null);
+    if (date >= 0) return (kind: BookingBlockKind.date, week: date);
+    if (hasClash) {
+      return (
+        kind: BookingBlockKind.clash,
+        week: checks.indexWhere((week) => week.status.blocksBooking),
+      );
+    }
+    if (priceIssue != null) return (kind: BookingBlockKind.price, week: null);
+    return null;
+  }
+
+  /// Ya estaba confirmada (un reintento) pero lo guardado no es lo que tenía
+  /// la hoja: otro precio, otras fechas, otra hora u otros minutos (por
+  /// ejemplo, se confirmó desde otro dispositivo con las mismas fechas y
+  /// hora). Vale lo guardado.
+  bool get savedDiffers {
+    final saved = result;
+    final mine = sent;
+    return saved != null &&
+        saved.duplicate &&
+        mine != null &&
+        !saved.matches(mine);
+  }
 
   @override
   String toString() =>
@@ -247,9 +316,9 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     return initial;
   }
 
-  /// Mientras se manda la confirmación, o ya confirmada, la hoja no cambia: lo
-  /// que se mandó es lo que vale.
-  bool get _locked => state.sending || state.result != null;
+  /// Mientras se manda la confirmación, mientras espera su reintento o ya
+  /// confirmada, la hoja no cambia: lo que se mandó es lo que vale.
+  bool get _locked => state.frozen || state.result != null;
 
   /// Cantidad de semanas (1 a [ConfirmBookingState.maxWeeks]); fuera de eso no
   /// hace nada.
@@ -307,29 +376,33 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
 
   /// Vuelve a pedir el dryRun (después de una falla).
   void retryChecks() {
+    if (_locked) return;
     unawaited(_runChecks(adopt: _followsSuggestion));
   }
 
   /// Confirma la reserva. No hace nada si no se puede ([canConfirm]): entre
   /// otras cosas, mientras se está mandando. Si falla, queda en
-  /// [ConfirmBookingState.failure] y se puede reintentar: con la misma clave.
+  /// [ConfirmBookingState.failure] y se puede reintentar: con la misma clave
+  /// y, si se quedó sin respuesta, con lo mismo que se mandó.
   Future<void> confirm() async {
     final current = state;
     final request = _request;
     if (!current.canConfirm || request == null) return;
-    final booking = BookingRequest(
-      requestId: request.id,
-      dates: current.dates,
-      start: current.start,
-      cookMinutes: current.cookMinutes,
-      portions: request.estimate?.portions,
-      groceriesEstCents: request.estimate?.groceriesEstCents,
-      serviceTotalCents: current.serviceTotalCents,
-      requestKey: _requestKey,
-    );
+    final booking = current.retryPending
+        ? current.sent!
+        : BookingRequest(
+            requestId: request.id,
+            dates: current.dates,
+            start: current.start,
+            cookMinutes: current.cookMinutes,
+            portions: request.estimate?.portions,
+            groceriesEstCents: request.estimate?.groceriesEstCents,
+            serviceTotalCents: current.serviceTotalCents,
+            requestKey: _requestKey,
+          );
     // La bandeja se actualiza aunque la hoja se cierre mientras tanto.
     final inbox = ref.read(chefInboxProvider.notifier);
-    state = current.copyWith(sending: true, failure: null);
+    state = current.copyWith(sending: true, failure: null, sent: booking);
     try {
       final result = await _repository.createBooking(booking);
       inbox.applyBooking(request.id, weeks: result.weeks.length);

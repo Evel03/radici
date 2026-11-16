@@ -29,7 +29,7 @@ Uri? bookingWhatsAppUri({
   final name = client.firstName.isNotEmpty
       ? client.firstName
       : client.displayName;
-  final format = DateFormat.MMMMEEEEd(locale);
+  final format = _messageDateFormat(locale);
   final dates = [
     for (final week in weeks) format.format(week.date.toDateTime()),
   ];
@@ -47,6 +47,13 @@ Uri? bookingWhatsAppUri({
     ),
   );
 }
+
+/// Fecha de cada sesión en el mensaje: «lunedì 23 novembre», «Monday,
+/// November 23» y, en español, «lunes 23 de noviembre» (en prosa, sin la coma
+/// del formato de intl: «del lunes 23 de noviembre»).
+DateFormat _messageDateFormat(String locale) => locale == 'es'
+    ? DateFormat("EEEE d 'de' MMMM", 'es')
+    : DateFormat.MMMMEEEEd(locale);
 
 /// El WhatsApp de la reserva recién confirmada en la hoja de [requestId];
 /// null mientras no esté confirmada o sin teléfono válido.

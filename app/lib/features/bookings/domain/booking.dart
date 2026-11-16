@@ -151,6 +151,29 @@ abstract class BookingResult with _$BookingResult {
   }
 }
 
+extension BookingResultMatch on BookingResult {
+  /// Lo guardado tiene lo que se mandó en [sent]: las mismas fechas, la misma
+  /// llegada, los mismos minutos y el mismo precio total. Un reintento
+  /// ([BookingResult.duplicate]) devuelve lo que ya estaba guardado: desde un
+  /// pedido, el servidor lo reconoce solo por las fechas y la hora (contrato
+  /// §4), así que el precio o los minutos pueden ser otros (por ejemplo, si
+  /// se confirmó desde otro dispositivo).
+  bool matches(BookingRequest sent) {
+    if (weeks.length != sent.dates.length) return false;
+    var total = 0;
+    for (final (i, week) in weeks.indexed) {
+      if (week.date != sent.dates[i] ||
+          week.start != sent.start ||
+          week.cookMinutes != sent.cookMinutes) {
+        return false;
+      }
+      total += week.serviceCents;
+    }
+    final price = sent.serviceTotalCents;
+    return price == null || total == price;
+  }
+}
+
 BookingWeek _weekFrom(Object? json) {
   if (json is! Map) throw const FormatException('Semana inválida');
   final date = json['date'];

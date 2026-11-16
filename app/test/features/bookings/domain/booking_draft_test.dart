@@ -169,6 +169,14 @@ void main() {
       expect(suggestedServiceCents(weekly, weeks: 8), 112000);
     });
 
+    test('el descuento vale desde 4 semanas, incluida (como calcQuote)', () {
+      // Un pedido de 2 semanas que Evelyn pasa a 4: el «mes» de 560 €, no 600.
+      final twoWeeks = fourWeeksEstimate.copyWith(weeks: 2, serviceCents: 30000);
+      expect(suggestedServiceCents(twoWeeks, weeks: 4), 56000);
+      expect(suggestedServiceCents(twoWeeks, weeks: 3), 45000);
+      expect(suggestedServiceCents(twoWeeks, weeks: 5), 70000);
+    });
+
     test('sin precio automático (más personas o una sesión extra): vacío', () {
       const unpriced = RequestEstimate(
         weeks: 2,

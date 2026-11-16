@@ -2,8 +2,11 @@
 // pedido nuevo: semanas (1 a 8), una fecha por semana con lo que dice el
 // servidor de cada una (libre, un aviso o un choque), la hora de llegada en
 // chips, los minutos de cocina y el precio del servicio de toda la reserva.
-// Abajo, siempre a mano, «Conferma N settimane». Al confirmar, el WhatsApp
-// para la clienta, en su idioma.
+// Abajo, siempre a mano (también con el teclado abierto), «Conferma N
+// settimane» y, arriba del botón, el precio que se va a confirmar (después
+// ninguna ruta lo cambia) o lo primero que impide confirmar, con un botón que
+// lleva hasta ahí: en un teléfono, el precio y las últimas semanas quedan
+// fuera de la vista. Al confirmar, el WhatsApp para la clienta, en su idioma.
 //
 // Solo lee providers: la lógica está en ConfirmBookingController y el
 // mensaje, en booking_message.dart. El campo del precio tiene letra de 16 px
@@ -79,11 +82,21 @@ class _ConfirmBookingView extends ConsumerStatefulWidget {
 
 class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
   final TextEditingController _price = TextEditingController();
+  final FocusNode _priceFocus = FocusNode();
+
+  /// El campo del precio y cada semana, para llevarlos a la vista desde la
+  /// barra de abajo.
+  final GlobalKey _priceKey = GlobalKey();
+  final List<GlobalKey> _weekKeys = List.generate(
+    maxBookingWeeks,
+    (_) => GlobalKey(),
+  );
   bool _priceShown = false;
 
   @override
   void dispose() {
     _price.dispose();
+    _priceFocus.dispose();
     super.dispose();
   }
 
@@ -93,6 +106,26 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
     final cents = state.suggestedPriceCents;
     return cents == null ? '' : formatCentsForInput(cents, locale: locale);
   }
+
+  /// Lleva a la vista una parte del formulario ([key]).
+  Future<void> _reveal(GlobalKey key) async {
+    final target = key.currentContext;
+    if (target == null) return;
+    await Scrollable.ensureVisible(
+      target,
+      alignment: 0.3,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  /// El precio a la vista y con el foco, para cambiarlo o escribirlo.
+  void _showPrice() {
+    unawaited(_reveal(_priceKey));
+    _priceFocus.requestFocus();
+  }
+
+  void _showWeek(int index) => unawaited(_reveal(_weekKeys[index]));
 
   @override
   Widget build(BuildContext context) {
@@ -141,22 +174,26 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: _maxContentWidth),
                   child: result == null
-                      // Mientras se manda, nada cambia: vale lo que se mandó.
-                      ? AbsorbPointer(
-                          absorbing: state.sending,
-                          child: _BookingForm(
-                            request: widget.request,
-                            state: state,
-                            controller: controller,
-                            price: _price,
-                          ),
+                      ? _BookingForm(
+                          request: widget.request,
+                          state: state,
+                          controller: controller,
+                          price: _price,
+                          priceFocus: _priceFocus,
+                          priceKey: _priceKey,
+                          weekKeys: _weekKeys,
                         )
-                      : _BookingDone(request: widget.request, result: result),
+                      : _BookingDone(request: widget.request, state: state),
                 ),
               ),
             ),
             if (result == null)
-              _ConfirmBar(state: state, controller: controller)
+              _ConfirmBar(
+                state: state,
+                controller: controller,
+                onShowPrice: _showPrice,
+                onShowWeek: _showWeek,
+              )
             else
               _DoneBar(requestId: widget.request.id),
           ],
@@ -172,12 +209,18 @@ class _BookingForm extends StatelessWidget {
     required this.state,
     required this.controller,
     required this.price,
+    required this.priceFocus,
+    required this.priceKey,
+    required this.weekKeys,
   });
 
   final ChefRequest request;
   final ConfirmBookingState state;
   final ConfirmBookingController controller;
   final TextEditingController price;
+  final FocusNode priceFocus;
+  final GlobalKey priceKey;
+  final List<GlobalKey> weekKeys;
 
   Future<void> _pickDate(BuildContext context, int index) async {
     final l10n = AppLocalizations.of(context);
@@ -191,7 +234,7 @@ class _BookingForm extends StatelessWidget {
       initialDate: initial.toDateTime(),
       firstDate: first.toDateTime(),
       lastDate: last.toDateTime(),
-      helpText: l10n.bookingChangeDate(index + 1),
+      helpText: l10n.bookingChangeDate(state.weeks, index + 1),
     );
     if (picked == null || !context.mounted) return;
     controller.setDate(index, CalendarDate.fromDateTime(picked));
@@ -219,6 +262,9 @@ class _BookingForm extends StatelessWidget {
     final locale = Localizations.localeOf(context).toString();
     final issues = state.dateIssues;
     final weeks = state.weeks;
+    // Mientras se manda, o mientras espera el reintento de una confirmación
+    // sin respuesta, nada cambia: vale lo que se mandó.
+    final frozen = state.frozen;
 
     final priceIssue = state.priceIssue;
     final cents = state.serviceTotalCents;
@@ -270,24 +316,31 @@ class _BookingForm extends StatelessWidget {
               keyPrefix: 'booking-weeks',
               label: l10n.quoteWeeks,
               value: '$weeks',
-              onDecrement: weeks > 1
+              onDecrement: !frozen && weeks > 1
                   ? () => controller.setWeeks(weeks - 1)
                   : null,
-              onIncrement: weeks < state.maxWeeks
+              onIncrement: !frozen && weeks < state.maxWeeks
                   ? () => controller.setWeeks(weeks + 1)
                   : null,
             ),
 
-          _SectionTitle(l10n.bookingDatesSection),
+          _SectionTitle(
+            weeks > 1 ? l10n.bookingDatesSection : l10n.bookingDateSection,
+          ),
           for (var i = 0; i < weeks; i++)
             _WeekTile(
+              key: weekKeys[i],
               index: i,
-              title: l10n.bookingWeekTitle(
-                i + 1,
-                formats.shortDate(state.dates[i]),
-              ),
+              // Con una sola fecha (un evento o una semana) no hay «Semana 1».
+              title: weeks > 1
+                  ? l10n.bookingWeekTitle(
+                      i + 1,
+                      formats.shortDate(state.dates[i]),
+                    )
+                  : formats.shortDate(state.dates[i]),
+              changeLabel: l10n.bookingChangeDate(weeks, i + 1),
               status: _weekStatus(context, i, issues[i]),
-              onEdit: () => _pickDate(context, i),
+              onEdit: frozen ? null : () => _pickDate(context, i),
             ),
           if (state.checksStatus == BookingChecksStatus.failed &&
               state.checksCurrent) ...[
@@ -299,17 +352,19 @@ class _BookingForm extends StatelessWidget {
                 color: theme.colorScheme.error,
               ),
             ),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton(
-                key: const ValueKey('booking-checks-retry'),
-                onPressed: controller.retryChecks,
-                child: Text(l10n.actionRetry),
+            if (!frozen)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton(
+                  key: const ValueKey('booking-checks-retry'),
+                  onPressed: controller.retryChecks,
+                  child: Text(l10n.actionRetry),
+                ),
               ),
-            ),
           ],
           const SizedBox(height: 4),
-          _Help(l10n.bookingDatesHelp),
+          if (weeks > 1) _Help(l10n.bookingDatesMoveHelp),
+          _Help(l10n.bookingWarningsHelp),
 
           _SectionTitle(l10n.bookingStartSection),
           Wrap(
@@ -324,13 +379,13 @@ class _BookingForm extends StatelessWidget {
                   key: ValueKey('booking-start-${time.toHhMm()}'),
                   label: Text(time.toHhMm()),
                   selected: time == state.start,
-                  onSelected: (_) => controller.setStart(time),
+                  onSelected: frozen ? null : (_) => controller.setStart(time),
                 ),
               ActionChip(
                 key: const ValueKey('booking-start-other'),
                 avatar: const Icon(Icons.schedule),
                 label: Text(l10n.bookingStartOther),
-                onPressed: () => _pickTime(context),
+                onPressed: frozen ? null : () => _pickTime(context),
               ),
             ],
           ),
@@ -339,41 +394,53 @@ class _BookingForm extends StatelessWidget {
             _Help(l10n.bookingStartSuggested(suggested.toHhMm())),
           ],
 
-          _SectionTitle(l10n.quoteCookTime),
+          // La fila ya dice «Tempo in cucina»: sin otro título igual arriba.
+          const SizedBox(height: 16),
           _CounterRow(
             keyPrefix: 'booking-cook',
             label: l10n.quoteCookTime,
             value: l10n.quoteMinutes(state.cookMinutes),
-            onDecrement: state.cookMinutes > minBookingCookMinutes
+            onDecrement: !frozen && state.cookMinutes > minBookingCookMinutes
                 ? () => controller.stepCookMinutes(-1)
                 : null,
-            onIncrement: state.cookMinutes < maxBookingCookMinutes
+            onIncrement: !frozen && state.cookMinutes < maxBookingCookMinutes
                 ? () => controller.stepCookMinutes(1)
                 : null,
           ),
           _Help(l10n.bookingCookHelp(maxBookingCookMinutes)),
 
           const SizedBox(height: 24),
-          TextField(
-            key: const ValueKey('booking-price'),
-            controller: price,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-            ],
-            textInputAction: TextInputAction.done,
-            readOnly: state.sending,
-            // 16 px o más: con menos, iOS agranda la página al enfocar el campo.
-            style: theme.textTheme.bodyLarge,
-            decoration: InputDecoration(
-              labelText: l10n.bookingPriceLabel,
-              suffixText: '€',
-              helperText: priceHelper,
-              helperMaxLines: 2,
-              errorText: priceError,
-              errorMaxLines: 2,
+          KeyedSubtree(
+            key: priceKey,
+            child: TextField(
+              key: const ValueKey('booking-price'),
+              controller: price,
+              focusNode: priceFocus,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+              ],
+              textInputAction: TextInputAction.done,
+              readOnly: frozen,
+              // Al abrir el teclado el campo sube con lugar para su ayuda o su
+              // error (hasta dos líneas) arriba de la barra: con el margen de
+              // 20 de siempre, en iOS (también /gestione/ en el iPhone)
+              // quedaban tapados.
+              scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 72),
+              // 16 px o más: con menos, iOS agranda la página al enfocar el campo.
+              style: theme.textTheme.bodyLarge,
+              decoration: InputDecoration(
+                labelText: l10n.bookingPriceLabel(weeks),
+                suffixText: '€',
+                helperText: priceHelper,
+                helperMaxLines: 2,
+                errorText: priceError,
+                errorMaxLines: 2,
+              ),
+              onChanged: controller.setPriceText,
             ),
-            onChanged: controller.setPriceText,
           ),
           const SizedBox(height: 8),
           _Help(l10n.bookingGroceriesNote),
@@ -432,46 +499,53 @@ class _BookingForm extends StatelessWidget {
 
 typedef _WeekStatus = ({IconData icon, Color color, String text});
 
-/// Una semana: su fecha, lo que dijo el servidor y el botón del calendario.
+/// Una semana: su fecha y lo que dijo el servidor. Toda la fila abre el
+/// calendario: un solo objetivo, también para el lector de pantalla (el ícono
+/// de la derecha es solo un dibujo y [changeLabel] va como pista).
 class _WeekTile extends StatelessWidget {
   const _WeekTile({
+    super.key,
     required this.index,
     required this.title,
+    required this.changeLabel,
     required this.status,
     required this.onEdit,
   });
 
   final int index;
   final String title;
+  final String changeLabel;
   final _WeekStatus? status;
-  final VoidCallback onEdit;
+
+  /// null: no se puede cambiar (se está mandando).
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final status = this.status;
-    return ListTile(
-      key: ValueKey('booking-week-$index'),
-      contentPadding: EdgeInsets.zero,
-      leading: status == null
-          ? const Icon(Icons.event_outlined)
-          : Icon(status.icon, color: status.color),
-      title: Text(title),
-      subtitle: status == null
-          ? null
-          : Text(
-              status.text,
-              key: ValueKey('booking-week-$index-status'),
-              style: theme.textTheme.bodyMedium?.copyWith(color: status.color),
-            ),
-      trailing: IconButton(
-        key: ValueKey('booking-week-$index-edit'),
-        icon: const Icon(Icons.edit_calendar_outlined),
-        tooltip: l10n.bookingChangeDate(index + 1),
-        onPressed: onEdit,
+    return Semantics(
+      hint: onEdit == null ? null : changeLabel,
+      child: ListTile(
+        key: ValueKey('booking-week-$index'),
+        enabled: onEdit != null,
+        contentPadding: EdgeInsets.zero,
+        leading: status == null
+            ? const Icon(Icons.event_outlined)
+            : Icon(status.icon, color: status.color),
+        title: Text(title),
+        subtitle: status == null
+            ? null
+            : Text(
+                status.text,
+                key: ValueKey('booking-week-$index-status'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: status.color,
+                ),
+              ),
+        trailing: const Icon(Icons.edit_calendar_outlined),
+        onTap: onEdit,
       ),
-      onTap: onEdit,
     );
   }
 }
@@ -610,30 +684,115 @@ class _BottomBar extends StatelessWidget {
   }
 }
 
+/// Una línea de la barra de abajo, arriba del botón, con un botón a la
+/// derecha que lleva hasta lo que dice (deshabilitado mientras nada se puede
+/// cambiar).
+class _BarLine extends StatelessWidget {
+  const _BarLine({
+    required this.textKey,
+    required this.text,
+    required this.actionKey,
+    required this.actionLabel,
+    required this.onAction,
+    this.color,
+  });
+
+  final String textKey;
+  final String text;
+  final Color? color;
+  final String actionKey;
+  final String actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              key: ValueKey(textKey),
+              style: theme.textTheme.bodyMedium?.copyWith(color: color),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            key: ValueKey(actionKey),
+            onPressed: onAction,
+            child: Text(actionLabel),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ConfirmBar extends StatelessWidget {
-  const _ConfirmBar({required this.state, required this.controller});
+  const _ConfirmBar({
+    required this.state,
+    required this.controller,
+    required this.onShowPrice,
+    required this.onShowWeek,
+  });
 
   final ConfirmBookingState state;
   final ConfirmBookingController controller;
+  final VoidCallback onShowPrice;
+  final void Function(int week) onShowWeek;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final formats = RequestFormats(context);
+    final locale = Localizations.localeOf(context).toString();
     final failure = state.failure;
+    // Arriba del botón: la falla, si la hay; si no, lo que impide confirmar
+    // o, si nada lo impide, el precio que se va a confirmar. Sin respuesta (se
+    // reintenta lo mismo), la falla y el precio que se reintenta.
+    final blocker = failure == null ? state.blocker : null;
+    final showSummary =
+        state.retryPending || (failure == null && blocker == null);
     return _BottomBar(
       children: [
         if (failure != null) ...[
-          Text(
-            l10n.bookingFailure(failure, formatDate: formats.shortDate),
-            key: const ValueKey('booking-failure'),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.error,
+          // liveRegion: el lector de pantalla la anuncia al aparecer.
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              l10n.bookingFailure(failure, formatDate: formats.shortDate),
+              key: const ValueKey('booking-failure'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
             ),
           ),
           const SizedBox(height: 8),
         ],
+        if (blocker != null)
+          _BarLine(
+            textKey: 'booking-blocker',
+            text: l10n.bookingBlockerText(state, blocker, locale: locale),
+            color: theme.colorScheme.error,
+            actionKey: 'booking-blocker-show',
+            actionLabel: l10n.bookingShowProblem,
+            onAction: switch (blocker) {
+              (kind: BookingBlockKind.price, week: _) => onShowPrice,
+              (kind: _, week: final week?) => () => onShowWeek(week),
+              _ => null,
+            },
+          )
+        else if (showSummary)
+          _BarLine(
+            textKey: 'booking-summary',
+            text: l10n.bookingSummary(state, locale: locale),
+            actionKey: 'booking-edit-price',
+            actionLabel: l10n.bookingEditPrice,
+            onAction: state.frozen ? null : onShowPrice,
+          ),
         FilledButton(
           key: const ValueKey('booking-confirm'),
           onPressed: state.canConfirm
@@ -651,19 +810,25 @@ class _ConfirmBar extends StatelessWidget {
                     Flexible(child: Text(l10n.bookingSending)),
                   ],
                 )
-              : Text(l10n.bookingConfirmAction(state.weeks)),
+              : Text(
+                  state.retryPending
+                      ? l10n.actionRetry
+                      : l10n.bookingConfirmAction(state.weeks),
+                ),
         ),
       ],
     );
   }
 }
 
-/// Después de confirmar: las semanas creadas con su hora y el precio.
+/// Después de confirmar: las semanas guardadas con su hora y el precio.
 class _BookingDone extends ConsumerWidget {
-  const _BookingDone({required this.request, required this.result});
+  const _BookingDone({required this.request, required this.state});
 
   final ChefRequest request;
-  final BookingResult result;
+
+  /// Con la reserva ([ConfirmBookingState.result]).
+  final ConfirmBookingState state;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -672,6 +837,7 @@ class _BookingDone extends ConsumerWidget {
     final formats = RequestFormats(context);
     final locale = Localizations.localeOf(context).toString();
     final whatsApp = ref.watch(bookingWhatsAppProvider(request.id));
+    final result = state.result!;
     final weeks = result.weeks;
     final service = weeks.fold<int>(0, (sum, week) => sum + week.serviceCents);
 
@@ -687,12 +853,26 @@ class _BookingDone extends ConsumerWidget {
             color: theme.colorScheme.primary,
           ),
           const SizedBox(height: 12),
-          Text(
-            l10n.bookingDoneBody(weeks.length),
-            key: const ValueKey('booking-done-body'),
-            style: theme.textTheme.bodyLarge,
+          // liveRegion: el lector de pantalla anuncia que quedó confirmada (el
+          // botón que tenía el foco ya no está).
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              l10n.bookingDoneBody(weeks.length),
+              key: const ValueKey('booking-done-body'),
+              style: theme.textTheme.bodyLarge,
+            ),
           ),
-          if (result.duplicate) ...[
+          if (state.savedDiffers) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.bookingDoneDuplicateDiffers,
+              key: const ValueKey('booking-done-differs'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ] else if (result.duplicate) ...[
             const SizedBox(height: 8),
             Text(
               l10n.bookingDoneDuplicate,
@@ -707,7 +887,10 @@ class _BookingDone extends ConsumerWidget {
               leading: const Icon(Icons.event_outlined),
               title: Text(
                 [
-                  l10n.bookingWeekTitle(i + 1, formats.shortDate(week.date)),
+                  if (weeks.length > 1)
+                    l10n.bookingWeekTitle(i + 1, formats.shortDate(week.date))
+                  else
+                    formats.shortDate(week.date),
                   ?week.start?.toHhMm(),
                 ].join(' · '),
               ),

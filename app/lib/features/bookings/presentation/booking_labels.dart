@@ -1,7 +1,10 @@
 // Textos de la hoja «Conferma prenotazione»: lo que dijo el servidor de cada
-// semana, lo que impide mandar una fecha y las fallas. Solo presentación: los
-// textos salen del ARB.
+// semana, lo que impide mandar una fecha, las fallas y la barra de abajo (el
+// precio que se va a confirmar o lo que impide confirmar). Solo presentación:
+// los textos salen del ARB.
+import 'package:radici/core/money.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
@@ -52,6 +55,11 @@ extension BookingLabels on AppLocalizations {
       BookingFailureKind.slotTaken ||
       BookingFailureKind.weekTaken ||
       BookingFailureKind.conflict => bookingErrorConflict,
+      // Ya es una reserva: de otro dispositivo o de un intento anterior que
+      // se quedó sin respuesta. Esta hoja no creó nada más.
+      BookingFailureKind.requestNotNew
+          when failure.requestStatus == 'accepted' =>
+        bookingErrorAlreadyBooked,
       BookingFailureKind.requestNotNew => switch (requestStatusLabel(
         failure.requestStatus,
       )) {
@@ -64,5 +72,55 @@ extension BookingLabels on AppLocalizations {
       BookingFailureKind.invalid => bookingErrorInvalid,
       BookingFailureKind.unavailable => bookingErrorUnavailable,
     };
+  }
+
+  /// La barra de abajo: lo que impide confirmar ([blocker], de
+  /// [ConfirmBookingState.blocker]). Con más de una fecha, de qué semana.
+  String bookingBlockerText(
+    ConfirmBookingState state,
+    BookingBlocker blocker, {
+    required String locale,
+  }) {
+    final String problem;
+    switch (blocker.kind) {
+      case BookingBlockKind.price:
+        return switch (state.priceIssue) {
+          BookingPriceIssue.invalid => bookingBlockPriceInvalid,
+          BookingPriceIssue.tooHigh => bookingBlockPriceTooHigh(
+            formatCents(maxBookingCents, locale: locale),
+          ),
+          BookingPriceIssue.required || null => bookingBlockPriceMissing,
+        };
+      case BookingBlockKind.date:
+        problem = bookingDateIssue(state.dateIssues[blocker.week!]!);
+      case BookingBlockKind.clash:
+        problem = bookingBlockClash;
+    }
+    return state.weeks > 1
+        ? bookingWeekProblem(blocker.week! + 1, problem)
+        : problem;
+  }
+
+  /// La barra de abajo: el precio del servicio que se va a confirmar (después
+  /// ninguna ruta lo cambia), lo que queda por semana y la llegada:
+  /// «Servizio 560,00 € · 140,00 € a settimana · arrivo 10:00». Vacío sin
+  /// precio válido.
+  String bookingSummary(ConfirmBookingState state, {required String locale}) {
+    final cents = state.serviceTotalCents;
+    if (cents == null) return '';
+    final parts = [bookingSummaryService(formatCents(cents, locale: locale))];
+    if (state.weeks > 1) {
+      final share = weeklyShare(cents, state.weeks);
+      final amount = formatCents(share.firstWeekCents, locale: locale);
+      parts.add(
+        share.even
+            ? bookingSummaryPerWeek(amount)
+            : bookingSummaryPerWeekApprox(amount),
+      );
+    }
+    if (state.start case final start?) {
+      parts.add(bookingSummaryArrival(start.toHhMm()));
+    }
+    return parts.join(' · ');
   }
 }

@@ -197,10 +197,24 @@ class RequestTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: isNew ? const TextStyle(fontWeight: FontWeight.w700) : null,
       ),
-      subtitle: Text(
-        [l10n.requestSummary(request), if (when.isNotEmpty) when].join('\n'),
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
+      // La fecha va en su propia línea: un resumen largo («… · 4 settimane ·
+      // 4 persone · 5 giorni · Cena») se corta en dos líneas y no la tapa.
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.requestSummary(request),
+            maxLines: when.isEmpty ? 3 : 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (when.isNotEmpty)
+            Text(
+              when,
+              key: ValueKey('request-${request.id}-when'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+        ],
       ),
       isThreeLine: when.isNotEmpty,
       trailing: Column(

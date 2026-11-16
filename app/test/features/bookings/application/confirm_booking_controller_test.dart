@@ -306,6 +306,93 @@ void main() {
       expect(state().failure?.requestStatus, 'accepted');
       expect(state().canConfirm, isFalse);
     });
+
+    test(
+      'otro dispositivo ya lo confirmó: el dryRun lo dice y la bandeja lo relee',
+      () async {
+        await open(weekly());
+        requests.requests['req-1'] = requests.requests['req-1']!.copyWith(
+          status: RequestStatus.accepted,
+        );
+        controller().stepCookMinutes(1);
+        await pumpEventQueue();
+        expect(state().failure?.kind, BookingFailureKind.requestNotNew);
+        expect(state().failure?.requestStatus, 'accepted');
+        expect(state().canConfirm, isFalse);
+        // Al cerrar la hoja, el detalle ya no ofrece «Conferma prenotazione».
+        final inbox = container.read(chefInboxProvider).requireValue;
+        expect(inbox.single.status, RequestStatus.accepted);
+        expect(inbox.single.canConfirmBooking, isFalse);
+      },
+    );
+
+    for (final kind in [
+      BookingFailureKind.unauthorized,
+      BookingFailureKind.forbidden,
+    ]) {
+      test('${kind.name} en el dryRun no deja confirmar', () async {
+        bookings.checksFailure = BookingFailure(kind);
+        await open(weekly());
+        expect(state().failure?.kind, kind);
+        expect(state().blocked, isTrue);
+        expect(state().canConfirm, isFalse);
+        // Ninguna edición lo destraba.
+        controller().stepCookMinutes(1);
+        await pumpEventQueue();
+        expect(state().failure?.kind, kind);
+        expect(state().canConfirm, isFalse);
+      });
+    }
+
+    test(
+      'vale la respuesta del último dryRun aunque llegue antes que la de uno anterior',
+      () async {
+        await open(weekly());
+        bookings.holdEachCheck = true;
+        controller()
+          ..stepCookMinutes(1) // 210
+          ..stepCookMinutes(1); // 240
+        await pumpEventQueue();
+        expect(bookings.heldChecks, hasLength(2));
+
+        // Llega primero la de 240: choca.
+        bookings.statuses[mondays[0]] = BookingDayStatus.busy;
+        bookings.heldChecks[1].complete();
+        await pumpEventQueue();
+        expect(state().hasClash, isTrue);
+
+        // Después, la de 210 (libre): es de un pedido viejo, no vale.
+        bookings.statuses.remove(mondays[0]);
+        bookings.heldChecks[0].complete();
+        await pumpEventQueue();
+        expect(state().cookMinutes, 240);
+        expect(statuses().first, BookingDayStatus.busy);
+        expect(state().hasClash, isTrue);
+        expect(state().canConfirm, isFalse);
+      },
+    );
+  });
+
+  group('lo que impide confirmar (lo dice la barra de abajo)', () {
+    test('nada; el precio; una semana que choca; una fecha que no se puede mandar, que va primero', () async {
+      await open(weekly());
+      expect(state().blocker, isNull);
+
+      controller().setPriceText('');
+      expect(state().blocker, (kind: BookingBlockKind.price, week: null));
+      controller().setPriceText('560');
+      expect(state().blocker, isNull);
+
+      bookings.statuses[mondays[2]] = BookingDayStatus.busy;
+      controller().stepCookMinutes(1);
+      await pumpEventQueue();
+      expect(state().blocker, (kind: BookingBlockKind.clash, week: 2));
+
+      // La segunda, en la misma semana que la primera: está más arriba.
+      controller().setDate(1, mondays[0].addDays(2));
+      await pumpEventQueue();
+      expect(state().blocker, (kind: BookingBlockKind.date, week: 1));
+    });
   });
 
   group('semanas y fechas', () {
@@ -523,6 +610,147 @@ void main() {
       controller().setPriceText('');
       await controller().confirm();
       expect(bookings.confirmations, isEmpty);
+    });
+
+    test('con otras semanas que el pedido, la bandeja guarda las confirmadas', () async {
+      await open(weekly());
+      controller().setWeeks(6);
+      await pumpEventQueue();
+      await controller().confirm();
+
+      expect(bookings.confirmations.single.dates, weeklyDates(monday, 6));
+      final booked = container.read(chefInboxProvider).requireValue.single;
+      expect(booked.weeks, 6);
+      expect(booked.status, RequestStatus.accepted);
+    });
+
+    test('la ficha pasa a cliente también en sus otros pedidos, no en los de otra persona', () async {
+      final other = buildRequest(
+        id: 'req-2',
+        createdAt: DateTime.utc(2026, 10, 18, 9),
+      );
+      final stranger = buildRequest(
+        id: 'req-3',
+        clientId: '33333333-3333-4333-8333-333333333333',
+        createdAt: DateTime.utc(2026, 10, 17, 9),
+      );
+      requests.requests
+        ..[other.id] = other
+        ..[stranger.id] = stranger;
+      await open(weekly());
+      await controller().confirm();
+
+      final byId = {
+        for (final r in container.read(chefInboxProvider).requireValue) r.id: r,
+      };
+      expect(byId['req-1']!.client.status, ClientStatus.trial);
+      expect(byId['req-2']!.client.status, ClientStatus.trial);
+      expect(byId['req-2']!.canMarkClient, isFalse);
+      expect(byId['req-2']!.status, RequestStatus.newRequest);
+      expect(byId['req-3']!.client.status, ClientStatus.prospect);
+    });
+
+    test('otro dispositivo ya lo confirmó: no crea nada y la bandeja lo relee', () async {
+      await open(weekly());
+      requests.requests['req-1'] = requests.requests['req-1']!.copyWith(
+        status: RequestStatus.accepted,
+      );
+      await controller().confirm();
+      await pumpEventQueue();
+
+      expect(state().failure?.kind, BookingFailureKind.requestNotNew);
+      expect(state().result, isNull);
+      expect(state().canConfirm, isFalse);
+      expect(
+        container.read(chefInboxProvider).requireValue.single.status,
+        RequestStatus.accepted,
+      );
+    });
+  });
+
+  group('confirmación sin respuesta', () {
+    test('nada cambia hasta reintentar; el reintento manda lo mismo y el servidor lo reconoce', () async {
+      await open(weekly());
+      // La base la guarda pero la respuesta se pierde.
+      bookings.loseNextConfirmResponse = true;
+      await controller().confirm();
+      expect(state().failure?.kind, BookingFailureKind.unavailable);
+      expect(state().retryPending, isTrue);
+      expect(state().frozen, isTrue);
+      expect(state().canConfirm, isTrue);
+
+      // Con otros datos el servidor diría que el pedido ya no está nuevo (o
+      // ignoraría el precio): nada se puede cambiar.
+      final dryRuns = bookings.dryRuns.length;
+      controller()
+        ..setPriceText('420')
+        ..setStart(const ClockTime.hm(11, 0))
+        ..setWeeks(3)
+        ..stepCookMinutes(1)
+        ..setDate(1, mondays[1].addDays(1))
+        ..retryChecks();
+      await pumpEventQueue();
+      expect(state().priceEdited, isFalse);
+      expect(state().serviceTotalCents, 56000);
+      expect(state().start, const ClockTime.hm(10, 0));
+      expect(state().dates, mondays);
+      expect(state().cookMinutes, 180);
+      expect(bookings.dryRuns, hasLength(dryRuns));
+      expect(state().failure?.kind, BookingFailureKind.unavailable);
+
+      await controller().confirm();
+      final sent = bookings.confirmations;
+      expect(sent, hasLength(2));
+      expect(sent.last, sent.first, reason: 'la misma clave y los mismos datos');
+      expect(state().result?.duplicate, isTrue);
+      expect(state().savedDiffers, isFalse);
+      expect(state().retryPending, isFalse);
+      expect(
+        container.read(chefInboxProvider).requireValue.single.status,
+        RequestStatus.accepted,
+      );
+    });
+
+    test('un choque después del reintento sí deja cambiar (no se creó nada)', () async {
+      await open(weekly());
+      bookings.confirmFailure = const BookingFailure(
+        BookingFailureKind.unavailable,
+      );
+      await controller().confirm();
+      expect(state().retryPending, isTrue);
+
+      bookings.confirmFailure = BookingFailure(
+        BookingFailureKind.slotTaken,
+        date: mondays[1],
+      );
+      await controller().confirm();
+      await pumpEventQueue();
+      expect(state().retryPending, isFalse);
+      expect(state().frozen, isFalse);
+      controller().setDate(1, mondays[1].addDays(1));
+      expect(state().dates[1], mondays[1].addDays(1));
+    });
+
+    test('ya confirmada desde otro dispositivo con las mismas fechas y hora y otro precio: vale lo guardado y se avisa', () async {
+      await open(weekly());
+      await bookings.createBooking(
+        BookingRequest(
+          requestId: 'req-1',
+          dates: mondays,
+          start: const ClockTime.hm(10, 0),
+          cookMinutes: 180,
+          serviceTotalCents: 50000,
+          requestKey: 'other-device',
+        ),
+      );
+      await controller().confirm();
+
+      expect(state().result?.duplicate, isTrue);
+      expect(
+        state().result!.weeks.fold<int>(0, (sum, w) => sum + w.serviceCents),
+        50000,
+      );
+      expect(state().savedDiffers, isTrue);
     });
   });
 }
