@@ -11,8 +11,9 @@
 -- índice ya existen). No hay tabla nueva. Hasta M4 las reservas nacen confirmed, sin presupuesto
 -- ni retención de 48 h, igual que hoy por WhatsApp.
 --
---   1. requests: la app ya no borra pedidos. requests.weeks ya existe (20261116120000_weekly_pricing.sql)
---      y una reserva la reescribe con las semanas que se crearon.
+--   1. requests y clients: la app ya no borra pedidos ni fichas (borrar una ficha se llevaba en
+--      cascada su reserva). requests.weeks ya existe (20261116120000_weekly_pricing.sql) y una
+--      reserva la reescribe con las semanas que se crearon.
 --   2. sessions: shopping_done_at, cooked_at, week_start (generada) y una sesión viva por semana de
 --      cada pedido (índice único sessions_una_por_semana).
 --   3. sessions_guard_update: solo las transiciones de estado válidas, y fecha, hora y duración
@@ -25,20 +26,27 @@
 --
 -- Errores (mensaje = identificador estable; la Edge Function los traduce):
 --   22023 datos inválidos (400) · P0002 no encontrado (404) ·
---   55000 el estado no lo permite (409: invalid_transition, session_not_movable, request_not_new) ·
+--   55000 el estado no lo permite (409: invalid_transition, session_not_movable, request_not_new,
+--         has_payments) ·
 --   23P01 slot_taken y 23505 week_taken (409), con detail = la fecha que choca (AAAA-MM-DD).
 -- Ninguna de estas funciones escribe en el log: nada de nombres, teléfonos, direcciones ni notas.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
--- 1. requests: la app ya no borra pedidos
--- 20261019130000_api_grants.sql le daba delete a authenticated y la app nunca lo usó. Un pedido
--- aceptado es el registro de su reserva: se borra solo desde el servidor (la purga de prospectos,
--- que no alcanza a un pedido aceptado, y el SQL editor, contrato public-request §10.2). La política
--- "requests: la cocinera gestiona los suyos" (for all) no cambia: sin el privilegio, el delete
--- falla antes de llegar a RLS.
+-- 1. requests y clients: la app ya no borra pedidos ni fichas
+-- 20261019130000_api_grants.sql le daba delete sobre las dos tablas a authenticated y la app nunca
+-- lo usó. Un pedido aceptado es el registro de su reserva: se borra solo desde el servidor (la
+-- purga de prospectos, que no alcanza a un pedido aceptado, y el SQL editor, contrato
+-- public-request §10.2). Borrar una ficha se llevaba en cascada sus pedidos, sus sesiones y sus
+-- consentimientos (las FK hacia clients son on delete cascade, y la cascada no pasa por estos
+-- privilegios ni por la guarda de sesiones): una reserva entera desaparecía y sus días volvían a la
+-- web. El borrado de una persona también queda del lado del servidor (la purga, el SQL editor y,
+-- desde M2, la supresión de la cuenta). Las políticas "la cocinera gestiona los suyos" (for all)
+-- no cambian: sin el privilegio, el delete falla antes de llegar a RLS. La app sigue leyendo sus
+-- fichas y cambiando su estado («Segna come cliente»).
 -- ---------------------------------------------------------------------
 revoke delete on public.requests from authenticated;
+revoke delete on public.clients  from authenticated;
 
 -- ---------------------------------------------------------------------
 -- 2. sessions: columnas nuevas y una sesión por semana
@@ -338,8 +346,12 @@ comment on function private.booking_result(uuid, boolean) is
 -- pasadas valen: cargar lo ya hecho en Fase 0). Más de una solo en un pedido semanal (M3b: un
 -- evento, una sola). Cada semana es una sesión confirmed con pay_mode 'manual', llegada p_start,
 -- p_cook_minutes de cocina (1 a 720), p_portions, p_groceries_est_cents (la compra estimada de cada
--- semana) y su parte de p_service_total_cents (el precio del servicio que fija Evelyn, repartido
--- con split_cents). La compra y el margen los copia sessions_fill_minutes de chef_settings.
+-- semana) y su parte de p_service_total_cents (el precio del servicio de toda la reserva, que fija
+-- Evelyn, repartido con split_cents). La compra y el margen los copia sessions_fill_minutes de
+-- chef_settings.
+-- p_service_total_cents no tiene valor por defecto: ninguna ruta cambia después el servicio de una
+-- sesión, así que una reserva no se crea sin precio por olvido. 0 vale (sin cargo); null es
+-- invalid_cents, también en el dryRun.
 --
 -- p_dry_run: valida todo y devuelve el estado de cada fecha (booking_day_checks) sin escribir nada;
 -- ahí p_start puede faltar (cada fecha se evalúa con su llegada sugerida).
@@ -353,9 +365,9 @@ create function public.chef_create_booking(
   p_dates               date[],
   p_start               time,
   p_cook_minutes        int,
+  p_service_total_cents int,
   p_portions            int                 default 0,
   p_groceries_est_cents int                 default 0,
-  p_service_total_cents int                 default 0,
   p_request_id          uuid                default null,
   p_client_id           uuid                default null,
   p_new_client          jsonb               default null,
@@ -749,16 +761,23 @@ comment on function public.chef_move_session(uuid, uuid, date, time, int, boolea
 -- 5c. public.chef_cancel_sessions: cancelar una o varias semanas
 -- Pasa a cancelled las held, confirmed y shopping_done (con cancelled_at y cancel_reason, y sin
 -- hold_until). Todo o nada: si alguna está cooked o paid, invalid_transition y no cancela ninguna.
--- Las ya canceladas no cambian (un reintento no falla). p_reason es un código (snake_case, hasta
--- 40 caracteres), nunca texto libre: el cliente puede leer su sesión.
--- Devuelve {cancelled, already_cancelled, with_payments, had_payments}: with_payments son las que
--- tenían algún cobro (pago succeeded que no es devolución), para ofrecer pasar la semana al final
--- de la reserva o registrar la devolución (decisión 5 del plan; los cobros manuales llegan en el PR 10).
+-- Las ya canceladas no cambian (un reintento no falla).
+-- p_reason es uno de estos códigos, nunca texto libre (el cliente puede leer su sesión, y los de
+-- otros caminos, como hold_expired o declined, no se escriben desde acá): chef_cancelled (por
+-- defecto), client_cancelled (lo pidió la clienta) o chef_unavailable (Evelyn no puede ir).
+-- Semanas ya cobradas (algún pago succeeded que no es devolución): una cancelada no se mueve ni se
+-- reactiva, así que, sin p_allow_with_payments, has_payments (55000, detail = sus ids separados por
+-- coma) y no cancela ninguna. La app ofrece primero pasarla al final de la reserva
+-- (chef_move_session) y cancela con p_allow_with_payments solo para registrar la devolución
+-- (decisión 5 del plan; los cobros manuales llegan en el PR 10).
+-- Devuelve {cancelled, already_cancelled, with_payments, had_payments}: with_payments son las de
+-- la lista que tienen algún cobro (canceladas ahora o antes), las que esperan su devolución.
 -- ---------------------------------------------------------------------
 create function public.chef_cancel_sessions(
-  p_chef_id     uuid,
-  p_session_ids uuid[],
-  p_reason      text default 'chef_cancelled'
+  p_chef_id             uuid,
+  p_session_ids         uuid[],
+  p_reason              text    default 'chef_cancelled',
+  p_allow_with_payments boolean default false
 )
 returns jsonb
 language plpgsql
@@ -770,6 +789,7 @@ declare
   v_ids       uuid[];
   v_found     int;
   v_blocked   uuid;
+  v_with_paid text;
   v_already   uuid[];
   v_cancelled uuid[];
   v_paid      uuid[];
@@ -781,7 +801,7 @@ begin
      or exists (select 1 from unnest(p_session_ids) as u (id) where u.id is null) then
     raise exception 'invalid_sessions' using errcode = '22023';
   end if;
-  if p_reason is null or p_reason !~ '^[a-z][a-z_]{0,39}$' then
+  if p_reason is null or p_reason not in ('chef_cancelled', 'client_cancelled', 'chef_unavailable') then
     raise exception 'invalid_reason' using errcode = '22023';
   end if;
 
@@ -813,6 +833,27 @@ begin
     raise exception 'invalid_transition' using errcode = '55000', detail = v_blocked::text;
   end if;
 
+  -- Cobros: los pagos succeeded que no son devoluciones (un pendiente todavía no es plata cobrada).
+  v_paid := array(
+    select distinct p.session_id
+    from public.payments p
+    where p.session_id = any (v_ids)
+      and p.status = 'succeeded'
+      and p.kind <> 'refund'
+    order by p.session_id
+  );
+
+  -- Una semana cobrada que todavía se podía pasar al final de la reserva: solo con el permiso.
+  if not coalesce(p_allow_with_payments, false) then
+    select string_agg(s.id::text, ',' order by s.id) into v_with_paid
+    from public.sessions s
+    where s.id = any (v_paid)
+      and s.status in ('held', 'confirmed', 'shopping_done');
+    if v_with_paid is not null then
+      raise exception 'has_payments' using errcode = '55000', detail = v_with_paid;
+    end if;
+  end if;
+
   v_already := array(
     select s.id from public.sessions s
     where s.id = any (v_ids) and s.status = 'cancelled'
@@ -832,15 +873,6 @@ begin
   select coalesce(array_agg(c.id order by c.id), '{}') into v_cancelled
   from canceladas c;
 
-  v_paid := array(
-    select distinct p.session_id
-    from public.payments p
-    where p.session_id = any (v_ids)
-      and p.status = 'succeeded'
-      and p.kind <> 'refund'
-    order by p.session_id
-  );
-
   return jsonb_build_object(
     'cancelled',         to_jsonb(v_cancelled),
     'already_cancelled', to_jsonb(v_already),
@@ -850,8 +882,8 @@ begin
 end
 $$;
 
-comment on function public.chef_cancel_sessions(uuid, uuid[], text) is
-  'Cancela sesiones held, confirmed o shopping_done (todo o nada; las ya canceladas no cambian). Devuelve {cancelled, already_cancelled, with_payments, had_payments}. Solo service_role (Edge Function chef).';
+comment on function public.chef_cancel_sessions(uuid, uuid[], text, boolean) is
+  'Cancela sesiones held, confirmed o shopping_done (todo o nada; las ya canceladas no cambian). Una semana ya cobrada solo con p_allow_with_payments (si no, has_payments con sus ids). p_reason: chef_cancelled, client_cancelled o chef_unavailable. Devuelve {cancelled, already_cancelled, with_payments, had_payments}. Solo service_role (Edge Function chef).';
 
 -- ---------------------------------------------------------------------
 -- 6. Privilegios
@@ -867,8 +899,8 @@ revoke all on function public.sessions_guard_update()                           
 revoke all on function public.chef_create_booking(uuid, date[], time, int, int, int, int, uuid, uuid, jsonb, public.request_type, jsonb, text, uuid, boolean)
   from public, anon, authenticated;
 revoke all on function public.chef_move_session(uuid, uuid, date, time, int, boolean)  from public, anon, authenticated;
-revoke all on function public.chef_cancel_sessions(uuid, uuid[], text)                 from public, anon, authenticated;
+revoke all on function public.chef_cancel_sessions(uuid, uuid[], text, boolean)        from public, anon, authenticated;
 grant execute on function public.chef_create_booking(uuid, date[], time, int, int, int, int, uuid, uuid, jsonb, public.request_type, jsonb, text, uuid, boolean)
   to service_role;
 grant execute on function public.chef_move_session(uuid, uuid, date, time, int, boolean)  to service_role;
-grant execute on function public.chef_cancel_sessions(uuid, uuid[], text)                 to service_role;
+grant execute on function public.chef_cancel_sessions(uuid, uuid[], text, boolean)        to service_role;

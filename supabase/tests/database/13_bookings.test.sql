@@ -5,19 +5,19 @@
 -- la web descuenta esos días; el precio del servicio lo fija Evelyn; el cobro es manual.
 --
 --   1. Esquema: pay_mode 'manual', las columnas nuevas de sessions, una sesión por semana, la
---      guarda y el delete de requests.
+--      guarda y el delete de requests y de clients.
 --   2. split_cents: el reparto exacto del servicio.
---   3. dryRun: el estado de cada fecha y la llegada sugerida, sin escribir nada.
+--   3. dryRun: el estado de cada fecha (con su prioridad) y la llegada sugerida, sin escribir nada.
 --   4. Creación desde un pedido: N sesiones confirmed con pay_mode manual, el pedido accepted con
 --      weeks y seen_at, la ficha de prospect a trial; la web deja de ofrecer esos días.
---   5. Reintento desde un pedido.
+--   5. Reintento desde un pedido: mismas fechas y hora.
 --   6. Choques: todo o nada, y el error dice la fecha.
---   7. Validaciones.
+--   7. Validaciones (el precio del servicio es obligatorio).
 --   8. Alta a mano: ficha nueva, ficha existente (no se modifica) y reintento con la misma clave.
 --   9. Transiciones (sessions_guard_update), para todos los roles.
---  10. Mover.
---  11. Cancelar: el día vuelve a aparecer en get_free_days.
---  12. Permisos.
+--  10. Mover: solo held o confirmed, con la hora y los minutos guardados si no vienen.
+--  11. Cancelar: el día vuelve a aparecer en get_free_days; una semana cobrada, solo con permiso.
+--  12. Permisos: la app no ejecuta las chef_*, no escribe sesiones y no borra pedidos ni fichas.
 --
 -- Las fechas se arman desde el lunes que viene en Roma: pg_temp.d(0) es ese lunes, d(1) el martes,
 -- d(5) el sábado, d(7) el lunes siguiente. Siempre caen después de hoy y, hasta d(6), dentro de la
@@ -26,16 +26,17 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(139);
+select plan(163);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
 --   C1: compra 45, margen 30 y horizonte 14 (por defecto), sin aviso mínimo (get_free_days ofrece
 --       cualquier día desde mañana); lunes a viernes de 9 a 15, el horario de Evelyn.
 --   C2: otra cocinera (aislamiento y pruebas de la guarda).
---   Fichas de C1: P (prospecto, pedido R1 de 4 semanas), Q (prospecto: R2 extra, R3 de 3 semanas y
---   RW de la web con clave), A (activa), O (activa, con una sesión el miércoles d(9) a las 10:00) y
---   S (prospecto). De C2: X, con el pedido RX y la sesión XS.
+--   Fichas de C1: P (prospecto, pedido R1 de la web por 2 semanas, que Evelyn confirma por 4),
+--   Q (prospecto: R2 extra, R3 de 3 semanas, RW de la web con clave y RC, un pedido de cambio),
+--   A (activa), O (activa, con una sesión el miércoles d(9) a las 10:00) y S (prospecto).
+--   De C2: X, con el pedido RX y la sesión XS.
 -- ---------------------------------------------------------------------
 insert into auth.users (id, email) values
   ('7e630000-0000-4000-8000-00000000c001', 'chef1@reservas.test'),
@@ -75,7 +76,7 @@ insert into public.clients (id, chef_id, display_name, contact_phone, zone, addr
 
 insert into public.requests (id, chef_id, client_id, type, status, adults, kids, days, meals, weeks, source, preferred_date, request_key) values
   ('7e633000-0000-4000-8000-0000000000b1', '7e631000-0000-4000-8000-000000000001', '7e632000-0000-4000-8000-0000000000a1',
-   'week',  'new', 2, 2, 5, '{dinner}', 4, 'web', pg_temp.d(1), null),
+   'week',  'new', 2, 2, 5, '{dinner}', 2, 'web', pg_temp.d(1), null),
   ('7e633000-0000-4000-8000-0000000000b2', '7e631000-0000-4000-8000-000000000001', '7e632000-0000-4000-8000-0000000000a2',
    'extra', 'new', 8, 0, 1, '{dinner}', 1, 'web', null, null),
   ('7e633000-0000-4000-8000-0000000000b3', '7e631000-0000-4000-8000-000000000001', '7e632000-0000-4000-8000-0000000000a2',
@@ -84,6 +85,9 @@ insert into public.requests (id, chef_id, client_id, type, status, adults, kids,
    'week',  'new', 1, 0, 3, '{lunch}', 1, 'web', null, '7e63e000-0000-4000-8000-000000000003'),
   ('7e633000-0000-4000-8000-0000000000bf', '7e631000-0000-4000-8000-000000000002', '7e632000-0000-4000-8000-0000000000f1',
    'week',  'new', 1, 0, 5, '{lunch}', 1, 'web', null, null);
+insert into public.requests (id, chef_id, client_id, type, status, text, source) values
+  ('7e633000-0000-4000-8000-0000000000b5', '7e631000-0000-4000-8000-000000000001', '7e632000-0000-4000-8000-0000000000a2',
+   'change', 'new', 'Pasar la cena del jueves al viernes', 'app');
 
 insert into public.sessions (id, chef_id, client_id, "date", start_time, cook_minutes, status) values
   ('7e634000-0000-4000-8000-0000000000c1', '7e631000-0000-4000-8000-000000000001', '7e632000-0000-4000-8000-0000000000a4',
@@ -206,6 +210,13 @@ select ok(
   and has_table_privilege('service_role', 'public.requests', 'DELETE'),
   'requests: authenticated ya no borra pedidos (los sigue leyendo); service_role sí'
 );
+select ok(
+  not has_table_privilege('authenticated', 'public.clients', 'DELETE')
+  and has_table_privilege('authenticated', 'public.clients', 'SELECT')
+  and has_column_privilege('authenticated', 'public.clients', 'status', 'UPDATE')
+  and has_table_privilege('service_role', 'public.clients', 'DELETE'),
+  'clients: authenticated tampoco borra fichas (en cascada se llevaban la reserva); las sigue leyendo y cambia su estado; service_role sí'
+);
 
 -- =====================================================================
 -- 2. split_cents
@@ -298,6 +309,30 @@ select is(
 select is(pg_temp.conteo(), (select r #>> '{}' from res where k = 'conteo_inicial'),
   'tampoco escribe nada');
 
+-- Prioridad de los estados (busy > past > blocked > closed > outside > ok): solo busy impide crear,
+-- así que un día que choca nunca puede mostrarse solo con un aviso. Una sesión ya hecha el
+-- miércoles pasado y, por un rato, el sábado d(5) y el miércoles d(9) (el de otra clienta) bloqueados.
+insert into public.sessions (chef_id, client_id, "date", start_time, cook_minutes, status)
+values ('7e631000-0000-4000-8000-000000000001', '7e632000-0000-4000-8000-0000000000a4', pg_temp.d(-12), '10:00', 180, 'cooked');
+insert into public.availability_exceptions (chef_id, "date", note) values
+  ('7e631000-0000-4000-8000-000000000001', pg_temp.d(5), 'Prueba de prioridad'),
+  ('7e631000-0000-4000-8000-000000000001', pg_temp.d(9), 'Prueba de prioridad');
+insert into res (k, r)
+select 'prioridad', pg_temp.reservar('7e633000-0000-4000-8000-0000000000b1',
+                                     array[pg_temp.d(-12), pg_temp.d(5), pg_temp.d(9)], '10:00', 0, true);
+select is(pg_temp.semanas('prioridad', 'status'), array['busy', 'blocked', 'busy'],
+  'prioridad: una fecha pasada que choca es busy (no past), un sábado bloqueado es blocked (no closed) y un día bloqueado que choca es busy (no blocked)');
+delete from public.availability_exceptions
+where chef_id = '7e631000-0000-4000-8000-000000000001' and note = 'Prueba de prioridad';
+select is(
+  array[
+    pg_temp.reservar('7e633000-0000-4000-8000-0000000000b1', array[(now() at time zone 'Europe/Rome')::date - 1], '10:00', 0, true) #>> '{weeks,0,status}',
+    ((pg_temp.reservar('7e633000-0000-4000-8000-0000000000b1', array[(now() at time zone 'Europe/Rome')::date], '10:00', 0, true) #>> '{weeks,0,status}') = 'past')::text
+  ],
+  array['past', 'false'],
+  'ayer en Roma es past; hoy no (es ok, o closed en un fin de semana)'
+);
+
 -- =====================================================================
 -- 4. Creación desde un pedido
 -- =====================================================================
@@ -353,7 +388,7 @@ select is(
   (select format('%s %s %s', r.status, r.weeks, r.seen_at is not null) from public.requests r
    where r.id = '7e633000-0000-4000-8000-0000000000b1'),
   'accepted 4 t',
-  'el pedido pasa a accepted, con sus semanas y visto'
+  'el pedido pasa a accepted, con las semanas que se crearon (la web pedía 2) y visto'
 );
 select is(
   (select c.status::text from public.clients c where c.id = '7e632000-0000-4000-8000-0000000000a1'),
@@ -385,6 +420,12 @@ select throws_ok(
   $$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b1', array[pg_temp.d(2), pg_temp.d(9)]) $$,
   '55000', 'request_not_new',
   'otra reserva sobre un pedido ya aceptado (otras fechas): request_not_new'
+);
+select throws_ok(
+  $$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b1',
+                             array[pg_temp.d(1), pg_temp.d(8), pg_temp.d(15), pg_temp.d(22)], '11:00') $$,
+  '55000', 'request_not_new',
+  'las mismas fechas a otra hora tampoco son un reintento: request_not_new (no la reserva vieja con duplicate)'
 );
 select throws_ok(
   $$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b1', array[pg_temp.d(1)], '10:00', 0, true) $$,
@@ -455,6 +496,8 @@ select throws_ok($$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b
   '22023', 'invalid_dates', 'una fecha vacía');
 select throws_ok($$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b3', array[pg_temp.d(400)]) $$,
   '22023', 'invalid_dates', 'una fecha a más de un año');
+select throws_ok($$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b3', array[pg_temp.d(-400)]) $$,
+  '22023', 'invalid_dates', 'ni una de hace más de un año');
 select throws_ok($$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b2', array[pg_temp.d(2), pg_temp.d(9)]) $$,
   '22023', 'weeks_only_for_week', 'un pedido extra de 2 semanas: weeks_only_for_week');
 select throws_ok($$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b3', array[pg_temp.d(2)], null) $$,
@@ -467,26 +510,35 @@ select throws_ok($$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b
   '22023', 'invalid_cents', 'servicio negativo');
 select throws_ok(
   $$ select public.chef_create_booking(p_chef_id => '7e631000-0000-4000-8000-000000000001', p_dates => array[pg_temp.d(2)],
-       p_start => '10:00', p_cook_minutes => 180, p_groceries_est_cents => null,
+       p_start => '10:00', p_cook_minutes => 180, p_request_id => '7e633000-0000-4000-8000-0000000000b3') $$,
+  '42883', null,
+  'sin el precio del servicio no hay función: p_service_total_cents no tiene valor por defecto (ninguna ruta lo corrige después)'
+);
+select throws_ok($$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b3', array[pg_temp.d(2)], '10:00', null) $$,
+  '22023', 'invalid_cents', 'ni con el precio en null (0 sí vale: sin cargo)');
+select throws_ok(
+  $$ select public.chef_create_booking(p_chef_id => '7e631000-0000-4000-8000-000000000001', p_dates => array[pg_temp.d(2)],
+       p_start => '10:00', p_cook_minutes => 180, p_service_total_cents => 0, p_groceries_est_cents => null,
        p_request_id => '7e633000-0000-4000-8000-0000000000b3') $$,
   '22023', 'invalid_cents', 'sin compra estimada');
 select throws_ok(
   $$ select public.chef_create_booking(p_chef_id => '7e631000-0000-4000-8000-000000000001', p_dates => array[pg_temp.d(2)],
-       p_start => '10:00', p_cook_minutes => 180, p_portions => -1,
+       p_start => '10:00', p_cook_minutes => 180, p_service_total_cents => 0, p_portions => -1,
        p_request_id => '7e633000-0000-4000-8000-0000000000b3') $$,
   '22023', 'invalid_portions', 'porciones negativas');
 select throws_ok(
   $$ select public.chef_create_booking(p_chef_id => '7e631000-0000-4000-8000-000000000001', p_dates => array[pg_temp.d(2)],
-       p_start => '10:00', p_cook_minutes => 180) $$,
+       p_start => '10:00', p_cook_minutes => 180, p_service_total_cents => 0) $$,
   '22023', 'invalid_client', 'sin pedido, ficha ni ficha nueva: invalid_client');
 select throws_ok(
   $$ select public.chef_create_booking(p_chef_id => '7e631000-0000-4000-8000-000000000001', p_dates => array[pg_temp.d(2)],
-       p_start => '10:00', p_cook_minutes => 180, p_request_id => '7e633000-0000-4000-8000-0000000000b3',
-       p_client_id => '7e632000-0000-4000-8000-0000000000a2') $$,
+       p_start => '10:00', p_cook_minutes => 180, p_service_total_cents => 0,
+       p_request_id => '7e633000-0000-4000-8000-0000000000b3', p_client_id => '7e632000-0000-4000-8000-0000000000a2') $$,
   '22023', 'invalid_client', 'pedido y ficha a la vez');
 select throws_ok(
   $$ select public.chef_create_booking(p_chef_id => '7e631000-0000-4000-8000-0000000000ff', p_dates => array[pg_temp.d(2)],
-       p_start => '10:00', p_cook_minutes => 180, p_request_id => '7e633000-0000-4000-8000-0000000000b3') $$,
+       p_start => '10:00', p_cook_minutes => 180, p_service_total_cents => 0,
+       p_request_id => '7e633000-0000-4000-8000-0000000000b3') $$,
   'P0002', 'chef_not_found', 'una cocinera que no existe: chef_not_found');
 select throws_ok($$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000ff', array[pg_temp.d(2)]) $$,
   'P0002', 'request_not_found', 'un pedido que no existe: request_not_found');
@@ -494,8 +546,11 @@ select throws_ok($$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b
   'P0002', 'request_not_found', 'ni uno de otra cocinera');
 select throws_ok(
   $$ select public.chef_create_booking(p_chef_id => '7e631000-0000-4000-8000-000000000001', p_dates => array[pg_temp.d(2)],
-       p_start => '10:00', p_cook_minutes => 180, p_request_id => '7e633000-0000-4000-8000-0000000000b3', p_type => 'extra') $$,
+       p_start => '10:00', p_cook_minutes => 180, p_service_total_cents => 0,
+       p_request_id => '7e633000-0000-4000-8000-0000000000b3', p_type => 'extra') $$,
   '22023', 'invalid_request_type', 'desde un pedido, el tipo es el del pedido');
+select throws_ok($$ select pg_temp.reservar('7e633000-0000-4000-8000-0000000000b5', array[pg_temp.d(2)]) $$,
+  '22023', 'invalid_request_type', 'un pedido de cambio no se confirma como reserva');
 select throws_ok($$ select pg_temp.a_mano(array[pg_temp.d(2)], '7e63e000-0000-4000-8000-0000000000ee',
                                           p_client => '7e632000-0000-4000-8000-0000000000a3', p_type => 'change') $$,
   '22023', 'invalid_request_type', 'a mano, una reserva es week o extra (no change)');
@@ -521,6 +576,9 @@ select is(
                      p_household => '{"adults": 31, "kids": 0, "days": 5, "meals": ["dinner"]}') $$),
     pg_temp.err($$ select pg_temp.a_mano(array[pg_temp.d(2)], '7e63e000-0000-4000-8000-0000000000ee',
                      p_client => '7e632000-0000-4000-8000-0000000000a3',
+                     p_household => '{"adults": 1, "kids": 31, "days": 5, "meals": ["dinner"]}') $$),
+    pg_temp.err($$ select pg_temp.a_mano(array[pg_temp.d(2)], '7e63e000-0000-4000-8000-0000000000ee',
+                     p_client => '7e632000-0000-4000-8000-0000000000a3',
                      p_household => '{"adults": 2, "kids": 0, "days": 8, "meals": ["dinner"]}') $$),
     pg_temp.err($$ select pg_temp.a_mano(array[pg_temp.d(2)], '7e63e000-0000-4000-8000-0000000000ee',
                      p_client => '7e632000-0000-4000-8000-0000000000a3',
@@ -532,8 +590,8 @@ select is(
                      p_client => '7e632000-0000-4000-8000-0000000000a3',
                      p_household => '{"adults": "2", "kids": 0, "days": 5, "meals": ["dinner"]}') $$)
   ],
-  array_fill('22023 invalid_household'::text, array[6]),
-  'personas, días y comidas como en quote.ts: nadie, más de 30 adultos, 8 días, una comida desconocida o repetida, o un número en texto'
+  array_fill('22023 invalid_household'::text, array[7]),
+  'personas, días y comidas como en quote.ts: nadie, más de 30 adultos o de 30 niños, 8 días, una comida desconocida o repetida, o un número en texto'
 );
 select throws_ok($$ select pg_temp.a_mano(array[pg_temp.d(2)], '7e63e000-0000-4000-8000-0000000000ee',
                                           p_new => '{"phone": "+393339990000"}') $$,
@@ -628,10 +686,25 @@ select is(
   'la ficha que ya existía no cambia (ni su hogar, aunque esta sesión sea para 8)'
 );
 select is(
-  (select format('%s %s %s %s %s', r.type, r.weeks, r.adults, r.kids, r.client_id)
+  (select format('%s %s %s %s %s %s', r.type, r.weeks, r.adults, r.kids, r.client_id, r.locale)
    from public.requests r where r.id = (select (x.r ->> 'request_id')::uuid from res x where x.k = 'anna')),
-  'extra 1 6 2 7e632000-0000-4000-8000-0000000000a3',
-  'el pedido es de esa ficha, con las personas de esta sesión'
+  'extra 1 6 2 7e632000-0000-4000-8000-0000000000a3 it',
+  'el pedido es de esa ficha, con las personas de esta sesión; sin idioma, it'
+);
+
+select lives_ok(
+  $$ insert into res (k, r)
+     select 'ugo', pg_temp.a_mano(array[pg_temp.d(24)], '7e63e000-0000-4000-8000-000000000005',
+                                  p_new => '{"name": "Ugo Neri"}', p_type => 'extra', p_start => '12:00', p_service => 0,
+                                  p_household => '{"adults": 6, "kids": 2, "days": 1, "meals": ["dinner"]}') $$,
+  'una sesión extra a mano, sin cargo, para una clienta nueva'
+);
+select is(
+  (select format('%s %s %s | %s', c.adults, c.kids, c.status,
+                 (select string_agg(s.service_cents::text, ',') from public.sessions s where s.client_id = c.id))
+   from public.clients c where c.id = (select (x.r ->> 'client_id')::uuid from res x where x.k = 'ugo')),
+  '1 0 trial | 0',
+  'la ficha nueva de una sesión extra no toma el hogar de esa sesión (1 adulto, 0 niños), y el servicio en 0 vale'
 );
 
 select lives_ok(
@@ -836,11 +909,11 @@ select lives_ok(
   'pasar la última semana una semana más tarde (al final de la reserva)'
 );
 select is(
-  (select format('%s %s %s %s %s', s."date" = pg_temp.d(29), s.week_start = pg_temp.d(28), s.start_time,
-                 s.shop_minutes, s.gap_minutes)
+  (select format('%s %s %s %s %s %s', s."date" = pg_temp.d(29), s.week_start = pg_temp.d(28), s.start_time,
+                 s.cook_minutes, s.shop_minutes, s.gap_minutes)
    from public.sessions s where s.id = (select v from ids where k = 'r1w4')),
-  't t 10:00:00 45 30',
-  'queda en la fecha nueva, con su semana, la misma hora y la compra y el margen que tenía'
+  't t 10:00:00 180 45 30',
+  'queda en la fecha nueva, con su semana, y la hora, la cocina, la compra y el margen que tenía (sin hora ni minutos, los guardados)'
 );
 select lives_ok(
   format($$ select public.chef_move_session('7e631000-0000-4000-8000-000000000001', %L, %L, '11:00') $$,
@@ -867,13 +940,47 @@ select is(
 update public.chef_settings set shop_minutes = 45 where chef_id = '7e631000-0000-4000-8000-000000000001';
 
 update public.sessions set status = 'cooked' where id = (select v from ids where k = 'r1w1');
-select throws_ok(
-  format($$ select public.chef_move_session('7e631000-0000-4000-8000-000000000001', %L, %L) $$,
-         (select v from ids where k = 'r1w1'), pg_temp.d(2)),
-  '55000', 'session_not_movable',
-  'una sesión ya cocinada no se mueve: session_not_movable'
+select is(
+  array[
+    pg_temp.err(format($$ select public.chef_move_session('7e631000-0000-4000-8000-000000000001', %L, %L, p_dry_run => true) $$,
+                       (select v from ids where k = 'r1w1'), pg_temp.d(2))),
+    pg_temp.err(format($$ select public.chef_move_session('7e631000-0000-4000-8000-000000000001', %L, %L) $$,
+                       (select v from ids where k = 'r1w1'), pg_temp.d(2)))
+  ],
+  array_fill('55000 session_not_movable | cooked'::text, array[2]),
+  'una sesión ya cocinada no se mueve, tampoco en un dryRun: session_not_movable con su estado (lo controla la función, antes que la guarda)'
 );
 update public.sessions set status = 'confirmed' where id = (select v from ids where k = 'r1w1');
+
+-- Una sesión held (un presupuesto enviado, M4) también se mueve; con p_cook_minutes cambia la cocina.
+insert into public.sessions (id, chef_id, client_id, "date", start_time, cook_minutes, status, hold_until)
+values ('7e634000-0000-4000-8000-0000000000c8', '7e631000-0000-4000-8000-000000000001',
+        '7e632000-0000-4000-8000-0000000000a4', pg_temp.d(30), '12:00', 120, 'held', now() + interval '48 hours');
+select lives_ok(
+  format($$ select public.chef_move_session('7e631000-0000-4000-8000-000000000001', '7e634000-0000-4000-8000-0000000000c8',
+                                            %L, p_cook_minutes => 150) $$, pg_temp.d(31)),
+  'mover una sesión held al día siguiente, con 150 min de cocina'
+);
+select is(
+  (select format('%s %s %s %s', s."date" = pg_temp.d(31), s.start_time, s.cook_minutes, s.status)
+   from public.sessions s where s.id = '7e634000-0000-4000-8000-0000000000c8'),
+  't 12:00:00 150 held',
+  'queda en la fecha nueva, con la hora que tenía, la cocina nueva y todavía held'
+);
+select is(
+  array[
+    pg_temp.err(format($$ select public.chef_move_session('7e631000-0000-4000-8000-000000000001', %L, %L, p_cook_minutes => 0) $$,
+                       (select v from ids where k = 'r1w3'), pg_temp.d(16))),
+    pg_temp.err(format($$ select public.chef_move_session('7e631000-0000-4000-8000-000000000001', %L, %L, p_cook_minutes => 721) $$,
+                       (select v from ids where k = 'r1w3'), pg_temp.d(16))),
+    pg_temp.err(format($$ select public.chef_move_session('7e631000-0000-4000-8000-000000000001', %L, %L) $$,
+                       (select v from ids where k = 'r1w3'), pg_temp.d(400))),
+    pg_temp.err(format($$ select public.chef_move_session('7e631000-0000-4000-8000-000000000001', %L, %L) $$,
+                       (select v from ids where k = 'r1w3'), pg_temp.d(-400)))
+  ],
+  array['22023 invalid_cook_minutes', '22023 invalid_cook_minutes', '22023 invalid_date', '22023 invalid_date'],
+  'al mover, la cocina va de 1 a 720 min y la fecha, a menos de un año de hoy'
+);
 select throws_ok(
   $$ select public.chef_move_session('7e631000-0000-4000-8000-000000000001', '7e634000-0000-4000-8000-0000000000cf',
                                      pg_temp.d(2)) $$,
@@ -941,15 +1048,83 @@ select is(
 );
 update public.sessions set status = 'confirmed' where id = (select v from ids where k = 'r1w3');
 
+-- Una semana ya cobrada: una cancelada no se mueve ni se reactiva, así que sin permiso no se
+-- cancela (la app ofrece antes pasarla al final de la reserva) y con permiso, para registrar la
+-- devolución (decisión 5 del plan).
 insert into public.payments (chef_id, session_id, kind, provider, amount_cents, service_part_cents, status)
 select '7e631000-0000-4000-8000-000000000001', v, 'transfer', 'transfer', 14000, 14000, 'succeeded'
 from ids where k = 'r1w2';
 select is(
-  (select format('%s %s', q.r -> 'with_payments' = jsonb_build_array((select v from ids where k = 'r1w2')), q.r ->> 'had_payments')
+  pg_temp.err(format($$ select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001', array[%L, %L]::uuid[]) $$,
+                     (select v from ids where k = 'r1w2'), (select v from ids where k = 'r1w3'))),
+  '55000 has_payments | ' || (select v::text from ids where k = 'r1w2'),
+  'una semana ya cobrada no se cancela sin permiso: has_payments con su id'
+);
+select is(
+  (select array_agg(s.status::text order by s."date") from public.sessions s
+   where s.id in (select v from ids where k in ('r1w2', 'r1w3'))),
+  array['confirmed', 'confirmed'],
+  'y no cancela ninguna, tampoco la que no tenía cobros (todo o nada)'
+);
+select is(
+  public.chef_move_session('7e631000-0000-4000-8000-000000000001', (select v from ids where k = 'r1w2'),
+                           pg_temp.d(36), p_dry_run => true) ->> 'status',
+  'ok',
+  'pasarla al final de la reserva sí se puede (dryRun)'
+);
+select is(
+  (select format('%s %s %s', q.r -> 'cancelled' = jsonb_build_array((select v from ids where k = 'r1w2')),
+                 q.r -> 'with_payments' = jsonb_build_array((select v from ids where k = 'r1w2')), q.r ->> 'had_payments')
    from (select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001',
-                                            array[(select v from ids where k = 'r1w2')], 'client_request') as r) as q),
-  't true',
-  'una semana ya cobrada: lo avisa, para pasarla al final o registrar la devolución'
+                                            array[(select v from ids where k = 'r1w2')], 'client_cancelled',
+                                            p_allow_with_payments => true) as r) as q),
+  't t true',
+  'con permiso (Evelyn va a registrar la devolución) se cancela, y la respuesta la marca con cobros'
+);
+select is(
+  (select format('%s %s', q.r -> 'already_cancelled' = jsonb_build_array((select v from ids where k = 'r1w2')),
+                 q.r -> 'with_payments' = jsonb_build_array((select v from ids where k = 'r1w2')))
+   from (select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001',
+                                            array[(select v from ids where k = 'r1w2')]) as r) as q),
+  't t',
+  'una vez cancelada, repetir sin permiso no falla: ya estaba cancelada y sigue esperando su devolución'
+);
+
+insert into public.payments (chef_id, session_id, kind, provider, amount_cents, service_part_cents, status)
+select '7e631000-0000-4000-8000-000000000001', i.v, p.kind, p.provider, 14000, 14000, p.status
+from ids i
+cross join (values ('cash'::public.payment_kind, 'cash'::public.payment_provider, 'pending'::public.payment_status),
+                   ('refund', 'transfer', 'succeeded')) as p (kind, provider, status)
+where i.k = 'r1w3';
+select is(
+  (select format('%s %s %s', q.r -> 'cancelled' = jsonb_build_array((select v from ids where k = 'r1w3')),
+                 q.r -> 'with_payments', q.r ->> 'had_payments')
+   from (select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001',
+                                            array[(select v from ids where k = 'r1w3')]) as r) as q),
+  't [] false',
+  'un cobro pendiente o una devolución no son plata cobrada: se cancela sin permiso y sin cobros'
+);
+
+update public.sessions set status = 'shopping_done'
+where request_id = (select v from ids where k = 'marta_pedido') and "date" = pg_temp.d(18);
+select lives_ok(
+  format($$ select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001', array[%L]::uuid[], 'chef_unavailable') $$,
+         (select s.id from public.sessions s
+          where s.request_id = (select v from ids where k = 'marta_pedido') and s."date" = pg_temp.d(18))),
+  'cancelar una semana que ya tenía la compra hecha (shopping_done)'
+);
+select is(
+  (select format('%s %s', s.status, s.cancel_reason) from public.sessions s
+   where s.request_id = (select v from ids where k = 'marta_pedido') and s."date" = pg_temp.d(18)),
+  'cancelled chef_unavailable',
+  'queda cancelled, con el motivo'
+);
+select is(
+  (select array_agg(x.w ->> 'date' order by x.n)
+   from jsonb_array_elements(pg_temp.a_mano(array[pg_temp.d(4)], '7e63e000-0000-4000-8000-000000000001',
+                                            p_new => '{"name": "Marta Gentili"}') -> 'weeks') with ordinality as x (w, n)),
+  array[pg_temp.f(4), pg_temp.f(11)],
+  'un reintento de la reserva de Marta devuelve solo sus semanas vivas'
 );
 
 insert into public.sessions (id, chef_id, client_id, "date", start_time, cook_minutes, status, hold_until)
@@ -977,16 +1152,33 @@ select throws_ok(
   'P0002', 'session_not_found',
   'una sesión de otra cocinera: session_not_found'
 );
-select throws_ok(
-  format($$ select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001', array[%L]::uuid[], 'lo pidió ella') $$,
-         (select v from ids where k = 'r1w3')),
-  '22023', 'invalid_reason',
-  'el motivo es un código, no texto libre'
+select is(
+  array[
+    pg_temp.err(format($$ select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001', array[%L]::uuid[], 'lo pidió ella') $$,
+                       (select v from ids where k = 'r1w4'))),
+    pg_temp.err(format($$ select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001', array[%L]::uuid[], 'clienta_maleducada_no_paga') $$,
+                       (select v from ids where k = 'r1w4'))),
+    pg_temp.err(format($$ select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001', array[%L]::uuid[], 'hold_expired') $$,
+                       (select v from ids where k = 'r1w4')))
+  ],
+  array_fill('22023 invalid_reason'::text, array[3]),
+  'el motivo es uno de los códigos de Evelyn (chef_cancelled, client_cancelled, chef_unavailable): ni texto libre, ni otra frase en snake_case, ni uno del sistema'
 );
-select throws_ok(
-  $$ select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001', '{}'::uuid[]) $$,
-  '22023', 'invalid_sessions',
-  'sin sesiones: invalid_sessions'
+select is(
+  array[
+    pg_temp.err($$ select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001', '{}'::uuid[]) $$),
+    pg_temp.err($$ select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001',
+                                                      array(select gen_random_uuid() from generate_series(1, 101))) $$),
+    pg_temp.err(format($$ select public.chef_cancel_sessions('7e631000-0000-4000-8000-000000000001', array[%L, null]::uuid[]) $$,
+                       (select v from ids where k = 'r1w4')))
+  ],
+  array_fill('22023 invalid_sessions'::text, array[3]),
+  'de 1 a 100 sesiones y ninguna vacía: invalid_sessions'
+);
+select is(
+  (select s.status::text from public.sessions s where s.id = (select v from ids where k = 'r1w4')),
+  'confirmed',
+  'ninguno de esos intentos tocó la sesión'
 );
 
 -- =====================================================================
@@ -1028,7 +1220,8 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"7e630000-0000-4000-8000-00000000c001","role":"authenticated"}';
 select throws_ok(
   $$ select public.chef_create_booking(p_chef_id => '7e631000-0000-4000-8000-000000000001', p_dates => array[current_date + 30],
-       p_start => '10:00', p_cook_minutes => 180, p_request_id => '7e633000-0000-4000-8000-0000000000b3', p_dry_run => true) $$,
+       p_start => '10:00', p_cook_minutes => 180, p_service_total_cents => 0,
+       p_request_id => '7e633000-0000-4000-8000-0000000000b3', p_dry_run => true) $$,
   '42501', 'permission denied for function chef_create_booking',
   'la cocinera desde la app (authenticated) no ejecuta chef_create_booking: va por la Edge Function'
 );
@@ -1061,6 +1254,11 @@ select throws_ok(
   '42501', 'permission denied for table requests',
   'ni borra pedidos'
 );
+select throws_ok(
+  $$ delete from public.clients where id = '7e632000-0000-4000-8000-0000000000a1' $$,
+  '42501', 'permission denied for table clients',
+  'ni borra fichas: la de P se llevaba en cascada su pedido aceptado y las sesiones de su reserva'
+);
 select ok(
   (select count(*) from public.sessions s
    where s.chef_id = '7e631000-0000-4000-8000-000000000001' and s.status <> 'cancelled' and s.week_start is not null) > 0,
@@ -1080,7 +1278,8 @@ reset role;
 set local role service_role;
 select lives_ok(
   $$ select public.chef_create_booking(p_chef_id => '7e631000-0000-4000-8000-000000000001', p_dates => array[current_date + 30],
-       p_start => '10:00', p_cook_minutes => 180, p_request_id => '7e633000-0000-4000-8000-0000000000b3', p_dry_run => true) $$,
+       p_start => '10:00', p_cook_minutes => 180, p_service_total_cents => 0,
+       p_request_id => '7e633000-0000-4000-8000-0000000000b3', p_dry_run => true) $$,
   'service_role sí (un dryRun)'
 );
 reset role;
@@ -1089,6 +1288,14 @@ select is(
   (select count(*)::int from public.requests r where r.id = '7e633000-0000-4000-8000-0000000000b2'),
   1,
   'el pedido que la app intentó borrar sigue ahí'
+);
+select is(
+  (select format('%s · %s · %s sesiones vivas', c.status, r.status,
+                 (select count(*) from public.sessions s where s.request_id = r.id and s.status <> 'cancelled'))
+   from public.clients c join public.requests r on r.client_id = c.id
+   where c.id = '7e632000-0000-4000-8000-0000000000a1'),
+  'trial · accepted · 1 sesiones vivas',
+  'y la ficha de P sigue ahí, con su pedido aceptado y la semana de su reserva que queda'
 );
 
 select finish();
