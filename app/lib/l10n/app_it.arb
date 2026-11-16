@@ -117,14 +117,14 @@
   "@quoteService": {
     "description": "Fila del detalle de un pedido anterior al precio por semana: el servicio por hora que se guardó."
   },
-  "quoteServiceTotal": "{weeks, plural, =1{Prezzo del servizio} other{Prezzo per {weeks} settimane}}",
+  "quoteServiceTotal": "{weeks, plural, =1{Prezzo del servizio} other{Servizio, {weeks} settimane}}",
   "@quoteServiceTotal": {
     "description": "Fila destacada del desglose: el servicio de todas las semanas del pedido (precio por semana, SPEC §5.1).",
     "placeholders": {
       "weeks": { "type": "int", "example": "4" }
     }
   },
-  "quoteWeeklyService": "Prezzo a settimana",
+  "quoteWeeklyService": "Servizio a settimana",
   "@quoteWeeklyService": {
     "description": "Fila del desglose: el servicio de cada semana (la tarifa, o la de descuento desde 4 semanas)."
   },
@@ -132,7 +132,7 @@
   "@quoteSavings": {
     "description": "Fila del desglose: lo que se ahorra frente a la tarifa sin descuento (desde 4 semanas)."
   },
-  "quoteNoAutoPrice": "Per più di {maxPeople} persone il prezzo del servizio te lo prepara Evelyn.",
+  "quoteNoAutoPrice": "Per più di {maxPeople} persone il preventivo per il servizio te lo prepara Evelyn.",
   "@quoteNoAutoPrice": {
     "description": "Calculadora sin precio automático: más personas que el tope (5 por defecto).",
     "placeholders": {
@@ -151,7 +151,7 @@
   "@quoteTotal": {
     "description": "Fila del detalle de un pedido anterior al precio por semana: servicio + insumos estimados."
   },
-  "quoteFootnote": "Il servizio è a settimana per una famiglia fino a {maxPeople} persone, qualunque siano i giorni e i pasti: comprende la spesa, lo spostamento e il tempo in cucina. Da {discountWeeks} settimane costa {discountRate} a settimana. La spesa si paga a parte, in base allo scontrino. È una stima: il prezzo finale lo conferma Evelyn.",
+  "quoteFootnote": "Il servizio è a settimana per una famiglia fino a {maxPeople} persone, qualunque siano i giorni e i pasti: comprende fare la spesa, lo spostamento e il tempo in cucina. Da {discountWeeks} settimane costa {discountRate} a settimana. La spesa si paga a parte, in base allo scontrino. È una stima: il prezzo finale lo conferma Evelyn.",
   "@quoteFootnote": {
     "description": "Nota bajo el desglose de la calculadora. Los números salen de las tarifas (defaultPricing).",
     "placeholders": {

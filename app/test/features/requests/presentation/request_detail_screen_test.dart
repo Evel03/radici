@@ -317,7 +317,8 @@ void main() {
             .map((date) => date.replaceAll(' ', '\u00a0'))
             .join(' · '),
       );
-      expect(find.text('Prezzo per 4 settimane'), findsOneWidget);
+      expect(find.text('Servizio, 4 settimane'), findsOneWidget);
+      expect(find.text('Servizio a settimana'), findsOneWidget);
       expect(textOf(tester, 'detail-estimate-total'), '560,00 €');
       expect(textOf(tester, 'detail-estimate-weekly'), '140,00 €');
       expect(textOf(tester, 'detail-estimate-savings'), '40,00 €');

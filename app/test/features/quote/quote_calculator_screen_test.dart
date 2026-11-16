@@ -72,7 +72,8 @@ void main() {
     await _tap(tester, 'quote-weeks-increment', times: 3);
 
     expect(_textOf(tester, 'quote-weeks-value'), '4');
-    expect(find.text('Prezzo per 4 settimane'), findsOneWidget);
+    expect(find.text('Servizio, 4 settimane'), findsOneWidget);
+    expect(find.text('Servizio a settimana'), findsOneWidget);
     expect(_textOf(tester, 'quote-total'), '560,00$_nbsp€');
     expect(_textOf(tester, 'quote-weekly'), '140,00$_nbsp€');
     expect(_textOf(tester, 'quote-savings'), '40,00$_nbsp€');
@@ -95,7 +96,7 @@ void main() {
     expect(_textOf(tester, 'quote-total'), '150,00$_nbsp€');
   });
 
-  testWidgets('con 6 personas el precio lo prepara Evelyn', (tester) async {
+  testWidgets('con 6 personas el presupuesto lo prepara Evelyn', (tester) async {
     setSurfaceSize(tester, phone);
     await pumpLocalized(tester, const QuoteCalculatorScreen());
 
@@ -108,7 +109,7 @@ void main() {
     expect(find.byKey(const ValueKey('quote-total')), findsNothing);
     expect(
       _textOf(tester, 'quote-no-auto-price'),
-      'Per più di 5 persone il prezzo del servizio te lo prepara Evelyn.',
+      'Per più di 5 persone il preventivo per il servizio te lo prepara Evelyn.',
     );
     // La compra estimada se sigue viendo.
     expect(_textOf(tester, 'quote-groceries'), '94,50$_nbsp€');
