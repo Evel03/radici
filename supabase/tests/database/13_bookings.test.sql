@@ -20,8 +20,8 @@
 --  12. Permisos: la app no ejecuta las chef_*, no escribe sesiones y no borra pedidos ni fichas.
 --
 -- Las fechas se arman desde el lunes que viene en Roma: pg_temp.d(0) es ese lunes, d(1) el martes,
--- d(5) el sábado, d(7) el lunes siguiente. Siempre caen después de hoy y, hasta d(6), dentro de la
--- ventana de 14 días de get_free_days.
+-- d(5) el sábado, d(7) el lunes siguiente. Siempre caen después de hoy y, hasta d(49), dentro de la
+-- ventana de 56 días (8 semanas) de get_free_days.
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
@@ -30,7 +30,7 @@ select plan(163);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
---   C1: compra 45, margen 30 y horizonte 14 (por defecto), sin aviso mínimo (get_free_days ofrece
+--   C1: compra 45, margen 30 y horizonte 56 (por defecto), sin aviso mínimo (get_free_days ofrece
 --       cualquier día desde mañana); lunes a viernes de 9 a 15, el horario de Evelyn.
 --   C2: otra cocinera (aislamiento y pruebas de la guarda).
 --   Fichas de C1: P (prospecto, pedido R1 de la web por 2 semanas, que Evelyn confirma por 4),
