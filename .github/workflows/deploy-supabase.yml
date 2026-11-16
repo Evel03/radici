@@ -1,7 +1,8 @@
 # Despliega el backend de Supabase a producción: la configuración de Auth (desde config.toml y la
 # plantilla del código), migraciones (db push), la cuenta de la cocinera con su horario inicial la
-# primera vez, secretos de las Edge Functions y las funciones public-request y chef (el área de
-# Evelyn). Contratos: docs/contracts/public-request.md §8 y docs/contracts/chef-api.md §9.
+# primera vez, las de sus colaboradores en cada despliegue, secretos de las Edge Functions y las
+# funciones public-request y chef (el área de Evelyn). Contratos: docs/contracts/public-request.md §8
+# y §10.1, y docs/contracts/chef-api.md §9.
 # - push a main que toque supabase/** (o este archivo) → producción
 # - workflow_dispatch → a mano, desde la pestaña Actions
 # Antes de tocar producción corre los tests de TypeScript y los de la base (pgTAP, base local).
@@ -12,7 +13,12 @@
 #   SUPABASE_DB_PASSWORD, RESEND_API_KEY, TURNSTILE_SECRET_KEY, IP_HASH_SALT
 #   y RESEND_SMTP_KEY (la segunda clave de Resend: SMTP de Auth; en Free, sin SMTP propio Supabase no deja
 #   poner la plantilla del código y Evelyn no puede entrar; sin ella el despliegue sigue y avisa)
-#   (opcional: WHATSAPP_TOKEN)
+#   (opcionales: WHATSAPP_TOKEN y CHEF_MEMBER_EMAILS)
+#   · CHEF_MEMBER_EMAILS: los colaboradores de la cocinera (emails separados por coma), cuentas que entran
+#     a /gestione/ con el mismo acceso que ella. La lista manda en cada despliegue: un email nuevo recibe
+#     su cuenta confirmada; uno que sale pierde el acceso y su cuenta se borra (la de una ficha de cliente
+#     queda como cliente); vacía o sin cargar, ningún colaborador. Va como secreto y no como variable: los
+#     valores de las variables salen en claro en el log del paso, y estos emails no se publican.
 # - variables: SUPABASE_PROJECT_REF, CHEF_NOTIFY_EMAIL, MAIL_FROM, MAIL_REPLY_TO, ALLOWED_ORIGINS,
 #   INBOX_URL, PUBLIC_SITE_URL
 #   (opcionales: CHEF_LOGIN_EMAIL y CHEF_DISPLAY_NAME para crear la cuenta de la cocinera; CHEF_ID,
@@ -26,7 +32,8 @@
 #     función chef: cada origen de la lista puede llamarla con la sesión de Evelyn.
 # Orden del primer despliegue (contrato §10): antes de publicar la web (o una vista previa), las altas
 # apagadas y la cuenta de Evelyn creada y confirmada. Lo hace este workflow: Auth en cada despliegue,
-# y la cuenta (con CHEF_LOGIN_EMAIL y CHEF_DISPLAY_NAME) solo mientras no haya ninguna cocinera.
+# la cuenta (con CHEF_LOGIN_EMAIL y CHEF_DISPLAY_NAME) solo mientras no haya ninguna cocinera, y las de
+# sus colaboradores (CHEF_MEMBER_EMAILS) en cada despliegue.
 # Sin SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD o SUPABASE_PROJECT_REF corre los tests y no despliega.
 # Los secretos vacíos no se cargan (no pisan los que ya estén); para borrar uno (por ejemplo
 # CHEF_ID, para volver a la cocinera automática): supabase secrets unset <NOMBRE>.
@@ -236,18 +243,28 @@ jobs:
         # Solo migraciones: nunca el seed (son datos de desarrollo).
         run: supabase db push --yes
 
-      # Solo mientras no haya ninguna cocinera: promote_to_chef le pone una contraseña al azar y le cierra
-      # las sesiones, así que nunca corre otra vez. El usuario nace confirmado, con una contraseña al azar
-      # que nadie conoce (entra con el código por email) y con el idioma de los avisos para el email del
-      # código. La clave secreta del proyecto solo vive en este paso, enmascarada. Después le carga el
-      # horario inicial (private.add_default_availability, contrato §11.1).
-      - name: Cuenta de la cocinera (solo la primera vez)
+      # Las cuentas que entran al área de Evelyn (/gestione/), en tres partes:
+      # 1. La cocinera, solo mientras no haya ninguna: promote_to_chef le pone una contraseña al azar y le
+      #    cierra las sesiones, así que nunca corre otra vez. Después le carga el horario inicial
+      #    (private.add_default_availability, contrato §11.1).
+      # 2. Sus colaboradores, en cada despliegue: la lista del secreto CHEF_MEMBER_EMAILS manda (la valida
+      #    y la convierte en SQL supabase/scripts/chef-members.ts, con tests). Crea las cuentas que faltan
+      #    y private.sync_chef_members agrega a los que faltan y saca a los que ya no están (su cuenta de
+      #    Auth se borra; la de una ficha de cliente queda como cliente). Es un secreto y no una variable
+      #    porque los valores de las variables salen en claro en el log del paso; además cada email se
+      #    enmascara (::add-mask::) antes de usarlo y los mensajes dicen solo la versión enmascarada.
+      # 3. Cuántos usuarios hay en Auth: tienen que ser la cocinera y sus colaboradores.
+      # Las cuentas nacen confirmadas, con una contraseña al azar que nadie conoce (se entra con el código
+      # por email) y con el idioma de los avisos para el email del código. La clave secreta del proyecto
+      # solo vive en este paso, enmascarada, y solo se lee si hay que crear alguna cuenta.
+      - name: Cuentas de la cocinera y sus colaboradores
         if: env.HAS_SUPABASE == 'true'
         env:
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
           CHEF_LOGIN_EMAIL: ${{ vars.CHEF_LOGIN_EMAIL }}
           CHEF_DISPLAY_NAME: ${{ vars.CHEF_DISPLAY_NAME }}
           CHEF_LOCALE: ${{ vars.CHEF_LOCALE }}
+          CHEF_MEMBER_EMAILS: ${{ secrets.CHEF_MEMBER_EMAILS }}
         run: |
           set -euo pipefail
           api="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}"
@@ -265,75 +282,134 @@ jobs:
             fi
             printf '%s' "${out}"
           }
-          chefs=$(sql "select count(*)::int as n from public.chefs" | jq -r '.[0].n')
-          if [ "${chefs}" != "0" ]; then
-            echo "Ya hay cocinera: no se toca (promote_to_chef le cerraría las sesiones)."
-            exit 0
-          fi
-          if [ -z "${CHEF_LOGIN_EMAIL:-}" ] || [ -z "${CHEF_DISPLAY_NAME:-}" ]; then
-            echo "::warning::Todavía no hay cocinera y faltan las variables CHEF_LOGIN_EMAIL o CHEF_DISPLAY_NAME: la función responde 500 (no_chef) hasta crearla."
-            exit 0
-          fi
-          # Sin comillas ni espacios: el email y el nombre van dentro de SQL.
-          if ! [[ "${CHEF_LOGIN_EMAIL}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
-            echo "::error::CHEF_LOGIN_EMAIL no es un email válido."
-            exit 1
-          fi
-          if ! [[ "${CHEF_DISPLAY_NAME}" =~ ^[[:alpha:]][[:alpha:][:space:].-]{0,49}$ ]]; then
-            echo "::error::CHEF_DISPLAY_NAME tiene que ser un nombre (letras, espacios, punto o guion)."
-            exit 1
-          fi
-          users=$(sql "select count(*)::int as n from auth.users where lower(email) = lower('${CHEF_LOGIN_EMAIL}')" | jq -r '.[0].n')
-          if [ "${users}" = "0" ]; then
+          # Cuántas cuentas hay con ese email, y cuántas sin confirmar. El email ya está validado (sin
+          # comillas ni espacios): va dentro de SQL.
+          users_with() {
+            sql "select count(*)::int as n from auth.users where lower(email) = lower('$1')" | jq -r '.[0].n'
+          }
+          unconfirmed_with() {
+            sql "select count(*)::int as n from auth.users where lower(email) = lower('$1') and email_confirmed_at is null" | jq -r '.[0].n'
+          }
+          # Clave secreta nueva (sb_secret_…: solo en apikey, el gateway arma el JWT) o, si el proyecto
+          # todavía usa las de antes, la service_role (también como Bearer). Se lee una sola vez.
+          admin_headers=()
+          admin_key() {
+            local keys secret legacy key
+            if [ "${#admin_headers[@]}" -gt 0 ]; then return 0; fi
             keys=$(curl -sS --fail-with-body "${api}/api-keys?reveal=true" -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}")
-            # Clave secreta nueva (sb_secret_…: solo en apikey, el gateway arma el JWT) o, si el proyecto
-            # todavía usa las de antes, la service_role (también como Bearer).
             secret=$(jq -r '[.[] | select(.type == "secret")][0].api_key // empty' <<< "${keys}")
             legacy=$(jq -r '[.[] | select(.name == "service_role")][0].api_key // empty' <<< "${keys}")
             unset keys
             for key in "${secret}" "${legacy}"; do
               if [ -n "${key}" ]; then echo "::add-mask::${key}"; fi
             done
-            headers=(-H "Content-Type: application/json")
             if [ -n "${secret}" ]; then
-              headers+=(-H "apikey: ${secret}")
+              admin_headers=(-H "Content-Type: application/json" -H "apikey: ${secret}")
             elif [ -n "${legacy}" ]; then
-              headers+=(-H "apikey: ${legacy}" -H "Authorization: Bearer ${legacy}")
+              admin_headers=(-H "Content-Type: application/json" -H "apikey: ${legacy}" -H "Authorization: Bearer ${legacy}")
             else
               echo "::error::No se pudo leer la clave secreta del proyecto."
-              exit 1
+              return 1
             fi
+          }
+          # Cuenta confirmada para $1, con una contraseña al azar y el idioma del email del código. $2
+          # dice de quién es en los mensajes ("de la cocinera", "del colaborador s***@…"; nunca el email
+          # de un colaborador).
+          create_user() {
+            local created status
+            admin_key
             created="$(mktemp)"
-            status=$(jq -n --arg email "${CHEF_LOGIN_EMAIL}" --arg password "$(openssl rand -hex 32)" --arg locale "${CHEF_LOCALE:-es}" \
+            status=$(jq -n --arg email "$1" --arg password "$(openssl rand -hex 32)" --arg locale "${CHEF_LOCALE:-es}" \
               '{email: $email, password: $password, email_confirm: true, user_metadata: {locale: $locale}}' \
               | curl -sS -o "${created}" -w '%{http_code}' -X POST "https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/admin/users" \
-                  "${headers[@]}" --data-binary @-)
+                  "${admin_headers[@]}" --data-binary @-)
             if [ "${status}" != "200" ] && [ "${status}" != "201" ]; then
-              echo "::error::No se pudo crear la cuenta de la cocinera (${status}): $(jq -r '.msg // .message // .error_code // "sin mensaje"' "${created}" 2>/dev/null || echo "sin mensaje")"
+              echo "::error::No se pudo crear la cuenta $2 (${status}): $(jq -r '.msg // .message // .error_code // "sin mensaje"' "${created}" 2>/dev/null || echo "sin mensaje")"
               rm -f "${created}"
-              exit 1
+              return 1
             fi
             rm -f "${created}"
+          }
+
+          # 1. La cocinera, solo la primera vez.
+          chefs=$(sql "select count(*)::int as n from public.chefs" | jq -r '.[0].n')
+          if [ "${chefs}" != "0" ]; then
+            echo "Ya hay cocinera: no se toca (promote_to_chef le cerraría las sesiones)."
+          elif [ -z "${CHEF_LOGIN_EMAIL:-}" ] || [ -z "${CHEF_DISPLAY_NAME:-}" ]; then
+            echo "::warning::Todavía no hay cocinera y faltan las variables CHEF_LOGIN_EMAIL o CHEF_DISPLAY_NAME: la función responde 500 (no_chef) hasta crearla."
+          else
+            # Sin comillas ni espacios: el email y el nombre van dentro de SQL.
+            if ! [[ "${CHEF_LOGIN_EMAIL}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+              echo "::error::CHEF_LOGIN_EMAIL no es un email válido."
+              exit 1
+            fi
+            if ! [[ "${CHEF_DISPLAY_NAME}" =~ ^[[:alpha:]][[:alpha:][:space:].-]{0,49}$ ]]; then
+              echo "::error::CHEF_DISPLAY_NAME tiene que ser un nombre (letras, espacios, punto o guion)."
+              exit 1
+            fi
+            # Siempre en una asignación: si falla la consulta, set -e corta acá.
+            users=$(users_with "${CHEF_LOGIN_EMAIL}")
+            if [ "${users}" = "0" ]; then
+              create_user "${CHEF_LOGIN_EMAIL}" "de la cocinera"
+            fi
+            # Una cuenta con ese email sin confirmar la registró otro (antes de apagar las altas) o se creó
+            # en el panel sin "Auto Confirm User": promote_to_chef la rechaza. Hay que borrarla a mano.
+            unconfirmed=$(unconfirmed_with "${CHEF_LOGIN_EMAIL}")
+            if [ "${unconfirmed}" != "0" ]; then
+              echo "::error::Ya hay una cuenta con ${CHEF_LOGIN_EMAIL} sin confirmar (no la creó este workflow). Borrarla en Authentication → Users y volver a desplegar."
+              exit 1
+            fi
+            sql "select public.promote_to_chef('${CHEF_LOGIN_EMAIL}', '${CHEF_DISPLAY_NAME}')" > /dev/null
+            # Horario inicial (contrato §11.1): db push corrió antes de que existiera la cocinera, así que
+            # la migración no se lo dio. Con la cocinera ya creada esta parte no vuelve a correr.
+            if ! rules=$(sql "select private.add_default_availability() as n" | jq -r '.[0].n'); then
+              echo "::error::La cocinera quedó creada sin horario y este paso no lo reintenta: correr select private.add_default_availability(); en el SQL editor."
+              exit 1
+            fi
+            echo "Cocinera creada. Horario inicial cargado: ${rules} reglas (lunes a viernes de 9 a 15)."
+            chefs=1
           fi
-          # Una cuenta con ese email sin confirmar la registró otro (antes de apagar las altas) o se creó
-          # en el panel sin "Auto Confirm User": promote_to_chef la rechaza. Hay que borrarla a mano.
-          unconfirmed=$(sql "select count(*)::int as n from auth.users where lower(email) = lower('${CHEF_LOGIN_EMAIL}') and email_confirmed_at is null" | jq -r '.[0].n')
-          if [ "${unconfirmed}" != "0" ]; then
-            echo "::error::Ya hay una cuenta con ${CHEF_LOGIN_EMAIL} sin confirmar (no la creó este workflow). Borrarla en Authentication → Users y volver a desplegar."
+
+          # 2. Colaboradores, en cada despliegue: la lista manda.
+          if ! members=$(node supabase/scripts/chef-members.ts list); then
+            echo "::error::CHEF_MEMBER_EMAILS no es una lista válida (el motivo está arriba). Corregir el secreto y volver a desplegar."
             exit 1
           fi
-          sql "select public.promote_to_chef('${CHEF_LOGIN_EMAIL}', '${CHEF_DISPLAY_NAME}')" > /dev/null
-          # Horario inicial (contrato §11.1): db push corrió antes de que existiera la cocinera, así que
-          # la migración no se lo dio. Con la cocinera ya creada este paso no vuelve a llegar acá.
-          if ! rules=$(sql "select private.add_default_availability() as n" | jq -r '.[0].n'); then
-            echo "::error::La cocinera quedó creada sin horario y este paso no lo reintenta: correr select private.add_default_availability(); en el SQL editor."
-            exit 1
+          while IFS= read -r email; do
+            if [ -n "${email}" ]; then echo "::add-mask::${email}"; fi
+          done < <(jq -r '.[].email' <<< "${members}")
+          count=$(jq 'length' <<< "${members}")
+          if [ "${chefs}" = "0" ]; then
+            if [ "${count}" != "0" ]; then
+              echo "::warning::Sin cocinera no hay de quién ser colaborador: CHEF_MEMBER_EMAILS se aplica en el despliegue que la cree."
+            fi
+          else
+            for ((i = 0; i < count; i++)); do
+              email=$(jq -r --argjson i "${i}" '.[$i].email' <<< "${members}")
+              masked=$(jq -r --argjson i "${i}" '.[$i].masked' <<< "${members}")
+              users=$(users_with "${email}")
+              if [ "${users}" = "0" ]; then
+                create_user "${email}" "del colaborador ${masked}"
+                echo "Cuenta creada para el colaborador ${masked}."
+                continue
+              fi
+              unconfirmed=$(unconfirmed_with "${email}")
+              if [ "${unconfirmed}" != "0" ]; then
+                echo "::error::Ya hay una cuenta del colaborador ${masked} sin confirmar (no la creó este workflow). Borrarla en Authentication → Users y volver a desplegar."
+                exit 1
+              fi
+            done
+            result=$(sql "$(node supabase/scripts/chef-members.ts sql)" | jq -c '.[0].result')
+            echo "Colaboradores: $(jq -r '"\(.members) en la lista (nuevos: \(.added); sin cambios: \(.kept); salieron: \(.removed); cuentas borradas: \(.accounts_deleted))"' <<< "${result}")."
           fi
-          echo "Horario inicial cargado: ${rules} reglas (lunes a viernes de 9 a 15)."
+
+          # 3. Usuarios en Auth: la cocinera y sus colaboradores, nadie más.
+          members_db=$(sql "select count(*)::int as n from public.chef_members" | jq -r '.[0].n')
           total=$(sql "select count(*)::int as n from auth.users" | jq -r '.[0].n')
-          echo "Cocinera lista. Usuarios en Auth: ${total} (tiene que ser 1)."
-          if [ "${total}" != "1" ]; then
-            echo "::warning::Hay ${total} usuarios en Auth: revisar en el panel que no haya otro además de la cocinera."
+          expected=$((chefs + members_db))
+          echo "Usuarios en Auth: ${total} (cocinera: ${chefs}; colaboradores: ${members_db})."
+          if [ "${total}" != "${expected}" ]; then
+            echo "::warning::Hay ${total} usuarios en Auth y se esperaban ${expected} (la cocinera y sus colaboradores): revisar en el panel que no haya otro."
           fi
 
       - name: Secretos de la función

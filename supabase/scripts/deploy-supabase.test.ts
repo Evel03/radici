@@ -56,17 +56,77 @@ test("función chef: se despliega después de las migraciones y de los secretos,
   assert.match(section("public-request"), /^verify_jwt = false$/m);
 });
 
+const ACCOUNTS_STEP = "Cuentas de la cocinera y sus colaboradores";
+
 test("cuenta de la cocinera: recibe el horario inicial justo después de promote_to_chef", () => {
   // db push corre antes de que exista la cocinera: en un proyecto nuevo la migración
   // 20261115130100_default_availability.sql no encuentra a nadie y, sin reglas, el calendario de la
   // web no marca ningún día (contrato §11.1). El paso solo llega ahí la primera vez.
   const migrations = WORKFLOW.indexOf("- name: Migraciones (db push)");
-  const chefStep = WORKFLOW.indexOf("- name: Cuenta de la cocinera");
+  const chefStep = WORKFLOW.indexOf(`- name: ${ACCOUNTS_STEP}`);
   assert.ok(migrations !== -1 && migrations < chefStep, "db push corre antes de crear la cuenta");
 
-  const run = step("Cuenta de la cocinera (solo la primera vez)");
+  const run = step(ACCOUNTS_STEP);
   const promote = run.indexOf("public.promote_to_chef(");
   const schedule = run.indexOf('sql "select private.add_default_availability()');
   assert.notEqual(promote, -1, "el paso llama a promote_to_chef");
   assert.ok(schedule > promote, "después de promote_to_chef, private.add_default_availability()");
+});
+
+test("colaboradores: CHEF_MEMBER_EMAILS es un secreto y cada email se enmascara antes de usarlo", () => {
+  // Los valores de las variables (vars.*) salen en claro en el log de cada paso que las usa (el
+  // bloque env); los secretos salen como ***. Un email suelto dentro de la lista no lo enmascara
+  // GitHub: se registra cada uno con ::add-mask:: antes de hacer nada con él.
+  const run = step(ACCOUNTS_STEP);
+  assert.match(run, /^\s+CHEF_MEMBER_EMAILS: \$\{\{ secrets\.CHEF_MEMBER_EMAILS \}\}$/m);
+  assert.ok(!WORKFLOW.includes("vars.CHEF_MEMBER_EMAILS"), "nunca como variable");
+
+  const mask = run.indexOf('echo "::add-mask::${email}"');
+  assert.notEqual(mask, -1, "enmascara cada email");
+  assert.ok(mask < run.indexOf('users_with "${email}"'), "antes de consultar la base con él");
+  assert.ok(mask < run.indexOf('create_user "${email}"'), "y antes de crear su cuenta");
+
+  // Ningún echo ni mensaje lleva un email: solo la versión enmascarada (masked) o un contador.
+  const leaks = run
+    .split("\n")
+    .filter((line) => /\becho\b/.test(line) && /\$\{(email|CHEF_MEMBER_EMAILS)\}|\$CHEF_MEMBER_EMAILS\b/.test(line))
+    .filter((line) => !line.includes("::add-mask::${email}"));
+  assert.deepEqual(leaks, [], "líneas que imprimirían un email");
+  assert.ok(!run.includes("${CHEF_MEMBER_EMAILS}"), "la lista la lee solo el script (del entorno)");
+});
+
+test("colaboradores: en cada despliegue, también con la cocinera ya creada; cuentas confirmadas y la lista en la base", () => {
+  const run = step(ACCOUNTS_STEP);
+  // Antes el paso terminaba con exit 0 si ya había cocinera: lo de los colaboradores no corría nunca.
+  assert.ok(!/\bexit 0\b/.test(run), "sin salidas anticipadas: los colaboradores corren en cada despliegue");
+
+  const list = run.indexOf("node supabase/scripts/chef-members.ts list");
+  const sync = run.indexOf('sql "$(node supabase/scripts/chef-members.ts sql)"');
+  assert.notEqual(list, -1, "la lista la valida supabase/scripts/chef-members.ts (con tests)");
+  assert.ok(sync > list, "y la aplica private.sync_chef_members, con el SQL que arma el mismo script");
+  assert.ok(run.indexOf('create_user "${email}"') > list && run.indexOf('create_user "${email}"') < sync,
+    "las cuentas que faltan se crean antes de sincronizar (la base exige que existan)");
+
+  // Una sola manera de crear cuentas: confirmada, con una contraseña al azar que nadie conoce.
+  const create = /create_user\(\) \{[\s\S]*?\n {10}\}/.exec(run)?.[0] ?? "";
+  assert.match(create, /email_confirm: true/);
+  assert.match(create, /openssl rand -hex 32/);
+  assert.match(run, /create_user "\$\{CHEF_LOGIN_EMAIL\}"/, "la de la cocinera también");
+
+  // Una cuenta que ya existe sin confirmar la registró otro: corta, como con la de la cocinera.
+  assert.match(run, /unconfirmed_with "\$\{email\}"/);
+});
+
+test("usuarios en Auth: el aviso cuenta a la cocinera y a sus colaboradores", () => {
+  const run = step(ACCOUNTS_STEP);
+  assert.ok(!run.includes("(tiene que ser 1)"), "ya no espera un solo usuario");
+  assert.match(run, /select count\(\*\)::int as n from public\.chef_members/);
+  assert.match(run, /expected=\$\(\(chefs \+ members_db\)\)/);
+  assert.match(run, /::warning::Hay \$\{total\} usuarios en Auth y se esperaban \$\{expected\}/);
+});
+
+test("el encabezado del workflow documenta CHEF_MEMBER_EMAILS entre los secretos", () => {
+  const header = WORKFLOW.slice(0, WORKFLOW.indexOf("\nname: "));
+  assert.match(header, /CHEF_MEMBER_EMAILS/);
+  assert.match(header, /secreto/i);
 });
