@@ -5,7 +5,8 @@
 -- por semana. El cálculo es del motor de presupuesto (quote.ts, en el PR siguiente); acá, lo que
 -- guarda la base:
 --
---   1. chef_settings: las columnas del precio por semana, sus valores por defecto y sus checks.
+--   1. chef_settings: las columnas del precio por semana, sus valores por defecto y sus checks, y
+--      el tope del costo por porción (el del motor).
 --   2. requests.weeks: de 1 a 8, y 1 en lo que no es un pedido semanal.
 --   3. submit_public_request guarda p.weeks; sin el campo (la función de hoy) o en null, 1.
 --      Defensa: fuera de rango, que no es un entero o más de una semana en un pedido que no es
@@ -15,7 +16,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(58);
+select plan(61);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS): C1 recibe los pedidos de la web; C2 es otra cocinera; A es
@@ -151,6 +152,26 @@ select lives_ok(
          weekly_rate_max_people = 60
      where chef_id = '7e621000-0000-4000-8000-000000000002' $$,
   'y los máximos (10.000 €, desde 8 semanas, 60 personas)'
+);
+
+-- Costo por porción: el motor acepta hasta 1000 € (validateSettings); más caro, cada pedido de la
+-- cocinera daría quote_failed.
+select throws_ok(
+  $$ update public.chef_settings set adult_portion_cents = 100001
+     where chef_id = '7e621000-0000-4000-8000-000000000002' $$,
+  '23514', 'new row for relation "chef_settings" violates check constraint "chef_settings_porcion_adulto_valida"',
+  'la porción de adulto no pasa de 1000 € (el tope del motor)'
+);
+select throws_ok(
+  $$ update public.chef_settings set kid_portion_cents = 100001
+     where chef_id = '7e621000-0000-4000-8000-000000000002' $$,
+  '23514', 'new row for relation "chef_settings" violates check constraint "chef_settings_porcion_nino_valida"',
+  'ni la de niño'
+);
+select lives_ok(
+  $$ update public.chef_settings set adult_portion_cents = 100000, kid_portion_cents = 100000
+     where chef_id = '7e621000-0000-4000-8000-000000000002' $$,
+  'las dos valen hasta 1000 € justos'
 );
 
 -- =====================================================================

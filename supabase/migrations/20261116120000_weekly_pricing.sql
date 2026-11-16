@@ -13,6 +13,12 @@
 --      automático (5). Las filas que ya existen (en producción, Evelyn) reciben estos valores.
 --      Los checks acotan cada valor; el motor tiene que aceptar al menos esos rangos, así un valor
 --      que la base guarda nunca hace fallar el cálculo.
+--      El costo por porción (adult_portion_cents, kid_portion_cents) solo pedía >= 0, y el motor (el
+--      de hoy y el del PR siguiente) acepta hasta 100000 (1000 €): con una porción más cara, cada
+--      pedido de esa cocinera daba quote_failed (500). Pasa a tener ese tope; las filas que ya
+--      existen lo cumplen (en producción, 380 y 250). Las demás columnas que lee el motor del PR
+--      siguiente ya tenían sus rangos: las cuatro de arriba, preauth_buffer_pct (0 a 100) y
+--      min_cook_minutes (0 a 1440).
 --   2. requests.weeks (1 a 8): las semanas del pedido semanal; 1 en todo lo demás (extra, change).
 --      Las filas que ya existen quedan en 1: eran de una semana.
 --   3. submit_public_request guarda p.weeks. Sin el campo, o en null, 1: así la función de hoy, que
@@ -36,7 +42,7 @@
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
--- 1. chef_settings: precio por semana
+-- 1. chef_settings: precio por semana y tope del costo por porción
 -- ---------------------------------------------------------------------
 alter table public.chef_settings
   add column weekly_rate_cents            int not null default 15000
@@ -52,6 +58,12 @@ alter table public.chef_settings
     check (weekly_rate_max_people between 1 and 60),
   add constraint chef_settings_descuento_no_supera_tarifa
     check (weekly_rate_discounted_cents <= weekly_rate_cents);
+
+-- Costo por porción: el tope del motor (validateSettings de quote.ts y de la copia Dart). El check
+-- de create table (>= 0) sigue; estos suman el máximo.
+alter table public.chef_settings
+  add constraint chef_settings_porcion_adulto_valida check (adult_portion_cents between 0 and 100000),
+  add constraint chef_settings_porcion_nino_valida check (kid_portion_cents between 0 and 100000);
 
 comment on column public.chef_settings.weekly_rate_cents is
   'Servicio por semana de un pedido semanal (un menú y una sesión de cocina por semana), en centavos. Para el motor de presupuesto (quote.ts).';
