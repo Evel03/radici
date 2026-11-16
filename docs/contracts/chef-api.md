@@ -1,6 +1,6 @@
 # Contrato: área de Evelyn, Edge Function `chef`
 
-Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`).
+Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2).
 Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, e `index.ts`). Si este documento y el código difieren, manda el código.
 
 ## 1. Para qué
@@ -22,16 +22,17 @@ Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cue
 - `verify_jwt = true` (`[functions.chef]` en `supabase/config.toml`): la plataforma rechaza con `401` un pedido sin `Authorization` o con un JWT que no valida (antes de llegar a la función, con su propio cuerpo). Ese chequeo acepta los JWT firmados con las claves asimétricas nuevas y los HS256 viejos, pero también deja pasar las claves de API (`sb_publishable_…`, `sb_secret_…`) y un JWT sin usuario (la clave `anon` vieja). Por eso la función, además:
   1. toma el token de `Authorization: Bearer <token>` y exige que sea un JWT (tres partes base64url, hasta 8 KB). Una clave de API da `401` sin llamar a Auth;
   2. lo valida con Auth (`auth.getUser`): firma, vencimiento y que la sesión siga abierta. Si Auth lo rechaza (4xx), `401`; si no responde (429, 5xx o red), `503`;
-  3. busca la ficha de cocinera del usuario (`chefs.profile_id`). Si no tiene, `403`.
+  3. busca la cocina del usuario con `public.chef_id_for_user` (migración `20261116190000_chef_members.sql`, solo `service_role`): la de la que es dueña (`chefs.profile_id`) o colaborador (`chef_members`). Es la misma regla de la RLS (`current_chef_id()` la usa con `auth.uid()`). Si no es de ninguna, `403`; una respuesta con otra forma (ni un uuid ni null), `500` y `unexpected_result`.
+- Quién llama: la cocinera o un colaborador suyo (SPEC §1 y §6), cada uno con su sesión. Un colaborador hace lo mismo que ella con la cocina de ella: las funciones SQL reciben el mismo `chef_id`. Sale de la lista (`CHEF_MEMBER_EMAILS`, contrato public-request §10.1) y pierde el acceso en el acto: su cuenta se borra y Auth rechaza su token (`401`), y si la cuenta queda (la de una ficha de cliente), `chef_id_for_user` ya no le da cocina (`403`).
 - Las funciones SQL reciben siempre el `chef_id` que sale del token, nunca uno del cuerpo.
 - La app llama con `functions.invoke('chef/bookings', body: …)` (supabase-js o supabase_flutter), que manda `Authorization: Bearer <access token de la sesión>` y `apikey: <clave publicable>`. Para que la función corra en Frankfurt, como la web (contrato public-request §2), va `?forceFunctionRegion=eu-central-1` en la URL; la cabecera `x-region` no, porque CORS no la permite.
 - CORS: `ALLOWED_ORIGINS`, **la misma variable que `public-request`** (contrato public-request §4). El preflight permite `POST, OPTIONS` y las cabeceras de supabase-js (`authorization`, `x-client-info`, `apikey`, `content-type`, …). Un origen que no está en la lista no recibe cabeceras CORS: el navegador no deja pasar la llamada. La app nativa no manda `Origin` y no la afecta.
-- **Cualquier origen de `ALLOWED_ORIGINS` puede llamar a esta función con la sesión de Evelyn**, si ella entró a `/gestione/` desde ese origen. La lista tiene que tener solo `https://radicicucina.app`. Antes del primer despliegue de `chef` hay que sacar `https://radici.sepusola10.com` (Paso 0.3 del plan): redirigir o sacar de Pages el dominio viejo, dejar la variable solo con el dominio nuevo, volver a correr Deploy Supabase y sacar el hostname viejo del widget de Turnstile. El despliegue avisa si `ALLOWED_ORIGINS` tiene orígenes además del de `PUBLIC_SITE_URL` (§9).
+- **Cualquier origen de `ALLOWED_ORIGINS` puede llamar a esta función con la sesión de Evelyn** (o de un colaborador suyo), si entró a `/gestione/` desde ese origen. La lista tiene que tener solo `https://radicicucina.app`. Antes del primer despliegue de `chef` hay que sacar `https://radici.sepusola10.com` (Paso 0.3 del plan): redirigir o sacar de Pages el dominio viejo, dejar la variable solo con el dominio nuevo, volver a correr Deploy Supabase y sacar el hostname viejo del widget de Turnstile. El despliegue avisa si `ALLOWED_ORIGINS` tiene orígenes además del de `PUBLIC_SITE_URL` (§9).
 
 ## 3. Formato común
 
 - `POST` con `Content-Type: application/json` y un cuerpo de hasta 8 KB (`CHEF_MAX_PAYLOAD_BYTES`).
-- Orden de los chequeos: CORS → ruta (`404`) → método (`405`) → configuración (`500`) → token (`401`) → usuario (`401` o `503`) → cocinera (`403`) → tipo (`415`) → tamaño (`413`) → JSON y validación (`400`) → función SQL. Sin un token válido de la cocinera no se lee ni el cuerpo.
+- Orden de los chequeos: CORS → ruta (`404`) → método (`405`) → configuración (`500`) → token (`401`) → usuario (`401` o `503`) → su cocina (`403`) → tipo (`415`) → tamaño (`413`) → JSON y validación (`400`) → función SQL. Sin un token válido de la cocinera o de un colaborador suyo no se lee ni el cuerpo.
 - Fechas `"AAAA-MM-DD"` (fechas de negocio en Roma) y horas `"HH:MM"` (hora de Roma). Dinero en centavos enteros: `14050` es 140,50 €; un número con decimales es `invalid`.
 - Respuestas en JSON con `Cache-Control: no-store`.
 
@@ -40,7 +41,7 @@ Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cue
 | 200 / 201 | según la ruta | §4, §5 y §6 |
 | 400 | `{ "errors": { campo: código } }`, más `"date"` cuando el error es de una fecha concreta (de `dates`: fuera de rango, misma semana u orden) | validación de la función o, como defensa, de la base (§7) |
 | 401 | `{ "error": "unauthorized" }` y `WWW-Authenticate: Bearer` | sin token, token que no es un JWT o que Auth rechaza (vencido, sesión cerrada). Sin `Authorization`, o con un JWT que no valida, responde la plataforma con su propio cuerpo |
-| 403 | `{ "error": "forbidden" }` | usuario válido que no es la cocinera |
+| 403 | `{ "error": "forbidden" }` | usuario válido que no es la cocinera ni un colaborador suyo |
 | 404 | `{ "error": "notFound" }` | ruta desconocida |
 | 404 | `{ "error": "requestNotFound" \| "clientNotFound" \| "sessionNotFound" }` | el pedido, la ficha o la sesión no existen para esta cocinera |
 | 405 | `{ "error": "method" }` y `Allow: POST, OPTIONS` | otro método |
@@ -219,12 +220,12 @@ Solo evento, ruta, códigos, contadores e ids. Nunca nombres, teléfonos, emails
 | `session_moved` | `sessionId` |
 | `sessions_cancelled` | `cancelled`, `alreadyCancelled`, `withPayments` (cantidades) |
 | `db_error` | `op`, `code` y, si lo hay, `message` (el código propio) |
-| `unexpected_result` | `op` |
+| `unexpected_result` | `op` (también `load_chef`, si `chef_id_for_user` responde algo que no es un uuid ni null) |
 | `unexpected_error` | `error` (el tipo, nunca el mensaje) |
 | `config_missing`, `config_incomplete` | `missing` (nombres de variables) |
 
 ## 11. Pruebas
 
-- `npm test`: `supabase/functions/_shared/chef_api.test.ts` (validación), `supabase/functions/chef/handler.test.ts` (401 antes de leer el cuerpo, 403, 400 por campo, 409 con la fecha o las sesiones cobradas, `dryRun` que no escribe, reintento con la misma clave, la cocinera siempre del token, errores de la base y el espía de logs) y el paso del workflow en `supabase/scripts/deploy-supabase.test.ts`.
-- pgTAP `13_bookings`: las funciones SQL (reparto, chequeos y su prioridad, choques, reintentos, transiciones, mover, cancelar con y sin cobros, y permisos, también que la app no borra fichas).
-- En local, de punta a punta: `npx supabase start` (con `-x` se pueden dejar afuera los servicios que no hacen falta: alcanza con la base, Kong, Auth, PostgREST y el runtime de funciones), un token con `POST /auth/v1/token?grant_type=password` para `evelyn@example.test` (la contraseña del seed) y las llamadas a `/functions/v1/chef/…`.
+- `npm test`: `supabase/functions/_shared/chef_api.test.ts` (validación), `supabase/functions/chef/handler.test.ts` (401 antes de leer el cuerpo, 403, un colaborador que entra con la cocina de ella, una cocina con otra forma → 500, 400 por campo, 409 con la fecha o las sesiones cobradas, `dryRun` que no escribe, reintento con la misma clave, la cocinera siempre del token, que `index.ts` use `chef_id_for_user`, errores de la base y el espía de logs) y el paso del workflow en `supabase/scripts/deploy-supabase.test.ts`.
+- pgTAP `13_bookings`: las funciones SQL (reparto, chequeos y su prioridad, choques, reintentos, transiciones, mover, cancelar con y sin cobros, y permisos, también que la app no borra fichas). `15_chef_members`: `chef_id_for_user` (quién es de qué cocina, solo `service_role`) y lo que ve y hace un colaborador.
+- En local, de punta a punta: `npx supabase start` (con `-x` se pueden dejar afuera los servicios que no hacen falta: alcanza con la base, Kong, Auth, PostgREST y el runtime de funciones), un token con `POST /auth/v1/token?grant_type=password` para `evelyn@example.test` (la contraseña del seed) y las llamadas a `/functions/v1/chef/…`. Con `marco@example.test`, su colaborador en el seed, las mismas llamadas actúan sobre la cocina de Evelyn.

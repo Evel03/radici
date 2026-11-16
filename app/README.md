@@ -94,8 +94,11 @@ repositorios falsos (`test/support/fakes.dart`).
   email del código llega en el idioma de `user_metadata.locale` (italiano si no hay; cambiar el idioma
   en Impostazioni también lo cambia).
 - Después del login se lee el perfil (`profiles.role` y `profiles.locale`): `chef` → área de la
-  cocinera (con su fila de `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz
-  pasa al idioma del perfil (ver [Idioma](#idioma)).
+  cocinera, con la ficha de su cocina (`current_chef_id()`, la misma función que la RLS, y su fila de
+  `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz pasa al idioma del perfil
+  (ver [Idioma](#idioma)). Un colaborador de la cocinera (`chef_members`) entra igual, con su
+  cuenta: ve y hace lo mismo que ella, e Impostazioni dice «Collaboratore di Evelyn» en lugar del
+  nombre.
 - **Richieste**: pestañas Nuove (sin `seen_at`), Viste y Rifiutate, con contador de nuevas.
 - **Franja**: la bandeja, el detalle y la agenda muestran mañana o tarde si el pedido la trae. La web
   ya no la pregunta y manda `any`, que la app lee como sin franja y no muestra (como los emails).
@@ -119,8 +122,9 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
-- **Impostazioni** (menú de la cuenta): idioma de la app (Español, Italiano, English), salir y, en la
-  web, la versión abierta («Versione abc1234»).
+- **Impostazioni** (menú de la cuenta): idioma de la app (Español, Italiano, English), la cuenta (el
+  nombre de la cocinera, o «Collaboratore di …» si entró un colaborador), salir y, en la web, la
+  versión abierta («Versione abc1234»).
 - **Avisos de la web** (arriba de cualquier pantalla, también del login): versión nueva publicada y,
   en Safari del iPhone, abrir Radici desde el ícono (ver [Web /gestione/](#web-gestione)).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
@@ -158,6 +162,9 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   confirmado, le cambia la contraseña por una al azar y le cierra las sesiones (nadie que haya
   registrado antes ese email entra como cocinera); por eso el workflow no la vuelve a correr. Si
   Evelyn ya tenía la app abierta cuando se corrió, tiene que salir y volver a entrar con el código.
+- Colaboradores: sus cuentas también las crea el workflow, en cada despliegue, con el secreto
+  `CHEF_MEMBER_EMAILS` (la lista manda; contrato §10.1). En local, `marco@example.test` es
+  colaborador de Evelyn en el seed.
 
 ## Web `/gestione/`
 

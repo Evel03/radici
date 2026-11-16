@@ -9,7 +9,7 @@ Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y est
 - `app/` Flutter (iOS, Android y la bandeja web de Evelyn en `/gestione/`). SDK: `C:\Users\NicolasMansillaBened\dev\flutter-3.47.7\bin\flutter` (el `flutter` del PATH es 3.27, viejo).
 - `web/` web pública estática: Vite + TypeScript, sin framework. Italiano por defecto. El formulario manda el pedido a la Edge Function `public-request` (contrato: `docs/contracts/public-request.md`); `deploy-web.yml` publica la web y `/gestione/` juntas.
 - `supabase/migrations/` esquema y RLS · `supabase/tests/database/` pgTAP · `supabase/functions/` Edge Functions (Deno).
-- `supabase/functions/chef/` Edge Function del área de Evelyn (reservas: crear, mover y cancelar sesiones), con JWT de la cocinera; contrato: `docs/contracts/chef-api.md`. Comparte `ALLOWED_ORIGINS` con `public-request`, y las dos usan `_shared/edge.ts` (logs, errores de la base y lectura del cuerpo).
+- `supabase/functions/chef/` Edge Function del área de Evelyn (reservas: crear, mover y cancelar sesiones), con JWT de la cocinera o de un colaborador suyo; contrato: `docs/contracts/chef-api.md`. Comparte `ALLOWED_ORIGINS` con `public-request`, y las dos usan `_shared/edge.ts` (logs, errores de la base y lectura del cuerpo).
 - `supabase/functions/_shared/quote.ts` motor de presupuesto: fuente única de verdad, compartido por Edge Functions y web.
   `quote_vectors.json` al lado: lo leen los tests de TS y de Dart.
 
@@ -25,7 +25,8 @@ Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y est
 - Nunca loguear ni mandar por push/email restricciones, alergias, direcciones ni datos de tarjeta. De las alergias, el aviso a la cocinera dice solo qué contestó el cliente (nadie tiene, indicadas o sin datos), nunca cuáles; la confirmación al cliente (email sin verificar), solo «nadie tiene».
 - Formulario público (sin login, email sin verificar): nunca modifica a una persona que ya existe; lo que llega queda en el pedido (`requests.contact`). Nada de lo escrito en el formulario sale hacia direcciones o números no verificados salvo un nombre de pila que parezca un nombre (`safeFirstName`).
 - Pregunta de alergias del formulario: el cliente confirma que nadie de quienes van a comer tiene (`requests.no_allergies`) o las escribe con el consentimiento de salud (una versión de `HEALTH_CONSENT_VERSIONS`, lista explícita); nunca las dos cosas (contrato §2).
-- Altas de usuarios apagadas hasta M2 (en M2 se abren a cualquiera, con Turnstile: SPEC §6): la cuenta de la cocinera la crea confirmada `deploy-supabase.yml` (o el panel) antes de publicar nada, y la configuración de Auth sale del repo (contrato §10).
+- Altas de usuarios apagadas hasta M2 (en M2 se abren a cualquiera, con Turnstile: SPEC §6): las cuentas de la cocinera y de sus colaboradores las crea confirmadas `deploy-supabase.yml` (o el panel), la de ella antes de publicar nada y las de ellos en cada despliegue según el secreto `CHEF_MEMBER_EMAILS` (la lista manda: quien sale pierde el acceso y su cuenta). La configuración de Auth sale del repo (contrato §10).
+- Colaboradores (`chef_members`): entran al área de Evelyn con su cuenta y el mismo acceso, salvo su ficha pública. En la RLS el lado de la cocinera usa siempre `current_chef_id()` o `is_chef_of()` (dueña y colaboradores, vía `chef_id_for_user`), nunca `profile_id = auth.uid()` directo: el pgTAP `15_chef_members` lo exige (lista de excepciones de identidad propia).
 - Workflows: actions fijadas por SHA con `# vX.Y.Z` (Dependabot las actualiza).
 - Textos de UI: ARB en la app, JSON por idioma en la web (it por defecto, es, en). Nada hardcodeado.
 - App: lógica fuera de los widgets (repositorios + providers Riverpod). Widgets sin llamadas a Supabase.
