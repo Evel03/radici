@@ -12,6 +12,7 @@ import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
+import 'package:radici/features/more/presentation/more_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/settings/data/language_cache.dart';
@@ -44,10 +45,11 @@ void main() {
     overrides: [languageCacheProvider.overrideWithValue(cache)],
   );
 
+  /// En el teléfono, Impostazioni está en la pestaña «Altro» (la tercera).
   Future<void> openSettings(WidgetTester tester) async {
-    await tester.tap(find.byKey(const ValueKey('account-menu')));
+    await tester.tap(find.byType(NavigationDestination).at(2));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('account-settings')));
+    await tester.tap(find.byKey(const ValueKey('more-settings')));
     await tester.pumpAndSettle();
     expect(find.byType(SettingsScreen), findsOneWidget);
   }
@@ -93,8 +95,12 @@ void main() {
       ]);
       expect(cache.read(), (userId: chefUser.id, language: AppLanguage.it));
 
-      // Volver: la bandeja ya está en italiano.
+      // Volver: «Altro» y la bandeja ya están en italiano.
       await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoreScreen), findsOneWidget);
+      expect(find.text('Altro'), findsWidgets);
+      await tester.tap(find.byType(NavigationDestination).first);
       await tester.pumpAndSettle();
       expect(find.byType(InboxScreen), findsOneWidget);
       expect(find.text('Richieste'), findsWidgets);

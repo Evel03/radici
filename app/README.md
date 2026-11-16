@@ -119,8 +119,22 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
-- **Impostazioni** (menú de la cuenta): idioma de la app (Español, Italiano, English), salir y, en la
-  web, la versión abierta («Versione abc1234»).
+- **Altro** (Más): el tercer destino de la barra (o del riel en pantallas anchas), con la cuenta,
+  Piatti, Impostazioni y salir. En el teléfono reemplaza al menú de la cuenta de la barra superior,
+  que queda solo en pantallas anchas.
+- **Piatti** (catálogo, migración `20261116170000_recipe_catalog.sql`): lista con búsqueda en los
+  nombres en italiano, español e inglés (sin mayúsculas ni acentos), los activos primero y los
+  desactivados al final, cada plato con sus alérgenos, dieta y temporada. El editor pone primero lo
+  rápido (nombre en italiano, los 14 alérgenos, dieta y meses con «Tutto l'anno») y después lo
+  opcional: nombres en español e inglés, conservación, ingredientes (cantidad entera para 4
+  porciones en g, ml o piezas, o «q.b.»; sección del súper; orden con botones) y notas (solo de la
+  cocinera: se leen de `recipe_notes`, que el cliente no lee). Guarda el plato entero con
+  `save_recipe`, con un id generado en el teléfono: un reintento no lo duplica y, si falla, no se
+  pierde lo cargado. No deja guardar un plato vegano con leche, huevos, pescado o mariscos, ni uno
+  vegetariano con pescado o mariscos (`save_recipe` tampoco lo acepta). Duplicar abre la copia (otro
+  id) para cambiarle el nombre; desactivar y reactivar tienen «Annulla». Un plato nunca se borra.
+- **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
+  app (Español, Italiano, English), salir y, en la web, la versión abierta («Versione abc1234»).
 - **Avisos de la web** (arriba de cualquier pantalla, también del login): versión nueva publicada y,
   en Safari del iPhone, abrir Radici desde el ícono (ver [Web /gestione/](#web-gestione)).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
@@ -131,7 +145,8 @@ repositorios falsos (`test/support/fakes.dart`).
 
 Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace del email a Evelyn):
 `/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`, `/agenda`,
-`/impostazioni`, más `/` y `/preventivo` (públicas). En la web `/` lleva al login.
+`/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con `?copia=<id>`, la copia de un
+plato) y `/altro/piatti/:id`, más `/` y `/preventivo` (públicas). En la web `/` lleva al login.
 
 ### Requisitos en Supabase
 
