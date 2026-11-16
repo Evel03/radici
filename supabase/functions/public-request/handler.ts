@@ -23,6 +23,7 @@ import {
 } from "../_shared/availability.ts";
 import { clientIp, hashSubject, rateLimitSubject } from "../_shared/client_ip.ts";
 import { corsHeaders, parseAllowedOrigins, type OriginRule } from "../_shared/cors.ts";
+import { isJsonContentType, logStoreError, readBodyLimited, type Logger } from "../_shared/edge.ts";
 import {
   allergyAnswer,
   brandFromMailFrom,
@@ -55,6 +56,11 @@ import { calcQuote, type PricingSettings, type Quote } from "../_shared/quote.ts
 import { sendWithResend, type EmailMessage } from "../_shared/resend.ts";
 import { verifyTurnstile } from "../_shared/turnstile.ts";
 import { sendWhatsAppTemplate, whatsAppConfigFrom, type WhatsAppConfig } from "../_shared/whatsapp.ts";
+
+// Logs, errores de la base y clave de servicio: comunes a las Edge Functions (_shared/edge.ts).
+// Se siguen exportando desde acá para index.ts y los tests.
+export { StoreError, consoleLogger, resolveServiceKey, safeDbMessage } from "../_shared/edge.ts";
+export type { LogFields, LogLevel, LogValue, Logger } from "../_shared/edge.ts";
 
 /** Contrato §2: más de 5 por hora o 20 por día por IP → 429. */
 export const RATE_LIMITS = { perHour: 5, perDay: 20 } as const;
@@ -157,41 +163,6 @@ export function configWarnings(config: PublicRequestConfig): string[] {
   return warnings;
 }
 
-/**
- * Clave con permisos de servicio para el cliente de Supabase. Primero la clave secreta nueva
- * (SUPABASE_SECRET_KEYS, JSON con nombre → clave; se usa "default"), después las variables de
- * compatibilidad. Las claves service_role (JWT) dejan de existir a fines de 2026.
- */
-export function resolveServiceKey(get: (name: string) => string | undefined): string | null {
-  const keys = get("SUPABASE_SECRET_KEYS");
-  if (keys) {
-    try {
-      const parsed: unknown = JSON.parse(keys);
-      const key = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>)["default"] : null;
-      if (typeof key === "string" && key) return key;
-    } catch {
-      // JSON roto: se prueba con las otras variables.
-    }
-  }
-  return get("SUPABASE_SECRET_KEY") || get("SUPABASE_SERVICE_ROLE_KEY") || null;
-}
-
-// ---------------------------------------------------------------------------
-// Logs: solo valores simples, nunca objetos con datos del pedido
-// ---------------------------------------------------------------------------
-
-export type LogLevel = "info" | "warn" | "error";
-export type LogValue = string | number | boolean | null | readonly string[];
-export type LogFields = Readonly<Record<string, LogValue>>;
-export type Logger = (level: LogLevel, event: string, fields?: LogFields) => void;
-
-export const consoleLogger: Logger = (level, event, fields = {}) => {
-  const line = JSON.stringify({ level, event, ...fields });
-  if (level === "error") console.error(line);
-  else if (level === "warn") console.warn(line);
-  else console.info(line);
-};
-
 // ---------------------------------------------------------------------------
 // Acceso a la base (index.ts lo implementa con supabase-js y la clave secreta)
 // ---------------------------------------------------------------------------
@@ -267,29 +238,6 @@ export interface PublicRequestStore {
    * un horario libre para cookMinutes de cocina.
    */
   freeDays(chefId: string, cookMinutes: number, fromDate: string, days: number): Promise<string[]>;
-}
-
-/** Error de la base sin datos: operación, SQLSTATE y, como mucho, un código propio en snake_case. */
-export class StoreError extends Error {
-  readonly op: string;
-  readonly code: string | null;
-  readonly safeMessage: string | null;
-
-  constructor(op: string, code: string | null, safeMessage: string | null) {
-    super(`db_error:${op}`);
-    this.name = "StoreError";
-    this.op = op;
-    this.code = code;
-    this.safeMessage = safeMessage;
-  }
-}
-
-/**
- * Los mensajes de Postgres pueden traer la fila (con datos personales). Solo pasan los códigos
- * propios de las funciones SQL, que son identificadores (ej. health_consent_required).
- */
-export function safeDbMessage(message: string | null | undefined): string | null {
-  return message && /^[a-z][a-z0-9_]{2,63}$/.test(message) ? message : null;
 }
 
 /**
@@ -397,52 +345,6 @@ export interface HandlerDeps {
   sleep: (ms: number) => Promise<void>;
   /** UUID nuevo (clave de idempotencia de Turnstile). */
   newId: () => string;
-}
-
-function isJsonContentType(value: string | null): boolean {
-  return (value ?? "").split(";")[0]?.trim().toLowerCase() === "application/json";
-}
-
-type BodyResult = { ok: true; text: string } | { ok: false; reason: "tooLarge" | "invalid" };
-
-/** Lee el cuerpo sin pasar de `max` bytes (también si no viene Content-Length). */
-async function readBodyLimited(request: Request, max: number): Promise<BodyResult> {
-  const declared = request.headers.get("content-length");
-  if (declared !== null && Number(declared) > max) return { ok: false, reason: "tooLarge" };
-  if (!request.body) return { ok: true, text: "" };
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      await reader.cancel().catch(() => {});
-      return { ok: false, reason: "tooLarge" };
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return { ok: true, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
-  } catch {
-    return { ok: false, reason: "invalid" };
-  }
-}
-
-function logStoreError(log: Logger, error: unknown, op: string): void {
-  if (error instanceof StoreError) {
-    log("error", "db_error", error.safeMessage ? { op: error.op, code: error.code, message: error.safeMessage } : { op: error.op, code: error.code });
-  } else {
-    log("error", "db_error", { op, code: null });
-  }
 }
 
 type ChefResolution = { ok: true; chefId: string } | { ok: false; reason: "db_error" | "unresolved" };

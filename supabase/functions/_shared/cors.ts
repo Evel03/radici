@@ -21,7 +21,10 @@ export interface OriginRule {
 /** Las cabeceras que manda supabase-js (lista de @supabase/supabase-js/cors) más las de un fetch simple. */
 export const CORS_ALLOWED_HEADERS =
   "authorization, x-client-info, apikey, content-type, x-retry-count, traceparent, tracestate, baggage";
-/** POST: el pedido. GET: la disponibilidad por día del calendario (…/availability, contrato §11). */
+/**
+ * Por defecto, los de public-request: POST, el pedido; GET, la disponibilidad por día del calendario
+ * (…/availability, contrato §11). Cada función puede pasar los suyos (chef: solo POST).
+ */
 export const CORS_ALLOWED_METHODS = "GET, POST, OPTIONS";
 /** Firefox respeta 24 h; Chrome recorta a 2 h. */
 export const CORS_MAX_AGE_SECONDS = 86400;
@@ -74,18 +77,19 @@ export function isOriginAllowed(origin: string | null | undefined, rules: readon
 
 /**
  * Cabeceras CORS para la respuesta. `Vary: Origin` siempre (la respuesta depende del origen);
- * el resto solo si el origen está permitido.
+ * el resto solo si el origen está permitido. `methods`: los del preflight (por defecto
+ * CORS_ALLOWED_METHODS).
  */
 export function corsHeaders(
   origin: string | null | undefined,
   rules: readonly OriginRule[],
-  { preflight }: { preflight: boolean },
+  { preflight, methods = CORS_ALLOWED_METHODS }: { preflight: boolean; methods?: string },
 ): Record<string, string> {
   const headers: Record<string, string> = { Vary: "Origin" };
   if (!origin || !isOriginAllowed(origin, rules)) return headers;
   headers["Access-Control-Allow-Origin"] = origin;
   if (preflight) {
-    headers["Access-Control-Allow-Methods"] = CORS_ALLOWED_METHODS;
+    headers["Access-Control-Allow-Methods"] = methods;
     headers["Access-Control-Allow-Headers"] = CORS_ALLOWED_HEADERS;
     headers["Access-Control-Max-Age"] = String(CORS_MAX_AGE_SECONDS);
   } else {
