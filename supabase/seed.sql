@@ -116,19 +116,19 @@ insert into public.client_restrictions (chef_id, client_id, allergen) values
 -- ---------------------------------------------------------------------
 -- Recetario de Evelyn (piatti italiani) y de Giulia
 -- ---------------------------------------------------------------------
-insert into public.recipes (id, chef_id, name_it, name_es, fridge_days, freezable, freezer_days, diet, notes) values
-  ('a0000000-0000-4000-8000-000000000001', 'cef00000-0000-4000-8000-000000000001', 'Lasagne alla bolognese',          'Lasaña a la boloñesa',               3, true,  60, null,         null),
-  ('a0000000-0000-4000-8000-000000000002', 'cef00000-0000-4000-8000-000000000001', 'Risotto ai funghi porcini',       'Risotto de hongos porcini',           2, false, 60, 'vegetarian', 'Si può fare senza burro e parmigiano.'),
-  ('a0000000-0000-4000-8000-000000000003', 'cef00000-0000-4000-8000-000000000001', 'Minestrone di verdure',           'Minestrone de verduras',              4, true,  90, 'vegan',      null),
-  ('a0000000-0000-4000-8000-000000000004', 'cef00000-0000-4000-8000-000000000001', 'Polpette al sugo',                'Albóndigas con salsa',                3, true,  60, null,         null),
-  ('a0000000-0000-4000-8000-000000000005', 'cef00000-0000-4000-8000-000000000001', 'Pollo al limone',                 'Pollo al limón',                      3, false, 60, null,         'Senza farina: adatto a celiaci.'),
-  ('a0000000-0000-4000-8000-000000000006', 'cef00000-0000-4000-8000-000000000001', 'Pasta e fagioli',                 'Pasta con porotos',                   3, true,  60, 'vegan',      null),
-  ('a0000000-0000-4000-8000-000000000007', 'cef00000-0000-4000-8000-000000000001', 'Polenta taragna e brasato',       'Polenta taragna con estofado',        3, true,  60, null,         'Piatto bergamasco. Il brasato si congela, la polenta no.'),
-  ('a0000000-0000-4000-8000-000000000008', 'cef00000-0000-4000-8000-000000000001', 'Casoncelli alla bergamasca',      'Casoncelli a la bergamasca',          2, true,  60, null,         null),
-  ('a0000000-0000-4000-8000-000000000009', 'cef00000-0000-4000-8000-000000000001', 'Salmone al forno con patate',     'Salmón al horno con papas',           2, false, 60, null,         null),
-  ('a0000000-0000-4000-8000-000000000010', 'cef00000-0000-4000-8000-000000000001', 'Frittata di zucchine',            'Tortilla de zapallitos',              2, false, 60, 'vegetarian', null),
-  ('a0000000-0000-4000-8000-000000000021', 'cef00000-0000-4000-8000-000000000002', 'Risotto alla milanese',           'Risotto a la milanesa',               2, false, 60, 'vegetarian', null),
-  ('a0000000-0000-4000-8000-000000000022', 'cef00000-0000-4000-8000-000000000002', 'Ossobuco con gremolata',          'Osobuco con gremolata',               3, true,  60, null,         null);
+insert into public.recipes (id, chef_id, name_it, name_es, fridge_days, freezable, freezer_days, diet) values
+  ('a0000000-0000-4000-8000-000000000001', 'cef00000-0000-4000-8000-000000000001', 'Lasagne alla bolognese',          'Lasaña a la boloñesa',               3, true,  60, null),
+  ('a0000000-0000-4000-8000-000000000002', 'cef00000-0000-4000-8000-000000000001', 'Risotto ai funghi porcini',       'Risotto de hongos porcini',           2, false, 60, 'vegetarian'),
+  ('a0000000-0000-4000-8000-000000000003', 'cef00000-0000-4000-8000-000000000001', 'Minestrone di verdure',           'Minestrone de verduras',              4, true,  90, 'vegan'),
+  ('a0000000-0000-4000-8000-000000000004', 'cef00000-0000-4000-8000-000000000001', 'Polpette al sugo',                'Albóndigas con salsa',                3, true,  60, null),
+  ('a0000000-0000-4000-8000-000000000005', 'cef00000-0000-4000-8000-000000000001', 'Pollo al limone',                 'Pollo al limón',                      3, false, 60, null),
+  ('a0000000-0000-4000-8000-000000000006', 'cef00000-0000-4000-8000-000000000001', 'Pasta e fagioli',                 'Pasta con porotos',                   3, true,  60, 'vegan'),
+  ('a0000000-0000-4000-8000-000000000007', 'cef00000-0000-4000-8000-000000000001', 'Polenta taragna e brasato',       'Polenta taragna con estofado',        3, true,  60, null),
+  ('a0000000-0000-4000-8000-000000000008', 'cef00000-0000-4000-8000-000000000001', 'Casoncelli alla bergamasca',      'Casoncelli a la bergamasca',          2, true,  60, null),
+  ('a0000000-0000-4000-8000-000000000009', 'cef00000-0000-4000-8000-000000000001', 'Salmone al forno con patate',     'Salmón al horno con papas',           2, false, 60, null),
+  ('a0000000-0000-4000-8000-000000000010', 'cef00000-0000-4000-8000-000000000001', 'Frittata di zucchine',            'Tortilla de zapallitos',              2, false, 60, 'vegetarian'),
+  ('a0000000-0000-4000-8000-000000000021', 'cef00000-0000-4000-8000-000000000002', 'Risotto alla milanese',           'Risotto a la milanesa',               2, false, 60, 'vegetarian'),
+  ('a0000000-0000-4000-8000-000000000022', 'cef00000-0000-4000-8000-000000000002', 'Ossobuco con gremolata',          'Osobuco con gremolata',               3, true,  60, null);
 
 insert into public.recipe_allergens (recipe_id, chef_id, allergen)
 select r.recipe_id::uuid, r.chef_id::uuid, r.allergen::public.allergen
@@ -162,8 +162,8 @@ from (values
 ) as r (recipe_id, chef_id, allergen);
 
 -- Catálogo (migración 20261116170000_recipe_catalog.sql): nombre en inglés, temporada (null = todo
--- el año) e ingredientes de tres platos de Evelyn, con cantidad entera para 4 porciones (sin
--- cantidad ni unidad = q.b.).
+-- el año), ingredientes de tres platos de Evelyn, con cantidad entera para 4 porciones (sin
+-- cantidad ni unidad = q.b.), y sus notas.
 update public.recipes r
 set name_en = v.name_en, season_months = v.months
 from (values
@@ -210,6 +210,12 @@ from (values
   ('a0000000-0000-4000-8000-000000000010',  4, 'Olio extravergine d''oliva', 'pantry',    30,        'ml'),
   ('a0000000-0000-4000-8000-000000000010',  5, 'Sale',                      'pantry',     null,      null)
 ) as v (recipe_id, position, name, section, quantity, unit);
+
+-- Notas de Evelyn (recipe_notes: solo ella las lee).
+insert into public.recipe_notes (recipe_id, chef_id, notes) values
+  ('a0000000-0000-4000-8000-000000000002', 'cef00000-0000-4000-8000-000000000001', 'Si può fare senza burro e parmigiano.'),
+  ('a0000000-0000-4000-8000-000000000005', 'cef00000-0000-4000-8000-000000000001', 'Senza farina: adatto a celiaci.'),
+  ('a0000000-0000-4000-8000-000000000007', 'cef00000-0000-4000-8000-000000000001', 'Piatto bergamasco. Il brasato si congela, la polenta no.');
 
 -- ---------------------------------------------------------------------
 -- Pedidos
