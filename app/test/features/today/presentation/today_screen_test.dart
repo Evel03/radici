@@ -613,6 +613,38 @@ void main() {
       expect(byKey('today-pending-loading'), findsNothing);
     });
 
+    for (final (name, repository) in <(String, FakeChefRequestsRepository Function())>[
+      ('con pendientes', requests),
+      ('sin pendientes', () => FakeChefRequestsRepository(const [])),
+      ('con la bandeja en error', () => requests()..failFetch = true),
+    ]) {
+      testWidgets('para el lector de pantalla, «Da fare» es un encabezado sin lo de abajo adentro, y cada texto de abajo, un nodo propio ($name)', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        await openToday(tester, requests: repository());
+        await reveal(tester, byKey('today-pending'));
+        // En /gestione/ un encabezado con hijos sale como <header> (banner) y
+        // no como encabezado.
+        final header = tester.getSemantics(find.text('Da fare'));
+        expect(header, isSemantics(label: 'Da fare', isHeader: true));
+        expect(header.childrenCount, 0);
+        final strip = tester.getSemantics(find.text('Prossimi 7 giorni'));
+        expect(strip, isSemantics(label: 'Prossimi 7 giorni', isHeader: true));
+        expect(strip.childrenCount, 0);
+        for (final text in [
+          'Niente in sospeso.',
+          'Impossibile caricare le richieste.',
+        ]) {
+          if (find.text(text).evaluate().isEmpty) continue;
+          final node = tester.getSemantics(find.text(text));
+          expect(node.label, text);
+          expect(node.childrenCount, 0, reason: text);
+        }
+        semantics.dispose();
+      });
+    }
+
     testWidgets('mientras se lee la bandeja al entrar, la barra de carga y no «Niente in sospeso»; al llegar, los pedidos nuevos', (
       tester,
     ) async {

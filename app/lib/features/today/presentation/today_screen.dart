@@ -265,10 +265,13 @@ class _Pending extends ConsumerWidget {
               spacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(
-                  l10n.todayRequestsError,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.error,
+                // Un nodo propio: sin esto se funde con el título de arriba.
+                MergeSemantics(
+                  child: Text(
+                    l10n.todayRequestsError,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
                   ),
                 ),
                 TextButton(
@@ -287,11 +290,14 @@ class _Pending extends ConsumerWidget {
           ),
         ...items,
         if (items.isEmpty && inboxRead)
-          Text(
-            l10n.todayPendingNone,
-            key: const ValueKey('today-pending-empty'),
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          // Un nodo propio: sin esto se funde con el título de arriba.
+          MergeSemantics(
+            child: Text(
+              l10n.todayPendingNone,
+              key: const ValueKey('today-pending-empty'),
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
       ],
@@ -330,6 +336,13 @@ class _PendingTile extends StatelessWidget {
   }
 }
 
+/// Título de sección. Como SessionSection, es un nodo propio para el lector de
+/// pantalla (`container`): sin eso, el de los pendientes se fundía con lo que
+/// tiene abajo en su columna (VoiceOver leía «Da fare / Niente in sospeso.»
+/// como encabezado) y en /gestione/ un encabezado con hijos sale como
+/// <header> y no como encabezado. Lo que va debajo, en la misma columna,
+/// también tiene que ser un nodo propio (un botón, una tarjeta o un texto con
+/// MergeSemantics).
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text, {this.textKey});
 
@@ -343,6 +356,7 @@ class _SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.only(top: 24, bottom: 8),
       child: Semantics(
         header: true,
+        container: true,
         child: Text(
           text,
           key: textKey,
