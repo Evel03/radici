@@ -102,11 +102,12 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Hoy** (`features/today/`): la sesión de hoy o, si hoy no hay, la próxima (la más cercana que no
   está cancelada). Con varias hoy, todas: primero las que todavía no terminaron, por llegada, y
   después las terminadas (pasó la hora en que termina la cocina, en hora de Roma, o ya está cocinada
-  o cobrada), que lo dicen («Terminata» si estaba confirmada); se reordena sola al minuto. Cada
-  tarjeta dice la clienta, las horas de la sesión («Spesa dalle 09:15 · Arrivo 10:00 · fino alle
-  13:00», como en la ficha), las personas, el estado si no está confirmada, las alergias resaltadas
-  como en la ficha (con la nota de contaminación cruzada si hay gluten, SPEC §5.6) y las notas de
-  cocina, y abre la ficha. Abajo, en el tercio inferior del teléfono, «Come arrivare» (Apple Maps en
+  o cobrada); se reordena sola al minuto. Cada tarjeta dice la clienta, las horas de la sesión
+  («Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00», como en la ficha), las personas, el estado
+  si no está confirmada (una de hoy que ya terminó dice «Terminata» si estaba confirmada o con la
+  compra hecha; si está cocinada o cobrada, «Cucinata» o «Pagata»), las alergias resaltadas como en
+  la ficha (con la nota de contaminación cruzada si hay gluten, SPEC §5.6) y las notas de cocina, y
+  abre la ficha. Abajo, en el tercio inferior del teléfono, «Come arrivare» (Apple Maps en
   el iPhone, Google Maps en el resto) y WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi
   indirizzo», como la ficha (con varias, una línea dice de quién son, con la hora primero: «Arrivo
   16:00 · Marco Bianchi»; si no entra, se corta el nombre). Pendientes de un toque: «N nuove

@@ -1,8 +1,9 @@
 // Una sesión en Hoy: la clienta, sus horas («Spesa dalle 09:15 · Arrivo
 // 10:00 · fino alle 13:00», salidas de la sesión), las personas, el estado si
-// no está confirmada («Terminata» si ya pasó su hora), las alergias
-// resaltadas (con la nota de contaminación cruzada si hay gluten, SPEC §5.6,
-// como en la ficha) y las notas de cocina.
+// no está confirmada (una de hoy que ya terminó dice «Terminata» si estaba
+// confirmada o con la compra hecha; cocinada o cobrada, su estado), las
+// alergias resaltadas (con la nota de contaminación cruzada si hay gluten,
+// SPEC §5.6, como en la ficha) y las notas de cocina.
 // Toda la tarjeta abre la ficha; para el lector de pantalla, la cabecera es el
 // botón (con la acción de tocar en su nodo: en /gestione/ el clic de
 // VoiceOver solo llega a un nodo que la tiene) y las alergias se leen aparte.
