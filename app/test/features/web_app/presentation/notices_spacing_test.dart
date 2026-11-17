@@ -1,8 +1,9 @@
 // Con las fuentes reales (Roboto y Cormorant Garamond, las de /gestione/ en el
-// iPhone): «Aggiorna» del aviso de versión no queda pegado a lo que hay abajo.
-// El caso más justo es «Salva» del calendario de «Blocca giorni» (pantalla
-// completa), que arranca en el borde de arriba del diálogo: un toque un poco
-// alto recargaría la página y se perdería el rango elegido.
+// iPhone): «Aggiorna» del aviso de versión no queda pegado a lo que hay abajo,
+// la barra de cada pantalla. Con «Salva» del calendario de «Blocca giorni»
+// (pantalla completa), que arranca en el borde de arriba del diálogo, un toque
+// un poco alto recargaba la página y se perdía el rango elegido: ahora,
+// mientras hay un diálogo abierto, los avisos no están.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,7 +32,9 @@ void main() {
   for (final size in const [Size(375, 667), Size(390, 844)]) {
     testWidgets(
       '${size.width.toInt()}×${size.height.toInt()}: «Aggiorna» queda '
-      'a 8 px o más de «Salva» del calendario de «Blocca giorni»',
+      'a 8 px o más de la barra de la agenda, y con el calendario de «Blocca '
+      'giorni» abierto no está: «Salva» queda arriba de todo; al cerrarlo '
+      'vuelve',
       (tester) async {
         await pumpChefApp(
           tester,
@@ -48,6 +51,11 @@ void main() {
         );
         final reload = find.byKey(const ValueKey('update-banner-reload'));
         expect(reload, findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byType(AppBar).first).dy -
+              tester.getRect(reload).bottom,
+          greaterThanOrEqualTo(8),
+        );
 
         await tester.tap(find.byKey(const ValueKey('agenda-block-range')));
         await tester.pumpAndSettle();
@@ -59,11 +67,16 @@ void main() {
           matching: find.byType(TextButton),
         );
         expect(save, findsOneWidget);
+        expect(reload, findsNothing);
+        expect(tester.getTopLeft(picker).dy, 0);
+        expect(save.hitTestable(), findsOneWidget);
 
-        expect(
-          tester.getRect(save).top - tester.getRect(reload).bottom,
-          greaterThanOrEqualTo(8),
+        await tester.tap(
+          find.descendant(of: picker, matching: find.byType(CloseButton)),
         );
+        await tester.pumpAndSettle();
+        expect(picker, findsNothing);
+        expect(reload, findsOneWidget);
       },
     );
   }

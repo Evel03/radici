@@ -198,7 +198,7 @@ void main() {
   });
 
   testWidgets('«Aggiorna» queda a 8 px o más de lo que hay abajo (lo más cerca: '
-      'las acciones de la barra, como «Salva» del calendario)', (tester) async {
+      'las acciones de la barra de cada pantalla)', (tester) async {
     // 800 px: el texto entra en un renglón también con la letra de los tests
     // (cada letra es un cuadrado), así el aviso tiene su alto mínimo, el caso
     // más justo. Con la letra real pasa a 375 px: notices_spacing_test.dart.

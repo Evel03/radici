@@ -295,6 +295,62 @@ void main() {
     expect(browser.flags, isEmpty, reason: 'esconderla no es cerrarla');
   });
 
+  // Los diálogos van en el Navigator, debajo de los avisos: con los dos, en un
+  // iPhone SE el calendario quedaba aplastado y «OK» del reloj, cortado y sin
+  // poder tocarse (ver session_notices_test).
+  testWidgets('con un diálogo abierto los dos avisos se esconden y el diálogo usa todo el alto; '
+      'vuelven cuando termina de cerrarse', (tester) async {
+    await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([buildRequest()]),
+      location: '/richieste/req-1',
+      size: const Size(375, 667),
+      overrides: [
+        browserProvider.overrideWithValue(browser),
+        buildIdProvider.overrideWithValue('abc1234'),
+        publishedBuildRepositoryProvider.overrideWithValue(
+          FakePublishedBuildRepository('def5678'),
+        ),
+      ],
+    );
+    final banner = find.byKey(const ValueKey('update-banner'));
+    final dialog = find.byKey(const ValueKey('reject-dialog'));
+    expect(banner, findsOneWidget);
+    expect(hint(), findsOneWidget);
+
+    // «Rifiuta», al final del pedido (la lista arma solo lo que está cerca).
+    final reject = find.byKey(const ValueKey('action-reject'));
+    await tester.scrollUntilVisible(
+      reject,
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const ValueKey('request-detail')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(reject);
+    await tester.pumpAndSettle();
+    expect(dialog, findsOneWidget);
+    expect(banner, findsNothing);
+    expect(hint(), findsNothing);
+    // La barrera del diálogo tapa toda la pantalla, desde arriba.
+    expect(tester.getTopLeft(find.byType(ModalBarrier).last).dy, 0);
+
+    await tester.tap(find.byKey(const ValueKey('reject-cancel')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(dialog, findsOneWidget, reason: 'todavía se está yendo');
+    expect(banner, findsNothing);
+    await tester.pumpAndSettle();
+    expect(dialog, findsNothing);
+    expect(banner, findsOneWidget);
+    expect(hint(), findsOneWidget);
+    expect(browser.flags, isEmpty, reason: 'esconderla no es cerrarla');
+  });
+
   testWidgets('login: mientras se escribe el email el aviso no está; al cerrar el teclado vuelve '
       'y lo escrito sigue (la pantalla de abajo no se rehace)', (tester) async {
     await openLogin(tester);

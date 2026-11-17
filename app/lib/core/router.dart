@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:radici/core/open_dialogs.dart';
 import 'package:radici/core/platform.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/routes.dart';
@@ -38,6 +39,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   final router = GoRouter(
     navigatorKey: rootNavigatorKey,
+    // Los del navegador raíz, adonde van los diálogos: mientras haya uno
+    // abierto, los avisos de /gestione/ se esconden.
+    observers: [OpenDialogsObserver(ref.watch(openDialogsProvider.notifier))],
     initialLocation: AppRoutes.home,
     refreshListenable: refresh,
     redirect: (context, state) => resolveRedirect(

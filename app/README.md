@@ -209,9 +209,9 @@ repositorios falsos (`test/support/fakes.dart`).
   id) para cambiarle el nombre; desactivar y reactivar tienen «Annulla». Un plato nunca se borra.
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), salir y, en la web, la versión abierta («Versione abc1234»).
-- **Avisos de la web** (arriba de cualquier pantalla, también del login, salvo con el teclado
-  abierto): versión nueva publicada y, en Safari del iPhone, abrir Radici desde el ícono (ver
-  [Web /gestione/](#web-gestione)).
+- **Avisos de la web** (arriba de cualquier pantalla, también del login, salvo con el teclado o un
+  diálogo abiertos): versión nueva publicada y, en Safari del iPhone, abrir Radici desde el ícono
+  (ver [Web /gestione/](#web-gestione)).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
   emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Con varios
   pedidos («N nuove richieste») el botón lleva a la bandeja, salvo con una hoja «Conferma
@@ -301,12 +301,16 @@ hace falta: sin `BUILD_ID` la app no avisa nada.
   primer layout y un cambio de foco en ese momento mide los botones (con uno sin tamaño, «RenderBox
   was not laid out»). La app de abajo va en su propio contenedor de semántica: la barrera de cada
   ruta (un `BlockSemantics`) descarta lo pintado antes en el mismo contenedor, y sin eso VoiceOver no
-  vería los avisos. Sus botones quedan a 8 px o más de lo de abajo (las acciones de cada barra,
-  como «Salva» del calendario de rango). Con el teclado abierto (Flutter web lo informa como
-  `viewInsets`) los avisos se esconden y vuelven al cerrarlo: le quitan su alto a todas las
-  pantallas, y en un iPhone SE en Safari la hoja «Conferma prenotazione» se quedaba sin lugar para
-  el campo que se escribe y, con los dos avisos, «Conferma» bajaba detrás del teclado. Esconder la
-  tarjeta de Safari no es cerrarla.
+  vería los avisos. Sus botones quedan a 8 px o más de lo de abajo (las acciones de cada barra).
+  Con el teclado abierto (Flutter web lo informa como `viewInsets`) los avisos se esconden y vuelven
+  al cerrarlo: le quitan su alto a todas las pantallas, y en un iPhone SE en Safari la hoja
+  «Conferma prenotazione» se quedaba sin lugar para el campo que se escribe y, con los dos avisos,
+  «Conferma» bajaba detrás del teclado. Mientras haya un diálogo abierto en el navegador raíz
+  (`showDialog`, el calendario o el reloj; los cuenta `OpenDialogsObserver`, en
+  `lib/core/open_dialogs.dart`, hasta que cada uno termina de cerrarse), también: los diálogos van
+  en el Navigator, debajo de los avisos, y con los dos, a 375×548, las filas del calendario medían
+  14 px y «OK» del reloj quedaba cortado, sin poder tocarse. Los menús y las listas desplegables no
+  los esconden. Esconder la tarjeta de Safari no es cerrarla.
 - **iPhone** (`web/index.html`, `web/manifest.json`): `<meta name="viewport">` solo para la pantalla
   de carga (al arrancar, Flutter pone el suyo; por eso tampoco va `viewport-fit=cover`),
   `apple-mobile-web-app-capable` y la barra de estado `default`; en la carga, el ícono y la rueda, sin
