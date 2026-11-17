@@ -13,6 +13,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
@@ -438,9 +439,10 @@ void main() {
         tester.getTopLeft(card(2)).dy,
         lessThan(tester.getTopLeft(card(1)).dy),
       );
+      // La hora primero, con las palabras de la línea de horas de la tarjeta.
       expect(
         textOf(tester, 'today-actions-for'),
-        'Marco Bianchi · arrivo alle 16:00',
+        'Arrivo 16:00 · Marco Bianchi',
       );
 
       await tester.tap(byKey('today-directions'));
@@ -456,6 +458,35 @@ void main() {
         startsWith('https://wa.me/393450001111?text='),
       );
     });
+
+    for (final locale in const [Locale('it'), Locale('es'), Locale('en')]) {
+      testWidgets('a 320×568, con un nombre largo, de quién son los botones se corta en el nombre y no en la hora (${locale.languageCode})', (
+        tester,
+      ) async {
+        await openToday(
+          tester,
+          size: const Size(320, 568),
+          locale: locale,
+          sessions: [
+            session(name: 'Maria Francesca Colombo Bertolini'),
+            session(n: 2, hour: 16, name: 'Marco Bianchi'),
+          ],
+        );
+        final paragraph = tester.renderObject<RenderParagraph>(
+          byKey('today-actions-for'),
+        );
+        expect(paragraph.didExceedMaxLines, isTrue, reason: 'no entra');
+        final text = paragraph.text.toPlainText();
+        final hourEnd = text.indexOf('10:00') + '10:00'.length;
+        expect(hourEnd, greaterThan(4), reason: text);
+        // La última letra que se ve, junto a los puntos suspensivos.
+        final lastShown = paragraph.getPositionForOffset(
+          Offset(paragraph.size.width - 1, paragraph.size.height / 2),
+        );
+        expect(lastShown.offset, greaterThanOrEqualTo(hourEnd), reason: text);
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('con una sola sesión, los botones no repiten de quién son', (
       tester,
@@ -514,10 +545,11 @@ void main() {
     ) async {
       await openToday(tester, requests: requests());
       await reveal(tester, byKey('today-new-requests'));
+      // Como en el aviso de pedidos nuevos («2 nuove richieste»).
       expect(
         find.descendant(
           of: byKey('today-new-requests'),
-          matching: find.text('2 richieste nuove'),
+          matching: find.text('2 nuove richieste'),
         ),
         findsOneWidget,
       );

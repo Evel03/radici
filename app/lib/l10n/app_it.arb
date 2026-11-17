@@ -374,9 +374,9 @@
   "@todayEmptyAction": {
     "description": "Hoy, sin sesiones: botón que lleva a la bandeja de pedidos."
   },
-  "todayActionsFor": "{name} · arrivo alle {time}",
+  "todayActionsFor": "Arrivo {time} · {name}",
   "@todayActionsFor": {
-    "description": "Hoy, con varias sesiones: de quién son los botones de abajo («Come arrivare» y WhatsApp).",
+    "description": "Hoy, con varias sesiones: de quién son los botones de abajo («Come arrivare» y WhatsApp). La hora va primero, con la palabra de la línea de horas de la tarjeta («Arrivo 10:00»): en un renglón, si el nombre es largo se corta el nombre y no la hora.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia Rossi" },
       "time": { "type": "String", "example": "16:00" }
@@ -390,7 +390,7 @@
   "@todayPendingNone": {
     "description": "Hoy: no hay pendientes."
   },
-  "todayNewRequests": "{count, plural, =1{1 richiesta nuova} other{{count} richieste nuove}}",
+  "todayNewRequests": "{count, plural, =1{1 nuova richiesta} other{{count} nuove richieste}}",
   "@todayNewRequests": {
     "description": "Hoy: pendiente con los pedidos nuevos (sin abrir); lleva a la bandeja, pestaña «Nuove».",
     "placeholders": {
