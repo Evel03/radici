@@ -138,12 +138,17 @@ repositorios falsos (`test/support/fakes.dart`).
   contar las canceladas), las horas (el renglón se parte solo después de un «·»: nunca «fino alle»
   y la hora en dos renglones), «Come arrivare» (la dirección de la ficha en Apple Maps en el
   iPhone, también en `/gestione/` con Safari, y en Google Maps en el resto), WhatsApp en el idioma
-  de la clienta (la fecha y la hora, nunca la dirección ni las alergias) y llamar. Si la abre un
-  colaborador, el WhatsApp sale de su propio teléfono y escribe de parte de la cocinera
-  (`sessionWhatsAppMessageOnBehalf`; el del detalle es `contactWhatsAppMessageOnBehalf` y el de la
-  reserva, `bookingWhatsAppMessageOnBehalf`): «ti scrivo da parte di Evelyn di Radici per la
-  sessione di…: Evelyn arriva alle 10:00» en lugar de «sono Evelyn… con arrivo alle 10:00». En una
-  sesión cancelada, donde el mensaje no nombra la fecha, va el del detalle. El formulario web
+  de la clienta (la fecha y, según la sesión, la hora de llegada; nunca la dirección ni las
+  alergias) y llamar. Si la abre un colaborador, el WhatsApp sale de su propio teléfono y escribe
+  de parte de la cocinera (`sessionWhatsAppMessageOnBehalf`; el del detalle es
+  `contactWhatsAppMessageOnBehalf` y el de la reserva, `bookingWhatsAppMessageOnBehalf`): «ti
+  scrivo da parte di Evelyn di Radici per la sessione di…: Evelyn arriva alle 10:00» en lugar de
+  «sono Evelyn… con arrivo alle 10:00». La hora de llegada va solo si la sesión no está
+  cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, que en una ficha abierta
+  cambia a la medianoche); en las demás (de un día que ya pasó, cocinada, cobrada o cancelada) el
+  mensaje nombra la sesión por su fecha, sin la hora: «Ti scrivo per la sessione di mercoledì 25
+  novembre.» (`sessionWhatsAppMessageNoArrival`; de parte de la cocinera,
+  `sessionWhatsAppMessageNoArrivalOnBehalf`). El formulario web
   no pide la dirección: sin ella, WhatsApp pasa a ser el botón principal y en lugar de «Come
   arrivare» va «Aggiungi indirizzo», que la guarda en la ficha (`clients.address`, con la RLS «la
   cocinera gestiona los suyos» y el grant por columna; vale para todas sus sesiones y se corrige
