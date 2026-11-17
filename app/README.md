@@ -102,22 +102,30 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Hoy** (`features/today/`): la sesión de hoy o, si hoy no hay, la próxima (la más cercana que no
   está cancelada). Con varias hoy, todas: primero las que todavía no terminaron, por llegada, y
   después las terminadas (pasó la hora en que termina la cocina, en hora de Roma, o ya está cocinada
-  o cobrada); se reordena sola al minuto. Cada tarjeta dice la clienta, las horas de la sesión
-  («Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00», como en la ficha), las personas, el estado
-  si no está confirmada, las alergias resaltadas como en la ficha (con la nota de contaminación
-  cruzada si hay gluten, SPEC §5.6) y las notas de cocina, y abre la ficha. Abajo, en el tercio
-  inferior del teléfono, «Come arrivare» (Apple Maps en el iPhone, Google Maps en el resto) y
-  WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi indirizzo», como la ficha (con varias,
-  una línea dice de quién son). Pendientes de un toque: «N richieste nuove» (lleva a Richieste en
-  «Nuove», aunque se haya dejado en otra pestaña) y las reservas que terminan: las de un pedido
-  semanal cuya última sesión viva cae entre hoy y los 6 días siguientes (abre la ficha de esa
-  sesión; renovar desde Hoy llega después). La tira de 7 días (hoy y los 6 siguientes) usa lo de la Agenda:
-  un punto por sesión, el número tachado si el día está bloqueado y un punto si es feriado en un
-  día de trabajo; tocar un día abre la Agenda con ese día elegido. "Hoy" es el día de Roma y cambia
-  a la medianoche sin reabrir la app (`romeTodayProvider`, el de la Agenda). Deslizar para
-  actualizar vuelve a leer la bandeja, la disponibilidad y las sesiones; mientras cargan las
-  sesiones, una rueda; si no se pudieron leer, el error con «Riprova»; sin ninguna, lo dice y
-  ofrece ir a las solicitudes.
+  o cobrada), que lo dicen («Terminata» si estaba confirmada); se reordena sola al minuto. Cada
+  tarjeta dice la clienta, las horas de la sesión («Spesa dalle 09:15 · Arrivo 10:00 · fino alle
+  13:00», como en la ficha), las personas, el estado si no está confirmada, las alergias resaltadas
+  como en la ficha (con la nota de contaminación cruzada si hay gluten, SPEC §5.6) y las notas de
+  cocina, y abre la ficha. Abajo, en el tercio inferior del teléfono, «Come arrivare» (Apple Maps en
+  el iPhone, Google Maps en el resto) y WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi
+  indirizzo», como la ficha (con varias, una línea dice de quién son, con la hora primero: «Arrivo
+  16:00 · Marco Bianchi»; si no entra, se corta el nombre). Pendientes de un toque: «N nuove
+  richieste» (lleva a Richieste en «Nuove», aunque se haya dejado en otra pestaña) y las reservas
+  que terminan: las reservas semanales (un pedido semanal aceptado; no un presupuesto enviado ni una
+  sesión extra) cuya última sesión viva cae entre hoy y los 6 días siguientes (abre la ficha de esa
+  sesión; renovar desde Hoy llega después). La tira de 7 días (hoy y los 6 siguientes) usa lo de la
+  Agenda: un punto por sesión, el número tachado si el día está bloqueado y un punto si es feriado
+  en un día de trabajo; el lector de pantalla dice cuál es hoy; si los 7 no entran con 48 dp cada
+  uno (menos de 368 dp de ancho, como 360 o 320), van en dos filas (4 y 3); tocar un día abre la
+  Agenda con ese día elegido y a la vista (su primera sesión, por encima del botón flotante). "Hoy"
+  es el día de Roma y cambia a la medianoche sin reabrir la app (`romeTodayProvider`, el de la
+  Agenda). Deslizar para actualizar, o «Ricarica» en la barra de arriba (sin el gesto, que VoiceOver
+  y el mouse de /gestione/ no hacen), vuelve a leer la bandeja, la disponibilidad y las sesiones.
+  Mientras cargan las sesiones (también mientras Riverpod reintenta una lectura que falló), una
+  rueda en el lugar de la tarjeta; si no se pudieron leer, el aviso con «Riprova» en su lugar; en
+  los dos casos, los pendientes y la tira siguen. Mientras se lee la bandeja, los pendientes
+  muestran una barra, y «Niente in sospeso» sale solo con la bandeja y las sesiones leídas. Sin
+  ninguna sesión, lo dice y ofrece ir a las solicitudes con un botón abajo.
 - **Richieste**: pestañas Nuove (sin `seen_at` y no aceptadas), Viste, Prenotazioni (los pedidos
   `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
   nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos
@@ -137,8 +145,9 @@ repositorios falsos (`test/support/fakes.dart`).
   (Europe/Rome) cambia a la medianoche sin reabrir la app: se vuelve a mirar la fecha a la
   medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
   Si estaba elegido "hoy", la agenda pasa al día nuevo; si no, respeta el día elegido. Deslizar
-  para actualizar vuelve a leer la bandeja, la disponibilidad y las sesiones (sin Realtime de
-  sesiones).
+  para actualizar, o «Ricarica» en la barra de arriba, vuelve a leer la bandeja, la disponibilidad
+  y las sesiones (sin Realtime de sesiones). Mientras se lee la bandeja, una barra; si no se pudo
+  leer, el error con «Riprova» (también en la primera lectura).
   Días bloqueados (`availability_exceptions`, sin migración: la RLS y los grants ya estaban): la
   tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada, y el botón
   «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
@@ -239,13 +248,13 @@ repositorios falsos (`test/support/fakes.dart`).
   emergente "Nuova richiesta da …", con botón para abrirla, en cualquier pantalla salvo la ficha de
   una sesión y el formulario del editor de platos (y sus diálogos): tienen su propio
   `ScaffoldMessenger` y, en el navegador raíz, tapan el Scaffold de la barra, que es donde sale el
-  aviso. Ahí no se ve, y aparece al volver de esas pantallas. Con varios
-  pedidos («N nuove richieste») el botón lleva a la bandeja, salvo con una hoja «Conferma
-  prenotazione» o la ficha de una sesión (con su hoja «Sposta») abierta o tapada por otro pedido:
-  ahí abre encima el más reciente, porque ir a la bandeja las sacaría sin preguntar, y se perdería
-  lo que tienen a medias (mientras se manda la reserva, la pantalla final con el WhatsApp; mientras
-  se mueve una sesión, el «Annulla» de la ficha). Al reconectar (corte de red, app que vuelve del
-  segundo plano) se relee la lista y se avisa lo que llegó.
+  aviso. Ahí no se ve, y aparece al volver de esas pantallas. Con varios pedidos («N nuove
+  richieste») el botón lleva a la bandeja, en «Nuove» aunque se haya dejado en otra pestaña, salvo
+  con una hoja «Conferma prenotazione» o la ficha de una sesión (con su hoja «Sposta») abierta o
+  tapada por otro pedido: ahí abre encima el más reciente, porque ir a la bandeja las sacaría sin
+  preguntar, y se perdería lo que tienen a medias (mientras se manda la reserva, la pantalla final
+  con el WhatsApp; mientras se mueve una sesión, el «Annulla» de la ficha). Al reconectar (corte de
+  red, app que vuelve del segundo plano) se relee la lista y se avisa lo que llegó.
 - Los teléfonos se normalizan con `lib/core/phone.dart`, copia de `normalizePhone`
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
 
