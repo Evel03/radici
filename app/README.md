@@ -180,9 +180,9 @@ repositorios falsos (`test/support/fakes.dart`).
   de parte de la cocinera (`sessionWhatsAppMessageOnBehalf`; el del detalle es
   `contactWhatsAppMessageOnBehalf` y el de la reserva, `bookingWhatsAppMessageOnBehalf`): «ti
   scrivo da parte di Evelyn di Radici per la sessione di…, con arrivo di Evelyn alle 10:00» en
-  lugar de «sono Evelyn… con arrivo alle 10:00». Los dos describen el horario y no afirman que
-  la llegada sea futura: valen también en una sesión de hoy cuya llegada ya pasó. La hora de
-  llegada va solo si la sesión no está
+  lugar de «sono Evelyn… con arrivo alle 10:00». Los dos mensajes de la ficha (el de la cocinera
+  y el del colaborador) describen el horario y no afirman que la llegada sea futura: valen también
+  en una sesión de hoy cuya llegada ya pasó. La hora de llegada va solo si la sesión no está
   cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, que en una ficha abierta
   cambia a la medianoche); en las demás (de un día que ya pasó, cocinada, cobrada o cancelada) el
   mensaje nombra la sesión por su fecha, sin la hora: «Ti scrivo per la sessione di mercoledì 25

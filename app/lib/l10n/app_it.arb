@@ -1319,7 +1319,7 @@
   },
   "sessionWhatsAppMessage": "Ciao {name}, sono {chef} di {brand}. Ti scrivo per la sessione di {date}, con arrivo alle {time}.",
   "@sessionWhatsAppMessage": {
-    "description": "WhatsApp a la clienta desde la ficha de la sesión (también en los botones de Hoy), en SU idioma (requests.locale), solo si la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma); si no, la llegada ya pasó o no va a pasar y va sessionWhatsAppMessageNoArrival. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageOnBehalf. Solo fecha y hora: nunca dirección ni alergias.",
+    "description": "WhatsApp a la clienta desde la ficha de la sesión (también en los botones de Hoy), en SU idioma (requests.locale), solo si la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, sin mirar la hora); si no (de un día anterior, cocinada, cobrada o cancelada), va sessionWhatsAppMessageNoArrival. Describe el horario de la sesión sin afirmar que la llegada es futura: vale también en una sesión de hoy después de la hora de llegada. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageOnBehalf. Solo fecha y hora: nunca dirección ni alergias.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },
@@ -1341,7 +1341,7 @@
   },
   "sessionWhatsAppMessageNoArrival": "Ciao {name}, sono {chef} di {brand}. Ti scrivo per la sessione di {date}.",
   "@sessionWhatsAppMessageNoArrival": {
-    "description": "WhatsApp a la clienta desde la ficha (también en los botones de Hoy) de una sesión cuya llegada ya pasó o no va a pasar: de un día anterior a hoy (el día de Roma), cocinada, cobrada o cancelada. En SU idioma (requests.locale). Nombra la sesión por su fecha, sin la hora de llegada que lleva sessionWhatsAppMessage. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageNoArrivalOnBehalf. Solo la fecha: nunca dirección ni alergias.",
+    "description": "WhatsApp a la clienta desde la ficha (también en los botones de Hoy) de una sesión de un día anterior a hoy (el día de Roma), cocinada, cobrada o cancelada (una de hoy que no está cocinada, cobrada ni cancelada sigue con sessionWhatsAppMessage aunque su llegada ya haya pasado). En SU idioma (requests.locale). Nombra la sesión por su fecha, sin la hora de llegada que lleva sessionWhatsAppMessage. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageNoArrivalOnBehalf. Solo la fecha: nunca dirección ni alergias.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },
