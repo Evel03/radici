@@ -166,8 +166,12 @@ repositorios falsos (`test/support/fakes.dart`).
   abierto): versión nueva publicada y, en Safari del iPhone, abrir Radici desde el ícono (ver
   [Web /gestione/](#web-gestione)).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
-  emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Al reconectar
-  (corte de red, app que vuelve del segundo plano) se relee la lista y se avisa lo que llegó.
+  emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Con varios
+  pedidos («N nuove richieste») el botón lleva a la bandeja, salvo con una hoja «Conferma
+  prenotazione» abierta (o tapada por otro pedido): ahí abre encima el más reciente, porque ir a la
+  bandeja sacaría la hoja sin preguntar, y mientras se manda se perdería la pantalla final con el
+  WhatsApp. Al reconectar (corte de red, app que vuelve del segundo plano) se relee la lista y se
+  avisa lo que llegó.
 - Los teléfonos se normalizan con `lib/core/phone.dart`, copia de `normalizePhone`
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
 
