@@ -1367,7 +1367,7 @@
   },
   "sessionErrorForbidden": "Il tuo account non può modificare le sessioni.",
   "@sessionErrorForbidden": {
-    "description": "Al mover o cancelar: el usuario no es la cocinera (403)."
+    "description": "Al mover o cancelar: el usuario no es la cocinera ni un colaborador suyo (403)."
   },
   "sessionErrorConflict": "Non è stato possibile per un conflitto: aggiorna e riprova.",
   "@sessionErrorConflict": {
