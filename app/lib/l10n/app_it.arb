@@ -378,6 +378,10 @@
       "time": { "type": "String", "example": "16:00" }
     }
   },
+  "todaySessionFinished": "Terminata",
+  "@todaySessionFinished": {
+    "description": "Hoy: en la tarjeta de una sesión de hoy que ya terminó (pasó la hora en que termina la cocina); con varias hoy, pasa al final. Femenino: la sessione."
+  },
   "todayPendingTitle": "Da fare",
   "@todayPendingTitle": {
     "description": "Hoy: título de los pendientes (pedidos nuevos, reservas que terminan)."

@@ -17,10 +17,18 @@ const int todayWindowDays = 7;
 
 /// Lo que Hoy muestra de las sesiones.
 final class TodayFocus {
-  const TodayFocus({required this.sessions, required this.isToday});
+  const TodayFocus({
+    required this.sessions,
+    required this.isToday,
+    required this.ongoing,
+  });
 
   /// Sin ninguna sesión viva desde hoy.
-  static const TodayFocus empty = TodayFocus(sessions: [], isToday: false);
+  static const TodayFocus empty = TodayFocus(
+    sessions: [],
+    isToday: false,
+    ongoing: 0,
+  );
 
   /// Las de hoy (primero las que todavía no terminaron, por llegada; después
   /// las terminadas) o, si hoy no hay ninguna, la próxima. Vacía si no hay
@@ -30,14 +38,22 @@ final class TodayFocus {
   /// Son de hoy; si no, es la próxima, de otro día.
   final bool isToday;
 
+  /// Cuántas de [sessions], las primeras, todavía no terminaron; las demás
+  /// ya terminaron (ver sessionFinished). La próxima de otro día no terminó.
+  final int ongoing;
+
   /// La de los botones de abajo («Cómo llegar» y WhatsApp): la próxima de hoy
   /// (o la que está en curso), o la próxima de otro día.
   CookingSession? get main => sessions.isEmpty ? null : sessions.first;
+
+  /// La sesión en la posición [index] de [sessions] ya terminó.
+  bool finishedAt(int index) => index >= ongoing;
 
   @override
   bool operator ==(Object other) {
     if (other is! TodayFocus ||
         other.isToday != isToday ||
+        other.ongoing != ongoing ||
         other.sessions.length != sessions.length) {
       return false;
     }
@@ -48,11 +64,12 @@ final class TodayFocus {
   }
 
   @override
-  int get hashCode => Object.hash(isToday, Object.hashAll(sessions));
+  int get hashCode => Object.hash(isToday, ongoing, Object.hashAll(sessions));
 
   /// Solo cuántas: nada de la clienta.
   @override
-  String toString() => 'TodayFocus(${sessions.length}, isToday: $isToday)';
+  String toString() =>
+      'TodayFocus(${sessions.length}, isToday: $isToday, ongoing: $ongoing)';
 }
 
 /// [session] ya terminó en el instante [now]: está cocinada o cobrada, o ya
@@ -92,16 +109,20 @@ TodayFocus todayFocus(
   if (ofToday.isEmpty) {
     return live.isEmpty
         ? TodayFocus.empty
-        : TodayFocus(sessions: [live.first], isToday: false);
+        : TodayFocus(sessions: [live.first], isToday: false, ongoing: 1);
   }
+  final ongoing = [
+    for (final session in ofToday)
+      if (!sessionFinished(session, now)) session,
+  ];
   return TodayFocus(
     sessions: [
-      for (final session in ofToday)
-        if (!sessionFinished(session, now)) session,
+      ...ongoing,
       for (final session in ofToday)
         if (sessionFinished(session, now)) session,
     ],
     isToday: true,
+    ongoing: ongoing.length,
   );
 }
 

@@ -440,6 +440,9 @@ void main() {
         tester.getTopLeft(card(2)).dy,
         lessThan(tester.getTopLeft(card(1)).dy),
       );
+      // La que terminó lo dice: abajo de la próxima no parece un error.
+      expect(textOf(tester, 'today-session-${sessionId(1)}-status'), 'Terminata');
+      expect(byKey('today-session-${sessionId(2)}-status'), findsNothing);
       // La hora primero, con las palabras de la línea de horas de la tarjeta.
       expect(
         textOf(tester, 'today-actions-for'),

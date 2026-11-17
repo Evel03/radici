@@ -83,6 +83,7 @@
   "todayEmptyBody": "Cuando confirmes una reserva desde una solicitud, la verás aquí.",
   "todayEmptyAction": "Ver solicitudes",
   "todayActionsFor": "Llega {time} · {name}",
+  "todaySessionFinished": "Terminada",
   "todayPendingTitle": "Pendientes",
   "todayPendingNone": "Nada pendiente.",
   "todayNewRequests": "{count, plural, =1{1 solicitud nueva} other{{count} solicitudes nuevas}}",

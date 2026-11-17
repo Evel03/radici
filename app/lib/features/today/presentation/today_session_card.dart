@@ -1,7 +1,8 @@
 // Una sesión en Hoy: la clienta, sus horas («Spesa dalle 09:15 · Arrivo
 // 10:00 · fino alle 13:00», salidas de la sesión), las personas, el estado si
-// no está confirmada, las alergias resaltadas (con la nota de contaminación
-// cruzada si hay gluten, SPEC §5.6, como en la ficha) y las notas de cocina.
+// no está confirmada («Terminata» si ya pasó su hora), las alergias
+// resaltadas (con la nota de contaminación cruzada si hay gluten, SPEC §5.6,
+// como en la ficha) y las notas de cocina.
 // Toda la tarjeta abre la ficha; para el lector de pantalla, la cabecera es el
 // botón (con la acción de tocar en su nodo: en /gestione/ el clic de
 // VoiceOver solo llega a un nodo que la tiene) y las alergias se leen aparte.
@@ -17,9 +18,17 @@ import 'package:radici/features/sessions/presentation/session_widgets.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 class TodaySessionCard extends StatelessWidget {
-  const TodaySessionCard({super.key, required this.session});
+  const TodaySessionCard({
+    super.key,
+    required this.session,
+    this.finished = false,
+  });
 
   final CookingSession session;
+
+  /// Ya terminó (ver TodayFocus.finishedAt): con varias hoy, pasa al final y
+  /// lo dice, para que no parezca un error de orden.
+  final bool finished;
 
   @override
   Widget build(BuildContext context) {
@@ -33,9 +42,14 @@ class TodaySessionCard extends StatelessWidget {
       final count? => l10n.requestPeopleCount(count),
       null => null,
     };
-    final status = session.status == SessionStatus.confirmed
-        ? null
-        : l10n.sessionStatus(session.status);
+    // Cocinada o cobrada ya lo dicen; confirmada (o con la compra hecha) y con
+    // la hora pasada, «Terminata».
+    final status = switch (session.status) {
+      SessionStatus.confirmed ||
+      SessionStatus.shoppingDone when finished => l10n.todaySessionFinished,
+      SessionStatus.confirmed => null,
+      _ => l10n.sessionStatus(session.status),
+    };
     final kitchen = session.client.kitchenNotes;
     void open() => unawaited(context.push(AppRoutes.sessionDetail(id)));
 

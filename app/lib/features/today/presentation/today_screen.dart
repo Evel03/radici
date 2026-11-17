@@ -122,8 +122,11 @@ class _TodayList extends ConsumerWidget {
                   if (value.sessions.isEmpty)
                     const _NoSessions()
                   else if (value.isToday)
-                    for (final session in value.sessions)
-                      TodaySessionCard(session: session)
+                    for (final (i, session) in value.sessions.indexed)
+                      TodaySessionCard(
+                        session: session,
+                        finished: value.finishedAt(i),
+                      )
                   else ...[
                     Text(
                       l10n.todayNoSessionToday,

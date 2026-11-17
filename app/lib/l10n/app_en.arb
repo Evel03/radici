@@ -83,6 +83,7 @@
   "todayEmptyBody": "When you confirm a booking from a request, it shows up here.",
   "todayEmptyAction": "See requests",
   "todayActionsFor": "Arrive {time} · {name}",
+  "todaySessionFinished": "Finished",
   "todayPendingTitle": "To do",
   "todayPendingNone": "Nothing pending.",
   "todayNewRequests": "{count, plural, =1{1 new request} other{{count} new requests}}",

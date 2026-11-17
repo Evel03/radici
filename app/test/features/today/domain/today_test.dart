@@ -92,6 +92,26 @@ void main() {
       final afterwards = todayFocus(sessions, today: today, now: rome(13));
       expect(ids(afterwards.sessions), [sessionId(2), sessionId(1)]);
       expect(afterwards.main?.id, sessionId(2));
+      // Cuáles terminaron: las del final.
+      expect(afterwards.ongoing, 1);
+      expect([for (var i = 0; i < 2; i++) afterwards.finishedAt(i)], [false, true]);
+    });
+
+    test('ninguna terminada mientras no pasa su hora; la próxima de otro día, tampoco', () {
+      final sessions = [session(1, today), session(2, today, hour: 16)];
+      final morning = todayFocus(sessions, today: today, now: rome(8));
+      expect(morning.ongoing, 2);
+      expect(morning.finishedAt(0), isFalse);
+      expect(morning.finishedAt(1), isFalse);
+      final evening = todayFocus(sessions, today: today, now: rome(20));
+      expect(evening.ongoing, 0, reason: 'a las 20:00 terminaron las dos');
+      final next = todayFocus(
+        [session(3, today.addDays(1))],
+        today: today,
+        now: rome(20),
+      );
+      expect(next.finishedAt(0), isFalse);
+      expect(TodayFocus.empty.ongoing, 0);
     });
 
     test('cocinada o cobrada cuenta como terminada aunque no haya pasado la hora', () {
