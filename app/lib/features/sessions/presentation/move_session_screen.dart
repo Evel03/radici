@@ -152,12 +152,19 @@ class _MoveSessionView extends ConsumerWidget {
     final provider = moveSessionProvider(args);
     final state = ref.watch(provider);
     final controller = ref.read(provider.notifier);
-    ref.listen(provider, (previous, next) {
-      final outcome = next.outcome;
-      if (previous?.outcome == null && outcome != null) {
-        Navigator.of(context).pop(outcome);
-      }
-    });
+    // Movida: vuelve a la ficha con el resultado, para «Annulla». Solo desde
+    // arriba: si terminó con otra pantalla encima (un pedido abierto desde el
+    // aviso), un pop cerraría esa; la hoja se cierra al volver a estar arriba
+    // (ModalRoute.of la reconstruye cuando cambia).
+    final route = ModalRoute.of(context);
+    final outcome = state.outcome;
+    if (outcome != null && (route?.isCurrent ?? true)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted && (route?.isCurrent ?? true)) {
+          Navigator.of(context).pop(outcome);
+        }
+      });
+    }
 
     final session = state.session!;
     final frozen = state.sending || state.blocked || state.outcome != null;

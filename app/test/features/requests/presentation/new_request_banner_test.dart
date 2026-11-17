@@ -12,10 +12,13 @@ import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
+import 'package:radici/features/sessions/presentation/move_session_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
 import '../../../support/request_fixtures.dart';
+import '../../../support/session_fixtures.dart';
 
 void main() {
   final arrived = buildRequest(
@@ -265,6 +268,69 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ConfirmBookingScreen), findsOneWidget);
       expect(tester.widget<TextField>(byKey('booking-price')).controller!.text, '600');
+    });
+  });
+
+  group('con la hoja «Sposta» de una sesión', () {
+    // La reserva de prueba: miércoles 25/11, 2/12, 9/12 y 16/12. Se mueve la
+    // semana 2 (2/12) al jueves 3/12.
+    Finder byKey(String key) => find.byKey(ValueKey(key));
+    Finder snackBarAction(String label) =>
+        find.descendant(of: find.byType(SnackBar), matching: find.text(label));
+    ChefRequest incoming(String id, String name, int hour) =>
+        buildRequest(id: id, name: name, createdAt: DateTime.utc(2026, 10, 19, hour));
+
+    /// La ficha de la semana 2 y, desde «Sposta», la hoja con el 3/12.
+    Future<ChefApp> openMoveSheet(WidgetTester tester, FakeSessionsRepository sessions) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+        sessions: sessions,
+        location: '/sessioni/${sessionId(2)}',
+      );
+      await tester.tap(byKey('session-move'));
+      await tester.pumpAndSettle();
+      final picker = find.byType(DatePickerDialog);
+      await tester.tap(find.descendant(of: picker, matching: find.text('3')).first);
+      await tester.pumpAndSettle();
+      final ok = MaterialLocalizations.of(tester.element(picker)).okButtonLabel;
+      await tester.tap(find.descendant(of: picker, matching: find.text(ok)));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsOneWidget);
+      return app;
+    }
+
+    testWidgets('un pedido llega mientras se mueve: «Apri» lo abre encima, la hoja no lo cierra al terminar y, '
+        'al volver, la ficha ofrece «Annulla»', (tester) async {
+      final sessions = FakeSessionsRepository(buildBooking())..pendingMove = Completer<void>();
+      final app = await openMoveSheet(tester, sessions);
+      await tester.tap(byKey('move-confirm'));
+      await tester.pump();
+
+      app.requests.insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(bannerText(tester), 'Nuova richiesta da Marco Bianchi');
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.widgetWithText(AppBar, 'Marco Bianchi'), findsOneWidget);
+
+      sessions.pendingMove!.complete();
+      await tester.pumpAndSettle();
+      expect(sessions.moves.single.date, CalendarDate(2026, 12, 3));
+      // Movida con el pedido encima: el pedido sigue abierto.
+      expect(find.widgetWithText(AppBar, 'Marco Bianchi'), findsOneWidget);
+
+      // Al volver, la hoja se cierra y la ficha ofrece «Annulla».
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsNothing);
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      expect(find.text('Sessione spostata a gio 3 dic, arrivo alle 10:00.'), findsOneWidget);
+      await tester.tap(snackBarAction('Annulla'));
+      await tester.pumpAndSettle();
+      expect(sessions.moves.last.date, CalendarDate(2026, 12, 2));
     });
   });
 
