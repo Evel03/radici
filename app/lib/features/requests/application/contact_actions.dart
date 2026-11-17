@@ -18,8 +18,14 @@ class ContactLinks {
   final Uri? email;
 }
 
-/// Arma los links de [request]. [chefName] firma el mensaje de WhatsApp.
-ContactLinks contactLinksFor(ChefRequest request, {required String chefName}) {
+/// Arma los links de [request]. [chefName] firma el mensaje de WhatsApp. Con
+/// [onBehalf] (un colaborador de la cocinera, que lo manda desde su propio
+/// teléfono) el mensaje escribe de parte de ella, sin decir que es ella.
+ContactLinks contactLinksFor(
+  ChefRequest request, {
+  required String chefName,
+  bool onBehalf = false,
+}) {
   final l10n = lookupAppLocalizations(Locale(request.locale.name));
   final client = request.client;
   final name = client.firstName.isNotEmpty
@@ -29,7 +35,9 @@ ContactLinks contactLinksFor(ChefRequest request, {required String chefName}) {
   return ContactLinks(
     whatsApp: whatsAppUri(
       phoneE164: phone,
-      message: l10n.contactWhatsAppMessage(name, chefName, l10n.appTitle),
+      message: onBehalf
+          ? l10n.contactWhatsAppMessageOnBehalf(name, chefName, l10n.appTitle)
+          : l10n.contactWhatsAppMessage(name, chefName, l10n.appTitle),
     ),
     call: phoneCallUri(phone),
     email: emailUri(
@@ -47,6 +55,10 @@ final contactLinksProvider = Provider.autoDispose.family<ContactLinks?, String>(
 ) {
   final request = ref.watch(chefRequestProvider(requestId)).value;
   if (request == null) return null;
-  final chefName = ref.watch(currentChefProvider)?.displayName ?? '';
-  return contactLinksFor(request, chefName: chefName);
+  final chef = ref.watch(currentChefProvider);
+  return contactLinksFor(
+    request,
+    chefName: chef?.displayName ?? '',
+    onBehalf: chef?.collaborator ?? false,
+  );
 });
