@@ -10,23 +10,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/availability/application/availability_controller.dart';
-import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/availability/presentation/availability_labels.dart';
 import 'package:radici/features/availability/presentation/block_range_dialog.dart';
 import 'package:radici/features/availability/presentation/day_availability_card.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
+import 'package:radici/features/requests/application/chef_data_refresh.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
-import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/agenda.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
-import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/presentation/session_block.dart';
+import 'package:radici/features/sessions/presentation/sessions_load_error.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 class AgendaScreen extends ConsumerWidget {
@@ -66,29 +65,9 @@ class _AgendaList extends ConsumerWidget {
   Future<void> _refresh(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     final message = AppLocalizations.of(context).inboxRefreshError;
-    final inbox = ref.read(chefInboxProvider.notifier);
-    final availability = ref.read(availabilityControllerProvider.notifier);
-    final sessions = ref.read(sessionsControllerProvider.notifier);
-    final results = await Future.wait([
-      _attempt(inbox.refresh),
-      _attempt(availability.refresh),
-      _attempt(sessions.refresh),
-    ]);
-    if (results.contains(false) && messenger.mounted) {
+    final ok = await ref.read(refreshChefDataProvider)();
+    if (!ok && messenger.mounted) {
       messenger.showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
-
-  static Future<bool> _attempt(Future<void> Function() refresh) async {
-    try {
-      await refresh();
-      return true;
-    } on RequestsFailure {
-      return false;
-    } on AvailabilityFailure {
-      return false;
-    } on SessionFailure {
-      return false;
     }
   }
 
@@ -115,7 +94,7 @@ class _AgendaList extends ConsumerWidget {
             children: [
               if (loading) const LinearProgressIndicator(),
               const _AgendaToolbar(),
-              const _SessionsLoadError(),
+              const SessionsLoadError(),
               const SizedBox(height: 8),
               switch (view) {
                 AgendaView.month => const _MonthView(),
@@ -536,45 +515,6 @@ class _WeekView extends ConsumerWidget {
             ),
           ),
       ],
-    );
-  }
-}
-
-/// Si no se pudieron leer las sesiones, el aviso con «Riprova» (sin él, la
-/// agenda parecería vacía). Mientras cargan, nada: aparecen solas.
-class _SessionsLoadError extends ConsumerWidget {
-  const _SessionsLoadError();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final failed = ref.watch(
-      sessionsControllerProvider.select(
-        (sessions) => sessions.hasError && !sessions.isLoading,
-      ),
-    );
-    if (!failed) return const SizedBox.shrink();
-    final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    return Padding(
-      key: const ValueKey('sessions-load-error'),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      child: Wrap(
-        spacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text(
-            l10n.sessionsLoadFailed,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.error,
-            ),
-          ),
-          TextButton(
-            key: const ValueKey('sessions-retry'),
-            onPressed: () => ref.invalidate(sessionsControllerProvider),
-            child: Text(l10n.actionRetry),
-          ),
-        ],
-      ),
     );
   }
 }
