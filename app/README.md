@@ -128,9 +128,10 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Conferma prenotazione** (`features/bookings/`): desde el detalle de un pedido `new`, una hoja a
   pantalla completa que lo convierte en una reserva de 1 a 8 semanas (una sesión `confirmed` por
   semana). Es la primera llamada de la app a una Edge Function: `BookingsRepository` hace
-  `functions.invoke('chef/bookings')` con la sesión de Evelyn y `?forceFunctionRegion=eu-central-1`
-  (nunca la cabecera `x-region`, que CORS no permite) y traduce los errores a `BookingFailure` sin
-  loguear nada (contrato `docs/contracts/chef-api.md`). Prellena las semanas con `requests.weeks`,
+  `functions.invoke('chef/bookings')` con la sesión de quien entró (Evelyn o un colaborador
+  suyo) y `?forceFunctionRegion=eu-central-1` (nunca la cabecera `x-region`, que CORS no
+  permite) y traduce los errores a `BookingFailure` sin loguear nada (contrato
+  `docs/contracts/chef-api.md`). Prellena las semanas con `requests.weeks`,
   las fechas cada 7 días desde la preferida (cambiar la primera mueve todas), la llegada que sugiere
   el `dryRun`, los minutos de la estimación (tope de 300) y el precio de la estimación (con las
   tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
