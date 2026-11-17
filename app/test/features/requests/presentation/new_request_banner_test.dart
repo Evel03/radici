@@ -485,6 +485,59 @@ void main() {
       await tester.pumpAndSettle();
       expectAgendaWithBar(tester);
     });
+
+    testWidgets('mientras se mueve llegan dos pedidos: «Apri» desde «Sposta» abre encima el más reciente; al terminar '
+        'y volver, la ficha ofrece «Annulla» y, al volver, la Agenda sigue con la barra y el día elegido', (
+      tester,
+    ) async {
+      final sessions = FakeSessionsRepository(buildBooking(first: wednesday))..pendingMove = Completer<void>();
+      final app = await openSessionFromAgenda(tester, sessions);
+      // «Sposta»: el jueves 22/10 en el calendario.
+      await tester.tap(byKey('session-move'));
+      await tester.pumpAndSettle();
+      final picker = find.byType(DatePickerDialog);
+      await tester.tap(find.descendant(of: picker, matching: find.text('22')).first);
+      await tester.pumpAndSettle();
+      final ok = MaterialLocalizations.of(tester.element(picker)).okButtonLabel;
+      await tester.tap(find.descendant(of: picker, matching: find.text(ok)));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsOneWidget);
+
+      await tester.tap(byKey('move-confirm'));
+      await tester.pump();
+      app.requests
+        ..insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13))
+        ..insertFromRealtime(incoming('req-9', 'Anna Verdi', 14));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(bannerText(tester), '2 nuove richieste');
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+      expect(find.byType(MoveSessionScreen, skipOffstage: false), findsOneWidget);
+
+      sessions.pendingMove!.complete();
+      await tester.pumpAndSettle();
+      expect(sessions.moves.single.date, CalendarDate(2026, 10, 22));
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+
+      // Al volver, la hoja se cierra y la ficha ofrece «Annulla».
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsNothing);
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      await tester.tap(find.descendant(of: find.byType(SnackBar), matching: find.text('Annulla')));
+      await tester.pumpAndSettle();
+      expect(sessions.moves.last.date, wednesday);
+
+      // La Agenda, con el día que estaba elegido y la sesión de vuelta ahí.
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expectAgendaWithBar(tester);
+      expect(find.text('mercoledì 21 ottobre 2026'), findsOneWidget);
+      expect(byKey('session-${sessionId(1)}'), findsOneWidget);
+    });
   });
 
   // Como la ficha, el editor tiene su propio ScaffoldMessenger (ver README).
