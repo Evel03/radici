@@ -4,9 +4,13 @@
 // reabrir la app (minuto a minuto, no solo una vez), las reservas que
 // terminan (con el día de Roma), la tira de 7 días con los bloqueos y los
 // feriados de la agenda (sin estado mientras la disponibilidad se vuelve a
-// leer), los enlaces de los botones de abajo, deslizar para actualizar y el
+// leer), los enlaces de los botones de abajo (el WhatsApp con la regla de la
+// ficha: de parte de la cocinera con la cuenta de un colaborador, la hora de
+// llegada solo en una sesión viva de hoy en adelante, nunca la dirección, las
+// alergias, las notas, la zona ni el apellido), deslizar para actualizar y el
 // pedido de abrir la bandeja en «Nuove».
 import 'dart:async';
+import 'dart:ui' show Locale;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -18,6 +22,7 @@ import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/availability/domain/italian_holidays.dart';
@@ -26,6 +31,7 @@ import 'package:radici/features/requests/application/chef_data_refresh.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/application/inbox_tab_request.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/domain/inbox.dart';
 import 'package:radici/features/sessions/application/session_links.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
@@ -33,6 +39,7 @@ import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/today/application/today_providers.dart';
 import 'package:radici/features/today/domain/today.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';
@@ -57,28 +64,32 @@ void main() {
     requests = FakeChefRequestsRepository(const []);
   });
 
-  List<Override> overrides(DateTime Function() clock) => [
+  /// [account]: la de la cocinera; con un colaborador, la de él.
+  List<Override> overrides(
+    DateTime Function() clock, {
+    Account account = chefAccountData,
+  }) => [
     authRepositoryProvider.overrideWithValue(FakeAuthRepository(user: chefUser)),
-    accountRepositoryProvider.overrideWithValue(
-      FakeAccountRepository(chefAccountData),
-    ),
+    accountRepositoryProvider.overrideWithValue(FakeAccountRepository(account)),
     sessionsRepositoryProvider.overrideWithValue(sessions),
     availabilityRepositoryProvider.overrideWithValue(availability),
     chefRequestsRepositoryProvider.overrideWithValue(requests),
     clockProvider.overrideWithValue(clock),
   ];
 
-  /// Con la cuenta de la cocinera ya cargada (el router no deja abrir su área
-  /// antes) y algo escuchando Hoy, como la pantalla. [retry]: los reintentos
-  /// automáticos de Riverpod (por defecto, ninguno).
+  /// Con la cuenta de la cocinera ([account]; la de un colaborador, si se
+  /// pasa) ya cargada (el router no deja abrir su área antes) y algo
+  /// escuchando Hoy, como la pantalla. [retry]: los reintentos automáticos de
+  /// Riverpod (por defecto, ninguno).
   Future<ProviderContainer> start({
     DateTime? now,
     RetryDelay retry = noRetry,
+    Account account = chefAccountData,
   }) async {
     final at = now ?? morning;
     final container = ProviderContainer.test(
       retry: retry,
-      overrides: overrides(() => at),
+      overrides: overrides(() => at, account: account),
     );
     container.listen(sessionControllerProvider, (_, _) {});
     await pumpEventQueue();
@@ -97,12 +108,14 @@ void main() {
     int hour = 10,
     String? requestId = bookingRequestId,
     String? address = 'Via Gombito 12, 24129 Bergamo',
+    SessionStatus status = SessionStatus.confirmed,
   }) => buildSession(
     n: n,
     date: date,
     start: ClockTime.hm(hour, 0),
     requestId: requestId,
     address: address,
+    status: status,
   );
 
   void save(Iterable<CookingSession> list) {
@@ -410,6 +423,160 @@ void main() {
       sessions.sessions.clear();
       await container.read(sessionsControllerProvider.notifier).refresh();
       expect(container.read(todayLinksProvider), isNull);
+    });
+  });
+
+  group('el WhatsApp de abajo, con la regla de la ficha (sessionLinksFor)', () {
+    // Sale del teléfono de quien usa la app: con la cuenta de un colaborador
+    // escribe de parte de la cocinera, sin decir que es ella ni que es quien
+    // llega. La hora de llegada va solo en una sesión que no está cancelada,
+    // cocinada ni cobrada, de hoy en adelante: hoy es el día de Roma
+    // (romeTodayProvider), el mismo con que Hoy elige la sesión.
+    final collaboratorData = chefAccountData.copyWith(
+      chef: chefAccount.copyWith(collaborator: true),
+    );
+
+    /// 14:00 del martes 17/11 en Roma: la sesión de las 10:00 terminó a las
+    /// 13:00.
+    final afternoon = DateTime.utc(2026, 11, 17, 13);
+
+    /// El texto del WhatsApp de los botones de abajo en [now] (por defecto, el
+    /// martes 17/11 a las 8:00 en Roma), con la cuenta de la cocinera o, con
+    /// [collaborator], la de un colaborador suyo.
+    Future<String> whatsAppText({
+      bool collaborator = false,
+      DateTime? now,
+    }) async {
+      final container = await start(
+        now: now,
+        account: collaborator ? collaboratorData : chefAccountData,
+      );
+      return container
+          .read(todayLinksProvider)!
+          .whatsApp!
+          .queryParameters['text']!;
+    }
+
+    test('con la cuenta de la cocinera lo firma ella: la sesión de hoy, con su fecha y la hora de llegada', () async {
+      save([session(1, today)]);
+      expect(
+        await whatsAppText(),
+        'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+        'martedì 17 novembre, con arrivo alle 10:00.',
+      );
+    });
+
+    test('con la cuenta de un colaborador, de parte de la cocinera: ni «sono Evelyn» ni que llega él', () async {
+      save([session(1, today)]);
+      expect(
+        await whatsAppText(collaborator: true),
+        'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione '
+        'di martedì 17 novembre: Evelyn arriva alle 10:00.',
+      );
+    });
+
+    test('la próxima sesión, de otro día: con su fecha y la hora de llegada', () async {
+      // Hoy no hay ninguna: los botones son de la del jueves 19.
+      save([session(1, today.addDays(2)), session(2, today.addDays(9))]);
+      expect(
+        await whatsAppText(),
+        'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+        'giovedì 19 novembre, con arrivo alle 10:00.',
+      );
+      expect(
+        await whatsAppText(collaborator: true),
+        'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione '
+        'di giovedì 19 novembre: Evelyn arriva alle 10:00.',
+      );
+    });
+
+    test('hoy sale del reloj de la app (el día de Roma), no del reloj del sistema', () async {
+      // Lunes 19/10/2026 a las 14:00 en Roma: la próxima es la del miércoles
+      // 21/10, que para el reloj del sistema ya pasó.
+      save([session(1, CalendarDate(2026, 10, 21))]);
+      expect(
+        await whatsAppText(now: DateTime.utc(2026, 10, 19, 12)),
+        'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+        'mercoledì 21 ottobre, con arrivo alle 10:00.',
+      );
+    });
+
+    test('una de hoy ya cocinada o cobrada (terminadas las de hoy, es la de los botones): con su fecha, sin la hora de llegada', () async {
+      for (final status in [SessionStatus.cooked, SessionStatus.paid]) {
+        save([session(1, today, status: status)]);
+        expect(
+          await whatsAppText(now: afternoon),
+          'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+          'martedì 17 novembre.',
+          reason: status.name,
+        );
+        expect(
+          await whatsAppText(collaborator: true, now: afternoon),
+          'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione '
+          'di martedì 17 novembre.',
+          reason: status.name,
+        );
+      }
+    });
+
+    test('nunca la dirección, las alergias, las notas, la zona ni el apellido: cocinera o colaborador, con la hora de llegada o sin ella, en los tres idiomas', () async {
+      // De hoy con la llegada, de hoy ya cocinada (sin la llegada) y la
+      // próxima, de otro día.
+      final cases = [
+        (date: today, status: SessionStatus.confirmed, now: morning),
+        (date: today, status: SessionStatus.cooked, now: afternoon),
+        (date: today.addDays(2), status: SessionStatus.confirmed, now: morning),
+      ];
+      for (final locale in ClientLocale.values) {
+        final l10n = lookupAppLocalizations(Locale(locale.name));
+        // Una sesión con todo: la dirección de la ficha, sus alérgenos, los
+        // del pedido, la dieta, la nota de alergias, las notas de la cocina y
+        // del pedido (el portero), la zona y el apellido.
+        final secrets = [
+          'Gombito',
+          '24129',
+          'Celiachia',
+          'noci',
+          l10n.allergenGluten,
+          l10n.allergenMilk,
+          l10n.dietVegetarian,
+          'Forno a gas',
+          'Citofono',
+          'Città Alta',
+          'Rossi',
+        ];
+        for (final c in cases) {
+          sessions.sessions.clear();
+          save([
+            buildSession(
+              date: c.date,
+              status: c.status,
+              locale: locale,
+              clientAllergens: const [Allergen.gluten],
+              restrictions: const RequestRestrictions(
+                allergens: [Allergen.milk],
+                diets: [Diet.vegetarian],
+                note: 'Celiachia, noci',
+              ),
+              noAllergies: false,
+            ),
+          ]);
+          for (final collaborator in [false, true]) {
+            final text = await whatsAppText(
+              collaborator: collaborator,
+              now: c.now,
+            );
+            final reason =
+                '${locale.name}, ${c.status.name} del ${c.date.toIso()}, '
+                'colaborador: $collaborator';
+            // El de esa sesión, con el nombre de pila de la clienta.
+            expect(text, contains('Giulia'), reason: reason);
+            for (final secret in secrets) {
+              expect(text, isNot(contains(secret)), reason: reason);
+            }
+          }
+        }
+      }
     });
   });
 

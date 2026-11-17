@@ -85,14 +85,23 @@ final todayFocusProvider = Provider<AsyncValue<TodayFocus>>((ref) {
 });
 
 /// Los enlaces de los botones de abajo («Cómo llegar» y WhatsApp) para la
-/// sesión principal de Hoy; null si no hay ninguna.
+/// sesión principal de Hoy; null si no hay ninguna. El WhatsApp es el de la
+/// ficha (sessionLinksFor): sale del teléfono de quien usa la app, así que con
+/// la cuenta de un colaborador (ChefAccount.collaborator) escribe de parte de
+/// la cocinera, y anuncia la hora de llegada solo si la sesión no está
+/// cancelada, cocinada ni cobrada y es de hoy en adelante. Hoy es el día de
+/// Roma (romeTodayProvider), el mismo con que todayFocusProvider elige la
+/// sesión.
 final todayLinksProvider = Provider<SessionLinks?>((ref) {
   final session = ref.watch(todayFocusProvider).value?.main;
   if (session == null) return null;
+  final chef = ref.watch(currentChefProvider);
   return sessionLinksFor(
     session,
-    chefName: ref.watch(currentChefProvider)?.displayName ?? '',
+    chefName: chef?.displayName ?? '',
     appleMaps: ref.watch(appleMapsProvider),
+    onBehalf: chef?.collaborator ?? false,
+    today: ref.watch(romeTodayProvider),
   );
 });
 

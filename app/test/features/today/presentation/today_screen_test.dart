@@ -4,8 +4,9 @@
 // próxima primero) o la próxima: la clienta, las horas que salen de la
 // sesión, las personas, las alergias resaltadas, la contaminación cruzada con
 // gluten y las notas de cocina; abajo, en el tercio inferior, «Come arrivare»
-// (sin dirección, «Aggiungi indirizzo») y WhatsApp. Tocar la tarjeta abre la
-// ficha. Los pendientes (pedidos nuevos, que llevan a «Nuove», y reservas que
+// (sin dirección, «Aggiungi indirizzo») y WhatsApp (el mensaje de la ficha:
+// lo firma la cocinera o, con la cuenta de un colaborador, escribe de parte
+// de ella). Tocar la tarjeta abre la ficha. Los pendientes (pedidos nuevos, que llevan a «Nuove», y reservas que
 // terminan, que abren su última semana), la tira de 7 días (que abre la
 // Agenda en ese día), carga, error, vacío, deslizar para actualizar y el
 // cambio de día a la medianoche de Roma sin reabrir. "Hoy": martes 17/11/2026
@@ -83,12 +84,14 @@ void main() {
     noAllergies: noAllergies,
   );
 
+  /// [accounts]: la cuenta con que se entra (por defecto, la de la cocinera).
   Future<ChefApp> openToday(
     WidgetTester tester, {
     List<CookingSession> sessions = const [],
     FakeSessionsRepository? repository,
     FakeChefRequestsRepository? requests,
     FakeAvailabilityRepository? availability,
+    FakeAccountRepository? accounts,
     DateTime Function()? clock,
     Size size = const Size(400, 900),
     Locale locale = const Locale('it', 'IT'),
@@ -99,6 +102,7 @@ void main() {
       requests: requests ?? FakeChefRequestsRepository(const []),
       sessions: repository ?? FakeSessionsRepository(sessions),
       availability: availability,
+      accounts: accounts,
       clock: clock ?? () => morning,
       size: size,
       deviceLocales: [locale],
@@ -285,10 +289,37 @@ void main() {
       await tester.pumpAndSettle();
       final whatsApp = app.launcher.launched.last;
       expect(whatsApp.toString(), startsWith('https://wa.me/393331234567?text='));
-      final text = whatsApp.queryParameters['text']!;
-      // Firmado por la cocinera, como el de la ficha.
-      expect(text, startsWith('Ciao Giulia, sono Evelyn di Radici.'));
-      expect(text, isNot(contains('Gombito')), reason: 'nunca la dirección');
+      // El de la ficha: con la cuenta de la cocinera lo firma ella, con la
+      // fecha y la hora de llegada, sin la dirección.
+      expect(
+        whatsApp.queryParameters['text'],
+        'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+        'martedì 17 novembre, con arrivo alle 10:00.',
+      );
+    });
+
+    testWidgets('con la cuenta de un colaborador, WhatsApp sale de su teléfono y escribe de parte de la cocinera', (
+      tester,
+    ) async {
+      final app = await openToday(
+        tester,
+        sessions: [session()],
+        accounts: FakeAccountRepository(
+          chefAccountData.copyWith(
+            chef: chefAccount.copyWith(collaborator: true),
+          ),
+        ),
+      );
+      await tester.tap(byKey('today-whatsapp'));
+      await tester.pumpAndSettle();
+      final whatsApp = app.launcher.launched.single;
+      expect(whatsApp.toString(), startsWith('https://wa.me/393331234567?text='));
+      // Ni «sono Evelyn» ni «con arrivo alle…» como si llegara él.
+      expect(
+        whatsApp.queryParameters['text'],
+        'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione '
+        'di martedì 17 novembre: Evelyn arriva alle 10:00.',
+      );
     });
 
     testWidgets('en el iPhone, Apple Maps', (tester) async {
