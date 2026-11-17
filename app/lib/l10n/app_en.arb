@@ -267,6 +267,7 @@
   "sessionMoveAction": "Move",
   "sessionCancelAction": "Cancel session",
   "sessionWhatsAppMessage": "Hi {name}, this is {chef} from {brand}. I'm writing about the session on {date}, arriving at {time}.",
+  "sessionWhatsAppMessageOnBehalf": "Hi {name}, I'm writing on behalf of {chef} from {brand} about the session on {date}: {chef} will arrive at {time}.",
   "cancelReasonClient": "The client asked",
   "cancelReasonUnavailable": "I can't go",
   "cancelReasonOther": "Other reason",

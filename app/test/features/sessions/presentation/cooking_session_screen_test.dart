@@ -1,9 +1,10 @@
 // Ficha de la sesión (/sessioni/:id) en la app: el día y las horas salidas de
 // la sesión, «Settimana k di N» sin contar las canceladas, «Come arrivare»
 // (Apple Maps en el iPhone, Google Maps en el resto; sin dirección, «Aggiungi
-// indirizzo» la guarda en la ficha), WhatsApp en el idioma de la clienta, las
-// alergias resaltadas (la nota del pedido, también sola como llega de la web,
-// y, con gluten, la de contaminación cruzada) en el orden en que las lee el
+// indirizzo» la guarda en la ficha), WhatsApp en el idioma de la clienta (con
+// la cuenta de un colaborador, de parte de la cocinera), las alergias
+// resaltadas (la nota del pedido, también sola como llega de la web, y, con
+// gluten, la de contaminación cruzada) en el orden en que las lee el
 // lector de pantalla, las semanas de la reserva, y cancelar con confirmación,
 // motivo y «anche le successive», con cada falla explicada (un 409
 // hasPayments dice cuáles están cobradas y qué se puede hacer, también si
@@ -62,11 +63,13 @@ void main() {
   }
 
   /// La ficha de la semana [n] de una reserva de 4 (25/11, 2/12, 9/12 y 16/12).
-  /// [appleMaps] null: la regla de la plataforma, sin reemplazo.
+  /// [appleMaps] null: la regla de la plataforma, sin reemplazo. [accounts],
+  /// la cuenta con que se entra (por defecto, la de Evelyn).
   Future<ChefApp> openSession(
     WidgetTester tester, {
     int n = 2,
     FakeSessionsRepository? sessions,
+    FakeAccountRepository? accounts,
     Size size = const Size(400, 900),
     Locale locale = const Locale('it', 'IT'),
     bool? appleMaps = false,
@@ -75,6 +78,7 @@ void main() {
       tester,
       requests: FakeChefRequestsRepository(const []),
       sessions: sessions ?? FakeSessionsRepository(buildBooking()),
+      accounts: accounts,
       location: '/sessioni/${sessionId(n)}',
       size: size,
       deviceLocales: [locale],
@@ -293,6 +297,62 @@ void main() {
       expect(app.launcher.launched.last.toString(), 'tel:+393331234567');
     },
   );
+
+  // Un colaborador lo manda desde su propio teléfono: el mensaje no dice
+  // «sono Evelyn» ni que llega él.
+  group('con la cuenta de un colaborador, el WhatsApp escribe de parte de la cocinera', () {
+    FakeAccountRepository collaborator() => FakeAccountRepository(
+      chefAccountData.copyWith(chef: chefAccount.copyWith(collaborator: true)),
+    );
+
+    testWidgets('en una sesión viva, con la fecha y «Evelyn arriva alle…»', (
+      tester,
+    ) async {
+      final app = await openSession(
+        tester,
+        accounts: collaborator(),
+        sessions: FakeSessionsRepository(
+          buildBooking(restrictions: webRestrictions),
+        ),
+      );
+      await tester.tap(byKey('session-whatsapp'));
+      await tester.pumpAndSettle();
+
+      final uri = app.launcher.launched.single;
+      expect(uri.host, 'wa.me');
+      expect(uri.path, '/393331234567');
+      final text = uri.queryParameters['text']!;
+      expect(
+        text,
+        'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione di '
+        'mercoledì 2 dicembre: Evelyn arriva alle 10:00.',
+      );
+      expect(text, isNot(contains('Gombito')));
+      expect(text, isNot(contains('Celiachia')));
+    });
+
+    testWidgets(
+      'en una cancelada, el saludo del detalle de parte de ella, sin la fecha',
+      (tester) async {
+        final app = await openSession(
+          tester,
+          accounts: collaborator(),
+          sessions: FakeSessionsRepository(
+            buildBooking(statuses: {2: SessionStatus.cancelled}),
+          ),
+        );
+        expect(byKey('session-status'), findsOneWidget);
+        await tester.tap(byKey('session-whatsapp'));
+        await tester.pumpAndSettle();
+
+        expect(
+          app.launcher.launched.single.queryParameters['text'],
+          'Ciao Giulia, ti scrivo da parte di Evelyn di Radici: abbiamo ricevuto '
+          'la tua richiesta e vorremmo organizzarci con te.',
+        );
+      },
+    );
+  });
 
   group('sin dirección (las reservas que llegan por la web)', () {
     FakeSessionsRepository webBooking() => FakeSessionsRepository(

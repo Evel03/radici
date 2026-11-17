@@ -1230,7 +1230,18 @@
   },
   "sessionWhatsAppMessage": "Ciao {name}, sono {chef} di {brand}. Ti scrivo per la sessione di {date}, con arrivo alle {time}.",
   "@sessionWhatsAppMessage": {
-    "description": "WhatsApp a la clienta desde la ficha de la sesión, en SU idioma (requests.locale). Solo fecha y hora: nunca dirección ni alergias.",
+    "description": "WhatsApp a la clienta desde la ficha de la sesión, en SU idioma (requests.locale). Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageOnBehalf. Solo fecha y hora: nunca dirección ni alergias.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "date": { "type": "String", "example": "mercoledì 25 novembre" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "sessionWhatsAppMessageOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand} per la sessione di {date}: {chef} arriva alle {time}.",
+  "@sessionWhatsAppMessageOnBehalf": {
+    "description": "El mismo WhatsApp a la clienta desde la ficha de la sesión cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella ni ser quien llega (la que llega es ella: «{chef} arriva alle {time}»). En SU idioma (requests.locale). Solo fecha y hora: nunca dirección ni alergias.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },
