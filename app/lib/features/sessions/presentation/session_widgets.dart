@@ -1,9 +1,13 @@
-// Piezas de la ficha de la sesión y de la hoja «Sposta»: la barra de abajo
-// (la acción principal en el tercio inferior del teléfono), los títulos de
-// sección, una fila etiqueta–valor y el texto de ayuda.
+// Piezas de la ficha de la sesión, de la hoja «Sposta» y de Hoy: la barra de
+// abajo (la acción principal en el tercio inferior del teléfono), los títulos
+// de sección, una fila etiqueta–valor, el texto de ayuda y las alergias.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/features/sessions/domain/cooking_session.dart';
+import 'package:radici/l10n/app_localizations.dart';
 
 /// Ancho máximo del contenido en pantallas anchas (como el detalle).
 const double sessionMaxContentWidth = 720;
@@ -49,15 +53,18 @@ class SessionBottomBar extends StatelessWidget {
 /// encabezado). Por lo mismo, en la ficha lo que va debajo tiene que ser
 /// también un nodo propio (un botón, una fila o un texto con MergeSemantics).
 class SessionSection extends StatelessWidget {
-  const SessionSection(this.title, {super.key});
+  const SessionSection(this.title, {super.key, this.top = 24});
 
   final String title;
+
+  /// Espacio arriba del título (menos dentro de una tarjeta, como en Hoy).
+  final double top;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 24, bottom: 8),
+      padding: EdgeInsets.only(top: top, bottom: 8),
       child: Semantics(
         header: true,
         container: true,
@@ -130,6 +137,195 @@ class SessionHelp extends StatelessWidget {
       text,
       style: theme.textTheme.bodySmall?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+/// Alergias y dietas de la ficha y del pedido, la nota del pedido resaltada
+/// y, con gluten, la nota de contaminación cruzada (SPEC §5.6). Cada pieza es
+/// un nodo propio del lector de pantalla, en el orden en que se ve: el título
+/// primero (ver SessionSection). La ficha de la sesión y Hoy (con [dense],
+/// dentro de una tarjeta) muestran lo mismo.
+class SessionAllergies extends StatelessWidget {
+  const SessionAllergies({super.key, required this.session, this.dense = false});
+
+  final CookingSession session;
+
+  /// Con menos espacio arriba del título.
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final note = session.allergyNote;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SessionSection(l10n.sessionSectionAllergies, top: dense ? 12 : 24),
+        ...switch (session.allergyAnswer) {
+          AllergyAnswer.none => [
+            MergeSemantics(
+              child: Text(
+                l10n.detailNoAllergies,
+                key: const ValueKey('session-no-allergies'),
+              ),
+            ),
+          ],
+          // Sin respuesta: que pregunte antes de cocinar (se destaca).
+          AllergyAnswer.unknown => [
+            MergeSemantics(
+              child: Text(
+                l10n.detailAllergiesUnknown,
+                key: const ValueKey('session-allergies-unknown'),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: colors.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+          AllergyAnswer.listed => [
+            if (session.allergens.isNotEmpty)
+              _Chips(
+                keyName: 'session-allergens',
+                label: l10n.detailAllergens,
+                values: [for (final a in session.allergens) l10n.allergen(a)],
+              ),
+            if (session.diets.isNotEmpty)
+              _Chips(
+                keyName: 'session-diets',
+                label: l10n.detailDiets,
+                values: [for (final d in session.diets) l10n.diet(d)],
+              ),
+            if (note.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: MergeSemantics(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l10n.sessionAllergyNote,
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: colors.onTertiaryContainer,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            note,
+                            key: const ValueKey('session-allergy-note'),
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: colors.onTertiaryContainer,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        },
+        if (session.needsCrossContaminationNote)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.errorContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: MergeSemantics(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ExcludeSemantics(
+                        child: Icon(
+                          Icons.warning_amber_rounded,
+                          color: colors.onErrorContainer,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          l10n.sessionCrossContamination,
+                          key: const ValueKey('session-cross-contamination'),
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: colors.onErrorContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _Chips extends StatelessWidget {
+  const _Chips({
+    required this.keyName,
+    required this.label,
+    required this.values,
+  });
+
+  final String keyName;
+  final String label;
+  final List<String> values;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      key: ValueKey(keyName),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      // La etiqueta y sus valores, un solo nodo («Alérgenos que evitar,
+      // Gluten, Leche»): sin esto la etiqueta se leía antes del título.
+      child: MergeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final value in values)
+                  Chip(
+                    label: Text(value),
+                    backgroundColor: theme.colorScheme.tertiaryContainer,
+                    labelStyle: TextStyle(
+                      color: theme.colorScheme.onTertiaryContainer,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
