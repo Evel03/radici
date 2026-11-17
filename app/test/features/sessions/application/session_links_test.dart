@@ -98,10 +98,11 @@ void main() {
       'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
           'mercoledì 25 novembre, con arrivo alle 10:00.',
     // Ni «sono Evelyn» ni «con arrivo alle…» como si llegara él: la que
-    // llega es ella.
+    // llega es ella. Como el de la cocinera, describe el horario («con
+    // arrivo di Evelyn…», no «Evelyn arriva…»): vale también pasada la hora.
     (ClientLocale.it, true, true) =>
       'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione '
-          'di mercoledì 25 novembre: Evelyn arriva alle 10:00.',
+          'di mercoledì 25 novembre, con arrivo di Evelyn alle 10:00.',
     (ClientLocale.it, false, false) =>
       'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
           'mercoledì 25 novembre.',
@@ -113,7 +114,7 @@ void main() {
           'miércoles 25 de noviembre, con llegada a las 10:00.',
     (ClientLocale.es, true, true) =>
       'Hola Lucía, te escribo de parte de Evelyn de Radici por la sesión '
-          'del miércoles 25 de noviembre: Evelyn llega a las 10:00.',
+          'del miércoles 25 de noviembre, con llegada de Evelyn a las 10:00.',
     (ClientLocale.es, false, false) =>
       'Hola Lucía, soy Evelyn de Radici. Te escribo por la sesión del '
           'miércoles 25 de noviembre.',
@@ -125,7 +126,7 @@ void main() {
           'on Wednesday, November 25, arriving at 10:00.',
     (ClientLocale.en, true, true) =>
       "Hi Emma, I'm writing on behalf of Evelyn from Radici about the "
-          'session on Wednesday, November 25: Evelyn will arrive at 10:00.',
+          'session on Wednesday, November 25, with Evelyn arriving at 10:00.',
     (ClientLocale.en, false, false) =>
       "Hi Emma, this is Evelyn from Radici. I'm writing about the session "
           'on Wednesday, November 25.',
@@ -343,7 +344,7 @@ void main() {
       expect(
         await providerText(collaborator: true, n: 1),
         'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione di '
-        'mercoledì 25 novembre: Evelyn arriva alle 10:00.',
+        'mercoledì 25 novembre, con arrivo di Evelyn alle 10:00.',
       );
       expect(
         await providerText(collaborator: false, n: 2),
