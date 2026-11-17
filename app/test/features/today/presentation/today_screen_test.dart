@@ -1,0 +1,872 @@
+// Hoy (/oggi), el inicio de la cocinera: al abrir la app va ahí (un enlace
+// directo, como el del email, sigue abriendo su pedido) y la barra tiene 4
+// destinos (el riel también). Muestra la sesión de hoy (varias, con la
+// próxima primero) o la próxima: la clienta, las horas que salen de la
+// sesión, las personas, las alergias resaltadas, la contaminación cruzada con
+// gluten y las notas de cocina; abajo, en el tercio inferior, «Come arrivare»
+// (sin dirección, «Aggiungi indirizzo») y WhatsApp. Tocar la tarjeta abre la
+// ficha. Los pendientes (pedidos nuevos, que llevan a «Nuove», y reservas que
+// terminan, que abren su última semana), la tira de 7 días (que abre la
+// Agenda en ese día), carga, error, vacío, deslizar para actualizar y el
+// cambio de día a la medianoche de Roma sin reabrir. "Hoy": martes 17/11/2026
+// a las 8:00 en Roma, salvo donde se dice otra cosa.
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/clock_time.dart';
+import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/availability/domain/availability.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/agenda_screen.dart';
+import 'package:radici/features/requests/presentation/inbox_screen.dart';
+import 'package:radici/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/features/sessions/application/session_links.dart';
+import 'package:radici/features/sessions/data/sessions_repository.dart';
+import 'package:radici/features/sessions/domain/cooking_session.dart';
+import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
+import 'package:radici/features/today/presentation/today_screen.dart';
+
+import '../../../support/chef_app.dart';
+import '../../../support/fakes.dart';
+import '../../../support/plain_text.dart';
+import '../../../support/request_fixtures.dart';
+import '../../../support/session_fixtures.dart';
+import '../../../support/text_input_guard.dart';
+
+void main() {
+  /// Martes 17/11/2026 a las 8:00 en Roma (UTC+1).
+  final morning = DateTime.utc(2026, 11, 17, 7);
+  final today = CalendarDate(2026, 11, 17);
+
+  Finder byKey(String key) => find.byKey(ValueKey(key));
+  Finder card(int n) => byKey('today-session-${sessionId(n)}');
+  Finder inCard(int n, Finder finder) =>
+      find.descendant(of: card(n), matching: finder);
+  String textOf(WidgetTester tester, String key) =>
+      plainSpaces(tester.widget<Text>(byKey(key)).data!);
+
+  CookingSession session({
+    int n = 1,
+    CalendarDate? date,
+    int hour = 10,
+    int minute = 0,
+    int shopMinutes = 45,
+    int cookMinutes = 180,
+    SessionStatus status = SessionStatus.confirmed,
+    String? requestId = bookingRequestId,
+    String name = 'Giulia Rossi',
+    String? phone = '+39 333 123 4567',
+    String? address = 'Via Gombito 12, 24129 Bergamo',
+    List<Allergen> clientAllergens = const [],
+    RequestRestrictions? restrictions,
+    bool? noAllergies,
+  }) => buildSession(
+    n: n,
+    date: date ?? today,
+    start: ClockTime.hm(hour, minute),
+    shopMinutes: shopMinutes,
+    cookMinutes: cookMinutes,
+    status: status,
+    requestId: requestId,
+    name: name,
+    phone: phone,
+    address: address,
+    clientAllergens: clientAllergens,
+    restrictions: restrictions,
+    noAllergies: noAllergies,
+  );
+
+  Future<ChefApp> openToday(
+    WidgetTester tester, {
+    List<CookingSession> sessions = const [],
+    FakeSessionsRepository? repository,
+    FakeChefRequestsRepository? requests,
+    FakeAvailabilityRepository? availability,
+    DateTime Function()? clock,
+    Size size = const Size(400, 900),
+    Locale locale = const Locale('it', 'IT'),
+    bool? appleMaps = false,
+  }) async {
+    final app = await pumpChefApp(
+      tester,
+      requests: requests ?? FakeChefRequestsRepository(const []),
+      sessions: repository ?? FakeSessionsRepository(sessions),
+      availability: availability,
+      clock: clock ?? () => morning,
+      size: size,
+      deviceLocales: [locale],
+      overrides: [
+        if (appleMaps != null) appleMapsProvider.overrideWithValue(appleMaps),
+      ],
+    );
+    expect(find.byType(TodayScreen), findsOneWidget);
+    return app;
+  }
+
+  /// Desplaza Hoy hasta que [finder] se construya y se vea.
+  Future<void> reveal(WidgetTester tester, Finder finder) async {
+    await tester.scrollUntilVisible(
+      finder,
+      200,
+      scrollable: find
+          .descendant(of: byKey('today'), matching: find.byType(Scrollable))
+          .first,
+    );
+    await tester.pumpAndSettle();
+  }
+
+  NavigationBar navBar(WidgetTester tester) =>
+      tester.widget<NavigationBar>(byKey('chef-nav-bar'));
+
+  group('el inicio', () {
+    testWidgets('al abrir la app va a Hoy, primero de los 4 destinos de la barra', (
+      tester,
+    ) async {
+      await openToday(tester);
+      final bar = navBar(tester);
+      expect(bar.destinations, hasLength(4));
+      expect(bar.selectedIndex, 0);
+      final labels = [
+        for (final label in ['Oggi', 'Richieste', 'Agenda', 'Altro'])
+          tester.getCenter(
+            find.descendant(of: byKey('chef-nav-bar'), matching: find.text(label)),
+          ).dx,
+      ];
+      expect(labels, orderedEquals([...labels]..sort()), reason: 'en ese orden');
+
+      await tester.tap(
+        find.descendant(of: byKey('chef-nav-bar'), matching: find.text('Agenda')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(navBar(tester).selectedIndex, 2);
+
+      await tester.tap(
+        find.descendant(of: byKey('chef-nav-bar'), matching: find.text('Oggi')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+    });
+
+    testWidgets('un enlace a un pedido (el botón del email) sigue abriendo el pedido', (
+      tester,
+    ) async {
+      await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest(id: 'req-42')]),
+        location: '/richieste/req-42',
+        clock: () => morning,
+      );
+      expect(find.byType(RequestDetailScreen), findsOneWidget);
+    });
+
+    testWidgets('pantalla ancha: el riel con los mismos 4 destinos y Hoy elegido', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        sessions: [session()],
+        size: const Size(1200, 800),
+      );
+      final rail = tester.widget<NavigationRail>(byKey('chef-nav-rail'));
+      expect(rail.destinations, hasLength(4));
+      expect(rail.selectedIndex, 0);
+      expect(byKey('chef-nav-bar'), findsNothing);
+      expect(byKey('account-menu'), findsOneWidget);
+      expect(card(1), findsOneWidget);
+      expect(tester.getSize(card(1)).width, lessThanOrEqualTo(720));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('la sesión de hoy', () {
+    testWidgets(
+      'la clienta, las horas de la sesión, las personas, las alergias resaltadas, la contaminación cruzada y las notas de cocina',
+      (tester) async {
+        await openToday(
+          tester,
+          sessions: [
+            session(
+              clientAllergens: const [Allergen.gluten],
+              restrictions: const RequestRestrictions(note: 'Celiachia, noci'),
+            ),
+            session(n: 2, date: today.addDays(1), name: 'Marco Bianchi'),
+          ],
+        );
+
+        expect(textOf(tester, 'today-date'), 'martedì 17 novembre');
+        expect(card(1), findsOneWidget);
+        expect(card(2), findsNothing, reason: 'la de mañana no: hoy hay una');
+        expect(inCard(1, find.text('Giulia Rossi')), findsOneWidget);
+        expect(
+          textOf(tester, 'today-session-${sessionId(1)}-times'),
+          'Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
+        );
+        expect(textOf(tester, 'today-session-${sessionId(1)}-people'), '4 persone');
+        expect(inCard(1, find.text('Glutine')), findsOneWidget);
+        expect(
+          tester.widget<Text>(inCard(1, byKey('session-allergy-note'))).data,
+          'Celiachia, noci',
+        );
+        expect(inCard(1, byKey('session-cross-contamination')), findsOneWidget);
+        expect(
+          textOf(tester, 'today-session-${sessionId(1)}-kitchen'),
+          'Forno a gas',
+        );
+        // Nada se oculta en la ficha que no esté acá: la dirección no se muestra.
+        expect(inCard(1, find.textContaining('Via Gombito')), findsNothing);
+      },
+    );
+
+    testWidgets('las horas salen de lo guardado en la sesión (nada fijo)', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        sessions: [
+          session(hour: 8, minute: 30, shopMinutes: 60, cookMinutes: 120),
+        ],
+      );
+      expect(
+        textOf(tester, 'today-session-${sessionId(1)}-times'),
+        'Spesa dalle 07:30 · Arrivo 08:30 · fino alle 10:30',
+      );
+    });
+
+    testWidgets('sin datos de alergias, el aviso destacado de preguntar', (
+      tester,
+    ) async {
+      await openToday(tester, sessions: [session()]);
+      expect(inCard(1, byKey('session-allergies-unknown')), findsOneWidget);
+      expect(inCard(1, byKey('session-cross-contamination')), findsNothing);
+    });
+
+    testWidgets('el estado, si no está confirmada', (tester) async {
+      await openToday(
+        tester,
+        sessions: [session(status: SessionStatus.held)],
+      );
+      expect(
+        textOf(tester, 'today-session-${sessionId(1)}-status'),
+        'In attesa di conferma',
+      );
+    });
+
+    testWidgets('«Come arrivare» abre Google Maps (Apple Maps en el iPhone) y WhatsApp, el chat', (
+      tester,
+    ) async {
+      final app = await openToday(tester, sessions: [session()]);
+      await tester.tap(byKey('today-directions'));
+      await tester.pumpAndSettle();
+      expect(
+        app.launcher.launched.single.toString(),
+        'https://www.google.com/maps/dir/?api=1&destination='
+        '${Uri.encodeComponent('Via Gombito 12, 24129 Bergamo')}',
+      );
+
+      await tester.tap(byKey('today-whatsapp'));
+      await tester.pumpAndSettle();
+      final whatsApp = app.launcher.launched.last;
+      expect(whatsApp.toString(), startsWith('https://wa.me/393331234567?text='));
+      final text = whatsApp.queryParameters['text']!;
+      expect(text, contains('Giulia'));
+      expect(text, isNot(contains('Gombito')), reason: 'nunca la dirección');
+    });
+
+    testWidgets('en el iPhone, Apple Maps', (tester) async {
+      final app = await openToday(
+        tester,
+        sessions: [session()],
+        appleMaps: true,
+      );
+      await tester.tap(byKey('today-directions'));
+      await tester.pumpAndSettle();
+      expect(
+        app.launcher.launched.single.toString(),
+        startsWith('https://maps.apple.com/?daddr='),
+      );
+    });
+
+    testWidgets('si no se puede abrir el enlace, lo avisa', (tester) async {
+      final app = await openToday(tester, sessions: [session()]);
+      app.launcher.result = false;
+      await tester.tap(byKey('today-directions'));
+      await tester.pumpAndSettle();
+      expect(find.text('Impossibile aprire il link.'), findsOneWidget);
+    });
+
+    testWidgets('sin dirección: WhatsApp es el principal y «Aggiungi indirizzo» la guarda; después, «Come arrivare»', (
+      tester,
+    ) async {
+      final app = await openToday(
+        tester,
+        sessions: [session(address: null)],
+      );
+      expect(byKey('today-directions'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(FilledButton),
+          matching: find.text('WhatsApp'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(byKey('today-add-address'));
+      await tester.pumpAndSettle();
+      expect(byKey('client-address-dialog'), findsOneWidget);
+      expectReadableInputs(tester);
+      await tester.enterText(byKey('client-address-field'), 'Via Pignolo 5, Bergamo');
+      await tester.pump();
+      await tester.tap(byKey('client-address-save'));
+      await tester.pumpAndSettle();
+
+      expect(app.sessions.addressUpdates.single.$2, 'Via Pignolo 5, Bergamo');
+      expect(find.text('Indirizzo salvato.'), findsOneWidget);
+      expect(byKey('today-directions'), findsOneWidget);
+      expect(byKey('today-add-address'), findsNothing);
+    });
+
+    testWidgets('tocar la tarjeta abre la ficha; volver lleva a Hoy', (
+      tester,
+    ) async {
+      await openToday(tester, sessions: [session()]);
+      await tester.tap(card(1));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      expect(byKey('chef-nav-bar').hitTestable(), findsNothing);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+      expect(navBar(tester).selectedIndex, 0);
+    });
+
+    testWidgets('con el lector de pantalla, la cabecera de la tarjeta es un botón que abre la ficha y las alergias se leen aparte', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await openToday(
+        tester,
+        sessions: [
+          session(restrictions: const RequestRestrictions(note: 'Celiachia, noci')),
+        ],
+      );
+      final header = byKey('today-session-${sessionId(1)}-header');
+      expect(
+        tester.getSemantics(header),
+        isSemantics(isButton: true, hasTapAction: true),
+      );
+      expect(
+        plainSpaces(tester.getSemantics(header).getSemanticsData().label),
+        'Giulia Rossi, Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00, 4 persone',
+      );
+      expect(find.semantics.byLabel(RegExp('Celiachia, noci')), findsOneWidget);
+
+      tester.semantics.tap(find.semantics.byLabel(RegExp(r'^Giulia Rossi, ')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      semantics.dispose();
+    });
+  });
+
+  group('qué sesión se muestra', () {
+    testWidgets('sin sesión hoy, lo dice y muestra la próxima con su día', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        sessions: [
+          session(n: 3, date: today.addDays(8)),
+          session(n: 2, date: today.addDays(2), name: 'Marco Bianchi'),
+        ],
+      );
+      expect(textOf(tester, 'today-none-today'), 'Oggi non hai sessioni.');
+      expect(
+        textOf(tester, 'today-next-title'),
+        'Prossima sessione · giovedì 19 novembre',
+      );
+      expect(card(2), findsOneWidget);
+      expect(card(3), findsNothing);
+      expect(byKey('today-directions'), findsOneWidget);
+    });
+
+    testWidgets('varias hoy: todas, la próxima primero; los botones de abajo son de esa', (
+      tester,
+    ) async {
+      final app = await openToday(
+        tester,
+        // 14:00 en Roma: la de las 10:00 terminó a las 13:00.
+        clock: () => DateTime.utc(2026, 11, 17, 13),
+        sessions: [
+          session(),
+          session(
+            n: 2,
+            hour: 16,
+            name: 'Marco Bianchi',
+            phone: '+39 345 000 1111',
+            address: 'Via Pignolo 5, Bergamo',
+          ),
+        ],
+      );
+      expect(card(1), findsOneWidget);
+      expect(card(2), findsOneWidget);
+      expect(
+        tester.getTopLeft(card(2)).dy,
+        lessThan(tester.getTopLeft(card(1)).dy),
+      );
+      expect(
+        textOf(tester, 'today-actions-for'),
+        'Marco Bianchi · arrivo alle 16:00',
+      );
+
+      await tester.tap(byKey('today-directions'));
+      await tester.pumpAndSettle();
+      expect(
+        app.launcher.launched.single.toString(),
+        contains(Uri.encodeComponent('Via Pignolo 5, Bergamo')),
+      );
+      await tester.tap(byKey('today-whatsapp'));
+      await tester.pumpAndSettle();
+      expect(
+        app.launcher.launched.last.toString(),
+        startsWith('https://wa.me/393450001111?text='),
+      );
+    });
+
+    testWidgets('con una sola sesión, los botones no repiten de quién son', (
+      tester,
+    ) async {
+      await openToday(tester, sessions: [session()]);
+      expect(byKey('today-actions'), findsOneWidget);
+      expect(byKey('today-actions-for'), findsNothing);
+    });
+
+    testWidgets('las canceladas no se muestran', (tester) async {
+      await openToday(
+        tester,
+        sessions: [
+          session(status: SessionStatus.cancelled),
+          session(n: 2, date: today.addDays(1)),
+        ],
+      );
+      expect(card(1), findsNothing);
+      expect(byKey('today-none-today'), findsOneWidget);
+      expect(card(2), findsOneWidget);
+    });
+
+    testWidgets('sin ninguna sesión: lo dice, sin botones abajo, y propone ver las solicitudes', (
+      tester,
+    ) async {
+      await openToday(tester);
+      expect(
+        textOf(tester, 'today-empty'),
+        'Nessuna sessione in programma',
+      );
+      expect(byKey('today-actions'), findsNothing);
+      await tester.tap(byKey('today-empty-action'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InboxScreen), findsOneWidget);
+      expect(navBar(tester).selectedIndex, 1);
+    });
+  });
+
+  group('pendientes', () {
+    FakeChefRequestsRepository requests() => FakeChefRequestsRepository([
+      buildRequest(id: 'nuovo-1', name: 'Marco Bianchi'),
+      buildRequest(
+        id: 'nuovo-2',
+        name: 'Anna Verdi',
+        createdAt: DateTime.utc(2026, 11, 16, 9),
+      ),
+      buildRequest(
+        id: 'visto',
+        name: 'Luca Neri',
+        seenAt: DateTime.utc(2026, 11, 16, 10),
+      ),
+    ]);
+
+    testWidgets('pedidos nuevos: cuántos, y un toque lleva a Richieste en «Nuove» aunque antes se haya elegido otra pestaña', (
+      tester,
+    ) async {
+      await openToday(tester, requests: requests());
+      await reveal(tester, byKey('today-new-requests'));
+      expect(
+        find.descendant(
+          of: byKey('today-new-requests'),
+          matching: find.text('2 richieste nuove'),
+        ),
+        findsOneWidget,
+      );
+
+      // En la bandeja se elige «Viste» y se vuelve a Hoy.
+      await tester.tap(
+        find.descendant(of: byKey('chef-nav-bar'), matching: find.text('Richieste')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('inbox-tab-seen'));
+      await tester.pumpAndSettle();
+      expect(byKey('inbox-list-seen').hitTestable(), findsOneWidget);
+      await tester.tap(
+        find.descendant(of: byKey('chef-nav-bar'), matching: find.text('Oggi')),
+      );
+      await tester.pumpAndSettle();
+
+      await reveal(tester, byKey('today-new-requests'));
+      await tester.tap(byKey('today-new-requests'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InboxScreen), findsOneWidget);
+      expect(navBar(tester).selectedIndex, 1);
+      expect(byKey('inbox-list-fresh').hitTestable(), findsOneWidget);
+      expect(byKey('request-nuovo-1').hitTestable(), findsOneWidget);
+      expect(byKey('request-visto').hitTestable(), findsNothing);
+    });
+
+    testWidgets('sin nada pendiente, lo dice', (tester) async {
+      await openToday(tester, sessions: [session(n: 1, date: today.addDays(10))]);
+      await reveal(tester, byKey('today-pending-empty'));
+      expect(textOf(tester, 'today-pending-empty'), 'Niente in sospeso.');
+      expect(byKey('today-new-requests'), findsNothing);
+    });
+
+    testWidgets('reservas que terminan: un toque abre la ficha de su última semana', (
+      tester,
+    ) async {
+      // 28/10, 4/11, 11/11 y 18/11: la última es mañana.
+      await openToday(
+        tester,
+        sessions: buildBooking(first: CalendarDate(2026, 10, 28)),
+      );
+      final item = byKey('today-ending-$bookingRequestId');
+      await reveal(tester, item);
+      expect(
+        find.descendant(
+          of: item,
+          matching: find.text('Finisce la prenotazione di Giulia Rossi'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: item,
+          matching: findPlainText('Ultima sessione: mer 18 nov'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(item);
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      expect(
+        tester.widget<Text>(byKey('session-date')).data,
+        'mercoledì 18 novembre 2026',
+      );
+      expect(tester.widget<Text>(byKey('session-week')).data, 'Settimana 4 di 4');
+    });
+
+    testWidgets('si la bandeja no se pudo leer, lo dice con «Riprova»', (
+      tester,
+    ) async {
+      final repository = requests()..failFetch = true;
+      await openToday(tester, requests: repository);
+      await reveal(tester, byKey('today-requests-error'));
+      expect(byKey('today-new-requests'), findsNothing);
+
+      repository.failFetch = false;
+      await tester.tap(byKey('today-requests-retry'));
+      await tester.pumpAndSettle();
+      await reveal(tester, byKey('today-new-requests'));
+      expect(byKey('today-requests-error'), findsNothing);
+    });
+  });
+
+  group('la tira de 7 días', () {
+    testWidgets('hoy y los 6 siguientes, con sesiones, bloqueos y feriados; un toque abre la Agenda en ese día', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      // Lunes 7/12/2026: el martes 8 es la Immacolata; el miércoles 9, bloqueado.
+      await openToday(
+        tester,
+        clock: () => DateTime.utc(2026, 12, 7, 7),
+        availability: FakeAvailabilityRepository(
+          blocked: [
+            BlockedDay(id: 'block-1', date: CalendarDate(2026, 12, 9)),
+          ],
+        ),
+        sessions: [session(date: CalendarDate(2026, 12, 10))],
+      );
+      await reveal(tester, byKey('today-strip'));
+
+      for (var day = 7; day <= 13; day++) {
+        final iso = CalendarDate(2026, 12, day).toIso();
+        expect(byKey('today-strip-$iso'), findsOneWidget, reason: iso);
+      }
+      expect(byKey('today-strip-2026-12-14'), findsNothing);
+      expect(byKey('today-strip-2026-12-08-holiday'), findsOneWidget);
+      expect(byKey('today-strip-2026-12-10-sessions'), findsOneWidget);
+      expect(byKey('today-strip-2026-12-11-sessions'), findsNothing);
+      final blocked = tester.widget<Text>(
+        find.descendant(
+          of: byKey('today-strip-2026-12-09'),
+          matching: find.text('9'),
+        ),
+      );
+      expect(blocked.style?.decoration, TextDecoration.lineThrough);
+      expect(
+        find.bySemanticsLabel(
+          RegExp(r'^martedì 8 dicembre 2026.*Festività: Immacolata Concezione'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(RegExp(r'^mercoledì 9 dicembre 2026.*bloccato')),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(RegExp(r'^giovedì 10 dicembre 2026, 1 sessione')),
+        findsOneWidget,
+      );
+      for (var day = 7; day <= 13; day++) {
+        final iso = CalendarDate(2026, 12, day).toIso();
+        final size = tester.getSize(byKey('today-strip-$iso'));
+        expect(size.height, greaterThanOrEqualTo(48), reason: iso);
+        expect(size.width, greaterThanOrEqualTo(48), reason: iso);
+      }
+      semantics.dispose();
+
+      await tester.tap(byKey('today-strip-2026-12-10'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(navBar(tester).selectedIndex, 2);
+      expect(find.text('giovedì 10 dicembre 2026'), findsOneWidget);
+      expect(find.byKey(const ValueKey('agenda-title')), findsOneWidget);
+      expect(
+        tester.widget<Text>(byKey('agenda-title')).data,
+        'dicembre 2026',
+      );
+    });
+  });
+
+  group('carga, error y actualizar', () {
+    testWidgets('mientras cargan las sesiones, la rueda; después, la sesión', (
+      tester,
+    ) async {
+      final repository = FakeSessionsRepository([session()])
+        ..pendingFetch = Completer<void>();
+      await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        sessions: repository,
+        clock: () => morning,
+        settle: false,
+      );
+      for (var i = 0; i < 10 && find.byType(TodayScreen).evaluate().isEmpty; i++) {
+        await tester.pump();
+      }
+      await tester.pump();
+      expect(byKey('today-loading'), findsOneWidget);
+      expect(byKey('today-actions'), findsNothing);
+
+      repository.pendingFetch!.complete();
+      await tester.pumpAndSettle();
+      expect(byKey('today-loading'), findsNothing);
+      expect(card(1), findsOneWidget);
+    });
+
+    testWidgets('si no se pudieron leer las sesiones, el error con «Riprova»', (
+      tester,
+    ) async {
+      final repository = FakeSessionsRepository([session()])
+        ..fetchFailure = const SessionFailure(SessionFailureKind.unavailable);
+      await openToday(tester, repository: repository);
+      expect(
+        find.text(
+          'Impossibile caricare le sessioni. Controlla la connessione e riprova.',
+        ),
+        findsOneWidget,
+      );
+      expect(byKey('today-actions'), findsNothing);
+
+      repository.fetchFailure = null;
+      await tester.tap(byKey('load-error-retry'));
+      await tester.pumpAndSettle();
+      expect(card(1), findsOneWidget);
+    });
+
+    testWidgets('deslizar para actualizar trae lo nuevo; si falla, lo avisa y queda lo que había', (
+      tester,
+    ) async {
+      final app = await openToday(tester);
+      expect(byKey('today-empty'), findsOneWidget);
+      final fetches = app.sessions.fetchCalls;
+      final requestFetches = app.requests.fetchCalls;
+      final availabilityFetches = app.availability.fetchCalls;
+
+      app.sessions.sessions[sessionId(1)] = session();
+      await tester.fling(byKey('today'), const Offset(0, 400), 1000);
+      await tester.pumpAndSettle();
+      expect(card(1), findsOneWidget);
+      expect(app.sessions.fetchCalls, fetches + 1);
+      expect(app.requests.fetchCalls, requestFetches + 1);
+      expect(app.availability.fetchCalls, availabilityFetches + 1);
+
+      app.sessions.fetchFailure = const SessionFailure(
+        SessionFailureKind.unavailable,
+      );
+      await tester.fling(byKey('today'), const Offset(0, 400), 1000);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Aggiornamento non riuscito. Controlla la connessione.'),
+        findsOneWidget,
+      );
+      expect(card(1), findsOneWidget);
+    });
+  });
+
+  group('sin reabrir la app', () {
+    testWidgets('a la medianoche de Roma pasa al día nuevo, también la tira', (
+      tester,
+    ) async {
+      // 23:59:30 del martes 17/11 en Roma.
+      var now = DateTime.utc(2026, 11, 17, 22, 59, 30);
+      await openToday(
+        tester,
+        clock: () => now,
+        sessions: [session(date: CalendarDate(2026, 11, 18))],
+      );
+      expect(textOf(tester, 'today-date'), 'martedì 17 novembre');
+      expect(byKey('today-next-title'), findsOneWidget);
+      expect(card(1), findsOneWidget);
+
+      now = now.add(const Duration(seconds: 30));
+      await tester.pump(const Duration(seconds: 30));
+      await tester.pumpAndSettle();
+
+      expect(textOf(tester, 'today-date'), 'mercoledì 18 novembre');
+      expect(byKey('today-next-title'), findsNothing);
+      expect(byKey('today-none-today'), findsNothing);
+      expect(card(1), findsOneWidget);
+      await reveal(tester, byKey('today-strip'));
+      expect(byKey('today-strip-2026-11-17'), findsNothing);
+      expect(byKey('today-strip-2026-11-18'), findsOneWidget);
+      expect(byKey('today-strip-2026-11-24'), findsOneWidget);
+    });
+
+    testWidgets('a las 23:30 UTC de invierno ya es el día siguiente en Roma', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        clock: () => DateTime.utc(2026, 11, 17, 23, 30),
+        sessions: [
+          session(hour: 20),
+          session(n: 2, date: CalendarDate(2026, 11, 18)),
+        ],
+      );
+      expect(textOf(tester, 'today-date'), 'mercoledì 18 novembre');
+      expect(card(2), findsOneWidget);
+      expect(card(1), findsNothing);
+      expect(byKey('today-none-today'), findsNothing);
+    });
+  });
+
+  group('teléfono', () {
+    for (final size in const [Size(375, 667), Size(400, 900)]) {
+      testWidgets(
+        'a ${size.width.toInt()}×${size.height.toInt()}, «Come arrivare» y WhatsApp abajo, en el tercio inferior, con 48 dp',
+        (tester) async {
+          await openToday(
+            tester,
+            size: size,
+            sessions: [
+              session(
+                clientAllergens: const [Allergen.gluten, Allergen.milk],
+                restrictions: const RequestRestrictions(
+                  note: 'Niente funghi, il bambino è celiaco',
+                ),
+              ),
+            ],
+          );
+          final bar = tester.getRect(byKey('chef-nav-bar'));
+          for (final key in ['today-directions', 'today-whatsapp']) {
+            final rect = tester.getRect(byKey(key));
+            expect(rect.center.dy, greaterThan(size.height * 2 / 3), reason: key);
+            expect(rect.bottom, lessThanOrEqualTo(bar.top), reason: key);
+            expect(rect.height, greaterThanOrEqualTo(48), reason: key);
+          }
+        },
+      );
+    }
+
+    for (final locale in const [Locale('it'), Locale('es'), Locale('en')]) {
+      testWidgets('a 375×667 sin desbordes (${locale.languageCode})', (
+        tester,
+      ) async {
+        await openToday(
+          tester,
+          size: const Size(375, 667),
+          locale: locale,
+          requests: FakeChefRequestsRepository([
+            buildRequest(id: 'nuovo-1'),
+            buildRequest(id: 'nuovo-2'),
+          ]),
+          availability: FakeAvailabilityRepository(
+            blocked: [BlockedDay(id: 'block-1', date: today.addDays(3))],
+          ),
+          sessions: [
+            ...buildBooking(
+              first: CalendarDate(2026, 10, 27),
+              clientAllergens: const [Allergen.gluten, Allergen.milk],
+              restrictions: const RequestRestrictions(
+                diets: [Diet.vegetarian],
+                note: 'Niente funghi, il bambino è celiaco, e niente frutta a guscio',
+              ),
+            ),
+          ],
+        );
+        expect(tester.takeException(), isNull);
+        for (final key in ['today-directions', 'today-whatsapp']) {
+          expect(tester.getSize(byKey(key)).height, greaterThanOrEqualTo(48));
+        }
+        await reveal(tester, byKey('today-strip'));
+        expect(tester.takeException(), isNull);
+        for (final key in ['today-new-requests', 'today-ending-$bookingRequestId']) {
+          expect(
+            tester.getSize(byKey(key)).height,
+            greaterThanOrEqualTo(48),
+            reason: key,
+          );
+        }
+        await tester.drag(byKey('today'), const Offset(0, -2000));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets(
+        'a 375×667 sin dirección: los botones de 48 dp y el diálogo sin desbordes (${locale.languageCode})',
+        (tester) async {
+          await openToday(
+            tester,
+            size: const Size(375, 667),
+            locale: locale,
+            sessions: [
+              session(address: null, restrictions: webRestrictions),
+              session(n: 2, hour: 15, address: null, name: 'Marco Bianchi'),
+            ],
+          );
+          for (final key in ['today-whatsapp', 'today-add-address']) {
+            final rect = tester.getRect(byKey(key));
+            expect(rect.height, greaterThanOrEqualTo(48), reason: key);
+            expect(rect.center.dy, greaterThan(667 * 2 / 3), reason: key);
+          }
+          expect(tester.takeException(), isNull);
+          await tester.tap(byKey('today-add-address'));
+          await tester.pumpAndSettle();
+          expectReadableInputs(tester);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  });
+}

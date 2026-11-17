@@ -45,6 +45,7 @@ void main() {
     final app = await pumpChefApp(
       tester,
       requests: FakeChefRequestsRepository([buildRequest()]),
+      location: '/richieste',
     );
     expect(find.byKey(banner), findsNothing);
 
@@ -461,7 +462,7 @@ void main() {
     void expectAgendaWithBar(WidgetTester tester) {
       expect(find.byType(AgendaScreen), findsOneWidget);
       expect(navBar.hitTestable(), findsOneWidget);
-      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 2);
     }
 
     // Sobre la ficha el aviso no sale: tiene su propio ScaffoldMessenger (el
@@ -581,6 +582,7 @@ void main() {
     final app = await pumpChefApp(
       tester,
       requests: FakeChefRequestsRepository([buildRequest()]),
+      location: '/richieste',
     );
     app.requests.insertFromRealtime(arrived);
     await tester.pumpAndSettle();

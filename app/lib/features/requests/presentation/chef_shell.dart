@@ -1,6 +1,7 @@
-// Estructura del área de la cocinera: Richieste, Agenda y Altro (platos,
-// impostazioni y salir), con barra de navegación abajo (teléfono) o riel a la
-// izquierda (pantallas anchas, como la web /gestione/ en una computadora).
+// Estructura del área de la cocinera: Oggi (el inicio), Richieste, Agenda y
+// Altro (platos, impostazioni y salir), con barra de navegación abajo
+// (teléfono) o riel a la izquierda (pantallas anchas, como la web /gestione/
+// en una computadora). Los destinos van en el orden de las ramas del router.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -52,6 +53,11 @@ class ChefShell extends ConsumerWidget {
               labelType: NavigationRailLabelType.all,
               destinations: [
                 NavigationRailDestination(
+                  icon: const Icon(Icons.today_outlined),
+                  selectedIcon: const Icon(Icons.today),
+                  label: Text(l10n.navToday),
+                ),
+                NavigationRailDestination(
                   icon: requestsIcon,
                   selectedIcon: requestsSelectedIcon,
                   label: Text(l10n.navRequests, semanticsLabel: requestsLabel),
@@ -81,6 +87,11 @@ class ChefShell extends ConsumerWidget {
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: _goToBranch,
         destinations: [
+          NavigationDestination(
+            icon: const Icon(Icons.today_outlined),
+            selectedIcon: const Icon(Icons.today),
+            label: l10n.navToday,
+          ),
           NavigationDestination(
             icon: requestsIcon,
             selectedIcon: requestsSelectedIcon,

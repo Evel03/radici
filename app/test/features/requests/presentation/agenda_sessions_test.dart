@@ -417,7 +417,7 @@ void main() {
     (tester) async {
       final app = await openAgenda(tester);
       final navBar = byKey('chef-nav-bar');
-      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 2);
       await selectDay(tester, '2026-10-21');
       await tester.tap(byKey('session-${sessionId(1)}'));
       await tester.pumpAndSettle();
@@ -448,13 +448,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(AgendaScreen), findsOneWidget);
       expect(navBar.hitTestable(), findsOneWidget);
-      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 2);
       expect(
         find.descendant(
           of: navBar,
           matching: find.byType(NavigationDestination),
         ),
-        findsNWidgets(3),
+        findsNWidgets(4),
       );
     },
   );

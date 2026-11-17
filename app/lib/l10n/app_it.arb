@@ -323,6 +323,10 @@
     "description": "Explicación del área de clientes en preparación."
   },
 
+  "navToday": "Oggi",
+  "@navToday": {
+    "description": "Pestaña Hoy, el inicio de la cocinera: la sesión de hoy (o la próxima), los pendientes y los próximos 7 días."
+  },
   "navRequests": "Richieste",
   "@navRequests": {
     "description": "Pestaña de la bandeja de pedidos."
@@ -341,6 +345,83 @@
   "navMore": "Altro",
   "@navMore": {
     "description": "Pestaña «Más» de la cocinera: platos, impostazioni y salir. En el teléfono reemplaza al menú de la cuenta."
+  },
+
+  "todayLoadError": "Impossibile caricare le sessioni. Controlla la connessione e riprova.",
+  "@todayLoadError": {
+    "description": "Hoy: no se pudieron leer las sesiones (con el botón «Riprova»)."
+  },
+  "todayNoSessionToday": "Oggi non hai sessioni.",
+  "@todayNoSessionToday": {
+    "description": "Hoy: hoy no hay ninguna sesión (abajo va la próxima)."
+  },
+  "todayNextSession": "Prossima sessione · {date}",
+  "@todayNextSession": {
+    "description": "Hoy: título de la próxima sesión cuando hoy no hay ninguna.",
+    "placeholders": {
+      "date": { "type": "String", "example": "giovedì 19 novembre" }
+    }
+  },
+  "todayEmptyTitle": "Nessuna sessione in programma",
+  "@todayEmptyTitle": {
+    "description": "Hoy: no hay ninguna sesión desde hoy."
+  },
+  "todayEmptyBody": "Quando confermi una prenotazione da una richiesta, la trovi qui.",
+  "@todayEmptyBody": {
+    "description": "Hoy, sin sesiones: de dónde salen (se confirma una reserva desde un pedido)."
+  },
+  "todayEmptyAction": "Vedi le richieste",
+  "@todayEmptyAction": {
+    "description": "Hoy, sin sesiones: botón que lleva a la bandeja de pedidos."
+  },
+  "todayActionsFor": "{name} · arrivo alle {time}",
+  "@todayActionsFor": {
+    "description": "Hoy, con varias sesiones: de quién son los botones de abajo («Come arrivare» y WhatsApp).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" },
+      "time": { "type": "String", "example": "16:00" }
+    }
+  },
+  "todayPendingTitle": "Da fare",
+  "@todayPendingTitle": {
+    "description": "Hoy: título de los pendientes (pedidos nuevos, reservas que terminan)."
+  },
+  "todayPendingNone": "Niente in sospeso.",
+  "@todayPendingNone": {
+    "description": "Hoy: no hay pendientes."
+  },
+  "todayNewRequests": "{count, plural, =1{1 richiesta nuova} other{{count} richieste nuove}}",
+  "@todayNewRequests": {
+    "description": "Hoy: pendiente con los pedidos nuevos (sin abrir); lleva a la bandeja, pestaña «Nuove».",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "todayRequestsError": "Impossibile caricare le richieste.",
+  "@todayRequestsError": {
+    "description": "Hoy: no se pudieron leer los pedidos (con el botón «Riprova»)."
+  },
+  "todayBookingEnding": "Finisce la prenotazione di {name}",
+  "@todayBookingEnding": {
+    "description": "Hoy: pendiente de una reserva cuya última sesión cae en los próximos 7 días; abre la ficha de esa sesión.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "todayBookingLastSession": "Ultima sessione: {date}",
+  "@todayBookingLastSession": {
+    "description": "Hoy: debajo de la reserva que termina, el día de su última sesión.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 18 nov" }
+    }
+  },
+  "todayStripTitle": "Prossimi 7 giorni",
+  "@todayStripTitle": {
+    "description": "Hoy: título de la tira con hoy y los 6 días siguientes."
+  },
+  "todayStripHint": "Tocca un giorno per aprirlo in agenda.",
+  "@todayStripHint": {
+    "description": "Hoy: ayuda debajo del título de la tira de 7 días."
   },
   "moreRecipesSubtitle": "Allergeni, stagione e ingredienti",
   "@moreRecipesSubtitle": {

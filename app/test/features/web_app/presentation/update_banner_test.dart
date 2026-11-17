@@ -41,6 +41,7 @@ void main() {
     size: size,
     clock: () => now,
     overrides: web(buildId: buildId),
+    location: '/richieste',
   );
 
   /// Como cuando Evelyn vuelve a la app desde otra (la web pasa por hidden).

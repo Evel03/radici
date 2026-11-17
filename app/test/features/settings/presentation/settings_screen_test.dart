@@ -17,6 +17,7 @@ import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/settings/data/language_cache.dart';
 import 'package:radici/features/settings/presentation/settings_screen.dart';
+import 'package:radici/features/today/presentation/today_screen.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
@@ -45,9 +46,9 @@ void main() {
     overrides: [languageCacheProvider.overrideWithValue(cache)],
   );
 
-  /// En el teléfono, Impostazioni está en la pestaña «Altro» (la tercera).
+  /// En el teléfono, Impostazioni está en la pestaña «Altro» (la cuarta).
   Future<void> openSettings(WidgetTester tester) async {
-    await tester.tap(find.byType(NavigationDestination).at(2));
+    await tester.tap(find.byType(NavigationDestination).at(3));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('more-settings')));
     await tester.pumpAndSettle();
@@ -59,7 +60,8 @@ void main() {
   testWidgets('perfil en español: la interfaz sale en español aunque el '
       'dispositivo esté en italiano', (tester) async {
     await openApp(tester);
-    expect(find.byType(InboxScreen), findsOneWidget);
+    expect(find.byType(TodayScreen), findsOneWidget);
+    expect(find.text('Hoy'), findsWidgets);
     expect(find.text('Solicitudes'), findsWidgets);
     expect(find.text('Richieste'), findsNothing);
     expect(cache.read(), (userId: chefUser.id, language: AppLanguage.es));
@@ -100,7 +102,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(MoreScreen), findsOneWidget);
       expect(find.text('Altro'), findsWidgets);
-      await tester.tap(find.byType(NavigationDestination).first);
+      await tester.tap(find.byType(NavigationDestination).at(1));
       await tester.pumpAndSettle();
       expect(find.byType(InboxScreen), findsOneWidget);
       expect(find.text('Richieste'), findsWidgets);
@@ -141,7 +143,7 @@ void main() {
     expect(cache.read(), isNull);
   });
 
-  testWidgets('enlace directo a Impostazioni: la cruz lleva a la bandeja', (
+  testWidgets('enlace directo a Impostazioni: la cruz lleva a Hoy, el inicio', (
     tester,
   ) async {
     await openApp(tester, location: '/impostazioni');
@@ -149,7 +151,7 @@ void main() {
     expect(find.byType(BackButton), findsNothing);
     await tester.tap(find.byKey(const ValueKey('settings-close')));
     await tester.pumpAndSettle();
-    expect(find.byType(InboxScreen), findsOneWidget);
+    expect(find.byType(TodayScreen), findsOneWidget);
   });
 
   testWidgets('arranque en frío: con el idioma guardado la app arranca ya en '
@@ -191,7 +193,7 @@ void main() {
     // El perfil lo confirma: sigue en italiano.
     accounts.pendingFetch!.complete();
     await tester.pumpAndSettle();
-    expect(find.byType(InboxScreen), findsOneWidget);
+    expect(find.byType(TodayScreen), findsOneWidget);
     expect(find.text('Richieste'), findsWidgets);
   });
 

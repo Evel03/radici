@@ -44,6 +44,7 @@ void main() {
           ]),
           size: const Size(375, 667),
           deviceLocales: [locale],
+          location: '/richieste',
         );
         final tab = find.byKey(const ValueKey('inbox-tab-bookings'));
         await tester.ensureVisible(tab);

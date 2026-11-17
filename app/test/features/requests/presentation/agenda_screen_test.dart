@@ -222,7 +222,7 @@ void main() {
       size: const Size(400, 2000),
     );
     final navBar = find.byKey(const ValueKey('chef-nav-bar'));
-    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 2);
     await tester.tap(tile('no-date'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('action-confirm-booking')));
@@ -240,10 +240,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AgendaScreen), findsOneWidget);
     expect(navBar.hitTestable(), findsOneWidget);
-    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 2);
     expect(
       find.descendant(of: navBar, matching: find.byType(NavigationDestination)),
-      findsNWidgets(3),
+      findsNWidgets(4),
     );
   });
 

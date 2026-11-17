@@ -1,14 +1,15 @@
-// Pestaña «Altro» (Más) de la cocinera: en el teléfono es el tercer destino
-// de la barra y reemplaza al menú de la cuenta de arriba; en pantallas anchas
-// va en el riel. Tiene Piatti, Impostazioni (idioma) y Esci.
+// Pestaña «Altro» (Más) de la cocinera: en el teléfono es el cuarto destino
+// de la barra (después de Oggi, Richieste y Agenda) y reemplaza al menú de la
+// cuenta de arriba; en pantallas anchas va en el riel. Tiene Piatti,
+// Impostazioni (idioma) y Esci.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/more/presentation/more_screen.dart';
 import 'package:radici/features/recipes/presentation/recipes_screen.dart';
 import 'package:radici/features/requests/presentation/agenda_screen.dart';
-import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/settings/presentation/settings_screen.dart';
+import 'package:radici/features/today/presentation/today_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
@@ -39,15 +40,15 @@ void main() {
   }
 
   group('teléfono', () {
-    testWidgets('tres destinos en la barra y sin menú de la cuenta arriba', (tester) async {
+    testWidgets('cuatro destinos en la barra y sin menú de la cuenta arriba', (tester) async {
       await openApp(tester);
       final bar = tester.widget<NavigationBar>(byKey('chef-nav-bar'));
-      expect(bar.destinations, hasLength(3));
+      expect(bar.destinations, hasLength(4));
       expect(
         find.descendant(of: byKey('chef-nav-bar'), matching: find.text('Altro')),
         findsOneWidget,
       );
-      expect(find.byType(InboxScreen), findsOneWidget);
+      expect(find.byType(TodayScreen), findsOneWidget);
       expect(byKey('account-menu'), findsNothing);
 
       await tester.tap(find.descendant(of: byKey('chef-nav-bar'), matching: find.text('Agenda')));
@@ -81,7 +82,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(RecipesScreen), findsOneWidget);
       // La barra sigue a la vista, con «Altro» elegido.
-      expect(tester.widget<NavigationBar>(byKey('chef-nav-bar')).selectedIndex, 2);
+      expect(tester.widget<NavigationBar>(byKey('chef-nav-bar')).selectedIndex, 3);
 
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
@@ -148,7 +149,7 @@ void main() {
     testWidgets('«Altro» en el riel; arriba sigue el menú de la cuenta', (tester) async {
       await openApp(tester, size: const Size(1200, 800));
       final rail = tester.widget<NavigationRail>(byKey('chef-nav-rail'));
-      expect(rail.destinations, hasLength(3));
+      expect(rail.destinations, hasLength(4));
       expect(byKey('account-menu'), findsOneWidget);
 
       await tester.tap(find.descendant(of: byKey('chef-nav-rail'), matching: find.text('Altro')));

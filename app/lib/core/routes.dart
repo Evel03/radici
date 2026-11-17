@@ -16,6 +16,9 @@ abstract final class AppRoutes {
   /// Mientras se carga la cuenta (o si falló).
   static const String session = '/caricamento';
   static const String clientArea = '/area-clienti';
+
+  /// Hoy, el inicio de la cocinera (después del login y al abrir la app).
+  static const String today = '/oggi';
   static const String requests = '/richieste';
   static const String agenda = '/agenda';
 
@@ -71,6 +74,7 @@ abstract final class AppRoutes {
 
 /// Rutas del área de la cocinera.
 bool isChefPath(String path) =>
+    path == AppRoutes.today ||
     path == AppRoutes.requests ||
     path.startsWith('${AppRoutes.requests}/') ||
     path == AppRoutes.agenda ||
@@ -84,7 +88,8 @@ bool isChefPath(String path) =>
 /// - Sin sesión: el área de la cocinera pide login (recordando a dónde iba).
 ///   En la web no hay inicio público: `/` es el login.
 /// - Cargando la cuenta (o con error): pantalla de carga.
-/// - Cocinera: su área (o a donde iba antes del login).
+/// - Cocinera: su área, que empieza en Hoy (o a donde iba antes del login,
+///   como el pedido del botón del email).
 /// - Cualquier otro usuario: área de clientes.
 /// La calculadora (`/preventivo`) es pública siempre.
 String? resolveRedirect({
@@ -113,7 +118,7 @@ String? resolveRedirect({
       );
     case ChefSession():
       if (chefRoute) return null;
-      return from ?? AppRoutes.requests;
+      return from ?? AppRoutes.today;
     case ClientSession():
       if (path == AppRoutes.clientArea) return null;
       return AppRoutes.clientArea;
