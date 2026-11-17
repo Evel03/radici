@@ -1,11 +1,13 @@
 // Agenda con sesiones: un punto por sesión en la celda del mes (y en el texto
 // accesible), sus bloques en la tarjeta del día y en la semana con las horas
 // de la sesión («Spesa dalle · Arrivo · fino alle»), cada uno abre su ficha
-// (también con el lector de pantalla); los pedidos aceptados ya no se listan
-// por fecha preferida; bloquear un día con sesión avisa que no la cancela (y
-// el rango, si no se pudieron leer, que no se sabe); deslizar para actualizar
-// las vuelve a leer, y si falla quedan las que había. "Hoy": lunes 19/10/2026
-// (testNow). La reserva de prueba: miércoles 21/10, 28/10, 4/11 y 11/11.
+// (también con el lector de pantalla), que tapa la barra de navegación como
+// su hoja «Sposta» (al volver, la Agenda sigue elegida); los pedidos aceptados
+// ya no se listan por fecha preferida; bloquear un día con sesión avisa que no
+// la cancela (y el rango, si no se pudieron leer, que no se sabe); deslizar
+// para actualizar las vuelve a leer, y si falla quedan las que había. "Hoy":
+// lunes 19/10/2026 (testNow). La reserva de prueba: miércoles 21/10, 28/10,
+// 4/11 y 11/11.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
@@ -15,6 +17,7 @@ import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
+import 'package:radici/features/sessions/presentation/move_session_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
@@ -408,6 +411,53 @@ void main() {
     expect(byKey('sessions-load-error'), findsNothing);
     expect(byKey('agenda-day-sessions-2026-10-21'), findsOneWidget);
   });
+
+  testWidgets(
+    'la ficha y la hoja «Sposta» tapan la barra; al volver regresa a la agenda, con la barra y Agenda elegida',
+    (tester) async {
+      final app = await openAgenda(tester);
+      final navBar = byKey('chef-nav-bar');
+      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+      await selectDay(tester, '2026-10-21');
+      await tester.tap(byKey('session-${sessionId(1)}'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      expect(navBar, findsNothing, reason: 'la ficha tapa la barra');
+
+      // «Sposta»: el calendario y, con la fecha, la hoja.
+      await tester.tap(byKey('session-move'));
+      await tester.pumpAndSettle();
+      final picker = find.byType(DatePickerDialog);
+      await tester.tap(
+        find.descendant(of: picker, matching: find.text('22')).first,
+      );
+      await tester.pumpAndSettle();
+      final ok = MaterialLocalizations.of(tester.element(picker)).okButtonLabel;
+      await tester.tap(find.descendant(of: picker, matching: find.text(ok)));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsOneWidget);
+      expect(navBar, findsNothing, reason: 'la hoja tapa la barra');
+
+      await tester.tap(byKey('move-confirm'));
+      await tester.pumpAndSettle();
+      expect(app.sessions.moves.single.date, CalendarDate(2026, 10, 22));
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      expect(navBar, findsNothing, reason: 'de vuelta en la ficha, tapada');
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(navBar.hitTestable(), findsOneWidget);
+      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+      expect(
+        find.descendant(
+          of: navBar,
+          matching: find.byType(NavigationDestination),
+        ),
+        findsNWidgets(3),
+      );
+    },
+  );
 
   testWidgets(
     'una sesión movida desde su ficha aparece en su día nuevo sin volver a leer',
