@@ -337,7 +337,10 @@ class _MonthViewState extends ConsumerState<_MonthView>
           _EmptyText(l10n.agendaNoRequestsDay, key: const ValueKey('agenda-day-empty'))
         else
           for (final request in dayRequests)
-            RequestTile(request: request, showSlotOnly: true),
+            // Un nodo propio, como lo de arriba (ver _SectionTitle).
+            MergeSemantics(
+              child: RequestTile(request: request, showSlotOnly: true),
+            ),
       ],
     );
   }
@@ -586,8 +589,11 @@ class _WeekViewState extends ConsumerState<_WeekView>
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
+                    // Un nodo propio, como _SectionTitle: sin eso, la tarjeta
+                    // entera salía como encabezado.
                     child: Semantics(
                       header: true,
+                      container: true,
                       child: Text(
                         formats.longDate(day),
                         style: theme.textTheme.titleSmall,
@@ -604,7 +610,10 @@ class _WeekViewState extends ConsumerState<_WeekView>
                       child: SessionBlock(session: session),
                     ),
                   for (final request in byDate[day] ?? const <ChefRequest>[])
-                    RequestTile(request: request, showSlotOnly: true),
+                    // Un nodo propio: si no, se fundía con la tarjeta.
+                    MergeSemantics(
+                      child: RequestTile(request: request, showSlotOnly: true),
+                    ),
                 ],
               ),
             ),
@@ -637,6 +646,12 @@ class _WithoutDateList extends ConsumerWidget {
   }
 }
 
+/// Título de sección. Como en Hoy, es un nodo propio para el lector de
+/// pantalla (`container`): sin eso, el del día elegido se fundía con su
+/// tarjeta, con la grilla del mes adentro, y en /gestione/ un encabezado con
+/// hijos sale como <header> y no como encabezado. Lo que va debajo, en la
+/// misma columna, también es un nodo propio (un botón, una sesión, un pedido
+/// o un texto con MergeSemantics).
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);
 
@@ -649,6 +664,7 @@ class _SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(4, 24, 4, 8),
       child: Semantics(
         header: true,
+        container: true,
         child: Text(
           text,
           style: theme.textTheme.titleSmall?.copyWith(
@@ -670,10 +686,13 @@ class _EmptyText extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-      child: Text(
-        text,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
+      // Un nodo propio (ver _SectionTitle).
+      child: MergeSemantics(
+        child: Text(
+          text,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );

@@ -192,9 +192,14 @@ class DayAvailabilityCard extends ConsumerWidget {
         ),
     ];
 
+    // Cada línea es un nodo propio para el lector de pantalla (MergeSemantics,
+    // también en _IconLine): en la agenda van en la columna del título del día
+    // y, si no, se fundían con él o entre ellas.
     final children = <Widget>[
       if (status != null)
-        Text(status, key: ValueKey('availability-status-$iso')),
+        MergeSemantics(
+          child: Text(status, key: ValueKey('availability-status-$iso')),
+        ),
       if (holiday != null)
         _IconLine(
           icon: Icons.celebration_outlined,
@@ -308,7 +313,8 @@ class AvailabilityLoadState extends ConsumerWidget {
   }
 }
 
-/// Una línea con ícono. El ícono es decorativo salvo que traiga [iconLabel].
+/// Una línea con ícono, un nodo propio para el lector de pantalla. El ícono es
+/// decorativo salvo que traiga [iconLabel].
 class _IconLine extends StatelessWidget {
   const _IconLine({
     super.key,
@@ -327,13 +333,15 @@ class _IconLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.onSurfaceVariant;
     final glyph = Icon(icon, size: 18, color: color, semanticLabel: iconLabel);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (iconLabel == null) ExcludeSemantics(child: glyph) else glyph,
-        const SizedBox(width: 8),
-        Expanded(child: Text(text, style: style)),
-      ],
+    return MergeSemantics(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (iconLabel == null) ExcludeSemantics(child: glyph) else glyph,
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: style)),
+        ],
+      ),
     );
   }
 }

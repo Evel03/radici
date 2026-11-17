@@ -1101,5 +1101,91 @@ void main() {
         expect(find.textContaining('preferiva'), findsNothing, reason: iso);
       }
     });
+
+    group('para el lector de pantalla', () {
+      // En /gestione/ un encabezado con hijos sale como <header> (banner) y no
+      // como encabezado; un texto fundido en un nodo con hijos tampoco se lee
+      // como un texto.
+      void expectHeader(WidgetTester tester, String date) {
+        final node = tester.getSemantics(find.text(date));
+        expect(node, isSemantics(label: date, isHeader: true), reason: date);
+        expect(node.childrenCount, 0, reason: date);
+      }
+
+      /// [text] es un nodo propio, sin hijos, que no es encabezado, con [label]
+      /// (por defecto, el texto).
+      void expectOwnNode(WidgetTester tester, String text, {String? label}) {
+        final node = tester.getSemantics(find.text(text));
+        expect(node.label, label ?? text);
+        expect(node, isSemantics(isHeader: false), reason: text);
+        expect(node.childrenCount, 0, reason: text);
+      }
+
+      /// Un pedido del día: un nodo propio, sin hijos.
+      void expectRequestNode(WidgetTester tester, String name) {
+        final node = tester.getSemantics(find.text(name));
+        expect(node.label, contains(name));
+        expect(node, isSemantics(isHeader: false), reason: name);
+        expect(node.childrenCount, 0, reason: name);
+      }
+
+      FakeAvailabilityRepository fridayBlocked() => FakeAvailabilityRepository(
+        blocked: [BlockedDay(id: 'b1', date: friday, note: 'Ferie')],
+      );
+
+      testWidgets('vista mensual: el título del día elegido es un encabezado propio, sin su tarjeta adentro, y cada línea de abajo, un nodo propio', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        await openDays(tester, availability: fridayBlocked());
+
+        // Hoy, lunes 19/10: sin pedidos.
+        expectHeader(tester, 'lunedì 19 ottobre 2026');
+        expectOwnNode(tester, "Orario 09:00–15:00: il sito lo offre se c'è posto.");
+        expectOwnNode(tester, 'Niente per questo giorno: né sessioni né richieste.');
+
+        await selectDay(tester, wednesdayIso);
+        expectHeader(tester, 'mercoledì 21 ottobre 2026');
+        expectOwnNode(tester, "Orario 09:00–15:00: il sito lo offre se c'è posto.");
+        expectOwnNode(
+          tester,
+          '2 richieste preferivano questo giorno: bloccarlo non le rifiuta.',
+        );
+        expectRequestNode(tester, 'Giulia Rossi');
+        expectRequestNode(tester, 'Marco Bianchi');
+
+        await selectDay(tester, friday.toIso());
+        expectHeader(tester, 'venerdì 23 ottobre 2026');
+        expectOwnNode(tester, 'Giorno bloccato: il sito non lo offre.');
+        expectOwnNode(tester, 'Ferie', label: 'Nota (la vedi solo tu)\nFerie');
+        semantics.dispose();
+      });
+
+      testWidgets('vista semanal: el título de cada día es un encabezado propio, sin su tarjeta adentro, y cada línea de abajo, un nodo propio', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        await openDays(tester, availability: fridayBlocked());
+        await tester.tap(byKey('agenda-view-week'));
+        await tester.pumpAndSettle();
+
+        for (final date in [
+          'lunedì 19 ottobre 2026',
+          'martedì 20 ottobre 2026',
+          'mercoledì 21 ottobre 2026',
+          'giovedì 22 ottobre 2026',
+          'venerdì 23 ottobre 2026',
+          'sabato 24 ottobre 2026',
+          'domenica 25 ottobre 2026',
+        ]) {
+          expectHeader(tester, date);
+        }
+        expectRequestNode(tester, 'Giulia Rossi');
+        expectRequestNode(tester, 'Marco Bianchi');
+        expectOwnNode(tester, 'Giorno bloccato: il sito non lo offre.');
+        expectOwnNode(tester, 'Ferie', label: 'Nota (la vedi solo tu)\nFerie');
+        semantics.dispose();
+      });
+    });
   });
 }
