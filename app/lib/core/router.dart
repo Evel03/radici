@@ -241,9 +241,15 @@ const String _sessionPath = '${AppRoutes.sessions}/:id';
 /// go las sacaría sin pasar por ningún PopScope, con lo que tengan a medias:
 /// la hoja de reserva, con lo escrito o, mientras se manda, con la pantalla
 /// final y su WhatsApp; la ficha, con la hoja «Sposta» a medio mover (y el
-/// resultado del que sale «Annulla»), el aviso con «Annulla» después de
-/// mover, el diálogo de la dirección con lo escrito o una cancelación que
-/// todavía espera la respuesta (la ficha avisa cómo terminó).
+/// resultado del que sale «Annulla») o el aviso con «Annulla» después de
+/// mover.
+///
+/// Con la ficha en la pila, hoy a «Apri» solo se llega desde la hoja
+/// «Sposta» o desde un pedido o una hoja de reserva abiertos encima: sobre la
+/// ficha y sus diálogos el aviso no se ve (la ficha tiene su propio
+/// ScaffoldMessenger). Lo demás que vive en la ficha (el diálogo de la
+/// dirección con lo escrito, una cancelación que espera la respuesta) queda
+/// cubierto por si el aviso algún día sale ahí: es preventivo.
 bool bookingOrSessionInStack(GoRouter router) {
   bool inStack(List<RouteMatchBase> matches) => matches.any(
     (match) => switch (match) {

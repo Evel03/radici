@@ -1,8 +1,9 @@
 // Aviso emergente en tiempo real: "Nuova richiesta da …" con botón para
-// abrirla, desde cualquier pantalla de la cocinera. Con una hoja de reserva o
-// la ficha de una sesión (con su hoja «Sposta») abierta o tapada por otro
-// pedido, «Apri» nunca la saca, y la hoja «Sposta» que termina de mover con
-// un pedido encima no lo cierra.
+// abrirla, en las pantallas de la cocinera salvo la ficha de una sesión y el
+// editor de platos (tienen su propio ScaffoldMessenger): ahí aparece al volver.
+// Con una hoja de reserva o la ficha de una sesión (con su hoja «Sposta»)
+// abierta o tapada por otro pedido, «Apri» nunca la saca, y la hoja «Sposta»
+// que termina de mover con un pedido encima no lo cierra.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/router.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
+import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
+import 'package:radici/features/recipes/presentation/recipes_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/agenda_screen.dart';
@@ -424,6 +427,84 @@ void main() {
       expect(find.byType(RequestDetailScreen), findsOneWidget);
       expect(bookingOrSessionInStack(router), isTrue);
     });
+  });
+
+  group('desde la Agenda (el recorrido del teléfono: día, sesión, ficha)', () {
+    // La reserva de prueba empieza el miércoles 21/10 (hoy: lunes 19/10).
+    final wednesday = CalendarDate(2026, 10, 21);
+    Finder byKey(String key) => find.byKey(ValueKey(key));
+    final navBar = byKey('chef-nav-bar');
+    ChefRequest incoming(String id, String name, int hour) =>
+        buildRequest(id: id, name: name, createdAt: DateTime.utc(2026, 10, 19, hour));
+
+    /// La Agenda con el miércoles 21/10 elegido y, desde ahí, la ficha de su
+    /// sesión (la semana 1).
+    Future<ChefApp> openSessionFromAgenda(WidgetTester tester, FakeSessionsRepository sessions) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+        sessions: sessions,
+        location: '/agenda',
+        // Alto: el día y su sesión a la vista sin desplazar.
+        size: const Size(400, 2000),
+      );
+      await tester.tap(byKey('agenda-day-2026-10-21'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('session-${sessionId(1)}'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      return app;
+    }
+
+    /// La Agenda, con la barra de navegación y Agenda elegida.
+    void expectAgendaWithBar(WidgetTester tester) {
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(navBar.hitTestable(), findsOneWidget);
+      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+    }
+
+    // Sobre la ficha el aviso no sale: tiene su propio ScaffoldMessenger (el
+    // del «Annulla» después de mover). Aparece al volver (ver README).
+    testWidgets('con la ficha a la vista el aviso no sale; al volver a la Agenda está y «Apri» abre el pedido', (
+      tester,
+    ) async {
+      final app = await openSessionFromAgenda(tester, FakeSessionsRepository(buildBooking(first: wednesday)));
+      app.requests.insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13));
+      await tester.pumpAndSettle();
+      expect(find.byKey(banner), findsNothing);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expectAgendaWithBar(tester);
+      expect(bannerText(tester), 'Nuova richiesta da Marco Bianchi');
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Marco Bianchi'), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expectAgendaWithBar(tester);
+    });
+  });
+
+  // Como la ficha, el editor tiene su propio ScaffoldMessenger (ver README).
+  testWidgets('sobre el editor de platos el aviso no sale; al volver a Piatti, sí', (tester) async {
+    final app = await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([buildRequest()]),
+      location: '/altro/piatti',
+    );
+    app.go('/altro/piatti/nuovo');
+    await tester.pumpAndSettle();
+    expect(find.byType(RecipeEditorScreen), findsOneWidget);
+    app.requests.insertFromRealtime(arrived);
+    await tester.pumpAndSettle();
+    expect(find.byKey(banner), findsNothing);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(RecipesScreen), findsOneWidget);
+    expect(bannerText(tester), 'Nuova richiesta da Marco Bianchi');
   });
 
   testWidgets('al reconectar avisa lo que llegó sin conexión', (tester) async {
