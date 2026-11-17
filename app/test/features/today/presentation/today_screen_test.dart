@@ -596,6 +596,53 @@ void main() {
       expect(byKey('today-new-requests'), findsNothing);
     });
 
+    // Las reservas que terminan salen de las sesiones: sin ellas leídas, los
+    // pendientes no están completos aunque la bandeja esté vacía.
+    testWidgets('con la bandeja vacía, mientras cargan las sesiones no dice «Niente in sospeso»; al llegar, sí', (
+      tester,
+    ) async {
+      final repository = FakeSessionsRepository(const [])
+        ..pendingFetch = Completer<void>();
+      await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        sessions: repository,
+        clock: () => morning,
+        settle: false,
+      );
+      await waitForToday(tester);
+      expect(byKey('today-loading'), findsOneWidget);
+      // La bandeja ya se leyó: ni su barra ni su error.
+      expect(byKey('today-pending'), findsOneWidget);
+      expect(byKey('today-pending-loading'), findsNothing);
+      expect(byKey('today-requests-error'), findsNothing);
+      expect(byKey('today-pending-empty'), findsNothing);
+
+      repository.pendingFetch!.complete();
+      await tester.pumpAndSettle();
+      expect(byKey('today-loading'), findsNothing);
+      expect(textOf(tester, 'today-pending-empty'), 'Niente in sospeso.');
+    });
+
+    testWidgets('con la bandeja vacía y las sesiones sin leer (error), no dice «Niente in sospeso»; al leerlas con «Riprova», sí', (
+      tester,
+    ) async {
+      final repository = FakeSessionsRepository(const [])
+        ..fetchFailure = const SessionFailure(SessionFailureKind.unavailable);
+      await openToday(tester, repository: repository);
+      expect(byKey('sessions-load-error'), findsOneWidget);
+      expect(byKey('today-pending'), findsOneWidget);
+      expect(byKey('today-pending-loading'), findsNothing);
+      expect(byKey('today-requests-error'), findsNothing);
+      expect(byKey('today-pending-empty'), findsNothing);
+
+      repository.fetchFailure = null;
+      await tester.tap(byKey('sessions-retry'));
+      await tester.pumpAndSettle();
+      expect(byKey('sessions-load-error'), findsNothing);
+      expect(textOf(tester, 'today-pending-empty'), 'Niente in sospeso.');
+    });
+
     testWidgets('reservas que terminan: un toque abre la ficha de su última semana', (
       tester,
     ) async {
