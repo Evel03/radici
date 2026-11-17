@@ -72,6 +72,26 @@ void main() {
       expect(_redirect(chef, '/accedi?from=%2Fimpostazioni'), '/impostazioni');
     });
 
+    test('la pestaña «Altro» y el catálogo de platos son de su área', () {
+      for (final path in [
+        '/altro',
+        '/altro/piatti',
+        '/altro/piatti/nuovo',
+        '/altro/piatti/nuovo?copia=abc',
+        '/altro/piatti/abc',
+      ]) {
+        expect(_redirect(chef, path), isNull, reason: path);
+        expect(
+          _redirect(signedOut, path),
+          '/accedi?from=${Uri.encodeQueryComponent(path)}',
+          reason: path,
+        );
+        expect(_redirect(client, path), '/area-clienti', reason: path);
+      }
+      expect(_redirect(chef, '/accedi?from=%2Faltro%2Fpiatti'), '/altro/piatti');
+      expect(_redirect(chef, '/altrove'), '/richieste');
+    });
+
     test('desde el inicio, el login o la carga va a la bandeja (o a donde iba)', () {
       expect(_redirect(chef, '/'), '/richieste');
       expect(_redirect(chef, '/accedi'), '/richieste');
@@ -144,5 +164,14 @@ void main() {
       _redirect(signedOut, '/richieste/abc/prenota'),
       '/accedi?from=%2Frichieste%2Fabc%2Fprenota',
     );
+  });
+
+  test('rutas del catálogo de platos', () {
+    expect(AppRoutes.more, '/altro');
+    expect(AppRoutes.recipes, '/altro/piatti');
+    expect(AppRoutes.recipeNew, '/altro/piatti/nuovo');
+    expect(AppRoutes.recipeEdit('abc'), '/altro/piatti/abc');
+    expect(AppRoutes.recipeEdit('a/b'), '/altro/piatti/a%2Fb');
+    expect(AppRoutes.recipeCopy('abc'), '/altro/piatti/nuovo?copia=abc');
   });
 }

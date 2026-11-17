@@ -2,13 +2,18 @@
 // lo prellenado, lo que dice el servidor de cada semana, el campo del precio
 // con letra de 16 px (si no, iOS hace zoom) y teclado numérico, la acción
 // principal en el tercio inferior a 375×667 con el precio que se confirma (o
-// lo que lo impide) a la vista arriba del botón, el envío con todo
+// lo que lo impide) a la vista arriba del botón (también en Safari con los
+// avisos de /gestione/, que se esconden con el teclado; con las fuentes
+// reales, en confirm_booking_notices_test.dart), el envío con todo
 // deshabilitado, la confirmación sin respuesta que se reintenta con lo mismo
 // y, al confirmar, el WhatsApp en el idioma de la clienta.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/browser.dart';
+import 'package:radici/core/build_id.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
@@ -16,7 +21,9 @@ import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/web_app/data/published_build_repository.dart';
 
+import '../../../support/browser_fakes.dart';
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
 import '../../../support/request_fixtures.dart';
@@ -51,6 +58,7 @@ void main() {
     Locale locale = const Locale('it', 'IT'),
     void Function(FakeBookingsRepository bookings)? configure,
     bool open = true,
+    List<Override> overrides = const [],
   }) async {
     final requests = FakeChefRequestsRepository([request ?? weekly()]);
     final bookings = FakeBookingsRepository(requests: requests);
@@ -62,6 +70,7 @@ void main() {
       location: '/richieste/req-1',
       size: size,
       deviceLocales: [locale],
+      overrides: overrides,
     );
     if (open) {
       await tester.tap(byKey('action-confirm-booking'));
@@ -227,6 +236,67 @@ void main() {
         expect(tester.getRect(confirm).bottom, lessThanOrEqualTo(667 - 300));
         expect(summaryLine.hitTestable(), findsOneWidget);
         expectReadableInputs(tester);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  // /gestione/ en Safari del iPhone con una versión nueva publicada: arriba de
+  // todas las pantallas, el aviso de versión y la tarjeta de Safari. Le
+  // quitaban a la hoja el alto que necesita la barra con el teclado abierto
+  // (con la tarjeta sola, la barra ya bajaba detrás del teclado).
+  for (final locale in const [Locale('it', 'IT'), Locale('es', 'ES')]) {
+    testWidgets(
+      'a 375×667 en Safari con los avisos de /gestione/: con el teclado abierto se esconden y el botón, el precio que se confirma y el campo siguen a la vista (${locale.languageCode})',
+      (tester) async {
+        await openSheet(
+          tester,
+          size: const Size(375, 667),
+          locale: locale,
+          overrides: [
+            browserProvider.overrideWithValue(
+              FakeBrowser(info: iPhoneInSafari),
+            ),
+            buildIdProvider.overrideWithValue('abc1234'),
+            publishedBuildRepositoryProvider.overrideWithValue(
+              FakePublishedBuildRepository('def5678'),
+            ),
+          ],
+        );
+        expect(byKey('update-banner'), findsOneWidget);
+        expect(byKey('install-hint'), findsOneWidget);
+        final confirm = byKey('booking-confirm');
+        expect(confirm.hitTestable(), findsOneWidget);
+
+        await tester.ensureVisible(byKey('booking-price'));
+        await tester.tap(byKey('booking-price'));
+        await tester.pump();
+        tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(byKey('update-banner'), findsNothing);
+        expect(byKey('install-hint'), findsNothing);
+        expect(confirm.hitTestable(), findsOneWidget);
+        expect(tester.getRect(confirm).bottom, lessThanOrEqualTo(667 - 300));
+        expect(byKey('booking-summary').hitTestable(), findsOneWidget);
+        expect(
+          find
+              .descendant(
+                of: byKey('booking-price'),
+                matching: find.byType(EditableText),
+              )
+              .hitTestable(),
+          findsOneWidget,
+          reason: 'el campo que se escribe sigue a la vista',
+        );
+
+        // Al cerrar el teclado vuelven; la hoja sigue entera.
+        tester.view.resetViewInsets();
+        await tester.pumpAndSettle();
+        expect(byKey('update-banner'), findsOneWidget);
+        expect(byKey('install-hint'), findsOneWidget);
+        expect(confirm.hitTestable(), findsOneWidget);
+        expect(priceText(tester), '560');
         expect(tester.takeException(), isNull);
       },
     );

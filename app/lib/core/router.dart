@@ -15,7 +15,11 @@ import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/home/presentation/home_screen.dart';
+import 'package:radici/features/more/presentation/more_screen.dart';
 import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
+import 'package:radici/features/recipes/application/recipe_editor_controller.dart';
+import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
+import 'package:radici/features/recipes/presentation/recipes_screen.dart';
 import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
@@ -149,6 +153,57 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.more,
+                pageBuilder: (context, state) =>
+                    _page(state, const MoreScreen()),
+                routes: [
+                  // Dentro de la pestaña: la barra sigue a la vista.
+                  GoRoute(
+                    path: AppRoutes.recipes.substring(AppRoutes.more.length + 1),
+                    pageBuilder: (context, state) =>
+                        _page(state, const RecipesScreen()),
+                    routes: [
+                      // El editor tapa la barra de navegación. «nuovo» va
+                      // antes que «:id».
+                      GoRoute(
+                        path: AppRoutes.recipeNew.substring(
+                          AppRoutes.recipes.length + 1,
+                        ),
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) {
+                          final copyOf =
+                              state.uri.queryParameters[AppRoutes.copyParam];
+                          return _page(
+                            state,
+                            RecipeEditorScreen(
+                              target: copyOf == null
+                                  ? const RecipeEditorTarget.create()
+                                  : RecipeEditorTarget.copy(copyOf),
+                            ),
+                          );
+                        },
+                      ),
+                      GoRoute(
+                        path: ':id',
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) => _page(
+                          state,
+                          RecipeEditorScreen(
+                            target: RecipeEditorTarget.edit(
+                              state.pathParameters['id']!,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     ],
@@ -171,6 +226,24 @@ CalendarDate? _dateOrNull(String? value) {
   } on FormatException {
     return null;
   }
+}
+
+/// Hay una hoja «Conferma prenotazione» en la pila de [router], a la vista o
+/// tapada por otra pantalla (por ejemplo, un pedido abierto desde el aviso).
+/// Un go la sacaría sin pasar por su PopScope: con lo escrito o, mientras se
+/// manda, con la pantalla final y su WhatsApp.
+bool bookingSheetInStack(GoRouter router) {
+  bool inStack(List<RouteMatchBase> matches) => matches.any(
+    (match) => switch (match) {
+      ShellRouteMatch(:final matches) => inStack(matches),
+      ImperativeRouteMatch(:final matches) => inStack(matches.matches),
+      _ => switch (match.route) {
+        GoRoute(path: AppRoutes.bookingSegment) => true,
+        _ => false,
+      },
+    },
+  );
+  return inStack(router.routerDelegate.currentConfiguration.matches);
 }
 
 class _RouterRefresh extends ChangeNotifier {

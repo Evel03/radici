@@ -22,6 +22,18 @@ abstract final class AppRoutes {
   /// Impostazioni de la cocinera (idioma de la app y cuenta).
   static const String settings = '/impostazioni';
 
+  /// Pestaña «Altro» de la cocinera: platos, impostazioni y salir.
+  static const String more = '/altro';
+
+  /// Catálogo de platos, dentro de «Altro».
+  static const String recipes = '$more/piatti';
+
+  /// Editor de un plato nuevo.
+  static const String recipeNew = '$recipes/nuovo';
+
+  /// Parámetro de [recipeNew] con el id del plato que se copia (Duplica).
+  static const String copyParam = 'copia';
+
   static String requestDetail(String id) =>
       '$requests/${Uri.encodeComponent(id)}';
 
@@ -31,6 +43,11 @@ abstract final class AppRoutes {
 
   static String requestBooking(String id) =>
       '${requestDetail(id)}/$bookingSegment';
+
+  static String recipeEdit(String id) => '$recipes/${Uri.encodeComponent(id)}';
+
+  static String recipeCopy(String id) =>
+      Uri(path: recipeNew, queryParameters: {copyParam: id}).toString();
 
   /// Ficha de una sesión de cocina (a pantalla completa, sobre la agenda).
   static const String sessions = '/sessioni';
@@ -58,7 +75,9 @@ bool isChefPath(String path) =>
     path.startsWith('${AppRoutes.requests}/') ||
     path == AppRoutes.agenda ||
     path.startsWith('${AppRoutes.sessions}/') ||
-    path == AppRoutes.settings;
+    path == AppRoutes.settings ||
+    path == AppRoutes.more ||
+    path.startsWith('${AppRoutes.more}/');
 
 /// A dónde redirigir [location] según [session], o null para quedarse.
 ///

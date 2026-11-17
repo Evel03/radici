@@ -257,7 +257,7 @@ void main() {
         _failure(BookingFailureKind.invalid),
       ),
       (
-        'cuerpo que no es JSON',
+        'cuerpo que no es JSON (415)',
         415,
         {'error': 'contentType'},
         _failure(BookingFailureKind.invalid),
@@ -282,7 +282,7 @@ void main() {
         _failure(BookingFailureKind.unavailable),
       ),
       (
-        'cuerpo que no es JSON',
+        'respuesta que no es JSON (502)',
         502,
         'Bad Gateway',
         _failure(BookingFailureKind.unavailable),

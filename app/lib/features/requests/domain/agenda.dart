@@ -32,7 +32,7 @@ List<CalendarDate> weekDays(CalendarDate day) {
 int _slotRank(PreferredSlot? slot) => switch (slot) {
   PreferredSlot.morning => 0,
   PreferredSlot.afternoon => 1,
-  PreferredSlot.any || null => 2,
+  null => 2,
 };
 
 int _bySlotThenCreated(ChefRequest a, ChefRequest b) {

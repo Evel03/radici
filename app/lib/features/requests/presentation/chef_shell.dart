@@ -1,6 +1,6 @@
-// Estructura del área de la cocinera: Richieste y Agenda, con barra de
-// navegación abajo (teléfono) o riel a la izquierda (pantallas anchas, como la
-// web /gestione/ en una computadora).
+// Estructura del área de la cocinera: Richieste, Agenda y Altro (platos,
+// impostazioni y salir), con barra de navegación abajo (teléfono) o riel a la
+// izquierda (pantallas anchas, como la web /gestione/ en una computadora).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -61,6 +61,10 @@ class ChefShell extends ConsumerWidget {
                   selectedIcon: const Icon(Icons.calendar_month),
                   label: Text(l10n.navAgenda),
                 ),
+                NavigationRailDestination(
+                  icon: const Icon(Icons.more_horiz),
+                  label: Text(l10n.navMore),
+                ),
               ],
             ),
             const VerticalDivider(width: 1),
@@ -88,6 +92,10 @@ class ChefShell extends ConsumerWidget {
             selectedIcon: const Icon(Icons.calendar_month),
             label: l10n.navAgenda,
           ),
+          NavigationDestination(
+            icon: const Icon(Icons.more_horiz),
+            label: l10n.navMore,
+          ),
         ],
       ),
     );
@@ -112,12 +120,16 @@ class _CountBadge extends StatelessWidget {
   }
 }
 
-/// Menú de la cuenta en la barra superior: email, Impostazioni y "Esci".
+/// Menú de la cuenta en la barra superior: email, Impostazioni y "Esci". Solo
+/// en pantallas anchas: en el teléfono lo reemplaza la pestaña «Altro».
 class ChefAccountMenuButton extends ConsumerWidget {
   const ChefAccountMenuButton({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (MediaQuery.sizeOf(context).width < wideLayoutBreakpoint) {
+      return const SizedBox.shrink();
+    }
     final l10n = AppLocalizations.of(context);
     final session = ref.watch(sessionControllerProvider);
     final email = switch (session) {

@@ -205,6 +205,48 @@ void main() {
     expect(find.byType(AgendaScreen), findsOneWidget);
   });
 
+  testWidgets('desde la agenda, confirmar una reserva tapa la barra; al volver regresa a la agenda, con la '
+      'barra y Agenda elegida', (tester) async {
+    final app = await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([
+        buildRequest(
+          id: 'no-date',
+          name: 'Sara Gialli',
+          noDate: true,
+          weeks: 4,
+          estimate: fourWeeksEstimate,
+        ),
+      ]),
+      location: '/agenda',
+      size: const Size(400, 2000),
+    );
+    final navBar = find.byKey(const ValueKey('chef-nav-bar'));
+    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+    await tester.tap(tile('no-date'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('action-confirm-booking')));
+    await tester.pumpAndSettle();
+    expect(navBar, findsNothing, reason: 'la hoja tapa la barra');
+    await tester.tap(find.byKey(const ValueKey('booking-confirm')));
+    await tester.pumpAndSettle();
+    expect(app.bookings.confirmations, hasLength(1));
+    expect(navBar, findsNothing, reason: 'la pantalla final tapa la barra');
+
+    await tester.tap(find.byKey(const ValueKey('booking-done-close')));
+    await tester.pumpAndSettle();
+    expect(find.byType(RequestDetailScreen), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(AgendaScreen), findsOneWidget);
+    expect(navBar.hitTestable(), findsOneWidget);
+    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+    expect(
+      find.descendant(of: navBar, matching: find.byType(NavigationDestination)),
+      findsNWidgets(3),
+    );
+  });
+
   for (final locale in const [Locale('it'), Locale('es'), Locale('en')]) {
     testWidgets('teléfono angosto sin desbordes (${locale.languageCode})', (
       tester,

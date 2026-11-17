@@ -48,10 +48,11 @@ void main() {
 
   group('pedidos por fecha', () {
     final day = CalendarDate(2026, 10, 21);
+    // Sin franja: un pedido de la web, que manda "any" (se lee como null).
     final any = buildRequest(
       id: 'any',
       preferredDate: day,
-      preferredSlot: PreferredSlot.any,
+      preferredSlot: null,
     );
     final afternoon = buildRequest(
       id: 'afternoon',

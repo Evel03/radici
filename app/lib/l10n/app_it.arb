@@ -14,6 +14,22 @@
   "@backendNotConfigured": {
     "description": "Aviso discreto en desarrollo cuando no hay SUPABASE_URL/SUPABASE_PUBLISHABLE_KEY."
   },
+  "updateAvailable": "C'è una nuova versione",
+  "@updateAvailable": {
+    "description": "Aviso arriba de todas las pantallas de /gestione/ cuando se publicó una versión nueva (el build.json publicado no es el de la app abierta). La app nunca recarga sola."
+  },
+  "updateReload": "Aggiorna",
+  "@updateReload": {
+    "description": "Botón del aviso de versión nueva: recarga la página y carga la versión nueva."
+  },
+  "installHint": "Per non dover accedere di nuovo, apri Radici dall'icona nella schermata Home.",
+  "@installHint": {
+    "description": "Tarjeta que se puede cerrar, en el iPhone o el iPad en el navegador (fuera de la app agregada a la pantalla de inicio): el botón del email abre Safari, que tiene otra sesión. «Schermata Home» es el nombre de iOS. Trata de «tú»."
+  },
+  "installHintClose": "Chiudi il promemoria",
+  "@installHintClose": {
+    "description": "Lo que lee VoiceOver en el botón «Chiudi» (actionClose) de esa tarjeta, para distinguirlo de otros «Chiudi» de la pantalla. Tiene que empezar con el texto visible del botón."
+  },
 
   "homeHeadline": "Cucina di casa, a casa tua",
   "@homeHeadline": {
@@ -322,6 +338,14 @@
   "@navAgenda": {
     "description": "Pestaña de la agenda."
   },
+  "navMore": "Altro",
+  "@navMore": {
+    "description": "Pestaña «Más» de la cocinera: platos, impostazioni y salir. En el teléfono reemplaza al menú de la cuenta."
+  },
+  "moreRecipesSubtitle": "Allergeni, stagione e ingredienti",
+  "@moreRecipesSubtitle": {
+    "description": "Debajo de «Piatti» en la pestaña Más: qué se carga en el catálogo."
+  },
   "accountMenu": "Account",
   "@accountMenu": {
     "description": "Tooltip del menú de la cuenta (impostazioni y salir)."
@@ -342,6 +366,16 @@
   "settingsAccountSection": "Account",
   "@settingsAccountSection": {
     "description": "Sección con la cuenta y el botón para salir."
+  },
+  "settingsVersion": "Versione {buildId}",
+  "@settingsVersion": {
+    "description": "Al pie de Impostazioni: qué versión de /gestione/ está abierta (el id del build, los 7 primeros caracteres del commit). No aparece en la app de iOS ni de Android.",
+    "placeholders": {
+      "buildId": {
+        "type": "String",
+        "example": "abc1234"
+      }
+    }
   },
   "languageOptionEs": "Español",
   "@languageOptionEs": {
@@ -485,10 +519,6 @@
   "slotAfternoon": "Pomeriggio",
   "@slotAfternoon": {
     "description": "Franja preferida: tarde."
-  },
-  "slotAny": "Indifferente",
-  "@slotAny": {
-    "description": "Franja preferida: cualquiera."
   },
   "requestSourceWeb": "Dal sito",
   "@requestSourceWeb": {
@@ -1701,6 +1731,392 @@
   "holidayStStephen": "Santo Stefano",
   "@holidayStStephen": {
     "description": "Feriado nacional: 26 de diciembre."
+  },
+
+  "recipesTitle": "Piatti",
+  "@recipesTitle": {
+    "description": "Catálogo de platos de la cocinera (título y entrada en la pestaña Más)."
+  },
+  "recipesSearchHint": "Cerca un piatto",
+  "@recipesSearchHint": {
+    "description": "Campo de búsqueda de la lista de platos (busca en los nombres en italiano, español e inglés)."
+  },
+  "recipesSearchClear": "Cancella la ricerca",
+  "@recipesSearchClear": {
+    "description": "Botón (y ayuda) que borra la búsqueda de platos."
+  },
+  "recipesEmpty": "Non hai ancora piatti. Aggiungi il primo con «Nuovo piatto»: bastano il nome in italiano e gli allergeni.",
+  "@recipesEmpty": {
+    "description": "Catálogo vacío: propone cargar el primer plato con el botón flotante."
+  },
+  "recipesNoMatches": "Nessun piatto corrisponde a «{query}».",
+  "@recipesNoMatches": {
+    "description": "Búsqueda sin resultados.",
+    "placeholders": {
+      "query": { "type": "String", "example": "sushi" }
+    }
+  },
+  "recipesInactiveSection": "Disattivati ({count})",
+  "@recipesInactiveSection": {
+    "description": "Título de los platos desactivados, al final de la lista.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "recipesLoadFailed": "Impossibile caricare i piatti. Controlla la connessione e riprova.",
+  "@recipesLoadFailed": {
+    "description": "Error al cargar el catálogo, con el botón para reintentar."
+  },
+  "recipeNew": "Nuovo piatto",
+  "@recipeNew": {
+    "description": "Botón flotante de la lista y título del editor de un plato nuevo."
+  },
+  "recipeNoAllergens": "Senza allergeni",
+  "@recipeNoAllergens": {
+    "description": "En la lista: el plato no tiene ninguno de los 14 alérgenos marcado."
+  },
+  "recipeAllYear": "Tutto l'anno",
+  "@recipeAllYear": {
+    "description": "Temporada: el plato se ofrece todos los meses (chip del editor y texto de la lista)."
+  },
+  "recipeInactive": "Disattivato",
+  "@recipeInactive": {
+    "description": "Etiqueta de un plato desactivado en la lista."
+  },
+  "recipeAllergensA11y": "Allergeni: {allergens}",
+  "@recipeAllergensA11y": {
+    "description": "Lectura de pantalla de los alérgenos de un plato en la lista.",
+    "placeholders": {
+      "allergens": { "type": "String", "example": "Glutine, Latte" }
+    }
+  },
+  "recipeSeasonA11y": "Stagione: {season}",
+  "@recipeSeasonA11y": {
+    "description": "Lectura de pantalla de la temporada de un plato en la lista.",
+    "placeholders": {
+      "season": { "type": "String", "example": "settembre–novembre" }
+    }
+  },
+  "recipeSavedDone": "«{name}» salvato.",
+  "@recipeSavedDone": {
+    "description": "Aviso en la lista después de guardar un plato.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "recipeEditTitle": "Modifica piatto",
+  "@recipeEditTitle": {
+    "description": "Título del editor de un plato guardado."
+  },
+  "recipeCopyTitle": "Copia del piatto",
+  "@recipeCopyTitle": {
+    "description": "Título del editor de la copia de un plato (Duplica)."
+  },
+  "recipeCopyHint": "Copia di «{name}»: cambia il nome e salva.",
+  "@recipeCopyHint": {
+    "description": "Arriba del editor de una copia.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "recipeNameItLabel": "Nome in italiano",
+  "@recipeNameItLabel": {
+    "description": "Campo obligatorio del nombre del plato en italiano."
+  },
+  "recipeNameItHelper": "È il nome principale: i clienti lo vedono se manca la traduzione.",
+  "@recipeNameItHelper": {
+    "description": "Ayuda del nombre en italiano: un cliente que usa español o inglés ve la traducción, si la hay."
+  },
+  "recipeNameRequired": "Scrivi il nome in italiano.",
+  "@recipeNameRequired": {
+    "description": "Error: falta el nombre en italiano."
+  },
+  "recipeTextTooLong": "Al massimo {max} caratteri.",
+  "@recipeTextTooLong": {
+    "description": "Error: un nombre o las notas son demasiado largos.",
+    "placeholders": {
+      "max": { "type": "int", "example": "120" }
+    }
+  },
+  "recipeNameTaken": "Hai già un piatto con questo nome.",
+  "@recipeNameTaken": {
+    "description": "Aviso (no impide guardar): otro plato tiene el mismo nombre en italiano, por ejemplo una copia sin renombrar."
+  },
+  "recipeAllergensSection": "Allergeni",
+  "@recipeAllergensSection": {
+    "description": "Sección de los 14 alérgenos UE del editor."
+  },
+  "recipeAllergensNone": "Nessun allergene segnato: controlla che non contenga nessuno dei 14.",
+  "@recipeAllergensNone": {
+    "description": "Aviso cuando no hay ningún alérgeno marcado."
+  },
+  "recipeDietSection": "Dieta",
+  "@recipeDietSection": {
+    "description": "Sección de la dieta del plato."
+  },
+  "recipeDietNone": "Nessuna",
+  "@recipeDietNone": {
+    "description": "Chip: el plato no es vegetariano ni vegano."
+  },
+  "recipeDietConflictVegan": "Un piatto vegano non può contenere: {allergens}. Togli la dieta o questi allergeni.",
+  "@recipeDietConflictVegan": {
+    "description": "Error: un plato vegano con alérgenos de origen animal. {allergens}: los nombres de los chips, separados por « · ».",
+    "placeholders": {
+      "allergens": { "type": "String", "example": "Uova · Latte e derivati" }
+    }
+  },
+  "recipeDietConflictVegetarian": "Un piatto vegetariano non può contenere: {allergens}. Togli la dieta o questi allergeni.",
+  "@recipeDietConflictVegetarian": {
+    "description": "Error: un plato vegetariano con pescado o mariscos. {allergens}: los nombres de los chips, separados por « · ».",
+    "placeholders": {
+      "allergens": { "type": "String", "example": "Pesce" }
+    }
+  },
+  "recipeSeasonSection": "Stagione",
+  "@recipeSeasonSection": {
+    "description": "Sección de los meses en que se ofrece el plato."
+  },
+  "recipeSeasonHelp": "I mesi in cui lo offri.",
+  "@recipeSeasonHelp": {
+    "description": "Ayuda de la temporada."
+  },
+  "recipeOptionalSection": "Facoltativo",
+  "@recipeOptionalSection": {
+    "description": "Título de los campos opcionales del editor."
+  },
+  "recipeNameEsLabel": "Nome in spagnolo",
+  "@recipeNameEsLabel": {
+    "description": "Campo opcional del nombre en español."
+  },
+  "recipeNameEnLabel": "Nome in inglese",
+  "@recipeNameEnLabel": {
+    "description": "Campo opcional del nombre en inglés."
+  },
+  "recipeStorageSection": "Conservazione",
+  "@recipeStorageSection": {
+    "description": "Sección de conservación del plato."
+  },
+  "recipeFridgeDaysLabel": "Giorni in frigo",
+  "@recipeFridgeDaysLabel": {
+    "description": "Días que dura en la heladera."
+  },
+  "recipeFreezableLabel": "Si può congelare",
+  "@recipeFreezableLabel": {
+    "description": "Interruptor: el plato se puede congelar."
+  },
+  "recipeFreezerDaysLabel": "Giorni in freezer",
+  "@recipeFreezerDaysLabel": {
+    "description": "Días que dura en el freezer."
+  },
+  "recipeDaysRange": "Da {min} a {max} giorni.",
+  "@recipeDaysRange": {
+    "description": "Error: número de días fuera de rango.",
+    "placeholders": {
+      "min": { "type": "int", "example": "0" },
+      "max": { "type": "int", "example": "30" }
+    }
+  },
+  "recipeIngredientsSection": "Ingredienti per {portions} porzioni",
+  "@recipeIngredientsSection": {
+    "description": "Sección de ingredientes: las cantidades son para esas porciones.",
+    "placeholders": {
+      "portions": { "type": "int", "example": "4" }
+    }
+  },
+  "recipeIngredientsHelp": "Da qui nasce la lista della spesa: le quantità si adattano alle porzioni di ogni sessione.",
+  "@recipeIngredientsHelp": {
+    "description": "Ayuda de la sección de ingredientes."
+  },
+  "recipeIngredientName": "Ingrediente",
+  "@recipeIngredientName": {
+    "description": "Campo del nombre de un ingrediente."
+  },
+  "recipeIngredientQuantity": "Quantità",
+  "@recipeIngredientQuantity": {
+    "description": "Campo de la cantidad de un ingrediente (número entero)."
+  },
+  "recipeIngredientUnit": "Unità",
+  "@recipeIngredientUnit": {
+    "description": "Selector de la unidad de un ingrediente."
+  },
+  "recipeIngredientSection": "Reparto",
+  "@recipeIngredientSection": {
+    "description": "Selector de la sección del súper de un ingrediente."
+  },
+  "recipeIngredientAdd": "Aggiungi ingrediente",
+  "@recipeIngredientAdd": {
+    "description": "Botón que agrega una fila de ingrediente."
+  },
+  "recipeIngredientRemove": "Rimuovi l'ingrediente {position}",
+  "@recipeIngredientRemove": {
+    "description": "Botón (y ayuda, que lee VoiceOver) que quita una fila de ingrediente. {position}: el número de la fila, el mismo que lleva su campo («2. Ingrediente»).",
+    "placeholders": {
+      "position": { "type": "int", "example": "2" }
+    }
+  },
+  "recipeIngredientMoveUp": "Sposta su l'ingrediente {position}",
+  "@recipeIngredientMoveUp": {
+    "description": "Botón (y ayuda, que lee VoiceOver) que sube un ingrediente en la lista. {position}: el número de la fila.",
+    "placeholders": {
+      "position": { "type": "int", "example": "2" }
+    }
+  },
+  "recipeIngredientMoveDown": "Sposta giù l'ingrediente {position}",
+  "@recipeIngredientMoveDown": {
+    "description": "Botón (y ayuda, que lee VoiceOver) que baja un ingrediente en la lista. {position}: el número de la fila.",
+    "placeholders": {
+      "position": { "type": "int", "example": "2" }
+    }
+  },
+  "recipeIngredientRemoved": "Ingrediente rimosso.",
+  "@recipeIngredientRemoved": {
+    "description": "Aviso después de quitar un ingrediente, con el botón para deshacer."
+  },
+  "recipeIngredientNameRequired": "Scrivi l'ingrediente.",
+  "@recipeIngredientNameRequired": {
+    "description": "Error: una fila tiene cantidad pero no nombre."
+  },
+  "recipeIngredientQuantityRequired": "Scrivi la quantità o scegli «q.b.».",
+  "@recipeIngredientQuantityRequired": {
+    "description": "Error: falta la cantidad. Nombra la opción de recipeUnitToTaste."
+  },
+  "recipeIngredientQuantityRange": "Da 1 a {max}.",
+  "@recipeIngredientQuantityRange": {
+    "description": "Error: cantidad fuera de rango.",
+    "placeholders": {
+      "max": { "type": "int", "format": "decimalPattern", "example": "100000" }
+    }
+  },
+  "recipeIngredientsMax": "Al massimo {max} ingredienti.",
+  "@recipeIngredientsMax": {
+    "description": "Aviso: no se pueden agregar más ingredientes.",
+    "placeholders": {
+      "max": { "type": "int", "example": "50" }
+    }
+  },
+  "recipeUnitGrams": "g",
+  "@recipeUnitGrams": {
+    "description": "Unidad: gramos (símbolo)."
+  },
+  "recipeUnitMilliliters": "ml",
+  "@recipeUnitMilliliters": {
+    "description": "Unidad: mililitros (símbolo)."
+  },
+  "recipeUnitPieces": "pz",
+  "@recipeUnitPieces": {
+    "description": "Unidad: piezas (abreviatura)."
+  },
+  "recipeUnitToTaste": "q.b.",
+  "@recipeUnitToTaste": {
+    "description": "Sin cantidad: «quanto basta», como la sal."
+  },
+  "shoppingSectionProduce": "Frutta e verdura",
+  "@shoppingSectionProduce": {
+    "description": "Sección del súper (shopping_section produce)."
+  },
+  "shoppingSectionMeatFish": "Carne e pesce",
+  "@shoppingSectionMeatFish": {
+    "description": "Sección del súper (meat_fish)."
+  },
+  "shoppingSectionDairyEggs": "Latticini e uova",
+  "@shoppingSectionDairyEggs": {
+    "description": "Sección del súper (dairy_eggs)."
+  },
+  "shoppingSectionBakery": "Panetteria",
+  "@shoppingSectionBakery": {
+    "description": "Sección del súper (bakery)."
+  },
+  "shoppingSectionPantry": "Dispensa",
+  "@shoppingSectionPantry": {
+    "description": "Sección del súper (pantry): almacén, secos y conservas."
+  },
+  "shoppingSectionFrozen": "Surgelati",
+  "@shoppingSectionFrozen": {
+    "description": "Sección del súper (frozen)."
+  },
+  "shoppingSectionOther": "Altro",
+  "@shoppingSectionOther": {
+    "description": "Sección del súper (other)."
+  },
+  "recipeNotesLabel": "Note (le vedi solo tu)",
+  "@recipeNotesLabel": {
+    "description": "Campo opcional de notas del plato."
+  },
+  "recipeNotesHelper": "Non scrivere dati dei clienti.",
+  "@recipeNotesHelper": {
+    "description": "Ayuda de las notas: nada de datos de clientes."
+  },
+  "recipeSaveFailed": "Impossibile salvare il piatto. Controlla la connessione e riprova.",
+  "@recipeSaveFailed": {
+    "description": "Error al guardar un plato (sin conexión o error del servidor), con «Riprova»."
+  },
+  "recipeSaveRejected": "Il server non ha accettato il piatto. Controlla i dati e riprova.",
+  "@recipeSaveRejected": {
+    "description": "Error: la base rechazó el plato."
+  },
+  "recipeSaveNotFound": "Questo piatto non esiste più.",
+  "@recipeSaveNotFound": {
+    "description": "Error: el plato ya no existe."
+  },
+  "recipeFixErrors": "Controlla i campi segnati.",
+  "@recipeFixErrors": {
+    "description": "Aviso al guardar con errores en el formulario."
+  },
+  "recipeDiscardTitle": "Scartare le modifiche?",
+  "@recipeDiscardTitle": {
+    "description": "Confirmación al salir del editor con cambios sin guardar."
+  },
+  "recipeDiscardBody": "Quello che hai scritto non è stato salvato.",
+  "@recipeDiscardBody": {
+    "description": "Texto de la confirmación al salir sin guardar."
+  },
+  "recipeDiscardKeep": "Continua a modificare",
+  "@recipeDiscardKeep": {
+    "description": "Botón que vuelve al editor."
+  },
+  "recipeDiscardConfirm": "Scarta",
+  "@recipeDiscardConfirm": {
+    "description": "Botón que sale del editor sin guardar."
+  },
+  "recipeDuplicate": "Duplica",
+  "@recipeDuplicate": {
+    "description": "Botón que abre la copia de un plato."
+  },
+  "recipeDeactivate": "Disattiva",
+  "@recipeDeactivate": {
+    "description": "Botón que desactiva un plato (nunca se borra)."
+  },
+  "recipeReactivate": "Riattiva",
+  "@recipeReactivate": {
+    "description": "Botón que vuelve a activar un plato desactivado."
+  },
+  "recipeDeactivateHelp": "Un piatto disattivato non viene proposto e non entra nei nuovi menù; quelli già fatti lo mantengono. Non si cancella mai.",
+  "@recipeDeactivateHelp": {
+    "description": "Explicación debajo de «Disattiva»."
+  },
+  "recipeInactiveBanner": "Piatto disattivato: non viene proposto ai clienti e non entra nei nuovi menù.",
+  "@recipeInactiveBanner": {
+    "description": "Arriba del editor de un plato desactivado, con «Riattiva»."
+  },
+  "recipeDeactivatedDone": "Piatto disattivato.",
+  "@recipeDeactivatedDone": {
+    "description": "Aviso después de desactivar, con el botón para deshacer."
+  },
+  "recipeReactivatedDone": "Piatto riattivato.",
+  "@recipeReactivatedDone": {
+    "description": "Aviso después de reactivar, con el botón para deshacer."
+  },
+  "recipeActiveFailed": "Impossibile aggiornare il piatto. Controlla la connessione e riprova.",
+  "@recipeActiveFailed": {
+    "description": "Error al desactivar o reactivar, con «Riprova»."
+  },
+  "recipeNotFound": "Questo piatto non esiste o non è più disponibile.",
+  "@recipeNotFound": {
+    "description": "Enlace a un plato que no está en el catálogo."
+  },
+  "recipeBackToList": "Torna ai piatti",
+  "@recipeBackToList": {
+    "description": "Botón que vuelve a la lista de platos."
   },
 
   "dietVegetarian": "Vegetariana",
