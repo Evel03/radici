@@ -1,7 +1,8 @@
 // Pedido de abrir la bandeja «Richieste» en una pestaña: desde Hoy, «N
-// nuove richieste» lleva a «Nuove» aunque la cocinera haya dejado la bandeja
-// en otra. La bandeja vuelve a armar sus pestañas con cada pedido nuevo (ver
-// InboxScreen); después se cambia de pestaña como siempre.
+// nuove richieste», y «Apri» del aviso con varios pedidos nuevos llevan a
+// «Nuove» aunque la cocinera haya dejado la bandeja en otra. La bandeja
+// vuelve a armar sus pestañas con cada pedido nuevo (ver InboxScreen);
+// después se cambia de pestaña como siempre.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/features/requests/domain/inbox.dart';
 
