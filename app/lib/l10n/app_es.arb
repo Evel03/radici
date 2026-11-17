@@ -236,6 +236,7 @@
   "bookingNoPhone": "Sin un número válido no se puede enviar por WhatsApp.",
   "bookingDoneClose": "Listo",
   "bookingWhatsAppMessage": "{count, plural, =1{Hola {name}, soy {chef} de {brand}. Te confirmo la sesión de cocina del {dates}, con llegada a las {time}. ¡Hasta pronto!} other{Hola {name}, soy {chef} de {brand}. Te confirmo las {count} sesiones de cocina:\n{dates}\nLlego a las {time}. ¡Hasta pronto!}}",
+  "bookingWhatsAppMessageOnBehalf": "{count, plural, =1{Hola {name}, te escribo de parte de {chef} de {brand}. Te confirmamos la sesión de cocina del {dates}, con llegada a las {time}. ¡Hasta pronto!} other{Hola {name}, te escribo de parte de {chef} de {brand}. Te confirmamos las {count} sesiones de cocina:\n{dates}\n{chef} llega a las {time}. ¡Hasta pronto!}}",
   "newRequestBanner": "Nueva solicitud de {name}",
   "newRequestsBanner": "{count} solicitudes nuevas",
   "agendaViewMonth": "Mes",

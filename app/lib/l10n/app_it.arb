@@ -1029,7 +1029,7 @@
   },
   "bookingErrorForbidden": "Il tuo account non può confermare prenotazioni.",
   "@bookingErrorForbidden": {
-    "description": "El usuario no es la cocinera (403)."
+    "description": "El usuario no es la cocinera ni un colaborador suyo (403)."
   },
   "bookingErrorUnauthorized": "L'accesso è scaduto: esci e rientra.",
   "@bookingErrorUnauthorized": {
@@ -1080,7 +1080,19 @@
   },
   "bookingWhatsAppMessage": "{count, plural, =1{Ciao {name}, sono {chef} di {brand}. Ti confermo la sessione di cucina di {dates}, con arrivo alle {time}. A presto!} other{Ciao {name}, sono {chef} di {brand}. Ti confermo le {count} sessioni di cucina:\n{dates}\nArrivo alle {time}. A presto!}}",
   "@bookingWhatsAppMessage": {
-    "description": "Mensaje de WhatsApp a la clienta al confirmar la reserva, en SU idioma (requests.locale). Solo fechas y hora: nunca dirección ni alergias. dates: una fecha, o una por línea con viñeta.",
+    "description": "Mensaje de WhatsApp a la clienta al confirmar la reserva, en SU idioma (requests.locale). Lo firma la cocinera; si confirma un colaborador suyo va bookingWhatsAppMessageOnBehalf. Solo fechas y hora: nunca dirección ni alergias. dates: una fecha, o una por línea con viñeta.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" },
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "time": { "type": "String", "example": "10:00" },
+      "dates": { "type": "String", "example": "• lunedì 23 novembre\n• lunedì 30 novembre" }
+    }
+  },
+  "bookingWhatsAppMessageOnBehalf": "{count, plural, =1{Ciao {name}, ti scrivo da parte di {chef} di {brand}. Ti confermiamo la sessione di cucina di {dates}, con arrivo alle {time}. A presto!} other{Ciao {name}, ti scrivo da parte di {chef} di {brand}. Ti confermiamo le {count} sessioni di cucina:\n{dates}\n{chef} arriva alle {time}. A presto!}}",
+  "@bookingWhatsAppMessageOnBehalf": {
+    "description": "El mismo mensaje de WhatsApp a la clienta cuando confirma la reserva un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella ni ser quien llega (la que llega es ella: «{chef} arriva»). En SU idioma (requests.locale). Solo fechas y hora: nunca dirección ni alergias. dates: una fecha, o una por línea con viñeta.",
     "placeholders": {
       "count": { "type": "int", "example": "4" },
       "name": { "type": "String", "example": "Giulia" },

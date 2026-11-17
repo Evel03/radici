@@ -148,7 +148,10 @@ repositorios falsos (`test/support/fakes.dart`).
   «Riprova», que manda lo mismo: el servidor reconoce el reintento por las fechas y la hora, y con
   otros datos diría que el pedido ya no está nuevo. Si lo guardado no coincide con lo que tenía la
   hoja (otro dispositivo confirmó las mismas fechas con otro precio), lo avisa. Al confirmar, el
-  WhatsApp para la clienta en su idioma, con las fechas y la hora (sin dirección ni alergias).
+  WhatsApp para la clienta en su idioma, con las fechas y la hora (sin dirección ni alergias). Si
+  confirma un colaborador, el mensaje sale de su teléfono y escribe de parte de la cocinera, como el
+  del detalle (`bookingWhatsAppMessageOnBehalf`): «ti scrivo da parte di Evelyn di Radici» en lugar
+  de «sono Evelyn» y, con varias semanas, «Evelyn arriva alle…» en lugar de «Arrivo alle…».
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.

@@ -1,6 +1,7 @@
-// Mensaje de WhatsApp a la clienta cuando Evelyn confirma la reserva: en el
+// Mensaje de WhatsApp a la clienta cuando se confirma la reserva: en el
 // idioma de la clienta (requests.locale), no en el de la app, con las fechas
-// y la hora. Nunca la dirección ni las alergias (CLAUDE.md).
+// y la hora. Nunca la dirección ni las alergias (CLAUDE.md). Sale del teléfono
+// de quien confirma: si es un colaborador de Evelyn, escribe de parte de ella.
 import 'dart:ui' show Locale;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,11 +16,15 @@ import 'package:radici/l10n/app_localizations.dart';
 
 /// `wa.me` con la confirmación de [result] para la clienta de [request],
 /// firmada por [chefName]: «Ti confermo le 4 sessioni…», una fecha por línea,
-/// y la hora de llegada. null sin un teléfono válido (o sin semanas).
+/// y la hora de llegada. Con [onBehalf] (un colaborador de la cocinera, que lo
+/// manda desde su propio teléfono) escribe de parte de ella, sin decir que es
+/// ella ni que es quien llega: «ti scrivo da parte di Evelyn…». null sin un
+/// teléfono válido (o sin semanas).
 Uri? bookingWhatsAppUri({
   required ChefRequest request,
   required BookingResult result,
   required String chefName,
+  bool onBehalf = false,
 }) {
   final weeks = result.weeks;
   if (weeks.isEmpty) return null;
@@ -33,9 +38,12 @@ Uri? bookingWhatsAppUri({
   final dates = [
     for (final week in weeks) format.format(week.date.toDateTime()),
   ];
+  final compose = onBehalf
+      ? l10n.bookingWhatsAppMessageOnBehalf
+      : l10n.bookingWhatsAppMessage;
   return whatsAppUri(
     phoneE164: client.phoneE164,
-    message: l10n.bookingWhatsAppMessage(
+    message: compose(
       weeks.length,
       name,
       chefName,
@@ -66,10 +74,11 @@ final bookingWhatsAppProvider = Provider.autoDispose.family<Uri?, String>((
   );
   final request = ref.watch(chefRequestProvider(requestId)).value;
   if (result == null || request == null) return null;
-  final chefName = ref.watch(currentChefProvider)?.displayName ?? '';
+  final chef = ref.watch(currentChefProvider);
   return bookingWhatsAppUri(
     request: request,
     result: result,
-    chefName: chefName,
+    chefName: chef?.displayName ?? '',
+    onBehalf: chef?.collaborator ?? false,
   );
 });

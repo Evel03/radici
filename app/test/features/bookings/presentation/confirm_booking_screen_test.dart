@@ -51,6 +51,7 @@ void main() {
   Finder byKey(String key) => find.byKey(ValueKey(key));
 
   /// El detalle del pedido y, con [open], la hoja abierta desde su botón.
+  /// [accounts] es la cuenta que entró (por defecto, la de Evelyn).
   Future<ChefApp> openSheet(
     WidgetTester tester, {
     ChefRequest? request,
@@ -58,6 +59,7 @@ void main() {
     Locale locale = const Locale('it', 'IT'),
     void Function(FakeBookingsRepository bookings)? configure,
     bool open = true,
+    FakeAccountRepository? accounts,
     List<Override> overrides = const [],
   }) async {
     final requests = FakeChefRequestsRepository([request ?? weekly()]);
@@ -67,6 +69,7 @@ void main() {
       tester,
       requests: requests,
       bookings: bookings,
+      accounts: accounts,
       location: '/richieste/req-1',
       size: size,
       deviceLocales: [locale],
@@ -685,6 +688,36 @@ void main() {
       expect(find.byType(ConfirmBookingScreen), findsNothing);
       expect(find.text('Aceptada'), findsOneWidget);
       expect(byKey('action-confirm-booking'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'confirma un colaborador: el WhatsApp sale de su teléfono y escribe de parte de la cocinera',
+    (tester) async {
+      final app = await openSheet(
+        tester,
+        accounts: FakeAccountRepository(
+          chefAccountData.copyWith(
+            chef: chefAccount.copyWith(collaborator: true),
+          ),
+        ),
+      );
+
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('booking-whatsapp'));
+      await tester.pumpAndSettle();
+
+      expect(
+        app.launcher.launched.single.queryParameters['text'],
+        'Ciao Giulia, ti scrivo da parte di Evelyn di Radici. Ti confermiamo '
+        'le 4 sessioni di cucina:\n'
+        '• lunedì 23 novembre\n'
+        '• lunedì 30 novembre\n'
+        '• lunedì 7 dicembre\n'
+        '• lunedì 14 dicembre\n'
+        'Evelyn arriva alle 10:00. A presto!',
+      );
     },
   );
 
