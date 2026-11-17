@@ -105,10 +105,12 @@ TodayFocus todayFocus(
   );
 }
 
-/// Las reservas que terminan: las de un pedido semanal (no las de una sesión
+/// Las reservas que terminan: las reservas semanales (un pedido semanal
+/// aceptado más sus sesiones, SPEC §4; no un presupuesto enviado ni una sesión
 /// extra) cuya última sesión viva cae entre [today] y los 6 días siguientes
 /// (la ventana de la tira). Una que ya terminó (su última sesión es de un día
-/// pasado) no cuenta. Devuelve esa última sesión de cada una, por fecha.
+/// pasado) no cuenta, y tampoco una sesión sin su pedido embebido (no se sabe
+/// qué es). Devuelve esa última sesión de cada una, por fecha.
 List<CookingSession> endingBookings(
   Iterable<CookingSession> sessions, {
   required CalendarDate today,
@@ -116,7 +118,9 @@ List<CookingSession> endingBookings(
   final last = <String, CookingSession>{};
   for (final session in sessions) {
     final requestId = session.requestId;
-    if (requestId == null || !session.isLive) continue;
+    if (requestId == null || !session.isLive || !_isWeeklyBooking(session)) {
+      continue;
+    }
     final current = last[requestId];
     if (current == null || compareSessions(session, current) > 0) {
       last[requestId] = session;
@@ -125,11 +129,18 @@ List<CookingSession> endingBookings(
   final until = today.addDays(todayWindowDays - 1);
   return [
     for (final session in last.values)
-      if (!session.date.isBefore(today) &&
-          !session.date.isAfter(until) &&
-          session.request?.type != RequestType.extra)
+      if (!session.date.isBefore(today) && !session.date.isAfter(until))
         session,
   ]..sort(compareSessions);
+}
+
+/// [session] es de una reserva semanal: su pedido (embebido) es semanal y
+/// está aceptado.
+bool _isWeeklyBooking(CookingSession session) {
+  final request = session.request;
+  return request != null &&
+      request.isBooking &&
+      request.type == RequestType.week;
 }
 
 /// Un día de la tira de Hoy.

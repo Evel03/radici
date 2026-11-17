@@ -1,9 +1,10 @@
 // Reglas de Hoy, el inicio de la cocinera: qué sesión se muestra (la de hoy,
 // varias con la próxima primero, o la próxima de otro día; las canceladas
 // nunca), cuándo terminó una sesión (en hora de Roma), qué reservas terminan
-// (su última semana viva cae entre hoy y los 6 días siguientes) y la tira de
-// 7 días con sus sesiones, bloqueos y feriados. "Hoy": martes 17/11/2026
-// (hora de invierno, UTC+1), salvo donde se dice otra cosa.
+// (reservas semanales, no presupuestos: su última semana viva cae entre hoy y
+// los 6 días siguientes) y la tira de 7 días con sus sesiones, bloqueos y
+// feriados. "Hoy": martes 17/11/2026 (hora de invierno, UTC+1), salvo donde
+// se dice otra cosa.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
@@ -31,6 +32,8 @@ void main() {
     SessionStatus status = SessionStatus.confirmed,
     String? requestId = bookingRequestId,
     RequestType type = RequestType.week,
+    RequestStatus requestStatus = RequestStatus.accepted,
+    int weeks = 4,
   }) => buildSession(
     n: n,
     date: date,
@@ -38,6 +41,8 @@ void main() {
     status: status,
     requestId: requestId,
     type: type,
+    requestStatus: requestStatus,
+    weeks: weeks,
   );
 
   List<String> ids(Iterable<CookingSession> sessions) => [
@@ -292,6 +297,35 @@ void main() {
         ...booking('extra', [today.addDays(2)], firstN: 2, type: RequestType.extra),
       ], today: today);
       expect(ending, isEmpty);
+    });
+
+    test('un presupuesto enviado (sesión held, pedido quoted) todavía no es una reserva', () {
+      final ending = endingBookings([
+        session(
+          1,
+          today.addDays(2),
+          requestId: 'presupuesto',
+          status: SessionStatus.held,
+          requestStatus: RequestStatus.quoted,
+        ),
+      ], today: today);
+      expect(ending, isEmpty);
+    });
+
+    test('sin el pedido embebido no se sabe si es una reserva semanal: no cuenta', () {
+      final ending = endingBookings([
+        session(1, today.addDays(2), requestId: 'sin-embeber').copyWith(
+          request: null,
+        ),
+      ], today: today);
+      expect(ending, isEmpty);
+    });
+
+    test('una reserva de una sola semana también termina', () {
+      final ending = endingBookings([
+        session(1, today.addDays(2), requestId: 'una', weeks: 1),
+      ], today: today);
+      expect(ids(ending), [sessionId(1)]);
     });
 
     test('una por reserva, con su última sesión, por fecha', () {
