@@ -2,14 +2,16 @@
 // directo, como el del email, sigue abriendo su pedido) y la barra tiene 4
 // destinos (el riel también). Muestra la sesión de hoy (varias, con la
 // próxima primero) o la próxima: la clienta, las horas que salen de la
-// sesión, las personas, las alergias resaltadas, la contaminación cruzada con
-// gluten y las notas de cocina; abajo, en el tercio inferior, «Come arrivare»
-// (sin dirección, «Aggiungi indirizzo») y WhatsApp (el mensaje de la ficha:
-// lo firma la cocinera o, con la cuenta de un colaborador, escribe de parte
-// de ella). Tocar la tarjeta abre la ficha. Los pendientes (pedidos nuevos, que
-// llevan a «Nuove», y reservas que terminan, que abren su última semana), la
-// tira de 7 días (que abre la Agenda en ese día), carga, error, vacío, deslizar
-// para actualizar y el cambio de día a la medianoche de Roma sin reabrir.
+// sesión, las personas, las alergias resaltadas (sin ningún dato, la
+// advertencia «Allergie: nessun dato nell'app, chiedile», como en la ficha),
+// la contaminación cruzada con gluten y las notas de cocina; abajo, en el
+// tercio inferior, «Come arrivare» (sin dirección, «Aggiungi indirizzo») y
+// WhatsApp (el mensaje de la ficha: lo firma la cocinera o, con la cuenta de
+// un colaborador, escribe de parte de ella). Tocar la tarjeta abre la ficha.
+// Los pendientes (pedidos nuevos, que llevan a «Nuove», y reservas que
+// terminan, que abren su última semana), la tira de 7 días (que abre la
+// Agenda en ese día), carga, error, vacío, deslizar para actualizar y el
+// cambio de día a la medianoche de Roma sin reabrir.
 // "Hoy": martes 17/11/2026 a las 8:00 en Roma, salvo donde se dice otra cosa.
 import 'dart:async';
 
@@ -68,6 +70,7 @@ void main() {
     List<Allergen> clientAllergens = const [],
     RequestRestrictions? restrictions,
     bool? noAllergies,
+    RequestSource requestSource = RequestSource.web,
   }) => buildSession(
     n: n,
     date: date ?? today,
@@ -82,6 +85,7 @@ void main() {
     clientAllergens: clientAllergens,
     restrictions: restrictions,
     noAllergies: noAllergies,
+    requestSource: requestSource,
   );
 
   /// [accounts]: la cuenta con que se entra (por defecto, la de la cocinera).
@@ -259,8 +263,59 @@ void main() {
     ) async {
       await openToday(tester, sessions: [session()]);
       expect(inCard(1, byKey('session-allergies-unknown')), findsOneWidget);
+      expect(
+        textOf(tester, 'session-allergies-unknown'),
+        "Allergie: nessun dato nell'app, chiedile",
+      );
       expect(inCard(1, byKey('session-cross-contamination')), findsNothing);
     });
+
+    /// Sin ningún dato de alergias, en la tarjeta: [text] en el `Text` de
+    /// siempre, dentro de la caja de advertencia (el ícono de aviso y el fondo
+    /// de error), como en la ficha, y nunca «nadie tiene».
+    void expectNoDataWarning(WidgetTester tester, String text) {
+      final box = inCard(1, byKey('session-allergies-unknown-box'));
+      expect(
+        find.descendant(of: box, matching: byKey('session-allergies-unknown')),
+        findsOneWidget,
+      );
+      expect(textOf(tester, 'session-allergies-unknown'), text);
+      expect(
+        find.descendant(
+          of: box,
+          matching: find.byIcon(Icons.warning_amber_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        (tester.widget<DecoratedBox>(box).decoration as BoxDecoration).color,
+        Theme.of(tester.element(box)).colorScheme.errorContainer,
+      );
+      expect(inCard(1, byKey('session-no-allergies')), findsNothing);
+    }
+
+    testWidgets(
+      "una reserva a mano (ningún dato de alergias): «Allergie: nessun dato nell'app, chiedile» resaltado como advertencia",
+      (tester) async {
+        await openToday(
+          tester,
+          sessions: [session(requestSource: RequestSource.app)],
+        );
+        expectNoDataWarning(tester, "Allergie: nessun dato nell'app, chiedile");
+      },
+    );
+
+    testWidgets(
+      'una reserva a mano, en español: «Alergias: sin datos en la app, pregúntale»',
+      (tester) async {
+        await openToday(
+          tester,
+          sessions: [session(requestSource: RequestSource.app)],
+          locale: const Locale('es'),
+        );
+        expectNoDataWarning(tester, 'Alergias: sin datos en la app, pregúntale');
+      },
+    );
 
     testWidgets('el estado, si no está confirmada', (tester) async {
       await openToday(

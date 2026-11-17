@@ -143,10 +143,11 @@ class SessionHelp extends StatelessWidget {
 }
 
 /// Alergias y dietas de la ficha y del pedido, la nota del pedido resaltada
-/// y, con gluten, la nota de contaminación cruzada (SPEC §5.6). Cada pieza es
-/// un nodo propio del lector de pantalla, en el orden en que se ve: el título
-/// primero (ver SessionSection). La ficha de la sesión y Hoy (con [dense],
-/// dentro de una tarjeta) muestran lo mismo.
+/// y, con gluten, la nota de contaminación cruzada (SPEC §5.6). Sin ningún
+/// dato, una advertencia que pide preguntarle, nunca «sin alergias». Cada
+/// pieza es un nodo propio del lector de pantalla, en el orden en que se ve:
+/// el título primero (ver SessionSection). La ficha de la sesión y Hoy (con
+/// [dense], dentro de una tarjeta) muestran lo mismo.
 class SessionAllergies extends StatelessWidget {
   const SessionAllergies({super.key, required this.session, this.dense = false});
 
@@ -175,17 +176,15 @@ class SessionAllergies extends StatelessWidget {
               ),
             ),
           ],
-          // Sin respuesta: que pregunte antes de cocinar (se destaca).
+          // Ningún dato (ni restricciones de la ficha, ni nota del pedido, ni
+          // «nadie tiene»): que le pregunte antes de cocinar. Una reserva
+          // cargada a mano cae acá salvo que la ficha tenga restricciones: no
+          // guarda alergias (falta el consentimiento de salud, M2).
           AllergyAnswer.unknown => [
-            MergeSemantics(
-              child: Text(
-                l10n.detailAllergiesUnknown,
-                key: const ValueKey('session-allergies-unknown'),
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: colors.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+            _WarningBox(
+              boxKey: const ValueKey('session-allergies-unknown-box'),
+              textKey: const ValueKey('session-allergies-unknown'),
+              text: l10n.sessionAllergiesNoData,
             ),
           ],
           AllergyAnswer.listed => [
@@ -241,41 +240,66 @@ class SessionAllergies extends StatelessWidget {
         if (session.needsCrossContaminationNote)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.errorContainer,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: MergeSemantics(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ExcludeSemantics(
-                        child: Icon(
-                          Icons.warning_amber_rounded,
-                          color: colors.onErrorContainer,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          l10n.sessionCrossContamination,
-                          key: const ValueKey('session-cross-contamination'),
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: colors.onErrorContainer,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            child: _WarningBox(
+              textKey: const ValueKey('session-cross-contamination'),
+              text: l10n.sessionCrossContamination,
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Advertencia resaltada: fondo de error con el ícono de aviso y el texto en
+/// negrita. Para el lector de pantalla, un solo nodo con el texto (el ícono no
+/// se lee).
+class _WarningBox extends StatelessWidget {
+  const _WarningBox({required this.textKey, required this.text, this.boxKey});
+
+  /// La del `Text` (los tests lo leen por ahí).
+  final Key textKey;
+  final String text;
+
+  /// La de la caja.
+  final Key? boxKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return DecoratedBox(
+      key: boxKey,
+      decoration: BoxDecoration(
+        color: colors.errorContainer,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: MergeSemantics(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ExcludeSemantics(
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  color: colors.onErrorContainer,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  text,
+                  key: textKey,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: colors.onErrorContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

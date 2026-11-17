@@ -396,6 +396,7 @@ Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automá
 ## 6. Seguridad, privacidad y RGPD
 
 - **Alergias, intolerancias y celiaquía son datos de salud** (art. 9 RGPD): consentimiento **explícito y separado** del de privacidad, con versión del texto y fecha (`consents`). Sin consentimiento no se guardan las restricciones.
+- Alergias de una sesión sin ningún dato (ni restricciones de la ficha, ni nota del pedido, ni la confirmación «nadie tiene»): donde la app las muestra (la ficha de la sesión y Hoy) dice «sin datos en la app, pregúntale», resaltado como advertencia; nunca «sin alergias».
 - Mínimo necesario: guardar la restricción ("sin lactosa"), no diagnósticos ni historia clínica.
 - Solo la cocinera y sus colaboradores (`chef_members`) ven restricciones y direcciones. Nunca se escriben en logs, Sentry ni analytics. La privacy vigente nombra solo a Evelyn y, para la asistencia técnica, a quien gestiona el sistema: ver §14 antes de cargar un colaborador en producción.
 - Derecho de acceso y borrado: exportar los datos del cliente (JSON) y borrar su cuenta desde la app. Incluye las copias de restricciones en `requests.restrictions` y `quotes.pricing_snapshot`.
@@ -468,7 +469,7 @@ Un prospecto con cuenta ve Inicio, Pedir (sin platos deseados) y su perfil; no v
 - **Catálogo de platos** (M4a): alta, edición, duplicar, baja (desactivar), alérgenos UE, dieta, temporada, nombres en it/es/en e ingredientes con su cantidad para 4 porciones (o q.b.) y su sección del súper.
 - **Cobros**: para cobrar, falta pre-autorizar, próximas, cobradas.
 - **Tarifas**: parámetros de la sección 5.1 con ejemplos en vivo.
-- **Detalle de sesión**: progreso, menú con conservación y alertas, "usar primero", lista de compras (sale sola del menú y se edita), pago, carga de ticket con foto, marcar cocinado, registrar pago, cancelar.
+- **Detalle de sesión**: progreso, menú con conservación y alertas, "usar primero", lista de compras (sale sola del menú y se edita), pago, carga de ticket con foto, marcar cocinado, registrar pago, cancelar. Sin ningún dato de alergias dice «sin datos en la app, pregúntale», resaltado, nunca «sin alergias» (también en Hoy, §6).
 
 ---
 

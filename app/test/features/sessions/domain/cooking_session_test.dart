@@ -304,6 +304,20 @@ void main() {
         AllergyAnswer.unknown,
       );
     });
+
+    test('una reserva a mano (pedido de la app, que no guarda alergias): sin datos, salvo que la ficha tenga restricciones', () {
+      expect(
+        buildSession(requestSource: RequestSource.app).allergyAnswer,
+        AllergyAnswer.unknown,
+      );
+      expect(
+        buildSession(
+          requestSource: RequestSource.app,
+          clientAllergens: const [Allergen.milk],
+        ).allergyAnswer,
+        AllergyAnswer.listed,
+      );
+    });
   });
 
   test('la dirección como se guarda: en una línea y sin espacios de más; vacía, null', () {

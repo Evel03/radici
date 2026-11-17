@@ -6,14 +6,15 @@
 // alle…», también en una sesión de hoy cuya llegada ya pasó; sin la hora de
 // llegada en una sesión de un día que ya pasó en Roma o cancelada), las
 // alergias resaltadas (la nota del pedido, también sola como llega de la web,
-// y, con gluten, la de contaminación cruzada) en el orden en que las lee el
-// lector de pantalla, las semanas de la reserva, y cancelar con confirmación,
-// motivo y «anche le successive», con cada falla explicada (un 409
-// hasPayments dice cuáles están cobradas y qué se puede hacer, también si
-// llega al tocar «Riprova»). Mientras espera al servidor, Sposta y Annulla
-// quedan deshabilitados. Mover y cancelar quedan abajo: en el tercio inferior
-// a 375×667. Abierta con un enlace directo (sola en la pila), la flecha de
-// volver lleva a la Agenda.
+// y, con gluten, la de contaminación cruzada; sin ningún dato, como en una
+// reserva a mano, la advertencia «Allergie: nessun dato nell'app, chiedile»)
+// en el orden en que las lee el lector de pantalla, las semanas de la
+// reserva, y cancelar con confirmación, motivo y «anche le successive», con
+// cada falla explicada (un 409 hasPayments dice cuáles están cobradas y qué
+// se puede hacer, también si llega al tocar «Riprova»). Mientras espera al
+// servidor, Sposta y Annulla quedan deshabilitados. Mover y cancelar quedan
+// abajo: en el tercio inferior a 375×667. Abierta con un enlace directo (sola
+// en la pila), la flecha de volver lleva a la Agenda.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -616,11 +617,66 @@ void main() {
       await openSession(tester);
       expect(
         textOf(tester, 'session-allergies-unknown'),
-        'Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.',
+        "Allergie: nessun dato nell'app, chiedile",
       );
       expect(byKey('session-no-allergies'), findsNothing);
       expect(byKey('session-cross-contamination'), findsNothing);
     });
+
+    /// Sin ningún dato de alergias: [text] en el `Text` de siempre, dentro de
+    /// la caja de advertencia (el ícono de aviso y el fondo de error), y nunca
+    /// «nadie tiene».
+    void expectNoDataWarning(WidgetTester tester, String text) {
+      final box = byKey('session-allergies-unknown-box');
+      expect(
+        find.descendant(of: box, matching: byKey('session-allergies-unknown')),
+        findsOneWidget,
+      );
+      expect(textOf(tester, 'session-allergies-unknown'), text);
+      expect(
+        find.descendant(
+          of: box,
+          matching: find.byIcon(Icons.warning_amber_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        (tester.widget<DecoratedBox>(box).decoration as BoxDecoration).color,
+        Theme.of(tester.element(box)).colorScheme.errorContainer,
+      );
+      expect(byKey('session-no-allergies'), findsNothing);
+    }
+
+    testWidgets(
+      "una reserva a mano (ningún dato de alergias): «Allergie: nessun dato nell'app, chiedile» resaltado como advertencia",
+      (tester) async {
+        // Pedido de la app, sin restricciones ni respuesta a la pregunta, y la
+        // ficha sin client_restrictions.
+        await openSession(
+          tester,
+          sessions: FakeSessionsRepository(
+            buildBooking(requestSource: RequestSource.app),
+          ),
+        );
+        expectNoDataWarning(tester, "Allergie: nessun dato nell'app, chiedile");
+        expect(byKey('session-allergens'), findsNothing);
+        expect(byKey('session-allergy-note'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'una reserva a mano, en español: «Alergias: sin datos en la app, pregúntale»',
+      (tester) async {
+        await openSession(
+          tester,
+          locale: const Locale('es'),
+          sessions: FakeSessionsRepository(
+            buildBooking(requestSource: RequestSource.app),
+          ),
+        );
+        expectNoDataWarning(tester, 'Alergias: sin datos en la app, pregúntale');
+      },
+    );
 
     testWidgets(
       'el lector de pantalla las lee en el orden en que se ven: el título solo y después cada cosa',
@@ -704,9 +760,9 @@ void main() {
           tester.semantics.simulatedAccessibilityTraversal(),
           containsAllInOrder(<Matcher>[
             isSemantics(label: 'Alergias y dietas', isHeader: true),
+            // Un solo nodo con el texto: el ícono de aviso no se lee.
             isSemantics(
-              label:
-                  'Sin datos de alergias: pregúntale al cliente antes de preparar el menú.',
+              label: 'Alergias: sin datos en la app, pregúntale',
               isHeader: false,
             ),
           ]),

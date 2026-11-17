@@ -686,7 +686,7 @@
   },
   "detailAllergiesUnknown": "Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.",
   "@detailAllergiesUnknown": {
-    "description": "Sección de alergias, destacada: el pedido no trae respuesta (anterior a la pregunta de la web, de la app o con el consentimiento de salud retirado). Pide preguntarle al cliente antes del menú."
+    "description": "Detalle del pedido, sección de alergias, destacada: el pedido no trae respuesta (anterior a la pregunta de la web, de la app o con el consentimiento de salud retirado). Pide preguntarle al cliente antes del menú. Solo en el detalle del pedido: la ficha de la sesión y Hoy dicen sessionAllergiesNoData."
   },
   "detailAllergens": "Allergeni da evitare",
   "@detailAllergens": {
@@ -1292,6 +1292,10 @@
   "sessionCrossContamination": "Glutine (celiachia): evita la contaminazione crociata. Utensili, pentole e superfici puliti o separati, niente farina in giro.",
   "@sessionCrossContamination": {
     "description": "Nota de contaminación cruzada (SPEC §5.6) en una sesión con gluten en la ficha o en la solicitud. Empieza por el alérgeno: gluten no siempre es celiaquía."
+  },
+  "sessionAllergiesNoData": "Allergie: nessun dato nell'app, chiedile",
+  "@sessionAllergiesNoData": {
+    "description": "Ficha de la sesión y Hoy, sección de alergias, resaltado como advertencia: la sesión no tiene ningún dato de alergias (ni restricciones de la ficha, ni nota del pedido, ni la confirmación «nadie tiene»), por ejemplo una reserva cargada a mano (sin consentimiento de salud no se guardan, M2). Nunca quiere decir «sin alergias»."
   },
   "sessionSectionClient": "Cliente",
   "@sessionSectionClient": {

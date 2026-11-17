@@ -78,7 +78,8 @@ Map<String, dynamic> sessionRow({
 
 /// Sesión armada a mano (sin pasar por JSON): por defecto, una semana
 /// confirmada de la reserva [bookingRequestId] (un pedido semanal, [type],
-/// aceptado, [requestStatus]), el miércoles 25/11/2026 a las 10:00, con 45
+/// aceptado, [requestStatus], que llegó por la web, [requestSource]; una
+/// reserva a mano es de la app), el miércoles 25/11/2026 a las 10:00, con 45
 /// min de compra y 180 de cocina.
 CookingSession buildSession({
   int n = 1,
@@ -101,6 +102,7 @@ CookingSession buildSession({
   String? cancelReason,
   RequestType type = RequestType.week,
   RequestStatus requestStatus = RequestStatus.accepted,
+  RequestSource requestSource = RequestSource.web,
 }) => CookingSession(
   id: id ?? sessionId(n),
   chefId: testChefId,
@@ -143,12 +145,14 @@ CookingSession buildSession({
           weeks: weeks,
           seenAt: DateTime.utc(2026, 10, 19, 12),
           type: type,
+          source: requestSource,
         ),
 );
 
 /// Las [weeks] semanas de una reserva, cada 7 días desde [first] (miércoles
 /// 25/11/2026), con ids `sessionId(1)`, `sessionId(2)`… [address] null: una
 /// reserva que llegó por la web (el formulario no pide la dirección).
+/// [requestSource] app: una reserva cargada a mano.
 List<CookingSession> buildBooking({
   int weeks = 4,
   CalendarDate? first,
@@ -159,6 +163,7 @@ List<CookingSession> buildBooking({
   RequestRestrictions? restrictions,
   bool? noAllergies,
   ClientLocale locale = ClientLocale.it,
+  RequestSource requestSource = RequestSource.web,
 }) {
   final start = first ?? CalendarDate(2026, 11, 25);
   return [
@@ -174,6 +179,7 @@ List<CookingSession> buildBooking({
         noAllergies: noAllergies,
         locale: locale,
         weeks: weeks,
+        requestSource: requestSource,
       ),
   ];
 }

@@ -278,6 +278,7 @@
   "sessionSectionAllergies": "Alergias y dietas",
   "sessionAllergyNote": "Nota de la solicitud",
   "sessionCrossContamination": "Gluten (celiaquía): evita la contaminación cruzada. Utensilios, ollas y superficies limpios o separados, nada de harina suelta.",
+  "sessionAllergiesNoData": "Alergias: sin datos en la app, pregúntale",
   "sessionSectionClient": "Cliente",
   "sessionAddress": "Dirección",
   "sessionKitchenNotes": "Notas sobre la cocina",

@@ -111,11 +111,12 @@ repositorios falsos (`test/support/fakes.dart`).
   («Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00», como en la ficha), las personas, el estado
   si no está confirmada (una de hoy que ya terminó dice «Terminata» si estaba confirmada o con la
   compra hecha; si está cocinada o cobrada, «Cucinata» o «Pagata»), las alergias resaltadas como en
-  la ficha (con la nota de contaminación cruzada si hay gluten, SPEC §5.6) y las notas de cocina, y
-  abre la ficha. Abajo, en el tercio inferior del teléfono, «Come arrivare» (Apple Maps en
-  el iPhone, Google Maps en el resto) y WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi
-  indirizzo», como la ficha (con varias, una línea dice de quién son, con la hora primero: «Arrivo
-  16:00 · Marco Bianchi»; si no entra, se corta el nombre). El WhatsApp es el de la ficha
+  la ficha (con la nota de contaminación cruzada si hay gluten, SPEC §5.6, y, sin ningún dato,
+  «Allergie: nessun dato nell'app, chiedile») y las notas de cocina, y abre la ficha. Abajo, en el
+  tercio inferior del teléfono, «Come arrivare» (Apple Maps en el iPhone, Google Maps en el resto)
+  y WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi indirizzo», como la ficha (con
+  varias, una línea dice de quién son, con la hora primero: «Arrivo 16:00 · Marco Bianchi»; si no
+  entra, se corta el nombre). El WhatsApp es el de la ficha
   (`sessionLinksFor`, con el mismo día de Roma con que Hoy elige la sesión): lleva la hora de
   llegada salvo en una sesión cocinada o cobrada (en Hoy no hay canceladas ni de días pasados) y,
   si lo manda un colaborador, escribe de parte de la cocinera («ti scrivo da parte di Evelyn di
@@ -193,9 +194,12 @@ repositorios falsos (`test/support/fakes.dart`).
   cocinera gestiona los suyos» y el grant por columna; vale para todas sus sesiones y se corrige
   desde la fila de la dirección). Después, las alergias de la ficha y del pedido, con la nota del
   pedido resaltada (también sola, como llega de la web) y, con gluten, la de contaminación cruzada
-  (SPEC §5.6), cada una un nodo propio en el orden en que se ven (el lector de pantalla no las
-  mezcla con el título); los datos de la clienta y las semanas de la reserva (cada una abre su
-  ficha). Abajo, **Mover**:
+  (SPEC §5.6); sin ningún dato (ni restricciones de la ficha, ni nota del pedido, ni la
+  confirmación «nadie tiene»; por ejemplo, una reserva cargada a mano, que no guarda alergias), la
+  advertencia «Allergie: nessun dato nell'app, chiedile» (`sessionAllergiesNoData`, con el ícono
+  de aviso y el fondo de la de contaminación cruzada), nunca «sin alergias». Cada una es un nodo
+  propio en el orden en que se ven (el lector de pantalla no las mezcla con el título); después,
+  los datos de la clienta y las semanas de la reserva (cada una abre su ficha). Abajo, **Mover**:
   el calendario y una hoja (`/sessioni/:id/sposta`) que pide el `dryRun` de
   `POST chef/sessions/move` antes de confirmar (libre, un aviso, un choque o la semana con otra
   sesión de la reserva, que ofrece «Passa alla fine della prenotazione»: una por semana; no deja
