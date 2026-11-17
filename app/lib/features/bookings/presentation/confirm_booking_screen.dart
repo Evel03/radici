@@ -2,7 +2,8 @@
 // pedido nuevo: semanas (1 a 8), una fecha por semana con lo que dice el
 // servidor de cada una (libre, un aviso o un choque), la hora de llegada en
 // chips, los minutos de cocina y el precio del servicio de toda la reserva.
-// Abajo, siempre a mano (también con el teclado abierto), «Conferma N
+// Abajo, a mano también con el teclado abierto en un teléfono en vertical
+// (en /gestione/, WebAppNotices esconde sus avisos mientras tanto), «Conferma N
 // settimane» y, arriba del botón, el precio que se va a confirmar (después
 // ninguna ruta lo cambia) o lo primero que impide confirmar, con un botón que
 // lleva hasta ahí: en un teléfono, el precio y las últimas semanas quedan
@@ -650,8 +651,9 @@ class _Help extends StatelessWidget {
   }
 }
 
-/// Barra de abajo, siempre a mano (también con el teclado abierto): en un
-/// teléfono, la acción principal queda en el tercio inferior.
+/// Barra de abajo, a mano también con el teclado abierto en un teléfono en
+/// vertical (en horizontal puede no entrar): la acción principal queda en el
+/// tercio inferior.
 class _BottomBar extends StatelessWidget {
   const _BottomBar({required this.children});
 

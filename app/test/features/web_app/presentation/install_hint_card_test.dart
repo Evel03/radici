@@ -258,4 +258,59 @@ void main() {
       lessThanOrEqualTo(tester.getTopLeft(find.byType(AppBar)).dy),
     );
   });
+
+  // Flutter web informa el teclado del iPhone como viewInsets. En un iPhone
+  // en Safari, con los avisos arriba no quedaba lugar para el campo que se
+  // escribe y la acción de abajo (como «Conferma» de la hoja de reserva).
+  testWidgets('con el teclado abierto los dos avisos se esconden y la pantalla usa ese alto; al cerrarlo vuelven', (
+    tester,
+  ) async {
+    await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([buildRequest()]),
+      size: const Size(375, 667),
+      overrides: [
+        browserProvider.overrideWithValue(browser),
+        buildIdProvider.overrideWithValue('abc1234'),
+        publishedBuildRepositoryProvider.overrideWithValue(
+          FakePublishedBuildRepository('def5678'),
+        ),
+      ],
+    );
+    final banner = find.byKey(const ValueKey('update-banner'));
+    expect(banner, findsOneWidget);
+    expect(hint(), findsOneWidget);
+    expect(tester.getTopLeft(find.byType(AppBar)).dy, greaterThan(0));
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    expect(banner, findsNothing);
+    expect(hint(), findsNothing);
+    expect(tester.getTopLeft(find.byType(AppBar)).dy, 0);
+
+    tester.view.resetViewInsets();
+    await tester.pumpAndSettle();
+    expect(banner, findsOneWidget);
+    expect(hint(), findsOneWidget);
+    expect(browser.flags, isEmpty, reason: 'esconderla no es cerrarla');
+  });
+
+  testWidgets('login: mientras se escribe el email el aviso no está; al cerrar el teclado vuelve '
+      'y lo escrito sigue (la pantalla de abajo no se rehace)', (tester) async {
+    await openLogin(tester);
+    final email = find.byKey(const ValueKey('login-email'));
+    await tester.enterText(email, 'evelyn@example.com');
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    expect(hint(), findsNothing);
+    expect(email.hitTestable(), findsOneWidget);
+
+    tester.view.resetViewInsets();
+    await tester.pumpAndSettle();
+    expect(hint(), findsOneWidget);
+    expect(
+      find.descendant(of: email, matching: find.text('evelyn@example.com')),
+      findsOneWidget,
+    );
+  });
 }

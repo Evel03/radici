@@ -130,8 +130,10 @@ repositorios falsos (`test/support/fakes.dart`).
   tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
   se pasa a centavos sin `double` (`parseEuroCents`). Cada cambio de fechas, hora o minutos vuelve a
   pedir el `dryRun`: cada semana dice si está libre, un aviso (bloqueado, sin horario, fuera de
-  horario, pasada) o si choca, y con un choque no deja confirmar. La barra de abajo, siempre a la
-  vista (también con el teclado), muestra arriba del botón el precio que se va a confirmar, lo que
+  horario, pasada) o si choca, y con un choque no deja confirmar. La barra de abajo queda a la vista
+  en un teléfono en vertical, también con el teclado abierto (en `/gestione/` los avisos de arriba
+  se esconden mientras tanto; probado hasta 375×548, un iPhone SE con las barras de Safari; en
+  horizontal puede no entrar), y muestra arriba del botón el precio que se va a confirmar, lo que
   queda por semana y la llegada, con «Modifica», que lleva al campo del precio (en un teléfono el
   campo queda fuera de la vista, y después ninguna ruta cambia el precio); si algo impide confirmar,
   dice qué (la semana que choca, una fecha o el precio) con «Vedi», que lleva hasta ahí. Una
@@ -160,8 +162,9 @@ repositorios falsos (`test/support/fakes.dart`).
   id) para cambiarle el nombre; desactivar y reactivar tienen «Annulla». Un plato nunca se borra.
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), salir y, en la web, la versión abierta («Versione abc1234»).
-- **Avisos de la web** (arriba de cualquier pantalla, también del login): versión nueva publicada y,
-  en Safari del iPhone, abrir Radici desde el ícono (ver [Web /gestione/](#web-gestione)).
+- **Avisos de la web** (arriba de cualquier pantalla, también del login, salvo con el teclado
+  abierto): versión nueva publicada y, en Safari del iPhone, abrir Radici desde el ícono (ver
+  [Web /gestione/](#web-gestione)).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
   emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Al reconectar
   (corte de red, app que vuelve del segundo plano) se relee la lista y se avisa lo que llegó.
@@ -246,7 +249,11 @@ hace falta: sin `BUILD_ID` la app no avisa nada.
   was not laid out»). La app de abajo va en su propio contenedor de semántica: la barrera de cada
   ruta (un `BlockSemantics`) descarta lo pintado antes en el mismo contenedor, y sin eso VoiceOver no
   vería los avisos. Sus botones quedan a 8 px o más de lo de abajo (las acciones de cada barra,
-  como «Salva» del calendario de rango).
+  como «Salva» del calendario de rango). Con el teclado abierto (Flutter web lo informa como
+  `viewInsets`) los avisos se esconden y vuelven al cerrarlo: le quitan su alto a todas las
+  pantallas, y en un iPhone SE en Safari la hoja «Conferma prenotazione» se quedaba sin lugar para
+  el campo que se escribe y, con los dos avisos, «Conferma» bajaba detrás del teclado. Esconder la
+  tarjeta de Safari no es cerrarla.
 - **iPhone** (`web/index.html`, `web/manifest.json`): `<meta name="viewport">` solo para la pantalla
   de carga (al arrancar, Flutter pone el suyo; por eso tampoco va `viewport-fit=cover`),
   `apple-mobile-web-app-capable` y la barra de estado `default`; en la carga, el ícono y la rueda, sin
