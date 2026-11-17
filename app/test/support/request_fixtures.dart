@@ -138,6 +138,8 @@ ChefRequest buildRequest({
   ClientStatus? clientStatus = ClientStatus.prospect,
   RequestType type = RequestType.week,
   int weeks = 1,
+  // Origen (requests.source): por defecto, la web; una reserva a mano es de la app.
+  RequestSource source = RequestSource.web,
 }) => ChefRequest(
   id: id,
   chefId: chefId,
@@ -157,7 +159,7 @@ ChefRequest buildRequest({
   locale: locale,
   whatsappOptIn: true,
   estimate: estimate,
-  source: RequestSource.web,
+  source: source,
   seenAt: seenAt,
   createdAt: createdAt ?? DateTime.utc(2026, 10, 19, 9, 15),
   client: RequestClient(

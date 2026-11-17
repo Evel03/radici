@@ -106,8 +106,9 @@ class ChefInboxController extends AsyncNotifier<List<ChefRequest>> {
     ref.read(newRequestAlertProvider.notifier).show([request]);
   }
 
-  /// Relee la lista después de una reconexión y avisa los pedidos que
-  /// llegaron mientras tanto.
+  /// Relee la lista después de una reconexión y pasa al aviso los pedidos que
+  /// llegaron mientras tanto (avisa solo los de la web sin abrir:
+  /// NewRequestAlertController.show).
   Future<void> _resync(String chefId) async {
     final previous = state.value;
     final List<ChefRequest> fresh;

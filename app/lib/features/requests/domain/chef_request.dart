@@ -365,6 +365,13 @@ abstract class ChefRequest with _$ChefRequest {
       status != RequestStatus.rejected &&
       status != RequestStatus.accepted;
 
+  /// Al llegar (por tiempo real o al reconectar) salta el aviso «Nuova
+  /// richiesta da …»: solo si es nuevo ([isNew]) y llegó de la web. Uno de la
+  /// app se suma a la lista sin aviso: una reserva cargada a mano (nace
+  /// aceptada y vista) o un pedido nuevo, que igual cuenta como nuevo en la
+  /// bandeja. Cuando los clientes con cuenta pidan desde la app (M2), revisar.
+  bool get alertsOnArrival => source == RequestSource.web && isNew;
+
   bool get isRejected => status == RequestStatus.rejected;
 
   /// Solo un pedido nuevo se puede rechazar desde la app (contrato §3).

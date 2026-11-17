@@ -1,5 +1,6 @@
-// Lista de pedidos de la cocinera: carga, tiempo real, reconexión, "visto"
-// y rechazo, con repositorios falsos.
+// Lista de pedidos de la cocinera: carga, tiempo real (el aviso, solo para
+// los pedidos de la web sin abrir; uno de la app, como una reserva a mano, se
+// suma sin aviso), reconexión, "visto" y rechazo, con repositorios falsos.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock.dart';
@@ -27,6 +28,18 @@ void main() {
     createdAt: DateTime.utc(2026, 10, 18, 9),
   );
   final fresh = buildRequest(id: 'fresh', createdAt: DateTime.utc(2026, 10, 19, 9));
+
+  /// Una reserva cargada a mano, como la crea chef_create_booking: pedido de
+  /// la app, aceptado y visto, sin fecha preferida ni estimación.
+  ChefRequest manualBooking(String id, DateTime createdAt) => buildRequest(
+    id: id,
+    source: RequestSource.app,
+    status: RequestStatus.accepted,
+    seenAt: createdAt,
+    createdAt: createdAt,
+    noDate: true,
+    estimate: null,
+  );
 
   List<ChefRequest> requests() => container.read(chefInboxProvider).requireValue;
   ChefInboxController controller() => container.read(chefInboxProvider.notifier);
@@ -99,6 +112,57 @@ void main() {
       expect(alert()!.requests.single.client.displayName, 'Marco Bianchi');
     });
 
+    test('un INSERT de un pedido new de la app (sin abrir) se agrega y no avisa', () async {
+      await start();
+      repository.insertFromRealtime(
+        buildRequest(
+          id: 'from-app',
+          source: RequestSource.app,
+          createdAt: DateTime.utc(2026, 10, 19, 11),
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(requests().first.id, 'from-app');
+      // Cuenta como nuevo en la bandeja («Nuove» y el contador), pero el aviso
+      // emergente es solo para los pedidos de la web.
+      expect(inboxTabOf(requests().first), InboxTab.fresh);
+      expect(container.read(newRequestsCountProvider), 2);
+      expect(alert(), isNull);
+    });
+
+    test('una reserva a mano (accepted, source app) que llega por INSERT se agrega a la lista sin aviso', () async {
+      await start();
+      repository.insertFromRealtime(
+        manualBooking('manual', DateTime.utc(2026, 10, 19, 11)),
+      );
+      await pumpEventQueue();
+
+      expect(requests().first.id, 'manual');
+      expect(inboxTabOf(requests().first), InboxTab.bookings);
+      expect(container.read(newRequestsCountProvider), 1);
+      expect(alert(), isNull);
+    });
+
+    test('un pedido de la app no se suma al aviso de uno de la web', () async {
+      await start();
+      repository
+        ..insertFromRealtime(
+          buildRequest(id: 'web', createdAt: DateTime.utc(2026, 10, 19, 11)),
+        )
+        ..insertFromRealtime(
+          buildRequest(
+            id: 'app',
+            source: RequestSource.app,
+            createdAt: DateTime.utc(2026, 10, 19, 12),
+          ),
+        );
+      await pumpEventQueue();
+
+      expect(requests().map((r) => r.id), containsAll(['web', 'app']));
+      expect(alert()!.requests.map((r) => r.id), ['web']);
+    });
+
     test('un INSERT de un pedido que ya está en la lista no repite nada', () async {
       await start();
       repository.emitRealtime(const RequestInserted('fresh'));
@@ -134,6 +198,43 @@ void main() {
       expect(repository.fetchCalls, callsAfterFirstConnect + 1);
       expect(requests().first.id, 'missed');
       expect(alert()!.requests.single.id, 'missed');
+    });
+
+    /// Se corta la conexión, llegan [missed] sin aviso y vuelve.
+    Future<void> reconnectAfter(List<ChefRequest> missed) async {
+      repository.emitRealtime(const RealtimeConnected());
+      await pumpEventQueue();
+      repository.emitRealtime(const RealtimeDisconnected());
+      for (final request in missed) {
+        repository.insertSilently(request);
+      }
+      repository.emitRealtime(const RealtimeConnected());
+      await pumpEventQueue();
+    }
+
+    test('al reconectar, una reserva a mano que llegó mientras tanto no avisa', () async {
+      await start();
+      await reconnectAfter([
+        manualBooking('manual', DateTime.utc(2026, 10, 19, 13)),
+      ]);
+
+      expect(requests().first.id, 'manual');
+      expect(alert(), isNull);
+    });
+
+    test('al reconectar, de lo que llegó mientras tanto se avisa solo el pedido de la web', () async {
+      await start();
+      await reconnectAfter([
+        buildRequest(id: 'missed-web', createdAt: DateTime.utc(2026, 10, 19, 13)),
+        buildRequest(
+          id: 'missed-app',
+          source: RequestSource.app,
+          createdAt: DateTime.utc(2026, 10, 19, 14),
+        ),
+      ]);
+
+      expect(requests().map((r) => r.id), containsAll(['missed-web', 'missed-app']));
+      expect(alert()!.requests.map((r) => r.id), ['missed-web']);
     });
 
     test('la primera conexión no relee (la lista recién se cargó)', () async {

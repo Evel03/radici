@@ -262,6 +262,33 @@ void main() {
       expect(buildRequest(status: RequestStatus.accepted).isNew, isFalse);
     });
 
+    test('el aviso en tiempo real, solo para un pedido sin abrir que llega de la web', () {
+      expect(buildRequest().alertsOnArrival, isTrue);
+      // Un pedido nuevo de la app no avisa, aunque cuente como nuevo en la bandeja.
+      final fromApp = buildRequest(source: RequestSource.app);
+      expect(fromApp.alertsOnArrival, isFalse);
+      expect(fromApp.isNew, isTrue);
+      // Una reserva no avisa: la de la app (una reserva a mano nace aceptada y
+      // vista) ni la de la web, aunque no tenga seen_at.
+      expect(
+        buildRequest(
+          source: RequestSource.app,
+          status: RequestStatus.accepted,
+          seenAt: testNow,
+        ).alertsOnArrival,
+        isFalse,
+      );
+      for (final source in RequestSource.values) {
+        expect(
+          buildRequest(source: source, status: RequestStatus.accepted).alertsOnArrival,
+          isFalse,
+          reason: '$source',
+        );
+      }
+      expect(buildRequest(seenAt: testNow).alertsOnArrival, isFalse);
+      expect(buildRequest(status: RequestStatus.rejected).alertsOnArrival, isFalse);
+    });
+
     test('solo un pedido en estado new se puede rechazar', () {
       expect(buildRequest().canReject, isTrue);
       expect(buildRequest(seenAt: testNow).canReject, isTrue);
