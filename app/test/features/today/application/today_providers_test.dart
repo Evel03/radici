@@ -1,9 +1,11 @@
 // Hoy sin widgets: qué sesión muestra con el reloj fijo (también a las 23:30
 // UTC, que en invierno ya es el día siguiente en Roma), que pasa al día nuevo
 // a la medianoche de Roma y a la próxima sesión cuando termina una sin
-// reabrir la app, las reservas que terminan, la tira de 7 días con los
-// bloqueos y los feriados de la agenda, los enlaces de los botones de abajo,
-// deslizar para actualizar y el pedido de abrir la bandeja en «Nuove».
+// reabrir la app (minuto a minuto, no solo una vez), las reservas que
+// terminan (con el día de Roma), la tira de 7 días con los bloqueos y los
+// feriados de la agenda (sin estado mientras la disponibilidad se vuelve a
+// leer), los enlaces de los botones de abajo, deslizar para actualizar y el
+// pedido de abrir la bandeja en «Nuove».
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -195,7 +197,25 @@ void main() {
       container.dispose();
     });
 
-    testWidgets('después de una suspensión lo nota en menos de un minuto', (
+    testWidgets('el reloj sigue avanzando después del primer cambio de minuto', (
+      tester,
+    ) async {
+      save([session(1, today), session(2, today, hour: 16)]);
+      // 12:58:30 en Roma: el primer cambio de minuto (12:59) no termina la de
+      // las 10:00, que cocina hasta las 13:00; el segundo (13:00), sí.
+      now = DateTime.utc(2026, 11, 17, 11, 58, 30);
+      await open(tester);
+      expect(focus().main?.id, sessionId(1));
+
+      await elapse(tester, const Duration(seconds: 30));
+      expect(focus().main?.id, sessionId(1), reason: '12:59');
+
+      await elapse(tester, const Duration(minutes: 1));
+      expect(focus().main?.id, sessionId(2), reason: '13:00');
+      container.dispose();
+    });
+
+    testWidgets('después de una suspensión lo nota como mucho en un minuto', (
       tester,
     ) async {
       save([session(1, today), session(2, today, hour: 16)]);
@@ -207,6 +227,36 @@ void main() {
       now = DateTime.utc(2026, 11, 17, 14);
       await tester.pump(todayNowRecheck);
       expect(focus().main?.id, sessionId(2));
+      container.dispose();
+    });
+
+    testWidgets('al cambiar de mes, mientras la disponibilidad se vuelve a leer, la tira queda sin estado', (
+      tester,
+    ) async {
+      // 23:59:30 del lunes 30/11 en Roma: a la medianoche cambia el mes y la
+      // disponibilidad se vuelve a leer.
+      now = DateTime.utc(2026, 11, 30, 22, 59, 30);
+      await open(tester);
+      container.listen(todayStripProvider, (_, _) {});
+      await tester.pump();
+      await tester.pump();
+      expect(container.read(todayStripProvider).first.status, DayStatus.open);
+
+      availability.pendingFetch = Completer<void>();
+      await elapse(tester, const Duration(seconds: 30));
+      expect(container.read(romeTodayProvider), CalendarDate(2026, 12, 1));
+      expect(
+        [for (final day in container.read(todayStripProvider)) day.status].nonNulls,
+        isEmpty,
+        reason: 'el estado viejo no vale para el mes nuevo',
+      );
+
+      availability.pendingFetch!.complete();
+      await tester.pump();
+      await tester.pump();
+      final strip = container.read(todayStripProvider);
+      expect(strip.first.date, CalendarDate(2026, 12, 1));
+      expect(strip.first.status, DayStatus.open);
       container.dispose();
     });
   });
@@ -224,6 +274,28 @@ void main() {
     final ending = container.read(todayEndingBookingsProvider);
     // La reserva de prueba: 28/10, 4/11, 11/11 y 18/11.
     expect([for (final s in ending) s.id], [sessionId(4)]);
+  });
+
+  test('reservas que terminan con el día de Roma: a las 23:30 UTC del 17/11 la ventana ya va del 18 al 24', () async {
+    save([
+      // Su última sesión es el 17: en Roma ya es ayer, así que terminó.
+      buildSession(
+        n: 1,
+        date: CalendarDate(2026, 11, 17),
+        requestId: 'termino-ayer',
+      ),
+      // El 24 es hoy más 6 en Roma: termina esta semana.
+      buildSession(
+        n: 2,
+        date: CalendarDate(2026, 11, 24),
+        requestId: 'termina-en-6',
+      ),
+    ]);
+    final container = await start(now: DateTime.utc(2026, 11, 17, 23, 30));
+    expect(
+      [for (final s in container.read(todayEndingBookingsProvider)) s.requestId],
+      ['termina-en-6'],
+    );
   });
 
   group('la tira de 7 días', () {
