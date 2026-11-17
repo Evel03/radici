@@ -24,6 +24,7 @@ import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 import 'package:radici/features/sessions/application/session_links.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
@@ -283,7 +284,8 @@ void main() {
       final whatsApp = app.launcher.launched.last;
       expect(whatsApp.toString(), startsWith('https://wa.me/393331234567?text='));
       final text = whatsApp.queryParameters['text']!;
-      expect(text, contains('Giulia'));
+      // Firmado por la cocinera, como el de la ficha.
+      expect(text, startsWith('Ciao Giulia, sono Evelyn di Radici.'));
       expect(text, isNot(contains('Gombito')), reason: 'nunca la dirección');
     });
 
@@ -301,12 +303,20 @@ void main() {
       );
     });
 
-    testWidgets('si no se puede abrir el enlace, lo avisa', (tester) async {
+    testWidgets('si no se puede abrir el enlace, lo avisa encima de los botones de abajo, sin taparlos', (
+      tester,
+    ) async {
       final app = await openToday(tester, sessions: [session()]);
       app.launcher.result = false;
       await tester.tap(byKey('today-directions'));
       await tester.pumpAndSettle();
       expect(find.text('Impossibile aprire il link.'), findsOneWidget);
+      // Con el ScaffoldMessenger de la app saldría en el Scaffold de la barra
+      // de navegación, sobre «Come arrivare» y WhatsApp.
+      expect(
+        tester.getRect(find.byType(SnackBar)).bottom,
+        lessThanOrEqualTo(tester.getRect(byKey('today-actions')).top),
+      );
     });
 
     testWidgets('sin dirección: WhatsApp es el principal y «Aggiungi indirizzo» la guarda; después, «Come arrivare»', (
@@ -731,6 +741,72 @@ void main() {
         'dicembre 2026',
       );
     });
+
+    testWidgets('con el lector de pantalla, un día de la tira también abre la Agenda en ese día', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await openToday(
+        tester,
+        clock: () => DateTime.utc(2026, 12, 7, 7),
+        sessions: [session(date: CalendarDate(2026, 12, 10))],
+      );
+      await reveal(tester, byKey('today-strip'));
+      // La acción va en el nodo de la celda: en /gestione/ el clic de
+      // VoiceOver solo llega a un nodo que la tiene.
+      tester.semantics.tap(
+        find.semantics.byLabel(RegExp(r'^giovedì 10 dicembre 2026')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(find.text('giovedì 10 dicembre 2026'), findsOneWidget);
+      semantics.dispose();
+    });
+
+    testWidgets('el punto de feriado solo en un día de trabajo: Natale (viernes) sí, Santo Stefano (sábado) no', (
+      tester,
+    ) async {
+      // Lunes 21/12/2026.
+      await openToday(tester, clock: () => DateTime.utc(2026, 12, 21, 7));
+      await reveal(tester, byKey('today-strip'));
+      expect(byKey('today-strip-2026-12-25-holiday'), findsOneWidget);
+      expect(byKey('today-strip-2026-12-26-holiday'), findsNothing);
+    });
+
+    testWidgets('resalta hoy (el primer día) y ningún otro', (tester) async {
+      await openToday(tester);
+      await reveal(tester, byKey('today-strip'));
+      FontWeight? weight(String iso, String day) => tester
+          .widget<Text>(
+            find.descendant(
+              of: byKey('today-strip-$iso'),
+              matching: find.text(day),
+            ),
+          )
+          .style
+          ?.fontWeight;
+      expect(weight('2026-11-17', '17'), FontWeight.w700);
+      for (var day = 18; day <= 23; day++) {
+        expect(weight('2026-11-$day', '$day'), isNot(FontWeight.w700), reason: '$day');
+      }
+    });
+
+    testWidgets('un punto por sesión: dos sesiones el mismo día, dos puntos', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        sessions: [session(), session(n: 2, hour: 15, name: 'Marco Bianchi')],
+      );
+      await reveal(tester, byKey('today-strip'));
+      expect(
+        find.descendant(
+          of: byKey('today-strip-2026-11-17-sessions'),
+          matching: find.byType(Container),
+        ),
+        findsNWidgets(2),
+      );
+    });
   });
 
   group('carga, error y actualizar', () {
@@ -800,6 +876,29 @@ void main() {
       repository.fetchFailure = null;
       await tester.tap(byKey('load-error-retry'));
       await tester.pumpAndSettle();
+      expect(card(1), findsOneWidget);
+    });
+
+    testWidgets('si una relectura falla con las sesiones ya leídas, quedan la tarjeta y los botones, con el aviso y «Riprova»', (
+      tester,
+    ) async {
+      final app = await openToday(tester, sessions: [session()]);
+      app.sessions.fetchFailure = const SessionFailure(
+        SessionFailureKind.unavailable,
+      );
+      // Lo que pasa con «Riprova» o al elegir en la Agenda un mes anterior:
+      // la lectura se vuelve a armar.
+      app.container.invalidate(sessionsControllerProvider);
+      await tester.pumpAndSettle();
+      expect(card(1), findsOneWidget);
+      expect(byKey('today-actions'), findsOneWidget);
+      expect(byKey('sessions-load-error'), findsOneWidget);
+      expect(byKey('load-error'), findsNothing);
+
+      app.sessions.fetchFailure = null;
+      await tester.tap(byKey('sessions-retry'));
+      await tester.pumpAndSettle();
+      expect(byKey('sessions-load-error'), findsNothing);
       expect(card(1), findsOneWidget);
     });
 
