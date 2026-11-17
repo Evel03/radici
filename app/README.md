@@ -115,7 +115,11 @@ repositorios falsos (`test/support/fakes.dart`).
   abre la ficha. Abajo, en el tercio inferior del teléfono, «Come arrivare» (Apple Maps en
   el iPhone, Google Maps en el resto) y WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi
   indirizzo», como la ficha (con varias, una línea dice de quién son, con la hora primero: «Arrivo
-  16:00 · Marco Bianchi»; si no entra, se corta el nombre). Pendientes de un toque: «N nuove
+  16:00 · Marco Bianchi»; si no entra, se corta el nombre). El WhatsApp es el de la ficha
+  (`sessionLinksFor`, con el mismo día de Roma con que Hoy elige la sesión): lleva la hora de
+  llegada salvo en una sesión cocinada o cobrada (en Hoy no hay canceladas ni de días pasados) y,
+  si lo manda un colaborador, escribe de parte de la cocinera («ti scrivo da parte di Evelyn di
+  Radici…»). Pendientes de un toque: «N nuove
   richieste» (lleva a Richieste en «Nuove», aunque se haya dejado en otra pestaña) y las reservas
   que terminan: las reservas semanales (un pedido semanal aceptado; no un presupuesto enviado ni una
   sesión extra) cuya última sesión viva cae entre hoy y los 6 días siguientes (abre la ficha de esa
