@@ -247,6 +247,54 @@ void main() {
     );
   });
 
+  group('la bandeja desde el arranque (armada antes de que cargue la cuenta, con la lista vacía)', () {
+    Finder byKey(String key) => find.byKey(ValueKey(key));
+
+    testWidgets('si no se pudo leer, el error con «Riprova», que la vuelve a leer', (
+      tester,
+    ) async {
+      final requests = sample()..failFetch = true;
+      await pumpChefApp(
+        tester,
+        requests: requests,
+        location: '/agenda',
+        size: const Size(400, 2000),
+      );
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(byKey('load-error'), findsOneWidget);
+
+      requests.failFetch = false;
+      await tester.tap(byKey('load-error-retry'));
+      await tester.pumpAndSettle();
+      expect(byKey('load-error'), findsNothing);
+      expect(tile('no-date'), findsOneWidget);
+    });
+
+    testWidgets('mientras se lee, la barra de carga; al llegar, los pedidos', (
+      tester,
+    ) async {
+      final requests = sample()..pendingFetch = Completer<void>();
+      await pumpChefApp(
+        tester,
+        requests: requests,
+        location: '/agenda',
+        size: const Size(400, 2000),
+        settle: false,
+      );
+      for (var i = 0; i < 10 && find.byType(AgendaScreen).evaluate().isEmpty; i++) {
+        await tester.pump();
+      }
+      await tester.pump();
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(byKey('agenda-loading'), findsOneWidget);
+
+      requests.pendingFetch!.complete();
+      await tester.pumpAndSettle();
+      expect(byKey('agenda-loading'), findsNothing);
+      expect(tile('no-date'), findsOneWidget);
+    });
+  });
+
   for (final locale in const [Locale('it'), Locale('es'), Locale('en')]) {
     testWidgets('teléfono angosto sin desbordes (${locale.languageCode})', (
       tester,

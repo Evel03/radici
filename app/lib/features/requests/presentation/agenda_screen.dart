@@ -46,7 +46,12 @@ class AgendaScreen extends ConsumerWidget {
           // «Ricarica»: lo mismo que deslizar para actualizar, sin el gesto.
           actions: const [ChefRefreshButton(), ChefAccountMenuButton()],
         ),
-        body: inbox.hasError && !inbox.hasValue
+        // La bandeja puede traer un valor de antes (la lista vacía de cuando
+        // todavía no había cocinera: el aviso de pedidos nuevos la arma desde
+        // el arranque), así que el error se mira sin él. Mientras se vuelve a
+        // leer después de una falla (Riverpod reintenta solo, o «Riprova»),
+        // sigue cargando: la lista con su barra.
+        body: inbox.hasError && !inbox.isLoading
             ? LoadErrorView(
                 message: l10n.inboxLoadError,
                 onRetry: () => ref.invalidate(chefInboxProvider),
@@ -64,8 +69,9 @@ class _AgendaList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
+    // También con el valor de antes (ver AgendaScreen).
     final loading = ref.watch(
-      chefInboxProvider.select((inbox) => inbox.isLoading && !inbox.hasValue),
+      chefInboxProvider.select((inbox) => inbox.isLoading),
     );
     final view = ref.watch(agendaControllerProvider.select((s) => s.view));
 
@@ -84,7 +90,8 @@ class _AgendaList extends ConsumerWidget {
             // Abajo, lugar para el botón flotante: no tapa nada.
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
             children: [
-              if (loading) const LinearProgressIndicator(),
+              if (loading)
+                const LinearProgressIndicator(key: ValueKey('agenda-loading')),
               const _AgendaToolbar(),
               const SessionsLoadError(),
               const SizedBox(height: 8),
