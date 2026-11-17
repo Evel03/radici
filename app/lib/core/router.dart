@@ -82,7 +82,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // La ficha de una sesión, también fuera de las pestañas (tapa la barra;
       // se abre con push desde la agenda).
       GoRoute(
-        path: '${AppRoutes.sessions}/:id',
+        path: _sessionPath,
         pageBuilder: (context, state) => _page(
           state,
           CookingSessionScreen(sessionId: state.pathParameters['id']!),
@@ -228,17 +228,31 @@ CalendarDate? _dateOrNull(String? value) {
   }
 }
 
-/// Hay una hoja «Conferma prenotazione» en la pila de [router], a la vista o
-/// tapada por otra pantalla (por ejemplo, un pedido abierto desde el aviso).
-/// Un go la sacaría sin pasar por su PopScope: con lo escrito o, mientras se
-/// manda, con la pantalla final y su WhatsApp.
-bool bookingSheetInStack(GoRouter router) {
+/// La ruta de la ficha de una sesión (su hoja «Sposta» cuelga de ella).
+const String _sessionPath = '${AppRoutes.sessions}/:id';
+
+/// Hay en la pila de [router], a la vista o tapada por otra pantalla (por
+/// ejemplo, un pedido abierto desde el aviso), una hoja «Conferma
+/// prenotazione» o la ficha de una sesión (sola o con su hoja «Sposta»). Un
+/// go las sacaría sin pasar por ningún PopScope, con lo que tengan a medias:
+/// la hoja de reserva, con lo escrito o, mientras se manda, con la pantalla
+/// final y su WhatsApp; la ficha, con la hoja «Sposta» a medio mover (y el
+/// resultado del que sale «Annulla»), el aviso con «Annulla» después de
+/// mover, el diálogo de la dirección con lo escrito o una cancelación que
+/// todavía espera la respuesta (la ficha avisa cómo terminó).
+bool bookingOrSessionInStack(GoRouter router) {
   bool inStack(List<RouteMatchBase> matches) => matches.any(
     (match) => switch (match) {
       ShellRouteMatch(:final matches) => inStack(matches),
       ImperativeRouteMatch(:final matches) => inStack(matches.matches),
       _ => switch (match.route) {
-        GoRoute(path: AppRoutes.bookingSegment) => true,
+        GoRoute(
+          path:
+              AppRoutes.bookingSegment ||
+              _sessionPath ||
+              AppRoutes.sessionMoveSegment,
+        ) =>
+          true,
         _ => false,
       },
     },

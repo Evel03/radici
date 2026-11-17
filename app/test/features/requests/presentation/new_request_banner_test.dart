@@ -1,11 +1,14 @@
 // Aviso emergente en tiempo real: "Nuova richiesta da …" con botón para
-// abrirla, desde cualquier pantalla de la cocinera. Con una hoja de reserva
-// abierta (o tapada por otro pedido), «Apri» nunca la saca.
+// abrirla, desde cualquier pantalla de la cocinera. Con una hoja de reserva o
+// la ficha de una sesión (con su hoja «Sposta») abierta o tapada por otro
+// pedido, «Apri» nunca la saca, y la hoja «Sposta» que termina de mover con
+// un pedido encima no lo cierra.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/core/router.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
@@ -271,7 +274,7 @@ void main() {
     });
   });
 
-  group('con la hoja «Sposta» de una sesión', () {
+  group('con la ficha de una sesión y su hoja «Sposta»', () {
     // La reserva de prueba: miércoles 25/11, 2/12, 9/12 y 16/12. Se mueve la
     // semana 2 (2/12) al jueves 3/12.
     Finder byKey(String key) => find.byKey(ValueKey(key));
@@ -331,6 +334,95 @@ void main() {
       await tester.tap(snackBarAction('Annulla'));
       await tester.pumpAndSettle();
       expect(sessions.moves.last.date, CalendarDate(2026, 12, 2));
+    });
+
+    // go reemplaza toda la pila: sacaba la hoja a medio mover (sin pasar por
+    // su PopScope) y la ficha, y con ellas el resultado y su «Annulla».
+    testWidgets('dos pedidos llegan mientras se mueve: «Apri» abre encima el más reciente (no la bandeja) y, '
+        'al volver, la ficha ofrece «Annulla»', (tester) async {
+      final sessions = FakeSessionsRepository(buildBooking())..pendingMove = Completer<void>();
+      final app = await openMoveSheet(tester, sessions);
+      await tester.tap(byKey('move-confirm'));
+      await tester.pump();
+
+      app.requests
+        ..insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13))
+        ..insertFromRealtime(incoming('req-9', 'Anna Verdi', 14));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(bannerText(tester), '2 nuove richieste');
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+      expect(find.byType(InboxScreen), findsNothing);
+      expect(find.byType(MoveSessionScreen, skipOffstage: false), findsOneWidget);
+
+      sessions.pendingMove!.complete();
+      await tester.pumpAndSettle();
+      expect(sessions.moves.single.date, CalendarDate(2026, 12, 3));
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      expect(find.text('Sessione spostata a gio 3 dic, arrivo alle 10:00.'), findsOneWidget);
+      expect(snackBarAction('Annulla'), findsOneWidget);
+    });
+
+    testWidgets('sin mandar todavía: «Apri» con varios no saca la hoja y, al volver, sigue la fecha elegida', (
+      tester,
+    ) async {
+      final sessions = FakeSessionsRepository(buildBooking());
+      final app = await openMoveSheet(tester, sessions);
+      app.requests
+        ..insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13))
+        ..insertFromRealtime(incoming('req-9', 'Anna Verdi', 14));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsOneWidget);
+      expect(find.text('giovedì 3 dicembre 2026'), findsOneWidget);
+      await tester.tap(byKey('move-confirm'));
+      await tester.pumpAndSettle();
+      expect(sessions.moves.single.date, CalendarDate(2026, 12, 3));
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+    });
+
+    // Con la ficha a la vista el aviso hoy no aparece (la ficha tiene su
+    // propio ScaffoldMessenger): la regla se mira directo.
+    testWidgets('la ficha cuenta como la hoja de reserva: por enlace directo, con su hoja o tapada por un pedido', (
+      tester,
+    ) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+        sessions: FakeSessionsRepository(buildBooking()),
+      );
+      final router = app.container.read(routerProvider);
+      Future<bool> at(String location) async {
+        app.go(location);
+        await tester.pumpAndSettle();
+        return bookingOrSessionInStack(router);
+      }
+
+      expect(await at('/agenda'), isFalse);
+      expect(await at('/richieste/req-1'), isFalse);
+      expect(await at('/sessioni/${sessionId(2)}'), isTrue);
+      expect(await at('/sessioni/${sessionId(2)}/sposta?data=2026-12-03'), isTrue);
+
+      // Abierta desde la agenda y tapada por un pedido abierto desde el aviso.
+      expect(await at('/agenda'), isFalse);
+      unawaited(router.push('/sessioni/${sessionId(2)}'));
+      await tester.pumpAndSettle();
+      unawaited(router.push('/richieste/req-1'));
+      await tester.pumpAndSettle();
+      expect(find.byType(RequestDetailScreen), findsOneWidget);
+      expect(bookingOrSessionInStack(router), isTrue);
     });
   });
 

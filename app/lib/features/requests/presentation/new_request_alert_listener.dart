@@ -50,9 +50,10 @@ class NewRequestAlertListener extends ConsumerWidget {
       final router = ref.read(routerProvider);
       ref.read(newRequestAlertProvider.notifier).dismiss();
       // push: al volver, la cocinera sigue donde estaba. Con varios, la
-      // bandeja (go reemplaza toda la pila), salvo con una hoja de reserva en
-      // la pila: ahí se abre encima el más reciente, para no perder la hoja.
-      if (single || bookingSheetInStack(router)) {
+      // bandeja (go reemplaza toda la pila), salvo con una hoja de reserva o
+      // la ficha de una sesión en la pila: ahí se abre encima el más
+      // reciente, para no perder lo que tienen a medias.
+      if (single || bookingOrSessionInStack(router)) {
         router.push(AppRoutes.requestDetail(alert.latest.id));
       } else {
         router.go(AppRoutes.requests);

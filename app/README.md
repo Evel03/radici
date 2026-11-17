@@ -144,7 +144,8 @@ repositorios falsos (`test/support/fakes.dart`).
   `POST chef/sessions/move` antes de confirmar (libre, un aviso, un choque o la semana con otra
   sesión de la reserva, que ofrece «Passa alla fine della prenotazione»: una por semana; no deja
   mover hasta que vuelve, y el lector de pantalla anuncia lo que dice); al mover, la ficha ofrece
-  «Annulla», que la devuelve a su fecha y hora. Y **Cancelar** (`POST chef/sessions/cancel`), con
+  «Annulla», que la devuelve a su fecha y hora (si la hoja termina tapada por un pedido abierto
+  desde el aviso, se cierra al volver a ella). Y **Cancelar** (`POST chef/sessions/cancel`), con
   confirmación (que no promete que la web vuelva a ofrecer el día: no lo hace si está bloqueado,
   pasó o no queda lugar), el motivo (la lista cerrada del contrato, preseleccionado el neutro
   `chef_cancelled`: la clienta con cuenta puede leerlo) y «anche le successive». Un 409
@@ -214,10 +215,11 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
   emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Con varios
   pedidos («N nuove richieste») el botón lleva a la bandeja, salvo con una hoja «Conferma
-  prenotazione» abierta (o tapada por otro pedido): ahí abre encima el más reciente, porque ir a la
-  bandeja sacaría la hoja sin preguntar, y mientras se manda se perdería la pantalla final con el
-  WhatsApp. Al reconectar (corte de red, app que vuelve del segundo plano) se relee la lista y se
-  avisa lo que llegó.
+  prenotazione» o la ficha de una sesión (con su hoja «Sposta») abierta o tapada por otro pedido:
+  ahí abre encima el más reciente, porque ir a la bandeja las sacaría sin preguntar, y se perdería
+  lo que tienen a medias (mientras se manda la reserva, la pantalla final con el WhatsApp; mientras
+  se mueve una sesión, el «Annulla» de la ficha). Al reconectar (corte de red, app que vuelve del
+  segundo plano) se relee la lista y se avisa lo que llegó.
 - Los teléfonos se normalizan con `lib/core/phone.dart`, copia de `normalizePhone`
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
 
