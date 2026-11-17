@@ -13,10 +13,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/availability/domain/availability.dart';
+import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
@@ -575,19 +577,91 @@ void main() {
       expect(tester.widget<Text>(byKey('session-week')).data, 'Settimana 4 di 4');
     });
 
-    testWidgets('si la bandeja no se pudo leer, lo dice con «Riprova»', (
+    testWidgets('si la bandeja no se pudo leer, lo dice con «Riprova»; mientras la vuelve a leer, la barra de carga', (
       tester,
     ) async {
       final repository = requests()..failFetch = true;
       await openToday(tester, requests: repository);
       await reveal(tester, byKey('today-requests-error'));
       expect(byKey('today-new-requests'), findsNothing);
+      expect(byKey('today-pending-empty'), findsNothing);
 
-      repository.failFetch = false;
+      repository
+        ..failFetch = false
+        ..pendingFetch = Completer<void>();
       await tester.tap(byKey('today-requests-retry'));
+      await tester.pump();
+      await tester.pump();
+      expect(byKey('today-pending-loading'), findsOneWidget);
+      expect(byKey('today-requests-error'), findsNothing);
+      expect(byKey('today-pending-empty'), findsNothing);
+
+      repository.pendingFetch!.complete();
       await tester.pumpAndSettle();
       await reveal(tester, byKey('today-new-requests'));
       expect(byKey('today-requests-error'), findsNothing);
+      expect(byKey('today-pending-loading'), findsNothing);
+    });
+
+    testWidgets('mientras se lee la bandeja al entrar, la barra de carga y no «Niente in sospeso»; al llegar, los pedidos nuevos', (
+      tester,
+    ) async {
+      final repository = requests()..pendingFetch = Completer<void>();
+      final app = await pumpChefApp(
+        tester,
+        requests: repository,
+        sessions: FakeSessionsRepository(const []),
+        clock: () => morning,
+        settle: false,
+      );
+      await waitForToday(tester);
+      // La bandeja ya estaba armada antes de que cargara la cuenta (el aviso
+      // de pedidos nuevos la escucha desde el arranque), con la lista vacía:
+      // se vuelve a leer con ese valor de antes.
+      expect(
+        app.container.read(chefInboxProvider),
+        isA<AsyncLoading<List<ChefRequest>>>().having(
+          (inbox) => inbox.hasValue,
+          'con la lista vacía de antes',
+          isTrue,
+        ),
+      );
+      expect(byKey('today-pending-loading'), findsOneWidget);
+      expect(byKey('today-pending-empty'), findsNothing);
+      expect(byKey('today-requests-error'), findsNothing);
+
+      repository.pendingFetch!.complete();
+      await tester.pumpAndSettle();
+      expect(byKey('today-pending-loading'), findsNothing);
+      expect(byKey('today-pending-empty'), findsNothing);
+      await reveal(tester, byKey('today-new-requests'));
+    });
+
+    testWidgets('si la bandeja falla y Riverpod la reintenta, la barra de carga (ni el error ni «Niente in sospeso»); cuando deja de reintentar, el error', (
+      tester,
+    ) async {
+      final repository = requests()..failFetch = true;
+      final app = await pumpChefApp(
+        tester,
+        requests: repository,
+        sessions: FakeSessionsRepository(const []),
+        clock: () => morning,
+        retry: retryOnce(),
+        settle: false,
+      );
+      await waitForToday(tester);
+      final inbox = app.container.read(chefInboxProvider);
+      expect(inbox.isLoading && inbox.hasError, isTrue, reason: 'reintentando');
+      expect(byKey('today-pending-loading'), findsOneWidget);
+      expect(byKey('today-pending-empty'), findsNothing);
+      expect(byKey('today-requests-error'), findsNothing);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(repository.fetchCalls, 2);
+      expect(byKey('today-requests-error'), findsOneWidget);
+      expect(byKey('today-pending-loading'), findsNothing);
+      expect(byKey('today-pending-empty'), findsNothing);
     });
   });
 

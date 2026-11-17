@@ -145,6 +145,10 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
   bool failReject = false;
   bool failUndoReject = false;
   bool failMarkClient = false;
+
+  /// Si no es null, la lectura de la lista espera a que se complete (y
+  /// después falla si [failFetch]).
+  Completer<void>? pendingFetch;
   int fetchCalls = 0;
   final List<String> markedSeen = [];
   final List<String> rejected = [];
@@ -170,6 +174,8 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
   @override
   Future<List<ChefRequest>> fetchRequests({required String chefId}) async {
     fetchCalls++;
+    final pending = pendingFetch;
+    if (pending != null) await pending.future;
     if (failFetch) throw const RequestsFailure(RequestsFailureKind.unavailable);
     final list = requests.values.where((r) => r.chefId == chefId).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));

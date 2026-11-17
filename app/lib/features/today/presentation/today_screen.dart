@@ -223,10 +223,15 @@ class _Pending extends ConsumerWidget {
     final inbox = ref.watch(chefInboxProvider);
     final newCount = ref.watch(newRequestsCountProvider);
     final ending = ref.watch(todayEndingBookingsProvider);
-    // El error puede llegar con un valor de antes (la lista vacía de cuando
-    // todavía no había cocinera): cuenta igual.
+    // La carga y el error pueden llegar con un valor de antes (la lista vacía
+    // de cuando todavía no había cocinera: el aviso de pedidos nuevos arma la
+    // bandeja desde el arranque), así que se miran sin él. Mientras se vuelve
+    // a leer después de una falla (Riverpod reintenta solo, o «Riprova»), el
+    // estado trae el error y sigue cargando: la barra, no el error.
+    final inboxLoading = inbox.isLoading;
     final inboxFailed = inbox.hasError && !inbox.isLoading;
-    final inboxLoading = inbox.isLoading && !inbox.hasValue;
+    // «Niente in sospeso» solo con la bandeja leída.
+    final inboxRead = !inbox.isLoading && !inbox.hasError;
 
     final items = <Widget>[
       if (newCount > 0)
@@ -281,7 +286,7 @@ class _Pending extends ConsumerWidget {
             child: LinearProgressIndicator(),
           ),
         ...items,
-        if (items.isEmpty && !inboxFailed && !inboxLoading)
+        if (items.isEmpty && inboxRead)
           Text(
             l10n.todayPendingNone,
             key: const ValueKey('today-pending-empty'),
