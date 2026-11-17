@@ -280,6 +280,16 @@ abstract class CookingSession with _$CookingSession {
     return fromRequest.isNotEmpty ? fromRequest : client.zone;
   }
 
+  /// Personas (adultos y niños), como el nombre: las del pedido y, si no las
+  /// dice (o no hay pedido), las de la ficha; null si ninguno las dice.
+  int? get people {
+    final fromRequest = request?.people;
+    if (fromRequest != null) return fromRequest;
+    final adults = client.adults;
+    final kids = client.kids;
+    return adults == null && kids == null ? null : (adults ?? 0) + (kids ?? 0);
+  }
+
   /// Idioma de la clienta (los mensajes de WhatsApp): el del pedido.
   ClientLocale get locale => request?.locale ?? ClientLocale.it;
 

@@ -77,8 +77,8 @@ Map<String, dynamic> sessionRow({
 };
 
 /// Sesión armada a mano (sin pasar por JSON): por defecto, una semana
-/// confirmada de la reserva [bookingRequestId], el miércoles 25/11/2026 a
-/// las 10:00, con 45 min de compra y 180 de cocina.
+/// confirmada de la reserva [bookingRequestId] (un pedido semanal, [type]),
+/// el miércoles 25/11/2026 a las 10:00, con 45 min de compra y 180 de cocina.
 CookingSession buildSession({
   int n = 1,
   String? id,
@@ -98,6 +98,7 @@ CookingSession buildSession({
   ClientLocale locale = ClientLocale.it,
   int weeks = 4,
   String? cancelReason,
+  RequestType type = RequestType.week,
 }) => CookingSession(
   id: id ?? sessionId(n),
   chefId: testChefId,
@@ -139,6 +140,7 @@ CookingSession buildSession({
           noAllergies: noAllergies,
           weeks: weeks,
           seenAt: DateTime.utc(2026, 10, 19, 12),
+          type: type,
         ),
 );
 

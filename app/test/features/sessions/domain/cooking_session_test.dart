@@ -194,6 +194,38 @@ void main() {
       expect(withoutRequestZone.zone, 'Borgo Palazzo');
       expect(session.copyWith(request: null).zone, 'Borgo Palazzo');
     });
+
+    test('las personas: las del pedido y, si no las dice, las de la ficha', () {
+      final base = buildSession();
+      // El pedido: 2 adultos y 2 niños. La ficha, otra cuenta.
+      final session = base.copyWith(
+        client: base.client.copyWith(adults: 3, kids: 0),
+      );
+      expect(session.people, 4);
+      final requestWithout = session.copyWith(
+        request: session.request!.copyWith(adults: null, kids: null),
+      );
+      expect(requestWithout.people, 3);
+      expect(session.copyWith(request: null).people, 3);
+      expect(
+        session
+            .copyWith(
+              request: null,
+              client: session.client.copyWith(adults: null, kids: 1),
+            )
+            .people,
+        1,
+      );
+      expect(
+        session
+            .copyWith(
+              request: null,
+              client: session.client.copyWith(adults: null, kids: null),
+            )
+            .people,
+        isNull,
+      );
+    });
   });
 
   group('alergias', () {
