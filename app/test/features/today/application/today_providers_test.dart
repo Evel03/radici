@@ -5,10 +5,11 @@
 // terminan (con el día de Roma), la tira de 7 días con los bloqueos y los
 // feriados de la agenda (sin estado mientras la disponibilidad se vuelve a
 // leer), los enlaces de los botones de abajo (el WhatsApp con la regla de la
-// ficha: de parte de la cocinera con la cuenta de un colaborador, la hora de
-// llegada solo en una sesión viva de hoy en adelante, nunca la dirección, las
-// alergias, las notas, la zona ni el apellido), deslizar para actualizar y el
-// pedido de abrir la bandeja en «Nuove».
+// ficha: de parte de la cocinera con la cuenta de un colaborador; la hora de
+// llegada solo en una sesión que no está cancelada, cocinada ni cobrada, de
+// hoy en adelante; nunca la dirección, las alergias, las notas, la zona ni el
+// apellido), deslizar para actualizar y el pedido de abrir la bandeja en
+// «Nuove».
 import 'dart:async';
 import 'dart:ui' show Locale;
 
@@ -490,9 +491,14 @@ void main() {
       );
     });
 
-    test('hoy sale del reloj de la app (el día de Roma), no del reloj del sistema', () async {
+    test('hoy sale del reloj de la app, no del reloj del sistema', () async {
       // Lunes 19/10/2026 a las 14:00 en Roma: la próxima es la del miércoles
-      // 21/10, que para el reloj del sistema ya pasó.
+      // 21/10, que para el reloj del sistema ya pasó. Que hoy sea el día de
+      // Roma y no el de UTC no se ve en Hoy: todayFocus solo deja sesiones de
+      // hoy en adelante en Roma, y en UTC la fecha nunca es posterior a la de
+      // Roma, así que con los dos la de los botones es de hoy en adelante. Lo
+      // distinguen los tests de la ficha (session_links_test y
+      // cooking_session_screen_test).
       save([session(1, CalendarDate(2026, 10, 21))]);
       expect(
         await whatsAppText(now: DateTime.utc(2026, 10, 19, 12)),
