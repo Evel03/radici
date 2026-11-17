@@ -3,10 +3,11 @@
 // solo cambian vía Edge Functions (CLAUDE.md): la app crea la reserva con
 // POST chef/bookings y nunca escribe sesiones.
 //
-// El SDK manda la sesión de Evelyn (`Authorization: Bearer <token>`) y la
-// clave publicable (`apikey`). La región va en la URL
-// (`?forceFunctionRegion=eu-central-1`, Frankfurt, como la web): la cabecera
-// `x-region` no, porque el preflight de CORS no la permite (contrato §2).
+// El SDK manda la sesión de quien entró (Evelyn o un colaborador suyo) en
+// `Authorization: Bearer <token>` y la clave publicable en `apikey`. La región
+// va en la URL (`?forceFunctionRegion=eu-central-1`, Frankfurt, como la web):
+// la cabecera `x-region` no, porque el preflight de CORS no la permite
+// (contrato §2).
 //
 // Ningún error se loguea: se traduce a [BookingFailure] (solo el tipo, la
 // fecha del choque o el estado del pedido) y el resto se descarta.
@@ -45,7 +46,7 @@ enum BookingFailureKind {
   /// 404: el pedido no existe (para esta cocinera).
   notFound,
 
-  /// 403: el usuario no es la cocinera.
+  /// 403: el usuario no es la cocinera ni un colaborador suyo.
   forbidden,
 
   /// 401: sin sesión válida (vencida o cerrada).

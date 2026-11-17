@@ -3,8 +3,8 @@
 // embebidos, filtrada por la cocinera), la dirección de la ficha (PATCH
 // /rest/v1/clients, solo esa columna), y mover y cancelar con la Edge
 // Function chef (POST /functions/v1/chef/sessions/move y …/cancel, con la
-// sesión de Evelyn y la región en la URL), con cada error traducido a
-// SessionFailure.
+// sesión de quien entró, Evelyn o un colaborador suyo, y la región en la URL),
+// con cada error traducido a SessionFailure.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:radici/core/clock_time.dart';
@@ -68,7 +68,8 @@ void main() {
       expect(query['date'], 'gte.2026-10-26');
       expect(query['order'], 'date.asc.nullslast,start_time.asc.nullslast');
       expect(query['limit'], '$sessionsPageSize');
-      // Con la sesión de Evelyn: la RLS decide qué filas ve.
+      // Con la sesión de quien entró (Evelyn o un colaborador suyo): la RLS
+      // decide qué filas ve.
       expect(request.headers['Authorization'], 'Bearer ${fakeJwt('user-1')}');
       expect(request.headers['apikey'], 'sb_publishable_test');
     });
@@ -168,7 +169,8 @@ void main() {
       expect(query['select'], 'id');
       // Solo la dirección: el resto de la ficha no se toca.
       expect(jsonBodyOf(request), {'address': 'Via Pignolo 5, Bergamo'});
-      // Con la sesión de Evelyn: la RLS decide qué ficha puede cambiar.
+      // Con la sesión de quien entró (Evelyn o un colaborador suyo): la RLS
+      // decide qué ficha puede cambiar.
       expect(request.headers['Authorization'], 'Bearer ${fakeJwt('user-1')}');
     });
 
@@ -373,7 +375,7 @@ void main() {
         _failure(SessionFailureKind.unauthorized),
       ),
       (
-        'no es la cocinera',
+        'no es la cocinera ni un colaborador suyo',
         403,
         {'error': 'forbidden'},
         _failure(SessionFailureKind.forbidden),

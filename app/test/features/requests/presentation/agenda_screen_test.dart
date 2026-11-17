@@ -601,7 +601,7 @@ void main() {
       await tester.tap(byKey('availability-note-${friday.toIso()}'));
       await tester.pumpAndSettle();
       expect(byKey('availability-note-dialog'), findsOneWidget);
-      expect(find.text('Nota (la vedi solo tu)'), findsOneWidget);
+      expect(find.text('Nota (i clienti non la vedono)'), findsOneWidget);
       // La instrucción de privacidad se ve siempre, aparte del ejemplo.
       expect(find.text('Non scrivere dati sulla salute.'), findsOneWidget);
       expectReadableInputs(tester);

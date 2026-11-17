@@ -208,6 +208,74 @@ void main() {
     expect(find.text('Envíame el código'), findsOneWidget);
   });
 
+  testWidgets('la cocinera ve su nombre en la cuenta', (tester) async {
+    await openApp(tester, location: '/impostazioni');
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.text('Evelyn'), findsOneWidget);
+    expect(find.textContaining('Colaborador'), findsNothing);
+    expect(find.text('Iniciaste sesión como ${chefUser.email}'), findsOneWidget);
+  });
+
+  testWidgets('un colaborador ve «Colaborador de Evelyn» y con qué email '
+      'entró', (tester) async {
+    await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository(const []),
+      accounts: FakeAccountRepository(
+        chefAccountData.copyWith(
+          chef: chefAccount.copyWith(collaborator: true),
+          language: AppLanguage.es,
+        ),
+      ),
+      location: '/impostazioni',
+      overrides: [languageCacheProvider.overrideWithValue(cache)],
+    );
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.text('Colaborador de Evelyn'), findsOneWidget);
+    expect(find.text('Iniciaste sesión como ${chefUser.email}'), findsOneWidget);
+  });
+
+  // El menú de la cuenta dice lo mismo que Impostazioni. A 1200×800, como
+  // /gestione/ en una computadora, que es donde siempre está el menú.
+  for (final collaborator in [false, true]) {
+    testWidgets(
+      'menú de la cuenta: '
+      '${collaborator ? '«Colaborador de Evelyn»' : 'el nombre de la cocinera'}'
+      ' y con qué email entró',
+      (tester) async {
+        await pumpChefApp(
+          tester,
+          requests: FakeChefRequestsRepository(const []),
+          accounts: FakeAccountRepository(
+            chefAccountData.copyWith(
+              chef: chefAccount.copyWith(collaborator: collaborator),
+              language: AppLanguage.es,
+            ),
+          ),
+          size: const Size(1200, 800),
+          overrides: [languageCacheProvider.overrideWithValue(cache)],
+        );
+        await tester.tap(find.byKey(const ValueKey('account-menu')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.widgetWithText(
+            ListTile,
+            collaborator ? 'Colaborador de Evelyn' : 'Evelyn',
+          ),
+          findsOneWidget,
+        );
+        if (!collaborator) {
+          expect(find.textContaining('Colaborador'), findsNothing);
+        }
+        expect(
+          find.text('Iniciaste sesión como ${chefUser.email}'),
+          findsOneWidget,
+        );
+      },
+    );
+  }
+
   testWidgets('Impostazioni dice la versión de /gestione/ (el id del build)', (
     tester,
   ) async {
@@ -240,20 +308,28 @@ void main() {
   });
 
   for (final language in AppLanguage.values) {
-    testWidgets(
-      'Impostazioni sin desbordes en un teléfono angosto (${language.code})',
-      (tester) async {
-        await pumpChefApp(
-          tester,
-          requests: FakeChefRequestsRepository(const []),
-          accounts: profileIn(language),
-          location: '/impostazioni',
-          size: const Size(320, 640),
-          overrides: [languageCacheProvider.overrideWithValue(cache)],
-        );
-        expect(find.byType(SettingsScreen), findsOneWidget);
-        expect(tester.takeException(), isNull);
-      },
-    );
+    for (final collaborator in [false, true]) {
+      testWidgets(
+        'Impostazioni sin desbordes en un teléfono angosto (${language.code}'
+        '${collaborator ? ', colaborador' : ''})',
+        (tester) async {
+          await pumpChefApp(
+            tester,
+            requests: FakeChefRequestsRepository(const []),
+            accounts: FakeAccountRepository(
+              chefAccountData.copyWith(
+                chef: chefAccount.copyWith(collaborator: collaborator),
+                language: language,
+              ),
+            ),
+            location: '/impostazioni',
+            size: const Size(320, 640),
+            overrides: [languageCacheProvider.overrideWithValue(cache)],
+          );
+          expect(find.byType(SettingsScreen), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
   }
 }

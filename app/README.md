@@ -94,11 +94,16 @@ repositorios falsos (`test/support/fakes.dart`).
   email del código llega en el idioma de `user_metadata.locale` (italiano si no hay; cambiar el idioma
   en Impostazioni también lo cambia).
 - Después del login se lee el perfil (`profiles.role` y `profiles.locale`): `chef` → área de la
-  cocinera (con su fila de `chefs`), que empieza en **Hoy** (`/oggi`), también al abrir la app con la
-  sesión guardada; un enlace directo (el botón del email, `/richieste/<id>`) abre lo suyo. Cualquier
-  otro → "Area clienti in preparazione". La interfaz pasa al idioma del perfil (ver
-  [Idioma](#idioma)). La barra de abajo tiene cuatro destinos: Oggi, Richieste, Agenda y Altro
-  (desde 840 px, el mismo riel a la izquierda).
+  cocinera, con la ficha de su cocina (`current_chef_id()`, la misma función que la RLS, y su fila de
+  `chefs`), que empieza en **Hoy** (`/oggi`), también al abrir la app con la sesión guardada; un
+  enlace directo (el botón del email, `/richieste/<id>`) abre lo suyo. Cualquier otro →
+  "Area clienti in preparazione". La interfaz pasa al idioma del perfil (ver [Idioma](#idioma)). La
+  barra de abajo tiene cuatro destinos: Oggi, Richieste, Agenda y Altro (desde 840 px, el mismo riel
+  a la izquierda). Un colaborador de la cocinera (`chef_members`) entra igual, con su cuenta: ve y
+  hace lo mismo que ella, e Impostazioni y el menú de la cuenta dicen «Collaboratore di Evelyn» en
+  lugar del nombre (`chefAccountTitle`). El WhatsApp que le prepara el detalle de un pedido sale de
+  su propio teléfono, así que escribe de parte de ella («ti scrivo da parte di Evelyn di Radici»,
+  `contactWhatsAppMessageOnBehalf`) en lugar de «sono Evelyn».
 - **Hoy** (`features/today/`): la sesión de hoy o, si hoy no hay, la próxima (la más cercana que no
   está cancelada). Con varias hoy, todas: primero las que todavía no terminaron, por llegada, y
   después las terminadas (pasó la hora en que termina la cocina, en hora de Roma, o ya está cocinada
@@ -151,7 +156,8 @@ repositorios falsos (`test/support/fakes.dart`).
   y las sesiones (sin Realtime de sesiones). Mientras se lee la bandeja, una barra; si no se pudo
   leer, el error con «Riprova» (también en la primera lectura).
   Días bloqueados (`availability_exceptions`, sin migración: la RLS y los grants ya estaban): la
-  tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada, y el botón
+  tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada (los clientes no la
+  ven; la cocinera y sus colaboradores, sí), y el botón
   «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
   existía). La web deja de ofrecerlos en 1 o 2 minutos (`get_free_days` los descuenta; la
   disponibilidad se cachea 60 s). Marca los feriados nacionales (Pasquetta calculada; San Francesco
@@ -165,7 +171,17 @@ repositorios falsos (`test/support/fakes.dart`).
   contar las canceladas), las horas (el renglón se parte solo después de un «·»: nunca «fino alle»
   y la hora en dos renglones), «Come arrivare» (la dirección de la ficha en Apple Maps en el
   iPhone, también en `/gestione/` con Safari, y en Google Maps en el resto), WhatsApp en el idioma
-  de la clienta (la fecha y la hora, nunca la dirección ni las alergias) y llamar. El formulario web
+  de la clienta (la fecha y, según la sesión, la hora de llegada; nunca la dirección ni las
+  alergias) y llamar. Si la abre un colaborador, el WhatsApp sale de su propio teléfono y escribe
+  de parte de la cocinera (`sessionWhatsAppMessageOnBehalf`; el del detalle es
+  `contactWhatsAppMessageOnBehalf` y el de la reserva, `bookingWhatsAppMessageOnBehalf`): «ti
+  scrivo da parte di Evelyn di Radici per la sessione di…: Evelyn arriva alle 10:00» en lugar de
+  «sono Evelyn… con arrivo alle 10:00». La hora de llegada va solo si la sesión no está
+  cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, que en una ficha abierta
+  cambia a la medianoche); en las demás (de un día que ya pasó, cocinada, cobrada o cancelada) el
+  mensaje nombra la sesión por su fecha, sin la hora: «Ti scrivo per la sessione di mercoledì 25
+  novembre.» (`sessionWhatsAppMessageNoArrival`; de parte de la cocinera,
+  `sessionWhatsAppMessageNoArrivalOnBehalf`). El formulario web
   no pide la dirección: sin ella, WhatsApp pasa a ser el botón principal y en lugar de «Come
   arrivare» va «Aggiungi indirizzo», que la guarda en la ficha (`clients.address`, con la RLS «la
   cocinera gestiona los suyos» y el grant por columna; vale para todas sus sesiones y se corrige
@@ -203,9 +219,10 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Conferma prenotazione** (`features/bookings/`): desde el detalle de un pedido `new`, una hoja a
   pantalla completa que lo convierte en una reserva de 1 a 8 semanas (una sesión `confirmed` por
   semana). Es la primera llamada de la app a una Edge Function: `BookingsRepository` hace
-  `functions.invoke('chef/bookings')` con la sesión de Evelyn y `?forceFunctionRegion=eu-central-1`
-  (nunca la cabecera `x-region`, que CORS no permite) y traduce los errores a `BookingFailure` sin
-  loguear nada (contrato `docs/contracts/chef-api.md`). Prellena las semanas con `requests.weeks`,
+  `functions.invoke('chef/bookings')` con la sesión de quien entró (Evelyn o un colaborador
+  suyo) y `?forceFunctionRegion=eu-central-1` (nunca la cabecera `x-region`, que CORS no
+  permite) y traduce los errores a `BookingFailure` sin loguear nada (contrato
+  `docs/contracts/chef-api.md`). Prellena las semanas con `requests.weeks`,
   las fechas cada 7 días desde la preferida (cambiar la primera mueve todas), la llegada que sugiere
   el `dryRun`, los minutos de la estimación (tope de 300) y el precio de la estimación (con las
   tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
@@ -223,7 +240,11 @@ repositorios falsos (`test/support/fakes.dart`).
   «Riprova», que manda lo mismo: el servidor reconoce el reintento por las fechas y la hora, y con
   otros datos diría que el pedido ya no está nuevo. Si lo guardado no coincide con lo que tenía la
   hoja (otro dispositivo confirmó las mismas fechas con otro precio), lo avisa. Al confirmar, el
-  WhatsApp para la clienta en su idioma, con las fechas y la hora (sin dirección ni alergias).
+  WhatsApp para la clienta en su idioma, con las fechas y la hora (sin dirección ni alergias). Si
+  confirma un colaborador, el mensaje sale de su teléfono y escribe de parte de la cocinera
+  (`bookingWhatsAppMessageOnBehalf`; el del detalle es `contactWhatsAppMessageOnBehalf`):
+  «ti scrivo da parte di Evelyn di Radici» en lugar de «sono Evelyn» y, con varias semanas,
+  «Evelyn arriva alle…» en lugar de «Arrivo alle…».
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
@@ -242,7 +263,8 @@ repositorios falsos (`test/support/fakes.dart`).
   vegetariano con pescado o mariscos (`save_recipe` tampoco lo acepta). Duplicar abre la copia (otro
   id) para cambiarle el nombre; desactivar y reactivar tienen «Annulla». Un plato nunca se borra.
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
-  app (Español, Italiano, English), salir y, en la web, la versión abierta («Versione abc1234»).
+  app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
+  entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).
 - **Avisos de la web** (arriba de cualquier pantalla, también del login, salvo con el teclado o un
   diálogo abiertos): versión nueva publicada y, en Safari del iPhone, abrir Radici desde el ícono
   (ver [Web /gestione/](#web-gestione)).
@@ -293,6 +315,12 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   confirmado, le cambia la contraseña por una al azar y le cierra las sesiones (nadie que haya
   registrado antes ese email entra como cocinera); por eso el workflow no la vuelve a correr. Si
   Evelyn ya tenía la app abierta cuando se corrió, tiene que salir y volver a entrar con el código.
+- Colaboradores: sus cuentas también las crea el workflow, en cada despliegue (en su último paso), con
+  el secreto `CHEF_MEMBER_EMAILS` (la lista manda; contrato §10.1). Cambiar el secreto no hace nada
+  hasta correr Deploy Supabase a mano. **Antes de cargar el primero en producción**, la decisión de
+  privacy de SPEC §14: un colaborador ve también las alergias y las direcciones, y la privacy vigente
+  nombra solo a Evelyn y, para la asistencia técnica, a quien gestiona el sistema. En local,
+  `marco@example.test` es colaborador de Evelyn en el seed.
 
 ## Web `/gestione/`
 

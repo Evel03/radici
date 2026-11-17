@@ -10,9 +10,9 @@
 // para cuando haya más de una cocinera; en una sesión por id, también para que
 // una cocinera que además fuera clienta con cuenta no vea en su ficha una
 // sesión que no es suya («el cliente lee las suyas»). La función recibe la
-// sesión de Evelyn (`Authorization`) y la región va en la URL
-// (`?forceFunctionRegion=…`): la cabecera `x-region` no, porque el preflight de
-// CORS no la permite.
+// sesión de quien entró, Evelyn o un colaborador suyo (`Authorization`), y la
+// región va en la URL (`?forceFunctionRegion=…`): la cabecera `x-region` no,
+// porque el preflight de CORS no la permite.
 //
 // Ningún error se loguea: puede traer la fila, con la dirección o las
 // alergias. Se traduce a [SessionFailure] (el tipo, la fecha, el estado o los
@@ -103,7 +103,7 @@ enum SessionFailureKind {
   /// la ficha.
   notFound,
 
-  /// 403: el usuario no es la cocinera.
+  /// 403: el usuario no es la cocinera ni un colaborador suyo.
   forbidden,
 
   /// 401: sin sesión válida (vencida o cerrada).

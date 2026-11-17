@@ -23,28 +23,76 @@ void main() {
 
   tearDown(() => server.dispose());
 
-  test('cocinera: lee el rol, el idioma y su ficha en chefs', () async {
+  /// PostgREST con un perfil chef, la cocina que da `current_chef_id()` y la
+  /// ficha de esa cocina, cuya dueña es [ownerId].
+  void chefSide({required String ownerId, Object? currentChefId = testChefId}) {
     server.handler = (request) async => switch (request.url.path) {
       '/rest/v1/profiles' => jsonResponse([
         {'role': 'chef', 'locale': 'es'},
       ]),
+      '/rest/v1/rpc/current_chef_id' => jsonResponse(currentChefId),
       '/rest/v1/chefs' => jsonResponse([
-        {'id': testChefId, 'display_name': 'Evelyn'},
+        {'id': testChefId, 'display_name': 'Evelyn', 'profile_id': ownerId},
       ]),
       _ => jsonResponse(<Object>[]),
     };
+  }
+
+  test('cocinera: lee el rol, el idioma y la ficha de su cocina', () async {
+    chefSide(ownerId: 'user-1');
 
     final account = await repository.fetchAccount('user-1');
 
     expect(account, chefAccountData.copyWith(language: AppLanguage.es));
+    expect(account.chef?.collaborator, isFalse);
     final profiles = server.requests.first.url;
     expect(profiles.path, '/rest/v1/profiles');
     expect(profiles.queryParameters['select'], 'role,locale');
     expect(profiles.queryParameters['id'], 'eq.user-1');
+    // La cocina la dice la base: la misma función que usan las políticas
+    // (la de la que es dueña o colaborador).
+    final rpc = server.requests[1];
+    expect(rpc.method, 'POST');
+    expect(rpc.url.path, '/rest/v1/rpc/current_chef_id');
     final chefs = server.requests.last.url;
     expect(chefs.path, '/rest/v1/chefs');
-    expect(chefs.queryParameters['select'], 'id,display_name');
-    expect(chefs.queryParameters['profile_id'], 'eq.user-1');
+    expect(chefs.queryParameters['select'], 'id,display_name,profile_id');
+    expect(chefs.queryParameters['id'], 'eq.$testChefId');
+    expect(server.requests, hasLength(3));
+  });
+
+  test('colaborador: la cocina de la que es colaborador, con su ficha y '
+      'marcado como colaborador', () async {
+    chefSide(ownerId: 'user-1');
+
+    final account = await repository.fetchAccount('user-socio');
+
+    expect(
+      account,
+      chefAccountData.copyWith(
+        chef: chefAccount.copyWith(collaborator: true),
+        language: AppLanguage.es,
+      ),
+    );
+    // Nada distinto en lo demás: el mismo chefId que ve la cocinera.
+    expect(account.chef?.chefId, testChefId);
+    expect(account.chef?.displayName, 'Evelyn');
+  });
+
+  test('rol chef sin cocina (ni dueña ni colaborador) → chefNotConfigured, '
+      'sin leer chefs', () async {
+    chefSide(ownerId: 'user-1', currentChefId: null);
+    await expectLater(
+      repository.fetchAccount('user-suelto'),
+      throwsA(
+        isA<AccountFailure>().having(
+          (f) => f.kind,
+          'kind',
+          AccountFailureKind.chefNotConfigured,
+        ),
+      ),
+    );
+    expect(server.requests.where((r) => r.url.path == '/rest/v1/chefs'), isEmpty);
   });
 
   test('cliente (o perfil sin rol): no consulta chefs', () async {
@@ -139,12 +187,14 @@ void main() {
     });
   });
 
-  test('rol chef sin ficha en chefs → chefNotConfigured', () async {
-    server.handler = (request) async => request.url.path == '/rest/v1/profiles'
-        ? jsonResponse([
-            {'role': 'chef'},
-          ])
-        : jsonResponse(<Object>[]);
+  test('rol chef con cocina pero sin poder leer su ficha → chefNotConfigured', () async {
+    server.handler = (request) async => switch (request.url.path) {
+      '/rest/v1/profiles' => jsonResponse([
+        {'role': 'chef'},
+      ]),
+      '/rest/v1/rpc/current_chef_id' => jsonResponse(testChefId),
+      _ => jsonResponse(<Object>[]),
+    };
     await expectLater(
       repository.fetchAccount('user-1'),
       throwsA(

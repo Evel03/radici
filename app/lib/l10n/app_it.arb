@@ -456,6 +456,13 @@
   "@settingsAccountSection": {
     "description": "Sección con la cuenta y el botón para salir."
   },
+  "settingsCollaboratorOf": "Collaboratore di {chefName}",
+  "@settingsCollaboratorOf": {
+    "description": "Nombre de la cuenta (Impostazioni → Account y el menú de la cuenta) en lugar del nombre de la cocinera, cuando entró un colaborador suyo (chef_members): ve y hace lo mismo que ella con su propia cuenta.",
+    "placeholders": {
+      "chefName": { "type": "String", "example": "Evelyn" }
+    }
+  },
   "settingsVersion": "Versione {buildId}",
   "@settingsVersion": {
     "description": "Al pie de Impostazioni: qué versión de /gestione/ está abierta (el id del build, los 7 primeros caracteres del commit). No aparece en la app de iOS ni de Android.",
@@ -1111,7 +1118,7 @@
   },
   "bookingErrorForbidden": "Il tuo account non può confermare prenotazioni.",
   "@bookingErrorForbidden": {
-    "description": "El usuario no es la cocinera (403)."
+    "description": "El usuario no es la cocinera ni un colaborador suyo (403)."
   },
   "bookingErrorUnauthorized": "L'accesso è scaduto: esci e rientra.",
   "@bookingErrorUnauthorized": {
@@ -1162,7 +1169,19 @@
   },
   "bookingWhatsAppMessage": "{count, plural, =1{Ciao {name}, sono {chef} di {brand}. Ti confermo la sessione di cucina di {dates}, con arrivo alle {time}. A presto!} other{Ciao {name}, sono {chef} di {brand}. Ti confermo le {count} sessioni di cucina:\n{dates}\nArrivo alle {time}. A presto!}}",
   "@bookingWhatsAppMessage": {
-    "description": "Mensaje de WhatsApp a la clienta al confirmar la reserva, en SU idioma (requests.locale). Solo fechas y hora: nunca dirección ni alergias. dates: una fecha, o una por línea con viñeta.",
+    "description": "Mensaje de WhatsApp a la clienta al confirmar la reserva, en SU idioma (requests.locale). Lo firma la cocinera; si confirma un colaborador suyo va bookingWhatsAppMessageOnBehalf. Solo fechas y hora: nunca dirección ni alergias. dates: una fecha, o una por línea con viñeta.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" },
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "time": { "type": "String", "example": "10:00" },
+      "dates": { "type": "String", "example": "• lunedì 23 novembre\n• lunedì 30 novembre" }
+    }
+  },
+  "bookingWhatsAppMessageOnBehalf": "{count, plural, =1{Ciao {name}, ti scrivo da parte di {chef} di {brand}. Ti confermiamo la sessione di cucina di {dates}, con arrivo alle {time}. A presto!} other{Ciao {name}, ti scrivo da parte di {chef} di {brand}. Ti confermiamo le {count} sessioni di cucina:\n{dates}\n{chef} arriva alle {time}. A presto!}}",
+  "@bookingWhatsAppMessageOnBehalf": {
+    "description": "El mismo mensaje de WhatsApp a la clienta cuando confirma la reserva un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella ni ser quien llega (la que llega es ella: «{chef} arriva»). En SU idioma (requests.locale). Solo fechas y hora: nunca dirección ni alergias. dates: una fecha, o una por línea con viñeta.",
     "placeholders": {
       "count": { "type": "int", "example": "4" },
       "name": { "type": "String", "example": "Giulia" },
@@ -1300,13 +1319,44 @@
   },
   "sessionWhatsAppMessage": "Ciao {name}, sono {chef} di {brand}. Ti scrivo per la sessione di {date}, con arrivo alle {time}.",
   "@sessionWhatsAppMessage": {
-    "description": "WhatsApp a la clienta desde la ficha de la sesión, en SU idioma (requests.locale). Solo fecha y hora: nunca dirección ni alergias.",
+    "description": "WhatsApp a la clienta desde la ficha de la sesión, en SU idioma (requests.locale), solo si la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma); si no, la llegada ya pasó o no va a pasar y va sessionWhatsAppMessageNoArrival. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageOnBehalf. Solo fecha y hora: nunca dirección ni alergias.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },
       "brand": { "type": "String", "example": "Radici" },
       "date": { "type": "String", "example": "mercoledì 25 novembre" },
       "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "sessionWhatsAppMessageOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand} per la sessione di {date}: {chef} arriva alle {time}.",
+  "@sessionWhatsAppMessageOnBehalf": {
+    "description": "El mismo WhatsApp a la clienta desde la ficha de la sesión cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella ni ser quien llega (la que llega es ella: «{chef} arriva alle {time}»). Como sessionWhatsAppMessage, solo si la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma); si no, va sessionWhatsAppMessageNoArrivalOnBehalf. En SU idioma (requests.locale). Solo fecha y hora: nunca dirección ni alergias.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "date": { "type": "String", "example": "mercoledì 25 novembre" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "sessionWhatsAppMessageNoArrival": "Ciao {name}, sono {chef} di {brand}. Ti scrivo per la sessione di {date}.",
+  "@sessionWhatsAppMessageNoArrival": {
+    "description": "WhatsApp a la clienta desde la ficha de una sesión cuya llegada ya pasó o no va a pasar: de un día anterior a hoy (el día de Roma), cocinada, cobrada o cancelada. En SU idioma (requests.locale). Nombra la sesión por su fecha, sin la hora de llegada que lleva sessionWhatsAppMessage. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageNoArrivalOnBehalf. Solo la fecha: nunca dirección ni alergias.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "date": { "type": "String", "example": "mercoledì 25 novembre" }
+    }
+  },
+  "sessionWhatsAppMessageNoArrivalOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand} per la sessione di {date}.",
+  "@sessionWhatsAppMessageNoArrivalOnBehalf": {
+    "description": "El mismo WhatsApp sin la hora de llegada (sessionWhatsAppMessageNoArrival) cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella. En SU idioma (requests.locale). Solo la fecha: nunca dirección ni alergias.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "date": { "type": "String", "example": "mercoledì 25 novembre" }
     }
   },
   "cancelReasonClient": "L'ha chiesto la cliente",
@@ -1426,7 +1476,7 @@
   },
   "sessionErrorForbidden": "Il tuo account non può modificare le sessioni.",
   "@sessionErrorForbidden": {
-    "description": "Al mover o cancelar: el usuario no es la cocinera (403)."
+    "description": "Al mover o cancelar: el usuario no es la cocinera ni un colaborador suyo (403)."
   },
   "sessionErrorConflict": "Non è stato possibile per un conflitto: aggiorna e riprova.",
   "@sessionErrorConflict": {
@@ -1673,9 +1723,9 @@
   "@availabilityLoadFailed": {
     "description": "La agenda no pudo leer el horario y los días bloqueados. Va con el botón Riprova."
   },
-  "availabilityNoteLabel": "Nota (la vedi solo tu)",
+  "availabilityNoteLabel": "Nota (i clienti non la vedono)",
   "@availabilityNoteLabel": {
-    "description": "Etiqueta del campo de la nota de un día bloqueado: es privada, la web no la muestra."
+    "description": "Etiqueta del campo de la nota de un día bloqueado: es privada, la web no la muestra. La ven la cocinera y sus colaboradores, por eso no dice «solo tu»."
   },
   "availabilityNoteHint": "Es.: ferie",
   "@availabilityNoteHint": {
@@ -2276,6 +2326,15 @@
   "contactWhatsAppMessage": "Ciao {name}, sono {chef} di {brand}. Ho ricevuto la tua richiesta e ti scrivo per organizzarci.",
   "@contactWhatsAppMessage": {
     "description": "Mensaje de WhatsApp al cliente, en SU idioma (requests.locale).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" }
+    }
+  },
+  "contactWhatsAppMessageOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand}: abbiamo ricevuto la tua richiesta e vorremmo organizzarci con te.",
+  "@contactWhatsAppMessageOnBehalf": {
+    "description": "El mismo mensaje de WhatsApp al cliente cuando lo arma un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella. En el idioma del cliente.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },

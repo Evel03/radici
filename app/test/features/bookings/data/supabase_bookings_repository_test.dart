@@ -225,7 +225,7 @@ void main() {
         _failure(BookingFailureKind.unauthorized),
       ),
       (
-        'no es la cocinera',
+        'no es la cocinera ni un colaborador suyo',
         403,
         {'error': 'forbidden'},
         _failure(BookingFailureKind.forbidden),

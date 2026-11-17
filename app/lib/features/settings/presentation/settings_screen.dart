@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:radici/core/build_id.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/auth/presentation/chef_account_title.dart';
 import 'package:radici/features/settings/presentation/language_selector.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
@@ -16,8 +17,12 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    // Un colaborador trabaja en la cocina de ella: «Colaborador de Evelyn».
     final (name, email) = switch (ref.watch(sessionControllerProvider)) {
-      ChefSession(:final chef, :final user) => (chef.displayName, user.email),
+      ChefSession(:final chef, :final user) => (
+        chefAccountTitle(l10n, chef),
+        user.email,
+      ),
       _ => (null, null),
     };
     final buildId = ref.watch(buildIdProvider);
