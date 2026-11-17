@@ -6,7 +6,8 @@
 // cruzada, SPEC §5.6); los datos de la clienta y las semanas de su reserva.
 // Abajo, Mover (con «Annulla» después) y Cancelar (con confirmación y
 // «también las siguientes»; si alguna ya está cobrada, el aviso dice cuál y
-// qué se puede hacer).
+// qué se puede hacer). Abierta con un enlace directo, la flecha de volver
+// lleva a la Agenda.
 //
 // Solo lee providers: la lógica está en SessionDetailController y
 // SessionCommands. Lleva la dirección y datos de salud: nada se loguea.
@@ -58,6 +59,15 @@ class CookingSessionScreen extends ConsumerWidget {
       key: ValueKey('session-messenger-$sessionId'),
       child: Scaffold(
         appBar: AppBar(
+          // Abierta con un enlace directo, sin nada debajo en la pila (y sin
+          // la flecha de siempre): vuelve a la Agenda. Es lo mismo que mira
+          // la barra para poner su flecha, así nunca van las dos.
+          leading: ModalRoute.of(context)?.impliesAppBarDismissal ?? false
+              ? null
+              : BackButton(
+                  key: const ValueKey('session-back'),
+                  onPressed: () => context.go(AppRoutes.agenda),
+                ),
           title: Text(
             session?.displayName ?? l10n.sessionTitle,
             overflow: TextOverflow.ellipsis,

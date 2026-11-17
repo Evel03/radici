@@ -9,13 +9,15 @@
 // hasPayments dice cuáles están cobradas y qué se puede hacer, también si
 // llega al tocar «Riprova»). Mientras espera al servidor, Sposta y Annulla
 // quedan deshabilitados. Mover y cancelar quedan abajo: en el tercio inferior
-// a 375×667.
+// a 375×667. Abierta con un enlace directo (sola en la pila), la flecha de
+// volver lleva a la Agenda.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/sessions/application/session_links.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
@@ -162,6 +164,72 @@ void main() {
       await tester.pumpAndSettle();
       expect(textOf(tester, 'session-week'), 'Settimana 3 di 3');
       expect(textOf(tester, 'session-date'), 'mercoledì 16 dicembre 2026');
+    },
+  );
+
+  // /gestione/#/sessioni/<id> pegado a mano (o un enlace futuro) deja la ficha
+  // sola en la pila: sin nada debajo, no tenía cómo volver ni barra.
+  group('abierta con un enlace directo', () {
+    testWidgets('la flecha de volver lleva a la Agenda, con la barra', (
+      tester,
+    ) async {
+      await openSession(tester);
+      final back = byKey('session-back');
+      expect(back.hitTestable(), findsOneWidget);
+      expect(find.byType(BackButton), findsOneWidget);
+
+      await tester.tap(back);
+      await tester.pumpAndSettle();
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(byKey('chef-nav-bar').hitTestable(), findsOneWidget);
+    });
+
+    testWidgets(
+      'también al cerrar con la X la hoja «Sposta» abierta con un enlace',
+      (tester) async {
+        await pumpChefApp(
+          tester,
+          requests: FakeChefRequestsRepository(const []),
+          sessions: FakeSessionsRepository(buildBooking()),
+          location: '/sessioni/${sessionId(2)}/sposta?data=2026-12-03',
+        );
+        expect(find.byType(MoveSessionScreen), findsOneWidget);
+        await tester.tap(byKey('move-close'));
+        await tester.pumpAndSettle();
+        expect(find.byType(CookingSessionScreen), findsOneWidget);
+
+        await tester.tap(byKey('session-back'));
+        await tester.pumpAndSettle();
+        expect(find.byType(AgendaScreen), findsOneWidget);
+      },
+    );
+  });
+
+  testWidgets(
+    'abierta desde la Agenda, la flecha de siempre: vuelve al día elegido',
+    (tester) async {
+      await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        sessions: FakeSessionsRepository(
+          buildBooking(first: CalendarDate(2026, 10, 21)),
+        ),
+        location: '/agenda',
+        // Alto: el día y su sesión a la vista sin desplazar.
+        size: const Size(400, 2000),
+      );
+      await tester.tap(byKey('agenda-day-2026-10-21'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('session-${sessionId(1)}'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      expect(byKey('session-back'), findsNothing);
+      expect(find.byType(BackButton), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(find.text('mercoledì 21 ottobre 2026'), findsOneWidget);
     },
   );
 

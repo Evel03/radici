@@ -127,7 +127,8 @@ repositorios falsos (`test/support/fakes.dart`).
   pudieron leer, el rango lo dice en lugar de callarse. La celda del día y cada bloque llevan la
   acción de tocar en su nodo de accesibilidad: en `/gestione/`, el clic de VoiceOver solo llega a
   un nodo que la tiene.
-- **Ficha de la sesión** (`/sessioni/:id`, a pantalla completa): el día, «Settimana k di N» (sin
+- **Ficha de la sesión** (`/sessioni/:id`, a pantalla completa; abierta con un enlace directo, sin
+  nada debajo, su flecha de volver lleva a la Agenda): el día, «Settimana k di N» (sin
   contar las canceladas), las horas (el renglón se parte solo después de un «·»: nunca «fino alle»
   y la hora en dos renglones), «Come arrivare» (la dirección de la ficha en Apple Maps en el
   iPhone, también en `/gestione/` con Safari, y en Google Maps en el resto), WhatsApp en el idioma
