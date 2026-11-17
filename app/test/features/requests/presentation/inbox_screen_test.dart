@@ -151,7 +151,8 @@ void main() {
     );
   });
 
-  testWidgets('confirmar una reserva la pasa de Viste a Prenotazioni', (tester) async {
+  testWidgets('confirmar una reserva la pasa de Viste a Prenotazioni; la hoja y la pantalla final tapan la '
+      'barra, y al volver está con sus 3 destinos y Richieste elegida', (tester) async {
     final app = await pumpChefApp(
       tester,
       requests: FakeChefRequestsRepository([
@@ -164,20 +165,31 @@ void main() {
         ),
       ]),
     );
+    final navBar = find.byKey(const ValueKey('chef-nav-bar'));
+    expect(navBar, findsOneWidget);
     await openTab(tester, 'inbox-tab-seen');
     await tester.tap(tile('req-1'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('action-confirm-booking')));
     await tester.pumpAndSettle();
+    expect(navBar, findsNothing, reason: 'la hoja tapa la barra');
     await tester.tap(find.byKey(const ValueKey('booking-confirm')));
     await tester.pumpAndSettle();
     expect(app.bookings.confirmations, hasLength(1));
+    expect(find.byKey(const ValueKey('booking-done')), findsOneWidget);
+    expect(navBar, findsNothing, reason: 'la pantalla final tapa la barra');
 
     await tester.tap(find.byKey(const ValueKey('booking-done-close')));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
 
+    expect(navBar.hitTestable(), findsOneWidget);
+    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 0);
+    expect(
+      find.descendant(of: navBar, matching: find.byType(NavigationDestination)),
+      findsNWidgets(3),
+    );
     expect(tile('req-1'), findsNothing, reason: 'ya no está en Viste');
     await openTab(tester, 'inbox-tab-bookings');
     expect(tile('req-1'), findsOneWidget);
