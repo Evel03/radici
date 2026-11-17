@@ -77,7 +77,6 @@
   "navRequestsWithNew": "{count, plural, =1{Solicitudes, 1 nueva} other{Solicitudes, {count} nuevas}}",
   "navAgenda": "Agenda",
   "navMore": "Más",
-  "todayLoadError": "No se pudieron cargar las sesiones. Revisa la conexión y vuelve a intentarlo.",
   "todayNoSessionToday": "Hoy no tienes sesiones.",
   "todayNextSession": "Próxima sesión · {date}",
   "todayEmptyTitle": "No tienes sesiones programadas",

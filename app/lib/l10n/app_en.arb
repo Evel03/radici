@@ -77,7 +77,6 @@
   "navRequestsWithNew": "{count, plural, =1{Requests, 1 new} other{Requests, {count} new}}",
   "navAgenda": "Calendar",
   "navMore": "More",
-  "todayLoadError": "Couldn't load your sessions. Check your connection and try again.",
   "todayNoSessionToday": "No sessions today.",
   "todayNextSession": "Next session · {date}",
   "todayEmptyTitle": "No sessions scheduled",

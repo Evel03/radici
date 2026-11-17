@@ -1004,24 +1004,25 @@ void main() {
   });
 
   group('carga, error y actualizar', () {
-    testWidgets('mientras cargan las sesiones, la rueda; después, la sesión', (
+    testWidgets('mientras cargan las sesiones, la rueda en su lugar (los pedidos nuevos y la tira ya se ven); después, la sesión', (
       tester,
     ) async {
       final repository = FakeSessionsRepository([session()])
         ..pendingFetch = Completer<void>();
       await pumpChefApp(
         tester,
-        requests: FakeChefRequestsRepository(const []),
+        requests: FakeChefRequestsRepository([buildRequest(id: 'nuovo-1')]),
         sessions: repository,
         clock: () => morning,
         settle: false,
       );
-      for (var i = 0; i < 10 && find.byType(TodayScreen).evaluate().isEmpty; i++) {
-        await tester.pump();
-      }
-      await tester.pump();
+      await waitForToday(tester);
       expect(byKey('today-loading'), findsOneWidget);
       expect(byKey('today-actions'), findsNothing);
+      expect(byKey('today-new-requests'), findsOneWidget);
+      expect(byKey('today-strip'), findsOneWidget);
+      // Sin las sesiones no se sabe qué reservas terminan.
+      expect(byKey('today-pending-empty'), findsNothing);
 
       repository.pendingFetch!.complete();
       await tester.pumpAndSettle();
@@ -1044,7 +1045,7 @@ void main() {
       );
       await waitForToday(tester);
       expect(byKey('today-loading'), findsOneWidget);
-      expect(byKey('load-error'), findsNothing);
+      expect(byKey('sessions-load-error'), findsNothing);
 
       repository.fetchFailure = null;
       await tester.pump(const Duration(seconds: 1));
@@ -1053,24 +1054,44 @@ void main() {
       expect(card(1), findsOneWidget);
     });
 
-    testWidgets('si no se pudieron leer las sesiones, el error con «Riprova»', (
+    testWidgets('si no se pudieron leer las sesiones, el aviso con «Riprova» en lugar de la tarjeta (los pedidos nuevos y la tira siguen); mientras vuelve a leer, la rueda', (
       tester,
     ) async {
       final repository = FakeSessionsRepository([session()])
         ..fetchFailure = const SessionFailure(SessionFailureKind.unavailable);
-      await openToday(tester, repository: repository);
+      await openToday(
+        tester,
+        repository: repository,
+        requests: FakeChefRequestsRepository([buildRequest(id: 'nuovo-1')]),
+      );
       expect(
-        find.text(
-          'Impossibile caricare le sessioni. Controlla la connessione e riprova.',
+        find.descendant(
+          of: byKey('sessions-load-error'),
+          matching: find.text('Impossibile caricare le sessioni.'),
         ),
         findsOneWidget,
       );
+      expect(byKey('load-error'), findsNothing, reason: 'no a pantalla completa');
       expect(byKey('today-actions'), findsNothing);
+      expect(byKey('today-empty'), findsNothing);
+      expect(byKey('today-new-requests'), findsOneWidget);
+      expect(byKey('today-strip'), findsOneWidget);
+      // Sin las sesiones no se sabe qué reservas terminan.
+      expect(byKey('today-pending-empty'), findsNothing);
 
-      repository.fetchFailure = null;
-      await tester.tap(byKey('load-error-retry'));
+      repository
+        ..fetchFailure = null
+        ..pendingFetch = Completer<void>();
+      await tester.tap(byKey('sessions-retry'));
+      await tester.pump();
+      await tester.pump();
+      expect(byKey('today-loading'), findsOneWidget);
+      expect(byKey('sessions-load-error'), findsNothing);
+
+      repository.pendingFetch!.complete();
       await tester.pumpAndSettle();
       expect(card(1), findsOneWidget);
+      expect(byKey('today-actions'), findsOneWidget);
     });
 
     testWidgets('«Ricarica», arriba, vuelve a leer la bandeja, la disponibilidad y las sesiones sin deslizar; mientras lee no se vuelve a tocar y, si falla, lo avisa', (

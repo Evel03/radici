@@ -347,10 +347,6 @@
     "description": "Pestaña «Más» de la cocinera: platos, impostazioni y salir. En el teléfono reemplaza al menú de la cuenta."
   },
 
-  "todayLoadError": "Impossibile caricare le sessioni. Controlla la connessione e riprova.",
-  "@todayLoadError": {
-    "description": "Hoy: no se pudieron leer las sesiones (con el botón «Riprova»)."
-  },
   "todayNoSessionToday": "Oggi non hai sessioni.",
   "@todayNoSessionToday": {
     "description": "Hoy: hoy no hay ninguna sesión (abajo va la próxima)."

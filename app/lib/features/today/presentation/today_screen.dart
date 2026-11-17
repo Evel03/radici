@@ -6,7 +6,9 @@
 // arrivare» y WhatsApp de la sesión principal (sin dirección, WhatsApp y
 // «Aggiungi indirizzo», como la ficha); sin ninguna sesión, «Vedi le
 // richieste». «Hoy» es el día de Roma y cambia a la medianoche sin reabrir la
-// app. Deslizar para actualizar vuelve a leer todo.
+// app. Deslizar para actualizar (o «Ricarica», arriba) vuelve a leer todo.
+// Mientras las sesiones cargan, o si no se pudieron leer, la rueda o el aviso
+// van en el lugar de la tarjeta: los pendientes y la tira siguen.
 //
 // Solo lee providers: la lógica está en today_providers.dart y en el dominio.
 // Las sesiones llevan la dirección y datos de salud: nada se loguea.
@@ -23,9 +25,6 @@ import 'package:radici/features/requests/application/inbox_tab_request.dart';
 import 'package:radici/features/requests/domain/inbox.dart';
 import 'package:radici/features/requests/presentation/chef_refresh_button.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
-import 'package:radici/features/requests/presentation/inbox_screen.dart'
-    show LoadErrorView;
-import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/presentation/client_address_dialog.dart';
 import 'package:radici/features/sessions/presentation/session_labels.dart';
@@ -57,16 +56,7 @@ class TodayScreen extends ConsumerWidget {
           // «Ricarica»: lo mismo que deslizar para actualizar, sin el gesto.
           actions: const [ChefRefreshButton(), ChefAccountMenuButton()],
         ),
-        body: switch (focus) {
-          AsyncData(:final value) => _TodayList(focus: value),
-          AsyncError() => LoadErrorView(
-            message: l10n.todayLoadError,
-            onRetry: () => ref.invalidate(sessionsControllerProvider),
-          ),
-          _ => const Center(
-            child: CircularProgressIndicator(key: ValueKey('today-loading')),
-          ),
-        },
+        body: _TodayList(focus: focus),
         // «Come arrivare» y WhatsApp (o, sin ninguna sesión, «Vedi le
         // richieste»), abajo: la acción principal en el tercio inferior del
         // teléfono.
@@ -87,7 +77,8 @@ class TodayScreen extends ConsumerWidget {
 class _TodayList extends ConsumerWidget {
   const _TodayList({required this.focus});
 
-  final TodayFocus focus;
+  /// Las sesiones: leídas, cargando o con error (ver todayFocusProvider).
+  final AsyncValue<TodayFocus> focus;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -121,28 +112,47 @@ class _TodayList extends ConsumerWidget {
                   style: theme.textTheme.titleMedium,
                 ),
               ),
-              // Si la última lectura de las sesiones falló, lo dice (lo que se
-              // ve puede ser de antes).
+              // Si la última lectura de las sesiones falló, lo dice con
+              // «Riprova»: sin sesiones leídas, en lugar de la tarjeta; con
+              // sesiones de antes, encima (lo que se ve puede ser de antes).
               const SessionsLoadError(),
               const SizedBox(height: 4),
-              if (focus.sessions.isEmpty)
-                const _NoSessions()
-              else if (focus.isToday)
-                for (final session in focus.sessions)
-                  TodaySessionCard(session: session)
-              else ...[
-                Text(
-                  l10n.todayNoSessionToday,
-                  key: const ValueKey('today-none-today'),
-                  style: muted,
-                ),
-                _SectionTitle(
-                  l10n.todayNextSession(formats.day(focus.sessions.first.date)),
-                  textKey: const ValueKey('today-next-title'),
-                ),
-                TodaySessionCard(session: focus.sessions.first),
-              ],
-              const _Pending(),
+              ...switch (focus) {
+                AsyncData(:final value) => [
+                  if (value.sessions.isEmpty)
+                    const _NoSessions()
+                  else if (value.isToday)
+                    for (final session in value.sessions)
+                      TodaySessionCard(session: session)
+                  else ...[
+                    Text(
+                      l10n.todayNoSessionToday,
+                      key: const ValueKey('today-none-today'),
+                      style: muted,
+                    ),
+                    _SectionTitle(
+                      l10n.todayNextSession(
+                        formats.day(value.sessions.first.date),
+                      ),
+                      textKey: const ValueKey('today-next-title'),
+                    ),
+                    TodaySessionCard(session: value.sessions.first),
+                  ],
+                ],
+                AsyncError() => const <Widget>[],
+                _ => const [
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        key: ValueKey('today-loading'),
+                      ),
+                    ),
+                  ),
+                ],
+              },
+              // Sin las sesiones leídas no se sabe qué reservas terminan.
+              _Pending(sessionsRead: focus.hasValue),
               _SectionTitle(l10n.todayStripTitle),
               Text(
                 l10n.todayStripHint,
@@ -221,7 +231,11 @@ class _NoSessionsActions extends StatelessWidget {
 /// Los pendientes: pedidos nuevos (llevan a «Nuove») y reservas que terminan
 /// (abren la ficha de su última semana). «Renovar» llega con el PR 8.
 class _Pending extends ConsumerWidget {
-  const _Pending();
+  const _Pending({required this.sessionsRead});
+
+  /// Las sesiones ya se leyeron (las reservas que terminan salen de ellas):
+  /// sin eso, nada de «Niente in sospeso».
+  final bool sessionsRead;
 
   void _openNewRequests(BuildContext context, WidgetRef ref) {
     ref.read(inboxTabRequestProvider.notifier).show(InboxTab.fresh);
@@ -243,8 +257,8 @@ class _Pending extends ConsumerWidget {
     // estado trae el error y sigue cargando: la barra, no el error.
     final inboxLoading = inbox.isLoading;
     final inboxFailed = inbox.hasError && !inbox.isLoading;
-    // «Niente in sospeso» solo con la bandeja leída.
-    final inboxRead = !inbox.isLoading && !inbox.hasError;
+    // «Niente in sospeso» solo con la bandeja y las sesiones leídas.
+    final allRead = sessionsRead && !inbox.isLoading && !inbox.hasError;
 
     final items = <Widget>[
       if (newCount > 0)
@@ -302,7 +316,7 @@ class _Pending extends ConsumerWidget {
             child: LinearProgressIndicator(),
           ),
         ...items,
-        if (items.isEmpty && inboxRead)
+        if (items.isEmpty && allRead)
           // Un nodo propio: sin esto se funde con el título de arriba.
           MergeSemantics(
             child: Text(
