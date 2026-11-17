@@ -709,7 +709,7 @@ void main() {
       ('sin pendientes', () => FakeChefRequestsRepository(const [])),
       ('con la bandeja en error', () => requests()..failFetch = true),
     ]) {
-      testWidgets('para el lector de pantalla, «Da fare» es un encabezado sin lo de abajo adentro, y cada texto de abajo, un nodo propio ($name)', (
+      testWidgets('para el lector de pantalla, «Da fare» y «Prossimi 7 giorni» son encabezados sin lo de abajo adentro, y cada texto de abajo (también la pista de la tira), un nodo propio ($name)', (
         tester,
       ) async {
         final semantics = tester.ensureSemantics();
@@ -723,6 +723,12 @@ void main() {
         final strip = tester.getSemantics(find.text('Prossimi 7 giorni'));
         expect(strip, isSemantics(label: 'Prossimi 7 giorni', isHeader: true));
         expect(strip.childrenCount, 0);
+        // La pista, debajo del título de la tira: siempre está, y no se funde
+        // con el encabezado ni lo lleva adentro.
+        const hint = 'Tocca un giorno per aprirlo in agenda.';
+        final hintNode = tester.getSemantics(find.text(hint));
+        expect(hintNode, isSemantics(label: hint, isHeader: false));
+        expect(hintNode.childrenCount, 0, reason: hint);
         for (final text in [
           'Niente in sospeso.',
           'Impossibile caricare le richieste.',
