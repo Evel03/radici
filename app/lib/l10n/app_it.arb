@@ -367,6 +367,13 @@
   "@settingsAccountSection": {
     "description": "Sección con la cuenta y el botón para salir."
   },
+  "settingsCollaboratorOf": "Collaboratore di {chefName}",
+  "@settingsCollaboratorOf": {
+    "description": "Nombre de la cuenta (Impostazioni → Account y el menú de la cuenta) en lugar del nombre de la cocinera, cuando entró un colaborador suyo (chef_members): ve y hace lo mismo que ella con su propia cuenta.",
+    "placeholders": {
+      "chefName": { "type": "String", "example": "Evelyn" }
+    }
+  },
   "settingsVersion": "Versione {buildId}",
   "@settingsVersion": {
     "description": "Al pie de Impostazioni: qué versión de /gestione/ está abierta (el id del build, los 7 primeros caracteres del commit). No aparece en la app de iOS ni de Android.",
@@ -875,9 +882,9 @@
   "@availabilityLoadFailed": {
     "description": "La agenda no pudo leer el horario y los días bloqueados. Va con el botón Riprova."
   },
-  "availabilityNoteLabel": "Nota (la vedi solo tu)",
+  "availabilityNoteLabel": "Nota (i clienti non la vedono)",
   "@availabilityNoteLabel": {
-    "description": "Etiqueta del campo de la nota de un día bloqueado: es privada, la web no la muestra."
+    "description": "Etiqueta del campo de la nota de un día bloqueado: es privada, la web no la muestra. La ven la cocinera y sus colaboradores, por eso no dice «solo tu»."
   },
   "availabilityNoteHint": "Es.: ferie",
   "@availabilityNoteHint": {
@@ -1478,6 +1485,15 @@
   "contactWhatsAppMessage": "Ciao {name}, sono {chef} di {brand}. Ho ricevuto la tua richiesta e ti scrivo per organizzarci.",
   "@contactWhatsAppMessage": {
     "description": "Mensaje de WhatsApp al cliente, en SU idioma (requests.locale).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" }
+    }
+  },
+  "contactWhatsAppMessageOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand}: abbiamo ricevuto la tua richiesta e vorremmo organizzarci con te.",
+  "@contactWhatsAppMessageOnBehalf": {
+    "description": "El mismo mensaje de WhatsApp al cliente cuando lo arma un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella. En el idioma del cliente.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },

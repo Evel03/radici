@@ -1,6 +1,8 @@
-// Perfil del usuario (rol e idioma) y, si es cocinera, su ficha en `chefs`.
-// Las políticas RLS de M1 dejan leer el propio perfil y la propia ficha, y
-// cambiar del perfil solo full_name, phone y locale (20261019100200_rls.sql).
+// Perfil del usuario (rol e idioma) y, si es del lado de la cocinera, la ficha
+// de su cocina en `chefs`: la suya o, si es colaborador, la de la cocinera
+// (`chef_members`, 20261116190000_chef_members.sql). Las políticas RLS dejan
+// leer el propio perfil y la ficha de la propia cocina, y cambiar del perfil
+// solo full_name, phone y locale (20261019100200_rls.sql).
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/app_language.dart';
 import 'package:radici/core/supabase_client.dart';
@@ -34,7 +36,7 @@ class SupabaseAccountRepository implements AccountRepository {
   @override
   Future<Account> fetchAccount(String userId) async {
     final Map<String, dynamic>? profile;
-    final Map<String, dynamic>? chef;
+    Map<String, dynamic>? chef;
     try {
       profile = await _client
           .from('profiles')
@@ -47,11 +49,16 @@ class SupabaseAccountRepository implements AccountRepository {
           language: AppLanguage.fromCode(profile?['locale']),
         );
       }
-      chef = await _client
-          .from('chefs')
-          .select('id, display_name')
-          .eq('profile_id', userId)
-          .maybeSingle();
+      // La cocina la dice la base, con la misma función que las políticas:
+      // la de la que es dueña o colaborador, o null.
+      final currentChefId = await _client.rpc<Object?>('current_chef_id');
+      if (currentChefId is String) {
+        chef = await _client
+            .from('chefs')
+            .select('id, display_name, profile_id')
+            .eq('id', currentChefId)
+            .maybeSingle();
+      }
     } on Object {
       throw const AccountFailure(AccountFailureKind.unavailable);
     }
@@ -63,7 +70,12 @@ class SupabaseAccountRepository implements AccountRepository {
     }
     return Account(
       role: AccountRole.chef,
-      chef: ChefAccount(chefId: chefId, displayName: displayName),
+      chef: ChefAccount(
+        chefId: chefId,
+        displayName: displayName,
+        // La dueña es chefs.profile_id; cualquier otro es un colaborador.
+        collaborator: chef?['profile_id'] != userId,
+      ),
       language: AppLanguage.fromCode(profile?['locale']),
     );
   }

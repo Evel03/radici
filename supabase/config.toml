@@ -422,9 +422,10 @@ enabled = true
 verify_jwt = false
 
 # Área de Evelyn (docs/contracts/chef-api.md): reservas, mover y cancelar sesiones. Con JWT: la llama
-# la app con la sesión de Evelyn. Como el chequeo de la plataforma también deja pasar las claves de
-# API, la función valida además el token con Auth y que el usuario sea la cocinera
-# (chefs.profile_id). Usa ALLOWED_ORIGINS (CORS) de supabase/functions/.env.
+# la app con la sesión de Evelyn o de un colaborador suyo. Como el chequeo de la plataforma también
+# deja pasar las claves de API, la función valida además el token con Auth y busca la cocina del
+# usuario con public.chef_id_for_user (dueña o colaborador). Usa ALLOWED_ORIGINS (CORS) de
+# supabase/functions/.env.
 [functions.chef]
 enabled = true
 verify_jwt = true

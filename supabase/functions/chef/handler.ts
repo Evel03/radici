@@ -5,9 +5,10 @@
 //
 // Rutas, todas POST: /bookings (chef_create_booking), /sessions/move (chef_move_session) y
 // /sessions/cancel (chef_cancel_sessions). Orden: CORS → ruta (404) → método (405) → configuración
-// (500) → token (401) → usuario, con auth.getUser (401; 503 si Auth no responde) → cocinera, por
-// chefs.profile_id (403) → tipo (415) → tamaño (413) → JSON y validación (400) → función SQL con la
-// cocinera del token → 200 o 201, o el error de la base traducido (400, 404, 409, 500 o 503).
+// (500) → token (401) → usuario, con auth.getUser (401; 503 si Auth no responde) → su cocina, con
+// public.chef_id_for_user: la de la que es dueña o colaborador (403 si no es de ninguna) → tipo (415)
+// → tamaño (413) → JSON y validación (400) → función SQL con la cocina del token → 200 o 201, o el
+// error de la base traducido (400, 404, 409, 500 o 503).
 //
 // Los logs llevan solo evento, ruta, códigos, contadores e ids: nunca nombres, teléfonos, emails,
 // direcciones, notas, restricciones ni fechas.
@@ -119,8 +120,12 @@ export type CancelSessionsParams = {
 export interface ChefStore {
   /** auth.getUser: el id del usuario del token; null si Auth lo rechaza. Lanza StoreError si Auth no responde. */
   userIdFromToken(token: string): Promise<string | null>;
-  /** chefs.id del usuario (por chefs.profile_id), o null si no es cocinera. */
-  chefIdForUser(userId: string): Promise<string | null>;
+  /**
+   * public.chef_id_for_user tal cual: el chefs.id de la cocina de la que el usuario es dueño
+   * (chefs.profile_id) o colaborador (chef_members), o null si no es de ninguna. Lo interpreta
+   * chefIdFromRpc.
+   */
+  chefIdForUser(userId: string): Promise<unknown>;
   /** public.chef_create_booking: el jsonb tal cual. */
   createBooking(params: CreateBookingParams): Promise<unknown>;
   /** public.chef_move_session: el jsonb tal cual. */
@@ -309,6 +314,16 @@ function isCount(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
+/**
+ * Resultado de public.chef_id_for_user: el uuid de la cocina (como lo escribe Postgres, en
+ * minúsculas), null si el usuario no es dueño ni colaborador de ninguna, o undefined si tiene otra
+ * forma (la respuesta no se entiende: 500, nunca un acceso).
+ */
+export function chefIdFromRpc(data: unknown): string | null | undefined {
+  if (data === null) return null;
+  return isDbUuid(data) ? data : undefined;
+}
+
 /** time de Postgres ("10:00:00") → "10:00"; null si es null; undefined si no tiene esa forma. */
 function timeOf(value: unknown): string | null | undefined {
   if (value === null) return null;
@@ -427,11 +442,21 @@ export interface ChefHandlerDeps {
 
 type Reply = (status: number, body: unknown, extra?: Record<string, string>) => Response;
 
-type AuthResult = { ok: true; chefId: string } | { ok: false; status: number; body: ChefErrorBody; headers?: Record<string, string> };
+/**
+ * Quién llama: su usuario (la cocinera o un colaborador suyo) y la cocina con que trabaja. El usuario va
+ * en los logs de lo que cambia (con colaboradores, la cocina son varias cuentas); las funciones SQL
+ * reciben solo la cocina.
+ */
+type Caller = { chefId: string; userId: string };
+
+type AuthResult = ({ ok: true } & Caller) | { ok: false; status: number; body: ChefErrorBody; headers?: Record<string, string> };
 
 const UNAUTHORIZED: AuthResult = { ok: false, status: 401, body: { error: "unauthorized" }, headers: { "WWW-Authenticate": "Bearer" } };
 
-/** El usuario del token (auth.getUser) y su ficha de cocinera (chefs.profile_id). */
+/**
+ * El usuario del token (auth.getUser) y su cocina (public.chef_id_for_user): la de la que es dueña o
+ * colaborador. Cualquier otro usuario, 403.
+ */
 async function authenticate(deps: ChefHandlerDeps, request: Request, route: ChefRoute): Promise<AuthResult> {
   const { store, log } = deps;
   const header = request.headers.get("authorization");
@@ -454,19 +479,24 @@ async function authenticate(deps: ChefHandlerDeps, request: Request, route: Chef
     return UNAUTHORIZED;
   }
 
-  let chefId: string | null;
+  let raw: unknown;
   try {
-    chefId = await store.chefIdForUser(userId);
+    raw = await store.chefIdForUser(userId);
   } catch (error) {
     logStoreError(log, error, "load_chef");
     const failure = serverFailure(error);
     return { ok: false, status: failure.status, body: failure.body };
   }
-  if (!chefId) {
+  const chefId = chefIdFromRpc(raw);
+  if (chefId === undefined) {
+    log("error", "unexpected_result", { op: "load_chef" });
+    return { ok: false, status: 500, body: { error: "server" } };
+  }
+  if (chefId === null) {
     log("info", "forbidden", { route, userId });
     return { ok: false, status: 403, body: { error: "forbidden" } };
   }
-  return { ok: true, chefId };
+  return { ok: true, chefId, userId };
 }
 
 function invalidPayload(log: Logger, route: ChefRoute, failure: { errors: ChefApiErrors; date?: string }, reply: Reply): Response {
@@ -497,7 +527,7 @@ function unexpectedResult(log: Logger, op: string, reply: Reply): Response {
   return reply(500, { error: "server" });
 }
 
-async function bookingsRoute(deps: ChefHandlerDeps, chefId: string, input: unknown, reply: Reply): Promise<Response> {
+async function bookingsRoute(deps: ChefHandlerDeps, caller: Caller, input: unknown, reply: Reply): Promise<Response> {
   const { log } = deps;
   const route = CHEF_ROUTES.bookings;
   const parsed = parseBookingRequest(input, { today: romeToday(deps.now()) });
@@ -505,7 +535,7 @@ async function bookingsRoute(deps: ChefHandlerDeps, chefId: string, input: unkno
 
   let data: unknown;
   try {
-    data = await deps.store.createBooking(toCreateBookingParams(chefId, parsed.value));
+    data = await deps.store.createBooking(toCreateBookingParams(caller.chefId, parsed.value));
   } catch (error) {
     return dbFailure(log, route, "create_booking", error, reply);
   }
@@ -514,14 +544,19 @@ async function bookingsRoute(deps: ChefHandlerDeps, chefId: string, input: unkno
   if (result.dryRun) return reply(200, result);
   if (result.duplicate) {
     // Reintento de una reserva ya guardada: la misma respuesta, sin crear nada.
-    log("info", "booking_duplicate", { requestId: result.requestId });
+    log("info", "booking_duplicate", { requestId: result.requestId, userId: caller.userId });
     return reply(201, result);
   }
-  log("info", "booking_created", { requestId: result.requestId, sessions: result.weeks.length, client: parsed.value.client.kind });
+  log("info", "booking_created", {
+    requestId: result.requestId,
+    sessions: result.weeks.length,
+    client: parsed.value.client.kind,
+    userId: caller.userId,
+  });
   return reply(201, result);
 }
 
-async function moveRoute(deps: ChefHandlerDeps, chefId: string, input: unknown, reply: Reply): Promise<Response> {
+async function moveRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, input: unknown, reply: Reply): Promise<Response> {
   const { log } = deps;
   const route = CHEF_ROUTES.moveSession;
   const parsed = parseMoveSessionRequest(input, { today: romeToday(deps.now()) });
@@ -543,11 +578,11 @@ async function moveRoute(deps: ChefHandlerDeps, chefId: string, input: unknown, 
   }
   const result = moveSessionResponseFromRpc(data);
   if (!result || result.dryRun !== dryRun) return unexpectedResult(log, "move_session", reply);
-  if (!result.dryRun) log("info", "session_moved", { sessionId: result.sessionId });
+  if (!result.dryRun) log("info", "session_moved", { sessionId: result.sessionId, userId });
   return reply(200, result);
 }
 
-async function cancelRoute(deps: ChefHandlerDeps, chefId: string, input: unknown, reply: Reply): Promise<Response> {
+async function cancelRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, input: unknown, reply: Reply): Promise<Response> {
   const { log } = deps;
   const route = CHEF_ROUTES.cancelSessions;
   const parsed = parseCancelSessionsRequest(input);
@@ -570,6 +605,7 @@ async function cancelRoute(deps: ChefHandlerDeps, chefId: string, input: unknown
     cancelled: result.cancelled.length,
     alreadyCancelled: result.alreadyCancelled.length,
     withPayments: result.withPayments.length,
+    userId,
   });
   return reply(200, result);
 }
@@ -607,7 +643,7 @@ export function createChefHandler(deps: ChefHandlerDeps): (request: Request) => 
         return reply(500, { error: "server" });
       }
 
-      // Primero quién llama: sin token válido de la cocinera no se lee ni el cuerpo.
+      // Primero quién llama: sin un token válido de la cocinera o de un colaborador suyo no se lee ni el cuerpo.
       const auth = await authenticate(deps, request, route);
       if (!auth.ok) return reply(auth.status, auth.body, auth.headers);
 
@@ -623,11 +659,11 @@ export function createChefHandler(deps: ChefHandlerDeps): (request: Request) => 
 
       switch (route) {
         case CHEF_ROUTES.bookings:
-          return await bookingsRoute(deps, auth.chefId, input, reply);
+          return await bookingsRoute(deps, auth, input, reply);
         case CHEF_ROUTES.moveSession:
-          return await moveRoute(deps, auth.chefId, input, reply);
+          return await moveRoute(deps, auth, input, reply);
         case CHEF_ROUTES.cancelSessions:
-          return await cancelRoute(deps, auth.chefId, input, reply);
+          return await cancelRoute(deps, auth, input, reply);
         default:
           return reply(404, { error: "notFound" });
       }

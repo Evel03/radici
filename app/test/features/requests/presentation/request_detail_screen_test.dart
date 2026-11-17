@@ -85,6 +85,35 @@ void main() {
     );
   });
 
+  testWidgets('WhatsApp de un colaborador: escribe de parte de la cocinera', (
+    tester,
+  ) async {
+    // Lo manda desde su propio teléfono: el mensaje no dice «soy Evelyn».
+    final request = buildRequest(
+      name: 'Lucía Fernández',
+      phone: '+34 612 345 678',
+      locale: ClientLocale.es,
+    );
+    final app = await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([request]),
+      accounts: FakeAccountRepository(
+        chefAccountData.copyWith(chef: chefAccount.copyWith(collaborator: true)),
+      ),
+      location: '/richieste/${request.id}',
+      size: const Size(400, 1800),
+    );
+
+    await tapAction(tester, 'action-whatsapp');
+
+    expect(app.launcher.launched.single.toString(),
+      'https://wa.me/34612345678?text='
+      'Hola%20Luc%C3%ADa%2C%20te%20escribo%20de%20parte%20de%20Evelyn%20de%20'
+      'Radici%3A%20recibimos%20tu%20solicitud%20y%20queremos%20organizarnos%20'
+      'contigo.',
+    );
+  });
+
   testWidgets('llamar abre tel: con el número normalizado', (tester) async {
     final app = await openDetail(tester, buildRequest(phone: '333 1234567'));
     await tapAction(tester, 'action-call');
