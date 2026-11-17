@@ -435,6 +435,10 @@
   "@accountMenu": {
     "description": "Tooltip del menú de la cuenta (impostazioni y salir)."
   },
+  "chefReload": "Ricarica",
+  "@chefReload": {
+    "description": "Botón con ícono de la barra de arriba de Hoy y de la Agenda (es su tooltip y lo que dice el lector de pantalla): vuelve a leer las solicitudes, la disponibilidad y las sesiones, como deslizar para actualizar. Distinto de «Aggiorna» (updateReload), el del aviso de versión nueva."
+  },
 
   "settingsTitle": "Impostazioni",
   "@settingsTitle": {

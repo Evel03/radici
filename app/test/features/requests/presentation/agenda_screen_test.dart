@@ -651,6 +651,39 @@ void main() {
 
     const refreshFailed = 'Aggiornamento non riuscito. Controlla la connessione.';
 
+    testWidgets('«Ricarica», arriba, hace lo mismo sin deslizar (VoiceOver y el mouse no deslizan); si falla, avisa', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      final app = await openDays(tester);
+      final reload = byKey('chef-reload');
+      expect(
+        tester.getSemantics(reload),
+        isSemantics(tooltip: 'Ricarica', isButton: true, hasTapAction: true),
+      );
+      final calls = (
+        availability: app.availability.fetchCalls,
+        requests: app.requests.fetchCalls,
+        sessions: app.sessions.fetchCalls,
+      );
+
+      await tester.tap(reload);
+      await tester.pumpAndSettle();
+      expect(app.availability.fetchCalls, calls.availability + 1);
+      expect(app.requests.fetchCalls, calls.requests + 1);
+      expect(app.sessions.fetchCalls, calls.sessions + 1);
+      expect(find.byType(SnackBar), findsNothing);
+
+      app.requests.failFetch = true;
+      await tester.tap(reload);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: find.byType(SnackBar), matching: find.text(refreshFailed)),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
     testWidgets('si al deslizar no se pueden leer los días bloqueados, avisa y deja lo que había', (
       tester,
     ) async {

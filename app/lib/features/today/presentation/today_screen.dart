@@ -18,10 +18,10 @@ import 'package:go_router/go_router.dart';
 import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
-import 'package:radici/features/requests/application/chef_data_refresh.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/application/inbox_tab_request.dart';
 import 'package:radici/features/requests/domain/inbox.dart';
+import 'package:radici/features/requests/presentation/chef_refresh_button.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart'
     show LoadErrorView;
@@ -54,7 +54,8 @@ class TodayScreen extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: Text(l10n.navToday),
-          actions: const [ChefAccountMenuButton()],
+          // «Ricarica»: lo mismo que deslizar para actualizar, sin el gesto.
+          actions: const [ChefRefreshButton(), ChefAccountMenuButton()],
         ),
         body: switch (focus) {
           AsyncData(:final value) => _TodayList(focus: value),
@@ -88,16 +89,6 @@ class _TodayList extends ConsumerWidget {
 
   final TodayFocus focus;
 
-  /// Deslizar para actualizar: si algo falla, queda lo que había y se avisa.
-  Future<void> _refresh(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final message = AppLocalizations.of(context).inboxRefreshError;
-    final ok = await ref.read(refreshChefDataProvider)();
-    if (!ok && messenger.mounted) {
-      messenger.showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
@@ -113,7 +104,9 @@ class _TodayList extends ConsumerWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: sessionMaxContentWidth),
         child: RefreshIndicator(
-          onRefresh: () => _refresh(context, ref),
+          // Deslizar para actualizar: si algo falla, queda lo que había y
+          // se avisa.
+          onRefresh: () => refreshChefData(context, ref),
           child: ListView(
             key: const ValueKey('today'),
             // Deslizar para actualizar aunque todo entre en la pantalla.

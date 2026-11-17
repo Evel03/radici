@@ -1042,6 +1042,52 @@ void main() {
       expect(card(1), findsOneWidget);
     });
 
+    testWidgets('«Ricarica», arriba, vuelve a leer la bandeja, la disponibilidad y las sesiones sin deslizar; mientras lee no se vuelve a tocar y, si falla, lo avisa', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      final app = await openToday(tester);
+      expect(byKey('today-empty'), findsOneWidget);
+      // Deslizar es un gesto: VoiceOver y el mouse de /gestione/ no lo hacen.
+      final reload = byKey('chef-reload');
+      expect(
+        tester.getSemantics(reload),
+        isSemantics(tooltip: 'Ricarica', isButton: true, hasTapAction: true),
+      );
+      final fetches = (
+        sessions: app.sessions.fetchCalls,
+        requests: app.requests.fetchCalls,
+        availability: app.availability.fetchCalls,
+      );
+
+      app.sessions
+        ..sessions[sessionId(1)] = session()
+        ..pendingFetch = Completer<void>();
+      await tester.tap(reload);
+      await tester.pump();
+      expect(tester.widget<IconButton>(reload).onPressed, isNull);
+      app.sessions.pendingFetch!.complete();
+      app.sessions.pendingFetch = null;
+      await tester.pumpAndSettle();
+      expect(card(1), findsOneWidget);
+      expect(app.sessions.fetchCalls, fetches.sessions + 1);
+      expect(app.requests.fetchCalls, fetches.requests + 1);
+      expect(app.availability.fetchCalls, fetches.availability + 1);
+      expect(tester.widget<IconButton>(reload).onPressed, isNotNull);
+
+      app.sessions.fetchFailure = const SessionFailure(
+        SessionFailureKind.unavailable,
+      );
+      await tester.tap(reload);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Aggiornamento non riuscito. Controlla la connessione.'),
+        findsOneWidget,
+      );
+      expect(card(1), findsOneWidget);
+      semantics.dispose();
+    });
+
     testWidgets('si una relectura falla con las sesiones ya leídas, quedan la tarjeta y los botones, con el aviso y «Riprova»', (
       tester,
     ) async {

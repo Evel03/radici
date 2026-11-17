@@ -15,10 +15,10 @@ import 'package:radici/features/availability/presentation/availability_labels.da
 import 'package:radici/features/availability/presentation/block_range_dialog.dart';
 import 'package:radici/features/availability/presentation/day_availability_card.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
-import 'package:radici/features/requests/application/chef_data_refresh.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/agenda.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/chef_refresh_button.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
@@ -43,7 +43,8 @@ class AgendaScreen extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: Text(l10n.navAgenda),
-          actions: const [ChefAccountMenuButton()],
+          // «Ricarica»: lo mismo que deslizar para actualizar, sin el gesto.
+          actions: const [ChefRefreshButton(), ChefAccountMenuButton()],
         ),
         body: inbox.hasError && !inbox.hasValue
             ? LoadErrorView(
@@ -60,17 +61,6 @@ class AgendaScreen extends ConsumerWidget {
 class _AgendaList extends ConsumerWidget {
   const _AgendaList();
 
-  /// Deslizar para actualizar: la bandeja, la disponibilidad y las sesiones
-  /// juntas. Si alguna falla, queda lo que había y se avisa.
-  Future<void> _refresh(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final message = AppLocalizations.of(context).inboxRefreshError;
-    final ok = await ref.read(refreshChefDataProvider)();
-    if (!ok && messenger.mounted) {
-      messenger.showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
@@ -84,7 +74,9 @@ class _AgendaList extends ConsumerWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
         child: RefreshIndicator(
-          onRefresh: () => _refresh(context, ref),
+          // Deslizar para actualizar: la bandeja, la disponibilidad y las
+          // sesiones juntas. Si alguna falla, queda lo que había y se avisa.
+          onRefresh: () => refreshChefData(context, ref),
           child: ListView(
             key: const ValueKey('agenda'),
             // Deslizar para actualizar aunque todo entre en la pantalla.
