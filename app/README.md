@@ -94,8 +94,30 @@ repositorios falsos (`test/support/fakes.dart`).
   email del código llega en el idioma de `user_metadata.locale` (italiano si no hay; cambiar el idioma
   en Impostazioni también lo cambia).
 - Después del login se lee el perfil (`profiles.role` y `profiles.locale`): `chef` → área de la
-  cocinera (con su fila de `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz
-  pasa al idioma del perfil (ver [Idioma](#idioma)).
+  cocinera (con su fila de `chefs`), que empieza en **Hoy** (`/oggi`), también al abrir la app con la
+  sesión guardada; un enlace directo (el botón del email, `/richieste/<id>`) abre lo suyo. Cualquier
+  otro → "Area clienti in preparazione". La interfaz pasa al idioma del perfil (ver
+  [Idioma](#idioma)). La barra de abajo tiene cuatro destinos: Oggi, Richieste, Agenda y Altro
+  (desde 840 px, el mismo riel a la izquierda).
+- **Hoy** (`features/today/`): la sesión de hoy o, si hoy no hay, la próxima (la más cercana que no
+  está cancelada). Con varias hoy, todas: primero las que todavía no terminaron, por llegada, y
+  después las terminadas (pasó la hora en que termina la cocina, en hora de Roma, o ya está cocinada
+  o cobrada); se reordena sola al minuto. Cada tarjeta dice la clienta, las horas de la sesión
+  («Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00», como en la ficha), las personas, el estado
+  si no está confirmada, las alergias resaltadas como en la ficha (con la nota de contaminación
+  cruzada si hay gluten, SPEC §5.6) y las notas de cocina, y abre la ficha. Abajo, en el tercio
+  inferior del teléfono, «Come arrivare» (Apple Maps en el iPhone, Google Maps en el resto) y
+  WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi indirizzo», como la ficha (con varias,
+  una línea dice de quién son). Pendientes de un toque: «N richieste nuove» (lleva a Richieste en
+  «Nuove», aunque se haya dejado en otra pestaña) y las reservas que terminan: las de un pedido
+  semanal cuya última sesión viva cae entre hoy y los 6 días siguientes (abre la ficha de esa
+  sesión; renovar desde Hoy llega después). La tira de 7 días (hoy y los 6 siguientes) usa lo de la Agenda:
+  un punto por sesión, el número tachado si el día está bloqueado y un punto si es feriado en un
+  día de trabajo; tocar un día abre la Agenda con ese día elegido. "Hoy" es el día de Roma y cambia
+  a la medianoche sin reabrir la app (`romeTodayProvider`, el de la Agenda). Deslizar para
+  actualizar vuelve a leer la bandeja, la disponibilidad y las sesiones; mientras cargan las
+  sesiones, una rueda; si no se pudieron leer, el error con «Riprova»; sin ninguna, lo dice y
+  ofrece ir a las solicitudes.
 - **Richieste**: pestañas Nuove (sin `seen_at` y no aceptadas), Viste, Prenotazioni (los pedidos
   `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
   nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos
@@ -194,7 +216,7 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
-- **Altro** (Más): el tercer destino de la barra (o del riel en pantallas anchas), con la cuenta,
+- **Altro** (Más): el cuarto destino de la barra (o del riel en pantallas anchas), con la cuenta,
   Piatti, Impostazioni y salir. En el teléfono reemplaza al menú de la cuenta de la barra superior,
   que queda solo en pantallas anchas.
 - **Piatti** (catálogo, migración `20261116170000_recipe_catalog.sql`): lista con búsqueda en los
@@ -228,7 +250,8 @@ repositorios falsos (`test/support/fakes.dart`).
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
 
 Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace del email a Evelyn):
-`/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`,
+`/accedi`, `/caricamento`, `/area-clienti`, `/oggi` (el inicio de la cocinera), `/richieste`,
+`/richieste/:id`,
 `/richieste/:id/prenota`, `/agenda`, `/sessioni/:id`, `/sessioni/:id/sposta` (con `?data=AAAA-MM-DD`
 si la fecha ya se eligió), `/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con
 `?copia=<id>`, la copia de un plato) y `/altro/piatti/:id`, más `/` y `/preventivo` (públicas). En la
