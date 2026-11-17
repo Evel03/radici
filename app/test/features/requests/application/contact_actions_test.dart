@@ -54,6 +54,36 @@ void main() {
     expect(links.email!.queryParameters['subject'], 'Your request to Radici');
   });
 
+  test('un colaborador de la cocinera escribe de parte de ella, en el idioma del cliente', () {
+    // Sale de su propio teléfono: el mensaje no dice «sono Evelyn».
+    String message(ClientLocale locale) =>
+        contactLinksFor(
+          buildRequest(locale: locale),
+          chefName: 'Evelyn',
+          onBehalf: true,
+        ).whatsApp!.queryParameters['text']!;
+
+    expect(
+      message(ClientLocale.it),
+      'Ciao Giulia, ti scrivo da parte di Evelyn di Radici: abbiamo ricevuto '
+      'la tua richiesta e vorremmo organizzarci con te.',
+    );
+    expect(
+      message(ClientLocale.es),
+      'Hola Giulia, te escribo de parte de Evelyn de Radici: recibimos tu '
+      'solicitud y queremos organizarnos contigo.',
+    );
+    expect(
+      message(ClientLocale.en),
+      "Hi Giulia, I'm writing on behalf of Evelyn from Radici: we got your "
+      'request and would like to sort out the details with you.',
+    );
+    // La llamada y el email no firman: son los mismos.
+    final links = contactLinksFor(buildRequest(), chefName: 'Evelyn', onBehalf: true);
+    expect(links.call.toString(), 'tel:+393331234567');
+    expect(links.email!.queryParameters['body'], 'Ciao Giulia,\n\n');
+  });
+
   test('sin teléfono válido no hay WhatsApp ni llamada; sin email, no hay email', () {
     final links = contactLinksFor(
       buildRequest(phone: '612 345 678', email: null),

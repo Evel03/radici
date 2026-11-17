@@ -4,6 +4,7 @@
 -- Usuarios (contraseña de desarrollo para todos: radici-dev-2026; también
 -- sirve el login por OTP con Mailpit en http://127.0.0.1:54324):
 --   evelyn@example.test   cocinera (Bergamo)
+--   marco@example.test    colaborador de Evelyn (chef_members): entra a su área con su cuenta
 --   giulia@example.test   segunda cocinera, para probar aislamiento entre chefs
 --   chiara@example.test   cliente con cuenta, alergia a lácteos (con consentimiento)
 --   luca@example.test     familia Bonetti, un niño celíaco (con consentimiento)
@@ -32,6 +33,7 @@ select
   now(), now(), '', '', '', ''
 from (values
   ('e0000000-0000-4000-8000-000000000001'::uuid, 'evelyn@example.test', 'Evelyn Ramírez', 'es'),
+  ('e0000000-0000-4000-8000-0000000000c1'::uuid, 'marco@example.test',  'Marco Bianchi',  'es'),
   ('e0000000-0000-4000-8000-000000000002'::uuid, 'giulia@example.test', 'Giulia Ferrari', 'it'),
   ('c0000000-0000-4000-8000-000000000001'::uuid, 'chiara@example.test', 'Chiara Rossi',   'it'),
   ('c0000000-0000-4000-8000-000000000002'::uuid, 'luca@example.test',   'Luca Bonetti',   'it'),
@@ -49,6 +51,10 @@ update public.profiles set role = 'chef', phone = '+39 333 000 0001'
 where id = 'e0000000-0000-4000-8000-000000000001';
 update public.profiles set role = 'chef', phone = '+39 333 000 0002'
 where id = 'e0000000-0000-4000-8000-000000000002';
+-- Marco, colaborador de Evelyn: rol chef como ella (la app lo lleva a su área); su fila de
+-- chef_members va después de las cocineras.
+update public.profiles set role = 'chef'
+where id = 'e0000000-0000-4000-8000-0000000000c1';
 
 -- ---------------------------------------------------------------------
 -- Cocineras, tarifas y disponibilidad
@@ -58,6 +64,10 @@ insert into public.chefs (id, profile_id, display_name, service_area, whatsapp) 
    'Evelyn', array['Bergamo','Città Alta','Seriate','Torre Boldone','Curno'], '+393330000001'),
   ('cef00000-0000-4000-8000-000000000002', 'e0000000-0000-4000-8000-000000000002',
    'Giulia', array['Treviglio','Dalmine'], '+393330000002');
+
+-- Colaborador de Evelyn (en producción la lista la define el secreto CHEF_MEMBER_EMAILS).
+insert into public.chef_members (chef_id, profile_id) values
+  ('cef00000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-0000000000c1');
 
 -- Evelyn: todos los valores por defecto de la spec (2200, 1200, 380, 250, 15 %, 90, 45, 30, 30, 56, 24, 48, 90;
 -- precio por semana: 15000, 14000 desde 4 semanas, hasta 5 personas)
