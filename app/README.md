@@ -94,9 +94,9 @@ repositorios falsos (`test/support/fakes.dart`).
   email del código llega en el idioma de `user_metadata.locale` (italiano si no hay; cambiar el idioma
   en Impostazioni también lo cambia).
 - Después del login se lee el perfil (`profiles.role` y `profiles.locale`): `chef` → área de la
-  cocinera, con la ficha de su cocina (`current_chef_id()`, la misma función que la RLS, y su fila de
-  `chefs`), que empieza en **Hoy** (`/oggi`), también al abrir la app con la sesión guardada; un
-  enlace directo (el botón del email, `/richieste/<id>`) abre lo suyo. Cualquier otro →
+  cocinera, que empieza en **Hoy** (`/oggi`), también al abrir la app con la sesión guardada; un
+  enlace directo (el botón del email, `/richieste/<id>`) abre lo suyo; la ficha de su cocina sale de
+  `current_chef_id()` (la misma función que la RLS) y de su fila de `chefs`. Cualquier otro →
   "Area clienti in preparazione". La interfaz pasa al idioma del perfil (ver [Idioma](#idioma)). La
   barra de abajo tiene cuatro destinos: Oggi, Richieste, Agenda y Altro (desde 840 px, el mismo riel
   a la izquierda). Un colaborador de la cocinera (`chef_members`) entra igual, con su cuenta: ve y
