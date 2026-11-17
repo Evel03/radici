@@ -4,8 +4,9 @@
 // abren la ficha de su última semana) y la tira de 7 días (cada día abre la
 // Agenda en ese día). Abajo, en el tercio inferior del teléfono, «Come
 // arrivare» y WhatsApp de la sesión principal (sin dirección, WhatsApp y
-// «Aggiungi indirizzo», como la ficha). «Hoy» es el día de Roma y cambia a la
-// medianoche sin reabrir la app. Deslizar para actualizar vuelve a leer todo.
+// «Aggiungi indirizzo», como la ficha); sin ninguna sesión, «Vedi le
+// richieste». «Hoy» es el día de Roma y cambia a la medianoche sin reabrir la
+// app. Deslizar para actualizar vuelve a leer todo.
 //
 // Solo lee providers: la lógica está en today_providers.dart y en el dominio.
 // Las sesiones llevan la dirección y datos de salud: nada se loguea.
@@ -45,7 +46,6 @@ class TodayScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final focus = ref.watch(todayFocusProvider);
     final value = focus.value;
-    final main = value?.main;
 
     // Sus propios avisos: salen encima de los botones de abajo, sin taparlos
     // (con el ScaffoldMessenger de la app saldrían en el Scaffold de la barra
@@ -66,15 +66,18 @@ class TodayScreen extends ConsumerWidget {
             child: CircularProgressIndicator(key: ValueKey('today-loading')),
           ),
         },
-        // «Come arrivare» y WhatsApp, abajo: la acción principal en el tercio
-        // inferior del teléfono.
-        bottomNavigationBar: main == null
-            ? null
-            : _TodayActions(
-                session: main,
-                // Con varias sesiones, de quién son.
-                showWhose: value!.sessions.length > 1,
-              ),
+        // «Come arrivare» y WhatsApp (o, sin ninguna sesión, «Vedi le
+        // richieste»), abajo: la acción principal en el tercio inferior del
+        // teléfono.
+        bottomNavigationBar: switch (value) {
+          null => null,
+          TodayFocus(main: final main?) => _TodayActions(
+            session: main,
+            // Con varias sesiones, de quién son.
+            showWhose: value.sessions.length > 1,
+          ),
+          TodayFocus() => const _NoSessionsActions(),
+        },
       ),
     );
   }
@@ -164,8 +167,9 @@ class _TodayList extends ConsumerWidget {
   }
 }
 
-/// Sin ninguna sesión desde hoy: lo dice y propone ir a las solicitudes (una
-/// reserva se confirma desde un pedido).
+/// Sin ninguna sesión desde hoy: lo dice y de dónde salen; la acción (ir a
+/// las solicitudes: una reserva se confirma desde un pedido) va abajo, en
+/// _NoSessionsActions.
 class _NoSessions extends StatelessWidget {
   const _NoSessions();
 
@@ -192,15 +196,31 @@ class _NoSessions extends StatelessWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 12),
-            FilledButton.tonal(
-              key: const ValueKey('today-empty-action'),
-              onPressed: () => context.go(AppRoutes.requests),
-              child: Text(l10n.todayEmptyAction),
-            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Sin ninguna sesión, la acción del estado vacío, «Vedi le richieste»:
+/// abajo, en el tercio inferior del teléfono, como los botones de una sesión.
+class _NoSessionsActions extends StatelessWidget {
+  const _NoSessionsActions();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SessionBottomBar(
+      key: const ValueKey('today-empty-actions'),
+      children: [
+        FilledButton.icon(
+          key: const ValueKey('today-empty-action'),
+          onPressed: () => context.go(AppRoutes.requests),
+          icon: const Icon(Icons.inbox_outlined),
+          label: Text(l10n.todayEmptyAction),
+        ),
+      ],
     );
   }
 }

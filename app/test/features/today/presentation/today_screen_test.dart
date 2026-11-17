@@ -509,15 +509,23 @@ void main() {
       expect(card(2), findsOneWidget);
     });
 
-    testWidgets('sin ninguna sesión: lo dice, sin botones abajo, y propone ver las solicitudes', (
+    testWidgets('sin ninguna sesión: lo dice y propone ver las solicitudes con un botón abajo, en el tercio inferior', (
       tester,
     ) async {
-      await openToday(tester);
+      await openToday(tester, size: const Size(375, 667));
       expect(
         textOf(tester, 'today-empty'),
         'Nessuna sessione in programma',
       );
       expect(byKey('today-actions'), findsNothing);
+      final action = tester.getRect(byKey('today-empty-action'));
+      expect(action.center.dy, greaterThan(667 * 2 / 3));
+      expect(
+        action.bottom,
+        lessThanOrEqualTo(tester.getRect(byKey('chef-nav-bar')).top),
+      );
+      expect(action.height, greaterThanOrEqualTo(48));
+      expect(tester.takeException(), isNull);
       await tester.tap(byKey('today-empty-action'));
       await tester.pumpAndSettle();
       expect(find.byType(InboxScreen), findsOneWidget);
