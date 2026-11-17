@@ -119,24 +119,24 @@ repositorios falsos (`test/support/fakes.dart`).
   (`sessionLinksFor`, con el mismo día de Roma con que Hoy elige la sesión): lleva la hora de
   llegada salvo en una sesión cocinada o cobrada (en Hoy no hay canceladas ni de días pasados) y,
   si lo manda un colaborador, escribe de parte de la cocinera («ti scrivo da parte di Evelyn di
-  Radici…»). Pendientes de un toque: «N nuove
-  richieste» (lleva a Richieste en «Nuove», aunque se haya dejado en otra pestaña) y las reservas
-  que terminan: las reservas semanales (un pedido semanal aceptado; no un presupuesto enviado ni una
-  sesión extra) cuya última sesión viva cae entre hoy y los 6 días siguientes (abre la ficha de esa
-  sesión; renovar desde Hoy llega después). La tira de 7 días (hoy y los 6 siguientes) usa lo de la
-  Agenda: un punto por sesión, el número tachado si el día está bloqueado y un punto si es feriado
-  en un día de trabajo; el lector de pantalla dice cuál es hoy; si los 7 no entran con 48 dp cada
-  uno (menos de 368 dp de ancho, como 360 o 320), van en dos filas (4 y 3); tocar un día abre la
-  Agenda con ese día elegido y a la vista (su primera sesión, por encima del botón flotante), igual
-  aunque la Agenda haya quedado desplazada: antes vuelve su lista arriba. "Hoy" es el día de Roma y
-  cambia a la medianoche sin reabrir la app (`romeTodayProvider`, el de la
-  Agenda). Deslizar para actualizar, o «Ricarica» en la barra de arriba (sin el gesto, que VoiceOver
-  y el mouse de /gestione/ no hacen), vuelve a leer la bandeja, la disponibilidad y las sesiones.
-  Mientras cargan las sesiones (también mientras Riverpod reintenta una lectura que falló), una
-  rueda en el lugar de la tarjeta; si no se pudieron leer, el aviso con «Riprova» en su lugar; en
-  los dos casos, los pendientes y la tira siguen. Mientras se lee la bandeja, los pendientes
-  muestran una barra, y «Niente in sospeso» sale solo con la bandeja y las sesiones leídas. Sin
-  ninguna sesión, lo dice y ofrece ir a las solicitudes con un botón abajo.
+  Radici…»). Pendientes de un toque: «N nuove richieste» (lleva a Richieste en «Nuove», aunque se
+  haya dejado en otra pestaña) y las reservas que terminan: las reservas semanales (un pedido
+  semanal aceptado; no un presupuesto enviado ni una sesión extra) cuya última sesión viva cae entre
+  hoy y los 6 días siguientes (abre la ficha de esa sesión; renovar desde Hoy llega después). La
+  tira de 7 días (hoy y los 6 siguientes) usa lo de la Agenda: un punto por sesión, el número
+  tachado si el día está bloqueado y un punto si es feriado en un día de trabajo; el lector de
+  pantalla dice cuál es hoy; si los 7 no entran con 48 dp cada uno (menos de 368 dp de ancho, como
+  360 o 320), van en dos filas (4 y 3); tocar un día abre la Agenda con ese día elegido y a la vista
+  (su primera sesión, por encima del botón flotante), igual aunque la Agenda haya quedado
+  desplazada: antes vuelve su lista arriba. "Hoy" es el día de Roma y cambia a la medianoche sin
+  reabrir la app (`romeTodayProvider`, el de la Agenda). Deslizar para actualizar, o «Ricarica» en
+  la barra de arriba (sin el gesto, que VoiceOver y el mouse de /gestione/ no hacen), vuelve a leer
+  la bandeja, la disponibilidad y las sesiones. Mientras cargan las sesiones (también mientras
+  Riverpod reintenta una lectura que falló), una rueda en el lugar de la tarjeta; si no se pudieron
+  leer, el aviso con «Riprova» en su lugar; en los dos casos, los pendientes y la tira siguen.
+  Mientras se lee la bandeja, los pendientes muestran una barra, y «Niente in sospeso» sale solo con
+  la bandeja y las sesiones leídas. Sin ninguna sesión, lo dice y ofrece ir a las solicitudes con un
+  botón abajo.
 - **Richieste**: pestañas Nuove (sin `seen_at` y no aceptadas), Viste, Prenotazioni (los pedidos
   `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
   nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos

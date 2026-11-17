@@ -6,11 +6,11 @@
 // gluten y las notas de cocina; abajo, en el tercio inferior, «Come arrivare»
 // (sin dirección, «Aggiungi indirizzo») y WhatsApp (el mensaje de la ficha:
 // lo firma la cocinera o, con la cuenta de un colaborador, escribe de parte
-// de ella). Tocar la tarjeta abre la ficha. Los pendientes (pedidos nuevos, que llevan a «Nuove», y reservas que
-// terminan, que abren su última semana), la tira de 7 días (que abre la
-// Agenda en ese día), carga, error, vacío, deslizar para actualizar y el
-// cambio de día a la medianoche de Roma sin reabrir. "Hoy": martes 17/11/2026
-// a las 8:00 en Roma, salvo donde se dice otra cosa.
+// de ella). Tocar la tarjeta abre la ficha. Los pendientes (pedidos nuevos, que
+// llevan a «Nuove», y reservas que terminan, que abren su última semana), la
+// tira de 7 días (que abre la Agenda en ese día), carga, error, vacío, deslizar
+// para actualizar y el cambio de día a la medianoche de Roma sin reabrir.
+// "Hoy": martes 17/11/2026 a las 8:00 en Roma, salvo donde se dice otra cosa.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
