@@ -1328,9 +1328,9 @@
       "time": { "type": "String", "example": "10:00" }
     }
   },
-  "sessionWhatsAppMessageOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand} per la sessione di {date}: {chef} arriva alle {time}.",
+  "sessionWhatsAppMessageOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand} per la sessione di {date}, con arrivo di {chef} alle {time}.",
   "@sessionWhatsAppMessageOnBehalf": {
-    "description": "El mismo WhatsApp a la clienta desde la ficha de la sesión (también en los botones de Hoy) cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella ni ser quien llega (la que llega es ella: «{chef} arriva alle {time}»). Como sessionWhatsAppMessage, solo si la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma); si no, va sessionWhatsAppMessageNoArrivalOnBehalf. En SU idioma (requests.locale). Solo fecha y hora: nunca dirección ni alergias.",
+    "description": "El mismo WhatsApp a la clienta desde la ficha de la sesión (también en los botones de Hoy) cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella. Quien llega es ella, no quien escribe: «con arrivo di {chef} alle {time}». Como sessionWhatsAppMessage, describe el horario de la sesión sin afirmar que la llegada es futura, así que vale también en una sesión de hoy después de la hora de llegada. Va en los mismos casos que sessionWhatsAppMessage: la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, sin mirar la hora); si no, va sessionWhatsAppMessageNoArrivalOnBehalf. En SU idioma (requests.locale). Solo fecha y hora: nunca dirección ni alergias.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },

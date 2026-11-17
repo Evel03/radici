@@ -472,7 +472,7 @@ void main() {
       expect(
         await whatsAppText(collaborator: true),
         'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione '
-        'di martedì 17 novembre: Evelyn arriva alle 10:00.',
+        'di martedì 17 novembre, con arrivo di Evelyn alle 10:00.',
       );
     });
 
@@ -487,7 +487,7 @@ void main() {
       expect(
         await whatsAppText(collaborator: true),
         'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione '
-        'di giovedì 19 novembre: Evelyn arriva alle 10:00.',
+        'di giovedì 19 novembre, con arrivo di Evelyn alle 10:00.',
       );
     });
 

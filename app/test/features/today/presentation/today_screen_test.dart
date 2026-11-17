@@ -314,11 +314,12 @@ void main() {
       await tester.pumpAndSettle();
       final whatsApp = app.launcher.launched.single;
       expect(whatsApp.toString(), startsWith('https://wa.me/393331234567?text='));
-      // Ni «sono Evelyn» ni «con arrivo alle…» como si llegara él.
+      // Ni «sono Evelyn» ni «con arrivo alle…» como si llegara él: la que
+      // llega es ella («con arrivo di Evelyn alle…»).
       expect(
         whatsApp.queryParameters['text'],
         'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione '
-        'di martedì 17 novembre: Evelyn arriva alle 10:00.',
+        'di martedì 17 novembre, con arrivo di Evelyn alle 10:00.',
       );
     });
 

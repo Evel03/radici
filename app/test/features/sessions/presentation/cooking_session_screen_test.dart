@@ -2,10 +2,11 @@
 // la sesión, «Settimana k di N» sin contar las canceladas, «Come arrivare»
 // (Apple Maps en el iPhone, Google Maps en el resto; sin dirección, «Aggiungi
 // indirizzo» la guarda en la ficha), WhatsApp en el idioma de la clienta (con
-// la cuenta de un colaborador, de parte de la cocinera; sin la hora de llegada
-// en una sesión de un día que ya pasó en Roma o cancelada), las alergias
-// resaltadas (la nota del pedido, también sola como llega de la web, y, con
-// gluten, la de contaminación cruzada) en el orden en que las lee el
+// la cuenta de un colaborador, de parte de la cocinera: «con arrivo di Evelyn
+// alle…», también en una sesión de hoy cuya llegada ya pasó; sin la hora de
+// llegada en una sesión de un día que ya pasó en Roma o cancelada), las
+// alergias resaltadas (la nota del pedido, también sola como llega de la web,
+// y, con gluten, la de contaminación cruzada) en el orden en que las lee el
 // lector de pantalla, las semanas de la reserva, y cancelar con confirmación,
 // motivo y «anche le successive», con cada falla explicada (un 409
 // hasPayments dice cuáles están cobradas y qué se puede hacer, también si
@@ -329,7 +330,7 @@ void main() {
       chefAccountData.copyWith(chef: chefAccount.copyWith(collaborator: true)),
     );
 
-    testWidgets('en una sesión viva, con la fecha y «Evelyn arriva alle…»', (
+    testWidgets('en una sesión viva, con la fecha y «con arrivo di Evelyn…»', (
       tester,
     ) async {
       final app = await openSession(
@@ -349,11 +350,37 @@ void main() {
       expect(
         text,
         'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione di '
-        'mercoledì 2 dicembre: Evelyn arriva alle 10:00.',
+        'mercoledì 2 dicembre, con arrivo di Evelyn alle 10:00.',
       );
       expect(text, isNot(contains('Gombito')));
       expect(text, isNot(contains('Celiachia')));
     });
+
+    // En una sesión de hoy que no está cancelada, cocinada ni cobrada, la hora
+    // de llegada va aunque ya haya pasado (la regla mira el día, no la hora):
+    // el mensaje describe el horario y no dice que Evelyn va a llegar.
+    testWidgets(
+      'en una sesión de hoy cuya llegada ya pasó, «con arrivo di Evelyn alle 10:00» y no «Evelyn arriva»',
+      (tester) async {
+        final app = await openSession(
+          tester,
+          accounts: collaborator(),
+          // 12:00 del miércoles 2/12/2026 en Roma (hora de invierno, UTC+1):
+          // la semana 2 es hoy y su llegada, a las 10:00, fue hace dos horas.
+          clock: () => DateTime.utc(2026, 12, 2, 11),
+        );
+        await tester.tap(byKey('session-whatsapp'));
+        await tester.pumpAndSettle();
+
+        final text = app.launcher.launched.single.queryParameters['text']!;
+        expect(
+          text,
+          'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione di '
+          'mercoledì 2 dicembre, con arrivo di Evelyn alle 10:00.',
+        );
+        expect(text, isNot(contains('Evelyn arriva')));
+      },
+    );
 
     testWidgets(
       'en una cancelada, de parte de ella con la fecha, sin la hora de llegada',
