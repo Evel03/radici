@@ -104,7 +104,8 @@ class AgendaController extends Notifier<AgendaState> {
 /// Pedido de traer a la vista el día elegido de la Agenda cuando se elige
 /// desde afuera (un día de la tira de Hoy): en un teléfono, debajo del mes
 /// queda fuera de la pantalla o detrás del botón flotante. Al tocarlo en la
-/// propia Agenda ya se trae. true hasta que la Agenda lo atiende.
+/// propia Agenda ya se trae. true hasta que la Agenda lo atiende: primero
+/// vuelve su lista arriba (conserva el desplazamiento) y después lo trae.
 final agendaRevealProvider = NotifierProvider<AgendaReveal, bool>(
   AgendaReveal.new,
 );

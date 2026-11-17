@@ -28,11 +28,45 @@ import 'package:radici/features/sessions/presentation/session_block.dart';
 import 'package:radici/features/sessions/presentation/sessions_load_error.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
-class AgendaScreen extends ConsumerWidget {
+class AgendaScreen extends ConsumerStatefulWidget {
   const AgendaScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AgendaScreen> createState() => _AgendaScreenState();
+}
+
+class _AgendaScreenState extends ConsumerState<AgendaScreen> {
+  /// El de la lista (que es `primary`). Va como PrimaryScrollController por
+  /// encima del Scaffold: así, en el iPhone, tocar la barra de estado la sigue
+  /// subiendo.
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Un día elegido desde afuera (la tira de Hoy): antes de que la vista del
+  /// mes o de la semana lo traiga (_RevealOnRequest), la lista vuelve arriba,
+  /// así lo que se ve no depende de dónde había quedado (la Agenda es una rama
+  /// del shell y conserva el desplazamiento). Lejos del día, su vista ni
+  /// estaba construida; con el día recién pasado, lo traía hasta el borde de
+  /// arriba (en el mes, con el título tapado).
+  void _scrollToTop() {
+    for (final position in _scroll.positions) {
+      // Antes de su primer cuadro no tiene medidas y no se puede mover.
+      if (position.hasContentDimensions) position.jumpTo(0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Se escucha aunque la Agenda no esté a la vista (en Hoy): sube antes de
+    // mostrarse.
+    ref.listen(agendaRevealProvider, (_, requested) {
+      if (requested) _scrollToTop();
+    });
     final l10n = AppLocalizations.of(context);
     final inbox = ref.watch(chefInboxProvider);
 
@@ -40,24 +74,27 @@ class AgendaScreen extends ConsumerWidget {
     // flotante en lugar de taparlo (con el ScaffoldMessenger de la app, el
     // aviso sale en el Scaffold de afuera, el de la barra de navegación).
     return ScaffoldMessenger(
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(l10n.navAgenda),
-          // «Ricarica»: lo mismo que deslizar para actualizar, sin el gesto.
-          actions: const [ChefRefreshButton(), ChefAccountMenuButton()],
+      child: PrimaryScrollController(
+        controller: _scroll,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(l10n.navAgenda),
+            // «Ricarica»: lo mismo que deslizar para actualizar, sin el gesto.
+            actions: const [ChefRefreshButton(), ChefAccountMenuButton()],
+          ),
+          // La bandeja puede traer un valor de antes (la lista vacía de cuando
+          // todavía no había cocinera: el aviso de pedidos nuevos la arma
+          // desde el arranque), así que el error se mira sin él. Mientras se
+          // vuelve a leer después de una falla (Riverpod reintenta solo, o
+          // «Riprova»), sigue cargando: la lista con su barra.
+          body: inbox.hasError && !inbox.isLoading
+              ? LoadErrorView(
+                  message: l10n.inboxLoadError,
+                  onRetry: () => ref.invalidate(chefInboxProvider),
+                )
+              : const _AgendaList(),
+          floatingActionButton: const BlockRangeButton(),
         ),
-        // La bandeja puede traer un valor de antes (la lista vacía de cuando
-        // todavía no había cocinera: el aviso de pedidos nuevos la arma desde
-        // el arranque), así que el error se mira sin él. Mientras se vuelve a
-        // leer después de una falla (Riverpod reintenta solo, o «Riprova»),
-        // sigue cargando: la lista con su barra.
-        body: inbox.hasError && !inbox.isLoading
-            ? LoadErrorView(
-                message: l10n.inboxLoadError,
-                onRetry: () => ref.invalidate(chefInboxProvider),
-              )
-            : const _AgendaList(),
-        floatingActionButton: const BlockRangeButton(),
       ),
     );
   }
@@ -85,6 +122,8 @@ class _AgendaList extends ConsumerWidget {
           onRefresh: () => refreshChefData(context, ref),
           child: ListView(
             key: const ValueKey('agenda'),
+            // Con el controlador de AgendaScreen en todas las plataformas.
+            primary: true,
             // Deslizar para actualizar aunque todo entre en la pantalla.
             physics: const AlwaysScrollableScrollPhysics(),
             // Abajo, lugar para el botón flotante: no tapa nada.
@@ -481,7 +520,7 @@ class _DayCell extends ConsumerWidget {
 
 /// Si se eligió el día desde afuera (agendaRevealProvider), después del
 /// cuadro trae a la vista [_revealTarget], por encima del botón flotante, como
-/// al tocar un día en la Agenda.
+/// al tocar un día en la Agenda. La lista ya volvió arriba (AgendaScreen).
 mixin _RevealOnRequest<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   BuildContext? get _revealTarget;
 

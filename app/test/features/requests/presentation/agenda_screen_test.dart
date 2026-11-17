@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/availability/domain/availability.dart';
@@ -204,6 +205,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AgendaScreen), findsOneWidget);
   });
+
+  testWidgets('en el iPhone, tocar la barra de estado sube la lista', (
+    tester,
+  ) async {
+    // Una barra de estado de 47 de alto: el Scaffold atiende el toque si su
+    // zona de arriba está ahí.
+    tester.view.padding = const FakeViewPadding(top: 47);
+    tester.view.viewPadding = const FakeViewPadding(top: 47);
+    addTearDown(tester.view.resetPadding);
+    addTearDown(tester.view.resetViewPadding);
+    await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([
+        for (var i = 0; i < 20; i++)
+          buildRequest(id: 'senza-data-$i', noDate: true),
+      ]),
+      location: '/agenda',
+      size: const Size(375, 667),
+    );
+    final list = find.byKey(const ValueKey('agenda'));
+    await tester.drag(list, const Offset(0, -800));
+    await tester.pumpAndSettle();
+    final position = tester
+        .state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first,
+        )
+        .position;
+    expect(position.pixels, greaterThan(0));
+
+    // Lo que manda iOS al tocar la barra de estado.
+    await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      'flutter/status_bar',
+      const JSONMethodCodec().encodeMethodCall(
+        const MethodCall('handleScrollToTop'),
+      ),
+      (_) {},
+    );
+    await tester.pumpAndSettle();
+    expect(position.pixels, 0);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
   testWidgets('desde la agenda, confirmar una reserva tapa la barra; al volver regresa a la agenda, con la '
       'barra y Agenda elegida', (tester) async {

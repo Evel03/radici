@@ -118,8 +118,9 @@ repositorios falsos (`test/support/fakes.dart`).
   Agenda: un punto por sesión, el número tachado si el día está bloqueado y un punto si es feriado
   en un día de trabajo; el lector de pantalla dice cuál es hoy; si los 7 no entran con 48 dp cada
   uno (menos de 368 dp de ancho, como 360 o 320), van en dos filas (4 y 3); tocar un día abre la
-  Agenda con ese día elegido y a la vista (su primera sesión, por encima del botón flotante). "Hoy"
-  es el día de Roma y cambia a la medianoche sin reabrir la app (`romeTodayProvider`, el de la
+  Agenda con ese día elegido y a la vista (su primera sesión, por encima del botón flotante), igual
+  aunque la Agenda haya quedado desplazada: antes vuelve su lista arriba. "Hoy" es el día de Roma y
+  cambia a la medianoche sin reabrir la app (`romeTodayProvider`, el de la
   Agenda). Deslizar para actualizar, o «Ricarica» en la barra de arriba (sin el gesto, que VoiceOver
   y el mouse de /gestione/ no hacen), vuelve a leer la bandeja, la disponibilidad y las sesiones.
   Mientras cargan las sesiones (también mientras Riverpod reintenta una lectura que falló), una

@@ -901,6 +901,90 @@ void main() {
       });
     }
 
+    // La Agenda es una rama del shell: conserva el desplazamiento. Lo que se
+    // ve después de tocar un día de la tira no depende de dónde había quedado.
+    for (final view in AgendaView.values) {
+      for (final (away, offset, viewBuilt) in <(String, double Function(ScrollPosition, double), bool)>[
+        // La vista del mes (o de la semana) ni está construida.
+        ('al final de la lista, lejos del día', (agenda, _) => agenda.maxScrollExtent, false),
+        // Traerla desde ahí la dejaba arriba de todo, sin lo de arriba.
+        ('con la sesión del día recién pasada, arriba', (_, sessionEnd) => sessionEnd + 8, true),
+      ]) {
+        testWidgets('a 375×667 (vista ${view.name}), con la Agenda desplazada ($away), tocar un día de la tira la vuelve arriba y muestra el día como sin desplazar: su título y su sesión, por encima del botón flotante', (
+          tester,
+        ) async {
+          // Lunes 7/12/2026; la sesión es el jueves 10. Con 20 pedidos sin
+          // fecha, la lista sigue mucho más abajo del día.
+          final app = await openToday(
+            tester,
+            size: const Size(375, 667),
+            clock: () => DateTime.utc(2026, 12, 7, 7),
+            sessions: [session(date: CalendarDate(2026, 12, 10))],
+            requests: FakeChefRequestsRepository([
+              for (var i = 0; i < 20; i++)
+                buildRequest(id: 'senza-data-$i', noDate: true),
+            ]),
+          );
+          app.container.read(agendaControllerProvider.notifier).setView(view);
+          final title = find.text('giovedì 10 dicembre 2026');
+          final block = byKey('session-${sessionId(1)}');
+          ScrollPosition agenda() => tester
+              .state<ScrollableState>(
+                find
+                    .descendant(
+                      of: byKey('agenda'),
+                      matching: find.byType(Scrollable),
+                    )
+                    .first,
+              )
+              .position;
+          Future<void> openDay() async {
+            await reveal(tester, byKey('today-strip-2026-12-10'));
+            await tester.tap(byKey('today-strip-2026-12-10'));
+            await tester.pumpAndSettle();
+            expect(find.byType(AgendaScreen), findsOneWidget);
+          }
+
+          // Sin desplazar: la primera vez que se abre la Agenda.
+          await openDay();
+          final fresh = agenda().pixels;
+          expect(title.hitTestable(), findsOneWidget);
+          expect(block.hitTestable(), findsOneWidget);
+          final sessionEnd =
+              fresh +
+              tester.getRect(block).bottom -
+              tester.getTopLeft(byKey('agenda')).dy;
+
+          // Se deja la Agenda desplazada y se vuelve a Hoy.
+          agenda().jumpTo(offset(agenda(), sessionEnd));
+          await tester.pumpAndSettle();
+          expect(block.hitTestable(), findsNothing, reason: 'fuera de la pantalla');
+          expect(
+            find.descendant(
+              of: byKey('agenda'),
+              matching: find.text('giovedì 10 dicembre 2026', skipOffstage: false),
+              skipOffstage: false,
+            ),
+            viewBuilt ? findsOneWidget : findsNothing,
+            reason: 'la vista del día, construida o no',
+          );
+          await tester.tap(
+            find.descendant(of: byKey('chef-nav-bar'), matching: find.text('Oggi')),
+          );
+          await tester.pumpAndSettle();
+
+          await openDay();
+          expect(agenda().pixels, fresh);
+          expect(title.hitTestable(), findsOneWidget, reason: 'el título del día');
+          expect(block.hitTestable(), findsOneWidget, reason: 'sin desplazar a mano');
+          expect(
+            tester.getRect(block).bottom,
+            lessThanOrEqualTo(tester.getRect(byKey('agenda-block-range')).top),
+          );
+        });
+      }
+    }
+
     testWidgets('con el lector de pantalla, un día de la tira también abre la Agenda en ese día', (
       tester,
     ) async {
