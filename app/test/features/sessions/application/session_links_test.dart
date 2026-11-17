@@ -1,9 +1,12 @@
 // Enlaces de la ficha de la sesión: Mapas según la plataforma (Apple Maps en
 // un iPhone o una Mac, también /gestione/ en Safari; Google Maps en el resto)
-// y el WhatsApp, en el idioma de la clienta, que en una sesión cancelada no
-// nombra la fecha. El WhatsApp sale del teléfono de quien usa la app: si es un
+// y el WhatsApp, en el idioma de la clienta. La hora de llegada va solo en una
+// sesión que no está cancelada, cocinada ni cobrada, de hoy en adelante (el
+// día de Roma); en las demás, el mensaje nombra la sesión por su fecha, sin la
+// hora. El WhatsApp sale del teléfono de quien usa la app: si es un
 // colaborador de la cocinera, escribe de parte de ella y no dice ser ella ni
-// ser quien llega (lo elige sessionLinksProvider con ChefAccount.collaborator).
+// ser quien llega. sessionLinksProvider elige con ChefAccount.collaborator y
+// con el día de hoy de romeTodayProvider, que cambia a la medianoche de Roma.
 // Nunca lleva la dirección, las alergias, las notas, la zona ni el apellido.
 // La prueba en el iPhone sigue haciendo falta: un test no ve qué plataforma
 // reporta Flutter web en Safari.
@@ -13,7 +16,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:radici/core/clock.dart';
+import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/application/session_links.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
@@ -22,6 +28,7 @@ import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 import '../../../support/fakes.dart';
+import '../../../support/pump_app.dart';
 import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
 
@@ -48,159 +55,201 @@ void main() {
     }
   });
 
-  /// El texto del WhatsApp de [session]; [onBehalf], como un colaborador.
-  String whatsAppText(CookingSession session, {bool onBehalf = false}) =>
-      sessionLinksFor(
-        session,
-        chefName: 'Evelyn',
-        appleMaps: false,
-        onBehalf: onBehalf,
-      ).whatsApp!.queryParameters['text']!;
+  // La sesión de ejemplo es del miércoles 25/11/2026, con llegada a las 10:00.
+  final dayBefore = CalendarDate(2026, 11, 24);
+  final sessionDay = CalendarDate(2026, 11, 25);
+  final dayAfter = CalendarDate(2026, 11, 26);
 
-  group('WhatsApp de la cocinera: lo firma ella', () {
-    test('de una sesión viva: el día y la hora, en el idioma de la clienta', () {
-      expect(
-        whatsAppText(buildSession()),
-        'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
-        'mercoledì 25 novembre, con arrivo alle 10:00.',
-      );
-      expect(
-        whatsAppText(
-          buildSession(name: 'Lucía Fernández', locale: ClientLocale.es),
-        ),
-        'Hola Lucía, soy Evelyn de Radici. Te escribo por la sesión del '
-        'miércoles 25 de noviembre, con llegada a las 10:00.',
-      );
-      expect(
-        whatsAppText(buildSession(name: 'Emma Clark', locale: ClientLocale.en)),
-        "Hi Emma, this is Evelyn from Radici. I'm writing about the session on "
-        'Wednesday, November 25, arriving at 10:00.',
-      );
-    });
+  /// El texto del WhatsApp de [session] con [today] como el día de hoy en
+  /// Roma; [onBehalf], como un colaborador.
+  String whatsAppText(
+    CookingSession session, {
+    required bool onBehalf,
+    required CalendarDate today,
+  }) => sessionLinksFor(
+    session,
+    chefName: 'Evelyn',
+    appleMaps: false,
+    onBehalf: onBehalf,
+    today: today,
+  ).whatsApp!.queryParameters['text']!;
 
-    test('de una cancelada: el saludo del detalle del pedido, sin la fecha', () {
-      expect(
-        whatsAppText(buildSession(status: SessionStatus.cancelled)),
-        'Ciao Giulia, sono Evelyn di Radici. Ho ricevuto la tua richiesta e ti '
-        'scrivo per organizzarci.',
+  /// La sesión del miércoles 25/11/2026 a las 10:00 con [status], de una
+  /// clienta que habla [locale]: Giulia Rossi, Lucía Fernández o Emma Clark.
+  CookingSession sessionIn(ClientLocale locale, SessionStatus status) =>
+      buildSession(
+        status: status,
+        locale: locale,
+        name: switch (locale) {
+          ClientLocale.it => 'Giulia Rossi',
+          ClientLocale.es => 'Lucía Fernández',
+          ClientLocale.en => 'Emma Clark',
+        },
       );
-      expect(
-        whatsAppText(
-          buildSession(
-            status: SessionStatus.cancelled,
-            name: 'Lucía Fernández',
-            locale: ClientLocale.es,
-          ),
-        ),
-        'Hola Lucía, soy Evelyn de Radici. Recibí tu solicitud y te escribo '
-        'para organizarnos.',
-      );
-      expect(
-        whatsAppText(
-          buildSession(
-            status: SessionStatus.cancelled,
-            name: 'Emma Clark',
-            locale: ClientLocale.en,
-          ),
-        ),
-        "Hi Emma, this is Evelyn from Radici. I got your request and I'm "
-        'writing to sort out the details.',
-      );
-    });
-  });
 
-  group('WhatsApp de un colaborador, desde su propio teléfono: escribe de parte de la cocinera', () {
+  /// El WhatsApp de esa sesión, de la cocinera o de un colaborador
+  /// ([onBehalf]), con la hora de llegada ([arrival]) o sin ella.
+  String expected(
+    ClientLocale locale, {
+    required bool onBehalf,
+    required bool arrival,
+  }) => switch ((locale, onBehalf, arrival)) {
+    (ClientLocale.it, false, true) =>
+      'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+          'mercoledì 25 novembre, con arrivo alle 10:00.',
     // Ni «sono Evelyn» ni «con arrivo alle…» como si llegara él: la que
     // llega es ella.
-    test('de una sesión viva: el día y «Evelyn arriva alle…», en el idioma de la clienta', () {
-      expect(
-        whatsAppText(buildSession(), onBehalf: true),
-        'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione di '
-        'mercoledì 25 novembre: Evelyn arriva alle 10:00.',
-      );
-      expect(
-        whatsAppText(
-          buildSession(name: 'Lucía Fernández', locale: ClientLocale.es),
-          onBehalf: true,
-        ),
-        'Hola Lucía, te escribo de parte de Evelyn de Radici por la sesión del '
-        'miércoles 25 de noviembre: Evelyn llega a las 10:00.',
-      );
-      expect(
-        whatsAppText(
-          buildSession(name: 'Emma Clark', locale: ClientLocale.en),
-          onBehalf: true,
-        ),
-        "Hi Emma, I'm writing on behalf of Evelyn from Radici about the session "
-        'on Wednesday, November 25: Evelyn will arrive at 10:00.',
-      );
-    });
+    (ClientLocale.it, true, true) =>
+      'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione '
+          'di mercoledì 25 novembre: Evelyn arriva alle 10:00.',
+    (ClientLocale.it, false, false) =>
+      'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+          'mercoledì 25 novembre.',
+    (ClientLocale.it, true, false) =>
+      'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione '
+          'di mercoledì 25 novembre.',
+    (ClientLocale.es, false, true) =>
+      'Hola Lucía, soy Evelyn de Radici. Te escribo por la sesión del '
+          'miércoles 25 de noviembre, con llegada a las 10:00.',
+    (ClientLocale.es, true, true) =>
+      'Hola Lucía, te escribo de parte de Evelyn de Radici por la sesión '
+          'del miércoles 25 de noviembre: Evelyn llega a las 10:00.',
+    (ClientLocale.es, false, false) =>
+      'Hola Lucía, soy Evelyn de Radici. Te escribo por la sesión del '
+          'miércoles 25 de noviembre.',
+    (ClientLocale.es, true, false) =>
+      'Hola Lucía, te escribo de parte de Evelyn de Radici por la sesión '
+          'del miércoles 25 de noviembre.',
+    (ClientLocale.en, false, true) =>
+      "Hi Emma, this is Evelyn from Radici. I'm writing about the session "
+          'on Wednesday, November 25, arriving at 10:00.',
+    (ClientLocale.en, true, true) =>
+      "Hi Emma, I'm writing on behalf of Evelyn from Radici about the "
+          'session on Wednesday, November 25: Evelyn will arrive at 10:00.',
+    (ClientLocale.en, false, false) =>
+      "Hi Emma, this is Evelyn from Radici. I'm writing about the session "
+          'on Wednesday, November 25.',
+    (ClientLocale.en, true, false) =>
+      "Hi Emma, I'm writing on behalf of Evelyn from Radici about the "
+          'session on Wednesday, November 25.',
+  };
 
-    test('de una cancelada: el saludo del detalle de parte de ella, sin la fecha', () {
-      expect(
-        whatsAppText(
-          buildSession(status: SessionStatus.cancelled),
-          onBehalf: true,
-        ),
-        'Ciao Giulia, ti scrivo da parte di Evelyn di Radici: abbiamo ricevuto '
-        'la tua richiesta e vorremmo organizzarci con te.',
+  group('WhatsApp: con la hora de llegada solo si la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma)', () {
+    // Lo firma la cocinera; un colaborador, desde su propio teléfono,
+    // escribe de parte de ella. Siempre en el idioma de la clienta.
+    final cases = [
+      (
+        name: 'futura y confirmada',
+        status: SessionStatus.confirmed,
+        today: dayBefore,
+        arrival: true,
+      ),
+      (
+        name: 'futura y retenida (un presupuesto enviado)',
+        status: SessionStatus.held,
+        today: dayBefore,
+        arrival: true,
+      ),
+      (
+        name: 'de hoy y confirmada',
+        status: SessionStatus.confirmed,
+        today: sessionDay,
+        arrival: true,
+      ),
+      (
+        name: 'de hoy, con la compra hecha',
+        status: SessionStatus.shoppingDone,
+        today: sessionDay,
+        arrival: true,
+      ),
+      (
+        name: 'de ayer y confirmada',
+        status: SessionStatus.confirmed,
+        today: dayAfter,
+        arrival: false,
+      ),
+      (
+        name: 'de la semana pasada, con la compra hecha',
+        status: SessionStatus.shoppingDone,
+        today: CalendarDate(2026, 12, 2),
+        arrival: false,
+      ),
+      (
+        name: 'cocinada, el mismo día',
+        status: SessionStatus.cooked,
+        today: sessionDay,
+        arrival: false,
+      ),
+      (
+        name: 'cobrada, el mismo día',
+        status: SessionStatus.paid,
+        today: sessionDay,
+        arrival: false,
+      ),
+      // Ya no el saludo del detalle del pedido («Ho ricevuto la tua
+      // richiesta…»): es una sesión, y la nombra por su fecha.
+      (
+        name: 'cancelada (y futura)',
+        status: SessionStatus.cancelled,
+        today: dayBefore,
+        arrival: false,
+      ),
+    ];
+    for (final c in cases) {
+      test(
+        '${c.name}: ${c.arrival ? 'con' : 'sin'} la hora de llegada, de la cocinera y de un colaborador, en italiano, español e inglés',
+        () {
+          for (final locale in ClientLocale.values) {
+            for (final onBehalf in [false, true]) {
+              expect(
+                whatsAppText(
+                  sessionIn(locale, c.status),
+                  onBehalf: onBehalf,
+                  today: c.today,
+                ),
+                expected(locale, onBehalf: onBehalf, arrival: c.arrival),
+                reason: '${locale.name}, onBehalf: $onBehalf',
+              );
+            }
+          }
+        },
       );
-      expect(
-        whatsAppText(
-          buildSession(
-            status: SessionStatus.cancelled,
-            name: 'Lucía Fernández',
-            locale: ClientLocale.es,
-          ),
-          onBehalf: true,
-        ),
-        'Hola Lucía, te escribo de parte de Evelyn de Radici: recibimos tu '
-        'solicitud y queremos organizarnos contigo.',
-      );
-      expect(
-        whatsAppText(
-          buildSession(
-            status: SessionStatus.cancelled,
-            name: 'Emma Clark',
-            locale: ClientLocale.en,
-          ),
-          onBehalf: true,
-        ),
-        "Hi Emma, I'm writing on behalf of Evelyn from Radici: we got your "
-        'request and would like to sort out the details with you.',
-      );
-    });
-
-    test('llamar y «Come arrivare» no firman: son los mismos', () {
-      for (final appleMaps in [false, true]) {
-        final own = sessionLinksFor(
-          buildSession(),
-          chefName: 'Evelyn',
-          appleMaps: appleMaps,
-        );
-        final onBehalf = sessionLinksFor(
-          buildSession(),
-          chefName: 'Evelyn',
-          appleMaps: appleMaps,
-          onBehalf: true,
-        );
-        expect(onBehalf.call, own.call);
-        expect(onBehalf.directions, own.directions);
-        expect(onBehalf.call.toString(), 'tel:+393331234567');
-      }
-      expect(
-        sessionLinksFor(
-          buildSession(),
-          chefName: 'Evelyn',
-          appleMaps: true,
-          onBehalf: true,
-        ).directions!.host,
-        'maps.apple.com',
-      );
-    });
+    }
   });
 
-  test('nunca la dirección, las alergias, las notas, la zona ni el apellido: cocinera o colaborador, viva o cancelada, en los tres idiomas', () {
+  test(
+    'llamar y «Come arrivare» no firman ni dependen del día: son los mismos',
+    () {
+      for (final appleMaps in [false, true]) {
+        SessionLinks links({
+          required bool onBehalf,
+          required CalendarDate today,
+        }) => sessionLinksFor(
+          buildSession(),
+          chefName: 'Evelyn',
+          appleMaps: appleMaps,
+          onBehalf: onBehalf,
+          today: today,
+        );
+        final own = links(onBehalf: false, today: dayBefore);
+        for (final other in [
+          links(onBehalf: true, today: dayBefore),
+          links(onBehalf: false, today: dayAfter),
+          links(onBehalf: true, today: dayAfter),
+        ]) {
+          expect(other.call, own.call);
+          expect(other.directions, own.directions);
+        }
+        expect(own.call.toString(), 'tel:+393331234567');
+        expect(
+          own.directions!.host,
+          appleMaps ? 'maps.apple.com' : 'www.google.com',
+        );
+      }
+    },
+  );
+
+  test('nunca la dirección, las alergias, las notas, la zona ni el apellido: cocinera o colaborador, con la hora de llegada o sin ella, en todos los estados y en los tres idiomas', () {
     // Una sesión con todo: la dirección de la ficha, sus alérgenos, los del
     // pedido, la dieta, la nota de alergias, las notas de la cocina y del
     // pedido (el portero) y la zona.
@@ -231,37 +280,48 @@ void main() {
           ),
           noAllergies: false,
         );
-        for (final onBehalf in [false, true]) {
-          final text = whatsAppText(session, onBehalf: onBehalf);
-          for (final secret in secrets) {
-            expect(
-              text,
-              isNot(contains(secret)),
-              reason: '${locale.name}, ${status.name}, onBehalf: $onBehalf',
+        for (final today in [dayBefore, sessionDay, dayAfter]) {
+          for (final onBehalf in [false, true]) {
+            final text = whatsAppText(
+              session,
+              onBehalf: onBehalf,
+              today: today,
             );
+            for (final secret in secrets) {
+              expect(
+                text,
+                isNot(contains(secret)),
+                reason:
+                    '${locale.name}, ${status.name}, hoy $today, '
+                    'onBehalf: $onBehalf',
+              );
+            }
           }
         }
       }
     }
   });
 
-  group('sessionLinksProvider: el mensaje lo elige ChefAccount.collaborator, fuera de la pantalla', () {
-    /// El WhatsApp de la semana [n] de una reserva de 4 con la segunda
-    /// cancelada, con la cuenta de la cocinera o de un colaborador suyo.
+  group('sessionLinksProvider: el mensaje lo eligen ChefAccount.collaborator y el día de hoy en Roma, fuera de la pantalla', () {
+    /// Una reserva de 4 semanas desde el miércoles 25/11/2026, con la
+    /// segunda (el 2/12) cancelada.
+    FakeSessionsRepository booking() => FakeSessionsRepository(
+      buildBooking(statuses: {2: SessionStatus.cancelled}),
+    );
+
+    /// El WhatsApp de la semana [n], con la cuenta de la cocinera o de un
+    /// colaborador suyo, el lunes 19/10/2026 (antes de toda la reserva).
     Future<String> providerText({
       required bool collaborator,
       required int n,
     }) async {
       final container = ProviderContainer.test(
         overrides: [
+          clockProvider.overrideWithValue(() => testNow),
           currentChefProvider.overrideWithValue(
             chefAccount.copyWith(collaborator: collaborator),
           ),
-          sessionsRepositoryProvider.overrideWithValue(
-            FakeSessionsRepository(
-              buildBooking(statuses: {2: SessionStatus.cancelled}),
-            ),
-          ),
+          sessionsRepositoryProvider.overrideWithValue(booking()),
           appleMapsProvider.overrideWithValue(false),
         ],
       );
@@ -274,7 +334,7 @@ void main() {
           .queryParameters['text']!;
     }
 
-    test('la cocinera firma; un colaborador escribe de parte de ella, en una viva y en una cancelada', () async {
+    test('la cocinera firma y un colaborador escribe de parte de ella; en la cancelada, sin la hora de llegada', () async {
       expect(
         await providerText(collaborator: false, n: 1),
         'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
@@ -287,14 +347,67 @@ void main() {
       );
       expect(
         await providerText(collaborator: false, n: 2),
-        'Ciao Giulia, sono Evelyn di Radici. Ho ricevuto la tua richiesta e ti '
-        'scrivo per organizzarci.',
+        'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+        'mercoledì 2 dicembre.',
       );
       expect(
         await providerText(collaborator: true, n: 2),
-        'Ciao Giulia, ti scrivo da parte di Evelyn di Radici: abbiamo ricevuto '
-        'la tua richiesta e vorremmo organizzarci con te.',
+        'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione di '
+        'mercoledì 2 dicembre.',
       );
     });
+
+    testWidgets(
+      'el día de hoy es el de Roma: a su medianoche, la ficha abierta deja de anunciar la llegada de la sesión de ese día',
+      (tester) async {
+        // 23:59:30 del miércoles 25/11/2026 en Roma (hora de invierno,
+        // UTC+1): el día de la primera semana, con llegada a las 10:00.
+        var now = DateTime.utc(2026, 11, 25, 22, 59, 30);
+        // Sin ProviderContainer.test: los Timer se cancelan antes de que el
+        // test termine (testWidgets falla si queda alguno pendiente).
+        final container = ProviderContainer(
+          retry: noRetry,
+          overrides: [
+            clockProvider.overrideWithValue(() => now),
+            currentChefProvider.overrideWithValue(chefAccount),
+            sessionsRepositoryProvider.overrideWithValue(booking()),
+            appleMapsProvider.overrideWithValue(false),
+          ],
+        );
+        final id = sessionId(1);
+        container.listen(sessionLinksProvider(id), (_, _) {});
+        await container.read(sessionDetailProvider(id).future);
+        String text() => container
+            .read(sessionLinksProvider(id))!
+            .whatsApp!
+            .queryParameters['text']!;
+
+        Future<void> elapse(Duration duration) async {
+          now = now.add(duration);
+          await tester.pump(duration);
+        }
+
+        expect(container.read(romeTodayProvider), sessionDay);
+        expect(
+          text(),
+          'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+          'mercoledì 25 novembre, con arrivo alle 10:00.',
+        );
+
+        await elapse(const Duration(seconds: 29));
+        expect(text(), contains('con arrivo alle 10:00'));
+
+        // La medianoche en Roma; en UTC todavía son las 23:00 del 25/11.
+        await elapse(const Duration(seconds: 1));
+        expect(now, DateTime.utc(2026, 11, 25, 23));
+        expect(container.read(romeTodayProvider), dayAfter);
+        expect(
+          text(),
+          'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+          'mercoledì 25 novembre.',
+        );
+        container.dispose();
+      },
+    );
   });
 }

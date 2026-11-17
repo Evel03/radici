@@ -2,7 +2,8 @@
 // la sesión, «Settimana k di N» sin contar las canceladas, «Come arrivare»
 // (Apple Maps en el iPhone, Google Maps en el resto; sin dirección, «Aggiungi
 // indirizzo» la guarda en la ficha), WhatsApp en el idioma de la clienta (con
-// la cuenta de un colaborador, de parte de la cocinera), las alergias
+// la cuenta de un colaborador, de parte de la cocinera; sin la hora de llegada
+// en una sesión de un día que ya pasó en Roma o cancelada), las alergias
 // resaltadas (la nota del pedido, también sola como llega de la web, y, con
 // gluten, la de contaminación cruzada) en el orden en que las lee el
 // lector de pantalla, las semanas de la reserva, y cancelar con confirmación,
@@ -64,7 +65,8 @@ void main() {
 
   /// La ficha de la semana [n] de una reserva de 4 (25/11, 2/12, 9/12 y 16/12).
   /// [appleMaps] null: la regla de la plataforma, sin reemplazo. [accounts],
-  /// la cuenta con que se entra (por defecto, la de Evelyn).
+  /// la cuenta con que se entra (por defecto, la de Evelyn). [clock], "ahora"
+  /// (por defecto, testNow: el 19/10/2026, antes de toda la reserva).
   Future<ChefApp> openSession(
     WidgetTester tester, {
     int n = 2,
@@ -73,6 +75,7 @@ void main() {
     Size size = const Size(400, 900),
     Locale locale = const Locale('it', 'IT'),
     bool? appleMaps = false,
+    DateTime Function()? clock,
   }) async {
     final app = await pumpChefApp(
       tester,
@@ -82,6 +85,7 @@ void main() {
       location: '/sessioni/${sessionId(n)}',
       size: size,
       deviceLocales: [locale],
+      clock: clock,
       overrides: [
         if (appleMaps != null) appleMapsProvider.overrideWithValue(appleMaps),
       ],
@@ -298,6 +302,26 @@ void main() {
     },
   );
 
+  testWidgets(
+    'de un día que ya pasó en Roma, el WhatsApp nombra la sesión por su fecha, sin la hora de llegada',
+    (tester) async {
+      final app = await openSession(
+        tester,
+        // 00:30 del jueves 3/12/2026 en Roma (en UTC, todavía el 2/12): la
+        // semana 2 fue ayer.
+        clock: () => DateTime.utc(2026, 12, 2, 23, 30),
+      );
+      await tester.tap(byKey('session-whatsapp'));
+      await tester.pumpAndSettle();
+
+      expect(
+        app.launcher.launched.single.queryParameters['text'],
+        'Ciao Giulia, sono Evelyn di Radici. Ti scrivo per la sessione di '
+        'mercoledì 2 dicembre.',
+      );
+    },
+  );
+
   // Un colaborador lo manda desde su propio teléfono: el mensaje no dice
   // «sono Evelyn» ni que llega él.
   group('con la cuenta de un colaborador, el WhatsApp escribe de parte de la cocinera', () {
@@ -332,7 +356,7 @@ void main() {
     });
 
     testWidgets(
-      'en una cancelada, el saludo del detalle de parte de ella, sin la fecha',
+      'en una cancelada, de parte de ella con la fecha, sin la hora de llegada',
       (tester) async {
         final app = await openSession(
           tester,
@@ -347,8 +371,8 @@ void main() {
 
         expect(
           app.launcher.launched.single.queryParameters['text'],
-          'Ciao Giulia, ti scrivo da parte di Evelyn di Radici: abbiamo ricevuto '
-          'la tua richiesta e vorremmo organizzarci con te.',
+          'Ciao Giulia, ti scrivo da parte di Evelyn di Radici per la sessione di '
+          'mercoledì 2 dicembre.',
         );
       },
     );

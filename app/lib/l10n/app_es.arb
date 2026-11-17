@@ -268,6 +268,8 @@
   "sessionCancelAction": "Cancelar sesión",
   "sessionWhatsAppMessage": "Hola {name}, soy {chef} de {brand}. Te escribo por la sesión del {date}, con llegada a las {time}.",
   "sessionWhatsAppMessageOnBehalf": "Hola {name}, te escribo de parte de {chef} de {brand} por la sesión del {date}: {chef} llega a las {time}.",
+  "sessionWhatsAppMessageNoArrival": "Hola {name}, soy {chef} de {brand}. Te escribo por la sesión del {date}.",
+  "sessionWhatsAppMessageNoArrivalOnBehalf": "Hola {name}, te escribo de parte de {chef} de {brand} por la sesión del {date}.",
   "cancelReasonClient": "La pidió la clienta",
   "cancelReasonUnavailable": "No puedo ir",
   "cancelReasonOther": "Otro motivo",
