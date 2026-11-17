@@ -1157,7 +1157,11 @@ void main() {
         await selectDay(tester, friday.toIso());
         expectHeader(tester, 'venerdì 23 ottobre 2026');
         expectOwnNode(tester, 'Giorno bloccato: il sito non lo offre.');
-        expectOwnNode(tester, 'Ferie', label: 'Nota (la vedi solo tu)\nFerie');
+        expectOwnNode(
+          tester,
+          'Ferie',
+          label: 'Nota (i clienti non la vedono)\nFerie',
+        );
         semantics.dispose();
       });
 
@@ -1183,7 +1187,11 @@ void main() {
         expectRequestNode(tester, 'Giulia Rossi');
         expectRequestNode(tester, 'Marco Bianchi');
         expectOwnNode(tester, 'Giorno bloccato: il sito non lo offre.');
-        expectOwnNode(tester, 'Ferie', label: 'Nota (la vedi solo tu)\nFerie');
+        expectOwnNode(
+          tester,
+          'Ferie',
+          label: 'Nota (i clienti non la vedono)\nFerie',
+        );
         semantics.dispose();
       });
     });
