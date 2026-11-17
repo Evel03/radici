@@ -54,7 +54,8 @@ class ChefApp {
 /// Edge Function para moverlas y cancelarlas (por defecto, ninguna).
 /// [recipes] es su catálogo de platos (por defecto, vacío). Con [settle] en
 /// false no espera a que la pantalla se asiente (una rueda que gira no se
-/// asienta nunca).
+/// asienta nunca). [retry]: los reintentos automáticos de Riverpod (por
+/// defecto, ninguno; ver retryOnce).
 Future<ChefApp> pumpChefApp(
   WidgetTester tester, {
   required FakeChefRequestsRepository requests,
@@ -69,6 +70,7 @@ Future<ChefApp> pumpChefApp(
   DateTime Function()? clock,
   List<Override> overrides = const [],
   bool settle = true,
+  RetryDelay retry = noRetry,
 }) async {
   setSurfaceSize(tester, size);
   final auth = FakeAuthRepository(user: chefUser);
@@ -83,6 +85,7 @@ Future<ChefApp> pumpChefApp(
     deviceLocales: deviceLocales,
     clock: clock,
     settle: settle,
+    retry: retry,
     overrides: [
       authRepositoryProvider.overrideWithValue(auth),
       accountRepositoryProvider.overrideWithValue(account),

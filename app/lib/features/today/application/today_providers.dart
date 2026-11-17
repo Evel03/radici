@@ -66,7 +66,9 @@ DateTime _minute(DateTime instant) {
 
 /// Qué sesión muestra Hoy (ver todayFocus). Con las sesiones ya leídas, lo
 /// que hay (también mientras se vuelven a leer o si la última lectura
-/// falló); sin ninguna lectura, cargando o el error.
+/// falló); sin ninguna lectura, cargando o el error. Mientras se vuelve a
+/// leer después de una falla (Riverpod reintenta solo, o «Riprova»), el
+/// estado trae el error y sigue cargando: cuenta como cargando.
 final todayFocusProvider = Provider<AsyncValue<TodayFocus>>((ref) {
   final sessions = ref.watch(sessionsControllerProvider);
   final today = ref.watch(romeTodayProvider);
@@ -76,7 +78,7 @@ final todayFocusProvider = Provider<AsyncValue<TodayFocus>>((ref) {
     return AsyncData(todayFocus(list, today: today, now: now));
   }
   final error = sessions.error;
-  if (error != null) {
+  if (error != null && !sessions.isLoading) {
     return AsyncError(error, sessions.stackTrace ?? StackTrace.empty);
   }
   return const AsyncLoading();

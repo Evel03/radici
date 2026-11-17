@@ -30,6 +30,7 @@ import 'package:radici/features/today/presentation/today_screen.dart';
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
 import '../../../support/plain_text.dart';
+import '../../../support/pump_app.dart';
 import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
 import '../../../support/text_input_guard.dart';
@@ -118,6 +119,16 @@ void main() {
 
   NavigationBar navBar(WidgetTester tester) =>
       tester.widget<NavigationBar>(byKey('chef-nav-bar'));
+
+  /// Con pumpChefApp(settle: false): bombea cuadros hasta que aparece Hoy (el
+  /// router primero espera la cuenta).
+  Future<void> waitForToday(WidgetTester tester) async {
+    for (var i = 0; i < 10 && find.byType(TodayScreen).evaluate().isEmpty; i++) {
+      await tester.pump();
+    }
+    await tester.pump();
+    expect(find.byType(TodayScreen), findsOneWidget);
+  }
 
   group('el inicio', () {
     testWidgets('al abrir la app va a Hoy, primero de los 4 destinos de la barra', (
@@ -669,6 +680,30 @@ void main() {
       expect(byKey('today-actions'), findsNothing);
 
       repository.pendingFetch!.complete();
+      await tester.pumpAndSettle();
+      expect(byKey('today-loading'), findsNothing);
+      expect(card(1), findsOneWidget);
+    });
+
+    testWidgets('si la primera lectura de sesiones falla y Riverpod la reintenta, la rueda (no el error); si el reintento sale bien, la sesión', (
+      tester,
+    ) async {
+      final repository = FakeSessionsRepository([session()])
+        ..fetchFailure = const SessionFailure(SessionFailureKind.unavailable);
+      await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        sessions: repository,
+        clock: () => morning,
+        retry: retryOnce(),
+        settle: false,
+      );
+      await waitForToday(tester);
+      expect(byKey('today-loading'), findsOneWidget);
+      expect(byKey('load-error'), findsNothing);
+
+      repository.fetchFailure = null;
+      await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
       expect(byKey('today-loading'), findsNothing);
       expect(card(1), findsOneWidget);
