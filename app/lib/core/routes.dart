@@ -88,8 +88,9 @@ bool isChefPath(String path) =>
 /// - Sin sesión: el área de la cocinera pide login (recordando a dónde iba).
 ///   En la web no hay inicio público: `/` es el login.
 /// - Cargando la cuenta (o con error): pantalla de carga.
-/// - Cocinera: su área, que empieza en Hoy (o a donde iba antes del login,
-///   como el pedido del botón del email).
+/// - La cocinera o un colaborador suyo (ChefSession, rol `chef`): el área de
+///   la cocinera, que empieza en Hoy (o a donde iba antes del login, como el
+///   pedido del botón del email).
 /// - Cualquier otro usuario: área de clientes.
 /// La calculadora (`/preventivo`) es pública siempre.
 String? resolveRedirect({
