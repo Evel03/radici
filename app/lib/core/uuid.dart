@@ -29,5 +29,6 @@ String uuidV4([Random? random]) {
       '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
 }
 
-/// Fábrica de ids nuevos: los tests la reemplazan por una fija.
+/// Fábrica de ids nuevos, la única: la requestKey de cada hoja de reserva y el
+/// id de cada plato nuevo. Los tests la reemplazan por una fija.
 final newIdProvider = Provider<String Function()>((ref) => uuidV4);

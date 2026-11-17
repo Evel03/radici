@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/core/uuid.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
@@ -63,7 +64,7 @@ void main() {
         chefRequestsRepositoryProvider.overrideWithValue(requests),
         bookingsRepositoryProvider.overrideWithValue(bookings),
         clockProvider.overrideWithValue(() => testNow),
-        bookingRequestKeyProvider.overrideWithValue(() => 'key-${++keys}'),
+        newIdProvider.overrideWithValue(() => 'key-${++keys}'),
       ],
     );
     // Como en la app: la bandeja y el pedido ya están cargados al abrir la hoja.

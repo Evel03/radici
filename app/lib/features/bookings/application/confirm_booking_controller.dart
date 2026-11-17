@@ -29,9 +29,6 @@ import 'package:radici/features/requests/domain/chef_request.dart';
 
 part 'confirm_booking_controller.freezed.dart';
 
-/// Genera la clave de idempotencia de cada intento (los tests la fijan).
-final bookingRequestKeyProvider = Provider<String Function()>((ref) => uuidV4);
-
 /// Una hoja por pedido; se descarta al cerrarla (la próxima es otro intento,
 /// con otra clave).
 final confirmBookingProvider = NotifierProvider.autoDispose
@@ -262,7 +259,8 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
 
   ChefRequest? _request;
 
-  /// La clave de este intento: la misma en todos sus reintentos.
+  /// La clave de este intento, un uuid de [newIdProvider] (los tests la
+  /// fijan): la misma en todos sus reintentos.
   late String _requestKey;
 
   /// Cada dryRun suma uno: solo vale la respuesta del último.
@@ -272,7 +270,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
 
   @override
   ConfirmBookingState build() {
-    _requestKey = ref.read(bookingRequestKeyProvider)();
+    _requestKey = ref.read(newIdProvider)();
     final today = romeToday(ref.read(clockProvider)());
     // Se lee una vez: la hoja no se rehace si el pedido cambia en la bandeja
     // (por ejemplo, al marcarlo visto). La pantalla la abre con el pedido ya
