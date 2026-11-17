@@ -1,7 +1,10 @@
 // Una sesión en la agenda: la clienta y sus horas («Spesa dalle 09:15 ·
 // Arrivo 10:00 · fino alle 13:00», salidas de la sesión), y el estado si no
 // es una confirmada. Toda la fila abre su ficha (un solo objetivo, también
-// para el lector de pantalla).
+// para el lector de pantalla: el nodo lleva la acción de tocar, porque en
+// /gestione/ el clic de VoiceOver solo llega a un nodo que la tiene).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:radici/core/routes.dart';
@@ -24,13 +27,18 @@ class SessionBlock extends StatelessWidget {
         ? null
         : l10n.sessionStatus(session.status);
     final name = session.displayName;
+    void open() => unawaited(context.push(AppRoutes.sessionDetail(session.id)));
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Semantics(
+        // Un nodo propio (en la semana no se funde con el título del día) y
+        // con la acción de tocar: excludeSemantics descarta la del InkWell.
+        container: true,
         button: true,
         label: [name, times, ?status].join(', '),
         excludeSemantics: true,
+        onTap: open,
         child: Material(
           // Sin transparencia: el texto queda con el contraste del tema.
           color: colors.primaryContainer,
@@ -38,7 +46,7 @@ class SessionBlock extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             key: ValueKey('session-${session.id}'),
-            onTap: () => context.push(AppRoutes.sessionDetail(session.id)),
+            onTap: open,
             child: ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 56),
               child: Row(

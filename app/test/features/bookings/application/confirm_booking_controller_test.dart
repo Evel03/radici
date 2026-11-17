@@ -515,7 +515,7 @@ void main() {
       expect(inboxTabOf(booked), InboxTab.bookings);
     });
 
-    test('con la agenda ya cargada, al confirmar vuelve a leer las sesiones (las nuevas aparecen)', () async {
+    test('con la agenda ya cargada, al confirmar vuelve a leer las sesiones', () async {
       await open(weekly());
       container.listen(sessionsControllerProvider, (_, _) {});
       await pumpEventQueue();

@@ -74,8 +74,8 @@ void main() {
       reason: 'el rechazado no cuenta',
     );
     expect(find.byKey(const ValueKey('agenda-day-count-2026-10-20')), findsNothing);
-    // Hoy (19/10) está elegido y no tiene pedidos.
-    expect(find.text('Nessuna richiesta per questo giorno.'), findsOneWidget);
+    // Hoy (19/10) está elegido y no tiene pedidos (ni sesiones).
+    expect(find.text('Niente per questo giorno: né sessioni né richieste.'), findsOneWidget);
   });
 
   testWidgets('los días de los meses vecinos van en el color secundario, sin transparencia (contraste AA)', (

@@ -5,7 +5,8 @@
 // - La ficha lee la sesión y todas las semanas de su reserva.
 // - Mover y cancelar pasan por la Edge Function chef (SessionCommands): lo que
 //   devuelve se avisa como un cambio (sessionChangesProvider) y la agenda y
-//   las fichas abiertas lo aplican sin volver a leer.
+//   las fichas abiertas lo aplican sin volver a leer. La dirección de la
+//   ficha de la clienta se guarda con la RLS y se avisa igual.
 //
 // Entre dos dispositivos alcanza con deslizar para actualizar: sin Realtime de
 // sesiones (plan del área de Evelyn, «Afuera a propósito»). Nada se loguea.
@@ -62,6 +63,23 @@ final class SessionsCancelled implements SessionChange {
     }
     return session;
   }
+}
+
+/// Se guardó la dirección de la ficha [clientId]: vale para todas sus
+/// sesiones. No se imprime.
+final class ClientAddressChanged implements SessionChange {
+  ClientAddressChanged({required this.clientId, required this.address});
+
+  final String clientId;
+  final String address;
+
+  /// Aplica el cambio a [session] (si es de esa ficha).
+  CookingSession applyTo(CookingSession session) => session.clientId == clientId
+      ? session.copyWith(client: session.client.copyWith(address: address))
+      : session;
+
+  @override
+  String toString() => 'ClientAddressChanged($clientId)';
 }
 
 /// El último cambio. Cada uno es un objeto nuevo: todos avisan, también dos
@@ -171,6 +189,10 @@ class SessionsController extends AsyncNotifier<List<CookingSession>> {
         state = AsyncData([
           for (final session in current) cancelled.applyTo(session),
         ]);
+      case final ClientAddressChanged changed:
+        state = AsyncData([
+          for (final session in current) changed.applyTo(session),
+        ]);
     }
   }
 }
@@ -279,7 +301,10 @@ class SessionDetailController extends AsyncNotifier<SessionDetail?> {
       }
       // Ya no es de esa reserva (o no existe): se lee sola.
     }
-    final session = await repository.fetchSession(sessionId);
+    final session = await repository.fetchSession(
+      chefId: chefId,
+      id: sessionId,
+    );
     if (session == null) return null;
     final ownRequest = session.requestId;
     if (ownRequest == null) {
@@ -299,6 +324,7 @@ class SessionDetailController extends AsyncNotifier<SessionDetail?> {
       SessionMoved(session: final moved) when moved.id == session.id => moved,
       SessionMoved() => session,
       final SessionsCancelled cancelled => cancelled.applyTo(session),
+      final ClientAddressChanged changed => changed.applyTo(session),
     };
     state = AsyncData(
       current.copyWith(
@@ -324,8 +350,9 @@ class SessionsBusy extends Notifier<Set<String>> {
   void _remove(Iterable<String> ids) => state = state.difference(ids.toSet());
 }
 
-/// Mover y cancelar con la Edge Function chef. Si sale bien, avisa el cambio
-/// (la agenda y las fichas abiertas lo aplican). Lanza [SessionFailure].
+/// Mover y cancelar con la Edge Function chef, y guardar la dirección de la
+/// ficha. Si sale bien, avisa el cambio (la agenda y las fichas abiertas lo
+/// aplican). Lanza [SessionFailure].
 final sessionCommandsProvider = Provider<SessionCommands>(SessionCommands.new);
 
 class SessionCommands {
@@ -380,6 +407,25 @@ class SessionCommands {
           ),
         );
     return result;
+  }
+
+  /// Guarda [address] (ya normalizada, ver normalizeClientAddress) en la
+  /// ficha de la clienta de [session]: vale para todas sus sesiones.
+  Future<void> updateAddress(CookingSession session, String address) async {
+    final chefId = _ref.read(currentChefProvider)?.chefId;
+    if (chefId == null) {
+      throw const SessionFailure(SessionFailureKind.unauthorized);
+    }
+    await _repository.updateClientAddress(
+      chefId: chefId,
+      clientId: session.clientId,
+      address: address,
+    );
+    _ref
+        .read(sessionChangesProvider.notifier)
+        .emit(
+          ClientAddressChanged(clientId: session.clientId, address: address),
+        );
   }
 
   Future<T> _busy<T>(List<String> ids, Future<T> Function() body) async {

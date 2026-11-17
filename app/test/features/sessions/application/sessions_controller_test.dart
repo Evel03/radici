@@ -1,7 +1,9 @@
 // Sesiones sin widgets: lo que lee la agenda (desde qué día, las vivas por
-// día), la ficha de una sesión con las semanas de su reserva, y mover y
-// cancelar con la Edge Function, que se aplican en la agenda y en las fichas
-// abiertas sin volver a leer. "Hoy": lunes 19/10/2026 (testNow).
+// día), la ficha de una sesión con las semanas de su reserva, mover y
+// cancelar con la Edge Function (también las que ya estaban canceladas en
+// otro dispositivo) y la dirección de la ficha, que se aplican en la agenda y
+// en las fichas abiertas sin volver a leer, y qué sesiones esperan al
+// servidor. "Hoy": lunes 19/10/2026 (testNow).
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -234,6 +236,148 @@ void main() {
         ),
       );
       expect(window().first.status, SessionStatus.confirmed);
+      expect(container.read(sessionChangesProvider), isNull);
+    });
+
+    test(
+      'las que ya estaban canceladas en otro dispositivo (alreadyCancelled) también se marcan, en la agenda y en la ficha',
+      () async {
+        await start();
+        container.listen(sessionDetailProvider(sessionId(1)), (_, _) {});
+        await container.read(sessionDetailProvider(sessionId(1)).future);
+        // Otro dispositivo cancela la 3; acá todavía se ve viva.
+        repository.sessions[sessionId(3)] = repository.sessions[sessionId(3)]!
+            .copyWith(status: SessionStatus.cancelled);
+        expect(window()[2].isLive, isTrue);
+
+        final result = await container.read(sessionCommandsProvider).cancel([
+          window()[1],
+          window()[2],
+        ]);
+
+        expect(result.cancelled, [sessionId(2)]);
+        expect(result.alreadyCancelled, [sessionId(3)]);
+        for (final id in [sessionId(2), sessionId(3)]) {
+          expect(
+            window().firstWhere((s) => s.id == id).status,
+            SessionStatus.cancelled,
+            reason: id,
+          );
+        }
+        final open = container.read(sessionDetailProvider(sessionId(1))).value!;
+        expect(
+          open.booking.firstWhere((s) => s.id == sessionId(3)).status,
+          SessionStatus.cancelled,
+        );
+        expect(open.position, (week: 1, weeks: 2));
+      },
+    );
+  });
+
+  group('esperando al servidor (los botones de la ficha, deshabilitados)', () {
+    test('mover marca la sesión mientras espera y la desmarca al terminar', () async {
+      await start();
+      repository.pendingMove = Completer<void>();
+      final move = container
+          .read(sessionCommandsProvider)
+          .move(
+            window().first,
+            date: CalendarDate(2026, 11, 27),
+            start: const ClockTime.hm(10, 0),
+          );
+      await pumpEventQueue();
+      expect(container.read(sessionsBusyProvider), {sessionId(1)});
+
+      repository.pendingMove!.complete();
+      await move;
+      expect(container.read(sessionsBusyProvider), isEmpty);
+    });
+
+    test('cancelar marca todas las pedidas, y las desmarca también si falla', () async {
+      await start();
+      repository
+        ..pendingCancel = Completer<void>()
+        ..cancelFailure = const SessionFailure(SessionFailureKind.unavailable);
+      final cancel = container.read(sessionCommandsProvider).cancel([
+        window()[1],
+        window()[2],
+      ]);
+      await pumpEventQueue();
+      expect(container.read(sessionsBusyProvider), {
+        sessionId(2),
+        sessionId(3),
+      });
+
+      repository.pendingCancel!.complete();
+      await expectLater(cancel, throwsA(isA<SessionFailure>()));
+      expect(container.read(sessionsBusyProvider), isEmpty);
+    });
+  });
+
+  group('la dirección de la ficha', () {
+    test(
+      'se guarda y se ve en todas las sesiones de esa ficha, en la agenda y en la ficha abierta, sin volver a leer',
+      () async {
+        // Otra clienta, sin dirección: no cambia.
+        repository.sessions[sessionId(9)] = buildSession(
+          n: 9,
+          requestId: 'otra',
+          date: CalendarDate(2026, 11, 26),
+          address: null,
+        ).copyWith(clientId: 'otra-ficha');
+        await start();
+        container.listen(sessionDetailProvider(sessionId(1)), (_, _) {});
+        final loaded = await container.read(
+          sessionDetailProvider(sessionId(1)).future,
+        );
+        final reads = repository.fetchCalls + repository.bookingFetches.length;
+
+        await container
+            .read(sessionCommandsProvider)
+            .updateAddress(loaded!.session, 'Via Pignolo 5, Bergamo');
+
+        expect(repository.addressUpdates, [
+          (testClientId, 'Via Pignolo 5, Bergamo'),
+        ]);
+        for (final session in window()) {
+          expect(
+            session.address,
+            session.clientId == testClientId
+                ? 'Via Pignolo 5, Bergamo'
+                : isNull,
+            reason: session.id,
+          );
+        }
+        final open = container.read(sessionDetailProvider(sessionId(1))).value!;
+        expect(open.session.address, 'Via Pignolo 5, Bergamo');
+        expect(
+          open.booking.map((s) => s.address).toSet(),
+          {'Via Pignolo 5, Bergamo'},
+        );
+        expect(
+          repository.fetchCalls + repository.bookingFetches.length,
+          reads,
+        );
+        // El aviso del cambio no imprime la dirección.
+        expect(
+          container.read(sessionChangesProvider).toString(),
+          isNot(contains('Pignolo')),
+        );
+      },
+    );
+
+    test('si no se pudo guardar no cambia nada y relanza SessionFailure', () async {
+      await start();
+      repository.addressFailure = const SessionFailure(
+        SessionFailureKind.unavailable,
+      );
+      await expectLater(
+        container
+            .read(sessionCommandsProvider)
+            .updateAddress(window().first, 'Via Pignolo 5, Bergamo'),
+        throwsA(isA<SessionFailure>()),
+      );
+      expect(window().first.address, 'Via Gombito 12, 24129 Bergamo');
       expect(container.read(sessionChangesProvider), isNull);
     });
   });

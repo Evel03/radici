@@ -1,10 +1,12 @@
 // Ficha de una sesión de cocina (`/sessioni/:id`, a pantalla completa): el día
 // y las horas (salidas de la sesión), «Semana k de N» sin contar las
-// canceladas, «Come arrivare» (la dirección en Mapas), WhatsApp y llamar; las
+// canceladas, «Come arrivare» (la dirección en Mapas), WhatsApp y llamar (sin
+// dirección, el botón para agregarla: el formulario web no la pide); las
 // alergias resaltadas (la nota del pedido y, con gluten, la de contaminación
 // cruzada, SPEC §5.6); los datos de la clienta y las semanas de su reserva.
 // Abajo, Mover (con «Annulla» después) y Cancelar (con confirmación y
-// «también las siguientes»).
+// «también las siguientes»; si alguna ya está cobrada, el aviso dice cuál y
+// qué se puede hacer).
 //
 // Solo lee providers: la lógica está en SessionDetailController y
 // SessionCommands. Lleva la dirección y datos de salud: nada se loguea.
@@ -23,8 +25,11 @@ import 'package:radici/features/sessions/application/session_links.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
+import 'package:radici/features/sessions/domain/session_api.dart';
 import 'package:radici/features/sessions/domain/session_booking.dart';
 import 'package:radici/features/sessions/presentation/cancel_session_dialog.dart';
+import 'package:radici/features/sessions/presentation/client_address_dialog.dart';
+import 'package:radici/features/sessions/presentation/has_payments_dialog.dart';
 import 'package:radici/features/sessions/presentation/move_session_screen.dart';
 import 'package:radici/features/sessions/presentation/session_actions.dart';
 import 'package:radici/features/sessions/presentation/session_labels.dart';
@@ -214,7 +219,9 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// «Come arrivare», WhatsApp y llamar.
+/// «Come arrivare», WhatsApp y llamar. Sin dirección (las reservas que llegan
+/// por la web), WhatsApp pasa a ser el principal y en lugar de «Come
+/// arrivare» va «Aggiungi indirizzo».
 class _ContactButtons extends ConsumerWidget {
   const _ContactButtons({required this.session});
 
@@ -239,6 +246,12 @@ class _ContactButtons extends ConsumerWidget {
     final directions = links?.directions;
     final whatsApp = links?.whatsApp;
     final call = links?.call;
+    final hasAddress = session.address != null;
+    VoidCallback? launch(Uri? uri) =>
+        uri == null ? null : () => _launch(context, ref, uri);
+    const whatsAppKey = ValueKey('session-whatsapp');
+    const whatsAppIcon = Icon(Icons.chat_outlined);
+    final whatsAppLabel = Text(l10n.actionWhatsApp);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -247,39 +260,52 @@ class _ContactButtons extends ConsumerWidget {
           spacing: 8,
           runSpacing: 8,
           children: [
-            FilledButton.icon(
-              key: const ValueKey('session-directions'),
-              onPressed: directions == null
-                  ? null
-                  : () => _launch(context, ref, directions),
-              icon: const Icon(Icons.directions_outlined),
-              label: Text(l10n.sessionDirections),
-            ),
-            OutlinedButton.icon(
-              key: const ValueKey('session-whatsapp'),
-              onPressed: whatsApp == null
-                  ? null
-                  : () => _launch(context, ref, whatsApp),
-              icon: const Icon(Icons.chat_outlined),
-              label: Text(l10n.actionWhatsApp),
-            ),
+            if (hasAddress) ...[
+              FilledButton.icon(
+                key: const ValueKey('session-directions'),
+                onPressed: launch(directions),
+                icon: const Icon(Icons.directions_outlined),
+                label: Text(l10n.sessionDirections),
+              ),
+              OutlinedButton.icon(
+                key: whatsAppKey,
+                onPressed: launch(whatsApp),
+                icon: whatsAppIcon,
+                label: whatsAppLabel,
+              ),
+            ] else
+              FilledButton.icon(
+                key: whatsAppKey,
+                onPressed: launch(whatsApp),
+                icon: whatsAppIcon,
+                label: whatsAppLabel,
+              ),
             OutlinedButton.icon(
               key: const ValueKey('session-call'),
-              onPressed: call == null
-                  ? null
-                  : () => _launch(context, ref, call),
+              onPressed: launch(call),
               icon: const Icon(Icons.call_outlined),
               label: Text(l10n.actionCall),
             ),
+            if (!hasAddress)
+              OutlinedButton.icon(
+                key: const ValueKey('session-add-address'),
+                onPressed: () => unawaited(editClientAddress(context, session)),
+                icon: const Icon(Icons.add_location_alt_outlined),
+                label: Text(l10n.sessionAddAddress),
+              ),
           ],
         ),
-        if (session.address == null) ...[
+        if (!hasAddress) ...[
           const SizedBox(height: 8),
-          Text(
-            l10n.sessionNoAddress,
-            key: const ValueKey('session-no-address'),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          // Un nodo propio: el lector de pantalla lo lee después de los
+          // botones, como se ve (si no, iba antes, como su padre).
+          MergeSemantics(
+            child: Text(
+              l10n.sessionNoAddress,
+              key: const ValueKey('session-no-address'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ],
@@ -289,7 +315,9 @@ class _ContactButtons extends ConsumerWidget {
 }
 
 /// Alergias y dietas de la ficha y del pedido, la nota del pedido resaltada
-/// y, con gluten, la nota de contaminación cruzada (SPEC §5.6).
+/// y, con gluten, la nota de contaminación cruzada (SPEC §5.6). Cada pieza es
+/// un nodo propio del lector de pantalla, en el orden en que se ve: el título
+/// primero (ver SessionSection).
 class _Allergies extends StatelessWidget {
   const _Allergies({required this.session});
 
@@ -308,19 +336,23 @@ class _Allergies extends StatelessWidget {
         SessionSection(l10n.sessionSectionAllergies),
         ...switch (session.allergyAnswer) {
           AllergyAnswer.none => [
-            Text(
-              l10n.detailNoAllergies,
-              key: const ValueKey('session-no-allergies'),
+            MergeSemantics(
+              child: Text(
+                l10n.detailNoAllergies,
+                key: const ValueKey('session-no-allergies'),
+              ),
             ),
           ],
           // Sin respuesta: que pregunte antes de cocinar (se destaca).
           AllergyAnswer.unknown => [
-            Text(
-              l10n.detailAllergiesUnknown,
-              key: const ValueKey('session-allergies-unknown'),
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: colors.error,
-                fontWeight: FontWeight.w600,
+            MergeSemantics(
+              child: Text(
+                l10n.detailAllergiesUnknown,
+                key: const ValueKey('session-allergies-unknown'),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: colors.error,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -384,27 +416,29 @@ class _Allergies extends StatelessWidget {
               ),
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ExcludeSemantics(
-                      child: Icon(
-                        Icons.warning_amber_rounded,
-                        color: colors.onErrorContainer,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        l10n.sessionCrossContamination,
-                        key: const ValueKey('session-cross-contamination'),
-                        style: theme.textTheme.bodyLarge?.copyWith(
+                child: MergeSemantics(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ExcludeSemantics(
+                        child: Icon(
+                          Icons.warning_amber_rounded,
                           color: colors.onErrorContainer,
-                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          l10n.sessionCrossContamination,
+                          key: const ValueKey('session-cross-contamination'),
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: colors.onErrorContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -431,31 +465,35 @@ class _Chips extends StatelessWidget {
     return Padding(
       key: ValueKey(keyName),
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+      // La etiqueta y sus valores, un solo nodo («Alérgenos que evitar,
+      // Gluten, Leche»): sin esto la etiqueta se leía antes del título.
+      child: MergeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final value in values)
-                Chip(
-                  label: Text(value),
-                  backgroundColor: theme.colorScheme.tertiaryContainer,
-                  labelStyle: TextStyle(
-                    color: theme.colorScheme.onTertiaryContainer,
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final value in values)
+                  Chip(
+                    label: Text(value),
+                    backgroundColor: theme.colorScheme.tertiaryContainer,
+                    labelStyle: TextStyle(
+                      color: theme.colorScheme.onTertiaryContainer,
+                    ),
                   ),
-                ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -477,11 +515,23 @@ class _Client extends StatelessWidget {
       children: [
         SessionSection(l10n.sessionSectionClient),
         if (session.address case final address?)
-          SessionInfoRow(
-            label: l10n.sessionAddress,
-            value: address,
-            selectable: true,
-            valueKey: const ValueKey('session-address'),
+          Row(
+            children: [
+              Expanded(
+                child: SessionInfoRow(
+                  label: l10n.sessionAddress,
+                  value: address,
+                  selectable: true,
+                  valueKey: const ValueKey('session-address'),
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('session-edit-address'),
+                tooltip: l10n.sessionEditAddress,
+                onPressed: () => unawaited(editClientAddress(context, session)),
+                icon: const Icon(Icons.edit_location_alt_outlined),
+              ),
+            ],
           ),
         if (session.zone case final zone? when zone.isNotEmpty)
           SessionInfoRow(label: l10n.detailZone, value: zone),
@@ -591,60 +641,66 @@ class _ActionsBar extends ConsumerWidget {
       following: detail.following,
     );
     if (choice == null || !context.mounted) return;
-    final actions = SessionActions.of(context);
-    final failure = await actions.cancel([
+    await _cancelSessions(context, ref, [
       detail.session,
       if (choice.withFollowing) ...detail.following,
     ], reason: choice.reason);
-    if (failure == null || !context.mounted) return;
-    await _explainPayments(context, ref, failure);
   }
 
-  /// 409 hasPayments: no se canceló nada. Una semana cobrada se puede pasar
-  /// al final de la reserva (decisión 5 del plan); cancelarla con la
-  /// devolución llega con los cobros.
+  /// Cancela [sessions] (la de la ficha primero, si va). Un 409 hasPayments
+  /// se explica con el aviso de las semanas cobradas, también si llega al
+  /// tocar «Riprova» después de una falla de red.
+  Future<void> _cancelSessions(
+    BuildContext context,
+    WidgetRef ref,
+    List<CookingSession> sessions, {
+    required CancelReason reason,
+  }) => SessionActions.of(context).cancel(
+    sessions,
+    reason: reason,
+    detailId: detail.session.id,
+    onHasPayments: (failure) async {
+      if (!context.mounted) return false;
+      await _explainPayments(context, ref, failure, sessions, reason: reason);
+      return true;
+    },
+  );
+
+  /// 409 hasPayments: no se canceló nada (todo o nada). El aviso dice cuáles
+  /// están cobradas y ofrece lo que se puede hacer (hasPaymentsPlan): pasar
+  /// la semana de la ficha al final de la reserva (decisión 5 del plan) si
+  /// solo se cancelaba esa, o cancelar solo las que no están cobradas si se
+  /// cancelaban varias. Cancelarla con la devolución llega con los cobros.
   Future<void> _explainPayments(
     BuildContext context,
     WidgetRef ref,
     SessionFailure failure,
-  ) async {
-    final l10n = AppLocalizations.of(context);
+    List<CookingSession> requested, {
+    required CancelReason reason,
+  }) async {
     final current =
         ref.read(sessionDetailProvider(detail.session.id)).value ?? detail;
-    final end = current.endOfBooking;
-    final canMoveToEnd =
-        end != null &&
-        current.session.canMove &&
-        (failure.sessionIds.isEmpty ||
-            failure.sessionIds.contains(current.session.id));
-    final moveToEnd = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        key: const ValueKey('has-payments-dialog'),
-        title: Text(l10n.cancelHasPaymentsTitle),
-        content: Text(
-          l10n.cancelHasPaymentsBody(
-            failure.sessionIds.isEmpty ? 1 : failure.sessionIds.length,
-          ),
-        ),
-        actionsOverflowButtonSpacing: 8,
-        actions: [
-          TextButton(
-            key: const ValueKey('has-payments-close'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(l10n.actionClose),
-          ),
-          if (canMoveToEnd)
-            FilledButton(
-              key: const ValueKey('has-payments-move-to-end'),
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(l10n.moveToEnd),
-            ),
-        ],
-      ),
+    // Las pedidas como están ahora en la ficha (una pudo moverse).
+    final now = {
+      for (final session in current.booking) session.id: session,
+      current.session.id: current.session,
+    };
+    final plan = hasPaymentsPlan(
+      current: current.session,
+      booking: current.booking,
+      requested: [for (final session in requested) now[session.id] ?? session],
+      paidIds: failure.sessionIds,
     );
-    if (moveToEnd != true || !context.mounted) return;
-    await openMoveSheet(context, current.session.id, date: end);
+    final action = await showHasPaymentsDialog(context, plan: plan);
+    if (!context.mounted) return;
+    switch (action) {
+      case HasPaymentsAction.moveToEnd:
+        await openMoveSheet(context, current.session.id, date: plan.moveToEnd);
+      case HasPaymentsAction.cancelUnpaid:
+        await _cancelSessions(context, ref, plan.unpaid, reason: reason);
+      case null:
+        break;
+    }
   }
 
   @override

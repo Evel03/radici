@@ -526,8 +526,10 @@ class FakeBookingsRepository implements BookingsRepository {
 /// held o confirmed; una semana con otra sesión viva de la misma reserva da
 /// weekTaken; una fecha marcada busy en [statuses] da slotTaken; cancelar es
 /// todo o nada (cooked o paid dan invalidTransition; las de [paid], sin
-/// permiso, hasPayments). Las fallas y las respuestas lentas se controlan por
-/// campo; los `pending…` demoran solo la respuesta.
+/// permiso, hasPayments). La dirección de la ficha se guarda en todas sus
+/// sesiones (una ficha que no es de la cocinera da notFound, como la RLS).
+/// Las fallas y las respuestas lentas se controlan por campo; los `pending…`
+/// demoran solo la respuesta.
 class FakeSessionsRepository implements SessionsRepository {
   FakeSessionsRepository([Iterable<CookingSession> sessions = const []])
     : sessions = {for (final session in sessions) session.id: session};
@@ -549,12 +551,14 @@ class FakeSessionsRepository implements SessionsRepository {
   SessionFailure? checkFailure;
   SessionFailure? moveFailure;
   SessionFailure? cancelFailure;
+  SessionFailure? addressFailure;
 
   /// Si no son null, la respuesta espera a que se completen.
   Completer<void>? pendingFetch;
   Completer<void>? pendingCheck;
   Completer<void>? pendingMove;
   Completer<void>? pendingCancel;
+  Completer<void>? pendingAddress;
 
   int fetchCalls = 0;
   final List<CalendarDate> fetchedFrom = [];
@@ -600,11 +604,14 @@ class FakeSessionsRepository implements SessionsRepository {
   }
 
   @override
-  Future<CookingSession?> fetchSession(String id) async {
+  Future<CookingSession?> fetchSession({
+    required String chefId,
+    required String id,
+  }) async {
     sessionFetches.add(id);
     final found = sessions[id];
     await _read();
-    return found;
+    return found?.chefId == chefId ? found : null;
   }
 
   @override
@@ -749,6 +756,35 @@ class FakeSessionsRepository implements SessionsRepository {
     if (pending != null) await pending.future;
     if (refused != null) throw refused;
     return result!;
+  }
+
+  /// Direcciones guardadas, en orden: (ficha, dirección).
+  final List<(String, String)> addressUpdates = [];
+
+  @override
+  Future<void> updateClientAddress({
+    required String chefId,
+    required String clientId,
+    required String address,
+  }) async {
+    addressUpdates.add((clientId, address));
+    final pending = pendingAddress;
+    if (pending != null) await pending.future;
+    final failure = addressFailure;
+    if (failure != null) throw failure;
+    final mine = [
+      for (final session in sessions.values)
+        if (session.clientId == clientId && session.chefId == chefId) session,
+    ];
+    // Como la RLS: una ficha que no es suya no cambia ninguna fila.
+    if (mine.isEmpty) {
+      throw const SessionFailure(SessionFailureKind.notFound);
+    }
+    for (final session in mine) {
+      sessions[session.id] = session.copyWith(
+        client: session.client.copyWith(address: address),
+      );
+    }
   }
 }
 

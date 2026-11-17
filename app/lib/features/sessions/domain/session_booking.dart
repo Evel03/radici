@@ -1,6 +1,7 @@
 // Reglas de las sesiones de una reserva y de la agenda: «Semana k de N», las
-// semanas siguientes, el final de la reserva, las sesiones de cada día y desde
-// qué día las lee la agenda. Dart puro.
+// semanas siguientes, el final de la reserva, qué ofrecer si una semana que se
+// quiso cancelar ya está cobrada, las sesiones de cada día y desde qué día las
+// lee la agenda. Dart puro.
 //
 // Una reserva es un pedido aceptado más sus sesiones, como mucho una viva por
 // semana (`sessions_una_por_semana`). Las canceladas no cuentan.
@@ -68,6 +69,57 @@ CalendarDate? endOfBookingDate(
   final last = others.last.date;
   if (!last.isAfter(session.date)) return null;
   return last.addDays(7);
+}
+
+/// Qué ofrecer después de un 409 hasPayments al cancelar (no se canceló
+/// nada): [paid], las pedidas que ya están cobradas, y [unpaid], las demás,
+/// por fecha; [moveToEnd], la fecha para pasar la sesión de la ficha al final
+/// de la reserva, o null.
+typedef HasPaymentsPlan = ({
+  List<CookingSession> paid,
+  List<CookingSession> unpaid,
+  CalendarDate? moveToEnd,
+});
+
+/// El plan después de cancelar [requested] (las sesiones que se mandaron, la
+/// de la ficha [current] primero) cuando el servidor dijo que [paidIds] ya
+/// están cobradas. Si ninguna de [paidIds] está entre las pedidas (o no vino
+/// ninguna), se toman todas como cobradas: nunca se ofrece repetir lo mismo.
+///
+/// - «Pasar al final» (decisión 5 del plan) solo si se cancelaba únicamente
+///   [current], está cobrada y se puede mover: con «también las siguientes»,
+///   el final de la reserva cuenta las semanas que se querían cancelar.
+/// - [HasPaymentsPlan.unpaid] solo si se cancelaba más de una: «cancelar solo
+///   las no cobradas».
+HasPaymentsPlan hasPaymentsPlan({
+  required CookingSession current,
+  required Iterable<CookingSession> booking,
+  required List<CookingSession> requested,
+  required List<String> paidIds,
+}) {
+  final requestedIds = {for (final session in requested) session.id};
+  final reported = paidIds.toSet().intersection(requestedIds);
+  final paidSet = reported.isEmpty ? requestedIds : reported;
+  final sorted = [...requested]..sort(compareSessions);
+  final paid = [
+    for (final session in sorted)
+      if (paidSet.contains(session.id)) session,
+  ];
+  final onlyCurrent =
+      requested.length == 1 && requested.single.id == current.id;
+  return (
+    paid: paid,
+    unpaid: onlyCurrent
+        ? const []
+        : [
+            for (final session in sorted)
+              if (!paidSet.contains(session.id)) session,
+          ],
+    moveToEnd:
+        onlyCurrent && paidSet.contains(current.id) && current.canMove
+        ? endOfBookingDate(current, booking)
+        : null,
+  );
 }
 
 /// Por fecha, después por llegada y por id (un orden estable).

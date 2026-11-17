@@ -371,6 +371,9 @@ class _DayCell extends ConsumerWidget {
       selected: isSelected,
       label: label,
       excludeSemantics: true,
+      // La acción va en el nodo: excludeSemantics descarta la del InkWell, y
+      // en /gestione/ el clic de VoiceOver solo llega a un nodo que la tiene.
+      onTap: onTap,
       child: InkWell(
         key: ValueKey('agenda-day-${day.toIso()}'),
         customBorder: const CircleBorder(),

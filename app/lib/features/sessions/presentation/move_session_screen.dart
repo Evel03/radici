@@ -148,7 +148,7 @@ class _MoveSessionView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final formats = RequestFormats(context);
+    final formats = SessionFormats(context);
     final provider = moveSessionProvider(args);
     final state = ref.watch(provider);
     final controller = ref.read(provider.notifier);
@@ -200,7 +200,7 @@ class _MoveSessionView extends ConsumerWidget {
                         ),
                         Text(
                           l10n.moveSessionNow(
-                            formats.shortDate(session.date),
+                            formats.inText(session.date),
                             session.start.toHhMm(),
                           ),
                           key: const ValueKey('move-now'),
@@ -231,9 +231,7 @@ class _MoveSessionView extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          SessionHelp(
-                            l10n.moveToEndDate(formats.shortDate(end)),
-                          ),
+                          SessionHelp(l10n.moveToEndDate(formats.inText(end))),
                         ],
                         if (state.checksStatus == MoveChecksStatus.failed &&
                             state.checksCurrent) ...[
@@ -392,10 +390,10 @@ class _MoveBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final formats = RequestFormats(context);
+    final formats = SessionFormats(context);
     final failure = state.failure;
     final blocker = failure == null ? state.blocker : null;
-    final date = formats.shortDate(state.date);
+    final date = formats.inText(state.date);
 
     return SessionBottomBar(
       children: [
@@ -407,7 +405,7 @@ class _MoveBar extends StatelessWidget {
               l10n.sessionFailure(
                 failure,
                 operation: SessionOperation.move,
-                formatDate: formats.shortDate,
+                formatDate: formats.inText,
               ),
               key: const ValueKey('move-failure'),
               style: theme.textTheme.bodyMedium?.copyWith(
@@ -417,30 +415,40 @@ class _MoveBar extends StatelessWidget {
           ),
           const SizedBox(height: 8),
         ],
+        // Lo que dice el chequeo de la fecha o la hora elegidas (el choque, la
+        // semana ocupada o cómo queda): el lector de pantalla lo anuncia, así
+        // se sabe por qué el botón se apaga. Antes de elegir algo no: al abrir
+        // la hoja se anuncia la pantalla.
         if (blocker != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              switch (blocker) {
-                MoveBlocker.unchanged => l10n.moveSameAsNow,
-                MoveBlocker.weekTaken => l10n.moveBlockWeekTaken,
-                MoveBlocker.clash => l10n.moveBlockClash,
-              },
-              key: const ValueKey('move-blocker'),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: blocker == MoveBlocker.unchanged
-                    ? theme.colorScheme.onSurfaceVariant
-                    : theme.colorScheme.error,
+            child: Semantics(
+              liveRegion: state.changed,
+              child: Text(
+                switch (blocker) {
+                  MoveBlocker.unchanged => l10n.moveSameAsNow,
+                  MoveBlocker.weekTaken => l10n.moveBlockWeekTaken,
+                  MoveBlocker.clash => l10n.moveBlockClash,
+                },
+                key: const ValueKey('move-blocker'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: blocker == MoveBlocker.unchanged
+                      ? theme.colorScheme.onSurfaceVariant
+                      : theme.colorScheme.error,
+                ),
               ),
             ),
           )
         else if (failure == null && state.changed)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              l10n.moveSummary(date, state.start.toHhMm()),
-              key: const ValueKey('move-summary'),
-              style: theme.textTheme.bodyMedium,
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                l10n.moveSummary(date, state.start.toHhMm()),
+                key: const ValueKey('move-summary'),
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
           ),
         FilledButton(

@@ -1,9 +1,11 @@
 // Hoja «Sposta la sessione»: desde la ficha, el calendario y después lo que
 // dice el servidor de esa fecha antes de confirmar (libre, un aviso, un
 // choque o la semana con otra sesión de la reserva, que ofrece pasarla al
-// final), mover y «Annulla» en la ficha. Los campos del calendario y del reloj
-// en modo escritura tienen letra de 16 px o más (si no, iOS hace zoom) y la
-// acción principal queda en el tercio inferior a 375×667.
+// final; el lector de pantalla lo anuncia), mover y «Annulla» en la ficha (se
+// va a los 6 s; con VoiceOver, se cierra con la X). En español, las fechas
+// dentro de una frase van sin la coma de intl. Los campos del calendario y
+// del reloj en modo escritura tienen letra de 16 px o más (si no, iOS hace
+// zoom) y la acción principal queda en el tercio inferior a 375×667.
 // La reserva de prueba: miércoles 25/11, 2/12, 9/12 y 16/12.
 import 'dart:async';
 
@@ -157,6 +159,164 @@ void main() {
       await tester.pumpAndSettle();
       expect(textOf(tester, 'session-date'), 'mercoledì 9 dicembre 2026');
       expect(find.byType(SnackBar), findsNothing);
+    },
+  );
+
+  /// Desde la ficha abierta: «Sposta», el día [day] del calendario y
+  /// «Sposta a …».
+  Future<void> moveFromSheet(WidgetTester tester, String day) async {
+    await tester.tap(byKey('session-move'));
+    await tester.pumpAndSettle();
+    final picker = find.byType(DatePickerDialog);
+    await tester.tap(
+      find.descendant(of: picker, matching: find.text(day)).first,
+    );
+    await tester.pumpAndSettle();
+    final ok = MaterialLocalizations.of(tester.element(picker)).okButtonLabel;
+    await tester.tap(find.descendant(of: picker, matching: find.text(ok)));
+    await tester.pumpAndSettle();
+    await tester.tap(byKey('move-confirm'));
+    await tester.pumpAndSettle();
+  }
+
+  Finder snackBarText(String text) =>
+      find.descendant(of: find.byType(SnackBar), matching: find.text(text));
+
+  testWidgets('el aviso de «Annulla» se va solo a los 6 s', (tester) async {
+    await open(tester, '/sessioni/${sessionId(2)}');
+    await moveFromSheet(tester, '3');
+    expect(snackBarText('Annulla'), findsOneWidget);
+
+    // pumpAndSettle antes de mirar: la salida del aviso arranca en el cuadro
+    // en que vence (con un solo pump, 4 s y 6 s se verían igual).
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(snackBarText('Annulla'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets(
+    'con VoiceOver el aviso de «Annulla» no se va solo: se cierra con la X',
+    (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await open(tester, '/sessioni/${sessionId(2)}');
+      await moveFromSheet(tester, '3');
+
+      await tester.pump(const Duration(seconds: 30));
+      await tester.pumpAndSettle();
+      expect(snackBarText('Annulla'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.byIcon(Icons.close),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(SnackBar), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'en español, las fechas dentro de una frase van sin la coma de intl',
+    (tester) async {
+      await open(
+        tester,
+        '/sessioni/${sessionId(2)}',
+        locale: const Locale('es'),
+      );
+      await tester.tap(byKey('session-move'));
+      await tester.pumpAndSettle();
+      final picker = find.byType(DatePickerDialog);
+      await tester.tap(
+        find.descendant(of: picker, matching: find.text('3')).first,
+      );
+      await tester.pumpAndSettle();
+      final ok = MaterialLocalizations.of(tester.element(picker)).okButtonLabel;
+      await tester.tap(find.descendant(of: picker, matching: find.text(ok)));
+      await tester.pumpAndSettle();
+
+      expect(
+        textOf(tester, 'move-now'),
+        'Ahora: mié 2 de dic, llegada a las 10:00',
+      );
+      expect(textOf(tester, 'move-summary'), 'jue 3 de dic, llegada a las 10:00');
+      expect(find.text('Mover al jue 3 de dic'), findsOneWidget);
+
+      await tester.tap(byKey('move-confirm'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Sesión movida al jue 3 de dic, llegada a las 10:00.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(byKey('session-cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Cancelar la sesión del jue 3 de dic?'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'el lector de pantalla anuncia lo que dice el chequeo (el choque, cómo queda); al abrir sin fecha, no',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final sessions = FakeSessionsRepository(buildBooking());
+      sessions.statuses[thursday] = BookingDayStatus.busy;
+      final app = await openSheet(tester, sessions: sessions);
+      // Al abrir, «Scegli un'altra data o un'altra ora»: no se anuncia (ya se
+      // anuncia la pantalla).
+      expect(
+        tester.getSemantics(byKey('move-blocker')),
+        isSemantics(isLiveRegion: false),
+      );
+
+      app.go('/sessioni/${sessionId(2)}/sposta?data=${thursday.toIso()}');
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(byKey('move-blocker')),
+        isSemantics(
+          label:
+              "Si sovrappone a un'altra sessione: scegli un'altra data o un'altra ora.",
+          isLiveRegion: true,
+        ),
+      );
+
+      app.go(
+        '/sessioni/${sessionId(2)}/sposta?data=${thursday.addDays(1).toIso()}',
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(byKey('move-summary')),
+        isSemantics(
+          label: 'ven 4 dic, arrivo alle 10:00',
+          isLiveRegion: true,
+        ),
+      );
+      semantics.dispose();
+    },
+  );
+
+  testWidgets(
+    'el lector de pantalla lee la ayuda de «Passa alla fine» donde se ve: después del botón',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openSheet(tester, date: CalendarDate(2026, 12, 10));
+      final labels = [
+        for (final node in tester.semantics.simulatedAccessibilityTraversal())
+          node.getSemanticsData().label,
+      ];
+      final button = labels.indexOf('Passa alla fine della prenotazione');
+      final help = labels.indexWhere(
+        (label) => label.startsWith('Una sessione per settimana'),
+      );
+      expect(button, isNonNegative, reason: labels.join(' | '));
+      expect(help, greaterThan(button), reason: labels.join(' | '));
+      semantics.dispose();
     },
   );
 

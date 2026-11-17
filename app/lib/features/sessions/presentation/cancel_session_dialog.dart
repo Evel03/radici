@@ -1,10 +1,10 @@
-// Confirmación de cancelar una sesión: qué pasa (la web vuelve a ofrecer el
-// día y no se puede reactivar), el motivo (una lista cerrada, nunca texto
-// libre: la clienta con cuenta puede leerlo) y, si la reserva tiene semanas
-// después, «también las siguientes». Cancelar es lo único de la ficha que se
-// confirma: mover tiene «Deshacer».
+// Confirmación de cancelar una sesión: qué pasa (no se puede reactivar y,
+// si queda lugar en el horario y el día no está bloqueado, la web lo vuelve a
+// ofrecer: no siempre, así que no se promete), el motivo (una lista cerrada,
+// nunca texto libre: la clienta con cuenta puede leerlo) y, si la reserva
+// tiene semanas después, «también las siguientes». Cancelar es lo único de la
+// ficha que se confirma: mover tiene «Deshacer».
 import 'package:flutter/material.dart';
-import 'package:radici/features/requests/presentation/request_labels.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_api.dart';
 import 'package:radici/features/sessions/presentation/session_labels.dart';
@@ -57,21 +57,22 @@ class _CancelSessionDialogState extends State<CancelSessionDialog> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final formats = RequestFormats(context);
+    final formats = SessionFormats(context);
     final following = widget.following;
     final count = 1 + (_withFollowing ? following.length : 0);
 
     return AlertDialog(
       key: const ValueKey('cancel-session-dialog'),
       scrollable: true,
-      title: Text(
-        l10n.cancelSessionTitle(formats.shortDate(widget.session.date)),
-      ),
+      title: Text(l10n.cancelSessionTitle(formats.inText(widget.session.date))),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(l10n.cancelSessionBody),
+          Text(
+            l10n.cancelSessionBody(count),
+            key: const ValueKey('cancel-session-body'),
+          ),
           const SizedBox(height: 16),
           Semantics(
             header: true,
@@ -110,10 +111,9 @@ class _CancelSessionDialogState extends State<CancelSessionDialog> {
               // Las fechas, con espacios que no cortan: el renglón se parte
               // entre dos fechas, nunca en medio de una.
               subtitle: Text(
-                [
-                  for (final session in following)
-                    formats.shortDate(session.date).replaceAll(' ', ' '),
-                ].join(' · '),
+                formats.listInText([
+                  for (final session in following) session.date,
+                ]),
               ),
             ),
           ],

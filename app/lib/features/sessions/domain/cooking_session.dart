@@ -330,6 +330,17 @@ abstract class CookingSession with _$CookingSession {
   String toString() => 'CookingSession($id, ${status.name})';
 }
 
+/// Largo máximo de la dirección de una ficha (como `newClient.address` en el
+/// contrato chef-api §4).
+const int maxClientAddressLength = 200;
+
+/// La dirección como se guarda: en una línea y sin espacios de más; null si
+/// queda vacía.
+String? normalizeClientAddress(String value) {
+  final text = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  return text.isEmpty ? null : text;
+}
+
 String? _text(Object? value) {
   if (value is! String) return null;
   final trimmed = value.trim();

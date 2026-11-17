@@ -1,10 +1,11 @@
 // Agenda con sesiones: un punto por sesión en la celda del mes (y en el texto
 // accesible), sus bloques en la tarjeta del día y en la semana con las horas
-// de la sesión («Spesa dalle · Arrivo · fino alle»), cada uno abre su ficha;
-// los pedidos aceptados ya no se listan por fecha preferida; bloquear un día
-// con sesión avisa que no la cancela; deslizar para actualizar las vuelve a
-// leer. "Hoy": lunes 19/10/2026 (testNow). La reserva de prueba: miércoles
-// 21/10, 28/10, 4/11 y 11/11.
+// de la sesión («Spesa dalle · Arrivo · fino alle»), cada uno abre su ficha
+// (también con el lector de pantalla); los pedidos aceptados ya no se listan
+// por fecha preferida; bloquear un día con sesión avisa que no la cancela (y
+// el rango, si no se pudieron leer, que no se sabe); deslizar para actualizar
+// las vuelve a leer, y si falla quedan las que había. "Hoy": lunes 19/10/2026
+// (testNow). La reserva de prueba: miércoles 21/10, 28/10, 4/11 y 11/11.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
@@ -17,6 +18,7 @@ import 'package:radici/features/sessions/presentation/cooking_session_screen.dar
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
+import '../../../support/plain_text.dart';
 import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
 
@@ -99,7 +101,9 @@ void main() {
       final block = byKey('session-${sessionId(1)}');
       expect(block, findsOneWidget);
       expect(
-        tester.widget<Text>(byKey('session-${sessionId(1)}-times')).data,
+        plainSpaces(
+          tester.widget<Text>(byKey('session-${sessionId(1)}-times')).data!,
+        ),
         'Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
       );
       expect(byKey('request-nuovo'), findsOneWidget);
@@ -154,7 +158,7 @@ void main() {
       expect(
         find.descendant(
           of: wednesdayCard,
-          matching: find.text(
+          matching: findPlainText(
             'Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
           ),
         ),
@@ -164,7 +168,7 @@ void main() {
       expect(
         find.descendant(
           of: fridayCard,
-          matching: find.text(
+          matching: findPlainText(
             'Spesa dalle 10:45 · Arrivo 11:30 · fino alle 14:00',
           ),
         ),
@@ -224,30 +228,128 @@ void main() {
     );
   });
 
-  testWidgets('el rango a bloquear dice cuántos de sus días tienen sesiones', (
-    tester,
-  ) async {
-    // 600 px: ver el test del rango de agenda_screen_test.
-    await openAgenda(tester, size: const Size(600, 900));
+  /// Abre «Blocca giorni» y elige del día [from] al [to] de octubre.
+  Future<void> pickRange(WidgetTester tester, String from, String to) async {
     await tester.tap(byKey('agenda-block-range'));
     await tester.pumpAndSettle();
     final picker = find.byType(DateRangePickerDialog);
     Finder pickerDay(String number) =>
         find.descendant(of: picker, matching: find.text(number)).first;
-    await tester.tap(pickerDay('20'));
+    await tester.tap(pickerDay(from));
     await tester.pumpAndSettle();
-    await tester.tap(pickerDay('30'));
+    await tester.tap(pickerDay(to));
     await tester.pumpAndSettle();
     final save = MaterialLocalizations.of(tester.element(picker))
         .saveButtonLabel;
     await tester.tap(find.descendant(of: picker, matching: find.text(save)));
     await tester.pumpAndSettle();
+  }
+
+  testWidgets('el rango a bloquear dice cuántos de sus días tienen sesiones', (
+    tester,
+  ) async {
+    // 600 px: ver el test del rango de agenda_screen_test.
+    await openAgenda(tester, size: const Size(600, 900));
+    await pickRange(tester, '20', '30');
 
     expect(
       find.text('2 di questi giorni hanno sessioni: bloccarli non le annulla.'),
       findsOneWidget,
     );
+    expect(byKey('block-range-sessions-unknown'), findsNothing);
   });
+
+  testWidgets(
+    'si las sesiones no se pudieron leer, el rango a bloquear dice que no se sabe (la agenda queda tapada)',
+    (tester) async {
+      final sessions = FakeSessionsRepository(booking())
+        ..fetchFailure = const SessionFailure(SessionFailureKind.unavailable);
+      await openAgenda(tester, sessions: sessions, size: const Size(600, 900));
+      await pickRange(tester, '20', '30');
+
+      expect(
+        find.text(
+          'Non è stato possibile verificare se questi giorni hanno sessioni.',
+        ),
+        findsOneWidget,
+      );
+      expect(byKey('block-range-sessions'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'un día con solo una sesión no dice que está vacío; uno sin nada, sí',
+    (tester) async {
+      await openAgenda(tester);
+      // El 28/10: la semana 2 de la reserva, ningún pedido.
+      await selectDay(tester, '2026-10-28');
+      expect(byKey('session-${sessionId(2)}'), findsOneWidget);
+      expect(byKey('agenda-day-empty'), findsNothing);
+
+      await selectDay(tester, '2026-10-22');
+      expect(
+        find.descendant(
+          of: byKey('agenda-day-empty'),
+          matching: find.text(
+            'Niente per questo giorno: né sessioni né richieste.',
+          ),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'con VoiceOver se abre una sesión: la celda del día y el bloque son botones con la acción de tocar',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openAgenda(tester);
+
+      // En /gestione/, el clic del lector de pantalla solo llega a un nodo
+      // con la acción de tocar (excludeSemantics descarta la del InkWell).
+      expect(
+        tester.getSemantics(day('2026-10-28')),
+        isSemantics(isButton: true, hasTapAction: true),
+      );
+      tester.semantics.tap(
+        find.semantics.byLabel(RegExp(r'28 ottobre 2026, 1 sessione')),
+      );
+      await tester.pumpAndSettle();
+      final block = byKey('session-${sessionId(2)}');
+      expect(block, findsOneWidget);
+      expect(
+        tester.getSemantics(block),
+        isSemantics(isButton: true, hasTapAction: true),
+      );
+
+      tester.semantics.tap(find.semantics.byLabel(RegExp(r'^Giulia Rossi, ')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      expect(
+        tester.widget<Text>(byKey('session-week')).data,
+        'Settimana 2 di 4',
+      );
+      semantics.dispose();
+    },
+  );
+
+  testWidgets(
+    'en la semana, el bloque es un nodo propio: no se funde con el título del día',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openAgenda(tester);
+      await tester.tap(byKey('agenda-view-week'));
+      await tester.pumpAndSettle();
+
+      final node = tester.getSemantics(byKey('session-${sessionId(1)}'));
+      expect(
+        plainSpaces(node.getSemanticsData().label),
+        'Giulia Rossi, Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
+      );
+      expect(node, isSemantics(isButton: true, hasTapAction: true));
+      semantics.dispose();
+    },
+  );
 
   testWidgets('deslizar para actualizar vuelve a leer las sesiones', (
     tester,
@@ -267,6 +369,28 @@ void main() {
     expect(byKey('agenda-day-sessions-2026-10-22'), findsOneWidget);
     expect(find.byType(SnackBar), findsNothing);
   });
+
+  testWidgets(
+    'deslizar para actualizar: si las sesiones no se pueden leer, quedan las que había y lo dice',
+    (tester) async {
+      final app = await openAgenda(tester, size: const Size(400, 900));
+      app.sessions.fetchFailure = const SessionFailure(
+        SessionFailureKind.unavailable,
+      );
+
+      await tester.fling(byKey('agenda'), const Offset(0, 400), 1000);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.text('Aggiornamento non riuscito. Controlla la connessione.'),
+        findsOneWidget,
+      );
+      expect(byKey('agenda-day-sessions-2026-10-21'), findsOneWidget);
+      // No se vació: ni el aviso de que no se pudieron cargar.
+      expect(byKey('sessions-load-error'), findsNothing);
+    },
+  );
 
   testWidgets('si no se pudieron leer las sesiones lo dice, con «Riprova»', (
     tester,

@@ -1,6 +1,7 @@
-// Textos de las sesiones: cada estado, las horas, los motivos de cancelación
-// y cada falla de mover y cancelar. arb_keys_test vigila que las claves
-// existan en los tres idiomas; esto, qué texto sale en cada caso.
+// Textos de las sesiones: cada estado, las horas (dónde se puede partir el
+// renglón), las fechas dentro de una frase, los motivos de cancelación y cada
+// falla de mover y cancelar. arb_keys_test vigila que las claves existan en
+// los tres idiomas; esto, qué texto sale en cada caso.
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
@@ -10,6 +11,7 @@ import 'package:radici/features/sessions/domain/session_api.dart';
 import 'package:radici/features/sessions/presentation/session_labels.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
+import '../../../support/plain_text.dart';
 import '../../../support/session_fixtures.dart';
 
 void main() {
@@ -42,13 +44,28 @@ void main() {
   test('las horas de la sesión, en italiano y en español', () {
     final session = buildSession();
     expect(
-      it.sessionTimesLine(session),
+      plainSpaces(it.sessionTimesLine(session)),
       'Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
     );
     expect(
-      es.sessionTimesLine(session),
+      plainSpaces(es.sessionTimesLine(session)),
       'Compra desde 09:15 · Llega 10:00 · hasta 13:00',
     );
+  });
+
+  test('las horas solo se pueden partir después de un «·»: nunca «hasta» y la hora en dos renglones', () {
+    final line = es.sessionTimesLine(buildSession());
+    // Cada tramo con espacios que no cortan; el «·» pegado al tramo de antes
+    // y un solo espacio común después (ahí se parte el renglón).
+    expect(
+      line,
+      [
+        'Compra${nbsp}desde${nbsp}09:15$nbsp·',
+        'Llega${nbsp}10:00$nbsp·',
+        'hasta${nbsp}13:00',
+      ].join(' '),
+    );
+    expect(' '.allMatches(line), hasLength(2));
   });
 
   test('los motivos: los de la app tienen texto; los de otros caminos, no', () {
@@ -112,6 +129,8 @@ void main() {
         cancel(const SessionFailure(SessionFailureKind.invalidTransition)),
         'Una delle sessioni è già cucinata o pagata: non ne è stata annullata nessuna.',
       );
+      // El aviso con las fechas y qué hacer lo arma la ficha (has_payments_
+      // dialog); este es el de cuando no puede.
       expect(
         cancel(
           const SessionFailure(
@@ -119,7 +138,7 @@ void main() {
             sessionIds: ['a', 'b'],
           ),
         ),
-        startsWith('2 di queste settimane sono già pagate'),
+        'Una delle settimane è già pagata: non ne è stata annullata nessuna.',
       );
     });
 
@@ -150,4 +169,41 @@ void main() {
       );
     });
   });
+
+  testWidgets(
+    'las fechas dentro de una frase: en español sin la coma de intl («Mover al mié 2 de dic»)',
+    (tester) async {
+      Future<SessionFormats> formatsFor(Locale locale) async {
+        late SessionFormats formats;
+        await tester.pumpWidget(
+          Localizations(
+            locale: locale,
+            delegates: AppLocalizations.localizationsDelegates,
+            child: Builder(
+              builder: (context) {
+                formats = SessionFormats(context);
+                return const SizedBox();
+              },
+            ),
+          ),
+        );
+        return formats;
+      }
+
+      final wednesday = CalendarDate(2026, 12, 2);
+      final spanish = await formatsFor(const Locale('es'));
+      expect(spanish.inText(wednesday), 'mié 2 de dic');
+      expect(
+        spanish.listInText([wednesday, wednesday.addDays(7)]),
+        'mié${nbsp}2${nbsp}de${nbsp}dic$nbsp· mié${nbsp}9${nbsp}de${nbsp}dic',
+      );
+      // En italiano y en inglés, la fecha corta de siempre.
+      expect((await formatsFor(const Locale('it'))).inText(wednesday), 'mer 2 dic');
+      expect((await formatsFor(const Locale('en'))).inText(wednesday), 'Wed, Dec 2');
+      expect(
+        es.moveConfirm(spanish.inText(thursday)),
+        'Mover al jue 3 de dic',
+      );
+    },
+  );
 }

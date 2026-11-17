@@ -37,6 +37,7 @@ void main() {
     void Function(BlockRangeChoice?) result, {
     Locale locale = const Locale('it'),
     int sessionDays = 0,
+    bool sessionsKnown = true,
   }) async {
     await pumpLocalized(
       tester,
@@ -50,6 +51,7 @@ void main() {
                 last: last,
                 summary: summary,
                 sessionDays: sessionDays,
+                sessionsKnown: sessionsKnown,
               ),
             ),
             child: const Text('apri'),
@@ -76,6 +78,16 @@ void main() {
 
   testWidgets('sin sesiones en el rango, no dice nada de sesiones', (tester) async {
     await open(tester, summaryWith(const []), (_) {});
+    expect(find.byKey(const ValueKey('block-range-sessions')), findsNothing);
+    expect(find.byKey(const ValueKey('block-range-sessions-unknown')), findsNothing);
+  });
+
+  testWidgets('si las sesiones no se pudieron leer, dice que no se sabe (no «0»)', (tester) async {
+    await open(tester, summaryWith(const []), (_) {}, sessionsKnown: false);
+    expect(
+      find.text('Non è stato possibile verificare se questi giorni hanno sessioni.'),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('block-range-sessions')), findsNothing);
   });
 

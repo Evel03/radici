@@ -9,6 +9,14 @@ import 'request_fixtures.dart';
 /// Pedido de una reserva de ejemplo.
 const String bookingRequestId = 'b0000000-0000-4000-8000-0000000000aa';
 
+/// Las restricciones como llegan del formulario web: sin alérgenos ni dietas
+/// (la web manda `allergens: []` y `diets: []`), la alergia solo en la nota,
+/// y sin filas en `client_restrictions`. Así llegan casi todas las reservas
+/// con alergias.
+const RequestRestrictions webRestrictions = RequestRestrictions(
+  note: 'Celiachia, noci',
+);
+
 /// Id de la sesión [n] (de 1 a 99).
 String sessionId(int n) =>
     'd0000000-0000-4000-8000-0000000000${n.toString().padLeft(2, '0')}';
@@ -135,14 +143,17 @@ CookingSession buildSession({
 );
 
 /// Las [weeks] semanas de una reserva, cada 7 días desde [first] (miércoles
-/// 25/11/2026), con ids `sessionId(1)`, `sessionId(2)`…
+/// 25/11/2026), con ids `sessionId(1)`, `sessionId(2)`… [address] null: una
+/// reserva que llegó por la web (el formulario no pide la dirección).
 List<CookingSession> buildBooking({
   int weeks = 4,
   CalendarDate? first,
   Map<int, SessionStatus> statuses = const {},
   String name = 'Giulia Rossi',
+  String? address = 'Via Gombito 12, 24129 Bergamo',
   List<Allergen> clientAllergens = const [],
   RequestRestrictions? restrictions,
+  bool? noAllergies,
   ClientLocale locale = ClientLocale.it,
 }) {
   final start = first ?? CalendarDate(2026, 11, 25);
@@ -153,8 +164,10 @@ List<CookingSession> buildBooking({
         date: start.addDays(7 * (week - 1)),
         status: statuses[week] ?? SessionStatus.confirmed,
         name: name,
+        address: address,
         clientAllergens: clientAllergens,
         restrictions: restrictions,
+        noAllergies: noAllergies,
         locale: locale,
         weeks: weeks,
       ),

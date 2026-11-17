@@ -121,23 +121,39 @@ repositorios falsos (`test/support/fakes.dart`).
   existía). La web deja de ofrecerlos en 1 o 2 minutos (`get_free_days` los descuenta; la
   disponibilidad se cachea 60 s). Marca los feriados nacionales (Pasquetta calculada; San Francesco
   desde 2026, legge n. 151/2025) y Sant'Alessandro (26/8) como festivo local de Bergamo. Un día con
-  sesiones (y el rango que las incluya) avisa que bloquearlo no las cancela.
+  sesiones (y el rango que las incluya) avisa que bloquearlo no las cancela; si las sesiones no se
+  pudieron leer, el rango lo dice en lugar de callarse. La celda del día y cada bloque llevan la
+  acción de tocar en su nodo de accesibilidad: en `/gestione/`, el clic de VoiceOver solo llega a
+  un nodo que la tiene.
 - **Ficha de la sesión** (`/sessioni/:id`, a pantalla completa): el día, «Settimana k di N» (sin
-  contar las canceladas), las horas, «Come arrivare» (la dirección de la ficha en Apple Maps en el
-  iPhone, también en `/gestione/` con Safari, y en Google Maps en el resto; sin dirección queda
-  deshabilitado y lo dice: el formulario web no la pide), WhatsApp en el idioma de la clienta (la
-  fecha y la hora, nunca la dirección ni las alergias) y llamar; las alergias de la ficha y del
-  pedido, con la nota del pedido resaltada y, con gluten, la de contaminación cruzada (SPEC §5.6);
-  los datos de la clienta y las semanas de la reserva (cada una abre su ficha). Abajo, **Mover**:
+  contar las canceladas), las horas (el renglón se parte solo después de un «·»: nunca «fino alle»
+  y la hora en dos renglones), «Come arrivare» (la dirección de la ficha en Apple Maps en el
+  iPhone, también en `/gestione/` con Safari, y en Google Maps en el resto), WhatsApp en el idioma
+  de la clienta (la fecha y la hora, nunca la dirección ni las alergias) y llamar. El formulario web
+  no pide la dirección: sin ella, WhatsApp pasa a ser el botón principal y en lugar de «Come
+  arrivare» va «Aggiungi indirizzo», que la guarda en la ficha (`clients.address`, con la RLS «la
+  cocinera gestiona los suyos» y el grant por columna; vale para todas sus sesiones y se corrige
+  desde la fila de la dirección). Después, las alergias de la ficha y del pedido, con la nota del
+  pedido resaltada (también sola, como llega de la web) y, con gluten, la de contaminación cruzada
+  (SPEC §5.6), cada una un nodo propio en el orden en que se ven (el lector de pantalla no las
+  mezcla con el título); los datos de la clienta y las semanas de la reserva (cada una abre su
+  ficha). Abajo, **Mover**:
   el calendario y una hoja (`/sessioni/:id/sposta`) que pide el `dryRun` de
   `POST chef/sessions/move` antes de confirmar (libre, un aviso, un choque o la semana con otra
-  sesión de la reserva, que ofrece «Passa alla fine della prenotazione»: una por semana); al mover,
-  la ficha ofrece «Annulla», que la devuelve a su fecha y hora. Y **Cancelar**
-  (`POST chef/sessions/cancel`), con confirmación, el motivo (la lista cerrada del contrato,
-  preseleccionado el neutro `chef_cancelled`: la clienta con cuenta puede leerlo) y «anche le
-  successive». Un 409 `hasPayments` se explica sin cancelar nada y ofrece pasarla al final de la
-  reserva; la cancelación con devolución llega con los cobros (PR 10). Lo que devuelve la función
-  se aplica en la agenda y en la ficha sin volver a leer; los errores se traducen a
+  sesión de la reserva, que ofrece «Passa alla fine della prenotazione»: una por semana; no deja
+  mover hasta que vuelve, y el lector de pantalla anuncia lo que dice); al mover, la ficha ofrece
+  «Annulla», que la devuelve a su fecha y hora. Y **Cancelar** (`POST chef/sessions/cancel`), con
+  confirmación (que no promete que la web vuelva a ofrecer el día: no lo hace si está bloqueado,
+  pasó o no queda lugar), el motivo (la lista cerrada del contrato, preseleccionado el neutro
+  `chef_cancelled`: la clienta con cuenta puede leerlo) y «anche le successive». Un 409
+  `hasPayments` no cancela nada y dice qué semanas están cobradas, por fecha: si se cancelaba solo
+  la de la ficha, ofrece pasarla al final de la reserva (decisión 5 del plan); si eran varias,
+  cancelar solo las que no están cobradas (pasarla al final la dejaría detrás de las que se querían
+  cancelar). Lo explica igual si llega al tocar «Riprova» después de una falla de red. La
+  cancelación con devolución llega con los cobros (PR 10): la app nunca manda `allowWithPayments`.
+  Mientras una sesión espera al servidor, Mover y Cancelar quedan deshabilitados. Lo que devuelve
+  la función se aplica en la agenda y en la ficha sin volver a leer (también las que ya estaban
+  canceladas en otro dispositivo, `alreadyCancelled`); los errores se traducen a
   `SessionFailure` sin loguear nada (contrato `docs/contracts/chef-api.md` §5 y §6). Los modelos
   no imprimen la dirección, las alergias ni las notas en `toString`.
 - **Detalle**: todos los datos (también las restricciones), la estimación guardada y las acciones:

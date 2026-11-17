@@ -1115,9 +1115,33 @@
   "@sessionDirections": {
     "description": "Botón de la ficha de la sesión: abre la dirección de la clienta en Mapas, con el camino."
   },
-  "sessionNoAddress": "Nessun indirizzo nella scheda: chiedilo alla cliente.",
+  "sessionNoAddress": "Nessun indirizzo nella scheda: chiedilo alla cliente e aggiungilo.",
   "@sessionNoAddress": {
-    "description": "La ficha de la clienta no tiene dirección (el formulario web no la pide): «Come arrivare» queda deshabilitado."
+    "description": "La ficha de la clienta no tiene dirección (el formulario web no la pide): en lugar de «Come arrivare» va el botón para agregarla."
+  },
+  "sessionAddAddress": "Aggiungi indirizzo",
+  "@sessionAddAddress": {
+    "description": "Botón de la ficha de la sesión sin dirección, y título de su diálogo: guardar la dirección en la ficha de la clienta (clients.address), para «Come arrivare»."
+  },
+  "sessionEditAddress": "Modifica indirizzo",
+  "@sessionEditAddress": {
+    "description": "Botón junto a la dirección de la ficha de la sesión, y título de su diálogo: corregir la dirección de la clienta."
+  },
+  "sessionAddressHint": "Es.: Via Gombito 12, Bergamo",
+  "@sessionAddressHint": {
+    "description": "Ejemplo dentro del campo de la dirección (calle, número y ciudad)."
+  },
+  "sessionAddressHelper": "Via, numero e città: «Come arrivare» la mostra in Mappe.",
+  "@sessionAddressHelper": {
+    "description": "Debajo del campo de la dirección: qué escribir y para qué sirve."
+  },
+  "sessionAddressSaved": "Indirizzo salvato.",
+  "@sessionAddressSaved": {
+    "description": "Aviso después de guardar la dirección de la clienta."
+  },
+  "sessionAddressFailed": "Non è stato possibile salvare l'indirizzo. Controlla la connessione e riprova.",
+  "@sessionAddressFailed": {
+    "description": "No se pudo guardar la dirección: el diálogo queda abierto con lo escrito."
   },
   "sessionSectionAllergies": "Allergie e diete",
   "@sessionSectionAllergies": {
@@ -1127,9 +1151,9 @@
   "@sessionAllergyNote": {
     "description": "Etiqueta de la nota de alergias que escribió la clienta en la solicitud (texto libre, se muestra resaltada)."
   },
-  "sessionCrossContamination": "Celiachia: evita la contaminazione crociata. Utensili, pentole e superfici puliti o separati, niente farina in giro.",
+  "sessionCrossContamination": "Glutine (celiachia): evita la contaminazione crociata. Utensili, pentole e superfici puliti o separati, niente farina in giro.",
   "@sessionCrossContamination": {
-    "description": "Nota de contaminación cruzada (SPEC §5.6) en una sesión con gluten en la ficha o en la solicitud."
+    "description": "Nota de contaminación cruzada (SPEC §5.6) en una sesión con gluten en la ficha o en la solicitud. Empieza por el alérgeno: gluten no siempre es celiaquía."
   },
   "sessionSectionClient": "Cliente",
   "@sessionSectionClient": {
@@ -1273,6 +1297,10 @@
   "@sessionErrorInvalidTransition": {
     "description": "Al cancelar: alguna está cooked o paid (409 invalidTransition); es todo o nada."
   },
+  "sessionErrorHasPayments": "Una delle settimane è già pagata: non ne è stata annullata nessuna.",
+  "@sessionErrorHasPayments": {
+    "description": "Al cancelar: alguna semana ya está cobrada (409 hasPayments) y no se puede mostrar el diálogo que lo explica; es todo o nada."
+  },
   "sessionErrorNotFound": "La sessione non esiste più.",
   "@sessionErrorNotFound": {
     "description": "Al mover o cancelar: la sesión ya no existe (404)."
@@ -1316,9 +1344,12 @@
       "date": { "type": "String", "example": "mer 25 nov" }
     }
   },
-  "cancelSessionBody": "Il giorno torna libero sul sito in 1 o 2 minuti. Una sessione annullata non si può riattivare.",
+  "cancelSessionBody": "{count, plural, =1{Una sessione annullata non si può riattivare. Se c'è posto nel tuo orario e il giorno non è bloccato, il sito torna a offrirlo in 1 o 2 minuti.} other{Una sessione annullata non si può riattivare. Se c'è posto nel tuo orario e i giorni non sono bloccati, il sito torna a offrirli in 1 o 2 minuti.}}",
   "@cancelSessionBody": {
-    "description": "Confirmación de cancelar: qué pasa (la web vuelve a ofrecer el día) y que no se deshace."
+    "description": "Confirmación de cancelar [count] sesiones: que no se deshace y cuándo la web vuelve a ofrecer el día (no siempre: un día bloqueado, pasado o sin lugar no vuelve).",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
   },
   "cancelSessionReason": "Motivo",
   "@cancelSessionReason": {
@@ -1342,22 +1373,51 @@
   "@cancelSessionKeep": {
     "description": "Botón para cerrar la confirmación sin cancelar nada (no se usa «Annulla» para no confundirlo con cancelar la sesión)."
   },
-  "cancelSessionDone": "{count, plural, =1{Sessione annullata: in 1 o 2 minuti il sito torna a offrire quel giorno.} other{{count} sessioni annullate: in 1 o 2 minuti il sito torna a offrire quei giorni.}}",
+  "cancelSessionDone": "{count, plural, =1{Sessione annullata.} other{{count} sessioni annullate.}}",
   "@cancelSessionDone": {
     "description": "Aviso después de cancelar.",
     "placeholders": {
       "count": { "type": "int", "example": "1" }
     }
   },
-  "cancelHasPaymentsTitle": "Settimana già pagata",
+  "cancelHasPaymentsTitle": "{count, plural, =1{Settimana già pagata} other{Settimane già pagate}}",
   "@cancelHasPaymentsTitle": {
-    "description": "Título del aviso cuando una semana que se quiso cancelar ya está cobrada (409 hasPayments)."
-  },
-  "cancelHasPaymentsBody": "{count, plural, =1{Questa settimana è già pagata: non è stato annullato niente. Una settimana annullata non si può spostare né riattivare, quindi prima puoi passarla alla fine della prenotazione. Annullarla con il rimborso arriverà con gli incassi.} other{{count} di queste settimane sono già pagate: non è stato annullato niente. Una settimana annullata non si può spostare né riattivare, quindi prima puoi passarle alla fine della prenotazione. Annullarle con il rimborso arriverà con gli incassi.}}",
-  "@cancelHasPaymentsBody": {
-    "description": "Aviso de hasPayments: no se canceló nada; se puede pasar la semana al final de la reserva (decisión 5 del plan). La cancelación con devolución llega con los cobros.",
+    "description": "Título del aviso cuando [count] semanas que se quisieron cancelar ya están cobradas (409 hasPayments).",
     "placeholders": {
       "count": { "type": "int", "example": "1" }
+    }
+  },
+  "cancelHasPaymentsPaid": "{count, plural, =1{La settimana di {dates} è già pagata: non è stato annullato niente.} other{{count} settimane sono già pagate ({dates}): non è stato annullato niente.}}",
+  "@cancelHasPaymentsPaid": {
+    "description": "Aviso de hasPayments: cuáles semanas ya están cobradas (sus fechas, separadas por ·); no se canceló ninguna (todo o nada).",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" },
+      "dates": { "type": "String", "example": "mer 9 dic" }
+    }
+  },
+  "cancelHasPaymentsMoveToEnd": "Per ora una settimana pagata non si può annullare dall'app: puoi passarla alla fine della prenotazione ({date}) e l'incasso resta su quella settimana.",
+  "@cancelHasPaymentsMoveToEnd": {
+    "description": "Aviso de hasPayments cuando se cancelaba solo la semana de la ficha y está cobrada: se puede pasar al final de la reserva (decisión 5 del plan). La devolución llega con los cobros manuales.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 23 dic" }
+    }
+  },
+  "cancelHasPaymentsCancelUnpaid": "{count, plural, =1{Per ora una settimana pagata non si può annullare dall'app: puoi annullare solo quella non pagata.} other{Per ora una settimana pagata non si può annullare dall'app: puoi annullare solo le {count} non pagate.}}",
+  "@cancelHasPaymentsCancelUnpaid": {
+    "description": "Aviso de hasPayments cuando se cancelaban varias semanas («anche le successive»): se pueden cancelar las [count] que no están cobradas.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "cancelHasPaymentsNoAction": "Per ora una settimana pagata non si può annullare dall'app.",
+  "@cancelHasPaymentsNoAction": {
+    "description": "Aviso de hasPayments cuando no hay nada que ofrecer (la cobrada es la última, no se puede mover o todas las pedidas están cobradas)."
+  },
+  "cancelHasPaymentsCancelUnpaidAction": "{count, plural, =1{Annulla quella non pagata} other{Annulla le {count} non pagate}}",
+  "@cancelHasPaymentsCancelUnpaidAction": {
+    "description": "Botón del aviso de hasPayments: cancelar solo las [count] semanas que no están cobradas.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
     }
   },
   "agendaSessionCount": "{count, plural, =0{nessuna sessione} =1{1 sessione} other{{count} sessioni}}",
@@ -1380,6 +1440,10 @@
     "placeholders": {
       "count": { "type": "int", "example": "2" }
     }
+  },
+  "blockRangeSessionsUnknown": "Non è stato possibile verificare se questi giorni hanno sessioni.",
+  "@blockRangeSessionsUnknown": {
+    "description": "Diálogo del rango a bloquear: las sesiones no se pudieron leer, así que no se sabe si algún día del rango tiene (bloquearlo no las cancelaría)."
   },
 
   "newRequestBanner": "Nuova richiesta da {name}",
@@ -1425,9 +1489,9 @@
       "end": { "type": "String", "example": "25 ott 2026" }
     }
   },
-  "agendaNoRequestsDay": "Nessuna richiesta per questo giorno.",
+  "agendaNoRequestsDay": "Niente per questo giorno: né sessioni né richieste.",
   "@agendaNoRequestsDay": {
-    "description": "Día sin pedidos."
+    "description": "Día de la agenda sin sesiones ni pedidos."
   },
   "agendaWithoutDateEmpty": "Nessuna richiesta senza data.",
   "@agendaWithoutDateEmpty": {

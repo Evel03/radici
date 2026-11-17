@@ -1,6 +1,7 @@
 // Las semanas de una reserva («Semana k de N» sin contar las canceladas, las
-// siguientes, el final de la reserva), las sesiones de cada día de la agenda,
-// desde qué día las lee y el enlace de «Cómo llegar».
+// siguientes, el final de la reserva, qué ofrecer si alguna que se quiso
+// cancelar ya está cobrada), las sesiones de cada día de la agenda, desde qué
+// día las lee y el enlace de «Cómo llegar».
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
@@ -116,6 +117,103 @@ void main() {
       expect(endOfBookingDate(single.single, single), isNull);
       final alone = buildSession(requestId: null);
       expect(endOfBookingDate(alone, [alone]), isNull);
+    });
+  });
+
+  group('si una semana que se quiso cancelar ya está cobrada (409 hasPayments)', () {
+    // Las semanas: 25/11, 2/12, 9/12 y 16/12. Se cancela desde la 2.
+    final booking = buildBooking();
+    final current = booking[1];
+    List<String> ids(List<CookingSession> sessions) => [
+      for (final session in sessions) session.id,
+    ];
+
+    test('solo la de la ficha, cobrada: pasarla al final (decisión 5 del plan)', () {
+      final plan = hasPaymentsPlan(
+        current: current,
+        booking: booking,
+        requested: [current],
+        paidIds: [current.id],
+      );
+      expect(ids(plan.paid), [sessionId(2)]);
+      expect(plan.unpaid, isEmpty);
+      expect(plan.moveToEnd, CalendarDate(2026, 12, 23));
+    });
+
+    test('con «también las siguientes» no ofrece pasarla al final: el final cuenta las que se querían cancelar', () {
+      final plan = hasPaymentsPlan(
+        current: current,
+        booking: booking,
+        requested: [current, booking[2], booking[3]],
+        paidIds: [current.id],
+      );
+      expect(ids(plan.paid), [sessionId(2)]);
+      expect(ids(plan.unpaid), [sessionId(3), sessionId(4)]);
+      expect(plan.moveToEnd, isNull);
+    });
+
+    test('si la cobrada es una de las siguientes, esa es la cobrada y las demás se pueden cancelar', () {
+      final plan = hasPaymentsPlan(
+        current: current,
+        booking: booking,
+        requested: [current, booking[2], booking[3]],
+        paidIds: [sessionId(3)],
+      );
+      expect(ids(plan.paid), [sessionId(3)]);
+      expect(ids(plan.unpaid), [sessionId(2), sessionId(4)]);
+      expect(plan.moveToEnd, isNull);
+    });
+
+    test('varias cobradas, por fecha', () {
+      final plan = hasPaymentsPlan(
+        current: current,
+        booking: booking,
+        requested: [current, booking[2], booking[3]],
+        paidIds: [sessionId(3), sessionId(2)],
+      );
+      expect(ids(plan.paid), [sessionId(2), sessionId(3)]);
+      expect(ids(plan.unpaid), [sessionId(4)]);
+    });
+
+    test('la última, o una que ya no se mueve, no se puede pasar al final', () {
+      final last = hasPaymentsPlan(
+        current: booking[3],
+        booking: booking,
+        requested: [booking[3]],
+        paidIds: [sessionId(4)],
+      );
+      expect(last.moveToEnd, isNull);
+      expect(last.unpaid, isEmpty);
+
+      final shopped = booking[1].copyWith(status: SessionStatus.shoppingDone);
+      final notMovable = hasPaymentsPlan(
+        current: shopped,
+        booking: [booking[0], shopped, booking[2], booking[3]],
+        requested: [shopped],
+        paidIds: [shopped.id],
+      );
+      expect(notMovable.moveToEnd, isNull);
+    });
+
+    test('si el servidor no dice cuáles (o ninguna de las pedidas), se toman todas como cobradas: nunca se ofrece repetir lo mismo', () {
+      for (final paidIds in [<String>[], <String>['otra']]) {
+        final several = hasPaymentsPlan(
+          current: current,
+          booking: booking,
+          requested: [current, booking[2]],
+          paidIds: paidIds,
+        );
+        expect(ids(several.paid), [sessionId(2), sessionId(3)]);
+        expect(several.unpaid, isEmpty);
+
+        final single = hasPaymentsPlan(
+          current: current,
+          booking: booking,
+          requested: [current],
+          paidIds: paidIds,
+        );
+        expect(single.moveToEnd, CalendarDate(2026, 12, 23));
+      }
     });
   });
 

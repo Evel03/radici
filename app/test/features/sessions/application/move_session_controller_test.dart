@@ -1,7 +1,9 @@
-// Hoja «Mover la sesión» sin widgets: el dryRun antes de confirmar, los
-// avisos, el choque, la semana que ya tiene otra sesión de la reserva (con
-// «Pasar al final de la reserva»), confirmar y lo que devuelve para
-// «Deshacer». La reserva de prueba: miércoles 25/11, 2/12, 9/12 y 16/12.
+// Hoja «Mover la sesión» sin widgets: el dryRun antes de confirmar (no deja
+// mover hasta que vuelve), los avisos, el choque, la semana que ya tiene otra
+// sesión de la reserva (con «Pasar al final de la reserva»), las fallas que
+// bloquean la hoja y las que se borran al cambiar la fecha, confirmar y lo
+// que devuelve para «Deshacer». La reserva de prueba: miércoles 25/11, 2/12,
+// 9/12 y 16/12.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -247,6 +249,90 @@ void main() {
     expect(state().blocked, isTrue);
     expect(repository.checks, isEmpty);
   });
+
+  test(
+    'mientras el dryRun no volvió no deja mover: primero se ve lo que dice el servidor',
+    () async {
+      // El jueves está bloqueado: un aviso que solo trae el dryRun (al mover de
+      // verdad, el servidor solo rechaza un choque o la semana ocupada).
+      repository.statuses[thursday] = BookingDayStatus.blocked;
+      repository.pendingCheck = Completer<void>();
+      await open(date: thursday);
+
+      expect(state().changed, isTrue);
+      expect(state().checksStatus, MoveChecksStatus.loading);
+      expect(state().canConfirm, isFalse);
+      await controller().confirm();
+      expect(repository.moves, isEmpty);
+
+      repository.pendingCheck!.complete();
+      await pumpEventQueue();
+      expect(state().currentCheck?.status, BookingDayStatus.blocked);
+      expect(state().canConfirm, isTrue);
+    },
+  );
+
+  test('otra fecha u otra hora borran la falla del intento anterior', () async {
+    await open(date: thursday);
+    repository.statuses[thursday] = BookingDayStatus.busy;
+    await controller().confirm();
+    await pumpEventQueue();
+    expect(state().failure?.kind, SessionFailureKind.slotTaken);
+
+    controller().setDate(thursday.addDays(1));
+    // Ya no vale: si quedara, la barra seguiría diciendo el choque del jueves.
+    expect(state().failure, isNull);
+    await pumpEventQueue();
+    expect(state().canConfirm, isTrue);
+
+    repository.moveFailure = const SessionFailure(
+      SessionFailureKind.unavailable,
+    );
+    await controller().confirm();
+    expect(state().failure?.kind, SessionFailureKind.unavailable);
+    controller().setStart(const ClockTime.hm(11, 30));
+    expect(state().failure, isNull);
+  });
+
+  test(
+    'si el dryRun dice que no hay permiso, la hoja se bloquea sin mover nada',
+    () async {
+      for (final kind in [
+        SessionFailureKind.forbidden,
+        SessionFailureKind.unauthorized,
+      ]) {
+        repository = FakeSessionsRepository(buildBooking())
+          ..checkFailure = SessionFailure(kind);
+        await open(date: thursday);
+        expect(state().failure?.kind, kind, reason: kind.name);
+        expect(state().blocked, isTrue, reason: kind.name);
+        expect(state().checksStatus, MoveChecksStatus.idle, reason: kind.name);
+        expect(state().canConfirm, isFalse, reason: kind.name);
+        await controller().confirm();
+        expect(repository.moves, isEmpty, reason: kind.name);
+      }
+    },
+  );
+
+  test(
+    'si el dryRun dice que ya no se mueve o no existe (otro dispositivo), la hoja se bloquea y la ficha se relee',
+    () async {
+      for (final kind in [
+        SessionFailureKind.notMovable,
+        SessionFailureKind.notFound,
+      ]) {
+        repository = FakeSessionsRepository(buildBooking())
+          ..checkFailure = SessionFailure(kind);
+        await open(date: thursday);
+        await pumpEventQueue();
+        expect(state().failure?.kind, kind, reason: kind.name);
+        expect(state().blocked, isTrue, reason: kind.name);
+        expect(state().canConfirm, isFalse, reason: kind.name);
+        // La ficha (una lectura al abrir) se vuelve a leer.
+        expect(repository.bookingFetches, hasLength(2), reason: kind.name);
+      }
+    },
+  );
 
   test('si el dryRun falla se puede mover igual y reintentarlo', () async {
     repository.checkFailure = const SessionFailure(

@@ -1,6 +1,7 @@
 // Sesiones con el SDK real contra un servidor HTTP simulado: la lectura con la
 // RLS (GET /rest/v1/sessions con la ficha, sus restricciones y el pedido
-// embebidos, filtrada por la cocinera), y mover y cancelar con la Edge
+// embebidos, filtrada por la cocinera), la dirección de la ficha (PATCH
+// /rest/v1/clients, solo esa columna), y mover y cancelar con la Edge
 // Function chef (POST /functions/v1/chef/sessions/move y …/cancel, con la
 // sesión de Evelyn y la región en la URL), con cada error traducido a
 // SessionFailure.
@@ -72,17 +73,26 @@ void main() {
       expect(request.headers['apikey'], 'sb_publishable_test');
     });
 
-    test('una por id, o null si la RLS no la deja ver', () async {
+    test('una por id de la cocinera, o null si no es suya o la RLS no la deja ver', () async {
       server.handler = (_) async => jsonResponse([sessionRow()]);
-      final session = await repository.fetchSession(sessionId(1));
+      final session = await repository.fetchSession(
+        chefId: testChefId,
+        id: sessionId(1),
+      );
       expect(session?.id, sessionId(1));
       final query = server.last.url.queryParameters;
       expect(query['select'], select);
       expect(query['id'], 'eq.${sessionId(1)}');
+      // También por la cocinera: si además fuera clienta con cuenta, la RLS
+      // («el cliente lee las suyas») le dejaría ver una que no es suya.
+      expect(query['chef_id'], 'eq.$testChefId');
 
       // Sin filas (no existe, o es de otra cocinera): null.
       server.handler = (_) async => jsonResponse(<Object>[]);
-      expect(await repository.fetchSession(sessionId(9)), isNull);
+      expect(
+        await repository.fetchSession(chefId: testChefId, id: sessionId(9)),
+        isNull,
+      );
     });
 
     test('las de una reserva, también las canceladas', () async {
@@ -120,7 +130,7 @@ void main() {
       server.handler = (_) async =>
           jsonResponse({'message': 'JWT expired'}, status: 401);
       await expectLater(
-        repository.fetchSession(sessionId(1)),
+        repository.fetchSession(chefId: testChefId, id: sessionId(1)),
         _failure(SessionFailureKind.unavailable),
       );
 
@@ -131,6 +141,57 @@ void main() {
         repository.fetchBookingSessions(
           chefId: testChefId,
           requestId: bookingRequestId,
+        ),
+        _failure(SessionFailureKind.unavailable),
+      );
+    });
+  });
+
+  group('dirección de la ficha', () {
+    test('PATCH clients con solo la dirección, de la ficha y de la cocinera', () async {
+      server.handler = (_) async => jsonResponse([
+        {'id': testClientId},
+      ]);
+
+      await repository.updateClientAddress(
+        chefId: testChefId,
+        clientId: testClientId,
+        address: 'Via Pignolo 5, Bergamo',
+      );
+
+      final request = server.last;
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/rest/v1/clients');
+      final query = request.url.queryParameters;
+      expect(query['id'], 'eq.$testClientId');
+      expect(query['chef_id'], 'eq.$testChefId');
+      expect(query['select'], 'id');
+      // Solo la dirección: el resto de la ficha no se toca.
+      expect(jsonBodyOf(request), {'address': 'Via Pignolo 5, Bergamo'});
+      // Con la sesión de Evelyn: la RLS decide qué ficha puede cambiar.
+      expect(request.headers['Authorization'], 'Bearer ${fakeJwt('user-1')}');
+    });
+
+    test('sin filas (no existe o no es suya) da notFound; un error, unavailable', () async {
+      server.handler = (_) async => jsonResponse(<Object>[]);
+      await expectLater(
+        repository.updateClientAddress(
+          chefId: testChefId,
+          clientId: testClientId,
+          address: 'Via Pignolo 5, Bergamo',
+        ),
+        _failure(SessionFailureKind.notFound),
+      );
+
+      server.handler = (_) async => jsonResponse({
+        'message': 'permission denied for table clients',
+        'code': '42501',
+      }, status: 403);
+      await expectLater(
+        repository.updateClientAddress(
+          chefId: testChefId,
+          clientId: testClientId,
+          address: 'Via Pignolo 5, Bergamo',
         ),
         _failure(SessionFailureKind.unavailable),
       );

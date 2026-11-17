@@ -1,11 +1,17 @@
 // Ficha de la sesión (/sessioni/:id) en la app: el día y las horas salidas de
 // la sesión, «Settimana k di N» sin contar las canceladas, «Come arrivare»
-// (Apple Maps en el iPhone, Google Maps en el resto), WhatsApp en el idioma de
-// la clienta, las alergias resaltadas (la nota del pedido y, con gluten, la de
-// contaminación cruzada), las semanas de la reserva, y cancelar con
-// confirmación, motivo y «anche le successive», con cada falla explicada
-// (también un 409 hasPayments, que ofrece pasarla al final de la reserva).
-// Mover y cancelar quedan abajo: en el tercio inferior a 375×667.
+// (Apple Maps en el iPhone, Google Maps en el resto; sin dirección, «Aggiungi
+// indirizzo» la guarda en la ficha), WhatsApp en el idioma de la clienta, las
+// alergias resaltadas (la nota del pedido, también sola como llega de la web,
+// y, con gluten, la de contaminación cruzada) en el orden en que las lee el
+// lector de pantalla, las semanas de la reserva, y cancelar con confirmación,
+// motivo y «anche le successive», con cada falla explicada (un 409
+// hasPayments dice cuáles están cobradas y qué se puede hacer, también si
+// llega al tocar «Riprova»). Mientras espera al servidor, Sposta y Annulla
+// quedan deshabilitados. Mover y cancelar quedan abajo: en el tercio inferior
+// a 375×667.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
@@ -19,13 +25,22 @@ import 'package:radici/features/sessions/presentation/move_session_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
+import '../../../support/plain_text.dart';
+import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
+import '../../../support/text_input_guard.dart';
 
 void main() {
   Finder byKey(String key) => find.byKey(ValueKey(key));
 
   String textOf(WidgetTester tester, String key) =>
       tester.widget<Text>(byKey(key)).data!;
+
+  VoidCallback? onPressedOf(WidgetTester tester, String key) =>
+      tester.widget<ButtonStyleButton>(byKey(key)).onPressed;
+
+  Finder snackBarAction(String label) =>
+      find.descendant(of: find.byType(SnackBar), matching: find.text(label));
 
   /// Desplaza la ficha hasta que [finder] se construya y se vea (la lista
   /// construye solo lo que está cerca de la pantalla).
@@ -45,13 +60,14 @@ void main() {
   }
 
   /// La ficha de la semana [n] de una reserva de 4 (25/11, 2/12, 9/12 y 16/12).
+  /// [appleMaps] null: la regla de la plataforma, sin reemplazo.
   Future<ChefApp> openSession(
     WidgetTester tester, {
     int n = 2,
     FakeSessionsRepository? sessions,
     Size size = const Size(400, 900),
     Locale locale = const Locale('it', 'IT'),
-    bool appleMaps = false,
+    bool? appleMaps = false,
   }) async {
     final app = await pumpChefApp(
       tester,
@@ -60,10 +76,31 @@ void main() {
       location: '/sessioni/${sessionId(n)}',
       size: size,
       deviceLocales: [locale],
-      overrides: [appleMapsProvider.overrideWithValue(appleMaps)],
+      overrides: [
+        if (appleMaps != null) appleMapsProvider.overrideWithValue(appleMaps),
+      ],
     );
     expect(find.byType(CookingSessionScreen), findsOneWidget);
     return app;
+  }
+
+  /// Cancela desde la ficha abierta, con «anche le successive» si
+  /// [following].
+  Future<void> cancelFromSheet(
+    WidgetTester tester, {
+    bool following = false,
+  }) async {
+    await tester.tap(byKey('session-cancel'));
+    await tester.pumpAndSettle();
+    if (following) {
+      // En un teléfono queda debajo: el diálogo se desplaza.
+      await tester.ensureVisible(byKey('cancel-session-following'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('cancel-session-following'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(byKey('cancel-session-confirm'));
+    await tester.pumpAndSettle();
   }
 
   testWidgets('el día, «Settimana k di N» y las horas que salen de la sesión', (
@@ -75,7 +112,7 @@ void main() {
     expect(textOf(tester, 'session-date'), 'mercoledì 2 dicembre 2026');
     expect(textOf(tester, 'session-week'), 'Settimana 2 di 4');
     expect(
-      textOf(tester, 'session-times'),
+      plainSpaces(textOf(tester, 'session-times')),
       'Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
     );
     // Confirmada: sin etiqueta de estado.
@@ -128,46 +165,32 @@ void main() {
     },
   );
 
-  testWidgets(
-    '«Come arrivare» abre la dirección en Google Maps; en el iPhone, en Apple Maps',
-    (tester) async {
-      final app = await openSession(tester);
-      await tester.tap(byKey('session-directions'));
-      await tester.pumpAndSettle();
-      expect(
-        app.launcher.launched.single.toString(),
-        'https://www.google.com/maps/dir/?api=1&destination=Via%20Gombito%2012%2C%2024129%20Bergamo',
-      );
-    },
-  );
-
-  testWidgets('en el iPhone «Come arrivare» va a Apple Maps', (tester) async {
-    final app = await openSession(tester, appleMaps: true);
+  testWidgets('«Come arrivare» abre la dirección en Google Maps', (
+    tester,
+  ) async {
+    final app = await openSession(tester);
+    expect(tester.widget(byKey('session-directions')), isA<FilledButton>());
     await tester.tap(byKey('session-directions'));
     await tester.pumpAndSettle();
     expect(
       app.launcher.launched.single.toString(),
-      'https://maps.apple.com/?daddr=Via%20Gombito%2012%2C%2024129%20Bergamo',
+      'https://www.google.com/maps/dir/?api=1&destination=Via%20Gombito%2012%2C%2024129%20Bergamo',
     );
   });
 
   testWidgets(
-    'sin dirección en la ficha, «Come arrivare» queda deshabilitado y lo dice',
+    'en el iPhone (también /gestione/ en Safari) «Come arrivare» va a Apple Maps',
     (tester) async {
-      final booking = [
-        for (final session in buildBooking())
-          session.copyWith(client: session.client.copyWith(address: null)),
-      ];
-      await openSession(tester, sessions: FakeSessionsRepository(booking));
+      // Sin reemplazar appleMapsProvider: la regla de la plataforma.
+      final app = await openSession(tester, appleMaps: null);
+      await tester.tap(byKey('session-directions'));
+      await tester.pumpAndSettle();
       expect(
-        tester.widget<ButtonStyleButton>(byKey('session-directions')).onPressed,
-        isNull,
-      );
-      expect(
-        textOf(tester, 'session-no-address'),
-        'Nessun indirizzo nella scheda: chiedilo alla cliente.',
+        app.launcher.launched.single.toString(),
+        'https://maps.apple.com/?daddr=Via%20Gombito%2012%2C%2024129%20Bergamo',
       );
     },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
   );
 
   testWidgets(
@@ -203,53 +226,316 @@ void main() {
     },
   );
 
+  group('sin dirección (las reservas que llegan por la web)', () {
+    FakeSessionsRepository webBooking() => FakeSessionsRepository(
+      buildBooking(address: null, restrictions: webRestrictions),
+    );
+
+    testWidgets(
+      'WhatsApp pasa a ser el principal y en lugar de «Come arrivare» va «Aggiungi indirizzo»',
+      (tester) async {
+        await openSession(tester, sessions: webBooking());
+        expect(byKey('session-directions'), findsNothing);
+        expect(tester.widget(byKey('session-whatsapp')), isA<FilledButton>());
+        expect(onPressedOf(tester, 'session-whatsapp'), isNotNull);
+        expect(onPressedOf(tester, 'session-add-address'), isNotNull);
+        expect(
+          textOf(tester, 'session-no-address'),
+          'Nessun indirizzo nella scheda: chiedilo alla cliente e aggiungilo.',
+        );
+      },
+    );
+
+    testWidgets(
+      '«Aggiungi indirizzo» la guarda en la ficha y «Come arrivare» la abre',
+      (tester) async {
+        final app = await openSession(tester, sessions: webBooking());
+        await tester.tap(byKey('session-add-address'));
+        await tester.pumpAndSettle();
+
+        expect(byKey('client-address-dialog'), findsOneWidget);
+        // Letra de 16 px o más: con menos, iOS agranda la página.
+        expectReadableInputs(tester);
+        // Vacío no se guarda.
+        expect(onPressedOf(tester, 'client-address-save'), isNull);
+        await tester.enterText(
+          byKey('client-address-field'),
+          '  Via Pignolo 5,\n  Bergamo ',
+        );
+        await tester.pump();
+        await tester.tap(byKey('client-address-save'));
+        await tester.pumpAndSettle();
+
+        // En una línea y sin espacios de más.
+        expect(app.sessions.addressUpdates, [
+          (testClientId, 'Via Pignolo 5, Bergamo'),
+        ]);
+        expect(byKey('client-address-dialog'), findsNothing);
+        expect(find.text('Indirizzo salvato.'), findsOneWidget);
+        expect(byKey('session-add-address'), findsNothing);
+        expect(byKey('session-no-address'), findsNothing);
+        expect(tester.widget(byKey('session-directions')), isA<FilledButton>());
+        await tester.tap(byKey('session-directions'));
+        await tester.pumpAndSettle();
+        expect(
+          app.launcher.launched.single.toString(),
+          'https://www.google.com/maps/dir/?api=1&destination=Via%20Pignolo%205%2C%20Bergamo',
+        );
+      },
+    );
+
+    testWidgets(
+      'si no se puede guardar, el diálogo queda abierto con lo escrito y se puede reintentar',
+      (tester) async {
+        final sessions = webBooking()
+          ..addressFailure = const SessionFailure(
+            SessionFailureKind.unavailable,
+          );
+        await openSession(tester, sessions: sessions);
+        await tester.tap(byKey('session-add-address'));
+        await tester.pumpAndSettle();
+        await tester.enterText(byKey('client-address-field'), 'Via Pignolo 5');
+        await tester.pump();
+        await tester.tap(byKey('client-address-save'));
+        await tester.pumpAndSettle();
+
+        expect(byKey('client-address-dialog'), findsOneWidget);
+        expect(
+          textOf(tester, 'client-address-failed'),
+          "Non è stato possibile salvare l'indirizzo. Controlla la connessione e riprova.",
+        );
+        expect(
+          tester
+              .widget<TextField>(byKey('client-address-field'))
+              .controller!
+              .text,
+          'Via Pignolo 5',
+        );
+
+        sessions.addressFailure = null;
+        await tester.tap(byKey('client-address-save'));
+        await tester.pumpAndSettle();
+        expect(byKey('client-address-dialog'), findsNothing);
+        expect(byKey('session-directions'), findsOneWidget);
+      },
+    );
+
+    testWidgets('«Annulla» en el diálogo no guarda nada', (tester) async {
+      final app = await openSession(tester, sessions: webBooking());
+      await tester.tap(byKey('session-add-address'));
+      await tester.pumpAndSettle();
+      await tester.enterText(byKey('client-address-field'), 'Via Pignolo 5');
+      await tester.tap(byKey('client-address-cancel'));
+      await tester.pumpAndSettle();
+      expect(app.sessions.addressUpdates, isEmpty);
+      expect(byKey('session-add-address'), findsOneWidget);
+    });
+  });
+
   testWidgets(
-    'las alergias resaltadas: la nota del pedido y, con gluten, la contaminación cruzada',
+    'con dirección se puede corregir: el diálogo la trae y sin cambios no se guarda',
     (tester) async {
-      await openSession(
-        tester,
-        sessions: FakeSessionsRepository(
-          buildBooking(
-            clientAllergens: const [Allergen.gluten],
-            restrictions: const RequestRestrictions(
-              allergens: [Allergen.milk],
-              note: 'Il bambino è celiaco: anche le tracce',
+      final app = await openSession(tester);
+      await reveal(tester, byKey('session-edit-address'));
+      await tester.tap(byKey('session-edit-address'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Modifica indirizzo'), findsWidgets);
+      expect(onPressedOf(tester, 'client-address-save'), isNull);
+      await tester.enterText(
+        byKey('client-address-field'),
+        'Via Gombito 14, 24129 Bergamo',
+      );
+      await tester.pump();
+      await tester.tap(byKey('client-address-save'));
+      await tester.pumpAndSettle();
+      expect(app.sessions.addressUpdates.single.$2, 'Via Gombito 14, 24129 Bergamo');
+      expect(
+        tester.widget<SelectableText>(byKey('session-address')).data,
+        'Via Gombito 14, 24129 Bergamo',
+      );
+    },
+  );
+
+  group('alergias', () {
+    testWidgets(
+      'resaltadas: la nota del pedido y, con gluten, la contaminación cruzada',
+      (tester) async {
+        await openSession(
+          tester,
+          sessions: FakeSessionsRepository(
+            buildBooking(
+              clientAllergens: const [Allergen.gluten],
+              restrictions: const RequestRestrictions(
+                allergens: [Allergen.milk],
+                note: 'Il bambino è celiaco: anche le tracce',
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      expect(
-        find.descendant(
-          of: byKey('session-allergens'),
-          matching: find.text('Glutine'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: byKey('session-allergens'),
-          matching: find.text('Latte e derivati'),
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Nota della richiesta'), findsOneWidget);
-      expect(
-        textOf(tester, 'session-allergy-note'),
-        'Il bambino è celiaco: anche le tracce',
-      );
-      expect(byKey('session-cross-contamination'), findsOneWidget);
-    },
-  );
+        expect(
+          find.descendant(
+            of: byKey('session-allergens'),
+            matching: find.text('Glutine'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: byKey('session-allergens'),
+            matching: find.text('Latte e derivati'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Nota della richiesta'), findsOneWidget);
+        expect(
+          textOf(tester, 'session-allergy-note'),
+          'Il bambino è celiaco: anche le tracce',
+        );
+        expect(
+          textOf(tester, 'session-cross-contamination'),
+          startsWith('Glutine (celiachia): evita la contaminazione crociata.'),
+        );
+      },
+    );
 
-  testWidgets(
-    'sin alergias: «nadie tiene» si lo confirmó; si no, que pregunte',
-    (tester) async {
-      await openSession(tester);
-      expect(byKey('session-allergies-unknown'), findsOneWidget);
+    testWidgets(
+      'como llegan de la web (solo la nota): la nota resaltada, nunca «Nessun dato»',
+      (tester) async {
+        await openSession(
+          tester,
+          sessions: FakeSessionsRepository(
+            buildBooking(restrictions: webRestrictions),
+          ),
+        );
+        expect(textOf(tester, 'session-allergy-note'), 'Celiachia, noci');
+        expect(find.text('Nota della richiesta'), findsOneWidget);
+        expect(byKey('session-allergies-unknown'), findsNothing);
+        expect(byKey('session-no-allergies'), findsNothing);
+        expect(byKey('session-allergens'), findsNothing);
+        // Sin gluten guardado no hay nota de contaminación cruzada: la nota
+        // resaltada es la única señal.
+        expect(byKey('session-cross-contamination'), findsNothing);
+      },
+    );
+
+    testWidgets('«nadie tiene» si el pedido lo confirmó', (tester) async {
+      await openSession(
+        tester,
+        sessions: FakeSessionsRepository(buildBooking(noAllergies: true)),
+      );
+      expect(
+        textOf(tester, 'session-no-allergies'),
+        'Ha confermato che nessuno ha allergie, intolleranze alimentari o celiachia.',
+      );
+      expect(byKey('session-allergies-unknown'), findsNothing);
       expect(byKey('session-cross-contamination'), findsNothing);
-    },
-  );
+    });
+
+    testWidgets('sin respuesta, que pregunte antes de cocinar', (tester) async {
+      await openSession(tester);
+      expect(
+        textOf(tester, 'session-allergies-unknown'),
+        'Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.',
+      );
+      expect(byKey('session-no-allergies'), findsNothing);
+      expect(byKey('session-cross-contamination'), findsNothing);
+    });
+
+    testWidgets(
+      'el lector de pantalla las lee en el orden en que se ven: el título solo y después cada cosa',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await openSession(
+          tester,
+          locale: const Locale('es'),
+          sessions: FakeSessionsRepository(
+            buildBooking(
+              address: null,
+              clientAllergens: const [Allergen.gluten],
+              restrictions: const RequestRestrictions(
+                allergens: [Allergen.milk],
+                note: 'El niño es celíaco',
+              ),
+            ),
+          ),
+        );
+
+        final nodes = tester.semantics.simulatedAccessibilityTraversal();
+        // Lo que lee el lector de pantalla: con lo que se fundió en cada nodo
+        // (los alérgenos, en el de su etiqueta).
+        final labels = [
+          for (final node in nodes) node.getSemanticsData().label,
+        ];
+        int indexOf(bool Function(String label) test) {
+          final index = labels.indexWhere(test);
+          expect(index, isNonNegative, reason: labels.join(' | '));
+          return index;
+        }
+
+        final buttons = [
+          indexOf((l) => l == 'WhatsApp'),
+          indexOf((l) => l == 'Llamar'),
+          indexOf((l) => l == 'Agregar dirección'),
+        ];
+        final noAddress = indexOf((l) => l.startsWith('Sin dirección'));
+        final title = indexOf((l) => l == 'Alergias y dietas');
+        final chips = indexOf(
+          (l) =>
+              l.startsWith('Alérgenos que evitar') &&
+              l.contains('Gluten') &&
+              l.contains('Leche'),
+        );
+        final note = indexOf(
+          (l) => l.startsWith('Nota de la solicitud') && l.contains('celíaco'),
+        );
+        final crossContamination = indexOf(
+          (l) => l.startsWith('Gluten (celiaquía)'),
+        );
+        // «Sin dirección», debajo de los botones, se lee después de ellos; la
+        // contaminación cruzada, abajo de todo, al final.
+        expect(
+          buttons.every((index) => index < noAddress) &&
+              noAddress < title &&
+              title < chips &&
+              chips < note &&
+              note < crossContamination,
+          isTrue,
+          reason: labels.join(' | '),
+        );
+        // El título es un encabezado, dice solo el título y no tiene hijos:
+        // en /gestione/ un encabezado con hijos no sale como encabezado
+        // (<h2>), sino como un grupo con nombre.
+        expect(
+          nodes.elementAt(title),
+          isSemantics(label: 'Alergias y dietas', isHeader: true),
+        );
+        expect(nodes.elementAt(title).childrenCount, 0);
+        semantics.dispose();
+      },
+    );
+
+    testWidgets(
+      'sin datos, el aviso es un nodo propio después del título (no parte del encabezado)',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await openSession(tester, locale: const Locale('es'));
+        expect(
+          tester.semantics.simulatedAccessibilityTraversal(),
+          containsAllInOrder(<Matcher>[
+            isSemantics(label: 'Alergias y dietas', isHeader: true),
+            isSemantics(
+              label:
+                  'Sin datos de alergias: pregúntale al cliente antes de preparar el menú.',
+              isHeader: false,
+            ),
+          ]),
+        );
+        semantics.dispose();
+      },
+    );
+  });
 
   testWidgets('una cancelada dice el motivo y no ofrece mover ni cancelar', (
     tester,
@@ -340,6 +626,13 @@ void main() {
           find.text('Annullare la sessione di mer 2 dic?'),
           findsOneWidget,
         );
+        // No promete que la web vuelva a ofrecer el día: no siempre pasa.
+        expect(
+          textOf(tester, 'cancel-session-body'),
+          "Una sessione annullata non si può riattivare. Se c'è posto nel tuo "
+          'orario e il giorno non è bloccato, il sito torna a offrirlo in 1 o '
+          '2 minuti.',
+        );
         // El motivo por defecto es el neutro.
         expect(find.text('Altro motivo'), findsOneWidget);
         expect(find.text('Annulla la sessione'), findsOneWidget);
@@ -348,6 +641,10 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Annulla anche le 2 successive'), findsOneWidget);
         expect(find.text('Annulla 3 sessioni'), findsOneWidget);
+        expect(
+          textOf(tester, 'cancel-session-body'),
+          contains('i giorni non sono bloccati, il sito torna a offrirli'),
+        );
 
         await tester.tap(byKey('cancel-session-confirm'));
         await tester.pumpAndSettle();
@@ -356,12 +653,7 @@ void main() {
         expect(call.sessionIds, [sessionId(2), sessionId(3), sessionId(4)]);
         expect(call.reason, CancelReason.clientCancelled);
         expect(call.allowWithPayments, isFalse);
-        expect(
-          find.text(
-            '3 sessioni annullate: in 1 o 2 minuti il sito torna a offrire quei giorni.',
-          ),
-          findsOneWidget,
-        );
+        expect(find.text('3 sessioni annullate.'), findsOneWidget);
         expect(
           textOf(tester, 'session-status'),
           "Annullata · L'ha chiesto la cliente",
@@ -381,24 +673,55 @@ void main() {
     });
 
     testWidgets(
-      'una semana cobrada (409 hasPayments): no se canceló nada y ofrece pasarla al final',
+      'mientras espera al servidor, Sposta y Annulla quedan deshabilitados',
+      (tester) async {
+        final sessions = FakeSessionsRepository(buildBooking())
+          ..pendingCancel = Completer<void>();
+        await openSession(tester, sessions: sessions);
+        await tester.tap(byKey('session-cancel'));
+        await tester.pumpAndSettle();
+        await tester.tap(byKey('cancel-session-confirm'));
+        // El indicador nunca se asienta: cuadros sueltos.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(byKey('session-busy'), findsOneWidget);
+        expect(onPressedOf(tester, 'session-cancel'), isNull);
+        expect(onPressedOf(tester, 'session-move'), isNull);
+        // Un segundo toque no abre otra confirmación ni manda otro pedido.
+        await tester.tap(byKey('session-cancel'), warnIfMissed: false);
+        await tester.pump();
+        expect(byKey('cancel-session-dialog'), findsNothing);
+        expect(sessions.cancelCalls, hasLength(1));
+
+        sessions.pendingCancel!.complete();
+        await tester.pumpAndSettle();
+        expect(byKey('session-busy'), findsNothing);
+        expect(textOf(tester, 'session-status'), 'Annullata · Altro motivo');
+      },
+    );
+
+    testWidgets(
+      'una semana cobrada (409 hasPayments): dice cuál, no se canceló nada y ofrece pasarla al final',
       (tester) async {
         final sessions = FakeSessionsRepository(buildBooking())
           ..paid.add(sessionId(2));
         final app = await openSession(tester, sessions: sessions);
-        await tester.tap(byKey('session-cancel'));
-        await tester.pumpAndSettle();
-        await tester.tap(byKey('cancel-session-confirm'));
-        await tester.pumpAndSettle();
+        await cancelFromSheet(tester);
 
         expect(byKey('has-payments-dialog'), findsOneWidget);
         expect(find.text('Settimana già pagata'), findsOneWidget);
         expect(
-          find.textContaining(
-            'Questa settimana è già pagata: non è stato annullato niente.',
-          ),
-          findsOneWidget,
+          plainSpaces(textOf(tester, 'has-payments-paid')),
+          'La settimana di mer 2 dic è già pagata: non è stato annullato niente.',
         );
+        expect(
+          textOf(tester, 'has-payments-next'),
+          "Per ora una settimana pagata non si può annullare dall'app: puoi "
+          'passarla alla fine della prenotazione (mer 23 dic) e l\'incasso '
+          'resta su quella settimana.',
+        );
+        expect(byKey('has-payments-cancel-unpaid'), findsNothing);
         expect(
           sessions.sessions[sessionId(2)]!.status,
           SessionStatus.confirmed,
@@ -419,6 +742,122 @@ void main() {
     );
 
     testWidgets(
+      'con «anche le successive» y la de la ficha cobrada: no la pasa al final (quedaría después de las que se querían cancelar); cancela las no cobradas',
+      (tester) async {
+        final sessions = FakeSessionsRepository(buildBooking())
+          ..paid.add(sessionId(2));
+        await openSession(tester, sessions: sessions);
+        await cancelFromSheet(tester, following: true);
+
+        expect(byKey('has-payments-dialog'), findsOneWidget);
+        expect(
+          plainSpaces(textOf(tester, 'has-payments-paid')),
+          'La settimana di mer 2 dic è già pagata: non è stato annullato niente.',
+        );
+        expect(
+          textOf(tester, 'has-payments-next'),
+          "Per ora una settimana pagata non si può annullare dall'app: puoi "
+          'annullare solo le 2 non pagate.',
+        );
+        expect(byKey('has-payments-move-to-end'), findsNothing);
+
+        await tester.tap(byKey('has-payments-cancel-unpaid'));
+        await tester.pumpAndSettle();
+
+        expect(sessions.cancelCalls.last.sessionIds, [
+          sessionId(3),
+          sessionId(4),
+        ]);
+        expect(sessions.cancelCalls.last.reason, CancelReason.chefCancelled);
+        expect(find.text('2 sessioni annullate.'), findsOneWidget);
+        expect(
+          sessions.sessions[sessionId(2)]!.status,
+          SessionStatus.confirmed,
+        );
+        expect(
+          sessions.sessions[sessionId(3)]!.status,
+          SessionStatus.cancelled,
+        );
+        expect(
+          sessions.sessions[sessionId(4)]!.status,
+          SessionStatus.cancelled,
+        );
+        // La ficha sigue en la cobrada, ahora la última viva.
+        expect(textOf(tester, 'session-week'), 'Settimana 2 di 2');
+        expect(byKey('session-cancel'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'si la cobrada es una de las siguientes, dice cuál (no «questa») y cancela las demás',
+      (tester) async {
+        final sessions = FakeSessionsRepository(buildBooking())
+          ..paid.add(sessionId(3));
+        await openSession(tester, sessions: sessions);
+        await cancelFromSheet(tester, following: true);
+
+        expect(
+          plainSpaces(textOf(tester, 'has-payments-paid')),
+          'La settimana di mer 9 dic è già pagata: non è stato annullato niente.',
+        );
+        expect(textOf(tester, 'has-payments-next'), contains('le 2 non pagate'));
+        expect(byKey('has-payments-move-to-end'), findsNothing);
+        expect(find.text('Annulla le 2 non pagate'), findsOneWidget);
+
+        await tester.tap(byKey('has-payments-cancel-unpaid'));
+        await tester.pumpAndSettle();
+        expect(sessions.cancelCalls.last.sessionIds, [
+          sessionId(2),
+          sessionId(4),
+        ]);
+        expect(
+          sessions.sessions[sessionId(3)]!.status,
+          SessionStatus.confirmed,
+        );
+        expect(
+          textOf(tester, 'session-status'),
+          'Annullata · Altro motivo',
+        );
+      },
+    );
+
+    testWidgets('varias cobradas: las nombra todas', (tester) async {
+      final sessions = FakeSessionsRepository(buildBooking())
+        ..paid.addAll([sessionId(3), sessionId(4)]);
+      await openSession(tester, sessions: sessions);
+      await cancelFromSheet(tester, following: true);
+
+      expect(find.text('Settimane già pagate'), findsOneWidget);
+      expect(
+        plainSpaces(textOf(tester, 'has-payments-paid')),
+        '2 settimane sono già pagate (mer 9 dic · mer 16 dic): non è stato '
+        'annullato niente.',
+      );
+      expect(find.text('Annulla quella non pagata'), findsOneWidget);
+    });
+
+    testWidgets(
+      'la última semana cobrada: sin nada que ofrecer, solo «Chiudi»',
+      (tester) async {
+        final sessions = FakeSessionsRepository(buildBooking())
+          ..paid.add(sessionId(4));
+        await openSession(tester, n: 4, sessions: sessions);
+        await cancelFromSheet(tester);
+
+        expect(
+          textOf(tester, 'has-payments-next'),
+          "Per ora una settimana pagata non si può annullare dall'app.",
+        );
+        expect(byKey('has-payments-move-to-end'), findsNothing);
+        expect(byKey('has-payments-cancel-unpaid'), findsNothing);
+        await tester.tap(byKey('has-payments-close'));
+        await tester.pumpAndSettle();
+        expect(byKey('has-payments-dialog'), findsNothing);
+        expect(sessions.cancelCalls, hasLength(1));
+      },
+    );
+
+    testWidgets(
       'si otra ya está cocinada (otro dispositivo), lo dice y la ficha se actualiza',
       (tester) async {
         final sessions = FakeSessionsRepository(buildBooking());
@@ -426,10 +865,7 @@ void main() {
         sessions.sessions[sessionId(2)] = sessions.sessions[sessionId(2)]!
             .copyWith(status: SessionStatus.cooked);
 
-        await tester.tap(byKey('session-cancel'));
-        await tester.pumpAndSettle();
-        await tester.tap(byKey('cancel-session-confirm'));
-        await tester.pumpAndSettle();
+        await cancelFromSheet(tester);
 
         expect(
           find.text(
@@ -448,10 +884,7 @@ void main() {
       final sessions = FakeSessionsRepository(buildBooking())
         ..cancelFailure = const SessionFailure(SessionFailureKind.unavailable);
       await openSession(tester, sessions: sessions);
-      await tester.tap(byKey('session-cancel'));
-      await tester.pumpAndSettle();
-      await tester.tap(byKey('cancel-session-confirm'));
-      await tester.pumpAndSettle();
+      await cancelFromSheet(tester);
 
       expect(
         find.textContaining('Non è stato possibile annullarla.'),
@@ -459,16 +892,47 @@ void main() {
       );
       expect(byKey('session-cancel'), findsOneWidget);
       sessions.cancelFailure = null;
-      await tester.tap(
-        find.descendant(
-          of: find.byType(SnackBar),
-          matching: find.text('Riprova'),
-        ),
-      );
+      await tester.tap(snackBarAction('Riprova'));
       await tester.pumpAndSettle();
       expect(sessions.cancelCalls, hasLength(2));
       expect(textOf(tester, 'session-status'), 'Annullata · Altro motivo');
     });
+
+    testWidgets(
+      'si al tocar «Riprova» la semana resulta cobrada, el aviso lo explica igual',
+      (tester) async {
+        final sessions = FakeSessionsRepository(buildBooking())
+          ..cancelFailure = const SessionFailure(
+            SessionFailureKind.unavailable,
+          );
+        await openSession(tester, sessions: sessions);
+        await cancelFromSheet(tester);
+        expect(byKey('has-payments-dialog'), findsNothing);
+
+        // Vuelve la red; mientras tanto se registró un cobro de esa semana.
+        sessions
+          ..cancelFailure = null
+          ..paid.add(sessionId(2));
+        await tester.tap(snackBarAction('Riprova'));
+        await tester.pumpAndSettle();
+
+        expect(sessions.cancelCalls, hasLength(2));
+        expect(
+          sessions.cancelCalls.map((call) => call.allowWithPayments),
+          [false, false],
+        );
+        expect(byKey('has-payments-dialog'), findsOneWidget);
+        expect(
+          plainSpaces(textOf(tester, 'has-payments-paid')),
+          'La settimana di mer 2 dic è già pagata: non è stato annullato niente.',
+        );
+        expect(byKey('has-payments-move-to-end'), findsOneWidget);
+        expect(
+          sessions.sessions[sessionId(2)]!.status,
+          SessionStatus.confirmed,
+        );
+      },
+    );
   });
 
   group('teléfono', () {
@@ -514,6 +978,42 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
       });
+
+      testWidgets(
+        'a 375×667 sin dirección: los botones de 48 dp, el diálogo de la dirección y el de las cobradas sin desbordes (${locale.languageCode})',
+        (tester) async {
+          final sessions = FakeSessionsRepository(
+            buildBooking(address: null, restrictions: webRestrictions),
+          )..paid.add(sessionId(3));
+          await openSession(
+            tester,
+            size: const Size(375, 667),
+            locale: locale,
+            sessions: sessions,
+          );
+          for (final key in [
+            'session-whatsapp',
+            'session-call',
+            'session-add-address',
+          ]) {
+            expect(
+              tester.getSize(byKey(key)).height,
+              greaterThanOrEqualTo(48),
+              reason: key,
+            );
+          }
+          await tester.tap(byKey('session-add-address'));
+          await tester.pumpAndSettle();
+          expectReadableInputs(tester);
+          expect(tester.takeException(), isNull);
+          await tester.tap(byKey('client-address-cancel'));
+          await tester.pumpAndSettle();
+
+          await cancelFromSheet(tester, following: true);
+          expect(byKey('has-payments-dialog'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
     }
   });
 }

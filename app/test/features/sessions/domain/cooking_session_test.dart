@@ -1,8 +1,9 @@
 // Una sesión como la lee la app con la RLS: la fila de PostgREST con la
 // ficha, sus restricciones y el pedido embebidos; las horas que salen de lo
-// guardado (compra, llegada y fin); de dónde salen el nombre, el teléfono y el
-// idioma; las alergias de la ficha y del pedido, y que nada de eso se
-// imprime.
+// guardado (compra, llegada y fin); de dónde salen el nombre, el teléfono, la
+// zona y el idioma; las alergias de la ficha y del pedido (también como
+// llegan de la web: solo la nota); la dirección como se guarda, y que nada de
+// eso se imprime.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
@@ -177,6 +178,22 @@ void main() {
       expect(session.phoneE164, '+393339990000');
       expect(session.locale, ClientLocale.it);
     });
+
+    test('la zona, como el nombre: la del pedido y, si falta, la de la ficha', () {
+      final base = buildSession();
+      // El pedido dice «Città Alta»; la ficha, otra.
+      final session = base.copyWith(
+        client: base.client.copyWith(zone: 'Borgo Palazzo'),
+      );
+      expect(session.zone, 'Città Alta');
+      final withoutRequestZone = session.copyWith(
+        request: session.request!.copyWith(
+          client: session.request!.client.copyWith(zone: '  '),
+        ),
+      );
+      expect(withoutRequestZone.zone, 'Borgo Palazzo');
+      expect(session.copyWith(request: null).zone, 'Borgo Palazzo');
+    });
   });
 
   group('alergias', () {
@@ -214,6 +231,39 @@ void main() {
       );
     });
 
+    test('como llegan de la web: solo la nota (sin alérgenos ni dietas) ya son alergias indicadas', () {
+      final session = buildSession(restrictions: webRestrictions);
+      expect(session.allergens, isEmpty);
+      expect(session.diets, isEmpty);
+      expect(session.allergyNote, 'Celiachia, noci');
+      expect(session.allergyAnswer, AllergyAnswer.listed);
+      // Sin gluten guardado no hay nota de contaminación cruzada: la nota
+      // resaltada es la única señal de la celiaquía.
+      expect(session.needsCrossContaminationNote, isFalse);
+    });
+
+    test('la fila como la guarda submit_public_request: listas vacías, la nota y sin client_restrictions', () {
+      final session = CookingSession.fromJson(
+        sessionRow(
+          clientRestrictions: const [],
+          request: requestRow(
+            id: bookingRequestId,
+            status: 'accepted',
+            restrictions: const {
+              'allergens': <String>[],
+              'diets': <String>[],
+              'note': 'Celiachia, noci',
+            },
+            noAllergies: false,
+          ),
+        ),
+      );
+      expect(session.allergens, isEmpty);
+      expect(session.diets, isEmpty);
+      expect(session.allergyNote, 'Celiachia, noci');
+      expect(session.allergyAnswer, AllergyAnswer.listed);
+    });
+
     test('sin ninguna: «nadie tiene» solo si el pedido lo confirmó; si no, sin datos', () {
       expect(buildSession(noAllergies: true).allergyAnswer, AllergyAnswer.none);
       expect(buildSession().allergyAnswer, AllergyAnswer.unknown);
@@ -222,6 +272,16 @@ void main() {
         AllergyAnswer.unknown,
       );
     });
+  });
+
+  test('la dirección como se guarda: en una línea y sin espacios de más; vacía, null', () {
+    expect(
+      normalizeClientAddress('  Via Pignolo 5,\n  Bergamo  '),
+      'Via Pignolo 5, Bergamo',
+    );
+    expect(normalizeClientAddress(' \n '), isNull);
+    // Como newClient.address en el contrato chef-api §4.
+    expect(maxClientAddressLength, 200);
   });
 
   test('qué se puede hacer según el estado', () {

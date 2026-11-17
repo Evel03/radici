@@ -1,12 +1,18 @@
 // Sesiones de la cocinera: se leen con la RLS («la cocinera lee las suyas»,
 // rls.sql) y se mueven o cancelan con la Edge Function `chef` (contrato
 // docs/contracts/chef-api.md §5 y §6). Los estados de sesión solo cambian vía
-// Edge Functions (CLAUDE.md): la app nunca escribe en `sessions`.
+// Edge Functions (CLAUDE.md): la app nunca escribe en `sessions`. Lo único que
+// escribe es la dirección de la ficha de la clienta (`clients.address`, con la
+// RLS «la cocinera gestiona los suyos» y el grant por columna de rls.sql): el
+// formulario web no la pide y sin ella no hay «Cómo llegar».
 //
 // El filtro explícito por chef_id es para el índice (sessions_chef_date_idx) y
-// para cuando haya más de una cocinera. La función recibe la sesión de Evelyn
-// (`Authorization`) y la región va en la URL (`?forceFunctionRegion=…`): la
-// cabecera `x-region` no, porque el preflight de CORS no la permite.
+// para cuando haya más de una cocinera; en una sesión por id, también para que
+// una cocinera que además fuera clienta con cuenta no vea en su ficha una
+// sesión que no es suya («el cliente lee las suyas»). La función recibe la
+// sesión de Evelyn (`Authorization`) y la región va en la URL
+// (`?forceFunctionRegion=…`): la cabecera `x-region` no, porque el preflight de
+// CORS no la permite.
 //
 // Ningún error se loguea: puede traer la fila, con la dirección o las
 // alergias. Se traduce a [SessionFailure] (el tipo, la fecha, el estado o los
@@ -32,9 +38,12 @@ abstract interface class SessionsRepository {
     required CalendarDate from,
   });
 
-  /// Una sesión por id, o null si no existe (o la RLS no la deja ver). Lanza
-  /// [SessionFailure].
-  Future<CookingSession?> fetchSession(String id);
+  /// La sesión [id] de la cocinera [chefId], o null si no existe (o la RLS no
+  /// la deja ver). Lanza [SessionFailure].
+  Future<CookingSession?> fetchSession({
+    required String chefId,
+    required String id,
+  });
 
   /// Todas las sesiones de la reserva [requestId] (también las canceladas),
   /// por fecha y llegada. Lanza [SessionFailure].
@@ -49,6 +58,15 @@ abstract interface class SessionsRepository {
 
   /// Cancela semanas, todo o nada. Lanza [SessionFailure].
   Future<CancelSessionsResult> cancelSessions(CancelSessionsRequest request);
+
+  /// Guarda [address] en la ficha [clientId] de la cocinera [chefId]. Lanza
+  /// [SessionFailure] ([SessionFailureKind.notFound] si la ficha no existe o
+  /// no es suya).
+  Future<void> updateClientAddress({
+    required String chefId,
+    required String clientId,
+    required String address,
+  });
 }
 
 final sessionsRepositoryProvider = Provider<SessionsRepository>((ref) {
@@ -77,10 +95,12 @@ enum SessionFailureKind {
 
   /// 409: al cancelar, esas semanas ya están cobradas
   /// ([SessionFailure.sessionIds]). No se canceló ninguna: se puede pasar la
-  /// semana al final de la reserva.
+  /// semana al final de la reserva o cancelar solo las que no están cobradas
+  /// (`hasPaymentsPlan`, en domain/session_booking.dart).
   hasPayments,
 
-  /// 404: la sesión no existe (para esta cocinera).
+  /// 404: la sesión no existe (para esta cocinera); al guardar la dirección,
+  /// la ficha.
   notFound,
 
   /// 403: el usuario no es la cocinera.
@@ -150,10 +170,14 @@ class SupabaseSessionsRepository implements SessionsRepository {
   });
 
   @override
-  Future<CookingSession?> fetchSession(String id) => _read(() async {
+  Future<CookingSession?> fetchSession({
+    required String chefId,
+    required String id,
+  }) => _read(() async {
     final row = await _client
         .from('sessions')
         .select(cookingSessionColumns)
+        .eq('chef_id', chefId)
         .eq('id', id)
         .maybeSingle();
     return row == null ? null : CookingSession.fromJson(row);
@@ -185,6 +209,24 @@ class SupabaseSessionsRepository implements SessionsRepository {
         request.toBody(),
         CancelSessionsResult.fromResponse,
       );
+
+  @override
+  Future<void> updateClientAddress({
+    required String chefId,
+    required String clientId,
+    required String address,
+  }) => _read(() async {
+    final updated = await _client
+        .from('clients')
+        .update({'address': address})
+        .eq('id', clientId)
+        .eq('chef_id', chefId)
+        .select('id');
+    // Sin filas: la ficha no existe o la RLS no la deja tocar.
+    if (updated.isEmpty) {
+      throw const SessionFailure(SessionFailureKind.notFound);
+    }
+  });
 
   /// Llama a la función y lee su respuesta con [read].
   Future<T> _invoke<T>(
@@ -311,7 +353,10 @@ class _NoBackendSessionsRepository implements SessionsRepository {
   }) => Future.error(_failure);
 
   @override
-  Future<CookingSession?> fetchSession(String id) => Future.error(_failure);
+  Future<CookingSession?> fetchSession({
+    required String chefId,
+    required String id,
+  }) => Future.error(_failure);
 
   @override
   Future<List<CookingSession>> fetchBookingSessions({
@@ -326,4 +371,11 @@ class _NoBackendSessionsRepository implements SessionsRepository {
   @override
   Future<CancelSessionsResult> cancelSessions(CancelSessionsRequest request) =>
       Future.error(_failure);
+
+  @override
+  Future<void> updateClientAddress({
+    required String chefId,
+    required String clientId,
+    required String address,
+  }) => Future.error(_failure);
 }

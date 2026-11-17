@@ -42,6 +42,12 @@ class SessionBottomBar extends StatelessWidget {
   }
 }
 
+/// Título de sección. Es un nodo propio para el lector de pantalla
+/// (`container`): sin eso, en la ficha (una lista) se funde con los textos
+/// sueltos de su sección, que VoiceOver leía como parte del título y antes de
+/// lo demás (y en /gestione/ un encabezado con hijos no sale como
+/// encabezado). Por lo mismo, en la ficha lo que va debajo tiene que ser
+/// también un nodo propio (un botón, una fila o un texto con MergeSemantics).
 class SessionSection extends StatelessWidget {
   const SessionSection(this.title, {super.key});
 
@@ -54,6 +60,7 @@ class SessionSection extends StatelessWidget {
       padding: const EdgeInsets.only(top: 24, bottom: 8),
       child: Semantics(
         header: true,
+        container: true,
         child: Text(
           title,
           style: theme.textTheme.titleSmall?.copyWith(
