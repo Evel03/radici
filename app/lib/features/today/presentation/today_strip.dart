@@ -5,7 +5,7 @@
 // botón con la acción de tocar en su nodo (en /gestione/ el clic de VoiceOver
 // solo llega a un nodo que la tiene) y su texto dice todo (también cuál es
 // hoy). Si los 7 no entran con 48 dp cada uno (un teléfono de 360 dp o
-// menos), van en dos filas: 4 y 3.
+// menos), van en dos filas: 4 y 3. La Agenda trae a la vista el día tocado.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -102,6 +102,8 @@ class _StripDay extends ConsumerWidget {
 
     void open() {
       ref.read(agendaControllerProvider.notifier).select(day.date);
+      // Que la Agenda lo traiga a la vista, como al tocarlo ahí.
+      ref.read(agendaRevealProvider.notifier).request();
       context.go(AppRoutes.agenda);
     }
 

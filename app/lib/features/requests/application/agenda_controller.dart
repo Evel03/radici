@@ -101,6 +101,25 @@ class AgendaController extends Notifier<AgendaState> {
   });
 }
 
+/// Pedido de traer a la vista el día elegido de la Agenda cuando se elige
+/// desde afuera (un día de la tira de Hoy): en un teléfono, debajo del mes
+/// queda fuera de la pantalla o detrás del botón flotante. Al tocarlo en la
+/// propia Agenda ya se trae. true hasta que la Agenda lo atiende.
+final agendaRevealProvider = NotifierProvider<AgendaReveal, bool>(
+  AgendaReveal.new,
+);
+
+class AgendaReveal extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  /// La próxima vez que se vea, la Agenda trae a la vista el día elegido.
+  void request() => state = true;
+
+  /// La Agenda ya lo trajo.
+  void done() => state = false;
+}
+
 /// Pedidos activos por fecha preferida.
 final agendaByDateProvider = Provider<Map<CalendarDate, List<ChefRequest>>>(
   (ref) => requestsByPreferredDate(ref.watch(chefInboxProvider).value ?? const []),

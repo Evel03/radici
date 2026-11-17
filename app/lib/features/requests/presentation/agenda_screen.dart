@@ -194,9 +194,21 @@ class _MonthView extends ConsumerStatefulWidget {
   ConsumerState<_MonthView> createState() => _MonthViewState();
 }
 
-class _MonthViewState extends ConsumerState<_MonthView> {
+class _MonthViewState extends ConsumerState<_MonthView>
+    with _RevealOnRequest<_MonthView> {
   /// El título del día elegido y su tarjeta.
   final GlobalKey _dayKey = GlobalKey();
+
+  /// La primera sesión del día elegido.
+  final GlobalKey _firstSessionKey = GlobalKey();
+
+  /// Elegido desde afuera (la tira de Hoy, que muestra las sesiones): su
+  /// primera sesión, por encima del botón flotante (en un teléfono de 320 el
+  /// día entero no entra, y se mostraría desde el título); sin sesiones, el
+  /// día. Lo de arriba de la sesión se ve si entra.
+  @override
+  BuildContext? get _revealTarget =>
+      _firstSessionKey.currentContext ?? _dayKey.currentContext;
 
   /// Elige [day] y trae su tarjeta a la vista: en un teléfono, con un mes de
   /// seis semanas, queda debajo de la pantalla (o la tapa el botón flotante).
@@ -208,6 +220,7 @@ class _MonthViewState extends ConsumerState<_MonthView> {
 
   @override
   Widget build(BuildContext context) {
+    _watchRevealRequest();
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final formats = RequestFormats(context);
@@ -264,7 +277,14 @@ class _MonthViewState extends ConsumerState<_MonthView> {
             DayAvailabilityCard(day: selected),
             // Las sesiones del día (cada una abre su ficha), con la tarjeta:
             // al elegir el día se ven sin desplazar.
-            for (final session in daySessions) SessionBlock(session: session),
+            for (final (i, session) in daySessions.indexed)
+              if (i == 0)
+                KeyedSubtree(
+                  key: _firstSessionKey,
+                  child: SessionBlock(session: session),
+                )
+              else
+                SessionBlock(session: session),
           ],
         ),
         if (dayRequests.isEmpty && daySessions.isEmpty)
@@ -452,11 +472,46 @@ class _DayCell extends ConsumerWidget {
   }
 }
 
-class _WeekView extends ConsumerWidget {
+/// Si se eligió el día desde afuera (agendaRevealProvider), después del
+/// cuadro trae a la vista [_revealTarget], por encima del botón flotante, como
+/// al tocar un día en la Agenda.
+mixin _RevealOnRequest<T extends ConsumerStatefulWidget> on ConsumerState<T> {
+  BuildContext? get _revealTarget;
+
+  bool _revealScheduled = false;
+
+  /// Va en build: escucha el pedido.
+  void _watchRevealRequest() {
+    if (!ref.watch(agendaRevealProvider) || _revealScheduled) return;
+    _revealScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _revealScheduled = false;
+      if (!mounted) return;
+      ref.read(agendaRevealProvider.notifier).done();
+      final target = _revealTarget;
+      if (target != null) revealAgendaCard(target);
+    });
+  }
+}
+
+class _WeekView extends ConsumerStatefulWidget {
   const _WeekView();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_WeekView> createState() => _WeekViewState();
+}
+
+class _WeekViewState extends ConsumerState<_WeekView>
+    with _RevealOnRequest<_WeekView> {
+  /// La tarjeta del día elegido.
+  final GlobalKey _dayKey = GlobalKey();
+
+  @override
+  BuildContext? get _revealTarget => _dayKey.currentContext;
+
+  @override
+  Widget build(BuildContext context) {
+    _watchRevealRequest();
     final theme = Theme.of(context);
     final formats = RequestFormats(context);
     final selected = ref.watch(
@@ -477,6 +532,8 @@ class _WeekView extends ConsumerWidget {
             margin: const EdgeInsets.symmetric(vertical: 4),
             color: day == today ? theme.colorScheme.secondaryContainer : null,
             child: Padding(
+              // La del día elegido, para traerla a la vista.
+              key: day == selected ? _dayKey : null,
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,

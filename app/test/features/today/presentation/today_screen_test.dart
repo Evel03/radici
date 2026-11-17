@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/availability/domain/availability.dart';
+import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/agenda_screen.dart';
@@ -813,6 +814,36 @@ void main() {
         'dicembre 2026',
       );
     });
+
+    for (final (size, view) in const [
+      (Size(320, 568), AgendaView.month),
+      (Size(375, 667), AgendaView.month),
+      (Size(375, 667), AgendaView.week),
+    ]) {
+      testWidgets('a ${size.width.toInt()}×${size.height.toInt()} (vista ${view.name}), tocar un día de la tira abre la Agenda con ese día a la vista: su sesión, por encima del botón flotante', (
+        tester,
+      ) async {
+        // Lunes 7/12/2026; la sesión es el jueves 10.
+        final app = await openToday(
+          tester,
+          size: size,
+          clock: () => DateTime.utc(2026, 12, 7, 7),
+          sessions: [session(date: CalendarDate(2026, 12, 10))],
+        );
+        app.container.read(agendaControllerProvider.notifier).setView(view);
+        await reveal(tester, byKey('today-strip-2026-12-10'));
+        await tester.tap(byKey('today-strip-2026-12-10'));
+        await tester.pumpAndSettle();
+        expect(find.byType(AgendaScreen), findsOneWidget);
+
+        final block = byKey('session-${sessionId(1)}');
+        expect(block.hitTestable(), findsOneWidget, reason: 'sin desplazar a mano');
+        expect(
+          tester.getRect(block).bottom,
+          lessThanOrEqualTo(tester.getRect(byKey('agenda-block-range')).top),
+        );
+      });
+    }
 
     testWidgets('con el lector de pantalla, un día de la tira también abre la Agenda en ese día', (
       tester,
