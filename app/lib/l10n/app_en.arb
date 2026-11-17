@@ -92,6 +92,7 @@
   "todayBookingLastSession": "Last session: {date}",
   "todayStripTitle": "Next 7 days",
   "todayStripHint": "Tap a day to open it in the calendar.",
+  "todayStripToday": "Today",
   "moreRecipesSubtitle": "Allergens, season and ingredients",
   "accountMenu": "Account",
   "settingsTitle": "Settings",

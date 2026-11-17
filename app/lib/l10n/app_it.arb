@@ -423,6 +423,10 @@
   "@todayStripHint": {
     "description": "Hoy: ayuda debajo del título de la tira de 7 días."
   },
+  "todayStripToday": "Oggi",
+  "@todayStripToday": {
+    "description": "Tira de 7 días, solo para el lector de pantalla: va antes de la fecha de la celda de hoy («Oggi, martedì 17 novembre 2026»), que en pantalla se marca con un aro."
+  },
   "moreRecipesSubtitle": "Allergeni, stagione e ingredienti",
   "@moreRecipesSubtitle": {
     "description": "Debajo de «Piatti» en la pestaña Más: qué se carga en el catálogo."

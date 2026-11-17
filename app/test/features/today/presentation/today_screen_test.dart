@@ -823,6 +823,97 @@ void main() {
       }
     });
 
+    for (final size in const [Size(320, 568), Size(360, 800)]) {
+      testWidgets('a ${size.width.toInt()}×${size.height.toInt()} va en dos filas (4 y 3) y cada día mide al menos 48×48', (
+        tester,
+      ) async {
+        await openToday(tester, size: size);
+        await reveal(tester, byKey('today-strip'));
+        final cells = [
+          for (var day = 17; day <= 23; day++)
+            tester.getRect(byKey('today-strip-2026-11-$day')),
+        ];
+        for (final (i, cell) in cells.indexed) {
+          expect(cell.width, greaterThanOrEqualTo(48), reason: '${17 + i}');
+          expect(cell.height, greaterThanOrEqualTo(48), reason: '${17 + i}');
+        }
+        expect({for (final cell in cells.take(4)) cell.top}, hasLength(1));
+        expect({for (final cell in cells.skip(4)) cell.top}, hasLength(1));
+        expect(cells[4].top, greaterThanOrEqualTo(cells[0].bottom));
+        expect(cells[4].width, cells[0].width, reason: 'el mismo ancho');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('a 375 entra en una fila de 7, cada uno de al menos 48 de ancho', (
+      tester,
+    ) async {
+      await openToday(tester, size: const Size(375, 667));
+      await reveal(tester, byKey('today-strip'));
+      final cells = [
+        for (var day = 17; day <= 23; day++)
+          tester.getRect(byKey('today-strip-2026-11-$day')),
+      ];
+      expect({for (final cell in cells) cell.top}, hasLength(1));
+      for (final cell in cells) {
+        expect(cell.width, greaterThanOrEqualTo(48));
+      }
+    });
+
+    testWidgets('el lector de pantalla dice cuál es hoy', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openToday(tester);
+      await reveal(tester, byKey('today-strip'));
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Oggi, martedì 17 novembre 2026')),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel(RegExp(r'^Oggi, mercoledì')), findsNothing);
+      expect(
+        find.bySemanticsLabel(RegExp(r'^mercoledì 18 novembre 2026')),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('con la letra al doble, el día y el número de cada celda crecen como mucho una vez y media (entran en su círculo)', (
+      tester,
+    ) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await openToday(tester, size: const Size(375, 667));
+      await reveal(tester, byKey('today-strip'));
+      for (final text in ['17', 'mar']) {
+        final scaler = MediaQuery.textScalerOf(
+          tester.element(
+            find.descendant(
+              of: byKey('today-strip-2026-11-17'),
+              matching: find.text(text),
+            ),
+          ),
+        );
+        expect(scaler.scale(10), 15, reason: text);
+      }
+    });
+
+    testWidgets('si la disponibilidad no se pudo leer, el aviso queda separado del borde de la tarjeta', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        availability: FakeAvailabilityRepository()..failFetch = true,
+      );
+      await reveal(tester, byKey('today-strip'));
+      final message = find.descendant(
+        of: byKey('today-strip'),
+        matching: find.text('Impossibile caricare i giorni bloccati.'),
+      );
+      expect(
+        tester.getTopLeft(message).dx - tester.getTopLeft(byKey('today-strip')).dx,
+        greaterThanOrEqualTo(12),
+      );
+    });
+
     testWidgets('un punto por sesión: dos sesiones el mismo día, dos puntos', (
       tester,
     ) async {

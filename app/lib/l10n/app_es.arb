@@ -92,6 +92,7 @@
   "todayBookingLastSession": "Última sesión: {date}",
   "todayStripTitle": "Próximos 7 días",
   "todayStripHint": "Toca un día para verlo en la agenda.",
+  "todayStripToday": "Hoy",
   "moreRecipesSubtitle": "Alérgenos, temporada e ingredientes",
   "accountMenu": "Cuenta",
   "settingsTitle": "Ajustes",
