@@ -926,22 +926,39 @@ void main() {
       expect(byKey('today-strip-2026-12-26-holiday'), findsNothing);
     });
 
-    testWidgets('resalta hoy (el primer día) y ningún otro', (tester) async {
+    testWidgets('resalta hoy (el primer día) y ningún otro: la cifra en negrita y el aro de color primario', (
+      tester,
+    ) async {
       await openToday(tester);
       await reveal(tester, byKey('today-strip'));
-      FontWeight? weight(String iso, String day) => tester
-          .widget<Text>(
-            find.descendant(
-              of: byKey('today-strip-$iso'),
-              matching: find.text(day),
-            ),
-          )
-          .style
-          ?.fontWeight;
-      expect(weight('2026-11-17', '17'), FontWeight.w700);
+      Finder number(int day) => find.descendant(
+        of: byKey('today-strip-2026-11-$day'),
+        matching: find.text('$day'),
+      );
+      FontWeight? weight(int day) =>
+          tester.widget<Text>(number(day)).style?.fontWeight;
+      expect(weight(17), FontWeight.w700);
       for (var day = 18; day <= 23; day++) {
-        expect(weight('2026-11-$day', '$day'), isNot(FontWeight.w700), reason: '$day');
+        expect(weight(day), isNot(FontWeight.w700), reason: '$day');
       }
+
+      // El aro: el borde del círculo del número.
+      final primary = Theme.of(
+        tester.element(byKey('today-strip')),
+      ).colorScheme.primary;
+      bool ringed(int day) {
+        final circle = find
+            .ancestor(of: number(day), matching: find.byType(Container))
+            .first;
+        final decoration = tester.widget<Container>(circle).decoration;
+        final border = decoration is BoxDecoration ? decoration.border : null;
+        return border is Border && border.top.color == primary;
+      }
+
+      expect([
+        for (var day = 17; day <= 23; day++)
+          if (ringed(day)) day,
+      ], [17]);
     });
 
     for (final size in const [Size(320, 568), Size(360, 800)]) {
