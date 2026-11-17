@@ -1,7 +1,8 @@
 // Aviso emergente "Nuova richiesta da …" (MaterialBanner), con botón para
 // abrir el pedido, en el ScaffoldMessenger de la app: sale en cualquier
-// pantalla salvo la ficha de una sesión y el editor de platos (y sus
-// diálogos), que tienen el suyo; aparece al volver de ahí.
+// pantalla salvo la ficha de una sesión y el formulario del editor de platos
+// (y sus diálogos), que tienen el suyo y, en el navegador raíz, tapan el
+// Scaffold de la barra, que es donde sale; aparece al volver de ahí.
 //
 // Va en el `builder` de MaterialApp, por encima de todas las rutas: así sigue
 // escuchando aunque la cocinera esté en el detalle de otro pedido (las rutas

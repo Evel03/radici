@@ -8,7 +8,7 @@
 // título no dejaban lugar; con el teclado abierto se esconden.
 //
 // También se esconden mientras está abierto el calendario de una semana o el
-// reloj de «Altro orario», y vuelven al cerrarlo: los diálogos van en el
+// reloj de «Altra ora», y vuelven al cerrarlo: los diálogos van en el
 // Navigator, debajo de los avisos, y con los dos a la vista, a 375×548 las
 // filas del calendario medían 14 px (39 sin avisos) y «OK» del reloj quedaba
 // cortado, sin poder tocarse; con el reloj en modo escritura, cerrar el
@@ -126,7 +126,7 @@ void main() {
     return find.descendant(of: finder, matching: find.text(label(labels)));
   }
 
-  /// Desde la hoja ya abierta, el reloj de «Altro orario».
+  /// Desde la hoja ya abierta, el reloj de «Altra ora».
   Future<void> openClock(WidgetTester tester) async {
     await tester.ensureVisible(byKey('booking-start-other'));
     await tester.pumpAndSettle();
@@ -281,7 +281,7 @@ void main() {
     );
 
     testWidgets(
-      'reloj de «Altro orario» a 375×548 con los dos avisos: se esconden '
+      'reloj de «Altra ora» a 375×548 con los dos avisos: se esconden '
       'mientras está abierto y «OK» y «Annulla» se pueden tocar; al cerrarlo '
       'vuelven (${locale.languageCode})',
       (tester) async {

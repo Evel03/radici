@@ -7,7 +7,7 @@
 //   vista, sin desbordes (también con la semana ocupada, cuando la barra
 //   dice por qué no se puede).
 // - Mientras está abierto un diálogo (la dirección, el calendario de «Sposta»
-//   o el reloj de «Altro orario») los avisos se esconden, y vuelven al
+//   o el reloj de «Altra ora») los avisos se esconden, y vuelven al
 //   cerrarlo. Los diálogos van en el Navigator, debajo de los avisos: con los
 //   dos a la vista, a 375×548 las filas del calendario medían 14 px (39 sin
 //   avisos) y «OK» del reloj quedaba cortado, sin poder tocarse; con el reloj
@@ -99,7 +99,7 @@ void main() {
     return find.descendant(of: finder, matching: find.text(label(labels)));
   }
 
-  /// La hoja «Sposta» con el 3/12 y, desde «Altro orario», el reloj.
+  /// La hoja «Sposta» con el 3/12 y, desde «Altra ora», el reloj.
   Future<void> openClock(
     WidgetTester tester, {
     required Size size,
@@ -316,7 +316,7 @@ void main() {
     );
 
     testWidgets(
-      'reloj de «Altro orario» a 375×548 con los dos avisos: se esconden '
+      'reloj de «Altra ora» a 375×548 con los dos avisos: se esconden '
       'mientras está abierto y «OK», «Annulla» y el botón para escribir la '
       'hora se pueden tocar; al cerrarlo vuelven (${locale.languageCode})',
       (tester) async {

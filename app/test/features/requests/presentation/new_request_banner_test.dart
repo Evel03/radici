@@ -1,6 +1,7 @@
 // Aviso emergente en tiempo real: "Nuova richiesta da …" con botón para
 // abrirla, en las pantallas de la cocinera salvo la ficha de una sesión y el
-// editor de platos (tienen su propio ScaffoldMessenger): ahí aparece al volver.
+// formulario del editor de platos (tienen su propio ScaffoldMessenger y, en el
+// navegador raíz, tapan el Scaffold de la barra): ahí aparece al volver.
 // Con una hoja de reserva o la ficha de una sesión (con su hoja «Sposta»)
 // abierta o tapada por otro pedido, «Apri» nunca la saca, y la hoja «Sposta»
 // que termina de mover con un pedido encima no lo cierra.

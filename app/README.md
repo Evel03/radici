@@ -215,8 +215,9 @@ repositorios falsos (`test/support/fakes.dart`).
   (ver [Web /gestione/](#web-gestione)).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
   emergente "Nuova richiesta da …", con botón para abrirla, en cualquier pantalla salvo la ficha de
-  una sesión y el editor de platos (y sus diálogos), que tienen su propio `ScaffoldMessenger`: ahí
-  no se ve, y aparece al volver de esas pantallas. Con varios
+  una sesión y el formulario del editor de platos (y sus diálogos): tienen su propio
+  `ScaffoldMessenger` y, en el navegador raíz, tapan el Scaffold de la barra, que es donde sale el
+  aviso. Ahí no se ve, y aparece al volver de esas pantallas. Con varios
   pedidos («N nuove richieste») el botón lleva a la bandeja, salvo con una hoja «Conferma
   prenotazione» o la ficha de una sesión (con su hoja «Sposta») abierta o tapada por otro pedido:
   ahí abre encima el más reciente, porque ir a la bandeja las sacaría sin preguntar, y se perdería

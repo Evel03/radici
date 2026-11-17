@@ -247,9 +247,13 @@ const String _sessionPath = '${AppRoutes.sessions}/:id';
 /// Con la ficha en la pila, hoy a «Apri» solo se llega desde la hoja
 /// «Sposta» o desde un pedido o una hoja de reserva abiertos encima: sobre la
 /// ficha y sus diálogos el aviso no se ve (la ficha tiene su propio
-/// ScaffoldMessenger). Lo demás que vive en la ficha (el diálogo de la
-/// dirección con lo escrito, una cancelación que espera la respuesta) queda
-/// cubierto por si el aviso algún día sale ahí: es preventivo.
+/// ScaffoldMessenger y, en el navegador raíz, tapa el Scaffold de la barra,
+/// que es donde sale). Así también queda una cancelación de otras semanas que
+/// espera la respuesta: con la semana de la ficha cobrada, el aviso de semanas
+/// cobradas cancela solo las no cobradas y «Sposta» sigue habilitado. El
+/// diálogo de la dirección con lo escrito y una cancelación que incluye la
+/// semana de la ficha quedan cubiertos por si el aviso algún día sale sobre la
+/// ficha: eso sí es preventivo.
 bool bookingOrSessionInStack(GoRouter router) {
   bool inStack(List<RouteMatchBase> matches) => matches.any(
     (match) => switch (match) {
