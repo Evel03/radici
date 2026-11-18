@@ -306,8 +306,9 @@ repositorios falsos (`test/support/fakes.dart`).
   aparece «Chiudi comunque», con el aviso de que la reserva pudo haber quedado guardada y conviene
   mirar «Prenotazioni» o la Agenda antes de rehacerla: sin esa salida, la hoja quedaría abierta hasta
   que vuelva la red. Al confirmar, la reserva está en «Prenotazioni» aunque la relectura falle, y
-  «Fatto», la X y el atrás llevan ahí. No guarda alergias (falta el consentimiento de salud, M2). En
-  la URL van solo ids, nunca el nombre, el teléfono ni la dirección.
+  «Fatto», la X y el atrás llevan ahí; si la bandeja estaba en error, se relee entera (la reserva
+  sola taparía el error y escondería los demás pedidos). No guarda alergias (falta el consentimiento
+  de salud, M2). En la URL van solo ids, nunca el nombre, el teléfono ni la dirección.
 - **Rinnova** (`features/bookings/domain/renewal.dart`, `/sessioni/:id/rinnova`): desde el
   pendiente de Hoy o la ficha de la última sesión viva de una reserva semanal, la hoja «Rinnova
   prenotazione», una reserva a mano para la misma ficha (`clientId`), prellenada y editable:

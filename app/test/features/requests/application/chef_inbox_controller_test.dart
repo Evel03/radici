@@ -545,6 +545,45 @@ void main() {
       expect(byId['anna-web']!.canMarkClient, isFalse);
       expect(byId['fresh']!.client.status, ClientStatus.prospect);
     });
+
+    // «Nuova prenotazione» se ofrece también con la bandeja en error. La lista
+    // de un AsyncError (la vacía de antes de que cargue la cocinera) no se
+    // toca: con un solo pedido taparía el error y escondería los demás.
+    test('con la bandeja en error, la relee entera: entran la reserva y el pedido nuevo de la web', () async {
+      repository.failFetch = true;
+      await start();
+      expect(container.read(chefInboxProvider).hasError, isTrue);
+
+      repository
+        ..failFetch = false
+        ..insertSilently(saved);
+      controller().applyManualBooking(provisional);
+      await pumpEventQueue();
+      expect(container.read(chefInboxProvider).hasError, isFalse);
+      expect(requests().map((r) => r.id), ['manual-1', 'fresh', 'older']);
+      expect(container.read(newRequestsCountProvider), 1);
+      expect(alert(), isNull);
+    });
+
+    test('con la bandeja en error y sin red, sigue en error (no queda una lista con la reserva sola)', () async {
+      repository.failFetch = true;
+      await start();
+      controller().applyManualBooking(provisional);
+      await pumpEventQueue();
+      expect(container.read(chefInboxProvider).hasError, isTrue);
+    });
+  });
+
+  test('applyBooking con la bandeja en error la relee entera (no queda el pedido solo)', () async {
+    repository.failFetch = true;
+    await start();
+    expect(container.read(chefInboxProvider).hasError, isTrue);
+
+    repository.failFetch = false;
+    controller().applyBooking('fresh', weeks: 4);
+    await pumpEventQueue();
+    expect(container.read(chefInboxProvider).hasError, isFalse);
+    expect(requests().map((r) => r.id), ['fresh', 'older']);
   });
 
   test('chefRequestProvider: si la lista no cargó, lo pide solo', () async {

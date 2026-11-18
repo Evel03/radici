@@ -243,6 +243,31 @@ void main() {
       expect(app.bookings.confirmations, hasLength(1));
     });
 
+    testWidgets('con la bandeja en error y la red de vuelta, «Fatto» muestra la lista entera: la reserva y, en «Nuove», el pedido de la web', (tester) async {
+      final requests = FakeChefRequestsRepository([
+        buildRequest(
+          id: 'web-new',
+          name: 'Marco Bianchi',
+          createdAt: DateTime.utc(2026, 10, 19, 9),
+        ),
+      ])..failFetch = true;
+      await openChiara(tester, requests: requests);
+      requests.failFetch = false;
+      await typePrice(tester, '560');
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('booking-done-close'));
+      await tester.pumpAndSettle();
+      expect(byKey('load-error'), findsNothing);
+      expect(byKey('request-manual-request-1'), findsOneWidget);
+      // La barra de pestañas se desliza: «Nuove» quedó a la izquierda.
+      await tester.ensureVisible(byKey('inbox-tab-new'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('inbox-tab-new'));
+      await tester.pumpAndSettle();
+      expect(byKey('request-web-new'), findsOneWidget);
+    });
+
     testWidgets('después de confirmar, el atrás del sistema hace lo mismo que «Fatto»', (tester) async {
       await openChiara(tester);
       await typePrice(tester, '560');

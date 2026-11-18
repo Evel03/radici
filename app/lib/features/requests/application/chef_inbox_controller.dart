@@ -233,7 +233,7 @@ class ChefInboxController extends AsyncNotifier<List<ChefRequest>> {
   /// pestaña «Prenotazioni».
   void applyBooking(String requestId, {required int weeks}) {
     if (!ref.mounted) return;
-    final current = state.value;
+    final current = _loaded;
     final booked = current?.where((r) => r.id == requestId).firstOrNull;
     if (current == null || booked == null) {
       unawaited(_reload(requestId));
@@ -266,23 +266,24 @@ class ChefInboxController extends AsyncNotifier<List<ChefRequest>> {
   /// relectura tarde o falle; después se vuelve a leer y se reemplaza. Si ya
   /// estaba (llegó antes por tiempo real), queda el del servidor. Como en la
   /// base, una ficha prospecto pasa a cliente en todos sus pedidos. Sin
-  /// aviso: no es un pedido nuevo.
+  /// aviso: no es un pedido nuevo. Sin una lista cargada (con error o
+  /// cargando) se relee entera, con la reserva y lo demás del servidor.
   void applyManualBooking(ChefRequest provisional) {
     if (!ref.mounted) return;
-    final current = state.value;
-    if (current != null) {
-      final updated = [
-        for (final r in current)
-          r.clientId == provisional.clientId &&
-                  r.client.status == ClientStatus.prospect
-              ? r.copyWith(client: r.client.copyWith(status: ClientStatus.trial))
-              : r,
-      ];
-      final known = updated.any((r) => r.id == provisional.id);
-      state = AsyncData(
-        known ? updated : upsertRequest(updated, provisional),
-      );
+    final current = _loaded;
+    if (current == null) {
+      ref.invalidateSelf();
+      return;
     }
+    final updated = [
+      for (final r in current)
+        r.clientId == provisional.clientId &&
+                r.client.status == ClientStatus.prospect
+            ? r.copyWith(client: r.client.copyWith(status: ClientStatus.trial))
+            : r,
+    ];
+    final known = updated.any((r) => r.id == provisional.id);
+    state = AsyncData(known ? updated : upsertRequest(updated, provisional));
     unawaited(_reload(provisional.id));
   }
 
@@ -304,15 +305,27 @@ class ChefInboxController extends AsyncNotifier<List<ChefRequest>> {
     }
   }
 
+  /// Sin una lista cargada, en lugar de agregarle el pedido se relee entera.
   Future<void> _reload(String requestId) async {
     try {
       final request = await _repository.fetchRequest(requestId);
       if (request == null || !ref.mounted) return;
-      state = AsyncData(upsertRequest(state.value ?? const [], request));
+      final current = _loaded;
+      if (current == null) {
+        ref.invalidateSelf();
+        return;
+      }
+      state = AsyncData(upsertRequest(current, request));
     } on RequestsFailure {
       // Se queda la versión local; el próximo refresh la corrige.
     }
   }
+
+  /// La lista, si se cargó; null mientras carga sin lista o con un error,
+  /// aunque el error conserve la de antes (como la vacía de antes de que
+  /// cargue la cocinera). Un pedido agregado a esa lista taparía el error y
+  /// escondería los demás pedidos: en ese caso se relee entera.
+  List<ChefRequest>? get _loaded => state.hasError ? null : state.value;
 
   void _update(String requestId, ChefRequest Function(ChefRequest) change) {
     final current = state.value;
