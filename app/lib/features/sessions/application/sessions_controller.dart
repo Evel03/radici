@@ -1,7 +1,7 @@
 // Sesiones para la agenda y para la ficha de cada sesión.
 //
-// - La agenda lee las de la cocinera desde el mes de hoy (o desde el mes
-//   elegido, si es anterior), con la RLS.
+// - La agenda lee las de la cocinera desde el mes de hoy (o desde 7 días
+//   antes de hoy, o desde el mes elegido, si es anterior), con la RLS.
 // - La ficha lee la sesión y todas las semanas de su reserva.
 // - Mover y cancelar pasan por la Edge Function chef (SessionCommands): lo que
 //   devuelve se avisa como un cambio (sessionChangesProvider) y la agenda y
@@ -96,7 +96,9 @@ class SessionChanges extends Notifier<SessionChange?> {
 }
 
 /// Desde qué día lee la agenda las sesiones ([sessionsWindowFrom]). Cambia
-/// solo si se elige un mes anterior al de hoy (o cambia el mes de hoy).
+/// si se elige un mes anterior al de hoy, si cambia el mes de hoy y, en los
+/// primeros días del mes, cada día (7 días antes de hoy cae en el mes
+/// anterior).
 final sessionsFromProvider = Provider<CalendarDate>(
   (ref) => sessionsWindowFrom(
     today: ref.watch(romeTodayProvider),

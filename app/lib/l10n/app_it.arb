@@ -403,7 +403,14 @@
   },
   "todayBookingEnding": "Finisce la prenotazione di {name}",
   "@todayBookingEnding": {
-    "description": "Hoy: pendiente de una reserva cuya última sesión cae en los próximos 7 días; abre la ficha de esa sesión.",
+    "description": "Hoy: pendiente de una reserva semanal cuya última sesión viva es hoy o cae en los próximos 7 días (el pendiente va de 7 días antes a 7 días después de esa sesión; si ya pasó, todayBookingEnded); abre la ficha de esa sesión.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "todayBookingEnded": "È finita la prenotazione di {name}",
+  "@todayBookingEnded": {
+    "description": "Hoy: pendiente de una reserva semanal cuya última sesión viva ya pasó (hasta 7 días); abre la ficha de esa sesión.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia Rossi" }
     }

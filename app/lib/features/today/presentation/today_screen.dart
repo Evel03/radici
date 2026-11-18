@@ -240,7 +240,7 @@ class _NoSessionsActions extends StatelessWidget {
 }
 
 /// Los pendientes: pedidos nuevos (llevan a «Nuove») y reservas que terminan
-/// (abren la ficha de su última semana). «Renovar» llega con el PR 8.
+/// o que terminaron hace hasta 7 días (abren la ficha de su última semana).
 class _Pending extends ConsumerWidget {
   const _Pending({required this.sessionsRead});
 
@@ -261,6 +261,7 @@ class _Pending extends ConsumerWidget {
     final inbox = ref.watch(chefInboxProvider);
     final newCount = ref.watch(newRequestsCountProvider);
     final ending = ref.watch(todayEndingBookingsProvider);
+    final today = ref.watch(romeTodayProvider);
     // La carga y el error pueden llegar con un valor de antes (la lista vacía
     // de cuando todavía no había cocinera: el aviso de pedidos nuevos arma la
     // bandeja desde el arranque), así que se miran sin él. Mientras se vuelve
@@ -283,7 +284,10 @@ class _Pending extends ConsumerWidget {
         _PendingTile(
           key: ValueKey('today-ending-${last.requestId}'),
           icon: Icons.event_repeat_outlined,
-          title: l10n.todayBookingEnding(last.displayName),
+          // Si su última sesión ya pasó (hasta 7 días), dice que terminó.
+          title: last.date.isBefore(today)
+              ? l10n.todayBookingEnded(last.displayName)
+              : l10n.todayBookingEnding(last.displayName),
           subtitle: l10n.todayBookingLastSession(formats.inText(last.date)),
           onTap: () =>
               unawaited(context.push(AppRoutes.sessionDetail(last.id))),

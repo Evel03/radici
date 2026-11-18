@@ -89,6 +89,7 @@
   "todayNewRequests": "{count, plural, =1{1 solicitud nueva} other{{count} solicitudes nuevas}}",
   "todayRequestsError": "No se pudieron cargar las solicitudes.",
   "todayBookingEnding": "Termina la reserva de {name}",
+  "todayBookingEnded": "Terminó la reserva de {name}",
   "todayBookingLastSession": "Última sesión: {date}",
   "todayStripTitle": "Próximos 7 días",
   "todayStripHint": "Toca un día para verlo en la agenda.",

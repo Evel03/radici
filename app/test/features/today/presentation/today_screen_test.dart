@@ -9,7 +9,8 @@
 // WhatsApp (el mensaje de la ficha: lo firma la cocinera o, con la cuenta de
 // un colaborador, escribe de parte de ella). Tocar la tarjeta abre la ficha.
 // Los pendientes (pedidos nuevos, que llevan a «Nuove», y reservas que
-// terminan, que abren su última semana), la tira de 7 días (que abre la
+// terminan o terminaron hace hasta 7 días, que abren su última semana; no
+// están si la ficha ya tiene una sesión posterior), la tira de 7 días (que abre la
 // Agenda en ese día), carga, error, vacío, deslizar para actualizar y el
 // cambio de día a la medianoche de Roma sin reabrir.
 // "Hoy": martes 17/11/2026 a las 8:00 en Roma, salvo donde se dice otra cosa.
@@ -798,6 +799,52 @@ void main() {
         'mercoledì 18 novembre 2026',
       );
       expect(tester.widget<Text>(byKey('session-week')).data, 'Settimana 4 di 4');
+    });
+
+    testWidgets('una reserva que terminó hace 3 días: «È finita la prenotazione di…» con su última sesión', (
+      tester,
+    ) async {
+      // Sábados 24/10 a 14/11: terminó hace 3 días.
+      await openToday(
+        tester,
+        sessions: buildBooking(first: CalendarDate(2026, 10, 24)),
+      );
+      final item = byKey('today-ending-$bookingRequestId');
+      await reveal(tester, item);
+      expect(
+        find.descendant(
+          of: item,
+          matching: find.text('È finita la prenotazione di Giulia Rossi'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: item,
+          matching: findPlainText('Ultima sessione: sab 14 nov'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('con una sesión posterior de la misma ficha (otra reserva), la que termina no está en los pendientes', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        sessions: [
+          // 28/10 a 18/11, y otra reserva de la misma ficha del 25/11 al 16/12.
+          ...buildBooking(first: CalendarDate(2026, 10, 28)),
+          ...buildBooking(
+            first: CalendarDate(2026, 11, 25),
+            firstN: 10,
+            requestId: 'renovacion',
+          ),
+        ],
+      );
+      await reveal(tester, byKey('today-pending-empty'));
+      expect(byKey('today-ending-$bookingRequestId'), findsNothing);
+      expect(byKey('today-ending-renovacion'), findsNothing);
     });
 
     testWidgets('si la bandeja no se pudo leer, lo dice con «Riprova»; mientras la vuelve a leer, la barra de carga', (

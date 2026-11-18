@@ -89,6 +89,7 @@
   "todayNewRequests": "{count, plural, =1{1 new request} other{{count} new requests}}",
   "todayRequestsError": "Couldn't load the requests.",
   "todayBookingEnding": "{name}'s booking is ending",
+  "todayBookingEnded": "{name}'s booking has ended",
   "todayBookingLastSession": "Last session: {date}",
   "todayStripTitle": "Next 7 days",
   "todayStripHint": "Tap a day to open it in the calendar.",

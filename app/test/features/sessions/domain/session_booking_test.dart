@@ -1,7 +1,8 @@
 // Las semanas de una reserva («Semana k de N» sin contar las canceladas, las
 // siguientes, el final de la reserva, qué ofrecer si alguna que se quiso
-// cancelar ya está cobrada), las sesiones de cada día de la agenda, desde qué
-// día las lee y el enlace de «Cómo llegar».
+// cancelar ya está cobrada), la próxima sesión viva de la misma ficha, las
+// sesiones de cada día de la agenda, desde qué día las lee (también 7 días
+// antes de hoy) y el enlace de «Cómo llegar».
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
@@ -264,6 +265,79 @@ void main() {
         );
       },
     );
+
+    test('desde 7 días antes de hoy si es antes: Hoy muestra las reservas que terminaron hace hasta 7 días', () {
+      // Jueves 3/12/2026: el lunes de la primera semana del mes es el 30/11,
+      // y hace 7 días era el 26/11.
+      final december = CalendarDate(2026, 12, 3);
+      expect(
+        sessionsWindowFrom(today: december, selected: december),
+        CalendarDate(2026, 11, 26),
+      );
+      expect(endingBookingNoticeDays, 7);
+      // El 17/11 el lunes de la primera semana del mes (26/10) ya es antes.
+      final november = CalendarDate(2026, 11, 17);
+      expect(
+        sessionsWindowFrom(today: november, selected: november),
+        CalendarDate(2026, 10, 26),
+      );
+      // Un mes elegido anterior sigue mandando.
+      expect(
+        sessionsWindowFrom(today: december, selected: CalendarDate(2026, 10, 5)),
+        CalendarDate(2026, 9, 28),
+      );
+    });
+  });
+
+  group('la próxima sesión viva de la misma ficha', () {
+    // La reserva de prueba: 25/11, 2/12, 9/12 y 16/12; la última es el 16/12.
+    final booking = buildBooking();
+    final last = booking.last;
+
+    test('otra reserva de la misma ficha, después: sí, y devuelve la primera', () {
+      final renewal = buildBooking(
+        first: CalendarDate(2026, 12, 23),
+        firstN: 10,
+        requestId: 'renovacion',
+      );
+      final sessions = [...booking, ...renewal.reversed];
+      expect(nextLiveSessionOfClient(last, sessions)?.id, sessionId(10));
+      expect(hasLaterLiveSession(last, sessions), isTrue);
+    });
+
+    test('el mismo día pero más tarde también es posterior; antes, no', () {
+      final later = buildSession(
+        n: 20,
+        requestId: 'suelta',
+        date: last.date,
+        start: const ClockTime.hm(16, 0),
+      );
+      final earlier = buildSession(
+        n: 21,
+        requestId: 'antes',
+        date: CalendarDate(2026, 12, 1),
+      );
+      expect(nextLiveSessionOfClient(last, [...booking, earlier]), isNull);
+      expect(nextLiveSessionOfClient(last, [...booking, later])?.id, sessionId(20));
+    });
+
+    test('una posterior cancelada no cuenta, ni la de otra ficha', () {
+      final cancelled = buildSession(
+        n: 30,
+        requestId: 'cancelada',
+        date: CalendarDate(2026, 12, 23),
+        status: SessionStatus.cancelled,
+      );
+      final otherClient = buildSession(
+        n: 31,
+        requestId: 'otra-ficha',
+        clientId: 'otra-ficha',
+        date: CalendarDate(2026, 12, 30),
+      );
+      final sessions = [...booking, cancelled, otherClient];
+      expect(nextLiveSessionOfClient(last, sessions), isNull);
+      expect(hasLaterLiveSession(last, sessions), isFalse);
+    });
   });
 
   group('«Cómo llegar»', () {

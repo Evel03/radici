@@ -79,11 +79,12 @@ Map<String, dynamic> sessionRow({
 /// Sesión armada a mano (sin pasar por JSON): por defecto, una semana
 /// confirmada de la reserva [bookingRequestId] (un pedido semanal, [type],
 /// aceptado, [requestStatus], que llegó por la web, [requestSource]; una
-/// reserva a mano es de la app), el miércoles 25/11/2026 a las 10:00, con 45
-/// min de compra y 180 de cocina.
+/// reserva a mano es de la app) de la ficha [testClientId], el miércoles
+/// 25/11/2026 a las 10:00, con 45 min de compra y 180 de cocina.
 CookingSession buildSession({
   int n = 1,
   String? id,
+  String clientId = testClientId,
   CalendarDate? date,
   ClockTime start = const ClockTime.hm(10, 0),
   int cookMinutes = 180,
@@ -106,7 +107,7 @@ CookingSession buildSession({
 }) => CookingSession(
   id: id ?? sessionId(n),
   chefId: testChefId,
-  clientId: testClientId,
+  clientId: clientId,
   requestId: requestId,
   date: date ?? CalendarDate(2026, 11, 25),
   start: start,
@@ -136,6 +137,7 @@ CookingSession buildSession({
       ? null
       : buildRequest(
           id: requestId,
+          clientId: clientId,
           status: requestStatus,
           name: name,
           phone: phone,
@@ -149,13 +151,17 @@ CookingSession buildSession({
         ),
 );
 
-/// Las [weeks] semanas de una reserva, cada 7 días desde [first] (miércoles
-/// 25/11/2026), con ids `sessionId(1)`, `sessionId(2)`… [address] null: una
-/// reserva que llegó por la web (el formulario no pide la dirección).
-/// [requestSource] app: una reserva cargada a mano.
+/// Las [weeks] semanas de una reserva (el pedido [requestId] de la ficha
+/// [clientId]), cada 7 días desde [first] (miércoles 25/11/2026), con ids
+/// `sessionId(firstN)`, `sessionId(firstN + 1)`… [statuses] va por semana,
+/// desde 1. [address] null: una reserva que llegó por la web (el formulario
+/// no pide la dirección). [requestSource] app: una reserva cargada a mano.
 List<CookingSession> buildBooking({
   int weeks = 4,
   CalendarDate? first,
+  int firstN = 1,
+  String requestId = bookingRequestId,
+  String clientId = testClientId,
   Map<int, SessionStatus> statuses = const {},
   String name = 'Giulia Rossi',
   String? address = 'Via Gombito 12, 24129 Bergamo',
@@ -169,7 +175,9 @@ List<CookingSession> buildBooking({
   return [
     for (var week = 1; week <= weeks; week++)
       buildSession(
-        n: week,
+        n: firstN + week - 1,
+        requestId: requestId,
+        clientId: clientId,
         date: start.addDays(7 * (week - 1)),
         status: statuses[week] ?? SessionStatus.confirmed,
         name: name,
