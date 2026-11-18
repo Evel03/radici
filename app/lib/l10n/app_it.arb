@@ -1096,7 +1096,7 @@
       "max": { "type": "int", "example": "300" }
     }
   },
-  "bookingRetryKeepsOpen": "La scheda resta aperta finché non arriva una risposta: così la prenotazione non si duplica.",
+  "bookingRetryKeepsOpen": "Questa pagina resta aperta finché non arriva una risposta: così la prenotazione non si duplica.",
   "@bookingRetryKeepsOpen": {
     "description": "Hoja de reserva a mano o «Rinnova», barra de abajo: se mandó la confirmación y no hubo respuesta. La hoja no se cierra hasta reintentar, porque otra hoja usaría otra clave y podría duplicar la reserva. Si el reintento tampoco tiene respuesta, la reemplaza bookingRetryLeaveWarning."
   },

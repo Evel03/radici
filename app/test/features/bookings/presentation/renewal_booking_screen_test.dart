@@ -283,7 +283,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       textOf(tester, 'booking-retry-keeps-open'),
-      'La scheda resta aperta finché non arriva una risposta: così la prenotazione non si duplica.',
+      'Questa pagina resta aperta finché non arriva una risposta: così la prenotazione non si duplica.',
     );
     expect(tester.widget<IconButton>(byKey('booking-close')).onPressed, isNull);
     await tester.binding.handlePopRoute();

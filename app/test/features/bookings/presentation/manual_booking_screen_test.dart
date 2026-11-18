@@ -344,6 +344,32 @@ void main() {
     });
   });
 
+  testWidgets('en español: «Comprobando las fechas…» mientras corre el dryRun y, sin respuesta, «Esta pantalla queda abierta…»', (tester) async {
+    final app = await openChiara(
+      tester,
+      locale: const Locale('es', 'ES'),
+      configure: (b) => b.loseNextConfirmResponse = true,
+    );
+    await typePrice(tester, '560');
+    // Otra cantidad de semanas vuelve a pedir el dryRun (la rueda de la barra
+    // gira: sin pumpAndSettle).
+    await tester.ensureVisible(byKey('booking-weeks-decrement'));
+    await tester.pumpAndSettle();
+    app.bookings.pendingChecks = Completer<void>();
+    await tester.tap(byKey('booking-weeks-decrement'));
+    await tester.pump();
+    expect(textOf(tester, 'booking-checking'), 'Comprobando las fechas…');
+    app.bookings.pendingChecks!.complete();
+    await tester.pumpAndSettle();
+
+    await tester.tap(byKey('booking-confirm'));
+    await tester.pumpAndSettle();
+    expect(
+      textOf(tester, 'booking-retry-keeps-open'),
+      'Esta pantalla queda abierta hasta que llegue una respuesta: así la reserva no se duplica.',
+    );
+  });
+
   testWidgets('sin respuesta al confirmar: la hoja no se cierra hasta reintentar, y el reintento no duplica', (tester) async {
     final app = await openChiara(
       tester,
@@ -354,7 +380,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       textOf(tester, 'booking-retry-keeps-open'),
-      'La scheda resta aperta finché non arriva una risposta: così la prenotazione non si duplica.',
+      'Questa pagina resta aperta finché non arriva una risposta: così la prenotazione non si duplica.',
     );
     expect(tester.widget<IconButton>(byKey('booking-close')).onPressed, isNull);
     await tester.binding.handlePopRoute();

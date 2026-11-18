@@ -51,6 +51,7 @@ void main() {
     FakeClientsRepository? clients,
     Size size = const Size(400, 900),
     bool settle = true,
+    Locale locale = const Locale('it', 'IT'),
   }) async {
     final app = await pumpChefApp(
       tester,
@@ -58,6 +59,7 @@ void main() {
       clients: clients ?? FakeClientsRepository([chiara, damico, giulia]),
       location: '/richieste',
       size: size,
+      deviceLocales: [locale],
     );
     await tester.tap(byKey('inbox-tab-bookings'));
     await tester.pumpAndSettle();
@@ -231,6 +233,24 @@ void main() {
       expect(tester.widget<ListTile>(byKey('client-a-twin')).isThreeLine, isTrue);
       await search(tester, 'bea');
       expect(textOf(tester, 'client-b-lonely-prospect'), 'Non ancora cliente');
+    });
+
+    testWidgets('en inglés, «Not a client yet · requested 11/15»', (tester) async {
+      final twin = buildClient(
+        id: 'a-twin',
+        name: 'Chiara Rossi',
+        status: ClientStatus.prospect,
+        latestWeekly: buildLatestWeekly(createdAt: DateTime.utc(2026, 11, 15, 9)),
+      );
+      await openPicker(
+        tester,
+        clients: FakeClientsRepository([twin]),
+        locale: const Locale('en'),
+      );
+      expect(
+        textOf(tester, 'client-a-twin-prospect'),
+        'Not a client yet · requested 11/15',
+      );
     });
   });
 

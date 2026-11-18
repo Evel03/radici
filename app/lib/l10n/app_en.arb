@@ -220,7 +220,7 @@
   "clientPickerEmpty": "You don't have any clients yet: add the first one with “New client”.",
   "clientPickerNoMatches": "No client matches “{query}”. If she's new, add her with “New client”.",
   "clientPickerProspect": "Not a client yet",
-  "clientPickerProspectSince": "Not a client yet · request of {date}",
+  "clientPickerProspectSince": "Not a client yet · requested {date}",
   "newClientAction": "New client",
   "newClientNameLabel": "Full name",
   "newClientPhoneLabel": "Phone (for WhatsApp)",
