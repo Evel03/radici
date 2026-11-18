@@ -14,7 +14,10 @@ import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/presentation/client_area_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
+import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
+import 'package:radici/features/bookings/presentation/new_booking_client_screen.dart';
+import 'package:radici/features/bookings/presentation/new_client_screen.dart';
 import 'package:radici/features/home/presentation/home_screen.dart';
 import 'package:radici/features/more/presentation/more_screen.dart';
 import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
@@ -130,6 +133,50 @@ final routerProvider = Provider<GoRouter>((ref) {
                 pageBuilder: (context, state) =>
                     _page(state, const InboxScreen()),
                 routes: [
+                  // «Nuova prenotazione»: elegir la clienta, a pantalla
+                  // completa (con X). Va antes que «:id».
+                  GoRoute(
+                    path: AppRoutes.newBookingSegment,
+                    parentNavigatorKey: rootNavigatorKey,
+                    pageBuilder: (context, state) => MaterialPage<void>(
+                      key: state.pageKey,
+                      fullscreenDialog: true,
+                      child: const NewBookingClientScreen(),
+                    ),
+                    routes: [
+                      // «Nuova cliente», con la flecha de volver al elegir.
+                      GoRoute(
+                        path: AppRoutes.newClientSegment,
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) =>
+                            _page(state, const NewClientScreen()),
+                      ),
+                      // La hoja a mano: la ficha de la URL o, sin ella, la
+                      // ficha nueva del formulario.
+                      GoRoute(
+                        path: AppRoutes.bookingSegment,
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) {
+                          final query = state.uri.queryParameters;
+                          final clientId = query[AppRoutes.clientParam];
+                          return MaterialPage<void>(
+                            key: state.pageKey,
+                            fullscreenDialog: true,
+                            child: ConfirmBookingScreen(
+                              source: clientId == null
+                                  ? const BookingSource.newClient()
+                                  : BookingSource.client(
+                                      clientId,
+                                      fromForm:
+                                          query[AppRoutes.fromFormParam] ==
+                                          '1',
+                                    ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                   // El detalle tapa la barra de navegación.
                   GoRoute(
                     path: ':id',
@@ -149,7 +196,9 @@ final routerProvider = Provider<GoRouter>((ref) {
                           key: state.pageKey,
                           fullscreenDialog: true,
                           child: ConfirmBookingScreen(
-                            requestId: state.pathParameters['id']!,
+                            source: BookingSource.request(
+                              state.pathParameters['id']!,
+                            ),
                           ),
                         ),
                       ),
@@ -248,12 +297,14 @@ const String _sessionPath = '${AppRoutes.sessions}/:id';
 
 /// Hay en la pila de [router], a la vista o tapada por otra pantalla (por
 /// ejemplo, un pedido abierto desde el aviso), una hoja «Conferma
-/// prenotazione» o la ficha de una sesión (sola o con su hoja «Sposta»). Un
-/// go las sacaría sin pasar por ningún PopScope, con lo que tengan a medias:
-/// la hoja de reserva, con lo escrito o, mientras se manda, con la pantalla
-/// final y su WhatsApp; la ficha, con la hoja «Sposta» a medio mover (y el
-/// resultado del que sale «Annulla») o el aviso con «Annulla» después de
-/// mover.
+/// prenotazione» (desde un pedido o a mano), el elegir de «Nuova
+/// prenotazione», su formulario «Nuova cliente» o la ficha de una sesión
+/// (sola o con su hoja «Sposta»). Un go las sacaría sin pasar por ningún
+/// PopScope, con lo que tengan a medias: la hoja de reserva, con lo escrito
+/// o, mientras se manda, con la pantalla final y su WhatsApp; el elegir y el
+/// formulario, con la búsqueda y el borrador de la ficha nueva; la ficha, con
+/// la hoja «Sposta» a medio mover (y el resultado del que sale «Annulla») o
+/// el aviso con «Annulla» después de mover.
 ///
 /// Con la ficha en la pila, hoy a «Apri» solo se llega desde la hoja
 /// «Sposta» o desde un pedido o una hoja de reserva abiertos encima: sobre la
@@ -274,6 +325,8 @@ bool bookingOrSessionInStack(GoRouter router) {
         GoRoute(
           path:
               AppRoutes.bookingSegment ||
+              AppRoutes.newBookingSegment ||
+              AppRoutes.newClientSegment ||
               _sessionPath ||
               AppRoutes.sessionMoveSegment,
         ) =>

@@ -185,6 +185,37 @@ void main() {
     );
   });
 
+  test('«Nuova prenotazione»: el elegir, «Nuova cliente» y la hoja a mano, con solo ids en la URL', () {
+    expect(AppRoutes.newBooking, '/richieste/nuova');
+    expect(AppRoutes.newBookingNewClient, '/richieste/nuova/cliente');
+    expect(AppRoutes.newBookingSheet(), '/richieste/nuova/prenota');
+    expect(
+      AppRoutes.newBookingSheet(clientId: 'x'),
+      '/richieste/nuova/prenota?cliente=x',
+    );
+    expect(
+      AppRoutes.newBookingSheet(clientId: 'x', fromForm: true),
+      '/richieste/nuova/prenota?cliente=x&modulo=1',
+    );
+    for (final path in [
+      AppRoutes.newBooking,
+      AppRoutes.newBookingNewClient,
+      AppRoutes.newBookingSheet(),
+      AppRoutes.newBookingSheet(clientId: 'x', fromForm: true),
+    ]) {
+      expect(isChefPath(Uri.parse(path).path), isTrue, reason: path);
+      expect(_redirect(chef, path), isNull, reason: path);
+    }
+    expect(
+      _redirect(signedOut, '/richieste/nuova/prenota?cliente=x'),
+      '/accedi?from=%2Frichieste%2Fnuova%2Fprenota%3Fcliente%3Dx',
+    );
+    expect(
+      _redirect(signedOut, '/richieste/nuova'),
+      '/accedi?from=%2Frichieste%2Fnuova',
+    );
+  });
+
   test('rutas del catálogo de platos', () {
     expect(AppRoutes.more, '/altro');
     expect(AppRoutes.recipes, '/altro/piatti');

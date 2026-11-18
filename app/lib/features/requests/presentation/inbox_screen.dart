@@ -1,6 +1,7 @@
 // Bandeja "Richieste": nuevas, vistas, reservas (los pedidos aceptados) y
 // rechazadas (contrato §7). Hoy la abre en «Nuove» con un pedido de pestaña
-// (inboxTabRequestProvider).
+// (inboxTabRequestProvider). «Prenotazioni» tiene abajo «Nuova
+// prenotazione», para cargar una reserva a mano.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +13,8 @@ import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/domain/inbox.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/features/sessions/presentation/session_widgets.dart'
+    show SessionBottomBar;
 import 'package:radici/l10n/app_localizations.dart';
 
 class InboxScreen extends ConsumerWidget {
@@ -74,20 +77,68 @@ class InboxScreen extends ConsumerWidget {
             ],
           ),
         ),
-        body: inbox.when(
-          data: (requests) => TabBarView(
-            children: [
-              for (final tab in InboxTab.values)
-                _RequestList(tab: tab, requests: requestsInTab(requests, tab)),
-            ],
-          ),
-          error: (_, _) => LoadErrorView(
-            message: l10n.inboxLoadError,
-            onRetry: () => ref.invalidate(chefInboxProvider),
-          ),
-          loading: () => const Center(child: CircularProgressIndicator()),
+        // Las pestañas están siempre: cada una dice si la bandeja carga o no
+        // se pudo leer. Así «Prenotazioni» tiene su barra «Nuova
+        // prenotazione» en los tres estados: la reserva a mano no depende de
+        // la bandeja.
+        body: TabBarView(
+          children: [
+            for (final tab in InboxTab.values)
+              if (tab == InboxTab.bookings)
+                Column(
+                  children: [
+                    Expanded(child: _TabContent(tab: tab, inbox: inbox)),
+                    const _NewBookingBar(),
+                  ],
+                )
+              else
+                _TabContent(tab: tab, inbox: inbox),
+          ],
         ),
       ),
+    );
+  }
+}
+
+/// Una pestaña según la bandeja: la rueda, el error con «Riprova» o la lista.
+class _TabContent extends ConsumerWidget {
+  const _TabContent({required this.tab, required this.inbox});
+
+  final InboxTab tab;
+  final AsyncValue<List<ChefRequest>> inbox;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    return inbox.when(
+      data: (requests) =>
+          _RequestList(tab: tab, requests: requestsInTab(requests, tab)),
+      error: (_, _) => LoadErrorView(
+        message: l10n.inboxLoadError,
+        onRetry: () => ref.invalidate(chefInboxProvider),
+      ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+/// La barra de «Prenotazioni»: cargar una reserva a mano. Es también la
+/// acción de la pestaña vacía, en el tercio inferior del teléfono.
+class _NewBookingBar extends StatelessWidget {
+  const _NewBookingBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SessionBottomBar(
+      children: [
+        FilledButton.icon(
+          key: const ValueKey('inbox-new-booking'),
+          onPressed: () => context.push(AppRoutes.newBooking),
+          icon: const Icon(Icons.add),
+          label: Text(l10n.newBookingAction),
+        ),
+      ],
     );
   }
 }
@@ -177,7 +228,12 @@ class RequestTile extends StatelessWidget {
       when = slot == null ? '' : l10n.slot(slot);
     } else {
       when = [
-        date == null ? l10n.requestNoDate : formats.shortDate(date),
+        if (date != null)
+          formats.shortDate(date)
+        // Una reserva sin fecha preferida (cargada a mano) no dice «Senza
+        // data»: sus fechas son las de sus sesiones.
+        else if (!request.isBooking)
+          l10n.requestNoDate,
         if (slot != null) l10n.slot(slot),
       ].join(' · ');
     }

@@ -209,8 +209,9 @@ class _NoSessions extends StatelessWidget {
   }
 }
 
-/// Sin ninguna sesión, la acción del estado vacío, «Vedi le richieste»:
-/// abajo, en el tercio inferior del teléfono, como los botones de una sesión.
+/// Sin ninguna sesión, las acciones del estado vacío, «Vedi le richieste» y
+/// «Nuova prenotazione» (cargar una a mano, como en «Prenotazioni»): abajo,
+/// en el tercio inferior del teléfono, como los botones de una sesión.
 class _NoSessionsActions extends StatelessWidget {
   const _NoSessionsActions();
 
@@ -225,6 +226,13 @@ class _NoSessionsActions extends StatelessWidget {
           onPressed: () => context.go(AppRoutes.requests),
           icon: const Icon(Icons.inbox_outlined),
           label: Text(l10n.todayEmptyAction),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: const ValueKey('today-empty-new-booking'),
+          onPressed: () => context.push(AppRoutes.newBooking),
+          icon: const Icon(Icons.add),
+          label: Text(l10n.newBookingAction),
         ),
       ],
     );

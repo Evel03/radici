@@ -1,0 +1,481 @@
+// La hoja «Conferma prenotazione» a mano, en la app: para una ficha
+// existente (el encabezado, «Persone e pasti» de su último pedido semanal, 4
+// semanas desde mañana, el precio obligatorio, el WhatsApp en el idioma
+// elegido y «Fatto», que lleva a «Prenotazioni») y para una nueva (el hogar
+// compartido con el formulario, los datos que el servidor rechaza con
+// «Correggi»). Con una respuesta perdida no se cierra hasta reintentar; los
+// avisos del servidor; los estados antes de la hoja; y, a 375×667, la acción
+// principal en el tercio inferior. "Hoy": lunes 19/10/2026, 14:00 en Roma.
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/rome_time.dart';
+import 'package:radici/core/uuid.dart';
+import 'package:radici/features/bookings/data/bookings_repository.dart';
+import 'package:radici/features/bookings/domain/booking.dart';
+import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
+import 'package:radici/features/bookings/presentation/new_booking_client_screen.dart';
+import 'package:radici/features/bookings/presentation/new_client_screen.dart';
+import 'package:radici/features/clients/data/clients_repository.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/inbox_screen.dart';
+
+import '../../../support/chef_app.dart';
+import '../../../support/client_fixtures.dart';
+import '../../../support/fakes.dart';
+import '../../../support/text_input_guard.dart';
+
+/// intl separa el número del € con un espacio duro.
+const String _nbsp = ' ';
+
+void main() {
+  final tomorrow = CalendarDate(2026, 10, 20);
+  // Activa, con un último pedido semanal de 3 + 1, 4 días, almuerzo y cena,
+  // en español.
+  final chiara = buildClient(
+    id: 'c-chiara',
+    name: 'Chiara Rossi',
+    phone: '340 111 2233',
+    zone: 'Loreto',
+    latestWeekly: buildLatestWeekly(
+      locale: ClientLocale.es,
+      adults: 3,
+      kids: 1,
+      days: 4,
+      meals: const [Meal.lunch, Meal.dinner],
+    ),
+  );
+
+  late int keys;
+  setUp(() => keys = 0);
+
+  Finder byKey(String key) => find.byKey(ValueKey(key));
+  String textOf(WidgetTester tester, String key) =>
+      tester.widget<Text>(byKey(key)).data!;
+  FilledButton confirmButton(WidgetTester tester) =>
+      tester.widget<FilledButton>(byKey('booking-confirm'));
+
+  Future<void> tapInForm(WidgetTester tester, String key) async {
+    await tester.ensureVisible(byKey(key));
+    await tester.pumpAndSettle();
+    await tester.tap(byKey(key));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> typePrice(WidgetTester tester, String text) async {
+    await tester.ensureVisible(byKey('booking-price'));
+    await tester.pumpAndSettle();
+    await tester.enterText(byKey('booking-price'), text);
+    await tester.pumpAndSettle();
+  }
+
+  /// La app en «Prenotazioni» → «Nuova prenotazione». Las claves de cada hoja
+  /// son key-1, key-2…
+  Future<ChefApp> openPicker(
+    WidgetTester tester, {
+    FakeClientsRepository? clients,
+    FakeChefRequestsRepository? requests,
+    void Function(FakeBookingsRepository bookings)? configure,
+    Size size = const Size(400, 900),
+    Locale locale = const Locale('it', 'IT'),
+  }) async {
+    final requestsRepository = requests ?? FakeChefRequestsRepository(const []);
+    final clientsRepository = clients ?? FakeClientsRepository([chiara]);
+    final bookings = FakeBookingsRepository(
+      requests: requestsRepository,
+      clients: clientsRepository,
+    );
+    configure?.call(bookings);
+    final app = await pumpChefApp(
+      tester,
+      requests: requestsRepository,
+      clients: clientsRepository,
+      bookings: bookings,
+      location: '/richieste',
+      size: size,
+      deviceLocales: [locale],
+      overrides: [newIdProvider.overrideWithValue(() => 'key-${++keys}')],
+    );
+    await tester.tap(byKey('inbox-tab-bookings'));
+    await tester.pumpAndSettle();
+    await tester.tap(byKey('inbox-new-booking'));
+    await tester.pumpAndSettle();
+    return app;
+  }
+
+  /// La hoja de Chiara, elegida en la lista.
+  Future<ChefApp> openChiara(
+    WidgetTester tester, {
+    FakeChefRequestsRepository? requests,
+    void Function(FakeBookingsRepository bookings)? configure,
+    Size size = const Size(400, 900),
+    Locale locale = const Locale('it', 'IT'),
+  }) async {
+    final app = await openPicker(
+      tester,
+      requests: requests,
+      configure: configure,
+      size: size,
+      locale: locale,
+    );
+    await tester.tap(byKey('client-c-chiara'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+    return app;
+  }
+
+  /// La hoja de una ficha nueva: «Nuova cliente» con nombre y teléfono y
+  /// «Continua».
+  Future<ChefApp> openNewClient(
+    WidgetTester tester, {
+    void Function(FakeBookingsRepository bookings)? configure,
+  }) async {
+    final app = await openPicker(tester, configure: configure);
+    await tester.tap(byKey('new-booking-new-client'));
+    await tester.pumpAndSettle();
+    await tester.enterText(byKey('new-client-name'), 'Giulia Rossi');
+    await tester.enterText(byKey('new-client-phone'), '347 000 1111');
+    await tester.pumpAndSettle();
+    await tester.tap(byKey('new-client-continue'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+    return app;
+  }
+
+  group('una ficha existente', () {
+    testWidgets('encabezado con teléfono y zona, «Persone e pasti» de su último pedido semanal, 4 semanas desde mañana y el precio vacío', (tester) async {
+      await openChiara(tester);
+      expect(find.widgetWithText(AppBar, 'Nuova prenotazione'), findsOneWidget);
+      expect(find.text('Chiara Rossi'), findsOneWidget);
+      expect(textOf(tester, 'booking-subtitle'), '340 111 2233 · Loreto');
+      expect(byKey('booking-new-client-note'), findsNothing);
+      expect(textOf(tester, 'booking-weeks-value'), '4');
+      for (final (i, date) in [
+        'mar 20 ott',
+        'mar 27 ott',
+        'mar 3 nov',
+        'mar 10 nov',
+      ].indexed) {
+        expect(find.text('Settimana ${i + 1} · $date'), findsOneWidget);
+      }
+      await tester.ensureVisible(byKey('booking-household'));
+      expect(find.text('Persone e pasti'), findsOneWidget);
+      expect(textOf(tester, 'booking-adults-value'), '3');
+      expect(textOf(tester, 'booking-kids-value'), '1');
+      expect(textOf(tester, 'booking-days-value'), '4');
+      expect(tester.widget<FilterChip>(byKey('booking-meal-lunch')).selected, isTrue);
+      expect(tester.widget<FilterChip>(byKey('booking-meal-dinner')).selected, isTrue);
+      await tester.ensureVisible(byKey('booking-locale-es'));
+      expect(find.text('Lingua dei messaggi WhatsApp'), findsOneWidget);
+      expect(tester.widget<ChoiceChip>(byKey('booking-locale-es')).selected, isTrue);
+      expect(find.text('Calcolato da persone e pasti, al massimo 300 min.'), findsOneWidget);
+      // El precio, vacío y obligatorio: la barra lo dice con «Vedi».
+      expect(tester.widget<TextField>(byKey('booking-price')).controller!.text, isEmpty);
+      expect(textOf(tester, 'booking-blocker'), 'Manca il prezzo del servizio.');
+      expect(byKey('booking-blocker-show'), findsOneWidget);
+      expect(confirmButton(tester).onPressed, isNull);
+      expectReadableInputs(tester);
+    });
+
+    testWidgets('con «560» el resumen; al confirmar, la pantalla final y el WhatsApp en el idioma elegido', (tester) async {
+      final app = await openChiara(tester);
+      await typePrice(tester, '560');
+      expect(
+        textOf(tester, 'booking-summary'),
+        'Servizio 560,00$_nbsp€ · 140,00$_nbsp€ a settimana · arrivo 10:00',
+      );
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Prenotazione confermata'), findsOneWidget);
+      expect(app.bookings.confirmations.single.clientId, 'c-chiara');
+
+      await tester.tap(byKey('booking-whatsapp'));
+      await tester.pumpAndSettle();
+      final whatsApp = app.launcher.launched.single;
+      expect(whatsApp.path, '/393401112233');
+      expect(
+        whatsApp.queryParameters['text'],
+        startsWith('Hola Chiara, soy Evelyn de Radici. Te confirmo las 4 sesiones'),
+      );
+    });
+
+    testWidgets('el idioma elegido en la hoja es el del WhatsApp', (tester) async {
+      final app = await openChiara(tester);
+      await tapInForm(tester, 'booking-locale-en');
+      await typePrice(tester, '560');
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      expect(app.bookings.confirmations.single.locale, ClientLocale.en);
+      await tester.tap(byKey('booking-whatsapp'));
+      await tester.pumpAndSettle();
+      expect(
+        app.launcher.launched.single.queryParameters['text'],
+        startsWith('Hi Chiara'),
+      );
+    });
+
+    testWidgets('«Fatto» lleva a Richieste en «Prenotazioni» con la reserva nueva, también con la relectura fallando', (tester) async {
+      final requests = FakeChefRequestsRepository(const []);
+      final app = await openChiara(tester, requests: requests);
+      await typePrice(tester, '560');
+      requests.failFetch = true;
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('booking-done-close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsNothing);
+      expect(find.byType(NewBookingClientScreen), findsNothing);
+      expect(find.byType(InboxScreen), findsOneWidget);
+      expect(byKey('inbox-new-booking').hitTestable(), findsOneWidget);
+      expect(byKey('request-manual-request-1'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: byKey('request-manual-request-1'),
+          matching: find.text('Chiara Rossi'),
+        ),
+        findsOneWidget,
+      );
+      expect(app.bookings.confirmations, hasLength(1));
+    });
+
+    testWidgets('después de confirmar, el atrás del sistema hace lo mismo que «Fatto»', (tester) async {
+      await openChiara(tester);
+      await typePrice(tester, '560');
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsNothing);
+      expect(find.byType(NewBookingClientScreen), findsNothing);
+      expect(byKey('request-manual-request-1'), findsOneWidget);
+    });
+  });
+
+  group('una ficha nueva', () {
+    testWidgets('lo dice el encabezado; confirmar y «Fatto» (el formulario no queda debajo)', (tester) async {
+      final app = await openNewClient(tester);
+      expect(textOf(tester, 'booking-subtitle'), '347 000 1111');
+      expect(
+        textOf(tester, 'booking-new-client-note'),
+        'Scheda nuova: si crea quando confermi.',
+      );
+      await typePrice(tester, '560');
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      expect(
+        app.bookings.confirmations.single.newClient,
+        const NewClientData(name: 'Giulia Rossi', phone: '+393470001111'),
+      );
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(NewClientScreen), findsNothing);
+      expect(find.byType(InboxScreen), findsOneWidget);
+      expect(byKey('request-manual-request-1'), findsOneWidget);
+    });
+
+    testWidgets('los adultos cambiados en la hoja vuelven al formulario; «Continua» abre otra hoja con ellos, el precio vacío y otra clave', (tester) async {
+      final app = await openNewClient(tester);
+      await tapInForm(tester, 'booking-adults-increment');
+      expect(textOf(tester, 'booking-adults-value'), '3');
+      await typePrice(tester, '100');
+      await tester.tap(byKey('booking-close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NewClientScreen), findsOneWidget);
+      expect(textOf(tester, 'new-client-adults-value'), '3');
+
+      await tester.tap(byKey('new-client-continue'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(byKey('booking-adults-value'));
+      expect(textOf(tester, 'booking-adults-value'), '3');
+      expect(tester.widget<TextField>(byKey('booking-price')).controller!.text, isEmpty);
+      await typePrice(tester, '200');
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      expect(app.bookings.confirmations.single.requestKey, 'key-2');
+      expect(app.bookings.confirmations.single.household?.adults, 3);
+    });
+
+    testWidgets('si el servidor no acepta los datos de la ficha nueva, lo dice y «Correggi» vuelve al formulario', (tester) async {
+      await openNewClient(
+        tester,
+        configure: (b) => b.checksFailure = const BookingFailure(
+          BookingFailureKind.invalid,
+          fields: {'newClient.phone'},
+        ),
+      );
+      expect(
+        textOf(tester, 'booking-failure'),
+        'Il server non accetta i dati della cliente nuova: torna indietro e controllali.',
+      );
+      expect(confirmButton(tester).onPressed, isNull);
+      await tester.tap(byKey('booking-new-client-fix'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NewClientScreen), findsOneWidget);
+    });
+  });
+
+  testWidgets('sin respuesta al confirmar: la hoja no se cierra hasta reintentar, y el reintento no duplica', (tester) async {
+    final app = await openChiara(
+      tester,
+      configure: (b) => b.loseNextConfirmResponse = true,
+    );
+    await typePrice(tester, '560');
+    await tester.tap(byKey('booking-confirm'));
+    await tester.pumpAndSettle();
+    expect(
+      textOf(tester, 'booking-retry-keeps-open'),
+      'La scheda resta aperta finché non arriva una risposta: così la prenotazione non si duplica.',
+    );
+    expect(tester.widget<IconButton>(byKey('booking-close')).onPressed, isNull);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+
+    await tester.tap(byKey('booking-confirm'));
+    await tester.pumpAndSettle();
+    final sent = app.bookings.confirmations;
+    expect(sent, hasLength(2));
+    expect(sent.last, sent.first);
+    expect(app.bookings.savedByKey, hasLength(1));
+    expect(
+      app.requests.requests.keys.where((id) => id.startsWith('manual-request')),
+      hasLength(1),
+    );
+    expect(byKey('booking-done-duplicate'), findsOneWidget);
+  });
+
+  group('lo que dice el servidor de cada semana', () {
+    testWidgets('un día bloqueado es un aviso: se puede confirmar', (tester) async {
+      await openChiara(
+        tester,
+        configure: (b) => b.statuses[tomorrow] = BookingDayStatus.blocked,
+      );
+      expect(textOf(tester, 'booking-week-0-status'), 'Giorno bloccato');
+      await typePrice(tester, '560');
+      expect(confirmButton(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('un choque no deja confirmar y la barra dice qué semana', (tester) async {
+      await openChiara(
+        tester,
+        configure: (b) => b.statuses[tomorrow] = BookingDayStatus.busy,
+      );
+      await typePrice(tester, '560');
+      expect(confirmButton(tester).onPressed, isNull);
+      expect(
+        textOf(tester, 'booking-blocker'),
+        "Settimana 1 · Si sovrappone a un'altra sessione: cambia quella data o l'ora.",
+      );
+    });
+  });
+
+  group('antes de la hoja', () {
+    testWidgets('cargando la ficha: la rueda', (tester) async {
+      final clients = FakeClientsRepository([chiara])
+        ..pendingFetch = Completer<void>();
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        clients: clients,
+      );
+      app.go('/richieste/nuova/prenota?cliente=c-chiara');
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(byKey('booking-loading'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'Nuova prenotazione'), findsWidgets);
+      clients.pendingFetch!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Chiara Rossi'), findsOneWidget);
+    });
+
+    testWidgets('si no se pudieron leer las fichas: el mensaje y «Riprova»', (tester) async {
+      final clients = FakeClientsRepository([chiara])
+        ..fetchFailure = const ClientsFailure(ClientsFailureKind.unavailable);
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        clients: clients,
+      );
+      app.go('/richieste/nuova/prenota?cliente=c-chiara');
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(ConfirmBookingScreen),
+          matching: find.text(
+            'Impossibile caricare le schede delle clienti. Controlla la connessione e riprova.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      clients.fetchFailure = null;
+      await tester.tap(
+        find.descendant(
+          of: find.byType(ConfirmBookingScreen),
+          matching: byKey('load-error-retry'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Chiara Rossi'), findsOneWidget);
+      expect(textOf(tester, 'booking-weeks-value'), '4');
+    });
+
+    testWidgets('una ficha que no existe lo dice', (tester) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        clients: FakeClientsRepository([chiara]),
+      );
+      app.go('/richieste/nuova/prenota?cliente=nope');
+      await tester.pumpAndSettle();
+      expect(
+        textOf(tester, 'booking-client-not-found'),
+        'Questa scheda cliente non esiste più.',
+      );
+    });
+
+    testWidgets('la hoja de una ficha nueva sin formulario (la página se recargó) lo dice y vuelve a empezar', (tester) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+      );
+      app.go('/richieste/nuova/prenota');
+      await tester.pumpAndSettle();
+      expect(
+        textOf(tester, 'booking-new-client-missing'),
+        'I dati della cliente nuova non ci sono più: ricomincia da «Nuova prenotazione».',
+      );
+      await tester.tap(byKey('booking-restart'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NewBookingClientScreen), findsOneWidget);
+      expect(find.byType(ConfirmBookingScreen), findsNothing);
+    });
+  });
+
+  testWidgets('a 375×667 «Conferma 4 settimane» queda en el tercio inferior con el resumen arriba', (tester) async {
+    await openChiara(tester, size: const Size(375, 667));
+    await typePrice(tester, '560');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    final confirm = byKey('booking-confirm');
+    expect(confirm.hitTestable(), findsOneWidget);
+    expect(find.text('Conferma 4 settimane'), findsOneWidget);
+    expect(tester.getCenter(confirm).dy, greaterThan(667 * 2 / 3));
+    expect(tester.getSize(confirm).height, greaterThanOrEqualTo(48));
+    final summary = byKey('booking-summary');
+    expect(summary.hitTestable(), findsOneWidget);
+    expect(tester.getRect(summary).bottom, lessThanOrEqualTo(tester.getRect(confirm).top));
+    for (final key in [
+      'booking-adults-increment',
+      'booking-days-decrement',
+      'booking-meal-lunch',
+      'booking-locale-it',
+    ]) {
+      await tester.ensureVisible(byKey(key));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(byKey(key)).height, greaterThanOrEqualTo(48), reason: key);
+    }
+    expectReadableInputs(tester);
+    expect(tester.takeException(), isNull);
+  });
+}

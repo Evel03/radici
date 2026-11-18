@@ -362,9 +362,9 @@
   "@todayEmptyTitle": {
     "description": "Hoy: no hay ninguna sesión desde hoy."
   },
-  "todayEmptyBody": "Quando confermi una prenotazione da una richiesta, la trovi qui.",
+  "todayEmptyBody": "Quando confermi una prenotazione, da una richiesta o con «Nuova prenotazione», la trovi qui.",
   "@todayEmptyBody": {
-    "description": "Hoy, sin sesiones: de dónde salen (se confirma una reserva desde un pedido)."
+    "description": "Hoy, sin sesiones: de dónde salen (se confirma una reserva desde un pedido o se carga a mano con «Nuova prenotazione», que está en la barra de abajo)."
   },
   "todayEmptyAction": "Vedi le richieste",
   "@todayEmptyAction": {
@@ -518,9 +518,9 @@
   "@inboxEmptyRejected": {
     "description": "Pestaña Rifiutate vacía."
   },
-  "inboxEmptyBookings": "Nessuna prenotazione. Le confermi dal dettaglio di una richiesta nuova.",
+  "inboxEmptyBookings": "Nessuna prenotazione. Confermane una da una richiesta nuova o creala qui sotto con «Nuova prenotazione».",
   "@inboxEmptyBookings": {
-    "description": "Pestaña de reservas vacía: dice dónde se confirman."
+    "description": "Pestaña de reservas vacía: dice de dónde salen (se confirman desde un pedido nuevo o se cargan a mano) y propone el botón «Nuova prenotazione» de abajo, que es la acción de este estado."
   },
   "inboxLoadError": "Impossibile caricare le richieste. Controlla la connessione e riprova.",
   "@inboxLoadError": {
@@ -943,6 +943,157 @@
   "@bookingTodayArrivalPassed": {
     "description": "Hoja de reserva, estado de una semana: la fecha es hoy y la hora de llegada ya pasó en Roma (el servidor no lo marca como pasado). No impide confirmar."
   },
+  "newBookingAction": "Nuova prenotazione",
+  "@newBookingAction": {
+    "description": "Richieste, pestaña Prenotazioni: botón de abajo para cargar una reserva a mano (también es la acción de la pestaña vacía). Título del elegir la clienta y de la hoja de una reserva a mano. También el botón de Hoy sin sesiones, debajo de «Vedi le richieste»."
+  },
+  "clientSearchHint": "Nome o telefono",
+  "@clientSearchHint": {
+    "description": "«Nuova prenotazione», pista del buscador de fichas de clientes (por nombre o por teléfono)."
+  },
+  "clientSearchClear": "Cancella la ricerca",
+  "@clientSearchClear": {
+    "description": "«Nuova prenotazione»: botón que borra el buscador (también su texto para el lector de pantalla) y el que ofrece la lista sin resultados."
+  },
+  "clientsLoadFailed": "Impossibile caricare le schede delle clienti. Controlla la connessione e riprova.",
+  "@clientsLoadFailed": {
+    "description": "«Nuova prenotazione» (y la hoja de una ficha existente): no se pudieron leer las fichas de clientes; debajo va «Riprova»."
+  },
+  "clientPickerEmpty": "Non hai ancora schede di clienti: crea la prima con «Nuova cliente».",
+  "@clientPickerEmpty": {
+    "description": "«Nuova prenotazione», lista vacía: todavía no hay ninguna ficha. La acción es el botón «Nuova cliente» de abajo."
+  },
+  "clientPickerNoMatches": "Nessuna scheda con «{query}». Se è una cliente nuova, creala con «Nuova cliente».",
+  "@clientPickerNoMatches": {
+    "description": "«Nuova prenotazione»: ninguna ficha coincide con lo que se buscó. query: lo que se escribió en el buscador.",
+    "placeholders": {
+      "query": { "type": "String", "example": "Giulia" }
+    }
+  },
+  "clientPickerProspect": "Non ancora cliente",
+  "@clientPickerProspect": {
+    "description": "Elegir la clienta, debajo del teléfono y la zona: la ficha es un prospecto (pidió por la web y todavía no tuvo una reserva) y no tiene un pedido semanal. Separa dos fichas de la misma persona."
+  },
+  "clientPickerProspectSince": "Non ancora cliente · richiesta del {date}",
+  "@clientPickerProspectSince": {
+    "description": "Elegir la clienta, debajo del teléfono y la zona: la ficha es un prospecto (pidió por la web y todavía no tuvo una reserva). Separa dos fichas de la misma persona. date: el día de su último pedido semanal.",
+    "placeholders": {
+      "date": { "type": "String", "example": "15/11" }
+    }
+  },
+  "newClientAction": "Nuova cliente",
+  "@newClientAction": {
+    "description": "«Nuova prenotazione»: botón de abajo para cargar una ficha nueva, y título de ese formulario."
+  },
+  "newClientNameLabel": "Nome e cognome",
+  "@newClientNameLabel": {
+    "description": "Formulario «Nuova cliente»: el nombre de la clienta (obligatorio)."
+  },
+  "newClientPhoneLabel": "Telefono (per WhatsApp)",
+  "@newClientPhoneLabel": {
+    "description": "Formulario «Nuova cliente»: el teléfono de la clienta, al que va el WhatsApp de la reserva."
+  },
+  "newClientPhoneHelper": "Facoltativo. Se non è italiano, con il prefisso: +34…",
+  "@newClientPhoneHelper": {
+    "description": "Formulario «Nuova cliente», ayuda debajo del teléfono: es opcional y un número que no es italiano va con su prefijo (las mismas reglas que el formulario de la web)."
+  },
+  "newClientPhoneInvalid": "Numero non valido: scrivilo con il prefisso, es. +34 612 345 678.",
+  "@newClientPhoneInvalid": {
+    "description": "Formulario «Nuova cliente», error debajo del teléfono después de «Continua»: el número no se puede normalizar (anunciado por el lector de pantalla)."
+  },
+  "newClientPhoneTaken": "Questo numero è già nella scheda di {name}. Se è lei, usa la sua scheda con il pulsante qui sotto: quello che scrivi qui non la cambia.",
+  "@newClientPhoneTaken": {
+    "description": "Formulario «Nuova cliente», tarjeta debajo del teléfono: el teléfono escrito (normalizado como en el formulario web) ya es de esta ficha; el botón para usarla está en la barra de abajo, y usarla no la modifica. name: el nombre de la ficha.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Chiara Rossi" }
+    }
+  },
+  "newClientUseExisting": "Usa la scheda di {name}",
+  "@newClientUseExisting": {
+    "description": "Formulario «Nuova cliente», barra de abajo, acción principal cuando el teléfono ya es de una ficha: abre la hoja de reserva de esa ficha, sin cambiarla. name: el nombre de la ficha.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Chiara Rossi" }
+    }
+  },
+  "newClientCreateAnyway": "Crea una scheda nuova",
+  "@newClientCreateAnyway": {
+    "description": "Formulario «Nuova cliente», barra de abajo, debajo de «Usa la scheda di…»: crea otra ficha aunque el teléfono ya sea de una."
+  },
+  "newClientNameMissing": "Scrivi il nome per continuare.",
+  "@newClientNameMissing": {
+    "description": "Formulario «Nuova cliente», barra de abajo, arriba de «Continua» (deshabilitado): falta el nombre. Al lado, «Vedi» lleva al campo."
+  },
+  "newClientPhoneInvalidShort": "Il numero di telefono non è valido.",
+  "@newClientPhoneInvalidShort": {
+    "description": "Formulario «Nuova cliente», barra de abajo, después de «Continua»: el teléfono no es válido. Al lado, «Vedi» lleva al campo."
+  },
+  "newClientTooLong": "Testo troppo lungo: accorcialo.",
+  "@newClientTooLong": {
+    "description": "Formulario «Nuova cliente», después de «Continua»: error del campo (nombre, zona o dirección) que pasa el largo que acepta el servidor, y la línea de la barra que lo repite."
+  },
+  "newClientPhoneChecking": "Sto controllando se il numero è già di una cliente…",
+  "@newClientPhoneChecking": {
+    "description": "Formulario «Nuova cliente», debajo del teléfono, con una rueda chica: las fichas todavía se están leyendo. No impide continuar."
+  },
+  "newClientPhoneUnchecked": "Non è stato possibile controllare se il numero è già di una cliente.",
+  "@newClientPhoneUnchecked": {
+    "description": "Formulario «Nuova cliente», debajo del teléfono: las fichas no se pudieron leer; al lado va «Riprova». No impide continuar."
+  },
+  "newClientZoneLabel": "Zona (facoltativa)",
+  "@newClientZoneLabel": {
+    "description": "Formulario «Nuova cliente»: la zona o el barrio de la clienta."
+  },
+  "newClientZoneHint": "Es.: Città Alta",
+  "@newClientZoneHint": {
+    "description": "Formulario «Nuova cliente», pista dentro del campo de la zona."
+  },
+  "newClientAddressLabel": "Indirizzo (facoltativo)",
+  "@newClientAddressLabel": {
+    "description": "Formulario «Nuova cliente»: la dirección de la clienta (se guarda en su ficha nueva)."
+  },
+  "clientMessagesLanguage": "Lingua dei messaggi WhatsApp",
+  "@clientMessagesLanguage": {
+    "description": "Formulario «Nuova cliente» y hoja de una reserva a mano: el idioma de la clienta para sus mensajes (italiano, español o inglés)."
+  },
+  "newClientContinue": "Continua",
+  "@newClientContinue": {
+    "description": "Formulario «Nuova cliente», botón de la barra de abajo: abre la hoja de reserva de la ficha nueva."
+  },
+  "bookingNewClientSubtitle": "Scheda nuova: si crea quando confermi.",
+  "@bookingNewClientSubtitle": {
+    "description": "Hoja de una reserva a mano para una clienta nueva, debajo del nombre: la ficha todavía no existe."
+  },
+  "bookingHouseholdSection": "Persone e pasti",
+  "@bookingHouseholdSection": {
+    "description": "Hoja de una reserva a mano, título de la sección: adultos, niños, días a la semana y comidas."
+  },
+  "bookingCookHelpManual": "Calcolato da persone e pasti, al massimo {max} min.",
+  "@bookingCookHelpManual": {
+    "description": "Hoja de una reserva a mano, debajo del tiempo de cocina: sale de las personas y las comidas (sigue a ese cambio hasta que se toca) y tiene un tope.",
+    "placeholders": {
+      "max": { "type": "int", "example": "300" }
+    }
+  },
+  "bookingRetryKeepsOpen": "La scheda resta aperta finché non arriva una risposta: così la prenotazione non si duplica.",
+  "@bookingRetryKeepsOpen": {
+    "description": "Hoja de reserva a mano, barra de abajo: se mandó la confirmación y no hubo respuesta. La hoja no se cierra hasta reintentar, porque otra hoja usaría otra clave y podría duplicar la reserva."
+  },
+  "bookingErrorNewClientInvalid": "Il server non accetta i dati della cliente nuova: torna indietro e controllali.",
+  "@bookingErrorNewClientInvalid": {
+    "description": "Hoja de reserva de una clienta nueva, barra de abajo: el servidor rechazó sus datos (nombre, teléfono, zona o dirección), que se corrigen en el formulario. Al lado, «Correggi» vuelve ahí."
+  },
+  "bookingNewClientFix": "Correggi",
+  "@bookingNewClientFix": {
+    "description": "Hoja de reserva de una clienta nueva, barra de abajo, al lado de bookingErrorNewClientInvalid: vuelve al formulario «Nuova cliente»."
+  },
+  "bookingErrorClientNotFound": "Questa scheda cliente non esiste più.",
+  "@bookingErrorClientNotFound": {
+    "description": "Hoja de una reserva a mano: la ficha elegida ya no existe (antes de abrirla o al confirmar)."
+  },
+  "bookingNewClientMissing": "I dati della cliente nuova non ci sono più: ricomincia da «Nuova prenotazione».",
+  "@bookingNewClientMissing": {
+    "description": "Hoja de reserva de una clienta nueva abierta sin el formulario (por ejemplo, al recargar la página en /gestione/): sus datos no viajan en la URL. Debajo, el botón «Nuova prenotazione»."
+  },
   "bookingChecksFailed": "Non è stato possibile verificare le date. Puoi confermare lo stesso: il server le ricontrolla.",
   "@bookingChecksFailed": {
     "description": "No se pudo preguntar al servidor el estado de las fechas. Va con el botón Riprova."
@@ -976,7 +1127,7 @@
   },
   "bookingCookHelp": "Dalla stima, al massimo {max} min.",
   "@bookingCookHelp": {
-    "description": "Debajo del tiempo de cocina: sale de la estimación y tiene un tope.",
+    "description": "Debajo del tiempo de cocina, en la hoja de un pedido: sale de la estimación y tiene un tope. A mano va bookingCookHelpManual.",
     "placeholders": {
       "max": { "type": "int", "example": "300" }
     }

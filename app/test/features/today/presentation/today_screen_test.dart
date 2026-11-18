@@ -22,6 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/availability/domain/availability.dart';
+import 'package:radici/features/bookings/presentation/new_booking_client_screen.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
@@ -621,6 +622,40 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(InboxScreen), findsOneWidget);
       expect(navBar(tester).selectedIndex, 1);
+    });
+
+    testWidgets('sin ninguna sesión: la barra tiene también «Nuova prenotazione», que abre el elegir la clienta', (
+      tester,
+    ) async {
+      await openToday(tester, size: const Size(375, 667));
+      expect(
+        find.text(
+          'Quando confermi una prenotazione, da una richiesta o con «Nuova '
+          'prenotazione», la trovi qui.',
+        ),
+        findsOneWidget,
+      );
+      final newBooking = byKey('today-empty-new-booking');
+      expect(
+        find.descendant(of: byKey('today-empty-actions'), matching: newBooking),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(OutlinedButton, 'Nuova prenotazione'), findsOneWidget);
+      final rect = tester.getRect(newBooking);
+      expect(rect.height, greaterThanOrEqualTo(48));
+      expect(
+        rect.top,
+        greaterThanOrEqualTo(tester.getRect(byKey('today-empty-action')).bottom),
+        reason: 'debajo de «Vedi le richieste»',
+      );
+      expect(
+        rect.bottom,
+        lessThanOrEqualTo(tester.getRect(byKey('chef-nav-bar')).top),
+      );
+      await tester.tap(newBooking);
+      await tester.pumpAndSettle();
+      expect(find.byType(NewBookingClientScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 

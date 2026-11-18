@@ -114,6 +114,10 @@ class RequestFormats {
   String instantDate(DateTime instant) =>
       DateFormat.yMd(_locale).format(romeWallClock(instant));
 
+  /// Día y mes de un instante, en hora de Roma ("15/11").
+  String instantDayMonth(DateTime instant) =>
+      DateFormat.Md(_locale).format(romeWallClock(instant));
+
   /// Hora de un instante, en hora de Roma ("14:32").
   String instantTime(DateTime instant) =>
       DateFormat.Hm(_locale).format(romeWallClock(instant));
