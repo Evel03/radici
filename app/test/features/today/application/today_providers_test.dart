@@ -15,6 +15,7 @@
 import 'dart:async';
 import 'dart:ui' show Locale;
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -151,49 +152,65 @@ void main() {
       expect(container.read(todayFocusProvider).hasError, isTrue);
     });
 
-    test('mientras Riverpod reintenta una primera lectura que falló, cargando (no el error); si deja de reintentar, el error', () async {
-      sessions.fetchFailure = const SessionFailure(
-        SessionFailureKind.unavailable,
-      );
-      final container = await start(
-        retry: retryOnce(const Duration(milliseconds: 20)),
-      );
-      expect(
-        container.read(sessionsControllerProvider),
-        isA<AsyncLoading<List<CookingSession>>>().having(
-          (s) => s.hasError,
-          'con el error',
-          isTrue,
-        ),
-        reason: 'esperando el reintento',
-      );
-      final retrying = container.read(todayFocusProvider);
-      expect(retrying.isLoading, isTrue);
-      expect(retrying.hasError, isFalse);
+    /// [start] con el tiempo simulado de [async]: avanza solo lo justo para
+    /// que termine (sus vueltas por la cola de eventos, a 0 ms), así el
+    /// reintento a los 20 ms no sale antes de mirar por más lenta que esté la
+    /// máquina (con el reloj real, a veces salía).
+    ProviderContainer startFake(FakeAsync async, {required RetryDelay retry}) {
+      ProviderContainer? container;
+      unawaited(start(retry: retry).then((started) => container = started));
+      async.elapse(Duration.zero);
+      return container!;
+    }
 
-      await Future<void>.delayed(const Duration(milliseconds: 60));
-      await pumpEventQueue();
-      expect(sessions.fetchCalls, 2);
-      expect(container.read(todayFocusProvider).hasError, isTrue);
+    test('mientras Riverpod reintenta una primera lectura que falló, cargando (no el error); si deja de reintentar, el error', () {
+      fakeAsync((async) {
+        sessions.fetchFailure = const SessionFailure(
+          SessionFailureKind.unavailable,
+        );
+        final container = startFake(
+          async,
+          retry: retryOnce(const Duration(milliseconds: 20)),
+        );
+        expect(
+          container.read(sessionsControllerProvider),
+          isA<AsyncLoading<List<CookingSession>>>().having(
+            (s) => s.hasError,
+            'con el error',
+            isTrue,
+          ),
+          reason: 'esperando el reintento',
+        );
+        final retrying = container.read(todayFocusProvider);
+        expect(retrying.isLoading, isTrue);
+        expect(retrying.hasError, isFalse);
+        expect(sessions.fetchCalls, 1);
+
+        async.elapse(const Duration(milliseconds: 60));
+        expect(sessions.fetchCalls, 2);
+        expect(container.read(todayFocusProvider).hasError, isTrue);
+      });
     });
 
-    test('si el reintento automático sale bien, la sesión', () async {
-      save([session(1, today)]);
-      sessions.fetchFailure = const SessionFailure(
-        SessionFailureKind.unavailable,
-      );
-      final container = await start(
-        retry: retryOnce(const Duration(milliseconds: 20)),
-      );
-      expect(container.read(todayFocusProvider).isLoading, isTrue);
+    test('si el reintento automático sale bien, la sesión', () {
+      fakeAsync((async) {
+        save([session(1, today)]);
+        sessions.fetchFailure = const SessionFailure(
+          SessionFailureKind.unavailable,
+        );
+        final container = startFake(
+          async,
+          retry: retryOnce(const Duration(milliseconds: 20)),
+        );
+        expect(container.read(todayFocusProvider).isLoading, isTrue);
 
-      sessions.fetchFailure = null;
-      await Future<void>.delayed(const Duration(milliseconds: 60));
-      await pumpEventQueue();
-      expect(
-        container.read(todayFocusProvider).requireValue.main?.id,
-        sessionId(1),
-      );
+        sessions.fetchFailure = null;
+        async.elapse(const Duration(milliseconds: 60));
+        expect(
+          container.read(todayFocusProvider).requireValue.main?.id,
+          sessionId(1),
+        );
+      });
     });
 
     test('a las 23:30 UTC de invierno ya muestra el día siguiente de Roma', () async {
