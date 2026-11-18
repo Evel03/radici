@@ -251,7 +251,7 @@
   "bookingNewClientMissing": "The new client's details are gone: start again from “New booking”.",
   "renewBookingTitle": "Renew booking",
   "bookingRenewalSubtitle": "Renewal · last session {date}",
-  "bookingRenewalLastMoved": "The last week had been moved: the day and time come from it.",
+  "bookingRenewalLastDiffers": "Not every week had the same day and time: the day and time come from the last one.",
   "bookingRenewalOtherPhone": "The previous request had {phone}: the WhatsApp goes to the number on the record.",
   "bookingRenewalUnavailable": "This booking can't be renewed.",
   "bookingCookHelpRenewal": "As in the previous booking.",

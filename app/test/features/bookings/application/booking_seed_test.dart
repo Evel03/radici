@@ -330,7 +330,7 @@ void main() {
       expect(seed.groceriesEstCents, 6300);
       expect(seed.renewedFrom, CalendarDate(2026, 12, 16));
       expect(seed.renewedRequestId, bookingRequestId);
-      expect(seed.lastMoved, isFalse);
+      expect(seed.lastDiffers, isFalse);
       expect(seed.otherRequestPhone, '+34 612 345 678');
       expect(seed.party.displayName, 'Giulia Rossi');
       expect(seed.party.phoneText, '+39 333 123 4567');
@@ -339,7 +339,7 @@ void main() {
       expect(seed.initialFailure, isNull);
     });
 
-    test('con la última semana movida, lo dice', () async {
+    test('con la última semana movida, avisa que no todas tenían el mismo día y hora', () async {
       final booking = buildBooking();
       booking[3] = booking[3].copyWith(
         date: CalendarDate(2026, 12, 18),
@@ -347,7 +347,7 @@ void main() {
       );
       save(booking);
       final seed = (await seedOf(BookingSource.renewal(sessionId(4))))!;
-      expect(seed.lastMoved, isTrue);
+      expect(seed.lastDiffers, isTrue);
       expect(seed.dates.first, CalendarDate(2026, 12, 25));
       expect(seed.start, const ClockTime.hm(11, 0));
       expect(seed.otherRequestPhone, isNull);

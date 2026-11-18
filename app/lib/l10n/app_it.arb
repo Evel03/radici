@@ -1131,9 +1131,9 @@
       "date": { "type": "String", "example": "mer 16 dic" }
     }
   },
-  "bookingRenewalLastMoved": "L'ultima settimana era stata spostata: giorno e ora vengono da quella.",
-  "@bookingRenewalLastMoved": {
-    "description": "Hoja «Rinnova prenotazione», encabezado: la última semana de la reserva se había movido a otro día u otra hora, y la renovación copia ese día y esa hora."
+  "bookingRenewalLastDiffers": "Non tutte le settimane avevano lo stesso giorno e la stessa ora: giorno e ora vengono dall'ultima.",
+  "@bookingRenewalLastDiffers": {
+    "description": "Hoja «Rinnova prenotazione», encabezado: el día de la semana y la hora de la última sesión viva no son los de más de la mitad de las semanas vivas de la reserva (alguna se movió, o se reservó así), y la renovación copia los de la última. Las sesiones no guardan cuál se movió: por eso no dice que fue la última."
   },
   "bookingRenewalOtherPhone": "Nella richiesta precedente il numero era {phone}: il WhatsApp va a quello della scheda.",
   "@bookingRenewalOtherPhone": {

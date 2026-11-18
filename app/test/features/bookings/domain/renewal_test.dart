@@ -3,11 +3,13 @@
 // sesión viva + 7 días; se copian la llegada, los minutos (tal cual, también
 // más de 300), las porciones y la compra de esa sesión; las semanas y el
 // precio cuentan todas las sesiones, también las canceladas; el hogar
-// (ajustado a los límites del contrato) y el idioma son los del pedido. Con
-// la última semana movida, el día y la hora salen de ella y se avisa; con
-// otro teléfono en el pedido, también. Al cambiar las semanas, el precio
-// sigue a las tarifas de la estimación solo si el total era el de esas
-// tarifas. Una sesión extra, sin pedido o sin sesiones vivas no se renueva.
+// (ajustado a los límites del contrato) y el idioma son los del pedido. El
+// día y la hora salen de la última viva; si no son los de más de la mitad de
+// las vivas (alguna se movió), se avisa sin decir cuál, porque las sesiones
+// no lo guardan; con otro teléfono en el pedido, también. Al cambiar las
+// semanas, el precio sigue a las tarifas de la estimación solo si el total
+// era el de esas tarifas. Una sesión extra, sin pedido o sin sesiones vivas no
+// se renueva.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
@@ -39,7 +41,7 @@ void main() {
       expect(plan.start, const ClockTime.hm(10, 0));
       expect(plan.cookMinutes, 180);
       expect(plan.serviceTotalCents, 56000);
-      expect(plan.lastMoved, isFalse);
+      expect(plan.lastDiffers, isFalse);
       expect(plan.otherRequestPhone, isNull);
     });
 
@@ -78,7 +80,7 @@ void main() {
         CalendarDate(2027, 1, 15),
       ]);
       expect(plan.start, const ClockTime.hm(11, 0));
-      expect(plan.lastMoved, isTrue);
+      expect(plan.lastDiffers, isTrue);
     });
 
     test('la última movida solo de hora también se avisa', () {
@@ -87,7 +89,40 @@ void main() {
       final plan = renewalPlan(booking)!;
       expect(plan.firstDate, CalendarDate(2026, 12, 23));
       expect(plan.start, const ClockTime.hm(11, 30));
-      expect(plan.lastMoved, isTrue);
+      expect(plan.lastDiffers, isTrue);
+    });
+
+    test('la penúltima movida al viernes 11/12: sigue los miércoles a las 10:00 y no avisa', () {
+      final booking = normal();
+      booking[2] = booking[2].copyWith(date: CalendarDate(2026, 12, 11));
+      final plan = renewalPlan(booking)!;
+      expect(plan.firstDate, CalendarDate(2026, 12, 23));
+      expect(plan.start, const ClockTime.hm(10, 0));
+      expect(plan.lastDiffers, isFalse);
+    });
+
+    test('una semana reservada otro día desde el principio (jueves 10/12) o a otra hora: no avisa', () {
+      final thursday = normal();
+      thursday[2] = thursday[2].copyWith(date: CalendarDate(2026, 12, 10));
+      expect(renewalPlan(thursday)!.lastDiffers, isFalse);
+      final earlier = normal();
+      earlier[0] = earlier[0].copyWith(start: const ClockTime.hm(9, 0));
+      expect(renewalPlan(earlier)!.lastDiffers, isFalse);
+    });
+
+    test('dos semanas y solo la primera a las 11:00: no se sabe cuál se movió, así que avisa (la hora sale de la última)', () {
+      final booking = buildBooking(weeks: 2);
+      booking[0] = booking[0].copyWith(start: const ClockTime.hm(11, 0));
+      final plan = renewalPlan(booking)!;
+      expect(plan.firstDate, CalendarDate(2026, 12, 9));
+      expect(plan.start, const ClockTime.hm(10, 0));
+      expect(plan.lastDiffers, isTrue);
+    });
+
+    test('una cancelada en otro día no cuenta', () {
+      final booking = normal(statuses: {3: SessionStatus.cancelled});
+      booking[2] = booking[2].copyWith(date: CalendarDate(2026, 12, 11));
+      expect(renewalPlan(booking)!.lastDiffers, isFalse);
     });
 
     test('reparto desparejo: 166,67 + 166,67 + 166,66 dan 3 semanas y 500 €', () {

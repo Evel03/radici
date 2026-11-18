@@ -315,8 +315,10 @@ repositorios falsos (`test/support/fakes.dart`).
   - se renueva si el pedido está aceptado, es semanal y tiene alguna sesión viva; si no, «Questa
     prenotazione non si può rinnovare.»;
   - la primera fecha es la última sesión viva + 7 días (el mismo día de la semana) y las demás, cada
-    7 días; si la última semana se había movido a otro día u otra hora, salen de ella y el
-    encabezado lo dice (duda D7);
+    7 días; la hora es la de esa sesión. Si su día y su hora no son los de más de la mitad de las
+    semanas vivas (alguna se movió), salen igual de ella y el encabezado avisa «Non tutte le
+    settimane avevano lo stesso giorno e la stessa ora…», sin decir que se movió la última: las
+    sesiones no guardan cuál se movió y, con dos semanas distintas, no se puede saber (duda D7);
   - las semanas y el precio son los de la reserva, contando las sesiones canceladas (lo que se
     reservó y se acordó);
   - la llegada (el primer `dryRun` ya la lleva), los minutos (tal cual, también más de 300: «+» no

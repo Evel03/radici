@@ -200,7 +200,7 @@ final class BookingSeed {
     this.initialFailure,
     this.renewedFrom,
     this.renewedRequestId,
-    this.lastMoved = false,
+    this.lastDiffers = false,
     this.otherRequestPhone,
   });
 
@@ -293,7 +293,7 @@ final class BookingSeed {
     groceriesEstCents: plan.groceriesEstCents,
     renewedFrom: plan.last.date,
     renewedRequestId: plan.last.requestId,
-    lastMoved: plan.lastMoved,
+    lastDiffers: plan.lastDiffers,
     otherRequestPhone: plan.otherRequestPhone,
   );
 
@@ -342,8 +342,9 @@ final class BookingSeed {
   final CalendarDate? renewedFrom;
   final String? renewedRequestId;
 
-  /// «Rinnova»: la última semana se había movido (ver RenewalPlan.lastMoved).
-  final bool lastMoved;
+  /// «Rinnova»: el día y la hora de la última semana no son los de la mayoría
+  /// (ver RenewalPlan.lastDiffers).
+  final bool lastDiffers;
 
   /// «Rinnova»: el teléfono del pedido renovado, si no es el de la ficha.
   final String? otherRequestPhone;

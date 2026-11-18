@@ -38,7 +38,7 @@ final class RenewalPlan {
     required this.household,
     required this.locale,
     this.estimate,
-    this.lastMoved = false,
+    this.lastDiffers = false,
     this.otherRequestPhone,
   });
 
@@ -67,9 +67,12 @@ final class RenewalPlan {
   /// cantidad de semanas ([renewalPriceFor]).
   final RequestEstimate? estimate;
 
-  /// La última viva tiene otro día de la semana u otra hora que la viva
-  /// anterior (se movió): el día y la hora de la renovación salen de ella.
-  final bool lastMoved;
+  /// El día de la semana y la hora de la última viva no son los de más de la
+  /// mitad de las vivas de la reserva: alguna semana se movió (o se reservó
+  /// así). El día y la hora de la renovación salen igual de la última. Las
+  /// sesiones no guardan cuál se movió (con dos semanas distintas no se puede
+  /// saber), así que el encabezado no dice que fue la última.
+  final bool lastDiffers;
 
   /// El teléfono del pedido renovado, como lo escribió la clienta, si no es
   /// el de la ficha (la web no cambia una ficha que ya existe). El WhatsApp y
@@ -110,9 +113,6 @@ RenewalPlan? renewalPlan(Iterable<CookingSession> booking) {
     for (final session in live)
       if (session.requestId == last.requestId) session,
   ];
-  final previous = ofBooking.length > 1
-      ? ofBooking[ofBooking.length - 2]
-      : null;
   return RenewalPlan(
     last: last,
     clientId: last.clientId,
@@ -126,12 +126,23 @@ RenewalPlan? renewalPlan(Iterable<CookingSession> booking) {
     household: _householdOf(request, last.client),
     locale: request.locale,
     estimate: request.estimate,
-    lastMoved:
-        previous != null &&
-        (previous.date.weekday != last.date.weekday ||
-            previous.start != last.start),
+    lastDiffers: _lastDiffers(ofBooking),
     otherRequestPhone: _otherPhone(request, last.client),
   );
+}
+
+/// La última de [live] (las sesiones vivas de una reserva, en orden) no tiene
+/// el día de la semana y la hora de más de la mitad de ellas.
+bool _lastDiffers(List<CookingSession> live) {
+  final last = live.last;
+  final same = live
+      .where(
+        (session) =>
+            session.date.weekday == last.date.weekday &&
+            session.start == last.start,
+      )
+      .length;
+  return same * 2 <= live.length;
 }
 
 /// El precio de [weeks] semanas de una renovación mientras Evelyn no lo

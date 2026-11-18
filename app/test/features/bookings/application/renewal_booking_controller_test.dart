@@ -205,7 +205,7 @@ void main() {
       await open();
       expect(state().party?.displayName, 'Giulia Rossi');
       expect(state().party?.phoneE164, '+393331234567');
-      expect(state().lastMoved, isTrue);
+      expect(state().lastDiffers, isTrue);
       expect(state().otherRequestPhone, '+34 612 345 678');
       expect(state().dates.first, CalendarDate(2026, 12, 25));
       expect(bookings.dryRuns.first.start, const ClockTime.hm(11, 0));

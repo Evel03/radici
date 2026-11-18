@@ -716,8 +716,9 @@ class _WeekTile extends StatelessWidget {
 
 /// De quién es la reserva: el nombre y, debajo, el resumen del pedido; a
 /// mano, el teléfono y la zona (y si la ficha se crea al confirmar); al
-/// renovar, el día de la última sesión y, si corresponde, que la última
-/// semana se había movido o que el pedido renovado traía otro teléfono.
+/// renovar, el día de la última sesión y, si corresponde, que no todas las
+/// semanas tenían su día y su hora o que el pedido renovado traía otro
+/// teléfono.
 class _Header extends StatelessWidget {
   const _Header({required this.source, required this.state});
 
@@ -759,10 +760,10 @@ class _Header extends StatelessWidget {
             key: const ValueKey('booking-subtitle'),
             style: secondary,
           ),
-          if (state.lastMoved)
+          if (state.lastDiffers)
             Text(
-              l10n.bookingRenewalLastMoved,
-              key: const ValueKey('booking-renewal-moved'),
+              l10n.bookingRenewalLastDiffers,
+              key: const ValueKey('booking-renewal-differs'),
               style: secondary,
             ),
           if (state.otherRequestPhone case final phone?)

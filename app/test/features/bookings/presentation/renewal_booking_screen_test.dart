@@ -187,7 +187,7 @@ void main() {
     final sheet = find.byType(ConfirmBookingScreen);
     expect(find.descendant(of: sheet, matching: find.text('Giulia Rossi')), findsOneWidget);
     expect(textOf(tester, 'booking-subtitle'), 'Rinnovo · ultima sessione mer 16 dic');
-    expect(byKey('booking-renewal-moved'), findsNothing);
+    expect(byKey('booking-renewal-differs'), findsNothing);
     expect(byKey('booking-renewal-other-phone'), findsNothing);
     expect(textOf(tester, 'booking-weeks-value'), '4');
     for (final (i, date) in ['mer 23 dic', 'mer 30 dic', 'mer 6 gen', 'mer 13 gen'].indexed) {
@@ -345,7 +345,7 @@ void main() {
     expect(byKey('booking-done-duplicate'), findsOneWidget);
   });
 
-  testWidgets('la última semana movida al viernes 18/12 a las 11:00: lo dice el encabezado, las fechas siguen a esa semana y el 25/12 y el 1/1 avisan los feriados', (tester) async {
+  testWidgets('la última semana movida al viernes 18/12 a las 11:00: el encabezado avisa que no todas tenían el mismo día y hora, las fechas siguen a esa semana y el 25/12 y el 1/1 avisan los feriados', (tester) async {
     final booking = buildBooking();
     booking[3] = booking[3].copyWith(
       date: CalendarDate(2026, 12, 18),
@@ -353,13 +353,22 @@ void main() {
     );
     await openRenewal(tester, sessions: FakeSessionsRepository(booking));
     expect(
-      textOf(tester, 'booking-renewal-moved'),
-      "L'ultima settimana era stata spostata: giorno e ora vengono da quella.",
+      textOf(tester, 'booking-renewal-differs'),
+      "Non tutte le settimane avevano lo stesso giorno e la stessa ora: giorno e ora vengono dall'ultima.",
     );
     expect(find.text('Settimana 1 · ven 25 dic'), findsOneWidget);
     expect(textOf(tester, 'booking-week-0-status'), 'Festività: Natale');
     expect(textOf(tester, 'booking-week-1-status'), 'Festività: Capodanno');
     expect(tester.widget<ChoiceChip>(byKey('booking-start-11:00')).selected, isTrue);
+  });
+
+  testWidgets('la penúltima semana movida al viernes 11/12: el encabezado no avisa nada (la última no se movió)', (tester) async {
+    final booking = buildBooking();
+    booking[2] = booking[2].copyWith(date: CalendarDate(2026, 12, 11));
+    await openRenewal(tester, sessions: FakeSessionsRepository(booking));
+    expect(byKey('booking-renewal-differs'), findsNothing);
+    expect(find.text('Settimana 1 · mer 23 dic'), findsOneWidget);
+    expect(tester.widget<ChoiceChip>(byKey('booking-start-10:00')).selected, isTrue);
   });
 
   testWidgets('desde Hoy el día +7 a las 18:00: la semana 1 avisa que la llegada ya pasó y se puede confirmar', (tester) async {

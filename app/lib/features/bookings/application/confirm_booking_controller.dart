@@ -136,10 +136,11 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
     @Default(ClientLocale.it) ClientLocale locale,
 
     /// «Rinnova», para el encabezado: el día de la última sesión viva de la
-    /// reserva que se renueva, si su última semana se había movido y el
-    /// teléfono del pedido renovado si no es el de la ficha.
+    /// reserva que se renueva, si su día y su hora no son los de la mayoría
+    /// de las semanas y el teléfono del pedido renovado si no es el de la
+    /// ficha.
     CalendarDate? renewedFrom,
-    @Default(false) bool lastMoved,
+    @Default(false) bool lastDiffers,
     String? otherRequestPhone,
 
     /// 8 en un pedido semanal, a mano o al renovar; 1 en una sesión extra.
@@ -460,7 +461,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
       household: value.household,
       locale: value.locale,
       renewedFrom: value.renewedFrom,
-      lastMoved: value.lastMoved,
+      lastDiffers: value.lastDiffers,
       otherRequestPhone: value.otherRequestPhone,
       today: value.today,
       maxWeeks: value.maxWeeks,
