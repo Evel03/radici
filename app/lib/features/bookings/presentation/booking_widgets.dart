@@ -68,9 +68,9 @@ class BookingBottomBar extends StatelessWidget {
   }
 }
 
-/// Una línea de la barra de abajo, arriba del botón, con un botón a la
-/// derecha que lleva hasta lo que dice (deshabilitado mientras nada se puede
-/// cambiar).
+/// Una línea de la barra de abajo, arriba del botón (o, con [padding], debajo
+/// del botón al que se refiere), con un botón a la derecha que lleva hasta lo
+/// que dice (deshabilitado mientras nada se puede cambiar).
 class BookingBarLine extends StatelessWidget {
   const BookingBarLine({
     super.key,
@@ -80,6 +80,7 @@ class BookingBarLine extends StatelessWidget {
     required this.actionLabel,
     required this.onAction,
     this.color,
+    this.padding = const EdgeInsets.only(bottom: 8),
   });
 
   final String textKey;
@@ -88,12 +89,13 @@ class BookingBarLine extends StatelessWidget {
   final String actionKey;
   final String actionLabel;
   final VoidCallback? onAction;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: padding,
       child: Row(
         children: [
           Expanded(

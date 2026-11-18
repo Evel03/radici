@@ -221,13 +221,43 @@ void main() {
       );
       expect(byKey('new-client-create-anyway'), findsOneWidget);
       expect(byKey('new-client-continue'), findsNothing);
-      // Sin nombre, crear otra ficha sigue deshabilitado (con la línea).
+      // Sin nombre, crear otra ficha sigue deshabilitado. El motivo va debajo
+      // de ese botón, con su propio texto: arriba de «Usa la scheda…» (que no
+      // necesita el nombre) contradecía a la acción principal.
       expect(
         tester.widget<OutlinedButton>(byKey('new-client-create-anyway')).onPressed,
         isNull,
       );
-      expect(textOf(tester, 'new-client-blocker'), 'Scrivi il nome per continuare.');
+      expect(
+        textOf(tester, 'new-client-blocker'),
+        'Per creare una scheda nuova, scrivi il nome.',
+      );
+      expect(
+        tester.getRect(byKey('new-client-blocker')).top,
+        greaterThanOrEqualTo(tester.getRect(byKey('new-client-create-anyway')).bottom),
+      );
+      await tester.tap(byKey('new-client-blocker-show'));
+      await tester.pumpAndSettle();
+      expect(focused(tester, 'new-client-name'), isTrue);
       semantics.dispose();
+    });
+
+    testWidgets('lo que impide crear otra ficha va debajo de «Crea una scheda nuova»: un nombre largo', (tester) async {
+      await openForm(tester);
+      await type(tester, 'new-client-name', '${'a' * 40}${'\u{1F600}' * 40}');
+      await type(tester, 'new-client-phone', '333 123 4567');
+      await tester.tap(byKey('new-client-create-anyway'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NewClientScreen), findsOneWidget);
+      expect(textOf(tester, 'new-client-blocker'), 'Testo troppo lungo: accorcialo.');
+      expect(
+        tester.getRect(byKey('new-client-blocker')).top,
+        greaterThanOrEqualTo(tester.getRect(byKey('new-client-create-anyway')).bottom),
+      );
+      expect(
+        tester.widget<FilledButton>(byKey('new-client-use-existing')).onPressed,
+        isNotNull,
+      );
     });
 
     for (final (label, pasted) in [

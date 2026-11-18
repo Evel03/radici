@@ -230,6 +230,7 @@
   "newClientUseExisting": "Usar la ficha de {name}",
   "newClientCreateAnyway": "Crear una ficha nueva",
   "newClientNameMissing": "Escribe el nombre para continuar.",
+  "newClientCreateNeedsName": "Para crear una ficha nueva, escribe el nombre.",
   "newClientPhoneInvalidShort": "El número de teléfono no es válido.",
   "newClientTooLong": "Texto demasiado largo: acórtalo.",
   "newClientPhoneChecking": "Estoy comprobando si el número ya es de una clienta…",

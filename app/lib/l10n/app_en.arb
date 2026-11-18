@@ -230,6 +230,7 @@
   "newClientUseExisting": "Use {name}'s record",
   "newClientCreateAnyway": "Create a new record",
   "newClientNameMissing": "Enter the name to continue.",
+  "newClientCreateNeedsName": "To create a new record, enter the name.",
   "newClientPhoneInvalidShort": "The phone number isn't valid.",
   "newClientTooLong": "This is too long: shorten it.",
   "newClientPhoneChecking": "Checking whether this number already belongs to a client…",

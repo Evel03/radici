@@ -5,9 +5,10 @@
 //
 // Abajo, en el cuerpo para que quede arriba del teclado, «Continua» o, si el
 // teléfono ya es de una ficha, «Usa la scheda di…» (la acción principal) y
-// «Crea una scheda nuova». Arriba del botón, lo que impide seguir con «Vedi»,
-// que lleva al campo y le da el foco: a 375×667 el campo queda fuera de la
-// vista.
+// «Crea una scheda nuova». Arriba de «Continua» (o debajo de «Crea una scheda
+// nuova», lo único que frena cuando el teléfono ya es de una ficha), lo que
+// impide seguir con «Vedi», que lleva al campo y le da el foco: a 375×667 el
+// campo queda fuera de la vista.
 //
 // Ningún campo lleva autofillHints: en /gestione/, Safari ofrecería en un
 // campo de teléfono los números de la tarjeta propia del iPhone, y el
@@ -128,6 +129,31 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
 
     final blocker = form.blocker;
     final canGo = blocker == null;
+    // Lo que impide seguir. Con el teléfono de una ficha va debajo de «Crea
+    // una scheda nuova», que es lo único que frena: «Usa la scheda di…» no
+    // necesita el nombre ni los demás campos.
+    final blockerLine = blocker == null
+        ? null
+        : BookingBarLine(
+            textKey: 'new-client-blocker',
+            text: switch (blocker) {
+              NewClientBlocker.nameMissing =>
+                found == null
+                    ? l10n.newClientNameMissing
+                    : l10n.newClientCreateNeedsName,
+              NewClientBlocker.phoneInvalid => l10n.newClientPhoneInvalidShort,
+              NewClientBlocker.tooLong => l10n.newClientTooLong,
+            },
+            color: blocker == NewClientBlocker.nameMissing
+                ? theme.colorScheme.onSurfaceVariant
+                : theme.colorScheme.error,
+            actionKey: 'new-client-blocker-show',
+            actionLabel: l10n.bookingShowProblem,
+            onAction: () => _showBlocker(form),
+            padding: found == null
+                ? const EdgeInsets.only(bottom: 8)
+                : const EdgeInsets.only(top: 8),
+          );
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.newClientAction)),
@@ -321,22 +347,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
           ),
           BookingBottomBar(
             children: [
-              if (blocker != null)
-                BookingBarLine(
-                  textKey: 'new-client-blocker',
-                  text: switch (blocker) {
-                    NewClientBlocker.nameMissing => l10n.newClientNameMissing,
-                    NewClientBlocker.phoneInvalid =>
-                      l10n.newClientPhoneInvalidShort,
-                    NewClientBlocker.tooLong => l10n.newClientTooLong,
-                  },
-                  color: blocker == NewClientBlocker.nameMissing
-                      ? theme.colorScheme.onSurfaceVariant
-                      : theme.colorScheme.error,
-                  actionKey: 'new-client-blocker-show',
-                  actionLabel: l10n.bookingShowProblem,
-                  onAction: () => _showBlocker(form),
-                ),
+              if (found == null) ?blockerLine,
               if (found != null) ...[
                 // El teléfono ya es de esa ficha: usarla es la acción
                 // principal (no la modifica). Crear otra se puede igual.
@@ -356,6 +367,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
                   onPressed: canGo ? _continue : null,
                   child: Text(l10n.newClientCreateAnyway),
                 ),
+                ?blockerLine,
               ] else
                 FilledButton(
                   key: const ValueKey('new-client-continue'),

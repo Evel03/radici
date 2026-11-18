@@ -1041,6 +1041,10 @@
   "@newClientNameMissing": {
     "description": "Formulario «Nuova cliente», barra de abajo, arriba de «Continua» (deshabilitado): falta el nombre. Al lado, «Vedi» lleva al campo."
   },
+  "newClientCreateNeedsName": "Per creare una scheda nuova, scrivi il nome.",
+  "@newClientCreateNeedsName": {
+    "description": "Formulario «Nuova cliente», barra de abajo, debajo de «Crea una scheda nuova» (deshabilitado) cuando el teléfono ya es de una ficha y falta el nombre: crear otra ficha lo necesita y «Usa la scheda di…», la acción principal, no. Al lado, «Vedi» lleva al campo."
+  },
   "newClientPhoneInvalidShort": "Il numero di telefono non è valido.",
   "@newClientPhoneInvalidShort": {
     "description": "Formulario «Nuova cliente», barra de abajo, después de «Continua»: el teléfono no es válido. Al lado, «Vedi» lleva al campo."

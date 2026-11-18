@@ -289,7 +289,9 @@ repositorios falsos (`test/support/fakes.dart`).
   el gesto) no lo borra. Si el teléfono (normalizado como en la web) ya es de una ficha, lo dice una
   tarjeta (anunciada por el lector de pantalla) y la barra de abajo ofrece «Usa la scheda di…» como
   acción principal (abre la hoja de esa ficha sin modificarla: lo que se tocó en adultos, niños o
-  idioma va al pedido) y «Crea una scheda nuova». Un número copiado de Contactos trae marcas
+  idioma va al pedido) y «Crea una scheda nuova»; lo que impide crearla (sin nombre: «Per creare una
+  scheda nuova, scrivi il nome.») va debajo de ese botón, no arriba de «Usa la scheda di…», que no
+  lo necesita. Un número copiado de Contactos trae marcas
   invisibles de dirección (U+202A…U+202C, U+200E) que `normalizePhone` no saca: `phoneFromInput`
   las limpia. Ningún campo de la clienta lleva `autofillHints`: en `/gestione/`, Safari ofrecería
   en el teléfono los números de la tarjeta propia del iPhone, y el WhatsApp iría a Evelyn. Después,
