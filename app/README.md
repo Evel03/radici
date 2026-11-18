@@ -120,10 +120,16 @@ repositorios falsos (`test/support/fakes.dart`).
   (`sessionLinksFor`, con el mismo día de Roma con que Hoy elige la sesión): lleva la hora de
   llegada salvo en una sesión cocinada o cobrada (en Hoy no hay canceladas ni de días pasados) y,
   si lo manda un colaborador, escribe de parte de la cocinera («ti scrivo da parte di Evelyn di
-  Radici…»). Pendientes de un toque: «N nuove richieste» (lleva a Richieste en «Nuove», aunque se
-  haya dejado en otra pestaña) y las reservas que terminan: las reservas semanales (un pedido
-  semanal aceptado; no un presupuesto enviado ni una sesión extra) cuya última sesión viva cae entre
-  hoy y los 6 días siguientes (abre la ficha de esa sesión; renovar desde Hoy llega después). La
+  Radici…»). Pendientes de uno o dos toques: «N nuove richieste» (lleva a Richieste en «Nuove»,
+  aunque se haya dejado en otra pestaña) y las reservas que terminan: las reservas semanales (un
+  pedido semanal aceptado; no un presupuesto enviado ni una sesión extra) desde 7 días antes hasta 7
+  días después de su última sesión viva (día de Roma; si ya pasó, «È finita la prenotazione di…»),
+  salvo que la misma ficha ya tenga una sesión viva posterior (una renovación, otra reserva o una
+  suelta: de dos reservas en paralelo queda la que termina última). Tocarla abre la ficha de esa
+  sesión; «Rinnova», debajo, abre la hoja de la renovación (ver «Rinnova» más abajo): renovar 4
+  semanas son dos toques, «Rinnova» y «Conferma 4 settimane», y al volver el pendiente ya no está,
+  aunque la agenda no se haya podido volver a leer. Para el lector de pantalla, «Rinnova» es un
+  solo nodo, «Rinnova la prenotazione di …», con la acción de tocar. La
   tira de 7 días (hoy y los 6 siguientes) usa lo de la Agenda: un punto por sesión, el número
   tachado si el día está bloqueado y un punto si es feriado en un día de trabajo; el lector de
   pantalla dice cuál es hoy; si los 7 no entran con 48 dp cada uno (menos de 368 dp de ancho, como
@@ -153,8 +159,10 @@ repositorios falsos (`test/support/fakes.dart`).
   fijo). Cada bloque abre la ficha de la sesión. `SessionsRepository` las lee con la RLS («la
   cocinera lee las suyas»), con la ficha (`clients`, y sus `client_restrictions`) y el pedido de la
   reserva embebidos por el nombre de la FK (`requests.target_session_id` también apunta a
-  `sessions`), desde el lunes de la primera semana del mes de hoy (o del mes elegido, si es
-  anterior). Los pedidos que todavía no son una reserva siguen por `preferred_date` con la franja,
+  `sessions`), desde el lunes de la primera semana del mes de hoy, o desde 7 días antes de hoy si es
+  antes (así Hoy tiene las reservas que terminaron hace hasta 7 días), o desde el lunes de la
+  primera semana del mes elegido, si es anterior. Los pedidos que todavía no son una reserva siguen
+  por `preferred_date` con la franja,
   más la lista "Senza data"; los `accepted` ya no (se ven por sus sesiones). "Hoy"
   (Europe/Rome) cambia a la medianoche sin reabrir la app: se vuelve a mirar la fecha a la
   medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
@@ -201,7 +209,12 @@ repositorios falsos (`test/support/fakes.dart`).
   advertencia «Allergie: nessun dato nell'app, chiedile» (`sessionAllergiesNoData`, con el ícono
   de aviso y el fondo de la de contaminación cruzada), nunca «sin alergias». Cada una es un nodo
   propio en el orden en que se ven (el lector de pantalla no las mezcla con el título); después,
-  los datos de la clienta y las semanas de la reserva (cada una abre su ficha). Abajo, **Mover**:
+  los datos de la clienta y las semanas de la reserva (cada una abre su ficha). En la última sesión
+  viva de una reserva semanal (también cocinada o cobrada), al final: «È l'ultima sessione della
+  prenotazione.» y «Rinnova» (`/sessioni/:id/rinnova`); si la ficha ya tiene otra sesión viva
+  después (con la agenda leída, o una renovación hecha desde este dispositivo), «Ha già un'altra
+  sessione: …», sin esconder el botón (con dos reservas en paralelo, cada una conserva el suyo). Va
+  al final porque ese día la ficha es la de cocinar. Abajo, **Mover**:
   el calendario y una hoja (`/sessioni/:id/sposta`) que pide el `dryRun` de
   `POST chef/sessions/move` antes de confirmar (libre, un aviso, un choque o la semana con otra
   sesión de la reserva, que ofrece «Passa alla fine della prenotazione»: una por semana; no deja
@@ -230,7 +243,8 @@ repositorios falsos (`test/support/fakes.dart`).
   (contrato §9). Una reserva cargada a mano no muestra la fecha preferida, «Conferma su WhatsApp» ni
   la estimación: no los tiene (lo que sí dice es que no hay datos de alergias).
 - **Conferma prenotazione** (`features/bookings/`): desde el detalle de un pedido `new` (o a mano,
-  desde «Nuova prenotazione»: `BookingSource`), una hoja a pantalla completa que lo convierte en una
+  desde «Nuova prenotazione» o «Rinnova»: `BookingSource`), una hoja a pantalla completa que lo
+  convierte en una
   reserva de 1 a 8 semanas (una sesión `confirmed` por semana). Es la primera llamada de la app a una Edge Function: `BookingsRepository` hace
   `functions.invoke('chef/bookings')` con la sesión de quien entró (Evelyn o un colaborador
   suyo) y `?forceFunctionRegion=eu-central-1` (nunca la cabecera `x-region`, que CORS no
@@ -289,6 +303,32 @@ repositorios falsos (`test/support/fakes.dart`).
   ficha). Al confirmar, la reserva está en «Prenotazioni» aunque la relectura falle, y «Fatto», la X
   y el atrás llevan ahí. No guarda alergias (falta el consentimiento de salud, M2). En la URL van
   solo ids, nunca el nombre, el teléfono ni la dirección.
+- **Rinnova** (`features/bookings/domain/renewal.dart`, `/sessioni/:id/rinnova`): desde el
+  pendiente de Hoy o la ficha de la última sesión viva de una reserva semanal, la hoja «Rinnova
+  prenotazione», una reserva a mano para la misma ficha (`clientId`), prellenada y editable:
+  - se renueva si el pedido está aceptado, es semanal y tiene alguna sesión viva; si no, «Questa
+    prenotazione non si può rinnovare.»;
+  - la primera fecha es la última sesión viva + 7 días (el mismo día de la semana) y las demás, cada
+    7 días; si la última semana se había movido a otro día u otra hora, salen de ella y el
+    encabezado lo dice (duda D7);
+  - las semanas y el precio son los de la reserva, contando las sesiones canceladas (lo que se
+    reservó y se acordó);
+  - la llegada (el primer `dryRun` ya la lleva), los minutos (tal cual, también más de 300: «+» no
+    sube y «−» lleva a 300), las porciones y la compra son los de la última sesión viva; los minutos
+    no siguen a las personas;
+  - las personas, los días y las comidas (dentro de los límites del contrato) y el idioma son los
+    del pedido renovado;
+  - con otra cantidad de semanas, el precio sale de las tarifas de su estimación solo si el total
+    era el de esas tarifas (560 € en 4 semanas pasa a 300 € en 2); si no, queda vacío y obligatorio;
+  - el encabezado y el WhatsApp van a la ficha, que es lo que muestran las sesiones nuevas; si el
+    pedido renovado traía otro teléfono, el encabezado lo dice;
+  - los feriados de Bergamo y una llegada de hoy que ya pasó se avisan como en cualquier hoja (el día
+    +7 del pendiente, la primera fecha es hoy: duda D1);
+  - con una respuesta perdida no se cierra hasta reintentar; al confirmar, la reserva está en
+    «Prenotazioni», la renovada queda marcada en el dispositivo (`renewedBookingsProvider`, en
+    memoria) y «Fatto» vuelve a donde estaba;
+  - no guarda alergias, como toda reserva a mano: sus sesiones dicen «Allergie: nessun dato
+    nell'app, chiedile» (duda D2, por una reserva que vino de la web).
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
@@ -322,12 +362,12 @@ repositorios falsos (`test/support/fakes.dart`).
   es donde sale el aviso. Ahí no se ve, y aparece al volver de esas pantallas. Con varios pedidos
   («N nuove richieste») el botón lleva a la bandeja, en «Nuove» aunque se haya dejado en otra
   pestaña, salvo con una hoja «Conferma prenotazione», «Nuova prenotazione» (el elegir, el
-  formulario «Nuova cliente» o la hoja a mano) o la ficha de una sesión (con su hoja «Sposta»)
-  abierta o tapada por otro pedido: ahí abre encima el más reciente, porque ir a la bandeja las
-  sacaría sin preguntar, y se perdería lo que tienen a medias (lo escrito; mientras se manda la
-  reserva, la pantalla final con el WhatsApp; mientras se mueve una sesión, el «Annulla» de la
-  ficha). Al reconectar (corte de red, app que vuelve del segundo plano) se relee la lista y se
-  avisa lo que llegó, con la misma regla.
+  formulario «Nuova cliente» o la hoja a mano), la hoja «Rinnova» o la ficha de una sesión (con su
+  hoja «Sposta») abierta o tapada por otro pedido: ahí abre encima el más reciente, porque ir a la
+  bandeja las sacaría sin preguntar, y se perdería lo que tienen a medias (lo escrito; mientras se
+  manda la reserva, la pantalla final con el WhatsApp; mientras se mueve una sesión, el «Annulla»
+  de la ficha). Al reconectar (corte de red, app que vuelve del segundo plano) se relee la lista y
+  se avisa lo que llegó, con la misma regla.
 - Los teléfonos se normalizan con `lib/core/phone.dart`, copia de `normalizePhone`
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
   Lo que se escribe o se pega en la app pasa antes por `phoneFromInput` (`cleanOneLine`, la copia de
@@ -338,7 +378,7 @@ Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace de
 `/richieste/:id`,
 `/richieste/:id/prenota`, `/richieste/nuova`, `/richieste/nuova/cliente`, `/richieste/nuova/prenota`
 (con `?cliente=<id>` y, desde el formulario, `&modulo=1`), `/agenda`, `/sessioni/:id`, `/sessioni/:id/sposta` (con `?data=AAAA-MM-DD`
-si la fecha ya se eligió), `/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con
+si la fecha ya se eligió), `/sessioni/:id/rinnova`, `/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con
 `?copia=<id>`, la copia de un plato) y `/altro/piatti/:id`, más `/` y `/preventivo` (públicas). En la
 web `/` lleva al login.
 

@@ -1,6 +1,6 @@
 # Contrato: área de Evelyn, Edge Function `chef`
 
-Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2). Con el PR 8 del plan (18/11/2026), la app manda también `clientId` («Nuova prenotazione» con una ficha existente) y `newClient` («Nuova cliente»): ver «Uso desde la app» en §4.
+Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2). Con el PR 8 del plan (18/11/2026), la app manda también `clientId` («Nuova prenotazione» con una ficha existente y «Rinnova», la renovación de una reserva para la misma ficha) y `newClient` («Nuova cliente»): ver «Uso desde la app» en §4.
 Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, e `index.ts`). Si este documento y el código difieren, manda el código.
 
 ## 1. Para qué
@@ -127,7 +127,8 @@ Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato;
 
 - A mano, `type` es siempre `"week"` y van siempre `household` y `locale` (el idioma de los WhatsApp de la clienta).
 - `newClient` va completo también en el `dryRun`: el primer chequeo ya dice si algún dato no pasa (un `400` con campos `newClient.*`, que la app manda a corregir en el formulario).
-- Una `requestKey` por hoja: se genera al abrirla y se repite en cada envío de esa hoja. Los 4xx no guardan nada; después de una respuesta perdida, el reintento manda lo mismo. Otra hoja, otra clave. A mano, mientras espera ese reintento la hoja no se cierra: otra hoja usaría otra clave y podría duplicar la reserva (y, con `newClient`, la ficha).
+- «Rinnova» es una reserva a mano con el `clientId` de la reserva que se renueva: las fechas desde su última sesión viva + 7 días; `start`, `cookMinutes`, `portions` y `groceriesEstCents` de esa sesión; `household` y `locale` de su pedido; y `serviceTotalCents`, la suma del servicio de todas sus sesiones, también las canceladas. Como la hora ya está elegida, el primer `dryRun` lleva `start`. El servidor no distingue una renovación de otra reserva a mano.
+- Una `requestKey` por hoja: se genera al abrirla y se repite en cada envío de esa hoja. Los 4xx no guardan nada; después de una respuesta perdida, el reintento manda lo mismo. Otra hoja, otra clave. A mano (también «Rinnova»), mientras espera ese reintento la hoja no se cierra: otra hoja usaría otra clave y podría duplicar la reserva (y, con `newClient`, la ficha).
 
 ## 5. `POST /sessions/move`: mover una semana
 
