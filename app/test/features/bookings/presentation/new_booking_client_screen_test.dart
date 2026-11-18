@@ -346,7 +346,7 @@ void main() {
           matching: find.byType(EditableText),
         ),
       ),
-      containsSemantics(label: 'Nome o telefono', value: 'chiara', isTextField: true),
+      isSemantics(label: 'Nome o telefono', value: 'chiara', isTextField: true),
     );
     semantics.dispose();
   });
