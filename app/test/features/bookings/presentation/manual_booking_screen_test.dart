@@ -80,6 +80,7 @@ void main() {
     WidgetTester tester, {
     FakeClientsRepository? clients,
     FakeChefRequestsRepository? requests,
+    FakeAccountRepository? accounts,
     void Function(FakeBookingsRepository bookings)? configure,
     Size size = const Size(400, 900),
     Locale locale = const Locale('it', 'IT'),
@@ -95,6 +96,7 @@ void main() {
       tester,
       requests: requestsRepository,
       clients: clientsRepository,
+      accounts: accounts,
       bookings: bookings,
       location: '/richieste',
       size: size,
@@ -112,6 +114,7 @@ void main() {
   Future<ChefApp> openChiara(
     WidgetTester tester, {
     FakeChefRequestsRepository? requests,
+    FakeAccountRepository? accounts,
     void Function(FakeBookingsRepository bookings)? configure,
     Size size = const Size(400, 900),
     Locale locale = const Locale('it', 'IT'),
@@ -119,6 +122,7 @@ void main() {
     final app = await openPicker(
       tester,
       requests: requests,
+      accounts: accounts,
       configure: configure,
       size: size,
       locale: locale,
@@ -201,6 +205,28 @@ void main() {
       expect(
         whatsApp.queryParameters['text'],
         startsWith('Hola Chiara, soy Evelyn de Radici. Te confirmo las 4 sesiones'),
+      );
+    });
+
+    testWidgets('confirma un colaborador: el WhatsApp, en el idioma de la clienta, escribe de parte de Evelyn', (tester) async {
+      final app = await openChiara(
+        tester,
+        accounts: FakeAccountRepository(
+          chefAccountData.copyWith(
+            chef: chefAccount.copyWith(collaborator: true),
+          ),
+        ),
+      );
+      await typePrice(tester, '560');
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('booking-whatsapp'));
+      await tester.pumpAndSettle();
+      expect(
+        app.launcher.launched.single.queryParameters['text'],
+        startsWith(
+          'Hola Chiara, te escribo de parte de Evelyn de Radici. Te confirmamos las 4 sesiones',
+        ),
       );
     });
 

@@ -61,6 +61,7 @@ void main() {
   Future<ChefApp> openRenewal(
     WidgetTester tester, {
     FakeSessionsRepository? sessions,
+    FakeAccountRepository? accounts,
     int n = 4,
     void Function(FakeBookingsRepository bookings)? configure,
     DateTime? now,
@@ -75,6 +76,7 @@ void main() {
       tester,
       requests: requests,
       clients: clients,
+      accounts: accounts,
       bookings: bookings,
       sessions: sessions ?? FakeSessionsRepository(buildBooking()),
       clock: () => now ?? morning,
@@ -297,6 +299,27 @@ void main() {
     expect(sent.last, sent.first);
     expect(app.bookings.savedByKey, hasLength(1));
     expect(byKey('booking-done-duplicate'), findsOneWidget);
+  });
+
+  testWidgets('confirma un colaborador: el WhatsApp de la renovación escribe de parte de Evelyn', (tester) async {
+    final app = await openRenewal(
+      tester,
+      accounts: FakeAccountRepository(
+        chefAccountData.copyWith(
+          chef: chefAccount.copyWith(collaborator: true),
+        ),
+      ),
+    );
+    await tester.tap(byKey('booking-confirm'));
+    await tester.pumpAndSettle();
+    await tester.tap(byKey('booking-whatsapp'));
+    await tester.pumpAndSettle();
+    expect(
+      app.launcher.launched.single.queryParameters['text'],
+      startsWith(
+        'Ciao Giulia, ti scrivo da parte di Evelyn di Radici. Ti confermiamo le 4 sessioni',
+      ),
+    );
   });
 
   testWidgets('sin respuesta tampoco al reintentar: «Chiudi comunque» la cierra y vuelve a Hoy', (tester) async {
