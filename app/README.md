@@ -136,12 +136,14 @@ repositorios falsos (`test/support/fakes.dart`).
   Riverpod reintenta una lectura que falló), una rueda en el lugar de la tarjeta; si no se pudieron
   leer, el aviso con «Riprova» en su lugar; en los dos casos, los pendientes y la tira siguen.
   Mientras se lee la bandeja, los pendientes muestran una barra, y «Niente in sospeso» sale solo con
-  la bandeja y las sesiones leídas. Sin ninguna sesión, lo dice y ofrece ir a las solicitudes con un
-  botón abajo.
+  la bandeja y las sesiones leídas. Sin ninguna sesión, lo dice y ofrece, con dos botones abajo, ir a
+  las solicitudes o cargar una reserva a mano («Nuova prenotazione»).
 - **Richieste**: pestañas Nuove (sin `seen_at` y no aceptadas), Viste, Prenotazioni (los pedidos
   `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
   nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos
-  y no la tapa.
+  y no la tapa; una reserva sin fecha preferida (cargada a mano) no dice «Senza data». Abajo de
+  «Prenotazioni», «Nuova prenotazione» (ver más abajo), también mientras la bandeja carga o si no se
+  pudo leer: es también la acción de la pestaña vacía.
 - **Franja**: la bandeja, el detalle y la agenda muestran mañana o tarde si el pedido la trae. La web
   ya no la pregunta y manda `any`, que la app lee como sin franja y no muestra (como los emails).
 - **Agenda**: mes y semana con las **sesiones** (`features/sessions/`): en el mes, un punto por
@@ -225,10 +227,11 @@ repositorios falsos (`test/support/fakes.dart`).
   como ya estaba visto, vuelve a Viste), las dos con confirmación. Al abrirlo se marca visto.
   Si la persona es todavía un prospecto, avisa que sus datos se borran 90 días después de su último
   pedido y ofrece **Segna come cliente** (con confirmación): la ficha pasa a `trial` y se conserva
-  (contrato §9).
-- **Conferma prenotazione** (`features/bookings/`): desde el detalle de un pedido `new`, una hoja a
-  pantalla completa que lo convierte en una reserva de 1 a 8 semanas (una sesión `confirmed` por
-  semana). Es la primera llamada de la app a una Edge Function: `BookingsRepository` hace
+  (contrato §9). Una reserva cargada a mano no muestra la fecha preferida, «Conferma su WhatsApp» ni
+  la estimación: no los tiene (lo que sí dice es que no hay datos de alergias).
+- **Conferma prenotazione** (`features/bookings/`): desde el detalle de un pedido `new` (o a mano,
+  desde «Nuova prenotazione»: `BookingSource`), una hoja a pantalla completa que lo convierte en una
+  reserva de 1 a 8 semanas (una sesión `confirmed` por semana). Es la primera llamada de la app a una Edge Function: `BookingsRepository` hace
   `functions.invoke('chef/bookings')` con la sesión de quien entró (Evelyn o un colaborador
   suyo) y `?forceFunctionRegion=eu-central-1` (nunca la cabecera `x-region`, que CORS no
   permite) y traduce los errores a `BookingFailure` sin loguear nada (contrato
@@ -238,7 +241,10 @@ repositorios falsos (`test/support/fakes.dart`).
   tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
   se pasa a centavos sin `double` (`parseEuroCents`). Cada cambio de fechas, hora o minutos vuelve a
   pedir el `dryRun`: cada semana dice si está libre, un aviso (bloqueado, sin horario, fuera de
-  horario, pasada) o si choca, y con un choque no deja confirmar. La barra de abajo queda a la vista
+  horario, pasada) o si choca, y con un choque no deja confirmar. La hoja avisa además lo que el
+  servidor no marca: el feriado de Bergamo de una semana (cuenta solo si Evelyn lo bloqueó) y una
+  llegada de hoy que ya pasó; tampoco impiden confirmar. Mientras corre el `dryRun`, la barra dice
+  «Controllo le date…» (también al lector de pantalla). La barra de abajo queda a la vista
   en un teléfono en vertical, también con el teclado abierto (en `/gestione/` los avisos de arriba
   se esconden mientras tanto; probado hasta 375×548, un iPhone SE con las barras de Safari; en
   horizontal puede no entrar), y muestra arriba del botón el precio que se va a confirmar, lo que
@@ -255,6 +261,34 @@ repositorios falsos (`test/support/fakes.dart`).
   (`bookingWhatsAppMessageOnBehalf`; el del detalle es `contactWhatsAppMessageOnBehalf`):
   «ti scrivo da parte di Evelyn di Radici» en lugar de «sono Evelyn» y, con varias semanas,
   «Evelyn arriva alle…» en lugar de «Arrivo alle…».
+- **Nuova prenotazione** (`features/bookings/` y `features/clients/`): una reserva a mano, desde
+  «Prenotazioni» o desde Hoy sin sesiones. Primero se elige la clienta (a pantalla completa, con X):
+  las fichas se leen con la RLS de la cocinera, sin dirección, email ni restricciones
+  (`ClientsRepository`, con el último pedido semanal de cada una), y se buscan por nombre (sin
+  mayúsculas, acentos ni apóstrofos: el ’ del iPhone) o por teléfono (desde 3 cifras). Van primero
+  las fichas que no son prospecto y después las del pedido semanal más reciente; un prospecto dice
+  «Non ancora cliente» (con la fecha de su pedido): así se distinguen dos fichas de la misma persona
+  (la web crea un prospecto nuevo cuando una clienta vuelve a pedir, contrato public-request §3).
+  «Nuova cliente» abre el formulario (nombre obligatorio; teléfono, zona, dirección, adultos y niños,
+  y el idioma de sus WhatsApp), prellenado con lo que se buscó: lo que parece un teléfono va al
+  teléfono. Lo escrito vive en un borrador mientras el elegir esté abierto: volver (con la flecha o
+  el gesto) no lo borra. Si el teléfono (normalizado como en la web) ya es de una ficha, lo dice una
+  tarjeta (anunciada por el lector de pantalla) y la barra de abajo ofrece «Usa la scheda di…» como
+  acción principal (abre la hoja de esa ficha sin modificarla: lo que se tocó en adultos, niños o
+  idioma va al pedido) y «Crea una scheda nuova». Un número copiado de Contactos trae marcas
+  invisibles de dirección (U+202A…U+202C, U+200E) que `normalizePhone` no saca: `phoneFromInput`
+  las limpia. Ningún campo de la clienta lleva `autofillHints`: en `/gestione/`, Safari ofrecería
+  en el teléfono los números de la tarjeta propia del iPhone, y el WhatsApp iría a Evelyn. Después,
+  la misma hoja «Conferma prenotazione»: 4 semanas desde mañana, «Persone e pasti» (los de su último
+  pedido semanal: un evento no describe la casa) y el idioma, los minutos que siguen a las personas
+  hasta tocarlos y el precio vacío y obligatorio. El POST lleva `clientId` o `newClient` (completo
+  también en el `dryRun`), `type: "week"`, `household` y `locale` (contrato chef-api §4); en una
+  ficha nueva, el hogar y el idioma tienen una sola fuente con el formulario. Si el servidor no
+  acepta los datos de la ficha nueva, «Correggi» vuelve al formulario. Con una respuesta perdida, la
+  hoja no se cierra hasta reintentar: otra hoja tendría otra clave y podría duplicar la reserva (y la
+  ficha). Al confirmar, la reserva está en «Prenotazioni» aunque la relectura falle, y «Fatto», la X
+  y el atrás llevan ahí. No guarda alergias (falta el consentimiento de salud, M2). En la URL van
+  solo ids, nunca el nombre, el teléfono ni la dirección.
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
@@ -287,19 +321,23 @@ repositorios falsos (`test/support/fakes.dart`).
   tienen su propio `ScaffoldMessenger` y, en el navegador raíz, tapan el Scaffold de la barra, que
   es donde sale el aviso. Ahí no se ve, y aparece al volver de esas pantallas. Con varios pedidos
   («N nuove richieste») el botón lleva a la bandeja, en «Nuove» aunque se haya dejado en otra
-  pestaña, salvo con una hoja «Conferma prenotazione» o la ficha de una sesión (con su hoja
-  «Sposta») abierta o tapada por otro pedido: ahí abre encima el más reciente, porque ir a la
-  bandeja las sacaría sin preguntar, y se perdería lo que tienen a medias (mientras se manda la
+  pestaña, salvo con una hoja «Conferma prenotazione», «Nuova prenotazione» (el elegir, el
+  formulario «Nuova cliente» o la hoja a mano) o la ficha de una sesión (con su hoja «Sposta»)
+  abierta o tapada por otro pedido: ahí abre encima el más reciente, porque ir a la bandeja las
+  sacaría sin preguntar, y se perdería lo que tienen a medias (lo escrito; mientras se manda la
   reserva, la pantalla final con el WhatsApp; mientras se mueve una sesión, el «Annulla» de la
   ficha). Al reconectar (corte de red, app que vuelve del segundo plano) se relee la lista y se
   avisa lo que llegó, con la misma regla.
 - Los teléfonos se normalizan con `lib/core/phone.dart`, copia de `normalizePhone`
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
+  Lo que se escribe o se pega en la app pasa antes por `phoneFromInput` (`cleanOneLine`, la copia de
+  la de TS, y sin los caracteres invisibles de formato), con su propio test (`phone_input_test.dart`).
 
 Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace del email a Evelyn):
 `/accedi`, `/caricamento`, `/area-clienti`, `/oggi` (el inicio de la cocinera), `/richieste`,
 `/richieste/:id`,
-`/richieste/:id/prenota`, `/agenda`, `/sessioni/:id`, `/sessioni/:id/sposta` (con `?data=AAAA-MM-DD`
+`/richieste/:id/prenota`, `/richieste/nuova`, `/richieste/nuova/cliente`, `/richieste/nuova/prenota`
+(con `?cliente=<id>` y, desde el formulario, `&modulo=1`), `/agenda`, `/sessioni/:id`, `/sessioni/:id/sposta` (con `?data=AAAA-MM-DD`
 si la fecha ya se eligió), `/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con
 `?copia=<id>`, la copia de un plato) y `/altro/piatti/:id`, más `/` y `/preventivo` (públicas). En la
 web `/` lleva al login.

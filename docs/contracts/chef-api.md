@@ -1,6 +1,6 @@
 # Contrato: área de Evelyn, Edge Function `chef`
 
-Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2).
+Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2). Con el PR 8 del plan (18/11/2026), la app manda también `clientId` («Nuova prenotazione» con una ficha existente) y `newClient` («Nuova cliente»): ver «Uso desde la app» en §4.
 Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, e `index.ts`). Si este documento y el código difieren, manda el código.
 
 ## 1. Para qué
@@ -120,8 +120,14 @@ Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato;
 - **Desde un pedido** (`requestId`): el pedido tiene que estar `new` (si no, `409 requestNotNew`, también en el `dryRun`). Pasa a `accepted`, con `weeks` = las semanas creadas y `seen_at`; la ficha, de `prospect` a `trial`.
 - **A mano** (`clientId` o `newClient`): crea el pedido (`source = 'app'`, `accepted`) y, si es nueva, la ficha (`trial`, `pay_mode manual`). Una ficha existente no se modifica, salvo el paso de `prospect` a `trial`.
 - **Todo o nada**: si una semana choca no se crea ninguna, tampoco el pedido ni la ficha (`409` con la fecha).
-- **Idempotencia**: la app genera una `requestKey` nueva por cada confirmación y la repite en sus reintentos (botón deshabilitado mientras envía). A mano, la misma clave devuelve la reserva guardada con `duplicate: true` sin crear nada; es única por cocinera y compartida con las de la web (una clave ya usada por un pedido de la web da `400 requestKey: "conflict"`). Desde un pedido, el reintento se reconoce por el estado: el pedido ya `accepted` con esas mismas fechas y hora devuelve lo mismo con `duplicate: true`.
+- **Idempotencia**: la app genera una `requestKey` por hoja «Confirmar reserva» (al abrirla) y la repite en cada envío de esa hoja (botón deshabilitado mientras envía); otra hoja, otra clave (ver «Uso desde la app»). A mano, la misma clave devuelve la reserva guardada con `duplicate: true` sin crear nada; es única por cocinera y compartida con las de la web (una clave ya usada por un pedido de la web da `400 requestKey: "conflict"`). Desde un pedido, el reintento se reconoce por el estado: el pedido ya `accepted` con esas mismas fechas y hora devuelve lo mismo con `duplicate: true`.
 - **`dryRun`**: valida todo igual (también el estado del pedido) y no escribe nada.
+
+### Uso desde la app
+
+- A mano, `type` es siempre `"week"` y van siempre `household` y `locale` (el idioma de los WhatsApp de la clienta).
+- `newClient` va completo también en el `dryRun`: el primer chequeo ya dice si algún dato no pasa (un `400` con campos `newClient.*`, que la app manda a corregir en el formulario).
+- Una `requestKey` por hoja: se genera al abrirla y se repite en cada envío de esa hoja. Los 4xx no guardan nada; después de una respuesta perdida, el reintento manda lo mismo. Otra hoja, otra clave. A mano, mientras espera ese reintento la hoja no se cierra: otra hoja usaría otra clave y podría duplicar la reserva (y, con `newClient`, la ficha).
 
 ## 5. `POST /sessions/move`: mover una semana
 
