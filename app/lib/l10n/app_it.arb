@@ -403,14 +403,14 @@
   },
   "todayBookingEnding": "Finisce la prenotazione di {name}",
   "@todayBookingEnding": {
-    "description": "Hoy: pendiente de una reserva semanal cuya última sesión viva es hoy o cae en los próximos 7 días (el pendiente va de 7 días antes a 7 días después de esa sesión; si ya pasó, todayBookingEnded); abre la ficha de esa sesión.",
+    "description": "Hoy: pendiente de una reserva semanal cuya última sesión viva es hoy o cae en los próximos 7 días (el pendiente va de 7 días antes a 7 días después de esa sesión; si ya pasó, todayBookingEnded); abre la ficha de esa sesión y tiene «Rinnova».",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia Rossi" }
     }
   },
   "todayBookingEnded": "È finita la prenotazione di {name}",
   "@todayBookingEnded": {
-    "description": "Hoy: pendiente de una reserva semanal cuya última sesión viva ya pasó (hasta 7 días); abre la ficha de esa sesión.",
+    "description": "Hoy: pendiente de una reserva semanal cuya última sesión viva ya pasó (hasta 7 días); abre la ficha de esa sesión y tiene «Rinnova».",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia Rossi" }
     }
@@ -420,6 +420,17 @@
     "description": "Hoy: debajo de la reserva que termina, el día de su última sesión.",
     "placeholders": {
       "date": { "type": "String", "example": "mer 18 nov" }
+    }
+  },
+  "actionRenew": "Rinnova",
+  "@actionRenew": {
+    "description": "Botón de la reserva que termina, en Hoy y al final de la ficha de su última sesión: abre la hoja «Rinnova prenotazione», prellenada con la reserva."
+  },
+  "todayRenewA11y": "Rinnova la prenotazione di {name}",
+  "@todayRenewA11y": {
+    "description": "Hoy, lector de pantalla: etiqueta del botón «Rinnova» de una reserva que termina (dice de quién es; reemplaza el texto del botón).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
     }
   },
   "todayStripTitle": "Prossimi 7 giorni",
@@ -1508,6 +1519,17 @@
   "sessionSectionWeeks": "Settimane della prenotazione",
   "@sessionSectionWeeks": {
     "description": "Sección de la ficha de la sesión con todas las semanas de su reserva (también las canceladas)."
+  },
+  "sessionLastOfBooking": "È l'ultima sessione della prenotazione.",
+  "@sessionLastOfBooking": {
+    "description": "Ficha de la sesión, al final: es la última sesión viva de una reserva semanal. Debajo, el botón «Rinnova»."
+  },
+  "sessionLaterSession": "Ha già un'altra sessione: {date}.",
+  "@sessionLaterSession": {
+    "description": "Ficha de la sesión, fila «Rinnova»: la clienta ya tiene otra sesión después de esta (una renovación u otra reserva). date: como en «Ultima sessione».",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 23 dic" }
+    }
   },
   "sessionMoveAction": "Sposta",
   "@sessionMoveAction": {

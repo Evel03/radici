@@ -430,16 +430,21 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
 /// (y, con newClient, la ficha `new-client-1`) y la guarda por su requestKey:
 /// la misma clave devuelve lo guardado con `duplicate`. Con [requests] agrega
 /// el pedido `accepted`, de la app y visto, con los datos de la ficha (de
-/// [clients] o de newClient), y una ficha prospecto pasa a trial. Las fallas y
-/// las respuestas lentas se controlan por campo.
+/// [clients] o de newClient), y una ficha prospecto pasa a trial. Con
+/// [sessions], una confirmación a mano agrega sus sesiones `confirmed` (con
+/// la ficha de otra sesión suya, si hay). Las fallas y las respuestas lentas
+/// se controlan por campo.
 class FakeBookingsRepository implements BookingsRepository {
-  FakeBookingsRepository({this.requests, this.clients});
+  FakeBookingsRepository({this.requests, this.clients, this.sessions});
 
   /// Los pedidos "en el servidor" que actualiza una confirmación.
   final FakeChefRequestsRepository? requests;
 
   /// Las fichas "en el servidor" de una reserva a mano.
   final FakeClientsRepository? clients;
+
+  /// Las sesiones "en el servidor" que crea una reserva a mano.
+  final FakeSessionsRepository? sessions;
 
   /// Reservas guardadas, por pedido.
   final Map<String, BookingResult> saved = {};
@@ -559,6 +564,7 @@ class FakeBookingsRepository implements BookingsRepository {
     if (request.dryRun) return result;
     if (key != null) savedByKey[key] = result.copyWith(duplicate: false);
     _createManual(request, result);
+    _createSessions(request, result);
     if (loseNextConfirmResponse) {
       loseNextConfirmResponse = false;
       throw const BookingFailure(BookingFailureKind.unavailable);
@@ -627,6 +633,66 @@ class FakeBookingsRepository implements BookingsRepository {
             : existing.status,
       ),
     );
+  }
+
+  /// Con [sessions], las sesiones `confirmed` de una reserva a mano, una por
+  /// semana, con el pedido creado y la ficha de otra sesión de la misma
+  /// clienta (si no hay, una con su nombre).
+  void _createSessions(BookingRequest request, BookingResult result) {
+    final repository = sessions;
+    if (repository == null) return;
+    final requestId = result.requestId!;
+    final clientId = result.clientId!;
+    final household = request.household!;
+    final created =
+        requests?.requests[requestId] ??
+        ChefRequest(
+          id: requestId,
+          chefId: testChefId,
+          clientId: clientId,
+          type: RequestType.week,
+          status: RequestStatus.accepted,
+          adults: household.adults,
+          kids: household.kids,
+          days: household.days,
+          meals: household.canonicalMeals,
+          weeks: request.dates.length,
+          locale: request.locale!,
+          source: RequestSource.app,
+          seenAt: DateTime.utc(2026, 10, 19, 12),
+          createdAt: DateTime.utc(2026, 10, 19, 12, 0, 1),
+        );
+    final client =
+        repository.sessions.values
+            .where((s) => s.clientId == clientId)
+            .firstOrNull
+            ?.client ??
+        SessionClient(
+          displayName: request.newClient?.name ?? created.client.displayName,
+          contactPhone: request.newClient?.phone,
+          zone: request.newClient?.zone,
+          status: ClientStatus.trial,
+        );
+    for (final (i, week) in result.weeks.indexed) {
+      final id = '$requestId-${i + 1}';
+      repository.sessions[id] = CookingSession(
+        id: id,
+        chefId: testChefId,
+        clientId: clientId,
+        requestId: requestId,
+        date: week.date,
+        start: week.start ?? request.start ?? const ClockTime.hm(10, 0),
+        cookMinutes: request.cookMinutes,
+        shopMinutes: 45,
+        gapMinutes: 30,
+        portions: request.portions ?? 0,
+        status: SessionStatus.confirmed,
+        serviceCents: week.serviceCents,
+        groceriesEstCents: request.groceriesEstCents ?? 0,
+        client: client,
+        request: created,
+      );
+    }
   }
 
   static bool _sameDatesAndStart(BookingResult booked, BookingRequest request) =>
@@ -710,6 +776,10 @@ class FakeSessionsRepository implements SessionsRepository {
   Completer<void>? pendingCancel;
   Completer<void>? pendingAddress;
 
+  /// Solo la lectura de la agenda (fetchSessions) espera a que se complete:
+  /// la ficha de una sesión se lee igual.
+  Completer<void>? pendingAgendaFetch;
+
   int fetchCalls = 0;
   final List<CalendarDate> fetchedFrom = [];
   final List<String> bookingFetches = [];
@@ -744,6 +814,8 @@ class FakeSessionsRepository implements SessionsRepository {
   }) async {
     fetchCalls++;
     fetchedFrom.add(from);
+    final agenda = pendingAgendaFetch;
+    if (agenda != null) await agenda.future;
     final found = _sorted(
       sessions.values.where(
         (s) => s.chefId == chefId && !s.date.isBefore(from),

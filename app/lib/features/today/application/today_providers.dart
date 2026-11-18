@@ -10,6 +10,7 @@ import 'package:radici/core/clock.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/availability/application/availability_controller.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
+import 'package:radici/features/sessions/application/renewed_bookings.dart';
 import 'package:radici/features/sessions/application/session_links.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
@@ -106,13 +107,19 @@ final todayLinksProvider = Provider<SessionLinks?>((ref) {
 });
 
 /// Las reservas que terminan (ver endingBookings): la última sesión de cada
-/// una, por fecha. Vacío mientras las sesiones cargan.
-final todayEndingBookingsProvider = Provider<List<CookingSession>>(
-  (ref) => endingBookings(
-    ref.watch(sessionsControllerProvider).value ?? const [],
-    today: ref.watch(romeTodayProvider),
-  ),
-);
+/// una, por fecha. Vacío mientras las sesiones cargan. Sin las renovadas
+/// desde este dispositivo (renewedBookingsProvider): después de «Rinnova»
+/// desaparecen en el acto, aunque la agenda no se haya podido volver a leer.
+final todayEndingBookingsProvider = Provider<List<CookingSession>>((ref) {
+  final renewed = ref.watch(renewedBookingsProvider);
+  return [
+    for (final last in endingBookings(
+      ref.watch(sessionsControllerProvider).value ?? const [],
+      today: ref.watch(romeTodayProvider),
+    ))
+      if (!renewed.containsKey(last.requestId)) last,
+  ];
+});
 
 /// La tira de 7 días: las sesiones vivas de cada día (las de la agenda) y su
 /// estado con la disponibilidad de la agenda, sin estado mientras no está.

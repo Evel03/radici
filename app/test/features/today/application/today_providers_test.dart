@@ -3,14 +3,15 @@
 // a la medianoche de Roma y a la próxima sesión cuando termina una sin
 // reabrir la app (minuto a minuto, no solo una vez), las reservas que
 // terminan (con el día de Roma, de 7 días antes a 7 días después: la agenda
-// lee desde 7 días antes de hoy), la tira de 7 días con los bloqueos y los
-// feriados de la agenda (sin estado mientras la disponibilidad se vuelve a
-// leer), los enlaces de los botones de abajo (el WhatsApp con la regla de la
-// ficha: de parte de la cocinera con la cuenta de un colaborador; la hora de
-// llegada solo en una sesión que no está cancelada, cocinada ni cobrada, de
-// hoy en adelante; nunca la dirección, las alergias, las notas, la zona ni el
-// apellido), deslizar para actualizar y el pedido de abrir la bandeja en
-// «Nuove».
+// lee desde 7 días antes de hoy; una renovada desde este dispositivo
+// desaparece aunque la agenda no se relea), la tira de 7 días con los
+// bloqueos y los feriados de la agenda (sin estado mientras la disponibilidad
+// se vuelve a leer), los enlaces de los botones de abajo (el WhatsApp con la
+// regla de la ficha: de parte de la cocinera con la cuenta de un
+// colaborador; la hora de llegada solo en una sesión que no está cancelada,
+// cocinada ni cobrada, de hoy en adelante; nunca la dirección, las alergias,
+// las notas, la zona ni el apellido), deslizar para actualizar y el pedido de
+// abrir la bandeja en «Nuove».
 import 'dart:async';
 import 'dart:ui' show Locale;
 
@@ -35,6 +36,7 @@ import 'package:radici/features/requests/application/inbox_tab_request.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/domain/inbox.dart';
+import 'package:radici/features/sessions/application/renewed_bookings.dart';
 import 'package:radici/features/sessions/application/session_links.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
@@ -364,6 +366,61 @@ void main() {
       [for (final s in container.read(todayEndingBookingsProvider)) s.requestId],
       ['en-siete'],
     );
+  });
+
+  group('reservas que terminan, al renovar', () {
+    // La reserva de prueba: 28/10, 4/11, 11/11 y 18/11 (termina mañana).
+    test('cuando la agenda trae las sesiones de la renovación (la misma ficha, después), el pendiente desaparece', () async {
+      save(buildBooking(first: CalendarDate(2026, 10, 28)));
+      final container = await start();
+      expect(
+        [for (final s in container.read(todayEndingBookingsProvider)) s.id],
+        [sessionId(4)],
+      );
+      save(
+        buildBooking(
+          first: CalendarDate(2026, 11, 25),
+          firstN: 10,
+          requestId: 'renovacion',
+        ),
+      );
+      await container.read(sessionsControllerProvider.notifier).refresh();
+      expect(container.read(todayEndingBookingsProvider), isEmpty);
+    });
+
+    test('con la reserva marcada como renovada desde este dispositivo, desaparece aunque las sesiones no se puedan volver a leer', () async {
+      save(buildBooking(first: CalendarDate(2026, 10, 28)));
+      final container = await start();
+      expect(container.read(todayEndingBookingsProvider), hasLength(1));
+      sessions.fetchFailure = const SessionFailure(
+        SessionFailureKind.unavailable,
+      );
+      await container.read(sessionsControllerProvider.notifier).refreshQuietly();
+      container
+          .read(renewedBookingsProvider.notifier)
+          .mark(bookingRequestId, CalendarDate(2026, 11, 25));
+      expect(container.read(todayEndingBookingsProvider), isEmpty);
+    });
+
+    test('una reserva marcada no saca las de otros pedidos', () async {
+      save([
+        ...buildBooking(first: CalendarDate(2026, 10, 28)),
+        buildSession(
+          n: 9,
+          date: CalendarDate(2026, 11, 20),
+          requestId: 'otra',
+          clientId: 'otra-ficha',
+        ),
+      ]);
+      final container = await start();
+      container
+          .read(renewedBookingsProvider.notifier)
+          .mark(bookingRequestId, CalendarDate(2026, 11, 25));
+      expect(
+        [for (final s in container.read(todayEndingBookingsProvider)) s.requestId],
+        ['otra'],
+      );
+    });
   });
 
   test('la agenda lee desde 7 días antes de hoy cuando el mes acaba de empezar: Hoy ve la reserva que terminó', () async {

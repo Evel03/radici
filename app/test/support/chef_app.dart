@@ -53,8 +53,9 @@ class ChefApp {
 /// horario y sus días bloqueados (por defecto, lunes a viernes de 9 a 15 y
 /// sin bloqueos). [bookings] es la Edge Function de las reservas (por
 /// defecto, todo libre y la llegada sugerida a las 10:00; al confirmar, el
-/// pedido pasa a `accepted` en [requests]). [sessions] son sus sesiones y la
-/// Edge Function para moverlas y cancelarlas (por defecto, ninguna).
+/// pedido pasa a `accepted` en [requests] y una reserva a mano o una
+/// renovación agrega sus sesiones a [sessions]). [sessions] son sus sesiones
+/// y la Edge Function para moverlas y cancelarlas (por defecto, ninguna).
 /// [recipes] es su catálogo de platos (por defecto, vacío). [clients] son sus
 /// fichas, las del directorio de «Nuova prenotazione» (por defecto, ninguna;
 /// una reserva a mano las actualiza como la base). Con [settle] en
@@ -83,10 +84,14 @@ Future<ChefApp> pumpChefApp(
   final account = accounts ?? FakeAccountRepository(chefAccountData);
   final days = availability ?? FakeAvailabilityRepository();
   final directory = clients ?? FakeClientsRepository();
+  final sessionsRepository = sessions ?? FakeSessionsRepository();
   final booking =
       bookings ??
-      FakeBookingsRepository(requests: requests, clients: directory);
-  final sessionsRepository = sessions ?? FakeSessionsRepository();
+      FakeBookingsRepository(
+        requests: requests,
+        clients: directory,
+        sessions: sessionsRepository,
+      );
   final catalog = recipes ?? FakeRecipesRepository();
   final launcher = FakeLinkLauncher();
   final container = await pumpRadiciApp(

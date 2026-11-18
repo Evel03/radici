@@ -9,7 +9,9 @@
 // y, con gluten, la de contaminación cruzada; sin ningún dato, como en una
 // reserva a mano, la advertencia «Allergie: nessun dato nell'app, chiedile»)
 // en el orden en que las lee el lector de pantalla, las semanas de la
-// reserva, y cancelar con confirmación, motivo y «anche le successive», con
+// reserva, «Rinnova» al final de la última sesión viva de una reserva
+// semanal (con «Ha già un'altra sessione…» si la ficha ya tiene otra
+// después), y cancelar con confirmación, motivo y «anche le successive», con
 // cada falla explicada (un 409 hasPayments dice cuáles están cobradas y qué
 // se puede hacer, también si llega al tocar «Riprova»). Mientras espera al
 // servidor, Sposta y Annulla quedan deshabilitados. Mover y cancelar quedan
@@ -20,6 +22,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/core/router.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/sessions/application/session_links.dart';
@@ -846,6 +849,161 @@ void main() {
     );
     expect(byKey('session-not-found'), findsOneWidget);
     expect(byKey('session-move'), findsNothing);
+  });
+
+  // Decisión 3: en la última sesión viva de una reserva semanal, al final de
+  // la ficha (el día de cocinar, «Come arrivare» y las alergias van primero).
+  group('«Rinnova»', () {
+    /// Otra reserva de la misma ficha, del 23/12 al 13/1.
+    List<CookingSession> renewal() => buildBooking(
+      first: CalendarDate(2026, 12, 23),
+      firstN: 10,
+      requestId: 'renovacion',
+    );
+
+    String location(ChefApp app) =>
+        app.container.read(routerProvider).state.uri.toString();
+
+    testWidgets('en la última semana, al final (después de «Settimane», no antes de «Come arrivare»); abre la hoja de la renovación', (
+      tester,
+    ) async {
+      // Alto: toda la ficha construida y a la vista.
+      final app = await openSession(tester, n: 4, size: const Size(400, 2400));
+      final row = byKey('session-last-of-booking');
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text("È l'ultima sessione della prenotazione."),
+        ),
+        findsOneWidget,
+      );
+      expect(byKey('session-later-session'), findsNothing);
+      final top = tester.getTopLeft(row).dy;
+      expect(
+        top,
+        greaterThanOrEqualTo(
+          tester.getBottomLeft(byKey('session-week-${sessionId(4)}')).dy,
+        ),
+      );
+      expect(top, greaterThan(tester.getBottomLeft(byKey('session-directions')).dy));
+      final renew = byKey('session-renew');
+      expect(find.descendant(of: renew, matching: find.text('Rinnova')), findsOneWidget);
+      expect(tester.getSize(renew).height, greaterThanOrEqualTo(48));
+
+      await tester.tap(renew);
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Rinnova prenotazione'), findsOneWidget);
+      expect(location(app), '/sessioni/${sessionId(4)}/rinnova');
+      // Al cerrarla, la ficha.
+      await tester.tap(byKey('booking-close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+    });
+
+    testWidgets('con una sola semana, después de los datos de la clienta', (
+      tester,
+    ) async {
+      await openSession(
+        tester,
+        n: 1,
+        sessions: FakeSessionsRepository(buildBooking(weeks: 1)),
+        size: const Size(400, 2400),
+      );
+      expect(byKey('session-week-${sessionId(1)}'), findsNothing);
+      expect(
+        tester.getTopLeft(byKey('session-last-of-booking')).dy,
+        greaterThanOrEqualTo(
+          tester.getBottomLeft(byKey('session-request-notes')).dy,
+        ),
+      );
+      expect(byKey('session-renew'), findsOneWidget);
+    });
+
+    testWidgets('también en la última ya cocinada, que no tiene la barra de abajo', (
+      tester,
+    ) async {
+      await openSession(
+        tester,
+        n: 4,
+        sessions: FakeSessionsRepository(
+          buildBooking(statuses: {4: SessionStatus.cooked}),
+        ),
+      );
+      expect(byKey('session-move'), findsNothing);
+      await reveal(tester, byKey('session-renew'));
+      expect(byKey('session-renew'), findsOneWidget);
+    });
+
+    testWidgets('con una sesión posterior de la misma ficha en la agenda, el botón sigue y dice «Ha già un\'altra sessione: …»', (
+      tester,
+    ) async {
+      await openSession(
+        tester,
+        n: 4,
+        sessions: FakeSessionsRepository([...buildBooking(), ...renewal()]),
+      );
+      await reveal(tester, byKey('session-renew'));
+      expect(
+        plainSpaces(textOf(tester, 'session-later-session')),
+        "Ha già un'altra sessione: mer 23 dic.",
+      );
+      expect(byKey('session-renew'), findsOneWidget);
+    });
+
+    testWidgets('con la agenda cargando, el botón está y la línea no; cuando llega, la línea', (
+      tester,
+    ) async {
+      final sessions = FakeSessionsRepository([...buildBooking(), ...renewal()])
+        ..pendingAgendaFetch = Completer<void>();
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        sessions: sessions,
+        settle: false,
+      );
+      // Hoy se abre con la agenda cargando (su rueda no se asienta).
+      for (var i = 0; i < 10; i++) {
+        await tester.pump();
+      }
+      app.go('/sessioni/${sessionId(4)}');
+      await tester.pumpAndSettle();
+      await reveal(tester, byKey('session-renew'));
+      expect(byKey('session-renew'), findsOneWidget);
+      expect(byKey('session-later-session'), findsNothing);
+
+      sessions.pendingAgendaFetch!.complete();
+      await tester.pumpAndSettle();
+      await reveal(tester, byKey('session-later-session'));
+      expect(byKey('session-later-session'), findsOneWidget);
+    });
+
+    testWidgets('no está en otra semana, en una semana cancelada ni en una sesión extra', (
+      tester,
+    ) async {
+      final sessions = FakeSessionsRepository([
+        ...buildBooking(statuses: {4: SessionStatus.cancelled}),
+        buildSession(
+          n: 7,
+          requestId: 'extra',
+          type: RequestType.extra,
+          weeks: 1,
+          date: CalendarDate(2026, 12, 30),
+        ),
+      ]);
+      final app = await openSession(tester, n: 2, sessions: sessions, size: const Size(400, 2400));
+      expect(byKey('session-last-of-booking'), findsNothing);
+      for (final n in [4, 7]) {
+        app.go('/sessioni/${sessionId(n)}');
+        await tester.pumpAndSettle();
+        expect(find.byType(CookingSessionScreen), findsOneWidget);
+        expect(byKey('session-last-of-booking'), findsNothing, reason: 'sesión $n');
+      }
+      // Con la última cancelada, la última viva es la del 9/12.
+      app.go('/sessioni/${sessionId(3)}');
+      await tester.pumpAndSettle();
+      expect(byKey('session-last-of-booking'), findsOneWidget);
+    });
   });
 
   group('cancelar', () {

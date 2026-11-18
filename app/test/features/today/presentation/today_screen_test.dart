@@ -9,10 +9,11 @@
 // WhatsApp (el mensaje de la ficha: lo firma la cocinera o, con la cuenta de
 // un colaborador, escribe de parte de ella). Tocar la tarjeta abre la ficha.
 // Los pendientes (pedidos nuevos, que llevan a «Nuove», y reservas que
-// terminan o terminaron hace hasta 7 días, que abren su última semana; no
-// están si la ficha ya tiene una sesión posterior), la tira de 7 días (que abre la
-// Agenda en ese día), carga, error, vacío, deslizar para actualizar y el
-// cambio de día a la medianoche de Roma sin reabrir.
+// terminan o terminaron hace hasta 7 días, que abren su última semana y
+// tienen «Rinnova»; no están si la ficha ya tiene una sesión posterior), la
+// tira de 7 días (que abre la Agenda en ese día), carga, error, vacío,
+// deslizar para actualizar y el cambio de día a la medianoche de Roma sin
+// reabrir.
 // "Hoy": martes 17/11/2026 a las 8:00 en Roma, salvo donde se dice otra cosa.
 import 'dart:async';
 
@@ -23,6 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/availability/domain/availability.dart';
+import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/bookings/presentation/new_booking_client_screen.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
@@ -799,6 +801,87 @@ void main() {
         'mercoledì 18 novembre 2026',
       );
       expect(tester.widget<Text>(byKey('session-week')).data, 'Settimana 4 di 4');
+    });
+
+    testWidgets('«Rinnova» en la reserva que termina: 48 dp y abre la hoja de la renovación; el resto de la tarjeta sigue abriendo la ficha', (
+      tester,
+    ) async {
+      // 28/10, 4/11, 11/11 y 18/11: la última es mañana.
+      await openToday(
+        tester,
+        sessions: buildBooking(first: CalendarDate(2026, 10, 28)),
+      );
+      final item = byKey('today-ending-$bookingRequestId');
+      final renew = byKey('today-renew-$bookingRequestId');
+      await reveal(tester, renew);
+      expect(find.descendant(of: item, matching: renew), findsOneWidget);
+      expect(
+        find.descendant(of: renew, matching: find.text('Rinnova')),
+        findsOneWidget,
+      );
+      expect(tester.getSize(renew).height, greaterThanOrEqualTo(48));
+
+      await tester.tap(renew);
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'Rinnova prenotazione'), findsOneWidget);
+      await tester.tap(byKey('booking-close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: item,
+          matching: find.text('Finisce la prenotazione di Giulia Rossi'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+    });
+
+    testWidgets('a 375×667, «Rinnova» mide 48 dp y se puede tocar después de llevarlo a la vista; abajo sigue «Come arrivare»', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        size: const Size(375, 667),
+        sessions: buildBooking(first: CalendarDate(2026, 10, 28)),
+      );
+      final renew = byKey('today-renew-$bookingRequestId');
+      await reveal(tester, renew);
+      expect(renew.hitTestable(), findsOneWidget);
+      expect(tester.getSize(renew).height, greaterThanOrEqualTo(48));
+      expect(byKey('today-directions').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('con el lector de pantalla, «Rinnova» es un solo nodo «Rinnova la prenotazione di…», botón y con la acción de tocar, sin otro «Rinnova» adentro', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await openToday(
+        tester,
+        sessions: buildBooking(first: CalendarDate(2026, 10, 28)),
+      );
+      await reveal(tester, byKey('today-renew-$bookingRequestId'));
+      final label = find.semantics.byLabel(
+        'Rinnova la prenotazione di Giulia Rossi',
+      );
+      expect(label, findsOneWidget);
+      expect(
+        tester.getSemantics(byKey('today-renew-$bookingRequestId')),
+        isSemantics(
+          label: 'Rinnova la prenotazione di Giulia Rossi',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(find.semantics.byLabel('Rinnova'), findsNothing);
+
+      tester.semantics.tap(label);
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+      semantics.dispose();
     });
 
     testWidgets('una reserva que terminó hace 3 días: «È finita la prenotazione di…» con su última sesión', (

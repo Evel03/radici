@@ -1,4 +1,6 @@
-// La hoja «Rinnova prenotazione» en la app, abierta encima de Hoy
+// La hoja «Rinnova prenotazione» en la app. Desde Hoy son dos toques
+// («Rinnova» y «Conferma 4 settimane») y, al volver, el pendiente ya no está
+// aunque las sesiones no se puedan volver a leer. Abierta encima de Hoy
 // (/sessioni/<id>/rinnova, como desde su botón): el encabezado con la última
 // sesión (y, si corresponde, la semana movida o el otro teléfono del pedido),
 // las fechas desde la última viva + 7 con los feriados, la hora, los minutos
@@ -89,6 +91,92 @@ void main() {
     }
     return app;
   }
+
+  // El criterio de aceptación: renovar 4 semanas desde Hoy son dos toques.
+  group('desde Hoy, «Rinnova» y «Conferma 4 settimane»', () {
+    final pending = byKey('today-ending-$bookingRequestId');
+    final renew = byKey('today-renew-$bookingRequestId');
+
+    /// Desplaza Hoy hasta que [finder] se vea.
+    Future<void> revealInToday(WidgetTester tester, Finder finder) async {
+      await tester.scrollUntilVisible(
+        finder,
+        200,
+        scrollable: find
+            .descendant(of: byKey('today'), matching: find.byType(Scrollable))
+            .first,
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Future<ChefApp> openToday(WidgetTester tester, FakeSessionsRepository sessions) =>
+        pumpChefApp(
+          tester,
+          requests: FakeChefRequestsRepository(const []),
+          sessions: sessions,
+          clock: () => morning,
+          overrides: [newIdProvider.overrideWithValue(() => 'key-${++keys}')],
+        );
+
+    testWidgets('crean las 4 semanas desde el 23/12 con la hora, los minutos, las personas y el precio de la reserva; «Fatto» vuelve a Hoy sin el pendiente aunque las sesiones no se puedan volver a leer', (tester) async {
+      final sessions = FakeSessionsRepository(buildBooking());
+      final app = await openToday(tester, sessions);
+      await revealInToday(tester, renew);
+      expect(pending, findsOneWidget);
+
+      await tester.tap(renew);
+      await tester.pumpAndSettle();
+      expect(find.text('Settimana 1 · mer 23 dic'), findsOneWidget);
+      sessions.fetchFailure = const SessionFailure(SessionFailureKind.unavailable);
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      final body = app.bookings.confirmations.single.toBody();
+      expect(body['clientId'], testClientId);
+      expect(body['dates'], ['2026-12-23', '2026-12-30', '2027-01-06', '2027-01-13']);
+      expect(body['start'], '10:00');
+      expect(body['cookMinutes'], 180);
+      expect(body['household'], {
+        'adults': 2,
+        'kids': 2,
+        'days': 5,
+        'meals': ['dinner'],
+      });
+      expect(body['serviceTotalCents'], 56000);
+
+      await tester.tap(byKey('booking-done-close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsNothing);
+      expect(find.byType(TodayScreen), findsOneWidget);
+      expect(pending, findsNothing);
+      expect(renew, findsNothing);
+    });
+
+    testWidgets('con las sesiones releídas, la agenda trae las semanas nuevas y tampoco hay pendiente', (tester) async {
+      final sessions = FakeSessionsRepository(buildBooking());
+      await openToday(tester, sessions);
+      await revealInToday(tester, renew);
+      await tester.tap(renew);
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      expect(
+        [
+          for (final s in sessions.sessions.values)
+            if (s.requestId == 'manual-request-1') s.date,
+        ],
+        [
+          CalendarDate(2026, 12, 23),
+          CalendarDate(2026, 12, 30),
+          CalendarDate(2027, 1, 6),
+          CalendarDate(2027, 1, 13),
+        ],
+      );
+      await tester.tap(byKey('booking-done-close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+      expect(pending, findsNothing);
+    });
+  });
 
   testWidgets('lo que copia «Rinnova»: 4 semanas desde el 23/12 a las 10:00, 180 min y 560 € ya puestos; el 6/1 avisa la Epifania', (tester) async {
     await openRenewal(tester);
