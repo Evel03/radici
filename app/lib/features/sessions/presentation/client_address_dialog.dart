@@ -3,7 +3,9 @@
 // llegar». Se guarda con la RLS en clients.address (SessionCommands.
 // updateAddress) y vale para todas sus sesiones. Si falla, el diálogo queda
 // abierto con lo escrito. El campo tiene letra de 16 px (con menos, iOS
-// agranda la página). La dirección no se loguea.
+// agranda la página) y autofillHints: null (sin pasarlo, en /gestione/ sale
+// con autocomplete="on" y Safari podría ofrecer la dirección de Evelyn). La
+// dirección no se loguea.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
@@ -119,6 +121,7 @@ class _ClientAddressDialogState extends ConsumerState<ClientAddressDialog> {
                   key: const ValueKey('client-address-field'),
                   controller: _address,
                   autofocus: true,
+                  autofillHints: null,
                   enabled: !_saving,
                   maxLength: maxClientAddressLength,
                   minLines: 1,

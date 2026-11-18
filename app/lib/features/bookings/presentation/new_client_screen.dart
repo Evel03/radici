@@ -10,10 +10,12 @@
 // impide seguir con «Vedi», que lleva al campo y le da el foco: a 375×667 el
 // campo queda fuera de la vista.
 //
-// Ningún campo lleva autofillHints: en /gestione/, Safari ofrecería en un
-// campo de teléfono los números de la tarjeta propia del iPhone, y el
-// WhatsApp de la reserva iría a Evelyn. Letra de 16 px (con menos, iOS
-// agranda la página al enfocar). Solo lee providers.
+// Todos los campos pasan autofillHints: null. Sin pasarlo, TextField usa una
+// lista vacía y Flutter web arma igual un <input autocomplete="on"> dentro de
+// un <form>: en /gestione/, Safari podría ofrecer el teléfono o la dirección
+// de la tarjeta propia del iPhone, y el WhatsApp de la reserva iría a Evelyn.
+// Con null, el input sale con autocomplete="off". Letra de 16 px (con menos,
+// iOS agranda la página al enfocar). Solo lee providers.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -178,6 +180,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
                           key: const ValueKey('new-client-name'),
                           controller: _name,
                           focusNode: _focus[NewClientField.name],
+                          autofillHints: null,
                           textCapitalization: TextCapitalization.words,
                           textInputAction: TextInputAction.next,
                           inputFormatters: [
@@ -200,6 +203,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
                           key: const ValueKey('new-client-phone'),
                           controller: _phone,
                           focusNode: _focus[NewClientField.phone],
+                          autofillHints: null,
                           keyboardType: TextInputType.phone,
                           textInputAction: TextInputAction.next,
                           inputFormatters: [
@@ -250,6 +254,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
                           key: const ValueKey('new-client-zone'),
                           controller: _zone,
                           focusNode: _focus[NewClientField.zone],
+                          autofillHints: null,
                           textCapitalization: TextCapitalization.words,
                           textInputAction: TextInputAction.next,
                           inputFormatters: [
@@ -273,6 +278,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
                           key: const ValueKey('new-client-address'),
                           controller: _address,
                           focusNode: _focus[NewClientField.address],
+                          autofillHints: null,
                           keyboardType: TextInputType.streetAddress,
                           textCapitalization: TextCapitalization.sentences,
                           textInputAction: TextInputAction.done,

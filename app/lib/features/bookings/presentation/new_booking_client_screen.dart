@@ -6,7 +6,8 @@
 //
 // Mientras esté abierta mantiene vivo el borrador de «Nuova cliente»: volver
 // del formulario no lo borra, y se descarta al cerrar esta pantalla.
-// Ningún campo lleva autofillHints (Safari ofrecería los datos de Evelyn).
+// El buscador pasa autofillHints: null (sin pasarlo, Flutter web arma un
+// <input autocomplete="on"> y Safari podría ofrecer los datos de Evelyn).
 // Solo lee providers: la búsqueda y el orden están en client_search.dart.
 import 'dart:math' as math;
 
@@ -89,7 +90,10 @@ class _NewBookingClientScreenState
             child: TextField(
               key: const ValueKey('client-search'),
               controller: _search,
-              // Sin autofoco (el teclado taparía la lista) ni autofillHints.
+              // Sin autofoco (el teclado taparía la lista) ni autocompletar
+              // del navegador (null: la lista vacía por defecto lo deja
+              // prendido en la web).
+              autofillHints: null,
               textInputAction: TextInputAction.search,
               // 16 px o más: con menos, iOS agranda la página al enfocar.
               style: theme.textTheme.bodyLarge,

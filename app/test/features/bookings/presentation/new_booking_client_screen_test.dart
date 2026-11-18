@@ -299,17 +299,15 @@ void main() {
     });
   });
 
-  testWidgets('ningún campo sugiere autocompletar; letra de 16 px', (tester) async {
+  testWidgets('el buscador no le pide autocompletar al navegador y no tiene autofoco; letra de 16 px', (tester) async {
     await openPicker(tester);
-    for (final field in tester.widgetList<TextField>(find.byType(TextField))) {
-      expect(field.autofillHints ?? const <String>[], isEmpty);
-    }
     expect(
       tester.widget<TextField>(byKey('client-search')).autofocus,
       isFalse,
       reason: 'el teclado taparía la lista',
     );
     expectReadableInputs(tester);
+    await expectNoBrowserAutofill(tester, byKey('client-search'));
   });
 
   testWidgets('a 375×667 «Nuova cliente» queda en el tercio inferior y, con el teclado, por encima de él', (tester) async {

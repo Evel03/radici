@@ -439,6 +439,13 @@ void main() {
         expect(byKey('client-address-dialog'), findsOneWidget);
         // Letra de 16 px o más: con menos, iOS agranda la página.
         expectReadableInputs(tester);
+        // Con el foco ya puesto: no le pide autocompletar al navegador
+        // (Safari ofrecería la dirección de Evelyn).
+        await expectNoBrowserAutofill(
+          tester,
+          byKey('client-address-field'),
+          tap: false,
+        );
         // Vacío no se guarda.
         expect(onPressedOf(tester, 'client-address-save'), isNull);
         await tester.enterText(

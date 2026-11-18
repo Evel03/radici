@@ -291,10 +291,13 @@ repositorios falsos (`test/support/fakes.dart`).
   acción principal (abre la hoja de esa ficha sin modificarla: lo que se tocó en adultos, niños o
   idioma va al pedido) y «Crea una scheda nuova»; lo que impide crearla (sin nombre: «Per creare una
   scheda nuova, scrivi il nome.») va debajo de ese botón, no arriba de «Usa la scheda di…», que no
-  lo necesita. Un número copiado de Contactos trae marcas
-  invisibles de dirección (U+202A…U+202C, U+200E) que `normalizePhone` no saca: `phoneFromInput`
-  las limpia. Ningún campo de la clienta lleva `autofillHints`: en `/gestione/`, Safari ofrecería
-  en el teléfono los números de la tarjeta propia del iPhone, y el WhatsApp iría a Evelyn. Después,
+  lo necesita. Un número copiado de Contactos trae marcas invisibles de dirección (U+202A…U+202C,
+  U+200E) que `normalizePhone` no saca: `phoneFromInput` las limpia. Los campos de la clienta (el
+  buscador, «Nuova cliente» y el diálogo de la dirección de la ficha) pasan `autofillHints: null`:
+  sin pasarlo, `TextField` usa una lista vacía y Flutter web arma igual un `<input
+  autocomplete="on">` dentro de un `<form>`, y en `/gestione/` Safari podría ofrecer el teléfono o
+  la dirección de la tarjeta propia del iPhone (el WhatsApp iría a Evelyn). Con `null` sale
+  `autocomplete="off"`; cuánto sugiere Safari igual solo se ve en el iPhone. Después,
   la misma hoja «Conferma prenotazione»: 4 semanas desde mañana, «Persone e pasti» (los de su último
   pedido semanal: un evento no describe la casa) y el idioma, los minutos que siguen a las personas
   hasta tocarlos y el precio vacío y obligatorio. El POST lleva `clientId` o `newClient` (completo

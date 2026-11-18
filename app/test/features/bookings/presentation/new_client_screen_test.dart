@@ -110,7 +110,7 @@ void main() {
     expectReadableInputs(tester);
   });
 
-  testWidgets('ningún campo sugiere autocompletar (Safari ofrecería el teléfono de Evelyn)', (tester) async {
+  testWidgets('ningún campo le pide autocompletar al navegador (Safari ofrecería el teléfono o la dirección de Evelyn)', (tester) async {
     await openForm(tester);
     for (final key in [
       'new-client-name',
@@ -118,11 +118,7 @@ void main() {
       'new-client-zone',
       'new-client-address',
     ]) {
-      expect(
-        tester.widget<TextField>(byKey(key)).autofillHints ?? const <String>[],
-        isEmpty,
-        reason: key,
-      );
+      await expectNoBrowserAutofill(tester, byKey(key));
     }
   });
 
