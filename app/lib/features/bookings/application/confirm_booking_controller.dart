@@ -12,8 +12,9 @@
 // aviso o un choque). Con un choque no deja confirmar. La confirmación lleva
 // una clave por hoja, la misma en todos sus envíos: el servidor no duplica la
 // reserva. Si una confirmación se queda sin respuesta (pudo haberse
-// guardado), la hoja no cambia hasta reintentarla con lo mismo. Nada de esto
-// se loguea.
+// guardado), la hoja no cambia hasta reintentarla con lo mismo; a mano o al
+// renovar, si el reintento tampoco tiene respuesta, Evelyn la puede cerrar
+// igual («Chiudi comunque»). Nada de esto se loguea.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -192,6 +193,12 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
     /// La última falla (del dryRun o de la confirmación), o null.
     BookingFailure? failure,
 
+    /// Un reintento de la confirmación tampoco tuvo respuesta.
+    @Default(false) bool retryUnanswered,
+
+    /// Evelyn eligió «Chiudi comunque»: la hoja ya no se retiene.
+    @Default(false) bool leftAnyway,
+
     /// La reserva confirmada.
     BookingResult? result,
   }) = _ConfirmBookingState;
@@ -312,7 +319,15 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
   /// confirmación sin respuesta, la hoja no se cierra por ningún camino (la
   /// X, el atrás del sistema o el del navegador): otra hoja tendría otra
   /// clave y podría duplicar la reserva (y, con una ficha nueva, la ficha).
-  bool get holdsOpen => createsRequest && frozen;
+  /// Salvo que Evelyn elija «Chiudi comunque» ([canLeaveAnyway]).
+  bool get holdsOpen => createsRequest && frozen && !leftAnyway;
+
+  /// A mano o al renovar, el reintento tampoco tuvo respuesta (un corte
+  /// largo o la función caída): sin una salida, la hoja quedaría abierta
+  /// hasta que vuelva la red. Evelyn la puede cerrar, avisada de que la
+  /// reserva pudo haber quedado guardada.
+  bool get canLeaveAnyway =>
+      createsRequest && retryPending && retryUnanswered && !leftAnyway;
 
   bool get canConfirm =>
       seedStatus == BookingSeedStatus.ready &&
@@ -581,7 +596,8 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     final current = state;
     final seed = _seed;
     if (!current.canConfirm || seed == null) return;
-    final booking = current.retryPending
+    final retrying = current.retryPending;
+    final booking = retrying
         ? current.sent!
         : _booking(
             current,
@@ -637,7 +653,12 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     } on BookingFailure catch (failure) {
       _afterBlockingFailure(failure, seed, inbox);
       if (!ref.mounted) return;
-      state = state.copyWith(sending: false, failure: failure);
+      state = state.copyWith(
+        sending: false,
+        failure: failure,
+        retryUnanswered:
+            retrying && failure.kind == BookingFailureKind.unavailable,
+      );
       // Un choque: el dryRun marca la semana que choca.
       if (failure.kind == BookingFailureKind.slotTaken ||
           failure.kind == BookingFailureKind.weekTaken ||
@@ -645,6 +666,13 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
         unawaited(_runChecks());
       }
     }
+  }
+
+  /// «Chiudi comunque» ([ConfirmBookingState.canLeaveAnyway]): la hoja deja de
+  /// retenerse y la pantalla la cierra. Nada más cambia.
+  void leaveAnyway() {
+    if (!state.canLeaveAnyway) return;
+    state = state.copyWith(leftAnyway: true);
   }
 
   /// El cuerpo del POST para lo que hay en [current] según el destino del

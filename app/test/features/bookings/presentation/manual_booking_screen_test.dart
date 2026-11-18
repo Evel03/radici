@@ -349,6 +349,51 @@ void main() {
     expect(byKey('booking-done-duplicate'), findsOneWidget);
   });
 
+  testWidgets('sin respuesta tampoco al reintentar: «Chiudi comunque», con el aviso, la cierra (a 375×667, debajo de «Riprova»)', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final app = await openChiara(
+      tester,
+      size: const Size(375, 667),
+      configure: (b) => b.loseNextConfirmResponse = true,
+    );
+    await typePrice(tester, '560');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    await tester.tap(byKey('booking-confirm'));
+    await tester.pumpAndSettle();
+    expect(byKey('booking-leave-anyway'), findsNothing);
+
+    app.bookings.confirmFailure = const BookingFailure(BookingFailureKind.unavailable);
+    await tester.tap(byKey('booking-confirm'));
+    await tester.pumpAndSettle();
+    expect(byKey('booking-retry-keeps-open'), findsNothing);
+    expect(
+      textOf(tester, 'booking-retry-leave-warning'),
+      'Ancora nessuna risposta. Puoi chiudere, ma la prenotazione potrebbe '
+      'essere già salvata: prima di rifarla, controlla in «Prenotazioni» o in «Agenda».',
+    );
+    expect(
+      tester.getSemantics(byKey('booking-retry-leave-warning')),
+      isSemantics(isLiveRegion: true),
+    );
+    expect(tester.widget<IconButton>(byKey('booking-close')).onPressed, isNull);
+    final retry = byKey('booking-confirm');
+    final leave = byKey('booking-leave-anyway');
+    expect(find.text('Chiudi comunque'), findsOneWidget);
+    expect(leave.hitTestable(), findsOneWidget);
+    expect(tester.getSize(leave).height, greaterThanOrEqualTo(48));
+    expect(tester.getRect(leave).top, greaterThanOrEqualTo(tester.getRect(retry).bottom));
+    expect(tester.getCenter(retry).dy, greaterThan(667 * 2 / 3));
+
+    await tester.tap(leave);
+    await tester.pumpAndSettle();
+    expect(find.byType(ConfirmBookingScreen), findsNothing);
+    expect(find.byType(NewBookingClientScreen), findsOneWidget);
+    expect(app.bookings.savedByKey, hasLength(1), reason: 'la primera quedó guardada');
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
   // En /gestione/ el atrás del navegador entra por el router y no pasa por
   // PopScope: lo frena el onExit de la ruta de la hoja.
   group('el atrás del navegador', () {

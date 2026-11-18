@@ -571,6 +571,27 @@ void main() {
       expect(bookings.savedByKey, hasLength(1));
     });
 
+    test('sin respuesta al confirmar ni al reintentar: recién ahí se puede cerrar igual («Chiudi comunque»)', () async {
+      await open(chiaraSource);
+      controller().setPriceText('560');
+      bookings.loseNextConfirmResponse = true;
+      await controller().confirm();
+      expect(state().holdsOpen, isTrue);
+      expect(state().canLeaveAnyway, isFalse, reason: 'una respuesta perdida se reintenta');
+      controller().leaveAnyway();
+      expect(state().holdsOpen, isTrue);
+
+      bookings.confirmFailure = const BookingFailure(BookingFailureKind.unavailable);
+      await controller().confirm();
+      expect(state().retryPending, isTrue);
+      expect(state().canLeaveAnyway, isTrue);
+      expect(state().holdsOpen, isTrue, reason: 'hasta que Evelyn lo elige');
+      controller().leaveAnyway();
+      expect(state().holdsOpen, isFalse);
+      expect(state().retryPending, isTrue, reason: 'nada más cambia');
+      expect(bookings.confirmations, hasLength(2));
+    });
+
     test('ya guardada con esa clave y otro precio: vale lo guardado y se avisa', () async {
       await open(chiaraSource);
       controller().setPriceText('560');

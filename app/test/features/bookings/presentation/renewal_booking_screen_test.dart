@@ -20,6 +20,7 @@ import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/router.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/core/uuid.dart';
+import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
@@ -296,6 +297,26 @@ void main() {
     expect(sent.last, sent.first);
     expect(app.bookings.savedByKey, hasLength(1));
     expect(byKey('booking-done-duplicate'), findsOneWidget);
+  });
+
+  testWidgets('sin respuesta tampoco al reintentar: «Chiudi comunque» la cierra y vuelve a Hoy', (tester) async {
+    final app = await openRenewal(
+      tester,
+      configure: (b) => b.loseNextConfirmResponse = true,
+    );
+    await tester.tap(byKey('booking-confirm'));
+    await tester.pumpAndSettle();
+    expect(byKey('booking-leave-anyway'), findsNothing);
+
+    app.bookings.confirmFailure = const BookingFailure(BookingFailureKind.unavailable);
+    await tester.tap(byKey('booking-confirm'));
+    await tester.pumpAndSettle();
+    expect(byKey('booking-retry-leave-warning'), findsOneWidget);
+    await tester.tap(byKey('booking-leave-anyway'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ConfirmBookingScreen), findsNothing);
+    expect(find.byType(TodayScreen), findsOneWidget);
+    expect(app.bookings.savedByKey, hasLength(1));
   });
 
   testWidgets('sin respuesta al confirmar, el atrás del navegador (no pasa por PopScope) tampoco la cierra: el reintento lleva la misma clave', (tester) async {

@@ -243,6 +243,8 @@
   "bookingHouseholdSection": "Personas y comidas",
   "bookingCookHelpManual": "Calculado según personas y comidas; como mucho {max} min.",
   "bookingRetryKeepsOpen": "La hoja queda abierta hasta que llegue una respuesta: así la reserva no se duplica.",
+  "bookingRetryLeaveWarning": "Sigue sin haber respuesta. Puedes cerrar, pero la reserva podría haber quedado guardada: antes de volver a hacerla, mira en «Reservas» o en «Agenda».",
+  "bookingLeaveAnyway": "Cerrar de todos modos",
   "bookingErrorNewClientInvalid": "El servidor no acepta los datos de la clienta nueva: vuelve atrás y revísalos.",
   "bookingNewClientFix": "Corregir",
   "bookingErrorClientNotFound": "Esta ficha de cliente ya no existe.",

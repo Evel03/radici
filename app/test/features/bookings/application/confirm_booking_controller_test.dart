@@ -723,6 +723,9 @@ void main() {
       expect(state().cookMinutes, 180);
       expect(bookings.dryRuns, hasLength(dryRuns));
       expect(state().failure?.kind, BookingFailureKind.unavailable);
+      // Desde un pedido la hoja se puede cerrar siempre: no hace falta salida.
+      expect(state().holdsOpen, isFalse);
+      expect(state().canLeaveAnyway, isFalse);
 
       await controller().confirm();
       final sent = bookings.confirmations;

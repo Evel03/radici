@@ -302,9 +302,12 @@ repositorios falsos (`test/support/fakes.dart`).
   respuesta perdida, la hoja no se cierra hasta reintentar: otra hoja tendría otra clave y podría
   duplicar la reserva (y la ficha). Tampoco con el atrás del navegador en `/gestione/`, que no pasa
   por `PopScope`: lo frena el `onExit` de la ruta (sin la sesión de la cocinera, la redirección al
-  login la saca igual). Al confirmar, la reserva está en «Prenotazioni» aunque la relectura falle, y «Fatto», la X
-  y el atrás llevan ahí. No guarda alergias (falta el consentimiento de salud, M2). En la URL van
-  solo ids, nunca el nombre, el teléfono ni la dirección.
+  login la saca igual). Si el reintento tampoco tiene respuesta (un corte largo o la función caída),
+  aparece «Chiudi comunque», con el aviso de que la reserva pudo haber quedado guardada y conviene
+  mirar «Prenotazioni» o la Agenda antes de rehacerla: sin esa salida, la hoja quedaría abierta hasta
+  que vuelva la red. Al confirmar, la reserva está en «Prenotazioni» aunque la relectura falle, y
+  «Fatto», la X y el atrás llevan ahí. No guarda alergias (falta el consentimiento de salud, M2). En
+  la URL van solo ids, nunca el nombre, el teléfono ni la dirección.
 - **Rinnova** (`features/bookings/domain/renewal.dart`, `/sessioni/:id/rinnova`): desde el
   pendiente de Hoy o la ficha de la última sesión viva de una reserva semanal, la hoja «Rinnova
   prenotazione», una reserva a mano para la misma ficha (`clientId`), prellenada y editable:
@@ -326,10 +329,10 @@ repositorios falsos (`test/support/fakes.dart`).
     pedido renovado traía otro teléfono, el encabezado lo dice;
   - los feriados de Bergamo y una llegada de hoy que ya pasó se avisan como en cualquier hoja (el día
     +7 del pendiente, la primera fecha es hoy: duda D1);
-  - con una respuesta perdida no se cierra hasta reintentar, tampoco con el atrás del navegador
-    (como la hoja a mano); al confirmar, la reserva está en
-    «Prenotazioni», la renovada queda marcada en el dispositivo (`renewedBookingsProvider`, en
-    memoria) y «Fatto» vuelve a donde estaba;
+  - con una respuesta perdida no se cierra hasta reintentar, tampoco con el atrás del navegador, y
+    si el reintento tampoco tiene respuesta ofrece «Chiudi comunque» (como la hoja a mano); al
+    confirmar, la reserva está en «Prenotazioni», la renovada queda marcada en el dispositivo
+    (`renewedBookingsProvider`, en memoria) y «Fatto» vuelve a donde estaba;
   - no guarda alergias, como toda reserva a mano: sus sesiones dicen «Allergie: nessun dato
     nell'app, chiedile» (duda D2, por una reserva que vino de la web).
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o

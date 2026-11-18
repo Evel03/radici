@@ -17,7 +17,8 @@
 //
 // Antes de la hoja, según su seed: la rueda, el error con «Riprova» o «no
 // está». Una reserva a mano o una renovación no se cierra mientras espera el
-// reintento de una confirmación sin respuesta. Después de confirmar a mano,
+// reintento de una confirmación sin respuesta; si el reintento tampoco tiene
+// respuesta, «Chiudi comunque» la cierra igual. Después de confirmar a mano,
 // «Fatto», la X y el atrás llevan a «Prenotazioni»; una renovación vuelve a
 // donde estaba.
 //
@@ -219,6 +220,14 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
 
   void _showWeek(int index) => unawaited(_reveal(_weekKeys[index]));
 
+  /// «Chiudi comunque»: la hoja deja de retenerse y se cierra. pop no pasa
+  /// por PopScope (que se arma con el estado anterior) y el onExit de la ruta
+  /// ya la deja salir.
+  void _leaveAnyway() {
+    ref.read(confirmBookingProvider(_source).notifier).leaveAnyway();
+    Navigator.of(context).pop();
+  }
+
   BookingSource get _source => widget.source;
 
   @override
@@ -305,6 +314,7 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
                 controller: controller,
                 onShowPrice: _showPrice,
                 onShowWeek: _showWeek,
+                onLeaveAnyway: _leaveAnyway,
               )
             else
               _DoneBar(source: _source, manual: manual),
@@ -874,12 +884,14 @@ class _ConfirmBar extends StatelessWidget {
     required this.controller,
     required this.onShowPrice,
     required this.onShowWeek,
+    required this.onLeaveAnyway,
   });
 
   final ConfirmBookingState state;
   final ConfirmBookingController controller;
   final VoidCallback onShowPrice;
   final void Function(int week) onShowWeek;
+  final VoidCallback onLeaveAnyway;
 
   @override
   Widget build(BuildContext context) {
@@ -897,16 +909,29 @@ class _ConfirmBar extends StatelessWidget {
     final checking = failure == null && blocker == null && state.checking;
     final showSummary =
         state.retryPending || (failure == null && blocker == null && !checking);
+    final leave = state.canLeaveAnyway;
     return BookingBottomBar(
       children: [
         // A mano o al renovar, una confirmación sin respuesta no deja cerrar
-        // la hoja: lo dice arriba de la falla.
+        // la hoja: lo dice arriba de la falla. Si el reintento tampoco tuvo
+        // respuesta, que se puede cerrar igual y qué mirar antes de rehacerla
+        // (anunciado: aparece un botón nuevo).
         if (state.createsRequest && state.retryPending) ...[
-          Text(
-            l10n.bookingRetryKeepsOpen,
-            key: const ValueKey('booking-retry-keeps-open'),
-            style: theme.textTheme.bodyMedium,
-          ),
+          if (leave)
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                l10n.bookingRetryLeaveWarning,
+                key: const ValueKey('booking-retry-leave-warning'),
+                style: theme.textTheme.bodyMedium,
+              ),
+            )
+          else
+            Text(
+              l10n.bookingRetryKeepsOpen,
+              key: const ValueKey('booking-retry-keeps-open'),
+              style: theme.textTheme.bodyMedium,
+            ),
           const SizedBox(height: 8),
         ],
         if (failure != null) ...[
@@ -1012,6 +1037,14 @@ class _ConfirmBar extends StatelessWidget {
                       : l10n.bookingConfirmAction(state.weeks),
                 ),
         ),
+        if (leave) ...[
+          const SizedBox(height: 8),
+          TextButton(
+            key: const ValueKey('booking-leave-anyway'),
+            onPressed: onLeaveAnyway,
+            child: Text(l10n.bookingLeaveAnyway),
+          ),
+        ],
       ],
     );
   }

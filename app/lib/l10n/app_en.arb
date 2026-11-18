@@ -243,6 +243,8 @@
   "bookingHouseholdSection": "People and meals",
   "bookingCookHelpManual": "Worked out from people and meals, at most {max} min.",
   "bookingRetryKeepsOpen": "This stays open until there's an answer, so the booking isn't duplicated.",
+  "bookingRetryLeaveWarning": "Still no answer. You can close this, but the booking may already be saved: before booking again, check “Bookings” or “Calendar”.",
+  "bookingLeaveAnyway": "Close anyway",
   "bookingErrorNewClientInvalid": "The server didn't accept the new client's details: go back and check them.",
   "bookingNewClientFix": "Fix",
   "bookingErrorClientNotFound": "This client record no longer exists.",

@@ -1094,7 +1094,15 @@
   },
   "bookingRetryKeepsOpen": "La scheda resta aperta finché non arriva una risposta: così la prenotazione non si duplica.",
   "@bookingRetryKeepsOpen": {
-    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo: se mandó la confirmación y no hubo respuesta. La hoja no se cierra hasta reintentar, porque otra hoja usaría otra clave y podría duplicar la reserva."
+    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo: se mandó la confirmación y no hubo respuesta. La hoja no se cierra hasta reintentar, porque otra hoja usaría otra clave y podría duplicar la reserva. Si el reintento tampoco tiene respuesta, la reemplaza bookingRetryLeaveWarning."
+  },
+  "bookingRetryLeaveWarning": "Ancora nessuna risposta. Puoi chiudere, ma la prenotazione potrebbe essere già salvata: prima di rifarla, controlla in «Prenotazioni» o in «Agenda».",
+  "@bookingRetryLeaveWarning": {
+    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo, en lugar de bookingRetryKeepsOpen y anunciado por el lector de pantalla: el reintento de una confirmación sin respuesta tampoco tuvo respuesta (un corte largo o la función caída). Debajo de «Riprova» aparece «Chiudi comunque»; si la reserva ya quedó guardada, rehacerla la duplicaría, por eso pide mirar antes. «Prenotazioni» es la pestaña de las reservas en Richieste y «Agenda», la de la barra de abajo."
+  },
+  "bookingLeaveAnyway": "Chiudi comunque",
+  "@bookingLeaveAnyway": {
+    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo, debajo de «Riprova»: cierra la hoja aunque la confirmación siga sin respuesta. Aparece solo después de un reintento que tampoco tuvo respuesta, con bookingRetryLeaveWarning arriba."
   },
   "bookingErrorNewClientInvalid": "Il server non accetta i dati della cliente nuova: torna indietro e controllali.",
   "@bookingErrorNewClientInvalid": {
