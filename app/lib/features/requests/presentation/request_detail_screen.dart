@@ -282,6 +282,8 @@ class _RequestDetail extends ConsumerWidget {
     final date = request.preferredDate;
     final slot = request.preferredSlot;
     final weekly = request.type == RequestType.week;
+    // Un pedido del formulario de la web (no una reserva cargada a mano).
+    final fromWeb = request.source == RequestSource.web;
     final restrictions = request.restrictions ?? const RequestRestrictions();
     final notes = request.notes?.trim() ?? '';
     final client = request.client;
@@ -382,10 +384,16 @@ class _RequestDetail extends ConsumerWidget {
                 label: l10n.quoteMealsSection,
                 value: l10n.meals(request.meals),
               ),
-            _InfoRow(
-              label: l10n.detailPreferredDate,
-              value: date == null ? l10n.requestNoDate : formats.longDate(date),
-            ),
+            // Una reserva sin fecha preferida (cargada a mano) no dice «Senza
+            // data», como la fila de la lista: sus fechas son las de sus
+            // sesiones.
+            if (date != null || !request.isBooking)
+              _InfoRow(
+                label: l10n.detailPreferredDate,
+                value: date == null
+                    ? l10n.requestNoDate
+                    : formats.longDate(date),
+              ),
             // El mismo día de cada semana siguiente. Espacios duros dentro de
             // cada fecha: la línea se corta entre dos fechas, no en medio.
             if (date != null && request.weeks > 1)
@@ -448,8 +456,12 @@ class _RequestDetail extends ConsumerWidget {
               key: const ValueKey('detail-notes'),
             ),
 
-            _Section(title: l10n.detailSectionEstimate),
-            _Estimate(estimate: request.estimate, weekly: weekly),
+            // Un pedido de la app sin estimación (una reserva a mano) no dice
+            // «Nessuna stima salvata.»: nunca la tuvo.
+            if (request.estimate != null || fromWeb) ...[
+              _Section(title: l10n.detailSectionEstimate),
+              _Estimate(estimate: request.estimate, weekly: weekly),
+            ],
 
             _Section(title: l10n.detailSectionContact),
             if (client.contactPhone case final phone?) ...[
@@ -469,12 +481,14 @@ class _RequestDetail extends ConsumerWidget {
               _InfoRow(label: l10n.detailEmail, value: address, selectable: true),
             if (client.zone case final zone? when zone.isNotEmpty)
               _InfoRow(label: l10n.detailZone, value: zone),
-            _InfoRow(
-              label: l10n.detailWhatsAppOptIn,
-              value: request.whatsappOptIn
-                  ? l10n.detailWhatsAppOptInYes
-                  : l10n.detailWhatsAppOptInNo,
-            ),
+            // Lo que pidió la clienta en el formulario de la web.
+            if (fromWeb)
+              _InfoRow(
+                label: l10n.detailWhatsAppOptIn,
+                value: request.whatsappOptIn
+                    ? l10n.detailWhatsAppOptInYes
+                    : l10n.detailWhatsAppOptInNo,
+              ),
             _InfoRow(
               label: l10n.detailLanguage,
               value: l10n.language(request.locale),
