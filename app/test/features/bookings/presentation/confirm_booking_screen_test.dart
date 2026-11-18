@@ -1008,4 +1008,87 @@ void main() {
       expect(byKey('booking-summary').hitTestable(), findsOneWidget);
     });
   }
+
+  // Los avisos de la app valen para todas las fuentes, también desde un
+  // pedido (las semanas después de la primera también las arma la app). No
+  // impiden confirmar.
+  group('avisos de la app', () {
+    testWidgets(
+      'mientras corre el dryRun, la barra dice «Controllo le date…» (al lector de pantalla también) en lugar del resumen',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        final app = await openSheet(tester, open: false);
+        app.bookings.pendingChecks = Completer<void>();
+        await tester.tap(byKey('action-confirm-booking'));
+        // Con la rueda girando la pantalla no se asienta: unos cuadros.
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(textOf(tester, 'booking-checking'), 'Controllo le date…');
+        expect(
+          tester.getSemantics(byKey('booking-checking')),
+          isSemantics(isLiveRegion: true),
+        );
+        expect(byKey('booking-summary'), findsNothing);
+        expect(confirmButton(tester).onPressed, isNull);
+
+        app.bookings.pendingChecks!.complete();
+        await tester.pumpAndSettle();
+        expect(byKey('booking-checking'), findsNothing);
+        expect(byKey('booking-summary'), findsOneWidget);
+        expect(confirmButton(tester).onPressed, isNotNull);
+        semantics.dispose();
+      },
+    );
+
+    testWidgets(
+      'una semana en un feriado de Bergamo lo dice con el ícono de aviso, y se puede confirmar',
+      (tester) async {
+        // El 8/12 es martes: Immacolata.
+        await openSheet(
+          tester,
+          request: buildRequest(
+            weeks: 4,
+            preferredDate: CalendarDate(2026, 12, 8),
+            estimate: fourWeeksEstimate,
+            seenAt: testNow,
+          ),
+        );
+        expect(
+          textOf(tester, 'booking-week-0-status'),
+          'Festività: Immacolata Concezione',
+        );
+        expect(
+          find.descendant(
+            of: byKey('booking-week-0'),
+            matching: find.byIcon(Icons.warning_amber_outlined),
+          ),
+          findsOneWidget,
+        );
+        expect(textOf(tester, 'booking-week-1-status'), 'Libero');
+        expect(confirmButton(tester).onPressed, isNotNull);
+      },
+    );
+
+    testWidgets(
+      'hoy, con la hora de llegada ya pasada en Roma, lo dice y se puede confirmar',
+      (tester) async {
+        // Son las 14:00 en Roma y la llegada sugerida es a las 10:00.
+        await openSheet(
+          tester,
+          request: buildRequest(
+            weeks: 2,
+            preferredDate: CalendarDate(2026, 10, 19),
+            estimate: fourWeeksEstimate.copyWith(weeks: 2, serviceCents: 30000),
+            seenAt: testNow,
+          ),
+        );
+        expect(
+          textOf(tester, 'booking-week-0-status'),
+          "È oggi e l'ora di arrivo è già passata.",
+        );
+        expect(textOf(tester, 'booking-week-1-status'), 'Libero');
+        expect(confirmButton(tester).onPressed, isNotNull);
+      },
+    );
+  });
 }

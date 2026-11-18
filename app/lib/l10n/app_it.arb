@@ -935,6 +935,14 @@
   "@bookingStatusChecking": {
     "description": "Estado de una semana mientras se pregunta al servidor."
   },
+  "bookingChecking": "Controllo le date…",
+  "@bookingChecking": {
+    "description": "Hoja de reserva, barra de abajo, con una rueda chica y anunciado por el lector de pantalla: mientras el servidor revisa las fechas que hay en la hoja (el dryRun), en lugar del resumen del precio. Así el botón gris dice por qué espera."
+  },
+  "bookingTodayArrivalPassed": "È oggi e l'ora di arrivo è già passata.",
+  "@bookingTodayArrivalPassed": {
+    "description": "Hoja de reserva, estado de una semana: la fecha es hoy y la hora de llegada ya pasó en Roma (el servidor no lo marca como pasado). No impide confirmar."
+  },
   "bookingChecksFailed": "Non è stato possibile verificare le date. Puoi confermare lo stesso: il server le ricontrolla.",
   "@bookingChecksFailed": {
     "description": "No se pudo preguntar al servidor el estado de las fechas. Va con el botón Riprova."

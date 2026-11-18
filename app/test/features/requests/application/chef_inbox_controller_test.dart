@@ -472,6 +472,81 @@ void main() {
     expect(requests(), hasLength(3));
   });
 
+  group('reserva a mano confirmada en este dispositivo (applyManualBooking)', () {
+    // El pedido que arma la hoja con lo que ya sabe; el del servidor tiene
+    // el contacto como lo guardó la base.
+    final provisional = manualBooking('manual-1', testNow).copyWith(
+      clientId: 'c-anna',
+      client: const RequestClient(
+        displayName: 'Anna Verdi',
+        contactPhone: '+393471112222',
+        status: ClientStatus.trial,
+      ),
+    );
+    final saved = provisional.copyWith(
+      client: provisional.client.copyWith(contactEmail: 'anna@example.test'),
+    );
+    final annaProspect = buildRequest(
+      id: 'anna-web',
+      clientId: 'c-anna',
+      name: 'Anna Verdi',
+      clientStatus: ClientStatus.prospect,
+      createdAt: DateTime.utc(2026, 10, 17, 9),
+    );
+
+    test('la agrega enseguida, sin aviso, y la reemplaza al releerla', () async {
+      await start();
+      repository.failFetch = true;
+      controller().applyManualBooking(provisional);
+      expect(requests().first, provisional);
+      expect(inboxTabOf(requests().first), InboxTab.bookings);
+      expect(alert(), isNull);
+      await pumpEventQueue();
+      expect(requests().first, provisional, reason: 'la relectura falló');
+
+      repository
+        ..failFetch = false
+        ..insertSilently(saved);
+      controller().applyManualBooking(provisional);
+      await pumpEventQueue();
+      expect(requests().where((r) => r.id == 'manual-1').single, saved);
+    });
+
+    test('si llega el INSERT con el mismo id, no se duplica ni avisa', () async {
+      await start();
+      repository.failFetch = true;
+      controller().applyManualBooking(provisional);
+      await pumpEventQueue();
+      repository
+        ..failFetch = false
+        ..insertFromRealtime(saved);
+      await pumpEventQueue();
+      expect(requests().where((r) => r.id == 'manual-1'), hasLength(1));
+      expect(alert(), isNull);
+    });
+
+    test('si el INSERT llegó antes, queda el del servidor', () async {
+      await start();
+      repository.insertFromRealtime(saved);
+      await pumpEventQueue();
+      repository.failFetch = true;
+      controller().applyManualBooking(provisional);
+      await pumpEventQueue();
+      expect(requests().where((r) => r.id == 'manual-1').single, saved);
+    });
+
+    test('la ficha prospecto pasa a trial en todos sus pedidos; las demás no', () async {
+      repository.insertSilently(annaProspect);
+      await start();
+      repository.failFetch = true;
+      controller().applyManualBooking(provisional);
+      final byId = {for (final r in requests()) r.id: r};
+      expect(byId['anna-web']!.client.status, ClientStatus.trial);
+      expect(byId['anna-web']!.canMarkClient, isFalse);
+      expect(byId['fresh']!.client.status, ClientStatus.prospect);
+    });
+  });
+
   test('chefRequestProvider: si la lista no cargó, lo pide solo', () async {
     repository.failFetch = true;
     await start();

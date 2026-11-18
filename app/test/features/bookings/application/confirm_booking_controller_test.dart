@@ -12,6 +12,7 @@ import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/uuid.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
@@ -76,14 +77,14 @@ void main() {
       ..listen(chefInboxProvider, (_, _) {})
       ..listen(chefRequestProvider(request.id), (_, _) {});
     await container.read(chefRequestProvider(request.id).future);
-    container.listen(confirmBookingProvider(request.id), (_, _) {});
+    container.listen(confirmBookingProvider(BookingSource.request(request.id)), (_, _) {});
     await pumpEventQueue();
   }
 
   ConfirmBookingState state() =>
-      container.read(confirmBookingProvider('req-1'));
+      container.read(confirmBookingProvider(const BookingSource.request('req-1')));
   ConfirmBookingController controller() =>
-      container.read(confirmBookingProvider('req-1').notifier);
+      container.read(confirmBookingProvider(const BookingSource.request('req-1')).notifier);
 
   /// El dryRun que vale para lo que hay ahora en la hoja.
   List<BookingDayStatus?> statuses() => [
@@ -589,7 +590,7 @@ void main() {
       requests.requests['req-1'] = weekly();
       await container.read(chefInboxProvider.notifier).refresh();
       await container.read(chefRequestProvider('req-1').future);
-      container.invalidate(confirmBookingProvider('req-1'));
+      container.invalidate(confirmBookingProvider(const BookingSource.request('req-1')));
       expect(state().result, isNull);
       await pumpEventQueue();
       await controller().confirm();

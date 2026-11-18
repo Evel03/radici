@@ -260,6 +260,32 @@ class ChefInboxController extends AsyncNotifier<List<ChefRequest>> {
     ]);
   }
 
+  /// Se confirmó una reserva a mano (Edge Function chef): el pedido que creó
+  /// el servidor (`source app`, `accepted` y visto) entra enseguida con lo que
+  /// la hoja ya sabía ([provisional]), así está en «Prenotazioni» aunque la
+  /// relectura tarde o falle; después se vuelve a leer y se reemplaza. Si ya
+  /// estaba (llegó antes por tiempo real), queda el del servidor. Como en la
+  /// base, una ficha prospecto pasa a cliente en todos sus pedidos. Sin
+  /// aviso: no es un pedido nuevo.
+  void applyManualBooking(ChefRequest provisional) {
+    if (!ref.mounted) return;
+    final current = state.value;
+    if (current != null) {
+      final updated = [
+        for (final r in current)
+          r.clientId == provisional.clientId &&
+                  r.client.status == ClientStatus.prospect
+              ? r.copyWith(client: r.client.copyWith(status: ClientStatus.trial))
+              : r,
+      ];
+      final known = updated.any((r) => r.id == provisional.id);
+      state = AsyncData(
+        known ? updated : upsertRequest(updated, provisional),
+      );
+    }
+    unawaited(_reload(provisional.id));
+  }
+
   /// Vuelve a leer [requestId] del servidor (cambió en otro dispositivo). Si
   /// falla, queda lo local.
   Future<void> reload(String requestId) => _reload(requestId);

@@ -22,7 +22,9 @@ import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/money.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/availability/presentation/availability_labels.dart';
 import 'package:radici/features/bookings/application/booking_message.dart';
+import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
@@ -128,10 +130,12 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
 
   void _showWeek(int index) => unawaited(_reveal(_weekKeys[index]));
 
+  BookingSource get _source => BookingSource.request(widget.request.id);
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final provider = confirmBookingProvider(widget.request.id);
+    final provider = confirmBookingProvider(_source);
     final state = ref.watch(provider);
     final controller = ref.read(provider.notifier);
     final locale = Localizations.localeOf(context).toString();
@@ -167,38 +171,47 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
         ),
         // La barra va en el cuerpo y no en bottomNavigationBar: así queda
         // arriba del teclado mientras se escribe el precio.
-        body: Column(
-          children: [
-            Expanded(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: _maxContentWidth),
-                  child: result == null
-                      ? _BookingForm(
-                          request: widget.request,
-                          state: state,
-                          controller: controller,
-                          price: _price,
-                          priceFocus: _priceFocus,
-                          priceKey: _priceKey,
-                          weekKeys: _weekKeys,
-                        )
-                      : _BookingDone(request: widget.request, state: state),
+        // Un instante, hasta que la hoja toma el pedido (su seed).
+        body: state.seedStatus != BookingSeedStatus.ready
+            ? const Center(
+                child: CircularProgressIndicator(
+                  key: ValueKey('booking-loading'),
                 ),
-              ),
-            ),
-            if (result == null)
-              _ConfirmBar(
-                state: state,
-                controller: controller,
-                onShowPrice: _showPrice,
-                onShowWeek: _showWeek,
               )
-            else
-              _DoneBar(requestId: widget.request.id),
-          ],
-        ),
+            : Column(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: _maxContentWidth,
+                        ),
+                        child: result == null
+                            ? _BookingForm(
+                                request: widget.request,
+                                state: state,
+                                controller: controller,
+                                price: _price,
+                                priceFocus: _priceFocus,
+                                priceKey: _priceKey,
+                                weekKeys: _weekKeys,
+                              )
+                            : _BookingDone(source: _source, state: state),
+                      ),
+                    ),
+                  ),
+                  if (result == null)
+                    _ConfirmBar(
+                      state: state,
+                      controller: controller,
+                      onShowPrice: _showPrice,
+                      onShowWeek: _showWeek,
+                    )
+                  else
+                    _DoneBar(source: _source),
+                ],
+              ),
       ),
     );
   }
@@ -450,8 +463,10 @@ class _BookingForm extends StatelessWidget {
     );
   }
 
-  /// Ícono, color y texto de la semana [index]: lo que impide mandar la
-  /// fecha, lo que dijo el servidor o «verifica in corso».
+  /// Ícono, color y texto de la semana [index], en este orden: lo que impide
+  /// mandar la fecha; un choque o un aviso del servidor; los avisos de la app
+  /// (la llegada de hoy que ya pasó y el feriado, que el servidor no marca);
+  /// «libre» o «verifica in corso».
   _WeekStatus? _weekStatus(
     BuildContext context,
     int index,
@@ -468,24 +483,39 @@ class _BookingForm extends StatelessWidget {
     }
     if (state.blocked) return null;
     final check = state.checkFor(index);
+    if (check != null && check.status != BookingDayStatus.ok) {
+      return check.status == BookingDayStatus.busy
+          ? (
+              icon: Icons.block,
+              color: colors.error,
+              text: l10n.bookingDayStatus(check.status),
+            )
+          : (
+              icon: Icons.warning_amber_outlined,
+              color: colors.tertiary,
+              text: l10n.bookingDayStatus(check.status),
+            );
+    }
+    if (state.arrivalPassed(index)) {
+      return (
+        icon: Icons.warning_amber_outlined,
+        color: colors.tertiary,
+        text: l10n.bookingTodayArrivalPassed,
+      );
+    }
+    if (state.holidayFor(index) case final holiday?) {
+      return (
+        icon: Icons.warning_amber_outlined,
+        color: colors.tertiary,
+        text: l10n.holidayLine(holiday),
+      );
+    }
     if (check != null) {
-      return switch (check.status) {
-        BookingDayStatus.ok => (
-          icon: Icons.check_circle_outline,
-          color: colors.primary,
-          text: l10n.bookingDayStatus(check.status),
-        ),
-        BookingDayStatus.busy => (
-          icon: Icons.block,
-          color: colors.error,
-          text: l10n.bookingDayStatus(check.status),
-        ),
-        _ => (
-          icon: Icons.warning_amber_outlined,
-          color: colors.tertiary,
-          text: l10n.bookingDayStatus(check.status),
-        ),
-      };
+      return (
+        icon: Icons.check_circle_outline,
+        color: colors.primary,
+        text: l10n.bookingDayStatus(check.status),
+      );
     }
     if (state.checksStatus == BookingChecksStatus.loading) {
       return (
@@ -752,12 +782,15 @@ class _ConfirmBar extends StatelessWidget {
     final formats = RequestFormats(context);
     final locale = Localizations.localeOf(context).toString();
     final failure = state.failure;
-    // Arriba del botón: la falla, si la hay; si no, lo que impide confirmar
-    // o, si nada lo impide, el precio que se va a confirmar. Sin respuesta (se
-    // reintenta lo mismo), la falla y el precio que se reintenta.
+    // Arriba del botón: la falla, si la hay; si no, lo que impide confirmar;
+    // si nada lo impide, «Controllo le date…» mientras corre el dryRun (si
+    // no, el botón gris no diría por qué) o el precio que se va a confirmar.
+    // Sin respuesta (se reintenta lo mismo), la falla y el precio que se
+    // reintenta.
     final blocker = failure == null ? state.blocker : null;
+    final checking = failure == null && blocker == null && state.checking;
     final showSummary =
-        state.retryPending || (failure == null && blocker == null);
+        state.retryPending || (failure == null && blocker == null && !checking);
     return _BottomBar(
       children: [
         if (failure != null) ...[
@@ -786,6 +819,32 @@ class _ConfirmBar extends StatelessWidget {
               (kind: _, week: final week?) => () => onShowWeek(week),
               _ => null,
             },
+          )
+        else if (checking)
+          // liveRegion: el lector de pantalla dice por qué el botón espera.
+          // Con el alto de las otras líneas: el botón no salta.
+          Container(
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      l10n.bookingChecking,
+                      key: const ValueKey('booking-checking'),
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           )
         else if (showSummary)
           _BarLine(
@@ -825,9 +884,9 @@ class _ConfirmBar extends StatelessWidget {
 
 /// Después de confirmar: las semanas guardadas con su hora y el precio.
 class _BookingDone extends ConsumerWidget {
-  const _BookingDone({required this.request, required this.state});
+  const _BookingDone({required this.source, required this.state});
 
-  final ChefRequest request;
+  final BookingSource source;
 
   /// Con la reserva ([ConfirmBookingState.result]).
   final ConfirmBookingState state;
@@ -838,7 +897,7 @@ class _BookingDone extends ConsumerWidget {
     final theme = Theme.of(context);
     final formats = RequestFormats(context);
     final locale = Localizations.localeOf(context).toString();
-    final whatsApp = ref.watch(bookingWhatsAppProvider(request.id));
+    final whatsApp = ref.watch(bookingWhatsAppProvider(source));
     final result = state.result!;
     final weeks = result.weeks;
     final service = weeks.fold<int>(0, (sum, week) => sum + week.serviceCents);
@@ -923,9 +982,9 @@ class _BookingDone extends ConsumerWidget {
 }
 
 class _DoneBar extends ConsumerWidget {
-  const _DoneBar({required this.requestId});
+  const _DoneBar({required this.source});
 
-  final String requestId;
+  final BookingSource source;
 
   Future<void> _launch(BuildContext context, WidgetRef ref, Uri uri) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -939,7 +998,7 @@ class _DoneBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final whatsApp = ref.watch(bookingWhatsAppProvider(requestId));
+    final whatsApp = ref.watch(bookingWhatsAppProvider(source));
     return _BottomBar(
       children: [
         FilledButton.icon(

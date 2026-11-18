@@ -9,6 +9,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/bookings/application/booking_message.dart';
+import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
@@ -259,6 +260,75 @@ void main() {
         }
       }
     }
+  });
+
+  group('para quien dice la hoja (bookingWhatsAppUriFor)', () {
+    test('una ficha nueva con «333 123 4567» y en español', () {
+      final uri = bookingWhatsAppUriFor(
+        party: const BookingParty(
+          displayName: 'Giulia Rossi',
+          phoneText: '333 123 4567',
+          phoneE164: '+393331234567',
+        ),
+        locale: ClientLocale.es,
+        result: _booked(weeklyDates(monday, 4)),
+        chefName: 'Evelyn',
+      )!;
+      expect(uri.host, 'wa.me');
+      expect(uri.path, '/393331234567');
+      expect(
+        uri.queryParameters['text'],
+        startsWith(
+          'Hola Giulia, soy Evelyn de Radici. Te confirmo las 4 sesiones de cocina:',
+        ),
+      );
+    });
+
+    test('sin teléfono, null', () {
+      expect(
+        bookingWhatsAppUriFor(
+          party: const BookingParty(displayName: 'Giulia Rossi'),
+          locale: ClientLocale.it,
+          result: _booked([monday]),
+          chefName: 'Evelyn',
+        ),
+        isNull,
+      );
+    });
+
+    test('un colaborador escribe de parte de ella', () {
+      final text = bookingWhatsAppUriFor(
+        party: const BookingParty(
+          displayName: 'Chiara Rossi',
+          phoneE164: '+393401112233',
+        ),
+        locale: ClientLocale.it,
+        result: _booked([monday]),
+        chefName: 'Evelyn',
+        onBehalf: true,
+      )!.queryParameters['text']!;
+      expect(
+        text,
+        startsWith('Ciao Chiara, ti scrivo da parte di Evelyn di Radici.'),
+      );
+    });
+
+    test('desde un pedido, el destinatario y el idioma son los del pedido', () {
+      final request = buildRequest(locale: ClientLocale.en);
+      expect(
+        bookingWhatsAppUri(
+          request: request,
+          result: _booked([monday]),
+          chefName: 'Evelyn',
+        ),
+        bookingWhatsAppUriFor(
+          party: BookingParty.fromRequest(request),
+          locale: ClientLocale.en,
+          result: _booked([monday]),
+          chefName: 'Evelyn',
+        ),
+      );
+    });
   });
 
   test('sin un teléfono válido no hay WhatsApp', () {

@@ -208,6 +208,8 @@
   "bookingStatusClosed": "You don't work that day",
   "bookingStatusOutside": "Outside your hours",
   "bookingStatusChecking": "Checking…",
+  "bookingChecking": "Checking the dates…",
+  "bookingTodayArrivalPassed": "It's today and the arrival time has already passed.",
   "bookingChecksFailed": "Couldn't check the dates. You can confirm anyway: the server checks them again.",
   "bookingDateSameWeek": "Same week as the previous date: one session per week.",
   "bookingDateOrder": "Must come after the previous date.",

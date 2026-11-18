@@ -425,16 +425,32 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
 /// pedido a `accepted` como la base. Como la base, con un pedido que ya no está
 /// `new` en [requests] el dryRun y la confirmación dan requestNotNew, salvo el
 /// reintento de una reserva guardada aquí con las mismas fechas y hora, que
-/// devuelve lo guardado con `duplicate` (contrato chef-api §4). Las fallas y
+/// devuelve lo guardado con `duplicate` (contrato chef-api §4). A mano
+/// (clientId o newClient), la confirmación crea el pedido `manual-request-<n>`
+/// (y, con newClient, la ficha `new-client-1`) y la guarda por su requestKey:
+/// la misma clave devuelve lo guardado con `duplicate`. Con [requests] agrega
+/// el pedido `accepted`, de la app y visto, con los datos de la ficha (de
+/// [clients] o de newClient), y una ficha prospecto pasa a trial. Las fallas y
 /// las respuestas lentas se controlan por campo.
 class FakeBookingsRepository implements BookingsRepository {
-  FakeBookingsRepository({this.requests});
+  FakeBookingsRepository({this.requests, this.clients});
 
   /// Los pedidos "en el servidor" que actualiza una confirmación.
   final FakeChefRequestsRepository? requests;
 
+  /// Las fichas "en el servidor" de una reserva a mano.
+  final FakeClientsRepository? clients;
+
   /// Reservas guardadas, por pedido.
   final Map<String, BookingResult> saved = {};
+
+  /// Reservas a mano guardadas, por requestKey.
+  final Map<String, BookingResult> savedByKey = {};
+
+  /// El id de la ficha que crea una reserva con newClient.
+  static const String newClientId = 'new-client-1';
+
+  int _manualRequests = 0;
 
   /// La próxima confirmación se guarda pero su respuesta se pierde
   /// (unavailable): la base la tiene y la app no lo sabe.
@@ -484,6 +500,7 @@ class FakeBookingsRepository implements BookingsRepository {
     if (pending != null) await pending.future;
     final failure = request.dryRun ? checksFailure : confirmFailure;
     if (failure != null) throw failure;
+    if (request.requestId == null) return _manual(request);
     final current = requests?.requests[request.requestId];
     if (current != null && current.status != RequestStatus.newRequest) {
       final booked = saved[request.requestId];
@@ -519,6 +536,97 @@ class FakeBookingsRepository implements BookingsRepository {
       }
     }
     return result;
+  }
+
+  /// Una reserva a mano: el dryRun sin pedido (y, con newClient, sin ficha);
+  /// la confirmación crea el pedido y se guarda por su clave.
+  BookingResult _manual(BookingRequest request) {
+    final key = request.requestKey;
+    if (!request.dryRun && key != null) {
+      final booked = savedByKey[key];
+      if (booked != null) return booked.copyWith(duplicate: true);
+    }
+    final result = BookingResult(
+      dryRun: request.dryRun,
+      duplicate: !request.dryRun && duplicate,
+      requestId: request.dryRun ? null : 'manual-request-${++_manualRequests}',
+      clientId: request.clientId ?? (request.dryRun ? null : newClientId),
+      weeks: [
+        for (final (i, date) in request.dates.indexed)
+          _week(request, i, date),
+      ],
+    );
+    if (request.dryRun) return result;
+    if (key != null) savedByKey[key] = result.copyWith(duplicate: false);
+    _createManual(request, result);
+    if (loseNextConfirmResponse) {
+      loseNextConfirmResponse = false;
+      throw const BookingFailure(BookingFailureKind.unavailable);
+    }
+    return result;
+  }
+
+  void _createManual(BookingRequest request, BookingResult result) {
+    final clientId = result.clientId!;
+    final directory = clients;
+    final existing = directory?.clients
+        .where((client) => client.id == clientId)
+        .firstOrNull;
+    final newClient = request.newClient;
+    if (directory != null && existing != null && existing.isProspect) {
+      directory.clients[directory.clients.indexOf(existing)] = existing
+          .copyWith(status: ClientStatus.trial);
+    }
+    if (directory != null && newClient != null) {
+      directory.clients.add(
+        ChefClient(
+          id: clientId,
+          displayName: newClient.name,
+          contactPhone: newClient.phone,
+          zone: newClient.zone,
+          adults: request.household!.adults,
+          kids: request.household!.kids,
+          status: ClientStatus.trial,
+        ),
+      );
+    }
+    final server = requests;
+    if (server == null) return;
+    for (final other in server.requests.values.toList()) {
+      if (other.clientId == clientId &&
+          other.client.status == ClientStatus.prospect) {
+        server.requests[other.id] = other.copyWith(
+          client: other.client.copyWith(status: ClientStatus.trial),
+        );
+      }
+    }
+    final household = request.household!;
+    server.requests[result.requestId!] = ChefRequest(
+      id: result.requestId!,
+      chefId: testChefId,
+      clientId: clientId,
+      type: RequestType.week,
+      status: RequestStatus.accepted,
+      adults: household.adults,
+      kids: household.kids,
+      days: household.days,
+      meals: household.canonicalMeals,
+      weeks: request.dates.length,
+      locale: request.locale!,
+      source: RequestSource.app,
+      seenAt: DateTime.utc(2026, 10, 19, 12),
+      createdAt: DateTime.utc(2026, 10, 19, 12, 0, 1),
+      client: RequestClient(
+        displayName: newClient?.name ?? existing?.displayName ?? '',
+        contactPhone: newClient?.phone ?? existing?.contactPhone,
+        zone: newClient?.zone ?? existing?.zone,
+        // Como la base: una ficha nueva nace trial y un prospecto pasa a
+        // trial; las demás no cambian.
+        status: newClient != null || existing == null || existing.isProspect
+            ? ClientStatus.trial
+            : existing.status,
+      ),
+    );
   }
 
   static bool _sameDatesAndStart(BookingResult booked, BookingRequest request) =>

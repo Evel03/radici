@@ -208,6 +208,8 @@
   "bookingStatusClosed": "No trabajas ese día",
   "bookingStatusOutside": "Fuera de tu horario",
   "bookingStatusChecking": "Comprobando…",
+  "bookingChecking": "Compruebo las fechas…",
+  "bookingTodayArrivalPassed": "Es hoy y la hora de llegada ya pasó.",
   "bookingChecksFailed": "No se pudieron comprobar las fechas. Puedes confirmar igual: el servidor las vuelve a revisar.",
   "bookingDateSameWeek": "Misma semana que la fecha anterior: una sesión por semana.",
   "bookingDateOrder": "Tiene que ir después de la fecha anterior.",
