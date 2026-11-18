@@ -299,10 +299,11 @@ repositorios falsos (`test/support/fakes.dart`).
   la dirección de la tarjeta propia del iPhone (el WhatsApp iría a Evelyn). Con `null` sale
   `autocomplete="off"`; cuánto sugiere Safari igual solo se ve en el iPhone. El nombre, la zona y
   el buscador van además sin autocorrección (`autocorrect: false`): con el teclado en español de
-  Evelyn, iOS cambiaría un apellido italiano al tocar espacio. Después,
-  la misma hoja «Conferma prenotazione»: 4 semanas desde mañana, «Persone e pasti» (los de su último
-  pedido semanal: un evento no describe la casa) y el idioma, los minutos que siguen a las personas
-  hasta tocarlos y el precio vacío y obligatorio. El POST lleva `clientId` o `newClient` (completo
+  Evelyn, iOS cambiaría un apellido italiano al tocar espacio. Después, la misma hoja «Conferma
+  prenotazione»: 4 semanas desde mañana, «Persone e pasti» y el idioma (los de su último pedido
+  semanal: un evento no describe la casa; sin pedido semanal, el italiano, aunque haya pedido un
+  evento en otro idioma, y se cambia con el chip), los minutos que siguen a las personas hasta
+  tocarlos y el precio vacío y obligatorio. El POST lleva `clientId` o `newClient` (completo
   también en el `dryRun`), `type: "week"`, `household` y `locale` (contrato chef-api §4); en una
   ficha nueva, el hogar y el idioma tienen una sola fuente con el formulario. Si el servidor no
   acepta los datos de la ficha nueva, «Correggi» vuelve al formulario. Mientras se manda y con una
