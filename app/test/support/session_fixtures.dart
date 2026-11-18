@@ -80,7 +80,8 @@ Map<String, dynamic> sessionRow({
 /// confirmada de la reserva [bookingRequestId] (un pedido semanal, [type],
 /// aceptado, [requestStatus], que llegó por la web, [requestSource]; una
 /// reserva a mano es de la app) de la ficha [testClientId], el miércoles
-/// 25/11/2026 a las 10:00, con 45 min de compra y 180 de cocina.
+/// 25/11/2026 a las 10:00, con 45 min de compra y 180 de cocina, 20
+/// porciones y 140 € de servicio. [estimate] es la del pedido embebido.
 CookingSession buildSession({
   int n = 1,
   String? id,
@@ -90,6 +91,8 @@ CookingSession buildSession({
   int cookMinutes = 180,
   int shopMinutes = 45,
   int gapMinutes = 30,
+  int portions = 20,
+  int serviceCents = 14000,
   SessionStatus status = SessionStatus.confirmed,
   String? requestId = bookingRequestId,
   String name = 'Giulia Rossi',
@@ -100,6 +103,7 @@ CookingSession buildSession({
   bool? noAllergies,
   ClientLocale locale = ClientLocale.it,
   int weeks = 4,
+  RequestEstimate? estimate = legacyEstimate,
   String? cancelReason,
   RequestType type = RequestType.week,
   RequestStatus requestStatus = RequestStatus.accepted,
@@ -114,9 +118,9 @@ CookingSession buildSession({
   cookMinutes: cookMinutes,
   shopMinutes: shopMinutes,
   gapMinutes: gapMinutes,
-  portions: 20,
+  portions: portions,
   status: status,
-  serviceCents: 14000,
+  serviceCents: serviceCents,
   groceriesEstCents: 6300,
   cancelledAt: status == SessionStatus.cancelled
       ? DateTime.utc(2026, 11, 20, 10)
@@ -145,6 +149,7 @@ CookingSession buildSession({
           restrictions: restrictions,
           noAllergies: noAllergies,
           weeks: weeks,
+          estimate: estimate,
           seenAt: DateTime.utc(2026, 10, 19, 12),
           type: type,
           source: requestSource,
@@ -154,8 +159,10 @@ CookingSession buildSession({
 /// Las [weeks] semanas de una reserva (el pedido [requestId] de la ficha
 /// [clientId]), cada 7 días desde [first] (miércoles 25/11/2026), con ids
 /// `sessionId(firstN)`, `sessionId(firstN + 1)`… [statuses] va por semana,
-/// desde 1. [address] null: una reserva que llegó por la web (el formulario
-/// no pide la dirección). [requestSource] app: una reserva cargada a mano.
+/// desde 1, y [serviceCents] es el servicio de cada semana. [address] null:
+/// una reserva que llegó por la web (el formulario no pide la dirección).
+/// [requestSource] app: una reserva cargada a mano. [estimate] es la del
+/// pedido.
 List<CookingSession> buildBooking({
   int weeks = 4,
   CalendarDate? first,
@@ -163,12 +170,15 @@ List<CookingSession> buildBooking({
   String requestId = bookingRequestId,
   String clientId = testClientId,
   Map<int, SessionStatus> statuses = const {},
+  int portions = 20,
+  int serviceCents = 14000,
   String name = 'Giulia Rossi',
   String? address = 'Via Gombito 12, 24129 Bergamo',
   List<Allergen> clientAllergens = const [],
   RequestRestrictions? restrictions,
   bool? noAllergies,
   ClientLocale locale = ClientLocale.it,
+  RequestEstimate? estimate = legacyEstimate,
   RequestSource requestSource = RequestSource.web,
 }) {
   final start = first ?? CalendarDate(2026, 11, 25);
@@ -180,6 +190,8 @@ List<CookingSession> buildBooking({
         clientId: clientId,
         date: start.addDays(7 * (week - 1)),
         status: statuses[week] ?? SessionStatus.confirmed,
+        portions: portions,
+        serviceCents: serviceCents,
         name: name,
         address: address,
         clientAllergens: clientAllergens,
@@ -187,6 +199,7 @@ List<CookingSession> buildBooking({
         noAllergies: noAllergies,
         locale: locale,
         weeks: weeks,
+        estimate: estimate,
         requestSource: requestSource,
       ),
   ];

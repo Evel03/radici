@@ -6,6 +6,7 @@
 // Una reserva es un pedido aceptado más sus sesiones, como mucho una viva por
 // semana (`sessions_una_por_semana`). Las canceladas no cuentan.
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 
 /// La semana [week] de [weeks] (desde 1) de una reserva.
@@ -120,6 +121,24 @@ HasPaymentsPlan hasPaymentsPlan({
         ? endOfBookingDate(current, booking)
         : null,
   );
+}
+
+/// [session] es la última sesión viva de una reserva semanal (donde va
+/// «Rinnova», decisión 3): está viva (también cocinada o cobrada), su pedido
+/// embebido está aceptado y es semanal, y ninguna otra viva de [booking] va
+/// después. No un presupuesto enviado, una sesión extra ni una sin pedido.
+bool isLastLiveOfWeeklyBooking(
+  CookingSession session,
+  Iterable<CookingSession> booking,
+) {
+  final request = session.request;
+  if (!session.isLive ||
+      request == null ||
+      !request.isBooking ||
+      request.type != RequestType.week) {
+    return false;
+  }
+  return liveBookingSessions(session, booking).last.id == session.id;
 }
 
 /// La primera (por [compareSessions]) de las otras sesiones vivas de la misma

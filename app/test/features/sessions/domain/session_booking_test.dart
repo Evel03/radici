@@ -1,11 +1,13 @@
 // Las semanas de una reserva («Semana k de N» sin contar las canceladas, las
 // siguientes, el final de la reserva, qué ofrecer si alguna que se quiso
-// cancelar ya está cobrada), la próxima sesión viva de la misma ficha, las
+// cancelar ya está cobrada), la última sesión viva de una reserva semanal
+// (donde va «Rinnova»), la próxima sesión viva de la misma ficha, las
 // sesiones de cada día de la agenda, desde qué día las lee (también 7 días
 // antes de hoy) y el enlace de «Cómo llegar».
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_booking.dart';
 import 'package:radici/features/sessions/domain/session_links.dart';
@@ -286,6 +288,43 @@ void main() {
         sessionsWindowFrom(today: december, selected: CalendarDate(2026, 10, 5)),
         CalendarDate(2026, 9, 28),
       );
+    });
+  });
+
+  group('la última sesión viva de una reserva semanal (donde va «Rinnova»)', () {
+    test('la última viva, sí; una que no es la última, no', () {
+      final booking = buildBooking();
+      expect(isLastLiveOfWeeklyBooking(booking[3], booking), isTrue);
+      expect(isLastLiveOfWeeklyBooking(booking[2], booking), isFalse);
+    });
+
+    test('con la última cancelada, la anterior pasa a ser la última; la cancelada, no', () {
+      final booking = buildBooking(statuses: {4: SessionStatus.cancelled});
+      expect(isLastLiveOfWeeklyBooking(booking[3], booking), isFalse);
+      expect(isLastLiveOfWeeklyBooking(booking[2], booking), isTrue);
+    });
+
+    test('la última ya cocinada (o cobrada), sí', () {
+      for (final status in [SessionStatus.cooked, SessionStatus.paid]) {
+        final booking = buildBooking(statuses: {4: status});
+        expect(
+          isLastLiveOfWeeklyBooking(booking[3], booking),
+          isTrue,
+          reason: status.name,
+        );
+      }
+    });
+
+    test('una sesión extra, sin pedido o de un presupuesto (held, pedido quoted), no', () {
+      final extra = buildSession(type: RequestType.extra, weeks: 1);
+      expect(isLastLiveOfWeeklyBooking(extra, [extra]), isFalse);
+      final alone = buildSession(requestId: null);
+      expect(isLastLiveOfWeeklyBooking(alone, [alone]), isFalse);
+      final quote = buildSession(
+        status: SessionStatus.held,
+        requestStatus: RequestStatus.quoted,
+      );
+      expect(isLastLiveOfWeeklyBooking(quote, [quote]), isFalse);
     });
   });
 

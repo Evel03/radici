@@ -109,6 +109,18 @@ Map<String, dynamic> requestRow({
   },
 };
 
+/// La estimación de un pedido de antes del precio por semana (servicio por
+/// hora, sin autoPrice ni tarifas por semana): no propone el precio de otra
+/// cantidad de semanas.
+const RequestEstimate legacyEstimate = RequestEstimate(
+  portions: 20,
+  recipes: 3,
+  cookMinutes: 180,
+  serviceCents: 7800,
+  groceriesEstCents: 6300,
+  totalCents: 14100,
+);
+
 /// Pedido armado a mano (sin pasar por JSON).
 ChefRequest buildRequest({
   String id = 'req-1',
@@ -125,14 +137,7 @@ ChefRequest buildRequest({
   RequestRestrictions? restrictions,
   bool? noAllergies,
   // Por defecto, una estimación de antes del precio por semana (sin autoPrice).
-  RequestEstimate? estimate = const RequestEstimate(
-    portions: 20,
-    recipes: 3,
-    cookMinutes: 180,
-    serviceCents: 7800,
-    groceriesEstCents: 6300,
-    totalCents: 14100,
-  ),
+  RequestEstimate? estimate = legacyEstimate,
   String chefId = testChefId,
   String clientId = testClientId,
   ClientStatus? clientStatus = ClientStatus.prospect,
