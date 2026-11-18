@@ -181,6 +181,9 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
                           controller: _name,
                           focusNode: _focus[NewClientField.name],
                           autofillHints: null,
+                          // Un apellido italiano con el teclado en español de
+                          // Evelyn: iOS lo cambiaría al tocar espacio.
+                          autocorrect: false,
                           textCapitalization: TextCapitalization.words,
                           textInputAction: TextInputAction.next,
                           inputFormatters: [
@@ -255,6 +258,7 @@ class _NewClientScreenState extends ConsumerState<NewClientScreen> {
                           controller: _zone,
                           focusNode: _focus[NewClientField.zone],
                           autofillHints: null,
+                          autocorrect: false,
                           textCapitalization: TextCapitalization.words,
                           textInputAction: TextInputAction.next,
                           inputFormatters: [

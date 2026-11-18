@@ -122,6 +122,13 @@ void main() {
     }
   });
 
+  testWidgets('el nombre y la zona sin autocorrección (con el teclado en español, iOS cambiaría un apellido italiano)', (tester) async {
+    await openForm(tester);
+    for (final key in ['new-client-name', 'new-client-zone']) {
+      expect(tester.widget<TextField>(byKey(key)).autocorrect, isFalse, reason: key);
+    }
+  });
+
   group('sin nombre', () {
     testWidgets('«Continua» deshabilitado y la barra dice por qué', (tester) async {
       await openForm(tester);

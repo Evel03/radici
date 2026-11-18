@@ -94,6 +94,8 @@ class _NewBookingClientScreenState
               // del navegador (null: la lista vacía por defecto lo deja
               // prendido en la web).
               autofillHints: null,
+              // Sin autocorrección: iOS cambiaría el apellido buscado.
+              autocorrect: false,
               textInputAction: TextInputAction.search,
               // 16 px o más: con menos, iOS agranda la página al enfocar.
               style: theme.textTheme.bodyLarge,

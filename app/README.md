@@ -297,7 +297,9 @@ repositorios falsos (`test/support/fakes.dart`).
   sin pasarlo, `TextField` usa una lista vacía y Flutter web arma igual un `<input
   autocomplete="on">` dentro de un `<form>`, y en `/gestione/` Safari podría ofrecer el teléfono o
   la dirección de la tarjeta propia del iPhone (el WhatsApp iría a Evelyn). Con `null` sale
-  `autocomplete="off"`; cuánto sugiere Safari igual solo se ve en el iPhone. Después,
+  `autocomplete="off"`; cuánto sugiere Safari igual solo se ve en el iPhone. El nombre, la zona y
+  el buscador van además sin autocorrección (`autocorrect: false`): con el teclado en español de
+  Evelyn, iOS cambiaría un apellido italiano al tocar espacio. Después,
   la misma hoja «Conferma prenotazione»: 4 semanas desde mañana, «Persone e pasti» (los de su último
   pedido semanal: un evento no describe la casa) y el idioma, los minutos que siguen a las personas
   hasta tocarlos y el precio vacío y obligatorio. El POST lleva `clientId` o `newClient` (completo

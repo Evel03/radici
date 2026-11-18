@@ -328,6 +328,11 @@ void main() {
     );
     expectReadableInputs(tester);
     await expectNoBrowserAutofill(tester, byKey('client-search'));
+    expect(
+      tester.widget<TextField>(byKey('client-search')).autocorrect,
+      isFalse,
+      reason: 'iOS cambiaría el apellido buscado y no encontraría la ficha',
+    );
   });
 
   testWidgets('el buscador conserva su nombre para el lector de pantalla también con texto', (tester) async {
