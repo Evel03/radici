@@ -110,6 +110,18 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ),
           ),
+          // «Rinnova prenotazione», a pantalla completa (con X). Con push
+          // desde Hoy se apila solo la hoja: al cerrarla, vuelve a Hoy.
+          GoRoute(
+            path: AppRoutes.sessionRenewSegment,
+            pageBuilder: (context, state) => MaterialPage<void>(
+              key: state.pageKey,
+              fullscreenDialog: true,
+              child: ConfirmBookingScreen(
+                source: BookingSource.renewal(state.pathParameters['id']!),
+              ),
+            ),
+          ),
         ],
       ),
       StatefulShellRoute.indexedStack(
@@ -292,12 +304,13 @@ CalendarDate? _dateOrNull(String? value) {
   }
 }
 
-/// La ruta de la ficha de una sesión (su hoja «Sposta» cuelga de ella).
+/// La ruta de la ficha de una sesión (sus hojas «Sposta» y «Rinnova» cuelgan
+/// de ella).
 const String _sessionPath = '${AppRoutes.sessions}/:id';
 
 /// Hay en la pila de [router], a la vista o tapada por otra pantalla (por
 /// ejemplo, un pedido abierto desde el aviso), una hoja «Conferma
-/// prenotazione» (desde un pedido o a mano), el elegir de «Nuova
+/// prenotazione» (desde un pedido, a mano o «Rinnova»), el elegir de «Nuova
 /// prenotazione», su formulario «Nuova cliente» o la ficha de una sesión
 /// (sola o con su hoja «Sposta»). Un go las sacaría sin pasar por ningún
 /// PopScope, con lo que tengan a medias: la hoja de reserva, con lo escrito
@@ -328,7 +341,8 @@ bool bookingOrSessionInStack(GoRouter router) {
               AppRoutes.newBookingSegment ||
               AppRoutes.newClientSegment ||
               _sessionPath ||
-              AppRoutes.sessionMoveSegment,
+              AppRoutes.sessionMoveSegment ||
+              AppRoutes.sessionRenewSegment,
         ) =>
           true,
         _ => false,

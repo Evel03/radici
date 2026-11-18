@@ -216,6 +216,17 @@ void main() {
     );
   });
 
+  test('«Rinnova» cuelga de la ficha de la sesión y es del área de la cocinera', () {
+    expect(AppRoutes.sessionRenew('x'), '/sessioni/x/rinnova');
+    expect(AppRoutes.sessionRenew('a/b'), '/sessioni/a%2Fb/rinnova');
+    expect(isChefPath('/sessioni/x/rinnova'), isTrue);
+    expect(_redirect(chef, '/sessioni/x/rinnova'), isNull);
+    expect(
+      _redirect(signedOut, '/sessioni/x/rinnova'),
+      '/accedi?from=%2Fsessioni%2Fx%2Frinnova',
+    );
+  });
+
   test('rutas del catálogo de platos', () {
     expect(AppRoutes.more, '/altro');
     expect(AppRoutes.recipes, '/altro/piatti');

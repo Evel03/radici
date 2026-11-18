@@ -94,6 +94,13 @@ abstract final class AppRoutes {
       '${sessionDetail(id)}/$sessionMoveSegment'
       '${date == null ? '' : '?$dateParam=${date.toIso()}'}';
 
+  /// Hoja «Rinnova prenotazione» de la reserva de una sesión (a pantalla
+  /// completa, sobre la ficha o, con push, sobre Hoy).
+  static const String sessionRenewSegment = 'rinnova';
+
+  static String sessionRenew(String id) =>
+      '${sessionDetail(id)}/$sessionRenewSegment';
+
   /// Parámetro con la ruta a la que volver después de entrar.
   static const String fromParam = 'from';
 }

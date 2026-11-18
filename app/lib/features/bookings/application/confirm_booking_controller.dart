@@ -1,8 +1,9 @@
-// Hoja «Confirmar reserva», desde un pedido de la bandeja o a mano (una ficha
-// existente o una nueva, ver BookingSource): las semanas (1 a 8) y sus fechas
-// cada 7 días, la hora de llegada que sugiere el servidor, los minutos de
-// cocina (con tope de 300), el precio del servicio de toda la reserva y, a
-// mano, el hogar (adultos, niños, días y comidas) y el idioma de la clienta.
+// Hoja «Confirmar reserva», desde un pedido de la bandeja, a mano (una ficha
+// existente o una nueva) o «Rinnova» (ver BookingSource): las semanas (1 a 8)
+// y sus fechas cada 7 días, la hora de llegada que sugiere el servidor (en una
+// renovación, la copiada), los minutos de cocina (con tope de 300 en los
+// pasos), el precio del servicio de toda la reserva y, a mano o al renovar,
+// el hogar (adultos, niños, días y comidas) y el idioma de la clienta.
 //
 // La hoja espera su seed (bookingSeedProvider): toma el primero y no mira los
 // siguientes, así no se rehace si el pedido cambia en la bandeja o el borrador
@@ -32,6 +33,7 @@ import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/clients/application/client_directory_controller.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/sessions/application/renewed_bookings.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 
 part 'confirm_booking_controller.freezed.dart';
@@ -128,11 +130,18 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
     /// El pedido, desde un pedido (el resumen del encabezado).
     ChefRequest? request,
 
-    /// A mano: el hogar y el idioma de la clienta.
+    /// A mano o al renovar: el hogar y el idioma de la clienta.
     BookingHousehold? household,
     @Default(ClientLocale.it) ClientLocale locale,
 
-    /// 8 en un pedido semanal o a mano; 1 en una sesión extra.
+    /// «Rinnova», para el encabezado: el día de la última sesión viva de la
+    /// reserva que se renueva, si su última semana se había movido y el
+    /// teléfono del pedido renovado si no es el de la ficha.
+    CalendarDate? renewedFrom,
+    @Default(false) bool lastMoved,
+    String? otherRequestPhone,
+
+    /// 8 en un pedido semanal, a mano o al renovar; 1 en una sesión extra.
     required int maxWeeks,
 
     /// Una fecha por semana, en orden.
@@ -192,6 +201,11 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
   int get weeks => dates.length;
 
   bool get isManual => kind == BookingSourceKind.manual;
+
+  /// La hoja crea el pedido (a mano o «Rinnova»): el servidor reconoce un
+  /// reintento solo por la clave de la hoja, así que mientras espera uno no
+  /// se cierra, y un 404 es la ficha que ya no está.
+  bool get createsRequest => kind != BookingSourceKind.request;
 
   List<BookingDateIssue?> get dateIssues =>
       bookingDateIssues(dates, today: today);
@@ -285,7 +299,7 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
   /// Se mandó la confirmación y no hubo respuesta: pudo haber quedado
   /// guardada. Hasta reintentarla la hoja no cambia, y el reintento manda lo
   /// mismo ([sent]): desde un pedido el servidor lo reconoce por las fechas y
-  /// la hora (contrato chef-api §4); a mano, por la clave.
+  /// la hora (contrato chef-api §4); a mano o al renovar, por la clave.
   bool get retryPending =>
       sent != null &&
       result == null &&
@@ -424,6 +438,9 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
       request: value.request,
       household: value.household,
       locale: value.locale,
+      renewedFrom: value.renewedFrom,
+      lastMoved: value.lastMoved,
+      otherRequestPhone: value.otherRequestPhone,
       today: value.today,
       maxWeeks: value.maxWeeks,
       dates: value.dates,
@@ -478,8 +495,10 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     unawaited(_runChecks());
   }
 
-  /// Media hora más ([direction] 1) o menos (-1) de cocina, de 30 a 300.
+  /// Media hora más ([direction] 1) o menos (-1) de cocina, de 30 a 300. Unos
+  /// minutos copiados de más de 300 (una renovación) no suben, y bajan a 300.
   void stepCookMinutes(int direction) {
+    if (direction > 0 && state.cookMinutes >= maxBookingCookMinutes) return;
     final minutes = steppedCookMinutes(state.cookMinutes, direction);
     if (_locked || minutes == state.cookMinutes) return;
     _edit(state.copyWith(cookMinutes: minutes, cookEdited: true));
@@ -487,7 +506,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
   }
 
   /// Uno más ([direction] 1) o uno menos (-1) de adultos, niños o días (a
-  /// mano).
+  /// mano o al renovar).
   void stepHousehold(HouseholdCounter counter, int direction) {
     final household = state.household;
     if (_locked || household == null) return;
@@ -495,7 +514,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     if (next != household) _setHousehold(next);
   }
 
-  /// Suma o saca una comida (a mano); la última no se saca.
+  /// Suma o saca una comida (a mano o al renovar); la última no se saca.
   void toggleMeal(Meal meal) {
     final household = state.household;
     if (_locked || household == null) return;
@@ -503,8 +522,8 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     if (next != household) _setHousehold(next);
   }
 
-  /// El idioma de la clienta (a mano). En una ficha nueva, también en el
-  /// borrador: si Evelyn vuelve al formulario, lo ve.
+  /// El idioma de la clienta (a mano o al renovar). En una ficha nueva,
+  /// también en el borrador: si Evelyn vuelve al formulario, lo ve.
   void setLocale(ClientLocale locale) {
     if (_locked || state.household == null || locale == state.locale) return;
     _edit(state.copyWith(locale: locale));
@@ -564,9 +583,10 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
             serviceTotalCents: current.serviceTotalCents,
             requestKey: _requestKey,
           );
-    // La bandeja y la agenda se actualizan aunque la hoja se cierre mientras
-    // tanto.
+    // La bandeja, la agenda y las reservas renovadas se actualizan aunque la
+    // hoja se cierre mientras tanto.
     final inbox = ref.read(chefInboxProvider.notifier);
+    final renewed = ref.read(renewedBookingsProvider.notifier);
     final refreshSessions = agendaSessionsRefresher(ref);
     final chefId = ref.read(currentChefProvider)?.chefId ?? '';
     final now = ref.read(clockProvider)().toUtc();
@@ -577,8 +597,8 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
         case final request?:
           inbox.applyBooking(request.id, weeks: result.weeks.length);
         case null:
-          // A mano: la reserva está en «Prenotazioni» aunque la relectura
-          // tarde o falle.
+          // A mano o al renovar: la reserva está en «Prenotazioni» aunque la
+          // relectura tarde o falle.
           final provisional = _provisionalRequest(
             seed,
             booking,
@@ -587,6 +607,16 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
             now: now,
           );
           if (provisional != null) inbox.applyManualBooking(provisional);
+      }
+      // Renovada (también un reintento que el servidor reconoce): el
+      // pendiente de Hoy desaparece aunque la agenda no se pueda volver a
+      // leer.
+      final renewedRequestId = seed.renewedRequestId;
+      final firstWeek = result.weeks.firstOrNull;
+      if (seed.kind == BookingSourceKind.renewal &&
+          renewedRequestId != null &&
+          firstWeek != null) {
+        renewed.mark(renewedRequestId, firstWeek.date);
       }
       // Las sesiones nuevas aparecen en la agenda.
       if (refreshSessions != null) unawaited(refreshSessions());
@@ -612,8 +642,8 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
   }
 
   /// El cuerpo del POST para lo que hay en [current] según el destino del
-  /// seed: el pedido, la ficha o la ficha nueva (a mano, con el hogar y el
-  /// idioma).
+  /// seed: el pedido, la ficha (a mano o «Rinnova») o la ficha nueva; sin
+  /// pedido, con el hogar y el idioma.
   BookingRequest _booking(
     ConfirmBookingState current, {
     ClockTime? start,
@@ -641,8 +671,9 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     );
   }
 
-  /// El pedido que crea una reserva a mano, con lo que la hoja ya sabe, hasta
-  /// que la bandeja lo relea. null si la respuesta no trae los ids.
+  /// El pedido que crea una reserva a mano o una renovación, con lo que la
+  /// hoja ya sabe, hasta que la bandeja lo relea. null si la respuesta no
+  /// trae los ids.
   ChefRequest? _provisionalRequest(
     BookingSeed seed,
     BookingRequest booking,
@@ -686,9 +717,9 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
   }
 
   /// Con una falla que bloquea, lo que hay que volver a leer: el pedido
-  /// (cambió en otro dispositivo) o, a mano, el directorio (la ficha ya no
-  /// está). [inbox] se toma antes de esperar al servidor: la hoja puede
-  /// cerrarse mientras tanto.
+  /// (cambió en otro dispositivo) o, a mano o al renovar, el directorio (la
+  /// ficha ya no está). [inbox] se toma antes de esperar al servidor: la hoja
+  /// puede cerrarse mientras tanto.
   void _afterBlockingFailure(
     BookingFailure failure,
     BookingSeed seed,

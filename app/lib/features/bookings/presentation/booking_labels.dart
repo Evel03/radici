@@ -75,15 +75,15 @@ extension BookingLabels on AppLocalizations {
   }
 
   /// La falla de la barra de la hoja [state]: a mano, los datos de la ficha
-  /// nueva que el servidor rechaza (se corrigen en el formulario) y la ficha
-  /// que ya no está; si no, [bookingFailure].
+  /// nueva que el servidor rechaza (se corrigen en el formulario); a mano o
+  /// al renovar, la ficha que ya no está; si no, [bookingFailure].
   String bookingFailureText(
     ConfirmBookingState state,
     BookingFailure failure, {
     required String Function(CalendarDate date) formatDate,
   }) {
     if (state.newClientRejected) return bookingErrorNewClientInvalid;
-    if (state.isManual && failure.kind == BookingFailureKind.notFound) {
+    if (state.createsRequest && failure.kind == BookingFailureKind.notFound) {
       return bookingErrorClientNotFound;
     }
     return bookingFailure(failure, formatDate: formatDate);

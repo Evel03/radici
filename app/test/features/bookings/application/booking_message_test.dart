@@ -2,6 +2,7 @@
 // (requests.locale), con las fechas y la hora: nunca la dirección, la zona,
 // las notas ni las alergias. Sale del teléfono de quien confirma: si es un
 // colaborador de la cocinera, escribe de parte de ella y no dice ser ella.
+// En una renovación, a la ficha (no al contacto del pedido renovado).
 import 'dart:ui' show Locale;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -12,10 +13,12 @@ import 'package:radici/features/bookings/application/booking_message.dart';
 import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
+import 'package:radici/features/bookings/domain/renewal.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 import '../../../support/request_fixtures.dart';
+import '../../../support/session_fixtures.dart';
 
 BookingResult _booked(List<CalendarDate> dates) => BookingResult(
   dryRun: false,
@@ -310,6 +313,34 @@ void main() {
       expect(
         text,
         startsWith('Ciao Chiara, ti scrivo da parte di Evelyn di Radici.'),
+      );
+    });
+
+    test('una renovación: el nombre y el teléfono de la ficha (no los del contacto del pedido renovado) y el idioma del pedido', () {
+      final booking = [
+        for (final session in buildBooking(locale: ClientLocale.es))
+          session.copyWith(
+            request: session.request!.copyWith(
+              client: session.request!.client.copyWith(
+                displayName: 'Giuly Bianchi',
+                contactPhone: '+34 612 345 678',
+              ),
+            ),
+          ),
+      ];
+      final seed = BookingSeed.renewal(renewalPlan(booking)!, today: monday);
+      final uri = bookingWhatsAppUriFor(
+        party: seed.party,
+        locale: seed.locale,
+        result: _booked(seed.dates),
+        chefName: 'Evelyn',
+      )!;
+      expect(uri.path, '/393331234567');
+      expect(
+        uri.queryParameters['text'],
+        startsWith(
+          'Hola Giulia, soy Evelyn de Radici. Te confirmo las 4 sesiones de cocina:',
+        ),
       );
     });
 

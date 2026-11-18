@@ -1,10 +1,12 @@
 // Hoja «Conferma prenotazione», a pantalla completa: desde el detalle de un
-// pedido nuevo o a mano, desde «Nuova prenotazione» (una ficha existente o
-// una nueva; ver BookingSource). Semanas (1 a 8), una fecha por semana con lo
-// que dice el servidor de cada una (libre, un aviso o un choque) y los avisos
-// de la app (feriado, llegada de hoy que ya pasó), la hora de llegada en
-// chips; a mano, las personas y comidas y el idioma de la clienta; los
-// minutos de cocina y el precio del servicio de toda la reserva. Abajo, a
+// pedido nuevo, a mano desde «Nuova prenotazione» (una ficha existente o una
+// nueva) o «Rinnova prenotazione» desde Hoy o la ficha de la última sesión de
+// una reserva (ver BookingSource). Semanas (1 a 8), una fecha por semana con
+// lo que dice el servidor de cada una (libre, un aviso o un choque) y los
+// avisos de la app (feriado, llegada de hoy que ya pasó), la hora de llegada
+// en chips; a mano o al renovar, las personas y comidas y el idioma de la
+// clienta; los minutos de cocina y el precio del servicio de toda la reserva
+// (al renovar, ya puestos los de la reserva). Abajo, a
 // mano también con el teclado abierto en un teléfono en vertical (en
 // /gestione/, WebAppNotices esconde sus avisos mientras tanto), «Conferma N
 // settimane» y, arriba del botón, el precio que se va a confirmar (después
@@ -14,9 +16,10 @@
 // confirmar, el WhatsApp para la clienta, en su idioma.
 //
 // Antes de la hoja, según su seed: la rueda, el error con «Riprova» o «no
-// está». Una reserva a mano no se cierra mientras espera el reintento de una
-// confirmación sin respuesta, y después de confirmarla, «Fatto», la X y el
-// atrás llevan a «Prenotazioni».
+// está». Una reserva a mano o una renovación no se cierra mientras espera el
+// reintento de una confirmación sin respuesta. Después de confirmar a mano,
+// «Fatto», la X y el atrás llevan a «Prenotazioni»; una renovación vuelve a
+// donde estaba.
 //
 // Solo lee providers: la lógica está en ConfirmBookingController y el
 // mensaje, en booking_message.dart. Los campos tienen letra de 16 px (con
@@ -49,6 +52,8 @@ import 'package:radici/features/requests/domain/inbox.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart'
     show LoadErrorView;
 import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart'
+    show sessionDetailProvider;
 import 'package:radici/l10n/app_localizations.dart';
 
 /// El título de la hoja antes de confirmar.
@@ -56,6 +61,7 @@ String _sheetTitle(AppLocalizations l10n, BookingSourceKind kind) =>
     switch (kind) {
       BookingSourceKind.request => l10n.actionConfirmBooking,
       BookingSourceKind.manual => l10n.newBookingAction,
+      BookingSourceKind.renewal => l10n.renewBookingTitle,
     };
 
 /// Después de confirmar una reserva a mano: a «Prenotazioni», donde está la
@@ -87,6 +93,10 @@ class ConfirmBookingScreen extends ConsumerWidget {
             message: l10n.inboxLoadError,
             onRetry: () => ref.invalidate(chefRequestProvider(requestId)),
           ),
+          RenewalBookingSource(:final sessionId) => LoadErrorView(
+            message: l10n.sessionLoadError,
+            onRetry: () => ref.invalidate(sessionDetailProvider(sessionId)),
+          ),
           _ => LoadErrorView(
             message: l10n.clientsLoadFailed,
             onRetry: () => ref.invalidate(clientDirectoryProvider),
@@ -101,15 +111,16 @@ class ConfirmBookingScreen extends ConsumerWidget {
   }
 }
 
-/// El pedido o la ficha no están, o el borrador de la ficha nueva ya no
-/// sirve (sus datos no viajan en la URL).
-class _SourceMissing extends StatelessWidget {
+/// El pedido, la ficha o la sesión no están, el borrador de la ficha nueva ya
+/// no sirve (sus datos no viajan en la URL) o la reserva de la sesión no se
+/// puede renovar.
+class _SourceMissing extends ConsumerWidget {
   const _SourceMissing({required this.source});
 
   final BookingSource source;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final (key, text) = switch (source) {
       RequestBookingSource() => ('booking-request-not-found', l10n.requestNotFound),
@@ -121,6 +132,12 @@ class _SourceMissing extends StatelessWidget {
         'booking-new-client-missing',
         l10n.bookingNewClientMissing,
       ),
+      // Con la sesión leída, su reserva no se puede renovar; sin ella, la
+      // sesión no está.
+      RenewalBookingSource(:final sessionId) =>
+        ref.watch(sessionDetailProvider(sessionId)).value == null
+            ? ('booking-session-not-found', l10n.sessionNotFound)
+            : ('booking-renewal-unavailable', l10n.bookingRenewalUnavailable),
     };
     return Center(
       child: SingleChildScrollView(
@@ -225,11 +242,12 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
 
     final result = state.result;
     final manual = state.isManual;
-    // A mano, mientras espera el reintento de una confirmación sin respuesta,
-    // la hoja no se cierra: otra hoja tendría otra clave y podría duplicar la
-    // reserva (y, con una ficha nueva, la ficha). Desde un pedido se puede
-    // cerrar: el servidor reconoce el reintento por el estado del pedido.
-    final keepOpen = manual && state.retryPending;
+    // A mano o al renovar, mientras espera el reintento de una confirmación
+    // sin respuesta, la hoja no se cierra: otra hoja tendría otra clave y
+    // podría duplicar la reserva (y, con una ficha nueva, la ficha). Desde un
+    // pedido se puede cerrar: el servidor reconoce el reintento por el estado
+    // del pedido.
+    final keepOpen = state.createsRequest && state.retryPending;
     return PopScope(
       // Mientras se manda, la hoja no se cierra. A mano, después de
       // confirmar, volver hace lo mismo que «Fatto».
@@ -477,8 +495,8 @@ class _BookingForm extends StatelessWidget {
             _Help(l10n.bookingStartSuggested(suggested.toHhMm())),
           ],
 
-          // A mano: para quién se cocina y en qué idioma van sus mensajes
-          // (desde un pedido valen los del pedido).
+          // A mano o al renovar: para quién se cocina y en qué idioma van sus
+          // mensajes (desde un pedido valen los del pedido).
           if (state.household case final household?) ...[
             _HouseholdSection(
               household: household,
@@ -516,11 +534,16 @@ class _BookingForm extends StatelessWidget {
                 ? () => controller.stepCookMinutes(1)
                 : null,
           ),
-          _Help(
-            state.isManual
-                ? l10n.bookingCookHelpManual(maxBookingCookMinutes)
-                : l10n.bookingCookHelp(maxBookingCookMinutes),
-          ),
+          _Help(switch (state.kind) {
+            BookingSourceKind.request => l10n.bookingCookHelp(
+              maxBookingCookMinutes,
+            ),
+            BookingSourceKind.manual => l10n.bookingCookHelpManual(
+              maxBookingCookMinutes,
+            ),
+            // Copiados tal cual (pueden pasar de 300): sin nombrar un máximo.
+            BookingSourceKind.renewal => l10n.bookingCookHelpRenewal,
+          }),
 
           const SizedBox(height: 24),
           KeyedSubtree(
@@ -680,8 +703,10 @@ class _WeekTile extends StatelessWidget {
   }
 }
 
-/// De quién es la reserva: el nombre y, debajo, el resumen del pedido o, a
-/// mano, el teléfono y la zona (y si la ficha se crea al confirmar).
+/// De quién es la reserva: el nombre y, debajo, el resumen del pedido; a
+/// mano, el teléfono y la zona (y si la ficha se crea al confirmar); al
+/// renovar, el día de la última sesión y, si corresponde, que la última
+/// semana se había movido o que el pedido renovado traía otro teléfono.
 class _Header extends StatelessWidget {
   const _Header({required this.source, required this.state});
 
@@ -692,11 +717,13 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final formats = RequestFormats(context);
     final secondary = theme.textTheme.bodyMedium?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
     final party = state.party;
     final request = state.request;
+    final renewedFrom = state.renewedFrom;
     final contact = [
       ?party?.phoneText,
       ?party?.zone,
@@ -715,7 +742,25 @@ class _Header extends StatelessWidget {
             key: const ValueKey('booking-subtitle'),
             style: secondary,
           )
-        else if (contact.isNotEmpty)
+        else if (renewedFrom != null) ...[
+          Text(
+            l10n.bookingRenewalSubtitle(formats.shortDate(renewedFrom)),
+            key: const ValueKey('booking-subtitle'),
+            style: secondary,
+          ),
+          if (state.lastMoved)
+            Text(
+              l10n.bookingRenewalLastMoved,
+              key: const ValueKey('booking-renewal-moved'),
+              style: secondary,
+            ),
+          if (state.otherRequestPhone case final phone?)
+            Text(
+              l10n.bookingRenewalOtherPhone(phone),
+              key: const ValueKey('booking-renewal-other-phone'),
+              style: secondary,
+            ),
+        ] else if (contact.isNotEmpty)
           Text(
             contact,
             key: const ValueKey('booking-subtitle'),
@@ -853,9 +898,9 @@ class _ConfirmBar extends StatelessWidget {
         state.retryPending || (failure == null && blocker == null && !checking);
     return BookingBottomBar(
       children: [
-        // A mano, una confirmación sin respuesta no deja cerrar la hoja: lo
-        // dice arriba de la falla.
-        if (state.isManual && state.retryPending) ...[
+        // A mano o al renovar, una confirmación sin respuesta no deja cerrar
+        // la hoja: lo dice arriba de la falla.
+        if (state.createsRequest && state.retryPending) ...[
           Text(
             l10n.bookingRetryKeepsOpen,
             key: const ValueKey('booking-retry-keeps-open'),
@@ -1076,7 +1121,7 @@ class _DoneBar extends ConsumerWidget {
   final BookingSource source;
 
   /// Una reserva a mano: «Fatto» lleva a «Prenotazioni». Desde un pedido,
-  /// vuelve al detalle.
+  /// vuelve al detalle; una renovación, a donde estaba (Hoy o la ficha).
   final bool manual;
 
   Future<void> _launch(BuildContext context, WidgetRef ref, Uri uri) async {

@@ -1,12 +1,14 @@
 // Lo inicial de la hoja «Conferma prenotazione» según de dónde se abre: un
 // pedido (como el PR 5), una ficha existente (con y sin último pedido
 // semanal, nunca el de un evento), una ficha elegida desde «Nuova cliente»
-// (lo que Evelyn tocó en el formulario va al pedido, no a la ficha) o una
-// ficha nueva (el borrador). null en cada caso de «no está». "Hoy": lunes
+// (lo que Evelyn tocó en el formulario va al pedido, no a la ficha), una
+// ficha nueva (el borrador) o «Rinnova» (la reserva de una sesión, con el
+// destinatario de la ficha). null en cada caso de «no está». "Hoy": lunes
 // 19/10/2026.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock.dart';
+import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
@@ -19,11 +21,14 @@ import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/clients/data/clients_repository.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/sessions/data/sessions_repository.dart';
+import 'package:radici/features/sessions/domain/cooking_session.dart';
 
 import '../../../support/client_fixtures.dart';
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';
 import '../../../support/request_fixtures.dart';
+import '../../../support/session_fixtures.dart';
 
 void main() {
   final today = CalendarDate(2026, 10, 19);
@@ -32,6 +37,7 @@ void main() {
 
   late FakeChefRequestsRepository requests;
   late FakeClientsRepository clients;
+  late FakeSessionsRepository sessions;
   late ProviderContainer container;
 
   final chiara = buildClient(
@@ -53,6 +59,7 @@ void main() {
   setUp(() async {
     requests = FakeChefRequestsRepository(const []);
     clients = FakeClientsRepository([chiara]);
+    sessions = FakeSessionsRepository();
     container = ProviderContainer.test(
       retry: noRetry,
       overrides: [
@@ -64,6 +71,7 @@ void main() {
         ),
         chefRequestsRepositoryProvider.overrideWithValue(requests),
         clientsRepositoryProvider.overrideWithValue(clients),
+        sessionsRepositoryProvider.overrideWithValue(sessions),
         clockProvider.overrideWithValue(() => testNow),
       ],
     );
@@ -272,6 +280,94 @@ void main() {
     });
   });
 
+  group('«Rinnova» (la reserva de una sesión)', () {
+    // La reserva de prueba: miércoles 25/11, 2/12, 9/12 y 16/12 a las 10:00,
+    // 180 min, 4 × 140 €, con la estimación de la web.
+    void save(List<CookingSession> booking) {
+      for (final session in booking) {
+        sessions.sessions[session.id] = session;
+      }
+    }
+
+    test('las semanas, el precio, la hora y los minutos de la reserva; el destinatario sale de la ficha', () async {
+      // El pedido llegó con otro nombre y otro teléfono (su contacto de la
+      // web); la ficha no cambió.
+      save([
+        for (final session in buildBooking(
+          locale: ClientLocale.es,
+          estimate: fourWeeksEstimate,
+        ))
+          session.copyWith(
+            request: session.request!.copyWith(
+              client: session.request!.client.copyWith(
+                displayName: 'Giuly Bianchi',
+                contactPhone: '+34 612 345 678',
+              ),
+            ),
+          ),
+      ]);
+      final seed = (await seedOf(BookingSource.renewal(sessionId(4))))!;
+      expect(seed.kind, BookingSourceKind.renewal);
+      expect(seed.clientId, testClientId);
+      expect(seed.request, isNull);
+      expect(seed.newClient, isNull);
+      expect(seed.clientStatus, ClientStatus.trial);
+      expect(
+        seed.household,
+        const BookingHousehold(adults: 2, kids: 2, days: 5, meals: [Meal.dinner]),
+      );
+      expect(seed.locale, ClientLocale.es);
+      expect(seed.maxWeeks, 8);
+      expect(seed.today, today);
+      expect(seed.dates, weeklyDates(CalendarDate(2026, 12, 23), 4));
+      expect(seed.start, const ClockTime.hm(10, 0));
+      expect(seed.startEdited, isTrue, reason: 'el primer dryRun lleva la hora');
+      expect(seed.cookMinutes, 180);
+      expect(seed.cookFollowsHousehold, isFalse);
+      expect(seed.priceRule.suggestedFor(4), 56000);
+      expect(seed.priceRule.suggestedFor(2), 30000);
+      expect(seed.portions, 20);
+      expect(seed.groceriesEstCents, 6300);
+      expect(seed.renewedFrom, CalendarDate(2026, 12, 16));
+      expect(seed.renewedRequestId, bookingRequestId);
+      expect(seed.lastMoved, isFalse);
+      expect(seed.otherRequestPhone, '+34 612 345 678');
+      expect(seed.party.displayName, 'Giulia Rossi');
+      expect(seed.party.phoneText, '+39 333 123 4567');
+      expect(seed.party.phoneE164, '+393331234567');
+      expect(seed.party.zone, 'Città Alta');
+      expect(seed.initialFailure, isNull);
+    });
+
+    test('con la última semana movida, lo dice', () async {
+      final booking = buildBooking();
+      booking[3] = booking[3].copyWith(
+        date: CalendarDate(2026, 12, 18),
+        start: const ClockTime.hm(11, 0),
+      );
+      save(booking);
+      final seed = (await seedOf(BookingSource.renewal(sessionId(4))))!;
+      expect(seed.lastMoved, isTrue);
+      expect(seed.dates.first, CalendarDate(2026, 12, 25));
+      expect(seed.start, const ClockTime.hm(11, 0));
+      expect(seed.otherRequestPhone, isNull);
+    });
+
+    test('desde cualquier semana de la reserva, la última viva manda; sin la estimación de la web, el precio de otras semanas queda vacío', () async {
+      save(buildBooking());
+      final seed = (await seedOf(BookingSource.renewal(sessionId(2))))!;
+      expect(seed.renewedFrom, CalendarDate(2026, 12, 16));
+      expect(seed.priceRule.suggestedFor(4), 56000);
+      expect(seed.priceRule.suggestedFor(2), isNull);
+    });
+
+    test('una sesión que no está, o una que no se puede renovar: null', () async {
+      expect(await seedOf(BookingSource.renewal(sessionId(9))), isNull);
+      save([buildSession(n: 5, requestId: 'extra', type: RequestType.extra)]);
+      expect(await seedOf(BookingSource.renewal(sessionId(5))), isNull);
+    });
+  });
+
   test('la fuente compara por valor y toString lleva solo ids', () {
     expect(
       const BookingSource.client('x', fromForm: true),
@@ -284,5 +380,7 @@ void main() {
     expect(const BookingSource.request('r').kind, BookingSourceKind.request);
     expect(const BookingSource.newClient().kind, BookingSourceKind.manual);
     expect(const BookingSource.client('x').toString(), contains('x'));
+    expect(const BookingSource.renewal('s'), const BookingSource.renewal('s'));
+    expect(const BookingSource.renewal('s').kind, BookingSourceKind.renewal);
   });
 }

@@ -1072,7 +1072,7 @@
   },
   "bookingHouseholdSection": "Persone e pasti",
   "@bookingHouseholdSection": {
-    "description": "Hoja de una reserva a mano, título de la sección: adultos, niños, días a la semana y comidas."
+    "description": "Hoja de una reserva a mano o «Rinnova», título de la sección: adultos, niños, días a la semana y comidas."
   },
   "bookingCookHelpManual": "Calcolato da persone e pasti, al massimo {max} min.",
   "@bookingCookHelpManual": {
@@ -1083,7 +1083,7 @@
   },
   "bookingRetryKeepsOpen": "La scheda resta aperta finché non arriva una risposta: così la prenotazione non si duplica.",
   "@bookingRetryKeepsOpen": {
-    "description": "Hoja de reserva a mano, barra de abajo: se mandó la confirmación y no hubo respuesta. La hoja no se cierra hasta reintentar, porque otra hoja usaría otra clave y podría duplicar la reserva."
+    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo: se mandó la confirmación y no hubo respuesta. La hoja no se cierra hasta reintentar, porque otra hoja usaría otra clave y podría duplicar la reserva."
   },
   "bookingErrorNewClientInvalid": "Il server non accetta i dati della cliente nuova: torna indietro e controllali.",
   "@bookingErrorNewClientInvalid": {
@@ -1095,11 +1095,41 @@
   },
   "bookingErrorClientNotFound": "Questa scheda cliente non esiste più.",
   "@bookingErrorClientNotFound": {
-    "description": "Hoja de una reserva a mano: la ficha elegida ya no existe (antes de abrirla o al confirmar)."
+    "description": "Hoja de una reserva a mano o «Rinnova»: la ficha ya no existe (antes de abrirla o al confirmar)."
   },
   "bookingNewClientMissing": "I dati della cliente nuova non ci sono più: ricomincia da «Nuova prenotazione».",
   "@bookingNewClientMissing": {
     "description": "Hoja de reserva de una clienta nueva abierta sin el formulario (por ejemplo, al recargar la página en /gestione/): sus datos no viajan en la URL. Debajo, el botón «Nuova prenotazione»."
+  },
+  "renewBookingTitle": "Rinnova prenotazione",
+  "@renewBookingTitle": {
+    "description": "Título de la hoja «Rinnova» (desde Hoy o la ficha de la última sesión de una reserva semanal): una reserva para la misma clienta, prellenada con la que termina."
+  },
+  "bookingRenewalSubtitle": "Rinnovo · ultima sessione {date}",
+  "@bookingRenewalSubtitle": {
+    "description": "Hoja «Rinnova prenotazione»: debajo del nombre, la fecha de la última sesión viva de la reserva que se renueva.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 16 dic" }
+    }
+  },
+  "bookingRenewalLastMoved": "L'ultima settimana era stata spostata: giorno e ora vengono da quella.",
+  "@bookingRenewalLastMoved": {
+    "description": "Hoja «Rinnova prenotazione», encabezado: la última semana de la reserva se había movido a otro día u otra hora, y la renovación copia ese día y esa hora."
+  },
+  "bookingRenewalOtherPhone": "Nella richiesta precedente il numero era {phone}: il WhatsApp va a quello della scheda.",
+  "@bookingRenewalOtherPhone": {
+    "description": "Hoja «Rinnova prenotazione», encabezado: el pedido que se renueva llegó con otro teléfono que el de la ficha (la web no cambia una ficha que ya existe); el WhatsApp y las sesiones nuevas usan el de la ficha. phone: como lo escribió la clienta.",
+    "placeholders": {
+      "phone": { "type": "String", "example": "+34 612 345 678" }
+    }
+  },
+  "bookingRenewalUnavailable": "Questa prenotazione non si può rinnovare.",
+  "@bookingRenewalUnavailable": {
+    "description": "Hoja «Rinnova prenotazione» abierta para una sesión cuya reserva no se puede renovar: una sesión extra, sin pedido, un presupuesto o una reserva sin sesiones vivas."
+  },
+  "bookingCookHelpRenewal": "Come nella prenotazione precedente.",
+  "@bookingCookHelpRenewal": {
+    "description": "Hoja «Rinnova prenotazione», debajo del tiempo de cocina: son los minutos de la última sesión de la reserva, tal cual (no siguen a las personas y pueden pasar de 300)."
   },
   "bookingChecksFailed": "Non è stato possibile verificare le date. Puoi confermare lo stesso: il server le ricontrolla.",
   "@bookingChecksFailed": {
@@ -1134,7 +1164,7 @@
   },
   "bookingCookHelp": "Dalla stima, al massimo {max} min.",
   "@bookingCookHelp": {
-    "description": "Debajo del tiempo de cocina, en la hoja de un pedido: sale de la estimación y tiene un tope. A mano va bookingCookHelpManual.",
+    "description": "Debajo del tiempo de cocina, solo en la hoja de un pedido: sale de la estimación y tiene un tope. A mano va bookingCookHelpManual; en «Rinnova», bookingCookHelpRenewal.",
     "placeholders": {
       "max": { "type": "int", "example": "300" }
     }

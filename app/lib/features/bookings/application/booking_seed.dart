@@ -1,7 +1,8 @@
 // De dónde se abre la hoja «Conferma prenotazione» y lo que trae al abrirse:
 // un pedido de la bandeja (como el PR 5), una ficha existente elegida en
 // «Nuova prenotazione» (o desde «Nuova cliente», si el teléfono ya era de una
-// ficha) o una ficha nueva (el borrador del formulario). El seed tiene el
+// ficha), una ficha nueva (el borrador del formulario) o «Rinnova» (la
+// reserva de una sesión, con lo que copia renewalPlan). El seed tiene el
 // destinatario (para el encabezado y el WhatsApp), el destino del POST
 // (requestId, clientId o newClient) y lo inicial de la hoja. El controller
 // toma el primero y no mira los siguientes.
@@ -12,15 +13,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/clock.dart';
 import 'package:radici/core/clock_time.dart';
+import 'package:radici/core/phone.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/bookings/application/new_client_form_controller.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
+import 'package:radici/features/bookings/domain/renewal.dart';
 import 'package:radici/features/clients/application/client_directory_controller.dart';
 import 'package:radici/features/clients/domain/chef_client.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart';
+import 'package:radici/features/sessions/domain/cooking_session.dart';
 
 part 'booking_seed.freezed.dart';
 
@@ -44,15 +49,20 @@ sealed class BookingSource with _$BookingSource {
   /// Una ficha nueva, con los datos del borrador de «Nuova cliente».
   const factory BookingSource.newClient() = NewClientBookingSource;
 
+  /// «Rinnova»: la reserva de la sesión [sessionId], para la misma ficha.
+  const factory BookingSource.renewal(String sessionId) =
+      RenewalBookingSource;
+
   BookingSourceKind get kind => switch (this) {
     RequestBookingSource() => BookingSourceKind.request,
     ClientBookingSource() || NewClientBookingSource() =>
       BookingSourceKind.manual,
+    RenewalBookingSource() => BookingSourceKind.renewal,
   };
 }
 
-/// Desde un pedido o a mano (ficha existente o nueva).
-enum BookingSourceKind { request, manual }
+/// Desde un pedido, a mano (ficha existente o nueva) o «Rinnova».
+enum BookingSourceKind { request, manual, renewal }
 
 /// A quién es la reserva: el encabezado de la hoja y el WhatsApp final. Tiene
 /// datos de contacto: toString no los muestra.
@@ -80,6 +90,19 @@ final class BookingParty {
     phoneE164: client.phoneE164,
     zone: client.zone,
   );
+
+  /// La ficha de una sesión: en una renovación, el encabezado y el WhatsApp
+  /// salen de ahí (el pedido de la renovación no lleva contacto propio, así
+  /// que las sesiones nuevas muestran el de la ficha).
+  factory BookingParty.fromSessionClient(SessionClient client) {
+    final phone = client.contactPhone;
+    return BookingParty(
+      displayName: client.displayName,
+      phoneText: phone,
+      phoneE164: phone == null ? null : phoneFromInput(phone),
+      zone: client.zone,
+    );
+  }
 
   final String displayName;
 
@@ -129,6 +152,29 @@ final class NoSuggestedPrice extends BookingPriceRule {
   int? suggestedFor(int weeks) => null;
 }
 
+/// «Rinnova»: el total de la reserva con las mismas semanas; con otras, el de
+/// las tarifas de [estimate] si el total era el de esas tarifas, o ninguno
+/// (renewalPriceFor).
+final class RenewalPriceRule extends BookingPriceRule {
+  const RenewalPriceRule({
+    required this.totalCents,
+    required this.weeks,
+    this.estimate,
+  });
+
+  final int totalCents;
+  final int weeks;
+  final RequestEstimate? estimate;
+
+  @override
+  int? suggestedFor(int weeks) => renewalPriceFor(
+    originalTotal: totalCents,
+    originalWeeks: this.weeks,
+    weeks: weeks,
+    estimate: estimate,
+  );
+}
+
 /// Lo que trae la hoja al abrirse. Tiene datos de la clienta: toString no
 /// los muestra.
 final class BookingSeed {
@@ -152,6 +198,10 @@ final class BookingSeed {
     this.portions,
     this.groceriesEstCents,
     this.initialFailure,
+    this.renewedFrom,
+    this.renewedRequestId,
+    this.lastMoved = false,
+    this.otherRequestPhone,
   });
 
   /// Desde un pedido: lo mismo que armaba la hoja del PR 5.
@@ -215,6 +265,38 @@ final class BookingSeed {
     );
   }
 
+  /// «Rinnova»: lo que copia [plan] (las semanas desde la última viva + 7,
+  /// la hora ya elegida, los minutos que no siguen al hogar y el precio de la
+  /// reserva), para la misma ficha; el destinatario es la ficha.
+  factory BookingSeed.renewal(
+    RenewalPlan plan, {
+    required CalendarDate today,
+  }) => BookingSeed(
+    kind: BookingSourceKind.renewal,
+    party: BookingParty.fromSessionClient(plan.last.client),
+    clientId: plan.clientId,
+    clientStatus: plan.last.client.status,
+    household: plan.household,
+    locale: plan.locale,
+    maxWeeks: maxBookingWeeks,
+    dates: plan.dates,
+    today: today,
+    start: plan.start,
+    startEdited: true,
+    cookMinutes: plan.cookMinutes,
+    priceRule: RenewalPriceRule(
+      totalCents: plan.serviceTotalCents,
+      weeks: plan.weeks,
+      estimate: plan.estimate,
+    ),
+    portions: plan.portions,
+    groceriesEstCents: plan.groceriesEstCents,
+    renewedFrom: plan.last.date,
+    renewedRequestId: plan.last.requestId,
+    lastMoved: plan.lastMoved,
+    otherRequestPhone: plan.otherRequestPhone,
+  );
+
   final BookingSourceKind kind;
   final BookingParty party;
 
@@ -255,12 +337,24 @@ final class BookingSeed {
   /// nuevo): no se pregunta al servidor.
   final BookingFailure? initialFailure;
 
+  /// «Rinnova»: el día de la última sesión viva de la reserva que se renueva
+  /// y su pedido (al confirmar, renewedBookingsProvider lo marca).
+  final CalendarDate? renewedFrom;
+  final String? renewedRequestId;
+
+  /// «Rinnova»: la última semana se había movido (ver RenewalPlan.lastMoved).
+  final bool lastMoved;
+
+  /// «Rinnova»: el teléfono del pedido renovado, si no es el de la ficha.
+  final String? otherRequestPhone;
+
   @override
   String toString() => 'BookingSeed(${kind.name}, weeks: ${dates.length})';
 }
 
-/// Lo que trae la hoja de [BookingSource]; null si no está (el pedido o la
-/// ficha no existen, o el borrador de la ficha nueva ya no sirve).
+/// Lo que trae la hoja de [BookingSource]; null si no está (el pedido, la
+/// ficha o la sesión no existen, el borrador de la ficha nueva ya no sirve o
+/// la reserva de la sesión no se puede renovar).
 final bookingSeedProvider = FutureProvider.autoDispose
     .family<BookingSeed?, BookingSource>((ref, source) async {
       final today = romeToday(ref.read(clockProvider)());
@@ -284,6 +378,16 @@ final bookingSeedProvider = FutureProvider.autoDispose
         case NewClientBookingSource():
           final draft = ref.watch(newClientFormProvider);
           return _newClientSeed(draft, today: today);
+        case RenewalBookingSource(:final sessionId):
+          // Todas las semanas de su reserva, también las canceladas.
+          final detail = await ref.watch(
+            sessionDetailProvider(sessionId).future,
+          );
+          if (detail == null) return null;
+          final plan = renewalPlan(detail.booking);
+          return plan == null
+              ? null
+              : BookingSeed.renewal(plan, today: today);
       }
     });
 
