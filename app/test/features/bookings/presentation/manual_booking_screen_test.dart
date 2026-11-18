@@ -597,11 +597,20 @@ void main() {
       expect(textOf(tester, 'booking-weeks-value'), '4');
     });
 
-    testWidgets('una ficha que no existe lo dice', (tester) async {
+    /// «Nuova prenotazione», abajo: a 375×667 en el tercio inferior, de 48 dp.
+    void expectRestartBelow(WidgetTester tester) {
+      final restart = byKey('booking-restart');
+      expect(restart.hitTestable(), findsOneWidget);
+      expect(tester.getCenter(restart).dy, greaterThan(667 * 2 / 3));
+      expect(tester.getSize(restart).height, greaterThanOrEqualTo(48));
+    }
+
+    testWidgets('una ficha que no existe lo dice y propone «Nuova prenotazione», abajo', (tester) async {
       final app = await pumpChefApp(
         tester,
         requests: FakeChefRequestsRepository(const []),
         clients: FakeClientsRepository([chiara]),
+        size: const Size(375, 667),
       );
       app.go('/richieste/nuova/prenota?cliente=nope');
       await tester.pumpAndSettle();
@@ -609,12 +618,18 @@ void main() {
         textOf(tester, 'booking-client-not-found'),
         'Questa scheda cliente non esiste più.',
       );
+      expectRestartBelow(tester);
+      await tester.tap(byKey('booking-restart'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NewBookingClientScreen), findsOneWidget);
+      expect(find.byType(ConfirmBookingScreen), findsNothing);
     });
 
-    testWidgets('la hoja de una ficha nueva sin formulario (la página se recargó) lo dice y vuelve a empezar', (tester) async {
+    testWidgets('la hoja de una ficha nueva sin formulario (la página se recargó) lo dice y vuelve a empezar desde abajo', (tester) async {
       final app = await pumpChefApp(
         tester,
         requests: FakeChefRequestsRepository(const []),
+        size: const Size(375, 667),
       );
       app.go('/richieste/nuova/prenota');
       await tester.pumpAndSettle();
@@ -622,6 +637,7 @@ void main() {
         textOf(tester, 'booking-new-client-missing'),
         'I dati della cliente nuova non ci sono più: ricomincia da «Nuova prenotazione».',
       );
+      expectRestartBelow(tester);
       await tester.tap(byKey('booking-restart'));
       await tester.pumpAndSettle();
       expect(find.byType(NewBookingClientScreen), findsOneWidget);

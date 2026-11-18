@@ -1118,11 +1118,11 @@
   },
   "bookingErrorClientNotFound": "Questa scheda cliente non esiste più.",
   "@bookingErrorClientNotFound": {
-    "description": "Hoja de una reserva a mano o «Rinnova»: la ficha ya no existe (antes de abrirla o al confirmar)."
+    "description": "Hoja de una reserva a mano o «Rinnova»: la ficha ya no existe (antes de abrirla o al confirmar). Si pasa antes de abrir la hoja a mano, abajo va el botón «Nuova prenotazione»."
   },
   "bookingNewClientMissing": "I dati della cliente nuova non ci sono più: ricomincia da «Nuova prenotazione».",
   "@bookingNewClientMissing": {
-    "description": "Hoja de reserva de una clienta nueva abierta sin el formulario (por ejemplo, al recargar la página en /gestione/): sus datos no viajan en la URL. Debajo, el botón «Nuova prenotazione»."
+    "description": "Hoja de reserva de una clienta nueva abierta sin el formulario (por ejemplo, al recargar la página en /gestione/): sus datos no viajan en la URL. Abajo, en la barra, el botón «Nuova prenotazione»."
   },
   "renewBookingTitle": "Rinnova prenotazione",
   "@renewBookingTitle": {

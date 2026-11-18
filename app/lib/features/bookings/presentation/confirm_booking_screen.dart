@@ -16,7 +16,7 @@
 // confirmar, el WhatsApp para la clienta, en su idioma.
 //
 // Antes de la hoja, según su seed: la rueda, el error con «Riprova» o «no
-// está». Una reserva a mano o una renovación no se cierra mientras espera el
+// está» (a mano, con «Nuova prenotazione» abajo). Una reserva a mano o una renovación no se cierra mientras espera el
 // reintento de una confirmación sin respuesta; si el reintento tampoco tiene
 // respuesta, «Chiudi comunque» la cierra igual. Después de confirmar a mano,
 // «Fatto», la X y el atrás llevan a «Prenotazioni»; una renovación vuelve a
@@ -114,7 +114,8 @@ class ConfirmBookingScreen extends ConsumerWidget {
 
 /// El pedido, la ficha o la sesión no están, el borrador de la ficha nueva ya
 /// no sirve (sus datos no viajan en la URL) o la reserva de la sesión no se
-/// puede renovar.
+/// puede renovar. A mano (la ficha o el borrador), abajo «Nuova prenotazione»
+/// vuelve a empezar.
 class _SourceMissing extends ConsumerWidget {
   const _SourceMissing({required this.source});
 
@@ -140,25 +141,27 @@ class _SourceMissing extends ConsumerWidget {
             ? ('booking-session-not-found', l10n.sessionNotFound)
             : ('booking-renewal-unavailable', l10n.bookingRenewalUnavailable),
     };
-    return Center(
+    final message = Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Text(text, key: ValueKey(key), textAlign: TextAlign.center),
+      ),
+    );
+    if (source.kind != BookingSourceKind.manual) return message;
+    return Column(
+      children: [
+        Expanded(child: message),
+        BookingBottomBar(
           children: [
-            Text(text, key: ValueKey(key), textAlign: TextAlign.center),
-            if (source is NewClientBookingSource) ...[
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                key: const ValueKey('booking-restart'),
-                onPressed: () => context.go(AppRoutes.newBooking),
-                icon: const Icon(Icons.add),
-                label: Text(l10n.newBookingAction),
-              ),
-            ],
+            FilledButton.icon(
+              key: const ValueKey('booking-restart'),
+              onPressed: () => context.go(AppRoutes.newBooking),
+              icon: const Icon(Icons.add),
+              label: Text(l10n.newBookingAction),
+            ),
           ],
         ),
-      ),
+      ],
     );
   }
 }
