@@ -14,6 +14,8 @@ import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
+import 'package:radici/features/clients/data/clients_repository.dart';
+import 'package:radici/features/clients/domain/chef_client.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
@@ -258,6 +260,35 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
       },
     );
     return controller.stream;
+  }
+}
+
+/// Fichas de la cocinera "en el servidor", en memoria (el directorio de
+/// «Nuova prenotazione»). La lectura toma su foto en cuanto llega:
+/// [pendingFetch] demora solo la respuesta.
+class FakeClientsRepository implements ClientsRepository {
+  FakeClientsRepository([Iterable<ChefClient> clients = const []])
+    : clients = [...clients];
+
+  final List<ChefClient> clients;
+
+  /// Si no es null, la lectura falla con esto.
+  ClientsFailure? fetchFailure;
+
+  /// Si no es null, la respuesta espera a que se complete.
+  Completer<void>? pendingFetch;
+
+  int fetchCalls = 0;
+
+  @override
+  Future<List<ChefClient>> fetchClients({required String chefId}) async {
+    fetchCalls++;
+    final snapshot = List.of(clients);
+    final pending = pendingFetch;
+    if (pending != null) await pending.future;
+    final failure = fetchFailure;
+    if (failure != null) throw failure;
+    return snapshot;
   }
 }
 
