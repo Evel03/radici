@@ -24,6 +24,7 @@ import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import '../../../support/chef_app.dart';
 import '../../../support/client_fixtures.dart';
 import '../../../support/fakes.dart';
+import '../../../support/request_fixtures.dart';
 import '../../../support/text_input_guard.dart';
 
 /// intl separa el número del € con un espacio duro.
@@ -449,6 +450,46 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(NewBookingClientScreen), findsOneWidget);
       expect(find.byType(ConfirmBookingScreen), findsNothing);
+    });
+
+    testWidgets('desde un pedido que no existe, lo dice', (tester) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+      );
+      app.go('/richieste/nope/prenota');
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Conferma prenotazione'), findsWidgets);
+      expect(
+        textOf(tester, 'booking-request-not-found'),
+        'Questa richiesta non esiste o non è più disponibile.',
+      );
+    });
+
+    testWidgets('desde un pedido que no se pudo leer: el mensaje y «Riprova»', (tester) async {
+      final requests = FakeChefRequestsRepository([
+        buildRequest(seenAt: testNow, preferredDate: tomorrow),
+      ])..failFetch = true;
+      final app = await pumpChefApp(tester, requests: requests);
+      app.go('/richieste/req-1/prenota');
+      await tester.pumpAndSettle();
+      final sheet = find.byType(ConfirmBookingScreen);
+      expect(
+        find.descendant(
+          of: sheet,
+          matching: find.text(
+            'Impossibile caricare le richieste. Controlla la connessione e riprova.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      requests.failFetch = false;
+      await tester.tap(
+        find.descendant(of: sheet, matching: byKey('load-error-retry')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Giulia Rossi'), findsOneWidget);
+      expect(byKey('booking-confirm'), findsOneWidget);
     });
   });
 
