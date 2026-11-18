@@ -111,8 +111,10 @@ repositorios falsos (`test/support/fakes.dart`).
   («Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00», como en la ficha), las personas, el estado
   si no está confirmada (una de hoy que ya terminó dice «Terminata» si estaba confirmada o con la
   compra hecha; si está cocinada o cobrada, «Cucinata» o «Pagata»), las alergias resaltadas como en
-  la ficha (con la nota de contaminación cruzada si hay gluten, SPEC §5.6, y, sin ningún dato,
-  «Allergie: nessun dato nell'app, chiedile») y las notas de cocina, y abre la ficha. Abajo, en el
+  la ficha (con la nota de contaminación cruzada si hay gluten, SPEC §5.6; en una renovación, las
+  del último pedido semanal de la web que se reservó, con su fecha, y, sin ningún dato o con solo
+  una dieta, «Allergie: nessun dato nell'app, chiedile») y las notas de cocina, y abre la ficha.
+  Abajo, en el
   tercio inferior del teléfono, «Come arrivare» (Apple Maps en el iPhone, Google Maps en el resto)
   y WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi indirizzo», como la ficha (con
   varias, una línea dice de quién son, con la hora primero: «Arrivo 16:00 · Marco Bianchi»; si no
@@ -204,10 +206,22 @@ repositorios falsos (`test/support/fakes.dart`).
   cocinera gestiona los suyos» y el grant por columna; vale para todas sus sesiones y se corrige
   desde la fila de la dirección). Después, las alergias de la ficha y del pedido, con la nota del
   pedido resaltada (también sola, como llega de la web) y, con gluten, la de contaminación cruzada
-  (SPEC §5.6); sin ningún dato (ni restricciones de la ficha, ni nota del pedido, ni la
-  confirmación «nadie tiene»; por ejemplo, una reserva cargada a mano, que no guarda alergias), la
-  advertencia «Allergie: nessun dato nell'app, chiedile» (`sessionAllergiesNoData`, con el ícono
-  de aviso y el fondo de la de contaminación cruzada), nunca «sin alergias». Cada una es un nodo
+  (SPEC §5.6). En una sesión semanal cuyo pedido no responde (ni alérgenos, ni nota, ni «nadie
+  tiene»; por ejemplo, una renovación, que no guarda alergias), las del último pedido semanal de la
+  web que se reservó (aceptado) de la misma ficha, con una línea chica arriba: «Secondo la sua
+  richiesta (19 ott 2026)» (`sessionAllergiesEarlierRequest`; la fecha de ese pedido, en Roma). Si
+  ese pedido tampoco responde (anterior a la pregunta, o con la respuesta borrada al retirar el
+  consentimiento de salud o a pedido de otra persona), no se busca uno anterior: un «nadie tiene»
+  viejo ya no vale. Una sesión extra no las toma: los que comen pueden ser otros (SPEC §5.6), y un
+  pedido rechazado, vencido o pendiente no cuenta (pudo mandarlo otra persona con su email). Ese
+  pedido llega embebido en la ficha de cada sesión (`client.answers`: el más nuevo de los semanales,
+  de la web y aceptados, `clientAnswersLimit` = 1): en la misma lectura que la sesión (en Hoy, la
+  de la agenda), sin una consulta aparte que pueda fallar sola. Sin ningún dato (ni alérgenos de la
+  ficha, ni nota o alérgenos del pedido o de ese otro, ni la confirmación «nadie tiene»), la
+  advertencia «Allergie: nessun dato nell'app,
+  chiedile» (`sessionAllergiesNoData`, con el ícono de aviso y el fondo de la de contaminación
+  cruzada), nunca «sin alergias». Una dieta sola no responde sobre alergias: se muestra, debajo de
+  la advertencia (en el detalle de un pedido, igual). Cada una es un nodo
   propio en el orden en que se ven (el lector de pantalla no las mezcla con el título); después,
   los datos de la clienta y las semanas de la reserva (cada una abre su ficha). En la última sesión
   viva de una reserva semanal (también cocinada o cobrada), al final: «È l'ultima sessione della
@@ -345,8 +359,9 @@ repositorios falsos (`test/support/fakes.dart`).
     si el reintento tampoco tiene respuesta ofrece «Chiudi comunque» (como la hoja a mano); al
     confirmar, la reserva está en «Prenotazioni», la renovada queda marcada en el dispositivo
     (`renewedBookingsProvider`, en memoria) y «Fatto» vuelve a donde estaba;
-  - no guarda alergias, como toda reserva a mano: sus sesiones dicen «Allergie: nessun dato
-    nell'app, chiedile» (duda D2, por una reserva que vino de la web).
+  - no guarda alergias, como toda reserva a mano: sus sesiones muestran las del último pedido
+    semanal de la web que se reservó (en general, el de la reserva que vino de la web), con su
+    fecha; si no hay o no responde, «Allergie: nessun dato nell'app, chiedile».
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.

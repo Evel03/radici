@@ -348,9 +348,9 @@ La privacy promete acceso, rectificación, supresión, portabilidad, oposición 
   update public.requests set contact = contact || jsonb_build_object('phone', '<+39…>') where id = '<request_id>';
   ```
 
-- Retiro del consentimiento de salud (borra las restricciones del hogar y, de sus pedidos, las copias y el "hay alergias", §3):
+- Retiro del consentimiento de salud (borra las restricciones del hogar y, de sus pedidos, las copias y el "hay alergias", §3; el "nadie tiene" queda):
   `select private.revoke_health_consent('<client_id>');`
-- Alergias de otra persona (un familiar o un invitado de quien hizo el pedido) que pide que se borren (privacy §5): sacar sus datos de la nota de ese pedido o, si no se pueden separar, borrar la copia entera (el pedido queda sin respuesta y la app avisa que hay que preguntar):
+- Alergias de otra persona (un familiar o un invitado de quien hizo el pedido) que pide que se borren (privacy §5): sacar sus datos de la nota de ese pedido o, si no se pueden separar, borrar la copia entera (el pedido queda sin respuesta y la app avisa que hay que preguntar). Las sesiones semanales que no tienen respuesta propia, como una renovación, muestran la del último pedido semanal de la web aceptado de esa ficha (SPEC §6): si es este, ahora sin respuesta, también avisan, y no vuelven a uno anterior; si hay uno aceptado más nuevo que responde, muestran ese, que también hay que revisar:
   `update public.requests set restrictions = jsonb_set(restrictions, '{note}', to_jsonb('<nota sin sus datos>'::text)) where id = '<request_id>';`
   `update public.requests set restrictions = null, no_allergies = null where id = '<request_id>';`
 - Datos de salud escritos en las notas libres (sin consentimiento; la privacy §5 dice que se borran):
