@@ -515,6 +515,22 @@ void main() {
       expect(find.byKey(noneKey), findsNothing);
     });
 
+    testWidgets(
+      'solo una dieta no responde sobre alergias: el aviso, y la dieta',
+      (tester) async {
+        await openDetail(
+          tester,
+          buildRequest(
+            restrictions: const RequestRestrictions(diets: [Diet.vegetarian]),
+          ),
+        );
+        expect(find.byKey(unknownKey), findsOneWidget);
+        expect(find.text('Diete'), findsOneWidget);
+        expect(find.text('Vegetariana'), findsOneWidget);
+        expect(find.byKey(noneKey), findsNothing);
+      },
+    );
+
     testWidgets('en español: los dos textos nuevos', (tester) async {
       await openDetail(tester, buildRequest(), deviceLocale: const Locale('es', 'ES'));
       expect(

@@ -2,8 +2,11 @@
 // directo, como el del email, sigue abriendo su pedido) y la barra tiene 4
 // destinos (el riel también). Muestra la sesión de hoy (varias, con la
 // próxima primero) o la próxima: la clienta, las horas que salen de la
-// sesión, las personas, las alergias resaltadas (sin ningún dato, la
-// advertencia «Allergie: nessun dato nell'app, chiedile», como en la ficha),
+// sesión, las personas, las alergias resaltadas (en una renovación, las del
+// último pedido semanal de la web que se reservó, con su fecha; sin ningún
+// dato o con solo una
+// dieta, la advertencia «Allergie: nessun dato nell'app, chiedile», como en
+// la ficha),
 // la contaminación cruzada con gluten y las notas de cocina; abajo, en el
 // tercio inferior, «Come arrivare» (sin dirección, «Aggiungi indirizzo») y
 // WhatsApp (el mensaje de la ficha: lo firma la cocinera o, con la cuenta de
@@ -72,6 +75,7 @@ void main() {
     String? phone = '+39 333 123 4567',
     String? address = 'Via Gombito 12, 24129 Bergamo',
     List<Allergen> clientAllergens = const [],
+    PastAllergyAnswer? lastAllergyAnswer,
     RequestRestrictions? restrictions,
     bool? noAllergies,
     RequestSource requestSource = RequestSource.web,
@@ -87,6 +91,7 @@ void main() {
     phone: phone,
     address: address,
     clientAllergens: clientAllergens,
+    lastAllergyAnswer: lastAllergyAnswer,
     restrictions: restrictions,
     noAllergies: noAllergies,
     requestSource: requestSource,
@@ -320,6 +325,51 @@ void main() {
         expectNoDataWarning(tester, 'Alergias: sin datos en la app, pregúntale');
       },
     );
+
+    testWidgets(
+      'una renovación (pedido de la app, sin respuesta): la nota de su último pedido semanal de la web que se reservó, con la fecha, como en la ficha',
+      (tester) async {
+        await openToday(
+          tester,
+          sessions: [
+            session(
+              requestSource: RequestSource.app,
+              lastAllergyAnswer: PastAllergyAnswer(
+                requestedAt: DateTime.utc(2026, 10, 19, 9, 15),
+                restrictions: const RequestRestrictions(
+                  note: 'Celiachia, noci',
+                ),
+                noAllergies: false,
+              ),
+            ),
+          ],
+        );
+        expect(
+          tester
+              .widget<Text>(inCard(1, byKey('session-allergies-earlier')))
+              .data,
+          'Secondo la sua richiesta (19 ott 2026)',
+        );
+        expect(
+          tester.widget<Text>(inCard(1, byKey('session-allergy-note'))).data,
+          'Celiachia, noci',
+        );
+        expect(inCard(1, byKey('session-allergies-unknown')), findsNothing);
+      },
+    );
+
+    testWidgets('solo una dieta: la advertencia de preguntar, y la dieta', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        sessions: [
+          session(restrictions: const RequestRestrictions(diets: [Diet.vegan])),
+        ],
+      );
+      expectNoDataWarning(tester, "Allergie: nessun dato nell'app, chiedile");
+      expect(inCard(1, byKey('session-diets')), findsOneWidget);
+    });
 
     testWidgets('el estado, si no está confirmada', (tester) async {
       await openToday(

@@ -1,13 +1,14 @@
 // Sesiones de cocina de la cocinera: una fila de `public.sessions` con su
-// ficha (`clients`, con las restricciones de `client_restrictions`) y el pedido
-// de su reserva (`requests`, con su contacto) embebidos. La app las lee con la
+// ficha (`clients`, con las restricciones de `client_restrictions` y su último
+// pedido semanal de la web que se reservó, responda o no) y el pedido de su
+// reserva (`requests`, con su contacto) embebidos. La app las lee con la
 // RLS («la cocinera lee las suyas»); los estados solo cambian vía la Edge
 // Function chef (CLAUDE.md), nunca desde la app. Dart puro.
 //
 // Una reserva es un pedido aceptado más sus sesiones, una por semana (SPEC §4).
 //
 // Llevan contacto, la dirección y datos de salud (las alergias de la ficha y la
-// nota del pedido): nunca se loguean y los modelos no los imprimen en
+// nota de los pedidos): nunca se loguean y los modelos no los imprimen en
 // toString.
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/clock_time.dart';
@@ -38,17 +39,87 @@ enum SessionStatus {
       values.where((status) => status.dbName == value).firstOrNull;
 }
 
-/// Columnas que la app lee de `sessions`, con la ficha (y sus restricciones) y
-/// el pedido de la reserva embebidos. Los nombres de las FK desambiguan:
-/// `requests.target_session_id` también apunta a `sessions`.
+/// Columnas que la app lee de `sessions`, con la ficha (sus restricciones y
+/// su último pedido semanal de la web que se reservó, `answers`) y el pedido
+/// de la reserva embebidos. Los nombres de las FK desambiguan:
+/// `requests.target_session_id` también apunta a `sessions`, y `sessions` une
+/// `clients` con `requests`. De `answers`, el repositorio pide solo el más
+/// nuevo de los semanales, de la web y aceptados (sessions_repository.dart).
 const String cookingSessionColumns =
     'id, chef_id, client_id, request_id, date, start_time, cook_minutes, '
     'shop_minutes, gap_minutes, portions, status, service_cents, '
     'groceries_est_cents, groceries_actual_cents, cancelled_at, cancel_reason, '
     'client:clients!sessions_client_id_chef_id_fkey(display_name, '
     'contact_email, contact_phone, zone, address, adults, kids, kitchen_notes, '
-    'status, restrictions:client_restrictions(allergen, diet)), '
+    'status, restrictions:client_restrictions(allergen, diet), '
+    'answers:requests!requests_client_id_chef_id_fkey(type, source, status, '
+    'created_at, restrictions, no_allergies)), '
     'request:requests!sessions_request_id_chef_id_fkey($chefRequestColumns)';
+
+/// Lo que la clienta contestó a la pregunta de alergias en su último pedido
+/// semanal de la web que se reservó (`requests.restrictions` y
+/// `requests.no_allergies`) y cuándo lo mandó (`requests.created_at`): lo de
+/// su casa. Sirve para una sesión semanal cuyo pedido no responde, como una
+/// renovación: una reserva a mano no guarda alergias (SPEC §6). Un pedido
+/// extra no cuenta (los que comen pueden ser otros, como los invitados de una
+/// cena, SPEC §5.6), ni uno que no se reservó (rechazado, vencido o
+/// pendiente: pudo mandarlo otra persona con su email). Dato de salud: no se
+/// imprime.
+@Freezed(fromJson: false, toJson: false, toStringOverride: false)
+abstract class PastAllergyAnswer with _$PastAllergyAnswer {
+  const factory PastAllergyAnswer({
+    required DateTime requestedAt,
+    RequestRestrictions? restrictions,
+    bool? noAllergies,
+  }) = _PastAllergyAnswer;
+
+  const PastAllergyAnswer._();
+
+  /// Responde sobre alergias: las indica (alérgenos o la nota) o confirma que
+  /// nadie tiene. Una dieta sola no responde.
+  bool get answersAllergies =>
+      noAllergies == true || (restrictions?.answersAllergies ?? false);
+
+  @override
+  String toString() => 'PastAllergyAnswer(<oculto>)';
+}
+
+/// De los pedidos embebidos en `client.answers`, el último semanal de la web
+/// que se reservó (`accepted`), solo si responde sobre alergias
+/// ([PastAllergyAnswer.answersAllergies]); null si no hay o si no responde.
+/// Si el más nuevo no responde no se busca uno anterior: puede ser uno
+/// anterior a la pregunta o uno cuya respuesta se borró (consentimiento de
+/// salud retirado, o la copia borrada a pedido de otra persona, contrato
+/// public-request §10.2), y entonces un «nadie tiene» viejo no vale. No
+/// depende del orden en que llegan, y salta los que están rotos o no son
+/// semanales, de la web y aceptados (el repositorio ya pide solo esos).
+PastAllergyAnswer? _lastAllergyAnswer(Object? json) {
+  if (json is! List) return null;
+  PastAllergyAnswer? last;
+  for (final row in json.whereType<Map<Object?, Object?>>()) {
+    if (row['type'] != RequestType.week.name ||
+        row['source'] != RequestSource.web.name ||
+        row['status'] != RequestStatus.accepted.name) {
+      continue;
+    }
+    final createdAt = row['created_at'];
+    final requestedAt = createdAt is String
+        ? DateTime.tryParse(createdAt)
+        : null;
+    if (requestedAt == null) continue;
+    if (last != null && !requestedAt.isAfter(last.requestedAt)) continue;
+    final restrictions = row['restrictions'];
+    final noAllergies = row['no_allergies'];
+    last = PastAllergyAnswer(
+      requestedAt: requestedAt,
+      restrictions: restrictions is Map
+          ? RequestRestrictions.fromJson(restrictions.cast<String, dynamic>())
+          : null,
+      noAllergies: noAllergies is bool ? noAllergies : null,
+    );
+  }
+  return (last?.answersAllergies ?? false) ? last : null;
+}
 
 /// La ficha de la clienta de una sesión (`clients`) y sus restricciones
 /// guardadas (`client_restrictions`, con su consentimiento de salud). Datos de
@@ -69,6 +140,10 @@ abstract class SessionClient with _$SessionClient {
     /// De `client_restrictions`, en el orden del enum y sin repetir.
     @Default(<Allergen>[]) List<Allergen> allergens,
     @Default(<Diet>[]) List<Diet> diets,
+
+    /// La respuesta de alergias de su último pedido semanal de la web que se
+    /// reservó (de `answers`); null si no hay o si ese pedido no responde.
+    PastAllergyAnswer? lastAllergyAnswer,
   }) = _SessionClient;
 
   const SessionClient._();
@@ -104,6 +179,7 @@ abstract class SessionClient with _$SessionClient {
         for (final diet in Diet.values)
           if (diets.contains(diet.name)) diet,
       ],
+      lastAllergyAnswer: _lastAllergyAnswer(json['answers']),
     );
   }
 
@@ -296,43 +372,90 @@ abstract class CookingSession with _$CookingSession {
   /// La dirección de la ficha, o null.
   String? get address => client.address;
 
-  /// Alérgenos a evitar: los del pedido (`requests.restrictions`) y los de la
-  /// ficha (`client_restrictions`), en el orden del enum y sin repetir.
+  /// La respuesta de alergias que la sesión toma de otro pedido de la
+  /// clienta: la de su último pedido semanal de la web que se reservó
+  /// ([SessionClient.lastAllergyAnswer], null si ese pedido no responde),
+  /// solo si la sesión es de la casa (de un pedido semanal, o sin pedido) y su
+  /// pedido no responde (no trae alérgenos, nota ni «nadie tiene», como una
+  /// renovación, que no guarda alergias). Una sesión extra no la toma: los que
+  /// comen pueden ser otros, como los invitados de una cena (SPEC §5.6). null
+  /// si no corresponde o no hay.
+  PastAllergyAnswer? get earlierAllergyAnswer {
+    final own = request;
+    if (own != null && (own.type != RequestType.week || own.answersAllergies)) {
+      return null;
+    }
+    return client.lastAllergyAnswer;
+  }
+
+  /// Alérgenos a evitar: los del pedido (`requests.restrictions`) o, si no
+  /// responde, los del otro pedido ([earlierAllergyAnswer]), y los de la ficha
+  /// (`client_restrictions`), en el orden del enum y sin repetir.
   List<Allergen> get allergens {
-    final all = {...?request?.restrictions?.allergens, ...client.allergens};
+    final all = {
+      ...?request?.restrictions?.allergens,
+      ...?earlierAllergyAnswer?.restrictions?.allergens,
+      ...client.allergens,
+    };
     return [
       for (final allergen in Allergen.values)
         if (all.contains(allergen)) allergen,
     ];
   }
 
-  /// Dietas del pedido y de la ficha, en el orden del enum y sin repetir.
+  /// Dietas del pedido, del otro pedido ([earlierAllergyAnswer]) y de la
+  /// ficha, en el orden del enum y sin repetir. Se muestran siempre, pero no
+  /// responden sobre alergias.
   List<Diet> get diets {
-    final all = {...?request?.restrictions?.diets, ...client.diets};
+    final all = {
+      ...?request?.restrictions?.diets,
+      ...?earlierAllergyAnswer?.restrictions?.diets,
+      ...client.diets,
+    };
     return [
       for (final diet in Diet.values)
         if (all.contains(diet)) diet,
     ];
   }
 
-  /// La nota de alergias del pedido (texto libre: ningún control la cruza con
-  /// los platos), o vacía.
-  String get allergyNote => request?.restrictions?.note.trim() ?? '';
+  /// La nota de alergias del pedido o, si no responde, la del otro pedido
+  /// ([earlierAllergyAnswer]) (texto libre: ningún control la cruza con los
+  /// platos), o vacía.
+  String get allergyNote {
+    final own = request?.restrictions?.note.trim() ?? '';
+    if (own.isNotEmpty) return own;
+    return earlierAllergyAnswer?.restrictions?.note.trim() ?? '';
+  }
 
   /// La celiaquía exige la nota de contaminación cruzada en la sesión (SPEC
-  /// §5.6): gluten en la ficha o en el pedido.
+  /// §5.6): gluten en la ficha o en un pedido.
   bool get needsCrossContaminationNote => allergens.contains(Allergen.gluten);
 
-  /// Qué mostrar de alergias: indicadas si hay alguna (de la ficha o del
-  /// pedido); si no, «nadie tiene» solo si el pedido lo confirmó; si no, sin
-  /// datos (hay que preguntar).
+  /// Qué mostrar de alergias: indicadas si hay algún alérgeno o la nota; si
+  /// no, «nadie tiene» solo si el pedido (o, si no responde, el otro) lo
+  /// confirmó; si no, sin datos (hay que preguntar), también con solo una
+  /// dieta.
   AllergyAnswer get allergyAnswer {
-    if (allergens.isNotEmpty || diets.isNotEmpty || allergyNote.isNotEmpty) {
+    if (allergens.isNotEmpty || allergyNote.isNotEmpty) {
       return AllergyAnswer.listed;
     }
-    return request?.noAllergies == true
-        ? AllergyAnswer.none
-        : AllergyAnswer.unknown;
+    final confirmed =
+        request?.noAllergies == true ||
+        earlierAllergyAnswer?.noAllergies == true;
+    return confirmed ? AllergyAnswer.none : AllergyAnswer.unknown;
+  }
+
+  /// Cuándo mandó la clienta el otro pedido de donde sale lo que se muestra
+  /// de alergias ([earlierAllergyAnswer]), para decirlo con su fecha. null si
+  /// sale del pedido de la reserva o no hay respuesta, y también si su «nadie
+  /// tiene» no se muestra porque la ficha tiene alérgenos.
+  DateTime? get earlierAnswerAt {
+    final earlier = earlierAllergyAnswer;
+    if (earlier == null) return null;
+    final shown =
+        (earlier.restrictions?.answersAllergies ?? false) ||
+        allergyAnswer == AllergyAnswer.none;
+    return shown ? earlier.requestedAt : null;
   }
 
   /// Solo el id y el estado: nada de la clienta.

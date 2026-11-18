@@ -704,7 +704,7 @@
   },
   "detailAllergiesUnknown": "Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.",
   "@detailAllergiesUnknown": {
-    "description": "Detalle del pedido, sección de alergias, destacada: el pedido no trae respuesta (anterior a la pregunta de la web, de la app o con el consentimiento de salud retirado). Pide preguntarle al cliente antes del menú. Solo en el detalle del pedido: la ficha de la sesión y Hoy dicen sessionAllergiesNoData."
+    "description": "Detalle del pedido, sección de alergias, destacada: el pedido no trae respuesta (anterior a la pregunta de la web, de la app, con el consentimiento de salud retirado o con solo una dieta, que se muestra debajo). Pide preguntarle al cliente antes del menú. Solo en el detalle del pedido: la ficha de la sesión y Hoy dicen sessionAllergiesNoData."
   },
   "detailAllergens": "Allergeni da evitare",
   "@detailAllergens": {
@@ -1509,11 +1509,11 @@
   },
   "sessionSectionAllergies": "Allergie e diete",
   "@sessionSectionAllergies": {
-    "description": "Sección de la ficha de la sesión: alérgenos y dietas de la ficha y de la solicitud, y la nota de alergias de la solicitud."
+    "description": "Sección de la ficha de la sesión: alérgenos y dietas de la ficha y de la solicitud (o, en una sesión semanal cuya solicitud no responde, de su última solicitud semanal de la web que se reservó), y la nota de alergias de esa solicitud."
   },
   "sessionAllergyNote": "Nota della richiesta",
   "@sessionAllergyNote": {
-    "description": "Etiqueta de la nota de alergias que escribió la clienta en la solicitud (texto libre, se muestra resaltada)."
+    "description": "Etiqueta de la nota de alergias que escribió la clienta en la solicitud (texto libre, se muestra resaltada). Si sale de otra solicitud suya, arriba de la sección va su fecha (sessionAllergiesEarlierRequest)."
   },
   "sessionCrossContamination": "Glutine (celiachia): evita la contaminazione crociata. Utensili, pentole e superfici puliti o separati, niente farina in giro.",
   "@sessionCrossContamination": {
@@ -1521,7 +1521,14 @@
   },
   "sessionAllergiesNoData": "Allergie: nessun dato nell'app, chiedile",
   "@sessionAllergiesNoData": {
-    "description": "Ficha de la sesión y Hoy, sección de alergias, resaltado como advertencia: la sesión no tiene ningún dato de alergias (ni restricciones de la ficha, ni nota del pedido, ni la confirmación «nadie tiene»), por ejemplo una reserva cargada a mano (sin consentimiento de salud no se guardan, M2). Nunca quiere decir «sin alergias»."
+    "description": "Ficha de la sesión y Hoy, sección de alergias, resaltado como advertencia: la sesión no tiene ningún dato de alergias (ni alérgenos de la ficha, ni nota o alérgenos del pedido o, en una sesión semanal, de su último pedido semanal de la web que se reservó, ni la confirmación «nadie tiene»), por ejemplo una reserva cargada a mano de una clienta sin ese pedido o cuyo pedido no responde, o una sesión extra a mano (sin consentimiento de salud no se guardan, M2). Una dieta sola no es un dato de alergias: sale igual, con la dieta debajo. Nunca quiere decir «sin alergias»."
+  },
+  "sessionAllergiesEarlierRequest": "Secondo la sua richiesta ({date})",
+  "@sessionAllergiesEarlierRequest": {
+    "description": "Ficha de la sesión y Hoy, sección de alergias, debajo del título y en letra chica: lo que sigue (la nota, los alérgenos o «nadie tiene») sale de otra solicitud de la clienta, su última solicitud semanal de la web que se reservó, porque la de esta reserva semanal no responde (una renovación o una reserva a mano no guardan alergias). La fecha es la de esa solicitud, en Roma. En italiano va entre paréntesis y sin artículo: «del 8 ott» tendría que ser «dell'8 ott».",
+    "placeholders": {
+      "date": { "type": "String", "example": "19 ott 2026" }
+    }
   },
   "sessionSectionClient": "Cliente",
   "@sessionSectionClient": {

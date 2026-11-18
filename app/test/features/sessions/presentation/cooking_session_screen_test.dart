@@ -6,9 +6,12 @@
 // alle…», también en una sesión de hoy cuya llegada ya pasó; sin la hora de
 // llegada en una sesión de un día que ya pasó en Roma o cancelada), las
 // alergias resaltadas (la nota del pedido, también sola como llega de la web,
-// y, con gluten, la de contaminación cruzada; sin ningún dato, como en una
-// reserva a mano, la advertencia «Allergie: nessun dato nell'app, chiedile»)
-// en el orden en que las lee el lector de pantalla, las semanas de la
+// y, con gluten, la de contaminación cruzada; si el pedido semanal de la
+// reserva no responde, como en una renovación, las del último pedido semanal
+// de la web que se reservó, con la fecha de ese pedido, nunca en una sesión
+// extra; sin ningún dato, como en una reserva a mano, o con solo una
+// dieta, la advertencia «Allergie: nessun dato nell'app, chiedile») en el
+// orden en que las lee el lector de pantalla, las semanas de la
 // reserva, «Rinnova» al final de la última sesión viva de una reserva
 // semanal (con «Ha già un'altra sessione…» si la ficha ya tiene otra
 // después), y cancelar con confirmación, motivo y «anche le successive», con
@@ -687,6 +690,147 @@ void main() {
         expectNoDataWarning(tester, 'Alergias: sin datos en la app, pregúntale');
       },
     );
+
+    testWidgets(
+      'una renovación (pedido de la app, sin respuesta): la nota de su último pedido semanal de la web que se reservó, con la fecha de ese pedido, y no la advertencia',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await openSession(
+          tester,
+          sessions: FakeSessionsRepository(
+            buildBooking(
+              requestSource: RequestSource.app,
+              lastAllergyAnswer: PastAllergyAnswer(
+                requestedAt: DateTime.utc(2026, 10, 19, 9, 15),
+                restrictions: webRestrictions,
+                noAllergies: false,
+              ),
+            ),
+          ),
+        );
+        expect(
+          textOf(tester, 'session-allergies-earlier'),
+          'Secondo la sua richiesta (19 ott 2026)',
+        );
+        expect(textOf(tester, 'session-allergy-note'), 'Celiachia, noci');
+        expect(byKey('session-allergies-unknown'), findsNothing);
+        expect(byKey('session-no-allergies'), findsNothing);
+
+        // La fecha es un nodo propio, entre el título y la nota.
+        final labels = [
+          for (final node in tester.semantics.simulatedAccessibilityTraversal())
+            node.getSemanticsData().label,
+        ];
+        final title = labels.indexOf('Allergie e diete');
+        final earlier = labels.indexOf(
+          'Secondo la sua richiesta (19 ott 2026)',
+        );
+        final note = labels.indexWhere(
+          (l) => l.startsWith('Nota della richiesta') && l.contains('noci'),
+        );
+        expect(
+          title >= 0 && title < earlier && earlier < note,
+          isTrue,
+          reason: labels.join(' | '),
+        );
+        semantics.dispose();
+      },
+    );
+
+    testWidgets(
+      '«nadie tiene» de su último pedido, con la fecha (el día de Roma), en español',
+      (tester) async {
+        await openSession(
+          tester,
+          locale: const Locale('es'),
+          sessions: FakeSessionsRepository(
+            buildBooking(
+              requestSource: RequestSource.app,
+              // 23:30 UTC del 18/11: en Roma ya es el 19.
+              lastAllergyAnswer: PastAllergyAnswer(
+                requestedAt: DateTime.utc(2026, 11, 18, 23, 30),
+                noAllergies: true,
+              ),
+            ),
+          ),
+        );
+        expect(
+          textOf(tester, 'session-allergies-earlier'),
+          'Según su solicitud del 19 nov 2026',
+        );
+        expect(
+          textOf(tester, 'session-no-allergies'),
+          'Confirmó que nadie tiene alergias, intolerancias alimentarias ni celiaquía.',
+        );
+        expect(byKey('session-allergies-unknown'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'una sesión extra a mano: la advertencia, aunque la clienta haya respondido en un pedido semanal (los que comen pueden ser otros)',
+      (tester) async {
+        await openSession(
+          tester,
+          n: 1,
+          sessions: FakeSessionsRepository([
+            buildSession(
+              type: RequestType.extra,
+              requestSource: RequestSource.app,
+              weeks: 1,
+              lastAllergyAnswer: PastAllergyAnswer(
+                requestedAt: DateTime.utc(2026, 10, 19, 9, 15),
+                noAllergies: true,
+              ),
+            ),
+          ]),
+        );
+        expectNoDataWarning(tester, "Allergie: nessun dato nell'app, chiedile");
+        expect(byKey('session-allergies-earlier'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'si el pedido de la reserva responde, vale el suyo, sin fecha',
+      (tester) async {
+        await openSession(
+          tester,
+          sessions: FakeSessionsRepository(
+            buildBooking(
+              noAllergies: true,
+              lastAllergyAnswer: PastAllergyAnswer(
+                requestedAt: DateTime.utc(2026, 10, 19, 9, 15),
+                restrictions: webRestrictions,
+              ),
+            ),
+          ),
+        );
+        expect(byKey('session-no-allergies'), findsOneWidget);
+        expect(byKey('session-allergies-earlier'), findsNothing);
+        expect(byKey('session-allergy-note'), findsNothing);
+      },
+    );
+
+    testWidgets('solo una dieta: la advertencia de preguntar, y la dieta', (
+      tester,
+    ) async {
+      await openSession(
+        tester,
+        sessions: FakeSessionsRepository(
+          buildBooking(
+            restrictions: const RequestRestrictions(diets: [Diet.vegetarian]),
+          ),
+        ),
+      );
+      expectNoDataWarning(tester, "Allergie: nessun dato nell'app, chiedile");
+      expect(
+        find.descendant(
+          of: byKey('session-diets'),
+          matching: find.text('Vegetariana'),
+        ),
+        findsOneWidget,
+      );
+      expect(byKey('session-allergies-earlier'), findsNothing);
+    });
 
     testWidgets(
       'el lector de pantalla las lee en el orden en que se ven: el título solo y después cada cosa',

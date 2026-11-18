@@ -437,18 +437,20 @@ class _RequestDetail extends ConsumerWidget {
                       for (final a in restrictions.allergens) l10n.allergen(a),
                     ],
                   ),
-                if (restrictions.diets.isNotEmpty)
-                  _ChipsRow(
-                    label: l10n.detailDiets,
-                    values: [for (final d in restrictions.diets) l10n.diet(d)],
-                  ),
-                if (restrictions.note.isNotEmpty)
-                  _InfoRow(
-                    label: l10n.detailRestrictionsNote,
-                    value: restrictions.note,
-                  ),
               ],
             },
+            // Las dietas, con cualquier respuesta: una dieta sola no dice nada
+            // de alergias (sale el aviso de arriba), pero se muestra.
+            if (restrictions.diets.isNotEmpty)
+              _ChipsRow(
+                label: l10n.detailDiets,
+                values: [for (final d in restrictions.diets) l10n.diet(d)],
+              ),
+            if (restrictions.note.trim().isNotEmpty)
+              _InfoRow(
+                label: l10n.detailRestrictionsNote,
+                value: restrictions.note,
+              ),
 
             _Section(title: l10n.detailSectionNotes),
             SelectableText(

@@ -328,6 +328,7 @@
   "sessionAllergyNote": "Note from the request",
   "sessionCrossContamination": "Gluten (coeliac): avoid cross-contamination. Clean or separate utensils, pans and surfaces, no loose flour.",
   "sessionAllergiesNoData": "Allergies: no data in the app, ask her",
+  "sessionAllergiesEarlierRequest": "From her request of {date}",
   "sessionSectionClient": "Client",
   "sessionAddress": "Address",
   "sessionKitchenNotes": "Kitchen notes",

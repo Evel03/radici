@@ -22,6 +22,9 @@ String sessionId(int n) =>
     'd0000000-0000-4000-8000-0000000000${n.toString().padLeft(2, '0')}';
 
 /// Fila de PostgREST como la devuelve `select(cookingSessionColumns)`.
+/// [clientAnswers] son los pedidos de la clienta embebidos en la ficha
+/// (`client.answers`: type, source, status, created_at, restrictions y
+/// no_allergies).
 Map<String, dynamic> sessionRow({
   String? id,
   String date = '2026-11-25',
@@ -35,6 +38,7 @@ Map<String, dynamic> sessionRow({
   List<Map<String, Object?>> clientRestrictions = const [
     {'allergen': 'gluten', 'diet': null},
   ],
+  List<Map<String, Object?>> clientAnswers = const [],
   Map<String, dynamic>? request,
 }) => {
   'id': id ?? sessionId(1),
@@ -64,6 +68,7 @@ Map<String, dynamic> sessionRow({
     'kitchen_notes': 'Forno a gas',
     'status': 'trial',
     'restrictions': clientRestrictions,
+    'answers': clientAnswers,
   },
   'request': requestId == null
       ? null
@@ -82,6 +87,8 @@ Map<String, dynamic> sessionRow({
 /// reserva a mano es de la app) de la ficha [testClientId], el miércoles
 /// 25/11/2026 a las 10:00, con 45 min de compra y 180 de cocina, 20
 /// porciones y 140 € de servicio. [estimate] es la del pedido embebido.
+/// [lastAllergyAnswer] es la respuesta de su último pedido semanal de la web
+/// que se reservó (la que toma una sesión semanal cuyo pedido no responde).
 CookingSession buildSession({
   int n = 1,
   String? id,
@@ -99,6 +106,8 @@ CookingSession buildSession({
   String? phone = '+39 333 123 4567',
   String? address = 'Via Gombito 12, 24129 Bergamo',
   List<Allergen> clientAllergens = const [],
+  List<Diet> clientDiets = const [],
+  PastAllergyAnswer? lastAllergyAnswer,
   RequestRestrictions? restrictions,
   bool? noAllergies,
   ClientLocale locale = ClientLocale.it,
@@ -136,6 +145,8 @@ CookingSession buildSession({
     kitchenNotes: 'Forno a gas',
     status: ClientStatus.trial,
     allergens: clientAllergens,
+    diets: clientDiets,
+    lastAllergyAnswer: lastAllergyAnswer,
   ),
   request: requestId == null
       ? null
@@ -162,7 +173,7 @@ CookingSession buildSession({
 /// desde 1, y [serviceCents] es el servicio de cada semana. [address] null:
 /// una reserva que llegó por la web (el formulario no pide la dirección).
 /// [requestSource] app: una reserva cargada a mano. [estimate] es la del
-/// pedido.
+/// pedido. [lastAllergyAnswer], la de buildSession.
 List<CookingSession> buildBooking({
   int weeks = 4,
   CalendarDate? first,
@@ -175,6 +186,7 @@ List<CookingSession> buildBooking({
   String name = 'Giulia Rossi',
   String? address = 'Via Gombito 12, 24129 Bergamo',
   List<Allergen> clientAllergens = const [],
+  PastAllergyAnswer? lastAllergyAnswer,
   RequestRestrictions? restrictions,
   bool? noAllergies,
   ClientLocale locale = ClientLocale.it,
@@ -195,6 +207,7 @@ List<CookingSession> buildBooking({
         name: name,
         address: address,
         clientAllergens: clientAllergens,
+        lastAllergyAnswer: lastAllergyAnswer,
         restrictions: restrictions,
         noAllergies: noAllergies,
         locale: locale,

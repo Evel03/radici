@@ -343,6 +343,45 @@ void main() {
       expect(buildRequest(restrictions: note, noAllergies: true).allergyAnswer, AllergyAnswer.listed);
     });
 
+    test('una dieta sola no responde sobre alergias: sin datos (la dieta igual se muestra)', () {
+      const note = RequestRestrictions(note: 'Celiachia');
+      const vegetarian = RequestRestrictions(diets: [Diet.vegetarian]);
+      final dietOnly = buildRequest(restrictions: vegetarian);
+      expect(dietOnly.allergyAnswer, AllergyAnswer.unknown);
+      expect(dietOnly.answersAllergies, isFalse);
+      // La lista de la bandeja igual marca que trae restricciones.
+      expect(dietOnly.hasRestrictions, isTrue);
+      // Con alérgenos o la nota, sí.
+      expect(
+        buildRequest(
+          restrictions: const RequestRestrictions(
+            diets: [Diet.vegan],
+            note: 'Noci',
+          ),
+        ).allergyAnswer,
+        AllergyAnswer.listed,
+      );
+      expect(
+        buildRequest(
+          restrictions: const RequestRestrictions(
+            diets: [Diet.vegan],
+            allergens: [Allergen.nuts],
+          ),
+        ).allergyAnswer,
+        AllergyAnswer.listed,
+      );
+      // Una nota en blanco tampoco responde.
+      expect(
+        buildRequest(restrictions: const RequestRestrictions(note: '   '))
+            .allergyAnswer,
+        AllergyAnswer.unknown,
+      );
+      // «Nadie tiene» responde.
+      expect(buildRequest(noAllergies: true).answersAllergies, isTrue);
+      expect(buildRequest(restrictions: note).answersAllergies, isTrue);
+      expect(buildRequest().answersAllergies, isFalse);
+    });
+
     test('personas, teléfono normalizado y primer nombre', () {
       final request = buildRequest(name: '  Giulia   Maria Rossi ');
       expect(request.people, 4);

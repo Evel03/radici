@@ -143,11 +143,15 @@ class SessionHelp extends StatelessWidget {
 }
 
 /// Alergias y dietas de la ficha y del pedido, la nota del pedido resaltada
-/// y, con gluten, la nota de contaminación cruzada (SPEC §5.6). Sin ningún
-/// dato, una advertencia que pide preguntarle, nunca «sin alergias». Cada
-/// pieza es un nodo propio del lector de pantalla, en el orden en que se ve:
-/// el título primero (ver SessionSection). La ficha de la sesión y Hoy (con
-/// [dense], dentro de una tarjeta) muestran lo mismo.
+/// y, con gluten, la nota de contaminación cruzada (SPEC §5.6). En una sesión
+/// semanal cuyo pedido no responde (una renovación), lo del último pedido
+/// semanal de la web que se reservó, con la fecha de ese pedido (nunca en una
+/// extra: CookingSession.earlierAllergyAnswer). Sin ningún dato, una
+/// advertencia que pide preguntarle, nunca «sin alergias»; una dieta sola no
+/// es un dato de alergias: se muestra debajo de la advertencia. Cada pieza es
+/// un nodo propio del lector de pantalla, en el orden en que se ve: el título
+/// primero (ver SessionSection). La ficha de la sesión y Hoy (con [dense],
+/// dentro de una tarjeta) muestran lo mismo.
 class SessionAllergies extends StatelessWidget {
   const SessionAllergies({super.key, required this.session, this.dense = false});
 
@@ -162,11 +166,28 @@ class SessionAllergies extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final note = session.allergyNote;
+    final earlierAt = session.earlierAnswerAt;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SessionSection(l10n.sessionSectionAllergies, top: dense ? 12 : 24),
+        // Lo que sigue sale de otro pedido de la clienta: de cuándo es.
+        if (earlierAt != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: MergeSemantics(
+              child: Text(
+                l10n.sessionAllergiesEarlierRequest(
+                  RequestFormats(context).instantDayMonthYear(earlierAt),
+                ),
+                key: const ValueKey('session-allergies-earlier'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
         ...switch (session.allergyAnswer) {
           AllergyAnswer.none => [
             MergeSemantics(
@@ -176,10 +197,12 @@ class SessionAllergies extends StatelessWidget {
               ),
             ),
           ],
-          // Ningún dato (ni restricciones de la ficha, ni nota del pedido, ni
-          // «nadie tiene»): que le pregunte antes de cocinar. Una reserva
-          // cargada a mano cae acá salvo que la ficha tenga restricciones: no
-          // guarda alergias (falta el consentimiento de salud, M2).
+          // Ningún dato (ni alérgenos de la ficha, ni nota o alérgenos de un
+          // pedido de la clienta, ni «nadie tiene»): que le pregunte antes de
+          // cocinar. Una reserva cargada a mano no guarda alergias (falta el
+          // consentimiento de salud, M2): cae acá salvo que la ficha tenga
+          // alérgenos o, si es semanal, responda el último pedido semanal de
+          // la web que se reservó.
           AllergyAnswer.unknown => [
             _WarningBox(
               boxKey: const ValueKey('session-allergies-unknown-box'),
@@ -194,49 +217,51 @@ class SessionAllergies extends StatelessWidget {
                 label: l10n.detailAllergens,
                 values: [for (final a in session.allergens) l10n.allergen(a)],
               ),
-            if (session.diets.isNotEmpty)
-              _Chips(
-                keyName: 'session-diets',
-                label: l10n.detailDiets,
-                values: [for (final d in session.diets) l10n.diet(d)],
+          ],
+        },
+        // Las dietas, con cualquier respuesta: no dicen nada de alergias.
+        if (session.diets.isNotEmpty)
+          _Chips(
+            keyName: 'session-diets',
+            label: l10n.detailDiets,
+            values: [for (final d in session.diets) l10n.diet(d)],
+          ),
+        // Solo con alergias indicadas hay nota (la nota es una respuesta).
+        if (note.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.tertiaryContainer,
+                borderRadius: BorderRadius.circular(4),
               ),
-            if (note.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colors.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: MergeSemantics(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            l10n.sessionAllergyNote,
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: colors.onTertiaryContainer,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            note,
-                            key: const ValueKey('session-allergy-note'),
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              color: colors.onTertiaryContainer,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: MergeSemantics(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.sessionAllergyNote,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: colors.onTertiaryContainer,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 4),
+                      Text(
+                        note,
+                        key: const ValueKey('session-allergy-note'),
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: colors.onTertiaryContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-          ],
-        },
+            ),
+          ),
         if (session.needsCrossContaminationNote)
           Padding(
             padding: const EdgeInsets.only(top: 8),
