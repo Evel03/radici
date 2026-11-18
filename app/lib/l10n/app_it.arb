@@ -992,9 +992,9 @@
   "@clientPickerProspect": {
     "description": "Elegir la clienta, debajo del teléfono y la zona: la ficha es un prospecto (pidió por la web y todavía no tuvo una reserva) y no tiene un pedido semanal. Separa dos fichas de la misma persona."
   },
-  "clientPickerProspectSince": "Non ancora cliente · richiesta del {date}",
+  "clientPickerProspectSince": "Non ancora cliente · richiesta: {date}",
   "@clientPickerProspectSince": {
-    "description": "Elegir la clienta, debajo del teléfono y la zona: la ficha es un prospecto (pidió por la web y todavía no tuvo una reserva). Separa dos fichas de la misma persona. date: el día de su último pedido semanal.",
+    "description": "Elegir la clienta, debajo del teléfono y la zona: la ficha es un prospecto (pidió por la web y todavía no tuvo una reserva). Separa dos fichas de la misma persona. date: el día de su último pedido semanal. En italiano sin artículo delante de la fecha: «del 8/11» tendría que ser «dell'8/11».",
     "placeholders": {
       "date": { "type": "String", "example": "15/11" }
     }

@@ -205,7 +205,7 @@ void main() {
       expect(listedIds(tester), hasLength(3));
     });
 
-    testWidgets('un prospecto lo dice («Non ancora cliente · richiesta del …») y va después de la ficha con el mismo nombre', (tester) async {
+    testWidgets('un prospecto lo dice («Non ancora cliente · richiesta: …») y va después de la ficha con el mismo nombre', (tester) async {
       final twin = buildClient(
         id: 'a-twin',
         name: 'Chiara Rossi',
@@ -227,7 +227,7 @@ void main() {
       expect(listedIds(tester), ['c-chiara', 'a-twin']);
       expect(
         textOf(tester, 'client-a-twin-prospect'),
-        'Non ancora cliente · richiesta del 15/11',
+        'Non ancora cliente · richiesta: 15/11',
       );
       expect(byKey('client-c-chiara-prospect'), findsNothing);
       expect(tester.widget<ListTile>(byKey('client-a-twin')).isThreeLine, isTrue);
