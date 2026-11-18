@@ -334,7 +334,8 @@ repositorios falsos (`test/support/fakes.dart`).
   - con otra cantidad de semanas, el precio sale de las tarifas de su estimación solo si el total
     era el de esas tarifas (560 € en 4 semanas pasa a 300 € en 2); si no, queda vacío y obligatorio;
   - el encabezado y el WhatsApp van a la ficha, que es lo que muestran las sesiones nuevas; si el
-    pedido renovado traía otro teléfono, el encabezado lo dice;
+    pedido renovado traía otro teléfono, el encabezado lo dice (y, si la ficha no tiene uno válido,
+    que no hay WhatsApp, en lugar de decir que va al de la ficha);
   - los feriados de Bergamo y una llegada de hoy que ya pasó se avisan como en cualquier hoja (el día
     +7 del pendiente, la primera fecha es hoy: duda D1);
   - con una respuesta perdida no se cierra hasta reintentar, tampoco con el atrás del navegador, y

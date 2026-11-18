@@ -254,6 +254,7 @@
   "bookingRenewalSubtitle": "Renovación · última sesión {date}",
   "bookingRenewalLastDiffers": "No todas las semanas tenían el mismo día y la misma hora: el día y la hora salen de la última.",
   "bookingRenewalOtherPhone": "En la solicitud anterior el número era {phone}: el WhatsApp va al de la ficha.",
+  "bookingRenewalRequestPhone": "La ficha no tiene un número válido para WhatsApp; en la solicitud anterior el número era {phone}.",
   "bookingRenewalUnavailable": "Esta reserva no se puede renovar.",
   "bookingCookHelpRenewal": "Como en la reserva anterior.",
   "bookingChecksFailed": "No se pudieron comprobar las fechas. Puedes confirmar igual: el servidor las vuelve a revisar.",

@@ -767,11 +767,17 @@ class _Header extends StatelessWidget {
               style: secondary,
             ),
           if (state.otherRequestPhone case final phone?)
-            Text(
-              l10n.bookingRenewalOtherPhone(phone),
-              key: const ValueKey('booking-renewal-other-phone'),
-              style: secondary,
-            ),
+            state.otherPhoneWithoutWhatsApp
+                ? Text(
+                    l10n.bookingRenewalRequestPhone(phone),
+                    key: const ValueKey('booking-renewal-request-phone'),
+                    style: secondary,
+                  )
+                : Text(
+                    l10n.bookingRenewalOtherPhone(phone),
+                    key: const ValueKey('booking-renewal-other-phone'),
+                    style: secondary,
+                  ),
         ] else if (contact.isNotEmpty)
           Text(
             contact,

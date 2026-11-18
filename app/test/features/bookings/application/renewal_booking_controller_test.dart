@@ -207,8 +207,27 @@ void main() {
       expect(state().party?.phoneE164, '+393331234567');
       expect(state().lastDiffers, isTrue);
       expect(state().otherRequestPhone, '+34 612 345 678');
+      expect(state().otherPhoneWithoutWhatsApp, isFalse);
       expect(state().dates.first, CalendarDate(2026, 12, 25));
       expect(bookings.dryRuns.first.start, const ClockTime.hm(11, 0));
+    });
+
+    test('la ficha sin teléfono y el pedido con uno: el encabezado no puede decir que el WhatsApp va al de la ficha', () async {
+      save([
+        for (final session in buildBooking())
+          session.copyWith(
+            client: session.client.copyWith(contactPhone: null),
+            request: session.request!.copyWith(
+              client: session.request!.client.copyWith(
+                contactPhone: '+34 612 345 678',
+              ),
+            ),
+          ),
+      ]);
+      await open();
+      expect(state().party?.phoneE164, isNull);
+      expect(state().otherRequestPhone, '+34 612 345 678');
+      expect(state().otherPhoneWithoutWhatsApp, isTrue);
     });
 
     test('confirmar sin tocar nada manda el cuerpo 4 con 560 € y la clave de la hoja; el WhatsApp va a la ficha', () async {

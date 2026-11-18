@@ -410,6 +410,30 @@ void main() {
     expect(app.launcher.launched.single.path, '/393331234567');
   });
 
+  testWidgets('la ficha sin teléfono y el pedido con uno: el encabezado no promete el WhatsApp, y no lo hay', (tester) async {
+    final booking = [
+      for (final session in buildBooking())
+        session.copyWith(
+          client: session.client.copyWith(contactPhone: null),
+          request: session.request!.copyWith(
+            client: session.request!.client.copyWith(
+              contactPhone: '+34 612 345 678',
+            ),
+          ),
+        ),
+    ];
+    await openRenewal(tester, sessions: FakeSessionsRepository(booking));
+    expect(byKey('booking-renewal-other-phone'), findsNothing);
+    expect(
+      textOf(tester, 'booking-renewal-request-phone'),
+      'La scheda non ha un numero valido per WhatsApp; nella richiesta precedente il numero era +34 612 345 678.',
+    );
+    await tester.tap(byKey('booking-confirm'));
+    await tester.pumpAndSettle();
+    expect(byKey('booking-no-phone'), findsOneWidget);
+    expect(tester.widget<FilledButton>(byKey('booking-whatsapp')).onPressed, isNull);
+  });
+
   testWidgets('más de 300 minutos se copian: «+» deshabilitado y «−» los lleva a 300', (tester) async {
     await openRenewal(
       tester,

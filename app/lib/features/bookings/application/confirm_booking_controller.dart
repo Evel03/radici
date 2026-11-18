@@ -210,6 +210,12 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
 
   bool get isManual => kind == BookingSourceKind.manual;
 
+  /// «Rinnova»: el pedido renovado traía otro teléfono y la ficha no tiene
+  /// uno válido, así que no hay WhatsApp: el encabezado no puede decir que
+  /// va al número de la ficha.
+  bool get otherPhoneWithoutWhatsApp =>
+      otherRequestPhone != null && party?.phoneE164 == null;
+
   /// La hoja crea el pedido (a mano o «Rinnova»): el servidor reconoce un
   /// reintento solo por la clave de la hoja, así que mientras espera uno no
   /// se cierra, y un 404 es la ficha que ya no está.

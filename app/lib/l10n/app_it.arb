@@ -1146,6 +1146,13 @@
       "phone": { "type": "String", "example": "+34 612 345 678" }
     }
   },
+  "bookingRenewalRequestPhone": "La scheda non ha un numero valido per WhatsApp; nella richiesta precedente il numero era {phone}.",
+  "@bookingRenewalRequestPhone": {
+    "description": "Hoja «Rinnova prenotazione», encabezado, en lugar de bookingRenewalOtherPhone: el pedido que se renueva llegó con un teléfono y la ficha no tiene uno válido, así que al confirmar no hay WhatsApp (la renovación no cambia la ficha). phone: como lo escribió la clienta.",
+    "placeholders": {
+      "phone": { "type": "String", "example": "+34 612 345 678" }
+    }
+  },
   "bookingRenewalUnavailable": "Questa prenotazione non si può rinnovare.",
   "@bookingRenewalUnavailable": {
     "description": "Hoja «Rinnova prenotazione» abierta para una sesión cuya reserva no se puede renovar: una sesión extra, sin pedido, un presupuesto o una reserva sin sesiones vivas."
