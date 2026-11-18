@@ -545,6 +545,31 @@ void main() {
         "Settimana 1 · Si sovrappone a un'altra sessione: cambia quella data o l'ora.",
       );
     });
+
+    // «Controllo le date…» se anuncia al empezar: el resultado que impide
+    // confirmar también. La línea del precio no (cambia con cada tecla).
+    testWidgets('el lector de pantalla oye el choque que encontró el dryRun, no la línea del precio', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final app = await openChiara(tester);
+      expect(textOf(tester, 'booking-blocker'), 'Manca il prezzo del servizio.');
+      expect(
+        tester.getSemantics(byKey('booking-blocker')),
+        isSemantics(isLiveRegion: false),
+      );
+      await typePrice(tester, '560');
+      // Con otra cantidad de semanas, el dryRun encuentra un choque.
+      app.bookings.statuses[tomorrow] = BookingDayStatus.busy;
+      await tapInForm(tester, 'booking-weeks-decrement');
+      expect(
+        textOf(tester, 'booking-blocker'),
+        "Settimana 1 · Si sovrappone a un'altra sessione: cambia quella data o l'ora.",
+      );
+      expect(
+        tester.getSemantics(byKey('booking-blocker')),
+        isSemantics(isLiveRegion: true),
+      );
+      semantics.dispose();
+    });
   });
 
   group('antes de la hoja', () {

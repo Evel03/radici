@@ -982,6 +982,10 @@ class _ConfirmBar extends StatelessWidget {
             textKey: 'booking-blocker',
             text: l10n.bookingBlockerText(state, blocker, locale: locale),
             color: theme.colorScheme.error,
+            // El choque llega cuando vuelve el dryRun: el lector de pantalla
+            // lo anuncia (el comienzo, «Controllo le date…», también). El
+            // precio no, que cambia con cada tecla.
+            liveRegion: blocker.kind == BookingBlockKind.clash,
             actionKey: 'booking-blocker-show',
             actionLabel: l10n.bookingShowProblem,
             onAction: switch (blocker) {

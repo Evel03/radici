@@ -70,7 +70,8 @@ class BookingBottomBar extends StatelessWidget {
 
 /// Una línea de la barra de abajo, arriba del botón (o, con [padding], debajo
 /// del botón al que se refiere), con un botón a la derecha que lleva hasta lo
-/// que dice (deshabilitado mientras nada se puede cambiar).
+/// que dice (deshabilitado mientras nada se puede cambiar). Con [liveRegion],
+/// el lector de pantalla la anuncia al aparecer.
 class BookingBarLine extends StatelessWidget {
   const BookingBarLine({
     super.key,
@@ -81,6 +82,7 @@ class BookingBarLine extends StatelessWidget {
     required this.onAction,
     this.color,
     this.padding = const EdgeInsets.only(bottom: 8),
+    this.liveRegion = false,
   });
 
   final String textKey;
@@ -90,20 +92,22 @@ class BookingBarLine extends StatelessWidget {
   final String actionLabel;
   final VoidCallback? onAction;
   final EdgeInsetsGeometry padding;
+  final bool liveRegion;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final line = Text(
+      text,
+      key: ValueKey(textKey),
+      style: theme.textTheme.bodyMedium?.copyWith(color: color),
+    );
     return Padding(
       padding: padding,
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              text,
-              key: ValueKey(textKey),
-              style: theme.textTheme.bodyMedium?.copyWith(color: color),
-            ),
+            child: liveRegion ? Semantics(liveRegion: true, child: line) : line,
           ),
           const SizedBox(width: 8),
           TextButton(
