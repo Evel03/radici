@@ -15,6 +15,7 @@ import 'package:radici/features/auth/presentation/client_area_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
 import 'package:radici/features/bookings/application/booking_seed.dart';
+import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/bookings/presentation/new_booking_client_screen.dart';
 import 'package:radici/features/bookings/presentation/new_client_screen.dart';
@@ -117,10 +118,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) => MaterialPage<void>(
               key: state.pageKey,
               fullscreenDialog: true,
-              child: ConfirmBookingScreen(
-                source: BookingSource.renewal(state.pathParameters['id']!),
-              ),
+              child: ConfirmBookingScreen(source: _renewalSource(state)),
             ),
+            onExit: (context, state) =>
+                _canLeaveBooking(ref, _renewalSource(state)),
           ),
         ],
       ),
@@ -168,24 +169,15 @@ final routerProvider = Provider<GoRouter>((ref) {
                       GoRoute(
                         path: AppRoutes.bookingSegment,
                         parentNavigatorKey: rootNavigatorKey,
-                        pageBuilder: (context, state) {
-                          final query = state.uri.queryParameters;
-                          final clientId = query[AppRoutes.clientParam];
-                          return MaterialPage<void>(
-                            key: state.pageKey,
-                            fullscreenDialog: true,
-                            child: ConfirmBookingScreen(
-                              source: clientId == null
-                                  ? const BookingSource.newClient()
-                                  : BookingSource.client(
-                                      clientId,
-                                      fromForm:
-                                          query[AppRoutes.fromFormParam] ==
-                                          '1',
-                                    ),
-                            ),
-                          );
-                        },
+                        pageBuilder: (context, state) => MaterialPage<void>(
+                          key: state.pageKey,
+                          fullscreenDialog: true,
+                          child: ConfirmBookingScreen(
+                            source: _manualSource(state),
+                          ),
+                        ),
+                        onExit: (context, state) =>
+                            _canLeaveBooking(ref, _manualSource(state)),
                       ),
                     ],
                   ),
@@ -293,6 +285,36 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 Page<void> _page(GoRouterState state, Widget child) =>
     MaterialPage<void>(key: state.pageKey, child: child);
+
+/// La fuente de la hoja a mano: la ficha de la URL o, sin ella, la ficha
+/// nueva del formulario.
+BookingSource _manualSource(GoRouterState state) {
+  final query = state.uri.queryParameters;
+  final clientId = query[AppRoutes.clientParam];
+  return clientId == null
+      ? const BookingSource.newClient()
+      : BookingSource.client(
+          clientId,
+          fromForm: query[AppRoutes.fromFormParam] == '1',
+        );
+}
+
+/// La fuente de la hoja «Rinnova»: la sesión de la URL.
+BookingSource _renewalSource(GoRouterState state) =>
+    BookingSource.renewal(state.pathParameters['id']!);
+
+/// El onExit de las hojas que crean el pedido (a mano y «Rinnova»): go_router
+/// lo consulta por todos los caminos, también el atrás del navegador en
+/// /gestione/ (el botón, el gesto de Safari o el atrás de Android en la PWA),
+/// que entra por setNewRoutePath y no pasa por PopScope. La hoja no sale
+/// mientras se manda o espera el reintento de una confirmación sin respuesta
+/// (ConfirmBookingState.holdsOpen). Sin la sesión de la cocinera, sí: la
+/// redirección al login la saca (la hoja ya no podría confirmar nada).
+bool _canLeaveBooking(Ref ref, BookingSource source) {
+  if (ref.read(sessionControllerProvider) is! ChefSession) return true;
+  final provider = confirmBookingProvider(source);
+  return !ref.exists(provider) || !ref.read(provider).holdsOpen;
+}
 
 /// Una fecha "AAAA-MM-DD" de la URL, o null si falta o no es una fecha.
 CalendarDate? _dateOrNull(String? value) {

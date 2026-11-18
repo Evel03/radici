@@ -244,10 +244,11 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
     final manual = state.isManual;
     // A mano o al renovar, mientras espera el reintento de una confirmación
     // sin respuesta, la hoja no se cierra: otra hoja tendría otra clave y
-    // podría duplicar la reserva (y, con una ficha nueva, la ficha). Desde un
-    // pedido se puede cerrar: el servidor reconoce el reintento por el estado
-    // del pedido.
-    final keepOpen = state.createsRequest && state.retryPending;
+    // podría duplicar la reserva (y, con una ficha nueva, la ficha). El atrás
+    // del navegador no pasa por PopScope: lo frena el onExit de la ruta
+    // (router.dart). Desde un pedido se puede cerrar: el servidor reconoce el
+    // reintento por el estado del pedido.
+    final keepOpen = state.holdsOpen;
     return PopScope(
       // Mientras se manda, la hoja no se cierra. A mano, después de
       // confirmar, volver hace lo mismo que «Fatto».

@@ -308,6 +308,12 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
   /// Nada se puede cambiar: se está mandando o se espera el reintento.
   bool get frozen => sending || retryPending;
 
+  /// A mano o al renovar, mientras se manda o espera el reintento de una
+  /// confirmación sin respuesta, la hoja no se cierra por ningún camino (la
+  /// X, el atrás del sistema o el del navegador): otra hoja tendría otra
+  /// clave y podría duplicar la reserva (y, con una ficha nueva, la ficha).
+  bool get holdsOpen => createsRequest && frozen;
+
   bool get canConfirm =>
       seedStatus == BookingSeedStatus.ready &&
       result == null &&

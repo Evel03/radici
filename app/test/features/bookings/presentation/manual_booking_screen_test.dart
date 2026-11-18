@@ -11,7 +11,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/core/router.dart';
 import 'package:radici/core/uuid.dart';
+import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
@@ -21,6 +23,7 @@ import 'package:radici/features/clients/data/clients_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 
+import '../../../support/browser_history.dart';
 import '../../../support/chef_app.dart';
 import '../../../support/client_fixtures.dart';
 import '../../../support/fakes.dart';
@@ -344,6 +347,83 @@ void main() {
       hasLength(1),
     );
     expect(byKey('booking-done-duplicate'), findsOneWidget);
+  });
+
+  // En /gestione/ el atrás del navegador entra por el router y no pasa por
+  // PopScope: lo frena el onExit de la ruta de la hoja.
+  group('el atrás del navegador', () {
+    const sheet = '/richieste/nuova/prenota?cliente=c-chiara';
+
+    testWidgets('sin respuesta al confirmar no cierra la hoja: el reintento lleva la misma clave y no duplica', (tester) async {
+      final history = FakeBrowserHistory()..install(tester);
+      final app = await openChiara(
+        tester,
+        configure: (b) => b.loseNextConfirmResponse = true,
+      );
+      await typePrice(tester, '560');
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      expect(byKey('booking-retry-keeps-open'), findsOneWidget);
+
+      final before = history.entries.last.uri;
+      await history.back(tester);
+      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+      expect(app.container.read(routerProvider).state.uri.toString(), sheet);
+      expect(history.entries.last.uri, before, reason: 'la barra vuelve a donde estaba');
+
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      final sent = app.bookings.confirmations;
+      expect(sent, hasLength(2));
+      expect(sent.last.requestKey, 'key-1');
+      expect(app.bookings.savedByKey, hasLength(1));
+      expect(
+        app.requests.requests.keys.where((id) => id.startsWith('manual-request')),
+        hasLength(1),
+      );
+      expect(byKey('booking-done-duplicate'), findsOneWidget);
+    });
+
+    testWidgets('mientras se manda tampoco la cierra', (tester) async {
+      final history = FakeBrowserHistory()..install(tester);
+      final app = await openChiara(tester);
+      await typePrice(tester, '560');
+      app.bookings.pendingConfirm = Completer<void>();
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pump();
+      await history.back(tester, settle: false);
+      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+      expect(app.container.read(routerProvider).state.uri.toString(), sheet);
+
+      app.bookings.pendingConfirm!.complete();
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Prenotazione confermata'), findsOneWidget);
+      expect(app.bookings.confirmations, hasLength(1));
+    });
+
+    testWidgets('con la hoja libre, vuelve al elegir', (tester) async {
+      final history = FakeBrowserHistory()..install(tester);
+      await openChiara(tester);
+      await history.back(tester);
+      expect(find.byType(ConfirmBookingScreen), findsNothing);
+      expect(find.byType(NewBookingClientScreen), findsOneWidget);
+    });
+
+    testWidgets('si la sesión se cierra mientras espera el reintento, la lleva al login', (tester) async {
+      final app = await openChiara(
+        tester,
+        configure: (b) => b.loseNextConfirmResponse = true,
+      );
+      await typePrice(tester, '560');
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+      expect(byKey('booking-retry-keeps-open'), findsOneWidget);
+
+      app.auth.emit(null);
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsNothing);
+      expect(find.byType(LoginScreen), findsOneWidget);
+    });
   });
 
   group('lo que dice el servidor de cada semana', () {

@@ -298,9 +298,11 @@ repositorios falsos (`test/support/fakes.dart`).
   hasta tocarlos y el precio vacío y obligatorio. El POST lleva `clientId` o `newClient` (completo
   también en el `dryRun`), `type: "week"`, `household` y `locale` (contrato chef-api §4); en una
   ficha nueva, el hogar y el idioma tienen una sola fuente con el formulario. Si el servidor no
-  acepta los datos de la ficha nueva, «Correggi» vuelve al formulario. Con una respuesta perdida, la
-  hoja no se cierra hasta reintentar: otra hoja tendría otra clave y podría duplicar la reserva (y la
-  ficha). Al confirmar, la reserva está en «Prenotazioni» aunque la relectura falle, y «Fatto», la X
+  acepta los datos de la ficha nueva, «Correggi» vuelve al formulario. Mientras se manda y con una
+  respuesta perdida, la hoja no se cierra hasta reintentar: otra hoja tendría otra clave y podría
+  duplicar la reserva (y la ficha). Tampoco con el atrás del navegador en `/gestione/`, que no pasa
+  por `PopScope`: lo frena el `onExit` de la ruta (sin la sesión de la cocinera, la redirección al
+  login la saca igual). Al confirmar, la reserva está en «Prenotazioni» aunque la relectura falle, y «Fatto», la X
   y el atrás llevan ahí. No guarda alergias (falta el consentimiento de salud, M2). En la URL van
   solo ids, nunca el nombre, el teléfono ni la dirección.
 - **Rinnova** (`features/bookings/domain/renewal.dart`, `/sessioni/:id/rinnova`): desde el
@@ -324,7 +326,8 @@ repositorios falsos (`test/support/fakes.dart`).
     pedido renovado traía otro teléfono, el encabezado lo dice;
   - los feriados de Bergamo y una llegada de hoy que ya pasó se avisan como en cualquier hoja (el día
     +7 del pendiente, la primera fecha es hoy: duda D1);
-  - con una respuesta perdida no se cierra hasta reintentar; al confirmar, la reserva está en
+  - con una respuesta perdida no se cierra hasta reintentar, tampoco con el atrás del navegador
+    (como la hoja a mano); al confirmar, la reserva está en
     «Prenotazioni», la renovada queda marcada en el dispositivo (`renewedBookingsProvider`, en
     memoria) y «Fatto» vuelve a donde estaba;
   - no guarda alergias, como toda reserva a mano: sus sesiones dicen «Allergie: nessun dato

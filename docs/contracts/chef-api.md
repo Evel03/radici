@@ -128,7 +128,7 @@ Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato;
 - A mano, `type` es siempre `"week"` y van siempre `household` y `locale` (el idioma de los WhatsApp de la clienta).
 - `newClient` va completo también en el `dryRun`: el primer chequeo ya dice si algún dato no pasa (un `400` con campos `newClient.*`, que la app manda a corregir en el formulario).
 - «Rinnova» es una reserva a mano con el `clientId` de la reserva que se renueva: las fechas desde su última sesión viva + 7 días; `start`, `cookMinutes`, `portions` y `groceriesEstCents` de esa sesión; `household` y `locale` de su pedido; y `serviceTotalCents`, la suma del servicio de todas sus sesiones, también las canceladas. Como la hora ya está elegida, el primer `dryRun` lleva `start`. El servidor no distingue una renovación de otra reserva a mano.
-- Una `requestKey` por hoja: se genera al abrirla y se repite en cada envío de esa hoja. Los 4xx no guardan nada; después de una respuesta perdida, el reintento manda lo mismo. Otra hoja, otra clave. A mano (también «Rinnova»), mientras espera ese reintento la hoja no se cierra: otra hoja usaría otra clave y podría duplicar la reserva (y, con `newClient`, la ficha).
+- Una `requestKey` por hoja: se genera al abrirla y se repite en cada envío de esa hoja. Los 4xx no guardan nada; después de una respuesta perdida, el reintento manda lo mismo. Otra hoja, otra clave. A mano (también «Rinnova»), mientras envía y mientras espera ese reintento la hoja no se cierra, tampoco con el atrás del navegador en `/gestione/`: otra hoja usaría otra clave y podría duplicar la reserva (y, con `newClient`, la ficha).
 
 ## 5. `POST /sessions/move`: mover una semana
 
