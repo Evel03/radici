@@ -330,6 +330,22 @@ void main() {
     await expectNoBrowserAutofill(tester, byKey('client-search'));
   });
 
+  testWidgets('el buscador conserva su nombre para el lector de pantalla también con texto', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await openPicker(tester);
+    await search(tester, 'chiara');
+    expect(
+      tester.getSemantics(
+        find.descendant(
+          of: byKey('client-search'),
+          matching: find.byType(EditableText),
+        ),
+      ),
+      containsSemantics(label: 'Nome o telefono', value: 'chiara', isTextField: true),
+    );
+    semantics.dispose();
+  });
+
   testWidgets('a 375×667 «Nuova cliente» queda en el tercio inferior y, con el teclado, por encima de él', (tester) async {
     await openPicker(tester, size: const Size(375, 667));
     final newClient = byKey('new-booking-new-client');

@@ -967,7 +967,7 @@
   },
   "clientSearchHint": "Nome o telefono",
   "@clientSearchHint": {
-    "description": "«Nuova prenotazione», pista del buscador de fichas de clientes (por nombre o por teléfono)."
+    "description": "«Nuova prenotazione», etiqueta del buscador de fichas de clientes (por nombre o por teléfono): adentro del campo vacío y arriba con texto, así el lector de pantalla siempre dice qué campo es."
   },
   "clientSearchClear": "Cancella la ricerca",
   "@clientSearchClear": {

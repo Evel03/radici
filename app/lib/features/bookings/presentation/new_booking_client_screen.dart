@@ -97,9 +97,11 @@ class _NewBookingClientScreenState
               textInputAction: TextInputAction.search,
               // 16 px o más: con menos, iOS agranda la página al enfocar.
               style: theme.textTheme.bodyLarge,
+              // labelText y no hintText: con texto escrito, la pista
+              // desaparece y el lector de pantalla no diría qué campo es.
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search),
-                hintText: l10n.clientSearchHint,
+                labelText: l10n.clientSearchHint,
                 suffixIcon: query.isEmpty
                     ? null
                     : IconButton(
