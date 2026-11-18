@@ -510,7 +510,9 @@ class FakeBookingsRepository implements BookingsRepository {
     );
     if (!request.dryRun) {
       _accept(request);
-      saved[request.requestId] = result.copyWith(duplicate: false);
+      if (request.requestId case final requestId?) {
+        saved[requestId] = result.copyWith(duplicate: false);
+      }
       if (loseNextConfirmResponse) {
         loseNextConfirmResponse = false;
         throw const BookingFailure(BookingFailureKind.unavailable);
@@ -546,9 +548,10 @@ class FakeBookingsRepository implements BookingsRepository {
 
   void _accept(BookingRequest request) {
     final server = requests;
-    final current = server?.requests[request.requestId];
-    if (server == null || current == null) return;
-    server.requests[request.requestId] = current.copyWith(
+    final requestId = request.requestId;
+    final current = server?.requests[requestId];
+    if (server == null || requestId == null || current == null) return;
+    server.requests[requestId] = current.copyWith(
       status: RequestStatus.accepted,
       weeks: request.dates.length,
       seenAt: current.seenAt ?? DateTime.utc(2026, 10, 19, 12),

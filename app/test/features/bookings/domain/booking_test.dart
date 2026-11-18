@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 
 void main() {
   const requestId = 'b0000000-0000-4000-8000-0000000000aa';
@@ -47,6 +48,228 @@ void main() {
         'cookMinutes': 180,
         'dryRun': true,
       });
+    });
+  });
+
+  group('a mano: clientId o newClient (cuerpos 2, 3 y 4 de la especificación)', () {
+    const clientId = 'c1000000-0000-4000-8000-000000000003';
+    const key = '7e5b3000-0000-4000-8000-000000000002';
+    final wednesday = CalendarDate(2026, 11, 18);
+    final fourWeeks = [
+      for (var week = 0; week < 4; week++) wednesday.addDays(7 * week),
+    ];
+    const household = BookingHousehold(
+      adults: 2,
+      kids: 2,
+      days: 5,
+      meals: [Meal.dinner],
+    );
+    const householdJson = {
+      'adults': 2,
+      'kids': 2,
+      'days': 5,
+      'meals': ['dinner'],
+    };
+    const giulia = NewClientData(
+      name: 'Giulia Rossi',
+      phone: '+393331234567',
+      zone: 'Città Alta',
+      address: 'Via Gombito 12, Bergamo',
+    );
+    const giuliaJson = {
+      'name': 'Giulia Rossi',
+      'phone': '+393331234567',
+      'zone': 'Città Alta',
+      'address': 'Via Gombito 12, Bergamo',
+    };
+
+    test('ficha existente: el primer dryRun, sin hora', () {
+      final body = BookingRequest(
+        clientId: clientId,
+        type: RequestType.week,
+        household: household,
+        locale: ClientLocale.it,
+        dates: fourWeeks,
+        cookMinutes: 180,
+        portions: 20,
+        groceriesEstCents: 6300,
+        dryRun: true,
+      ).toBody();
+      expect(body, {
+        'clientId': clientId,
+        'type': 'week',
+        'household': householdJson,
+        'locale': 'it',
+        'dates': ['2026-11-18', '2026-11-25', '2026-12-02', '2026-12-09'],
+        'cookMinutes': 180,
+        'portions': 20,
+        'groceriesEstCents': 6300,
+        'dryRun': true,
+      });
+    });
+
+    test('ficha existente: la confirmación', () {
+      final body = BookingRequest(
+        clientId: clientId,
+        type: RequestType.week,
+        household: household,
+        locale: ClientLocale.es,
+        dates: fourWeeks,
+        start: const ClockTime.hm(10, 0),
+        cookMinutes: 180,
+        portions: 20,
+        groceriesEstCents: 6300,
+        serviceTotalCents: 56000,
+        requestKey: key,
+      ).toBody();
+      expect(body, {
+        'clientId': clientId,
+        'type': 'week',
+        'household': householdJson,
+        'locale': 'es',
+        'dates': ['2026-11-18', '2026-11-25', '2026-12-02', '2026-12-09'],
+        'start': '10:00',
+        'cookMinutes': 180,
+        'portions': 20,
+        'groceriesEstCents': 6300,
+        'serviceTotalCents': 56000,
+        'requestKey': key,
+        'dryRun': false,
+      });
+    });
+
+    test('ficha nueva: newClient completo ya en el dryRun, igual que al confirmar', () {
+      BookingRequest manual({required bool dryRun}) => BookingRequest(
+        newClient: giulia,
+        type: RequestType.week,
+        household: household,
+        locale: ClientLocale.it,
+        dates: [wednesday],
+        start: dryRun ? null : const ClockTime.hm(10, 0),
+        cookMinutes: 180,
+        portions: 20,
+        groceriesEstCents: 6300,
+        serviceTotalCents: dryRun ? null : 14000,
+        requestKey: dryRun ? null : key,
+        dryRun: dryRun,
+      );
+      expect(manual(dryRun: true).toBody(), {
+        'newClient': giuliaJson,
+        'type': 'week',
+        'household': householdJson,
+        'locale': 'it',
+        'dates': ['2026-11-18'],
+        'cookMinutes': 180,
+        'portions': 20,
+        'groceriesEstCents': 6300,
+        'dryRun': true,
+      });
+      expect(manual(dryRun: false).toBody(), {
+        'newClient': giuliaJson,
+        'type': 'week',
+        'household': householdJson,
+        'locale': 'it',
+        'dates': ['2026-11-18'],
+        'start': '10:00',
+        'cookMinutes': 180,
+        'portions': 20,
+        'groceriesEstCents': 6300,
+        'serviceTotalCents': 14000,
+        'requestKey': key,
+        'dryRun': false,
+      });
+    });
+
+    test('una ficha nueva solo con el nombre: sin las claves vacías', () {
+      final body = BookingRequest(
+        newClient: const NewClientData(name: 'Anna'),
+        type: RequestType.week,
+        household: household,
+        locale: ClientLocale.en,
+        dates: [wednesday],
+        cookMinutes: 180,
+        dryRun: true,
+      ).toBody();
+      expect(body['newClient'], {'name': 'Anna'});
+      expect(body.containsKey('portions'), isFalse);
+    });
+
+    test('con la hora ya elegida (como «Rinnova»), el primer dryRun la lleva', () {
+      final body = BookingRequest(
+        clientId: clientId,
+        type: RequestType.week,
+        household: household,
+        locale: ClientLocale.it,
+        dates: fourWeeks,
+        start: const ClockTime.hm(10, 0),
+        cookMinutes: 180,
+        portions: 20,
+        groceriesEstCents: 6300,
+        dryRun: true,
+      ).toBody();
+      expect(body['start'], '10:00');
+      expect(body['dryRun'], isTrue);
+      expect(body.containsKey('requestKey'), isFalse);
+    });
+
+    test('las comidas van en orden canónico y sin repetir aunque se pasen al revés', () {
+      final body = BookingRequest(
+        clientId: clientId,
+        type: RequestType.week,
+        household: const BookingHousehold(
+          adults: 1,
+          kids: 0,
+          days: 7,
+          meals: [Meal.dinner, Meal.lunch, Meal.dinner],
+        ),
+        locale: ClientLocale.it,
+        dates: [wednesday],
+        cookMinutes: 180,
+        dryRun: true,
+      ).toBody();
+      expect((body['household']! as Map)['meals'], ['lunch', 'dinner']);
+    });
+
+    test('una sola clienta: con dos (o ninguna), AssertionError; a mano, con tipo, hogar e idioma', () {
+      expect(
+        () => BookingRequest(
+          requestId: requestId,
+          clientId: clientId,
+          dates: [wednesday],
+          cookMinutes: 180,
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(
+        () => BookingRequest(dates: [wednesday], cookMinutes: 180),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(
+        () => BookingRequest(
+          clientId: clientId,
+          dates: [wednesday],
+          cookMinutes: 180,
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+    });
+
+    test('toString sin el nombre, el teléfono ni la dirección', () {
+      final request = BookingRequest(
+        newClient: giulia,
+        type: RequestType.week,
+        household: household,
+        locale: ClientLocale.it,
+        dates: fourWeeks,
+        cookMinutes: 180,
+        dryRun: true,
+      );
+      for (final text in [request.toString(), giulia.toString()]) {
+        expect(text, isNot(contains('Giulia')));
+        expect(text, isNot(contains('3331234567')));
+        expect(text, isNot(contains('Gombito')));
+      }
+      expect(request.toString(), 'BookingRequest(dates: 4, dryRun: true)');
     });
   });
 
