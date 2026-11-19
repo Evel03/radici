@@ -1,6 +1,7 @@
 // Resumen del pedido para la pantalla de gracias. Pura: devuelve textos, la página los pinta con textContent.
-// Solo datos del pedido (tipo, semanas, personas, días, comidas, fechas, estimación) y qué contestó sobre
-// alergias (ninguna o indicadas, nunca cuáles): nada de contacto ni de salud.
+// Solo datos del pedido (tipo, semanas, personas, días, comidas, fechas, platos elegidos, estimación) y qué
+// contestó sobre alergias (ninguna o indicadas, nunca cuáles): nada de contacto ni de salud.
+import { localizedText, type MenuChoice } from "../../../supabase/functions/_shared/menu.ts";
 import type { I18n } from "../i18n/core.ts";
 import { formatCents, formatIsoDate, formatShortDate } from "../lib/format.ts";
 import { publicEstimate, weeklyDates, weeksOf, type PublicRequestEstimate, type RequestData } from "./model.ts";
@@ -57,9 +58,26 @@ export function priceRows(estimate: PublicRequestEstimate, i18n: I18n): SummaryR
 }
 
 /**
- * @param estimate la del servidor (con las tarifas de la cocinera) o, si no vino, la de la calculadora.
+ * El menù: los platos que guardó el servidor, en el idioma de la página (o en italiano); si son menos que
+ * los días, que el resto lo propone Evelyn; sin platos, que lo propone ella.
  */
-export function summaryRows(data: RequestData, estimate: PublicRequestEstimate | null, i18n: I18n): SummaryRow[] {
+export function menuSummary(menu: readonly MenuChoice[], days: number, i18n: I18n): string {
+  const { t, lang } = i18n;
+  if (menu.length === 0) return t("request.summary.menuNone");
+  const dishes = menu.map((dish) => localizedText(dish.name, lang)).join(" · ");
+  return menu.length < days ? t("request.summary.menuPartial", { dishes }) : dishes;
+}
+
+/**
+ * @param estimate la del servidor (con las tarifas de la cocinera) o, si no vino, la de la calculadora.
+ * @param menu los platos que guardó el servidor (doneMenu en menu.ts); [] si el menù lo propone Evelyn.
+ */
+export function summaryRows(
+  data: RequestData,
+  estimate: PublicRequestEstimate | null,
+  i18n: I18n,
+  menu: readonly MenuChoice[] = [],
+): SummaryRow[] {
   const { t, locale } = i18n;
   const weeks = weeksOf(data);
   const rows: SummaryRow[] = [{ label: t("request.summary.type"), value: t(`request.type.${data.type}`) }];
@@ -82,6 +100,7 @@ export function summaryRows(data: RequestData, estimate: PublicRequestEstimate |
       value: data.preferredDate ? formatIsoDate(data.preferredDate, locale) : t("request.summary.dateNone"),
     });
   }
+  rows.push({ label: t("request.summary.menu"), value: menuSummary(menu, data.days, i18n) });
   // Qué contestó sobre alergias, nunca cuáles. Un pedido guardado sin la casilla siempre trae alergias
   // escritas (el servidor las exige).
   rows.push({

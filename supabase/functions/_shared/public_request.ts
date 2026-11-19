@@ -9,15 +9,17 @@ import { calcQuote, LIMITS, NO_AUTO_PRICE_REASONS, type NoAutoPriceReason, type 
  * recibe `version: "invalid"` y la web pide recargarla.
  * 2: la pregunta de alergias (`noAllergies`, y las alergias escritas en `restrictionsNote`).
  * 3: las semanas del pedido semanal (`weeks`, obligatorio) y la estimación con el precio por semana (§2).
+ * 4: los platos que eligió el cliente en la pestaña «Menù» (`menu`, opcional; decisión del 19/11/2026).
  */
-export const PUBLIC_REQUEST_VERSION = 3;
+export const PUBLIC_REQUEST_VERSION = 4;
 /**
- * Versiones que el servidor acepta. La 2 (sin `weeks`: siempre una semana, no podía pedir más) mientras
- * haya páginas en caché y mientras se despliegan la web y la función, que salen por separado: así la
- * función nueva atiende a la web de antes. Una función de antes (solo la 2) rechaza la 3 por versión y
- * nunca guarda un pedido de varias semanas como si fuera de una. Sacar la 2 en un PR propio.
+ * Versiones que el servidor acepta. La 3 (sin `menu`: el menù lo propone Evelyn) y la 2 (sin `weeks`:
+ * siempre una semana, no podía pedir más) mientras haya páginas en caché y mientras se despliegan la web
+ * y la función, que salen por separado: así la función nueva atiende a la web de antes. Una función de
+ * antes (la 3 y la 2) rechaza la 4 por versión y nunca guarda un pedido sin los platos que eligió el
+ * cliente. Sacar las viejas en un PR propio.
  */
-export const PUBLIC_REQUEST_VERSIONS: readonly number[] = [PUBLIC_REQUEST_VERSION, 2];
+export const PUBLIC_REQUEST_VERSIONS: readonly number[] = [PUBLIC_REQUEST_VERSION, 3, 2];
 
 /** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
 export const CONSENT_VERSION = "2026-11-16";
@@ -150,6 +152,12 @@ export interface PublicRequestPayload {
   /** Token de Cloudflare Turnstile; lo verifica la Edge Function. */
   turnstileToken: string;
   /**
+   * Los platos que eligió en la pestaña «Menù» (ids de get_public_menu), en el orden en que los tildó: de
+   * 0 a `days`, sin repetir. Solo desde la versión 4 (en la 3 y la 2 se ignora); opcional: sin el campo,
+   * ninguno, y el menù lo propone Evelyn.
+   */
+  menu?: string[];
+  /**
    * Clave de idempotencia (UUID) generada por la web una vez por pedido y reutilizada en los reintentos.
    * Si llega otra vez la misma clave, el servidor devuelve el pedido ya guardado y no repite los avisos.
    * Opcional para no romper clientes viejos.
@@ -164,7 +172,9 @@ export type ErrorCode =
   | "tooLong"
   | "dateOutOfRange"
   | "consentRequired"
-  | "healthConsentRequired";
+  | "healthConsentRequired"
+  /** Más platos en el menù que días (`menu`). */
+  | "tooMany";
 
 export type PublicRequestField =
   | "payload"
@@ -181,6 +191,7 @@ export type PublicRequestField =
   | "diets"
   | "restrictionsNote"
   | "preferredDate"
+  | "menu"
   | "slot"
   | "name"
   | "zone"
@@ -229,6 +240,8 @@ export interface NormalizedPublicRequest {
   turnstileToken: string;
   /** UUID en minúsculas, o null si la web no mandó clave. */
   requestKey: string | null;
+  /** Los platos elegidos (uuids en minúsculas, en el orden en que los tildó); [] sin elegir o antes de la versión 4. */
+  menu: string[];
   quoteInput: QuoteInput;
 }
 
@@ -495,6 +508,20 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     else errors.requestKey = "invalid";
   }
 
+  // Menù: desde la versión 4 (en la 3 y la 2 no existe y, si llega, se ignora). Hasta un plato por día; con
+  // los días inválidos no se sabe el tope y solo vale el error de los días. Que el plato esté publicado lo
+  // decide la base (submit_public_request descarta los que no, sin error).
+  let menu: string[] = [];
+  const menuRaw = raw.menu;
+  if (typeof raw.version === "number" && raw.version >= 4 && menuRaw !== undefined && menuRaw !== null) {
+    const ids = Array.isArray(menuRaw) && menuRaw.every((id) => typeof id === "string" && isUuid(id))
+      ? (menuRaw as string[]).map((id) => id.toLowerCase())
+      : null;
+    if (!ids || new Set(ids).size !== ids.length) errors.menu = "invalid";
+    else if (!errors.days && ids.length > days) errors.menu = "tooMany";
+    else menu = ids;
+  }
+
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
   const quoteInput: QuoteInput = { type: type as RequestType, adults, kids, days, meals: (meals as Meal[]).length, weeks };
@@ -523,6 +550,7 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     consents: { privacy: privacy as string, health },
     turnstileToken: turnstileToken as string,
     requestKey,
+    menu,
     quoteInput,
   };
   return { ok: true, value, estimate: calcQuote(quoteInput) };

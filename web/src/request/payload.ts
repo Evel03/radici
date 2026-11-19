@@ -56,6 +56,8 @@ export function buildPayload(data: RequestData, opts: PayloadOptions): PublicReq
       health: hasHealthData(data) && data.consentHealth ? CONSENT_VERSION : null,
     },
     turnstileToken: opts.turnstileToken,
+    // Los platos elegidos, en el orden en que los tildó ([] si el menù lo propone Evelyn).
+    menu: [...data.menu],
     ...(opts.requestKey ? { requestKey: opts.requestKey } : {}),
   };
 }

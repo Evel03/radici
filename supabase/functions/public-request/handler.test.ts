@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AVAILABILITY_DAYS, AVAILABILITY_PATH, buildAvailabilityResponse } from "../_shared/availability.ts";
 import { hashSubject } from "../_shared/client_ip.ts";
+import { MENU_PATH, buildMenuResponse, type MenuChoice, type MenuDish } from "../_shared/menu.ts";
 import { CONSENT_VERSION, PUBLIC_REQUEST_VERSION, publicEstimate, type PublicRequestPayload } from "../_shared/public_request.ts";
 import { DEFAULT_PRICING, calcQuote } from "../_shared/quote.ts";
 import { RESEND_API_URL } from "../_shared/resend.ts";
@@ -13,10 +14,13 @@ import {
   AVAILABILITY_RATE_LIMITS,
   CHEF_SETTINGS_COLUMNS,
   DEFAULT_CHEF_LOCALE,
+  MENU_CACHE_CONTROL,
+  MENU_RATE_LIMITS,
   RATE_LIMITS,
   StoreError,
   availabilityRateSubject,
   availableDatesFromRpc,
+  menuRateSubject,
   chefFromRow,
   configWarnings,
   createPublicRequestHandler,
@@ -97,6 +101,32 @@ const CHEF: ChefInfo = {
   pricing: { ...DEFAULT_PRICING, weeklyRateCents: 16000, weeklyRateDiscountedCents: 15000 },
 };
 
+// Platos publicados de la cocinera (get_public_menu). Las lasagne, solo de octubre a diciembre; el
+// minestrone, todo el año y sin traducción al español. UNPUBLISHED_ID: un plato que se despublicó entre la
+// carga de la página y el envío.
+const LASAGNE: MenuDish = {
+  id: "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
+  name: { it: "Lasagne", es: "Lasaña", en: null },
+  description: { it: "Ragù e besciamella.", es: null, en: null },
+  allergens: ["gluten", "eggs", "milk"],
+  diet: null,
+  seasonMonths: [10, 11, 12],
+};
+const MINESTRONE: MenuDish = {
+  id: "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
+  name: { it: "Minestrone", es: null, en: "Minestrone soup" },
+  description: { it: "Verdure di stagione.", es: null, en: null },
+  allergens: ["celery"],
+  diet: "vegan",
+  seasonMonths: null,
+};
+const UNPUBLISHED_ID = "2a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
+
+/** Lo que guarda submit_public_request de un plato: el id y el nombre actual. */
+function choiceOf(dish: MenuDish): MenuChoice {
+  return { id: dish.id, name: dish.name };
+}
+
 /** Id del n-ésimo pedido guardado (el primero, REQUEST_ID). */
 function requestIdFor(n: number): string {
   return n === 0 ? REQUEST_ID : `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -111,7 +141,7 @@ class FakeStore implements PublicRequestStore {
   chef: ChefInfo | null = CHEF;
   /** Filas de public.chefs (para resolveDefaultChef sin CHEF_ID). */
   chefIds: string[] = [CHEF_ID];
-  failOn: "rate" | "resolve" | "chef" | "submit" | "mark" | "freeDays" | null = null;
+  failOn: "rate" | "resolve" | "chef" | "submit" | "mark" | "freeDays" | "menu" | null = null;
   /** true: como hit_public_request_rate, cuenta los intentos de cada clave y aplica los límites (si no, responde allow). */
   countHits = false;
   hits: Array<{ ipHash: string; maxHour: number; maxDay: number }> = [];
@@ -126,6 +156,9 @@ class FakeStore implements PublicRequestStore {
   /** Fechas que public.get_free_days marca con available = true. */
   freeDates: string[] = [];
   freeDaysCalls: Array<{ chefId: string; cookMinutes: number; fromDate: string; days: number }> = [];
+  /** Platos publicados (get_public_menu). */
+  dishes: MenuDish[] = [LASAGNE, MINESTRONE];
+  menuCalls: string[] = [];
 
   async hitRateLimit(ipHash: string, maxHour: number, maxDay: number): Promise<boolean> {
     if (this.failOn === "rate") throw new StoreError("rate_limit", "57014", null);
@@ -133,6 +166,12 @@ class FakeStore implements PublicRequestStore {
     if (!this.countHits) return this.allow;
     const count = this.hits.filter((hit) => hit.ipHash === ipHash).length;
     return count <= maxHour && count <= maxDay;
+  }
+
+  async publicMenu(chefId: string): Promise<MenuDish[]> {
+    if (this.failOn === "menu") throw new StoreError("public_menu", "57014", null);
+    this.menuCalls.push(chefId);
+    return [...this.dishes];
   }
 
   async freeDays(chefId: string, cookMinutes: number, fromDate: string, days: number): Promise<string[]> {
@@ -161,7 +200,14 @@ class FakeStore implements PublicRequestStore {
     this.calls.push(params);
     const existing = params.request_key ? this.byKey.get(`${params.chef_id}:${params.request_key}`) : undefined;
     if (existing) return { ...existing, duplicate: true };
-    const saved: SubmitResult = { requestId: requestIdFor(this.submitted.length), duplicate: false, storedEstimate: params.estimate };
+    // Como la base: solo los platos publicados, en el orden en que llegaron, con su nombre actual.
+    const storedMenu = params.wishes.flatMap((id) => this.dishes.filter((dish) => dish.id === id).map(choiceOf));
+    const saved: SubmitResult = {
+      requestId: requestIdFor(this.submitted.length),
+      duplicate: false,
+      storedEstimate: params.estimate,
+      storedMenu,
+    };
     this.submitted.push(params);
     if (params.request_key) this.byKey.set(`${params.chef_id}:${params.request_key}`, saved);
     return saved;
@@ -494,6 +540,7 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
       serviceCents: 16000,
       savingsCents: 0,
     },
+    menu: [],
   });
 
   assert.deepEqual(store.submitted[0], {
@@ -521,6 +568,7 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
     health_consent_version: CONSENT_VERSION,
     estimate: { ...quote, pricing: CHEF.pricing },
     request_key: null,
+    wishes: [],
   });
   // Sin compra (la hace el cliente): ni la estimación ni las tarifas por porción en requests.estimate.
   const stored = store.submitted[0]?.estimate as unknown as Record<string, unknown>;
@@ -923,11 +971,16 @@ test("duplicado: responde con la estimación guardada aunque hoy las tarifas den
   const run = harness();
   // El original se guardó con las tarifas de entonces (o la cocinera las cambió después).
   const original = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 4 }, DEFAULT_PRICING);
-  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: { ...original, pricing: DEFAULT_PRICING } });
+  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, {
+    requestId: REQUEST_ID,
+    duplicate: false,
+    storedEstimate: { ...original, pricing: DEFAULT_PRICING },
+    storedMenu: [],
+  });
   const response = await run.handle(post(payload({ requestKey: REQUEST_KEY, weeks: 2 })));
   await run.settle();
   assert.equal(response.status, 201);
-  assert.deepEqual(await json(response), { requestId: REQUEST_ID, estimate: publicEstimate(original), duplicate: true });
+  assert.deepEqual(await json(response), { requestId: REQUEST_ID, estimate: publicEstimate(original), menu: [], duplicate: true });
   assert.equal(run.fetchCalls.filter((call) => call.url !== TURNSTILE_VERIFY_URL).length, 0, "ni emails ni WhatsApp");
   assert.deepEqual(run.store.marked, []);
 });
@@ -940,7 +993,8 @@ test("duplicado de un pedido guardado antes del precio por semana: la estimació
     preauthCents: 7245, holdCents: 15045, totalCents: 14100,
     pricing: { hourlyRateCents: 2200, travelFeeCents: 1200, adultPortionCents: 380, kidPortionCents: 250, preauthBufferPct: 15, minCookMinutes: 90 },
   };
-  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: stored });
+  // Y sin menu: la base de antes de la versión 4 no lo devolvía.
+  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: stored, storedMenu: null });
   const response = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
   assert.equal(response.status, 201);
   assert.deepEqual(await json(response), {
@@ -949,6 +1003,7 @@ test("duplicado de un pedido guardado antes del precio por semana: la estimació
       weeks: 1, portions: 20, recipes: 3, cookMinutes: 180,
       autoPrice: true, weeklyServiceCents: 7800, serviceCents: 7800, savingsCents: 0,
     },
+    menu: [],
     duplicate: true,
   });
   assert.ok(!run.logs.some((entry) => entry.event === "stored_estimate_invalid"));
@@ -956,7 +1011,7 @@ test("duplicado de un pedido guardado antes del precio por semana: la estimació
 
 test("duplicado con una estimación guardada rota: responde con la calculada y lo avisa en el log", async () => {
   const run = harness();
-  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: { totalCents: "x" } });
+  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: { totalCents: "x" }, storedMenu: [] });
   const response = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
   assert.equal(response.status, 201);
   const quote = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 }, CHEF.pricing);
@@ -975,13 +1030,21 @@ test("otra requestKey (u otra vez sin clave) es otro pedido", async () => {
   assert.equal(run.logs.filter((entry) => entry.event === "email_logged").length, 8);
 });
 
-test("submitResultFromRpc: solo acepta {request_id uuid, duplicate bool, estimate}", () => {
-  assert.deepEqual(submitResultFromRpc({ request_id: REQUEST_ID, duplicate: true, estimate: { totalCents: 1 } }), {
+test("submitResultFromRpc: solo acepta {request_id uuid, duplicate bool, estimate, menu}", () => {
+  const menu = [choiceOf(LASAGNE)];
+  assert.deepEqual(submitResultFromRpc({ request_id: REQUEST_ID, duplicate: true, estimate: { totalCents: 1 }, menu }), {
     requestId: REQUEST_ID,
     duplicate: true,
     storedEstimate: { totalCents: 1 },
+    storedMenu: menu,
   });
-  assert.deepEqual(submitResultFromRpc({ request_id: REQUEST_ID, duplicate: false }), { requestId: REQUEST_ID, duplicate: false, storedEstimate: null });
+  // Sin estimate ni menu (la base de antes de la versión 4 no devolvía menu): null, sin fallar.
+  assert.deepEqual(submitResultFromRpc({ request_id: REQUEST_ID, duplicate: false }), {
+    requestId: REQUEST_ID,
+    duplicate: false,
+    storedEstimate: null,
+    storedMenu: null,
+  });
   for (const bad of [REQUEST_ID, null, [], { request_id: "x", duplicate: false }, { request_id: REQUEST_ID }, { request_id: REQUEST_ID, duplicate: "no" }]) {
     assert.equal(submitResultFromRpc(bad), null, JSON.stringify(bad));
   }
@@ -1282,6 +1345,257 @@ test("availableDatesFromRpc: las fechas con available = true; cualquier otra for
     [{ day: "2026-10-21", available: "true" }],
   ];
   for (const data of bad) assert.equal(availableDatesFromRpc(data), null, JSON.stringify(data));
+});
+
+// ---------------------------------------------------------------------------
+// Menù de la web: GET …/menu (contrato §12)
+// ---------------------------------------------------------------------------
+
+const MENU_URL = `${ENDPOINT}${MENU_PATH}`;
+
+function getMenu(headers: Record<string, string> = {}, method = "GET"): Request {
+  // forceFunctionRegion lo agrega la web (como en el POST); la función no lo lee.
+  return new Request(`${MENU_URL}?forceFunctionRegion=eu-central-1`, {
+    method,
+    headers: { origin: "https://radicicucina.app", "cf-connecting-ip": "203.0.113.7", ...headers },
+  });
+}
+
+test("menù: 200 con los platos publicados de la cocinera, CORS con la misma lista y caché pública de un minuto", async () => {
+  const run = harness();
+  const response = await run.handle(getMenu());
+  assert.equal(response.status, 200);
+  assert.deepEqual(await json(response), { version: 1, dishes: [LASAGNE, MINESTRONE] });
+  assert.equal(response.headers.get("access-control-allow-origin"), "https://radicicucina.app");
+  assert.equal(response.headers.get("vary"), "Origin");
+  assert.equal(response.headers.get("cache-control"), "public, max-age=60");
+  assert.equal(MENU_CACHE_CONTROL, AVAILABILITY_CACHE_CONTROL, "la misma caché que la disponibilidad");
+  assert.match(response.headers.get("content-type") ?? "", /^application\/json/);
+  assert.deepEqual(run.store.menuCalls, [CHEF_ID]);
+  assert.equal(run.store.calls.length, 0);
+  assert.equal(run.fetchCalls.length, 0, "es una lectura: sin Turnstile ni avisos");
+
+  // Sin platos publicados: la lista vacía (el formulario dice que el menù lo propone Evelyn).
+  const empty = harness();
+  empty.store.dishes = [];
+  assert.deepEqual(await json(await empty.handle(getMenu())), buildMenuResponse([]));
+
+  const other = await run.handle(getMenu({ origin: "https://evil.example" }));
+  assert.equal(other.status, 200, "la respuesta sale igual, pero el navegador no deja leerla");
+  assert.equal(other.headers.get("access-control-allow-origin"), null);
+  assert.equal(other.headers.get("vary"), "Origin");
+
+  const preflight = await run.handle(new Request(MENU_URL, { method: "OPTIONS", headers: { origin: "https://radicicucina.app" } }));
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-methods"), "GET, POST, OPTIONS");
+});
+
+test("menù: solo GET (y OPTIONS); otro método → 405 con Allow, y un POST ahí no es un pedido", async () => {
+  const { handle, store } = harness();
+  for (const method of ["POST", "PUT", "DELETE"]) {
+    const response = await handle(getMenu({ "content-type": "application/json" }, method));
+    assert.equal(response.status, 405, method);
+    assert.deepEqual(await json(response), { error: "method" });
+    assert.equal(response.headers.get("allow"), "GET, OPTIONS");
+    assert.equal(response.headers.get("access-control-allow-origin"), "https://radicicucina.app");
+  }
+  assert.equal(store.calls.length, 0);
+  assert.equal(store.hits.length, 0);
+  assert.equal(store.menuCalls.length, 0);
+});
+
+test("menù: límite por IP propio (HMAC de menu:<ip>); no gasta el cupo del formulario ni el del calendario", async () => {
+  const run = harness({ env: { EMAIL_TRANSPORT: "log" } });
+  run.store.countHits = true;
+  for (let i = 0; i < 10; i++) assert.equal((await run.handle(getMenu())).status, 200);
+  assert.equal((await run.handle(post(payload()))).status, 201, "10 lecturas del menù no tocan los 5 pedidos por hora");
+  assert.equal((await run.handle(new Request(`${ENDPOINT}${AVAILABILITY_PATH}?minutes=180`, { headers: { "cf-connecting-ip": "203.0.113.7" } }))).status, 200);
+  const [menu, submit, availability] = [run.store.hits[0], run.store.hits[10], run.store.hits[11]];
+  assert.equal(menu?.ipHash, await hashSubject("menu:203.0.113.7", ENV["IP_HASH_SALT"] ?? ""));
+  assert.notEqual(menu?.ipHash, submit?.ipHash);
+  assert.notEqual(menu?.ipHash, availability?.ipHash);
+  assert.deepEqual([menu?.maxHour, menu?.maxDay], [MENU_RATE_LIMITS.perHour, MENU_RATE_LIMITS.perDay]);
+  assert.deepEqual(MENU_RATE_LIMITS, { perHour: 120, perDay: 600 });
+  await run.settle();
+});
+
+test("menù: pasado el límite → 429 con Retry-After, sin caché y sin leer los platos", async () => {
+  const { handle, store, logs } = harness();
+  store.allow = false;
+  const response = await handle(getMenu());
+  assert.equal(response.status, 429);
+  assert.deepEqual(await json(response), { error: "rateLimited" });
+  assert.equal(response.headers.get("retry-after"), "3600");
+  assert.equal(response.headers.get("access-control-expose-headers"), "Retry-After");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(store.menuCalls.length, 0);
+  assert.ok(logs.some((entry) => entry.event === "rate_limited" && entry.fields["route"] === "menu"));
+});
+
+test("menù: error de la base → 503 { error: unavailable }, sin detalles ni caché; el log lleva la operación y el código", async () => {
+  for (const [failOn, op] of [["menu", "public_menu"], ["rate", "rate_limit"]] as const) {
+    const { handle, store, logs } = harness();
+    store.failOn = failOn;
+    const response = await handle(getMenu());
+    assert.equal(response.status, 503, failOn);
+    assert.deepEqual(await json(response), { error: "unavailable" });
+    assert.equal(response.headers.get("cache-control"), "no-store", "un error no queda en la caché");
+    const entry = logs.find((item) => item.event === "db_error");
+    assert.deepEqual(entry?.fields, { op, code: "57014" });
+  }
+  const run = harness({ env: { CHEF_ID: undefined } });
+  run.store.failOn = "resolve";
+  const response = await run.handle(getMenu());
+  assert.equal(response.status, 503);
+  assert.deepEqual(await json(response), { error: "unavailable" });
+  assert.deepEqual(run.logs.find((entry) => entry.event === "db_error")?.fields, { op: "resolve_chef", code: "PGRST301" });
+});
+
+test("menù: solo necesita IP_HASH_SALT y, si está, un CHEF_ID válido; sin CHEF_ID, la única cocinera", async () => {
+  const noTurnstile = harness({ env: { TURNSTILE_SECRET_KEY: undefined } });
+  assert.equal((await noTurnstile.handle(getMenu())).status, 200);
+
+  const noSalt = harness({ env: { IP_HASH_SALT: undefined } });
+  const response = await noSalt.handle(getMenu());
+  assert.equal(response.status, 500);
+  assert.deepEqual(await json(response), { error: "server" });
+  assert.deepEqual(noSalt.logs.find((entry) => entry.event === "config_missing")?.fields["missing"], ["IP_HASH_SALT"]);
+  assert.equal(noSalt.store.hits.length, 0);
+
+  const badChef = harness({ env: { CHEF_ID: "no-es-uuid" } });
+  assert.equal((await badChef.handle(getMenu())).status, 500);
+  assert.equal(badChef.store.hits.length, 0);
+  assert.equal(badChef.store.resolveCalls, 0);
+
+  const auto = harness({ env: { CHEF_ID: undefined } });
+  auto.store.chefIds = [OTHER_CHEF_ID];
+  assert.equal((await auto.handle(getMenu())).status, 200);
+  assert.deepEqual(auto.store.menuCalls, [OTHER_CHEF_ID]);
+  for (const chefIds of [[], [CHEF_ID, OTHER_CHEF_ID]]) {
+    const unresolved = harness({ env: { CHEF_ID: undefined } });
+    unresolved.store.chefIds = [...chefIds];
+    assert.equal((await unresolved.handle(getMenu())).status, 500);
+    assert.equal(unresolved.store.menuCalls.length, 0);
+  }
+});
+
+test("menù: los logs no llevan la IP ni los platos; sin IP, contador compartido menu:unknown", async () => {
+  const ok = harness();
+  const limited = harness();
+  limited.store.allow = false;
+  const failing = harness();
+  failing.store.failOn = "menu";
+  for (const run of [ok, limited, failing]) await run.handle(getMenu());
+  const noIp = harness();
+  assert.equal((await noIp.handle(new Request(MENU_URL))).status, 200);
+  for (const run of [ok, limited, failing, noIp]) {
+    const text = JSON.stringify(run.logs);
+    for (const secret of ["203.0.113", "Lasagne", "Minestrone"]) assert.ok(!text.includes(secret), `el log lleva ${secret}: ${text}`);
+  }
+  assert.ok(noIp.logs.some((entry) => entry.event === "client_ip_missing"));
+  assert.equal(noIp.store.hits[0]?.ipHash, await hashSubject("menu:unknown", ENV["IP_HASH_SALT"] ?? ""));
+});
+
+test("menuRateSubject: la clave del límite del formulario con el prefijo del menù", () => {
+  assert.equal(menuRateSubject("203.0.113.7"), "menu:203.0.113.7");
+  assert.equal(menuRateSubject("2001:db8:1:2:3:4:5:6"), "menu:2001:db8:1:2::/64", "una IPv6 cuenta por su /64");
+  assert.equal(menuRateSubject(null), "menu:unknown");
+});
+
+// ---------------------------------------------------------------------------
+// Menù en el pedido (versión 4 del contrato)
+// ---------------------------------------------------------------------------
+
+test("pedido con menù: los platos van a la base como wishes, en orden; el 201 trae los que guardó, con sus nombres", async () => {
+  const run = harness({ env: { EMAIL_TRANSPORT: "log" } });
+  const response = await run.handle(post(payload({ menu: [MINESTRONE.id, UNPUBLISHED_ID, LASAGNE.id.toUpperCase()] })));
+  assert.equal(response.status, 201);
+  assert.deepEqual(run.store.submitted[0]?.wishes, [MINESTRONE.id, UNPUBLISHED_ID, LASAGNE.id]);
+  // El que se despublicó entre la carga y el envío lo descarta la base, sin error: el 201 dice lo que quedó.
+  assert.deepEqual(((await json(response)) as { menu: unknown }).menu, [choiceOf(MINESTRONE), choiceOf(LASAGNE)]);
+  await run.settle();
+});
+
+test("pedido con más platos que días o con un menù con otra forma: 400 sin tocar la base", async () => {
+  const { handle, store } = harness();
+  for (const [body, errors] of [
+    [payload({ days: 1, menu: [LASAGNE.id, MINESTRONE.id] }), { menu: "tooMany" }],
+    [payload({ menu: [LASAGNE.id, LASAGNE.id] }), { menu: "invalid" }],
+    [{ ...payload(), menu: "Lasagne" }, { menu: "invalid" }],
+  ] as const) {
+    const response = await handle(post(body));
+    assert.equal(response.status, 400, JSON.stringify(errors));
+    assert.deepEqual(await json(response), { errors });
+  }
+  assert.equal(store.hits.length, 0);
+});
+
+test("versión 3 (la web de antes, sin menù): wishes vacío y el 201 con menu vacío, aunque llegue un menu", async () => {
+  const run = harness({ env: { EMAIL_TRANSPORT: "log" } });
+  const response = await run.handle(post(payload({ version: 3, menu: [LASAGNE.id] })));
+  assert.equal(response.status, 201);
+  assert.deepEqual(run.store.submitted[0]?.wishes, []);
+  assert.deepEqual(((await json(response)) as { menu: unknown }).menu, []);
+  await run.settle();
+});
+
+test("reintento: el 201 trae el menù guardado del original, aunque el reintento mande otros platos", async () => {
+  const run = harness({ env: { EMAIL_TRANSPORT: "log" } });
+  await run.handle(post(payload({ requestKey: REQUEST_KEY, menu: [LASAGNE.id] })));
+  const again = await run.handle(post(payload({ requestKey: REQUEST_KEY, menu: [MINESTRONE.id] })));
+  await run.settle();
+  assert.deepEqual(await json(again), {
+    requestId: REQUEST_ID,
+    estimate: publicEstimate(calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 }, CHEF.pricing)),
+    menu: [choiceOf(LASAGNE)],
+    duplicate: true,
+  });
+});
+
+test("la base devuelve un menu con otra forma: el 201 sale igual, con menu vacío, y se avisa en el log", async () => {
+  const run = harness();
+  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: null, storedMenu: [{ id: "x" }] });
+  const response = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
+  assert.equal(response.status, 201);
+  assert.deepEqual(((await json(response)) as { menu: unknown }).menu, []);
+  assert.ok(run.logs.some((entry) => entry.event === "stored_menu_invalid" && entry.level === "warn"));
+});
+
+test("emails con menù: a Evelyn los platos y los días; al cliente, los que eligió y que Evelyn se lo confirma", async () => {
+  const run = harness();
+  await run.handle(post(payload({ menu: [MINESTRONE.id, LASAGNE.id] })));
+  await run.settle();
+  // A Evelyn en su idioma (es): el minestrone no tiene nombre en español, va el italiano.
+  const chef = emailText(run, "evelyn@example.test");
+  assert.ok(chef.includes("Menú elegido por el cliente (2 de 5 días): Minestrone · Lasaña"), chef);
+  assert.ok(!chef.includes("Sin menú"));
+  // Al cliente en el suyo (it).
+  const client = emailText(run, "giulia.pii@example.test");
+  assert.ok(client.includes("Piatti scelti: Minestrone · Lasagne"), client);
+  assert.ok(client.includes("Evelyn ti conferma il menù e propone i piatti per gli altri giorni."), client);
+  // Nunca los alérgenos de los platos ni las alergias del cliente.
+  for (const text of [chef, client]) {
+    assert.doesNotMatch(text, /\b(gluten|glutine|celery|sedano|apio|uova|huevos|eggs)\b/i);
+  }
+  assert.doesNotMatch(client, /allerg|intoller|celiach/i);
+
+  const english = harness({ env: { CHEF_LOCALE: "en" } });
+  await english.handle(post(payload({ locale: "en", days: 2, menu: [MINESTRONE.id, LASAGNE.id] })));
+  await english.settle();
+  assert.ok(emailText(english, "evelyn@example.test").includes("Menu chosen by the client (2 of 2 days): Minestrone soup · Lasagne"));
+  const clientEn = emailText(english, "giulia.pii@example.test");
+  assert.ok(clientEn.includes("Dishes chosen: Minestrone soup · Lasagne"), clientEn);
+  assert.ok(clientEn.includes("Evelyn will confirm the menu."), clientEn);
+});
+
+test("emails sin menù: a Evelyn, que lo propone ella; al cliente, nada de platos elegidos", async () => {
+  const run = harness();
+  await run.handle(post(payload()));
+  await run.settle();
+  assert.ok(emailText(run, "evelyn@example.test").includes("Sin menú: lo propones tú."));
+  const client = emailText(run, "giulia.pii@example.test");
+  assert.ok(!client.includes("Piatti scelti"));
+  assert.ok(!client.includes("ti conferma il menù"));
 });
 
 // ---------------------------------------------------------------------------

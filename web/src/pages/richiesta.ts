@@ -1,6 +1,6 @@
 // Calculadora + formulario de pedido. Toda la lógica vive en src/request/ (pura y testeada): acá se lee
-// el formulario, se pintan presupuesto, errores y estados, y se manda el pedido a la Edge Function
-// `public-request` con el token de Turnstile (docs/contracts/public-request.md §6).
+// el formulario, se pintan presupuesto, calendario, menù, errores y estados, y se manda el pedido a la Edge
+// Function `public-request` con el token de Turnstile (docs/contracts/public-request.md §6).
 // Nunca se registran en consola datos del pedido (contacto, salud, notas).
 import "../styles/base.css";
 import "../styles/request.css";
@@ -25,6 +25,21 @@ import {
   type SessionStatus,
 } from "../request/calendar.ts";
 import { hiddenPanels, weeksFromForm } from "../request/form.ts";
+import {
+  doneMenu,
+  fetchMenu,
+  menuMax,
+  menuPanelView,
+  menuState,
+  menuUrl,
+  reconcileMenu,
+  seasonMonth,
+  toggleDish,
+  type DishCard,
+  type MenuChoice,
+  type MenuDish,
+  type MenuState,
+} from "../request/menu.ts";
 import {
   MEAL_OPTIONS,
   REQUEST_TYPES,
@@ -71,6 +86,8 @@ const CONTROLS: Readonly<Record<FieldName, readonly string[]>> = {
   meals: [],
   // El día se elige en el calendario: el error se marca en la grilla (role="group", enfocable).
   preferredDate: ["calendar-grid"],
+  // Los platos: el error (más que días) se marca en la lista de tarjetas (role="group", enfocable).
+  menu: ["menu-list"],
   name: ["name"],
   zone: ["zone"],
   phone: ["phone"],
@@ -134,6 +151,12 @@ const calendarEls = {
   legendRepeat: byId("calendar-legend-repeat"),
   sessions: byId("calendar-sessions"),
   sessionList: byId("calendar-session-list"),
+};
+const menuEls = {
+  hint: byId("hint-menu"),
+  count: byId("menu-count"),
+  status: byId("menu-status"),
+  list: byId("menu-list"),
 };
 
 /** Nombre accesible de cada día del calendario según su estado. */
@@ -205,7 +228,8 @@ function applyLimits(): void {
   }
 }
 
-function readForm(): RequestData {
+/** Los campos del formulario. Los platos no: la página los guarda en el orden en que los tildó (startRequestPage). */
+function readFields(): Omit<RequestData, "menu"> {
   const fd = new FormData(form);
   const str = (name: string): string => {
     const value = fd.get(name);
@@ -325,11 +349,25 @@ function startRequestPage(shell: Shell): void {
     data: RequestData | null;
     email: string | null;
     estimate: PublicRequestEstimate | null;
+    /** Los platos que guardó el servidor (con sus nombres). */
+    menu: MenuChoice[];
     replay: DoneView["replay"];
   } | null = null;
   let turnstile: TurnstileWidget | null = null;
 
   const payloadOptions = (turnstileToken: string): PayloadOptions => ({ locale: shell.i18n.lang, turnstileToken });
+
+  // --- Menù (src/request/menu.ts) ------------------------------------------------------------------
+  /** Catálogo de Evelyn (GET …/menu): se pide una vez, al abrir la página. Sin backend, el menù lo propone ella. */
+  let menu: MenuState = config.supabaseUrl ? { kind: "loading" } : { kind: "error" };
+  /** Los platos elegidos, en el orden en que los tildó (así llegan a Evelyn). */
+  let menuSelection: string[] = [];
+  /** Los que se quitaron por la temporada en el último cambio de fecha: se avisa hasta que toque otra casilla. */
+  let menuRemoved: MenuDish[] = [];
+  /** Lo que se pintó por última vez: si no cambió, no se rehacen las tarjetas (la casilla con foco no lo pierde). */
+  let menuPainted = "";
+
+  const readForm = (): RequestData => ({ ...readFields(), menu: [...menuSelection] });
 
   // --- Calendario del día preferido (src/request/calendar.ts) ------------------------------------
   /** Disponibilidad para la duración del pedido (minutos de cocina del motor, que el cliente no ve). */
@@ -509,6 +547,74 @@ function startRequestPage(shell: Shell): void {
     );
   };
 
+  /** Una tarjeta de plato: la casilla, el nombre (su nombre accesible) y, como descripción, el texto, los alérgenos y la dieta. */
+  const dishNode = (card: DishCard): HTMLLabelElement => {
+    const label = document.createElement("label");
+    label.className = "choice dish";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.name = "menu";
+    input.value = card.id;
+    const idBase = `dish-${card.id}`;
+    const body = document.createElement("span");
+    body.className = "choice__body";
+    const part = (className: string, id: string, text: string): HTMLSpanElement => {
+      const el = document.createElement("span");
+      el.className = className;
+      el.id = id;
+      el.textContent = text;
+      return el;
+    };
+    const meta = part("dish__meta", `${idBase}-meta`, card.allergens);
+    if (card.diet) {
+      const diet = document.createElement("span");
+      diet.className = "dish__diet";
+      diet.textContent = card.diet;
+      // Espacio duro antes del «·»: en el teléfono el renglón no termina en el punto.
+      meta.append("\u00a0· ", diet);
+    }
+    body.append(part("choice__title", `${idBase}-name`, card.name), part("choice__hint", `${idBase}-desc`, card.description), meta);
+    input.setAttribute("aria-labelledby", `${idBase}-name`);
+    input.setAttribute("aria-describedby", `${idBase}-desc ${idBase}-meta`);
+    label.append(input, body);
+    return label;
+  };
+
+  /** Panel «Menù»: lo que se ve lo decide menuPanelView; acá se pinta. */
+  const renderMenu = (data: RequestData): void => {
+    const { i18n } = shell;
+    const view = menuPanelView(
+      { state: menu, selected: data.menu, days: data.days, month: seasonMonth(data.preferredDate, todayInRome()), removed: menuRemoved },
+      i18n,
+    );
+    menuEls.hint.hidden = view.hint === null;
+    setText(menuEls.hint, view.hint ?? "");
+    menuEls.count.hidden = view.count === null;
+    setText(menuEls.count, view.count ?? "");
+    menuEls.count.classList.toggle("menu__count--over", view.overLimit);
+    setText(menuEls.status, view.message);
+    menuEls.list.hidden = view.cards.length === 0;
+
+    const signature = JSON.stringify([i18n.lang, view.cards.map((card) => [card.id, card.name, card.description, card.allergens, card.diet])]);
+    if (signature !== menuPainted) {
+      menuPainted = signature;
+      const active = document.activeElement;
+      const focusedId = active instanceof HTMLInputElement && menuEls.list.contains(active) ? active.value : undefined;
+      menuEls.list.replaceChildren(...view.cards.map(dishNode));
+      if (focusedId) {
+        const again = menuEls.list.querySelector<HTMLInputElement>(`input[value="${focusedId}"]`);
+        (again ?? menuEls.list).focus({ preventScroll: true });
+      }
+    }
+    // Marcadas y deshabilitadas, en el lugar: la casilla con foco sigue siendo la misma.
+    const cards = new Map(view.cards.map((card) => [card.id, card] as const));
+    for (const input of menuEls.list.querySelectorAll<HTMLInputElement>('input[name="menu"]')) {
+      const card = cards.get(input.value);
+      input.checked = card?.checked ?? false;
+      input.disabled = card?.disabled ?? true;
+    }
+  };
+
   /** Recuadro del precio: lo que se ve lo decide quoteBoxView (src/request/quote-box.ts); acá se pinta. */
   const renderQuote = (data: RequestData): void => {
     const quote = computeQuote(data);
@@ -629,7 +735,7 @@ function startRequestPage(shell: Shell): void {
       return;
     }
     doneSummary.replaceChildren(
-      ...summaryRows(success.data, success.estimate, shell.i18n).map((row) => {
+      ...summaryRows(success.data, success.estimate, shell.i18n, success.menu).map((row) => {
         const item = document.createElement("div");
         item.className = row.total ? "summary__row summary__row--total" : "summary__row";
         const dt = document.createElement("dt");
@@ -647,9 +753,9 @@ function startRequestPage(shell: Shell): void {
 
   /**
    * @param view lo que tiene guardado el servidor (doneViewFor): en un reintento con cambios, los datos
-   * del envío que llegó (la estimación del servidor es la de ese pedido), nunca los del formulario.
+   * del envío que llegó (la estimación y los platos del servidor son los de ese pedido), nunca los del formulario.
    */
-  const showDone = (view: DoneView, estimate: PublicRequestEstimate | null): void => {
+  const showDone = (view: DoneView, estimate: PublicRequestEstimate | null, dishes: MenuChoice[] | null): void => {
     phase = "done";
     const { data } = view;
     success = {
@@ -657,6 +763,8 @@ function startRequestPage(shell: Shell): void {
       email: data ? emailOf(data) : null,
       // La del servidor o, si no vino (o con otra forma), la de la calculadora (summary.ts).
       estimate: doneEstimate(data, estimate),
+      // Los del servidor o, si no vinieron, los elegidos con los nombres del catálogo (menu.ts).
+      menu: doneMenu(data, dishes, menu),
       replay: view.replay,
     };
     renderDone();
@@ -668,7 +776,7 @@ function startRequestPage(shell: Shell): void {
   /** @param sent los consentimientos que llevaba el pedido: uno marcado que el servidor rechaza es de otro texto. */
   const handleOutcome = (outcome: SubmitOutcome, data: RequestData, view: DoneView, sent: SentConsents): void => {
     if (outcome.kind === "created") {
-      showDone(view, outcome.estimate);
+      showDone(view, outcome.estimate, outcome.menu);
       return;
     }
     // Cualquier fallo: el token ya se usó o pudo usarse, Turnstile pide uno nuevo.
@@ -782,6 +890,12 @@ function startRequestPage(shell: Shell): void {
       setPreferredDate("");
       calendarNotice = "request.calendar.cleared";
     }
+    // Con la fecha (o el catálogo) nuevos, los platos elegidos que salieron de temporada se quitan y se avisa.
+    const season = reconcileMenu(menuSelection, menu, seasonMonth(readForm().preferredDate, todayInRome()));
+    if (season.removed.length > 0) {
+      menuSelection = season.selected;
+      menuRemoved = season.removed;
+    }
     const data = readForm();
     keys.edited(JSON.stringify(data));
     // Lo escrito se conserva si vuelve a desmarcar la casilla, pero oculto no se manda (buildPayload). Lo
@@ -792,12 +906,24 @@ function startRequestPage(shell: Shell): void {
     syncSteppers();
     renderQuote(data);
     renderCalendar(data);
+    renderMenu(data);
     const errors = fieldErrors(data);
     renderErrors(data, errors);
     if (formMessage?.key === "errors.summary" && !firstErrorField({ ...errors, ...serverErrors(data) })) {
       showFormMessage(null);
     }
   };
+
+  // Una casilla de plato: se suma o se saca en el orden de los clics. Corre antes que el input/change del
+  // formulario (que repinta con lo elegido); los dos eventos llegan y la cuenta da lo mismo.
+  const onDishToggle = (event: Event): void => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.name !== "menu") return;
+    menuSelection = toggleDish(menuSelection, input.value, input.checked, menuMax(readFields().days));
+    menuRemoved = [];
+  };
+  menuEls.list.addEventListener("input", onDishToggle);
+  menuEls.list.addEventListener("change", onDishToggle);
 
   form.addEventListener("click", (event) => {
     const btn = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[data-step]") : null;
@@ -864,6 +990,15 @@ function startRequestPage(shell: Shell): void {
   if (siteKey) {
     turnstile = mountTurnstile(turnstileBox, { siteKey, language: shell.i18n.lang, onChange: onTurnstileChange });
     onTurnstileChange();
+  }
+
+  // Los platos de Evelyn: una sola consulta. Mientras tanto el panel dice que los está cargando; el envío no
+  // los espera (sin platos, el menù lo propone Evelyn).
+  if (config.supabaseUrl) {
+    void fetchMenu(menuUrl(config.supabaseUrl)).then((dishes) => {
+      menu = menuState(dishes);
+      update();
+    });
   }
 
   update();

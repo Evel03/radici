@@ -50,7 +50,7 @@ describe("buildPayload", () => {
       validRequest({ meals: "both", preferredDate: "2026-10-26", whatsappOptIn: true }),
       { locale: "es", turnstileToken: TEST_TOKEN },
     );
-    expect(PUBLIC_REQUEST_VERSION).toBe(3);
+    expect(PUBLIC_REQUEST_VERSION).toBe(4);
     expect(payload).toMatchObject({
       version: PUBLIC_REQUEST_VERSION,
       type: "week",
@@ -63,6 +63,16 @@ describe("buildPayload", () => {
       turnstileToken: TEST_TOKEN,
     });
     expect(buildPayload(validRequest({ preferredDate: "" }), { locale: "it", turnstileToken: "t" }).preferredDate).toBeNull();
+  });
+
+  it("manda los platos elegidos en el orden en que los tildó; sin elegir, la lista vacía", () => {
+    const menu = ["1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab", "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab"];
+    expect(buildPayload(validRequest({ menu }), { locale: "it", turnstileToken: TEST_TOKEN }).menu).toEqual(menu);
+    expect(buildPayload(validRequest(), { locale: "it", turnstileToken: TEST_TOKEN }).menu).toEqual([]);
+    const result = serverParse(validRequest({ days: 2, menu }));
+    expect(result.ok && result.value.menu).toEqual(menu);
+    // Más platos que días: el servidor lo rechaza (la página frena el envío antes, con la misma validación).
+    expect(serverParse(validRequest({ days: 1, menu })).ok).toBe(false);
   });
 
   it("todas las combinaciones de comidas y tipos pasan", () => {

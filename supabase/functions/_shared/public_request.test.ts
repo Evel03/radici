@@ -261,9 +261,9 @@ test("versiones aceptadas: la vigente vale para la privacy y para la salud, y la
   assert.deepEqual(CONSENT_VERSIONS.filter((v) => LEGACY_PAGE_CONSENT_VERSIONS.includes(v)), []);
 });
 
-test("versiones 3 y 2: una página de la versión 1 (en caché) recibe version invalid y la web pide recargar", () => {
-  assert.equal(PUBLIC_REQUEST_VERSION, 3);
-  assert.deepEqual([...PUBLIC_REQUEST_VERSIONS], [3, 2]);
+test("versiones 4, 3 y 2: una página de la versión 1 (en caché) recibe version invalid y la web pide recargar", () => {
+  assert.equal(PUBLIC_REQUEST_VERSION, 4);
+  assert.deepEqual([...PUBLIC_REQUEST_VERSIONS], [4, 3, 2]);
   // Lo que mandaba la página de la versión 1: sin noAllergies ni semanas.
   const { noAllergies: _sinRespuesta, weeks: _sinSemanas, ...v1 } = payload({ version: 1 });
   assert.deepEqual(errorsOf(v1), { version: "invalid", noAllergies: "invalid" });
@@ -290,6 +290,46 @@ test("versión 2 (páginas en caché y la web de antes durante el despliegue): s
   assert.deepEqual(errorsOf(v2({ consents: { privacy: "2026-11-15", health: null } })), { consentPrivacy: "consentRequired" });
 });
 
+const DISH_A = "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
+const DISH_B = "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
+const DISH_C = "2a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
+
+test("menù (versión 4): opcional; los platos en el orden en que los tildó, en minúsculas", () => {
+  const chosen = parsePublicRequest(payload({ days: 3, menu: [DISH_B, DISH_A.toUpperCase()] }), { today: TODAY });
+  assert.ok(chosen.ok);
+  if (chosen.ok) assert.deepEqual(chosen.value.menu, [DISH_B, DISH_A]);
+  // Sin el campo, en null o vacío: ninguno (el menù lo propone Evelyn).
+  const { menu: _sinMenu, ...without } = payload();
+  for (const input of [without, { ...payload(), menu: null }, payload({ menu: [] })]) {
+    const result = parsePublicRequest(input, { today: TODAY });
+    assert.ok(result.ok, JSON.stringify(input));
+    if (result.ok) assert.deepEqual(result.value.menu, []);
+  }
+  // Hasta uno por día: tantos platos como días, justo.
+  const full = parsePublicRequest(payload({ days: 3, menu: [DISH_A, DISH_B, DISH_C] }), { today: TODAY });
+  assert.ok(full.ok && full.value.menu.length === 3);
+});
+
+test("menù: invalid si no es un array de uuids sin repetir; tooMany si son más que los días", () => {
+  for (const menu of ["x", {}, 5, true, [DISH_A, "no-es-uuid"], [DISH_A, 5], [DISH_A, null], [DISH_A, DISH_A], [DISH_A, DISH_A.toUpperCase()]]) {
+    assert.deepEqual(errorsOf({ ...payload({ days: 5 }), menu }), { menu: "invalid" }, JSON.stringify(menu));
+  }
+  assert.deepEqual(errorsOf(payload({ days: 2, menu: [DISH_A, DISH_B, DISH_C] })), { menu: "tooMany" });
+  assert.deepEqual(errorsOf(payload({ days: 1, menu: [DISH_A, DISH_B] })), { menu: "tooMany" });
+  // Repetidos y de más: el formato primero.
+  assert.deepEqual(errorsOf(payload({ days: 1, menu: [DISH_A, DISH_A, DISH_B] })), { menu: "invalid" });
+  // Con los días inválidos no se sabe el tope: solo el error de los días.
+  assert.deepEqual(errorsOf(payload({ days: 0, menu: [DISH_A, DISH_B] })), { days: "range" });
+});
+
+test("menù: en las versiones 3 y 2 no existe; si llega, se ignora como antes", () => {
+  for (const input of [payload({ version: 3, days: 1, menu: [DISH_A, DISH_B] }), { ...v2({ days: 1 }), menu: "x" }]) {
+    const result = parsePublicRequest(input, { today: TODAY });
+    assert.ok(result.ok, JSON.stringify(input));
+    if (result.ok) assert.deepEqual(result.value.menu, []);
+  }
+});
+
 test("semanas (versión 3): obligatorias, enteras de 1 a 8; más de una solo en el pedido semanal", () => {
   for (const weeks of [1, 3, 4, 5, 8]) {
     const result = parsePublicRequest(payload({ weeks }), { today: TODAY });
@@ -300,14 +340,15 @@ test("semanas (versión 3): obligatorias, enteras de 1 a 8; más de una solo en 
       assert.equal(result.estimate.weeks, weeks);
     }
   }
-  // Sin el campo, la versión 3 no lo da por 1: nunca se pierden semanas en silencio.
+  // Sin el campo, desde la versión 3 no se da por 1: nunca se pierden semanas en silencio.
   const { weeks: _sinSemanas, ...missing } = payload();
   assert.deepEqual(errorsOf(missing), { weeks: "required" });
   assert.deepEqual(errorsOf({ ...payload(), weeks: null }), { weeks: "required" });
-  // Con el 3 escrito, no la constante: cuando la vigente sea la 4 y se siga aceptando la 3, un pedido de
-  // la 3 sin semanas tampoco se guarda de una.
+  // Con el 3 escrito, no la constante: ahora que la vigente es la 4 y se sigue aceptando la 3, un pedido
+  // de la 3 sin semanas tampoco se guarda de una.
   assert.deepEqual(errorsOf({ ...missing, version: 3 }), { weeks: "required" });
-  assert.deepEqual(errorsOf({ ...missing, version: 4 }), { version: "invalid", weeks: "required" });
+  assert.deepEqual(errorsOf({ ...missing, version: 4 }), { weeks: "required" });
+  assert.deepEqual(errorsOf({ ...missing, version: 5 }), { version: "invalid", weeks: "required" });
   for (const weeks of [0, 9, 1.5, -1, "3", true]) {
     assert.deepEqual(errorsOf({ ...payload(), weeks }), { weeks: "range" }, String(weeks));
   }

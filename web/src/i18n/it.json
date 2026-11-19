@@ -202,6 +202,20 @@
         "outside": "fuori dal calendario: te lo conferma Evelyn"
       }
     },
+    "menu": {
+      "legend": "Menù",
+      "hint": "Scegli fino a {days} piatti, uno per giorno. È facoltativo: il resto lo propone Evelyn.",
+      "hintOne": "Puoi scegliere un piatto. È facoltativo: se non lo scegli, lo propone Evelyn.",
+      "count": "Scelti: {chosen} di {max}",
+      "countOver": "Scelti: {chosen} di {max}: togline {extra} o aggiungi giorni.",
+      "loading": "Sto caricando i piatti…",
+      "empty": "Il menù te lo propone Evelyn: se vuoi, scrivi nelle note i piatti che ti piacciono.",
+      "error": "Non riusciamo a mostrare i piatti: il menù te lo propone Evelyn. Puoi inviare la richiesta lo stesso.",
+      "removedOne": "{dishes} non è di stagione nel mese che hai scelto e non fa più parte del tuo menù.",
+      "removedOther": "{dishes} non sono di stagione nel mese che hai scelto e non fanno più parte del tuo menù.",
+      "allergens": "Allergeni: {list}",
+      "allergensNone": "Nessuno dei 14 allergeni principali"
+    },
     "contactLegend": "I tuoi dati",
     "nameLabel": "Nome",
     "zoneLabel": "Zona o quartiere",
@@ -263,6 +277,9 @@
       "meals": "Pasti",
       "date": "Giorno preferito",
       "dates": "Giorni (uno a settimana)",
+      "menu": "Menù",
+      "menuNone": "Lo propone Evelyn",
+      "menuPartial": "{dishes}; il resto lo propone Evelyn",
       "allergies": "Allergie e intolleranze",
       "allergiesNone": "Nessuna",
       "allergiesListed": "Indicate: Evelyn ne terrà conto",
@@ -285,6 +302,7 @@
     "weeks": "Scegli fino a {maxWeeks} settimane.",
     "meals": "Scegli quali pasti.",
     "date": "Scegli un giorno nelle prossime {horizonWeeks} settimane, a partire da domani.",
+    "menuTooMany": "Hai scelto più piatti che giorni: togline qualcuno o aggiungi giorni.",
     "nameRequired": "Scrivi il tuo nome.",
     "zoneRequired": "Indica la zona o il quartiere.",
     "phoneRequired": "Scrivi un numero di telefono.",
@@ -308,6 +326,26 @@
     "rateLimitedMinutes": "Hai inviato troppe richieste in poco tempo. Riprova tra circa {minutes} min: i dati che hai inserito restano qui.",
     "rateLimitedHours": "Hai inviato troppe richieste in poco tempo. Riprova tra circa {hours} h: i dati che hai inserito restano qui.",
     "summary": "Alcuni campi vanno sistemati: ti abbiamo portato al primo."
+  },
+  "allergens": {
+    "gluten": "glutine",
+    "crustaceans": "crostacei",
+    "eggs": "uova",
+    "fish": "pesce",
+    "peanuts": "arachidi",
+    "soy": "soia",
+    "milk": "latte e derivati",
+    "nuts": "frutta a guscio",
+    "celery": "sedano",
+    "mustard": "senape",
+    "sesame": "sesamo",
+    "sulphites": "solfiti",
+    "lupin": "lupini",
+    "molluscs": "molluschi"
+  },
+  "diets": {
+    "vegetarian": "Vegetariano",
+    "vegan": "Vegano"
   },
   "privacy": {
     "metaTitle": "Informativa privacy · {brand}",

@@ -202,6 +202,20 @@
         "outside": "outside the calendar: Evelyn will confirm it"
       }
     },
+    "menu": {
+      "legend": "Menu",
+      "hint": "Choose up to {days} dishes, one per day. It's optional: Evelyn suggests the rest.",
+      "hintOne": "You can choose one dish. It's optional: if you don't, Evelyn suggests one.",
+      "count": "Chosen: {chosen} of {max}",
+      "countOver": "Chosen: {chosen} of {max}: remove {extra} or add days.",
+      "loading": "Loading the dishes…",
+      "empty": "Evelyn will suggest the menu: if you like, write the dishes you enjoy in the notes.",
+      "error": "We can't show the dishes right now: Evelyn will suggest the menu. You can still send your request.",
+      "removedOne": "{dishes} isn't in season in the month you chose, so it's no longer in your menu.",
+      "removedOther": "{dishes} aren't in season in the month you chose, so they're no longer in your menu.",
+      "allergens": "Allergens: {list}",
+      "allergensNone": "None of the 14 major allergens"
+    },
     "contactLegend": "Your details",
     "nameLabel": "Name",
     "zoneLabel": "Area or neighbourhood",
@@ -263,6 +277,9 @@
       "meals": "Meals",
       "date": "Preferred day",
       "dates": "Days (one a week)",
+      "menu": "Menu",
+      "menuNone": "Evelyn will suggest it",
+      "menuPartial": "{dishes}; Evelyn will suggest the rest",
       "allergies": "Allergies and intolerances",
       "allergiesNone": "None",
       "allergiesListed": "Listed: Evelyn will take them into account",
@@ -285,6 +302,7 @@
     "weeks": "Choose up to {maxWeeks} weeks.",
     "meals": "Choose which meals.",
     "date": "Choose a day in the next {horizonWeeks} weeks, starting tomorrow.",
+    "menuTooMany": "You chose more dishes than days: remove some or add days.",
     "nameRequired": "Please enter your name.",
     "zoneRequired": "Please enter your area or neighbourhood.",
     "phoneRequired": "Please enter a phone number.",
@@ -308,6 +326,26 @@
     "rateLimitedMinutes": "You've sent too many requests in a short time. Please try again in about {minutes} min: everything you've entered is still here.",
     "rateLimitedHours": "You've sent too many requests in a short time. Please try again in about {hours} h: everything you've entered is still here.",
     "summary": "Some fields need fixing: we've taken you to the first one."
+  },
+  "allergens": {
+    "gluten": "gluten",
+    "crustaceans": "crustaceans",
+    "eggs": "eggs",
+    "fish": "fish",
+    "peanuts": "peanuts",
+    "soy": "soya",
+    "milk": "milk and dairy",
+    "nuts": "tree nuts",
+    "celery": "celery",
+    "mustard": "mustard",
+    "sesame": "sesame",
+    "sulphites": "sulphites",
+    "lupin": "lupin",
+    "molluscs": "molluscs"
+  },
+  "diets": {
+    "vegetarian": "Vegetarian",
+    "vegan": "Vegan"
   },
   "privacy": {
     "metaTitle": "Privacy notice · {brand}",

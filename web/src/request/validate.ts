@@ -25,6 +25,7 @@ export const FIELD_ORDER = [
   "days",
   "meals",
   "preferredDate",
+  "menu",
   "noAllergies",
   "restrictionsNote",
   "consentHealth",
@@ -64,6 +65,7 @@ const ERROR_CODES: readonly ErrorCode[] = [
   "dateOutOfRange",
   "consentRequired",
   "healthConsentRequired",
+  "tooMany",
 ];
 
 export interface FieldError {
@@ -105,6 +107,10 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
       // La ventana va en el texto con {horizonWeeks}, un valor global de la web (i18n/site.ts). Es el mismo
       // mensaje si la fecha la rechaza el servidor: por ejemplo, la función de antes durante un despliegue.
       return { key: "errors.date" };
+    case "menu":
+      // Más platos que días (bajó los días después de elegir). Un menù con otra forma solo llega con un
+      // HTML viejo o alterado: las casillas mandan ids del catálogo, sin repetir.
+      return { key: code === "tooMany" ? "errors.menuTooMany" : "errors.invalid" };
     case "consentPrivacy":
       return { key: "errors.privacyRequired" };
     case "consentHealth":

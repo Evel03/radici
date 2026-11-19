@@ -1,17 +1,21 @@
-// Lógica de la Edge Function public-request (docs/contracts/public-request.md §2, §4, §5 y §11).
+// Lógica de la Edge Function public-request (docs/contracts/public-request.md §2, §4, §5, §11 y §12).
 // No depende de Deno ni de supabase-js: index.ts arma las dependencias reales y los tests
 // (handler.test.ts, en Node) las simulan.
 //
-// Dos rutas:
+// Tres rutas:
 // - POST <función> (el pedido). Orden: CORS → método (405) → tipo (415) → tamaño (413) → JSON y
 //   validación (400) → configuración (500) → límite por IP (429) → Turnstile (403) → cocinera
 //   (CHEF_ID o la única de public.chefs) y sus tarifas → guardado en una transacción
-//   (submit_public_request) → 201. Los emails y el WhatsApp salen después, en segundo plano
-//   (waitUntil): un fallo de envío no rompe el pedido. Un reintento con la misma requestKey recibe
-//   un 201 con el mismo id y la estimación guardada, más duplicate: true, y no repite ningún aviso.
+//   (submit_public_request, con los platos que eligió el cliente) → 201 con los platos guardados. Los
+//   emails y el WhatsApp salen después, en segundo plano (waitUntil): un fallo de envío no rompe el
+//   pedido. Un reintento con la misma requestKey recibe un 201 con el mismo id, la estimación y los
+//   platos guardados, más duplicate: true, y no repite ningún aviso.
 // - GET <función>/availability?minutes=N (el calendario, §11). Orden: CORS → método (405) →
 //   minutes (400) → configuración (500) → su propio límite por IP (429) → cocinera →
 //   get_free_days (503 si falla la base) → 200, con caché pública de un minuto.
+// - GET <función>/menu (los platos de la pestaña «Menù», §12). Orden: CORS → método (405) →
+//   configuración (500) → su propio límite por IP (429) → cocinera → get_public_menu (503 si falla la
+//   base) → 200, con la misma caché.
 //
 // Los logs nunca llevan datos personales, de salud ni la IP: solo ids, códigos y contadores.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
@@ -33,6 +37,7 @@ import {
   safeFirstName,
   type RequestSummary,
 } from "../_shared/emails.ts";
+import { MENU_PATH, buildMenuResponse, readMenuChoices, type MenuChoice, type MenuDish } from "../_shared/menu.ts";
 import {
   DATE_WINDOW,
   LOCALES,
@@ -81,6 +86,19 @@ export const AVAILABILITY_CACHE_CONTROL = "public, max-age=60";
  */
 export function availabilityRateSubject(ip: string | null): string {
   return `availability:${ip ? rateLimitSubject(ip) : "unknown"}`;
+}
+
+/**
+ * Contrato §12: lecturas del menù por IP. La página lo pide una vez al abrirse (y el navegador lo guarda
+ * un minuto): los mismos topes que el calendario, en otro contador (no gasta el del POST ni el del calendario).
+ */
+export const MENU_RATE_LIMITS = { perHour: 120, perDay: 600 } as const;
+/** Los platos dependen solo de la cocinera (y del origen, por CORS): la misma caché que la disponibilidad. */
+export const MENU_CACHE_CONTROL = AVAILABILITY_CACHE_CONTROL;
+
+/** Clave del límite del menù: la del pedido con el prefijo "menu:" (otra fila, la misma función SQL). */
+export function menuRateSubject(ip: string | null): string {
+  return `menu:${ip ? rateLimitSubject(ip) : "unknown"}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +227,11 @@ export interface SubmitPublicRequestParams {
   estimate: StoredEstimate;
   /** requestKey de la web (uuid en minúsculas) o null: idempotencia por (chef_id, request_key). */
   request_key: string | null;
+  /**
+   * Los platos que eligió en la pestaña «Menù» (uuids, en el orden en que los tildó; [] si ninguno).
+   * La base guarda solo los publicados de la cocinera en requests.wishes (§3).
+   */
+  wishes: string[];
 }
 
 /** Lo que devuelve public.submit_public_request. */
@@ -218,6 +241,11 @@ export interface SubmitResult {
   duplicate: boolean;
   /** requests.estimate tal como quedó guardado (en un duplicado, la del pedido original). */
   storedEstimate: unknown;
+  /**
+   * Los platos guardados ([{ id, name }], en orden), tal como los devolvió la base (en un duplicado, los del
+   * pedido original); null si no vinieron. Se leen con readMenuChoices.
+   */
+  storedMenu: unknown;
 }
 
 /** Si no hay CHEF_ID: la única cocinera de public.chefs, o por qué no se puede elegir una. */
@@ -239,6 +267,8 @@ export interface PublicRequestStore {
    * un horario libre para cookMinutes de cocina.
    */
   freeDays(chefId: string, cookMinutes: number, fromDate: string, days: number): Promise<string[]>;
+  /** public.get_public_menu: los platos publicados de la cocinera (activos, visibles y con descripción). */
+  publicMenu(chefId: string): Promise<MenuDish[]>;
 }
 
 /**
@@ -274,14 +304,17 @@ export function chefFromRow(row: Readonly<Record<string, unknown>>): ChefInfo {
   };
 }
 
-/** Resultado de public.submit_public_request ({request_id, duplicate, estimate}), o null si no tiene esa forma. */
+/**
+ * Resultado de public.submit_public_request ({request_id, duplicate, estimate, menu}), o null si no tiene
+ * esa forma. estimate y menu no se validan acá: el pedido ya está guardado y el 201 sale igual.
+ */
 export function submitResultFromRpc(data: unknown): SubmitResult | null {
   if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
   const record = data as Record<string, unknown>;
   const requestId = record["request_id"];
   const duplicate = record["duplicate"];
   if (typeof requestId !== "string" || !UUID_PATTERN.test(requestId) || typeof duplicate !== "boolean") return null;
-  return { requestId, duplicate, storedEstimate: record["estimate"] ?? null };
+  return { requestId, duplicate, storedEstimate: record["estimate"] ?? null, storedMenu: record["menu"] ?? null };
 }
 
 /**
@@ -326,6 +359,7 @@ export function toSubmitParams(chefId: string, value: NormalizedPublicRequest, e
     health_consent_version: value.consents.health,
     estimate,
     request_key: value.requestKey,
+    wishes: value.menu,
   };
 }
 
@@ -369,42 +403,67 @@ async function resolveChef(deps: HandlerDeps): Promise<ChefResolution> {
 
 type Reply = (status: number, body: unknown, extra?: Record<string, string>) => Response;
 
+/** Una lectura pública (calendario o menù): su ruta en el log, la clave y los topes de su límite por IP. */
+interface PublicRead {
+  route: "availability" | "menu";
+  rateSubject: (ip: string | null) => string;
+  limits: { readonly perHour: number; readonly perDay: number };
+  /** La respuesta si falla la base (el límite o la cocinera): 503, con el cuerpo de cada ruta. */
+  dbError: () => Response;
+}
+
+/**
+ * Lo común de las lecturas públicas, después del método: no pasan por Turnstile, así que solo hacen falta
+ * la sal del límite y, si está, un CHEF_ID válido (500); después, su propio contador por IP (otra clave,
+ * la misma función SQL: no gasta el cupo del formulario; 429) y la cocinera. La cocinera elegida, o la
+ * respuesta con que corta.
+ */
+async function startPublicRead(deps: HandlerDeps, request: Request, reply: Reply, read: PublicRead): Promise<{ chefId: string } | Response> {
+  const { config, log } = deps;
+  if (!config.ipHashSalt) log("error", "config_missing", { missing: ["IP_HASH_SALT"] });
+  if (config.invalid.length > 0) log("error", "config_invalid", { invalid: config.invalid });
+  if (!config.ipHashSalt || config.invalid.length > 0) return reply(500, { error: "server" });
+
+  const ip = clientIp(request.headers);
+  if (!ip) log("warn", "client_ip_missing");
+  const ipHash = await hashSubject(read.rateSubject(ip), config.ipHashSalt);
+  let allowed: boolean;
+  try {
+    allowed = await deps.store.hitRateLimit(ipHash, read.limits.perHour, read.limits.perDay);
+  } catch (error) {
+    logStoreError(log, error, "rate_limit");
+    return read.dbError();
+  }
+  if (!allowed) {
+    log("info", "rate_limited", { route: read.route });
+    return reply(429, { error: "rateLimited" }, { "Retry-After": String(RETRY_AFTER_SECONDS) });
+  }
+
+  const chef = await resolveChef(deps);
+  if (!chef.ok) return chef.reason === "db_error" ? read.dbError() : reply(500, { error: "server" });
+  return { chefId: chef.chefId };
+}
+
 /**
  * GET …/availability?minutes=N (contrato §11): para cada día de la ventana del formulario (de mañana
  * a +56, 8 semanas, en Roma), si la cocinera tiene al menos un horario libre para esa duración de cocina.
  * El 200 y el 400 dependen solo de la URL: caché pública de un minuto. Los errores, no-store.
  */
 async function availabilityRoute(deps: HandlerDeps, request: Request, url: URL, reply: Reply): Promise<Response> {
-  const { config, log } = deps;
+  const { log } = deps;
   if (request.method !== "GET") return reply(405, { error: "method" }, { Allow: "GET, OPTIONS" });
   const cacheable = { "Cache-Control": AVAILABILITY_CACHE_CONTROL };
 
   const minutes = parseAvailabilityMinutes(url.searchParams.get("minutes"));
   if (minutes === null) return reply(400, { errors: { minutes: "invalid" } }, cacheable);
 
-  // Una lectura no pasa por Turnstile: solo hacen falta la sal del límite y, si está, un CHEF_ID válido.
-  if (!config.ipHashSalt) log("error", "config_missing", { missing: ["IP_HASH_SALT"] });
-  if (config.invalid.length > 0) log("error", "config_invalid", { invalid: config.invalid });
-  if (!config.ipHashSalt || config.invalid.length > 0) return reply(500, { error: "server" });
-
-  // Su propio contador (otra clave, la misma función SQL): no gasta el cupo del formulario.
-  const ip = clientIp(request.headers);
-  if (!ip) log("warn", "client_ip_missing");
-  const ipHash = await hashSubject(availabilityRateSubject(ip), config.ipHashSalt);
-  let allowed: boolean;
-  try {
-    allowed = await deps.store.hitRateLimit(ipHash, AVAILABILITY_RATE_LIMITS.perHour, AVAILABILITY_RATE_LIMITS.perDay);
-  } catch (error) {
-    logStoreError(log, error, "rate_limit");
-    return reply(503, { error: "server" });
-  }
-  if (!allowed) {
-    log("info", "rate_limited", { route: "availability" });
-    return reply(429, { error: "rateLimited" }, { "Retry-After": String(RETRY_AFTER_SECONDS) });
-  }
-
-  const chef = await resolveChef(deps);
-  if (!chef.ok) return reply(chef.reason === "db_error" ? 503 : 500, { error: "server" });
+  const chef = await startPublicRead(deps, request, reply, {
+    route: "availability",
+    rateSubject: availabilityRateSubject,
+    limits: AVAILABILITY_RATE_LIMITS,
+    dbError: () => reply(503, { error: "server" }),
+  });
+  if (chef instanceof Response) return chef;
 
   // "Hoy" en Roma; la ventana es la de availabilityDates: desde mañana, AVAILABILITY_DAYS días.
   const today = romeToday(deps.now());
@@ -416,6 +475,33 @@ async function availabilityRoute(deps: HandlerDeps, request: Request, url: URL, 
     return reply(503, { error: "server" });
   }
   return reply(200, buildAvailabilityResponse(today, minutes, free), cacheable);
+}
+
+/**
+ * GET …/menu (contrato §12): los platos publicados de la cocinera para la pestaña «Menù» del formulario
+ * (get_public_menu: activos, visibles en el catálogo y con descripción en italiano), sin ingredientes ni
+ * notas. El 200 depende solo de la cocinera: caché pública de un minuto. Los errores, no-store; si falla la
+ * base, 503 { error: "unavailable" } y el formulario dice que el menù lo propone Evelyn.
+ */
+async function menuRoute(deps: HandlerDeps, request: Request, reply: Reply): Promise<Response> {
+  if (request.method !== "GET") return reply(405, { error: "method" }, { Allow: "GET, OPTIONS" });
+  const unavailable = (): Response => reply(503, { error: "unavailable" });
+  const chef = await startPublicRead(deps, request, reply, {
+    route: "menu",
+    rateSubject: menuRateSubject,
+    limits: MENU_RATE_LIMITS,
+    dbError: unavailable,
+  });
+  if (chef instanceof Response) return chef;
+
+  let dishes: MenuDish[];
+  try {
+    dishes = await deps.store.publicMenu(chef.chefId);
+  } catch (error) {
+    logStoreError(deps.log, error, "public_menu");
+    return unavailable();
+  }
+  return reply(200, buildMenuResponse(dishes), { "Cache-Control": MENU_CACHE_CONTROL });
 }
 
 export function createPublicRequestHandler(deps: HandlerDeps): (request: Request) => Promise<Response> {
@@ -439,9 +525,11 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
     }
 
     try {
-      // La URL termina en /availability (antes de la query): el calendario. Cualquier otra, el pedido.
+      // La URL termina en /availability (antes de la query): el calendario; en /menu, los platos de la
+      // pestaña «Menù». Cualquier otra, el pedido.
       const url = new URL(request.url);
       if (url.pathname.endsWith(AVAILABILITY_PATH)) return await availabilityRoute(deps, request, url, reply);
+      if (url.pathname.endsWith(MENU_PATH)) return await menuRoute(deps, request, reply);
 
       if (request.method !== "POST") return reply(405, { error: "method" }, { Allow: "POST, OPTIONS" });
       if (!isJsonContentType(request.headers.get("content-type"))) return reply(415, { error: "contentType" });
@@ -533,25 +621,30 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
         return reply(500, { error: "server" });
       }
       const requestId = saved.requestId;
+      // Los platos que guardó la base (solo los publicados, con sus nombres actuales): los del 201 y los de
+      // los emails. Sin ellos (una base sin la versión 4) no hay ninguno; con otra forma, tampoco, y se avisa:
+      // el pedido ya está guardado y el 201 sale igual.
+      const menu = saved.storedMenu === null ? [] : readMenuChoices(saved.storedMenu);
+      if (!menu) log("warn", "stored_menu_invalid", { requestId });
 
       if (saved.duplicate) {
-        // Reintento de un pedido ya guardado: el mismo id y la estimación guardada, ningún aviso, y
-        // duplicate: true para que la web no muestre como enviado lo que se cambió después (contrato §2).
-        // La guardada puede ser de antes del precio por semana: readPublicEstimate la lee igual.
+        // Reintento de un pedido ya guardado: el mismo id, la estimación y los platos guardados, ningún
+        // aviso, y duplicate: true para que la web no muestre como enviado lo que se cambió después
+        // (contrato §2). La guardada puede ser de antes del precio por semana: readPublicEstimate la lee igual.
         log("info", "request_duplicate", { requestId });
         const stored = readPublicEstimate(saved.storedEstimate);
         if (!stored) log("warn", "stored_estimate_invalid", { requestId });
-        return reply(201, { requestId, estimate: stored ?? publicEstimate(estimate), duplicate: true });
+        return reply(201, { requestId, estimate: stored ?? publicEstimate(estimate), menu: menu ?? [], duplicate: true });
       }
       log("info", "request_saved", { requestId });
 
       deps.waitUntil(
-        sendNotifications(deps, { requestId, value, estimate, chef }).catch((error: unknown) => {
+        sendNotifications(deps, { requestId, value, estimate, chef, menu: menu ?? [] }).catch((error: unknown) => {
           log("error", "notify_crashed", { error: error instanceof Error ? error.name : "unknown" });
         }),
       );
 
-      return reply(201, { requestId, estimate: publicEstimate(estimate) });
+      return reply(201, { requestId, estimate: publicEstimate(estimate), menu: menu ?? [] });
     } catch (error) {
       // Solo el tipo de error: el mensaje podría traer datos del pedido.
       log("error", "unexpected_error", { error: error instanceof Error ? error.name : "unknown" });
@@ -569,6 +662,8 @@ interface NotifyContext {
   value: NormalizedPublicRequest;
   estimate: Quote;
   chef: ChefInfo;
+  /** Los platos que guardó la base, con sus nombres. */
+  menu: readonly MenuChoice[];
 }
 
 type Recipient = "chef" | "client";
@@ -600,6 +695,7 @@ function summaryOf(context: NotifyContext): RequestSummary {
           reason: estimate.reason,
           maxPeople: chef.pricing.weeklyRateMaxPeople,
         },
+    menu: context.menu,
   };
 }
 

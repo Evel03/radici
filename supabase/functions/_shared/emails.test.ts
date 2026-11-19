@@ -48,6 +48,7 @@ const SUMMARY: RequestSummary = {
     savingsCents: 4000,
     regularWeeklyCents: 15000,
   },
+  menu: [],
 };
 
 /** Una semana, sin descuento (vector 1). */
@@ -605,6 +606,86 @@ test("ningún email copia datos de salud ni la dirección aunque el llamador los
     for (const secret of ["NOTA-DE-SALUD", "NOTA-LIBRE", "Gombito", "vegan", "milk"]) {
       assert.ok(!email.html.includes(secret) && !email.text.includes(secret), `se filtró ${secret}`);
     }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Menù elegido en la web (versión 4 del contrato)
+// ---------------------------------------------------------------------------
+
+const LASAGNE = { id: "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab", name: { it: "Lasagne", es: "Lasaña", en: null } };
+const MINESTRONE = { id: "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab", name: { it: "Minestrone", es: null, en: "Minestrone soup" } };
+/** 2 platos de 5 días. */
+const WITH_MENU: RequestSummary = { ...SUMMARY, menu: [MINESTRONE, LASAGNE] };
+
+const CHEF_MENU: Readonly<Record<Locale, { chosen: string; none: string }>> = {
+  it: { chosen: "Menù scelto dal cliente (2 di 5 giorni): Minestrone · Lasagne", none: "Senza menù: lo proponi tu." },
+  es: { chosen: "Menú elegido por el cliente (2 de 5 días): Minestrone · Lasaña", none: "Sin menú: lo propones tú." },
+  en: { chosen: "Menu chosen by the client (2 of 5 days): Minestrone soup · Lasagne", none: "No menu chosen: you suggest one." },
+};
+
+const CLIENT_MENU: Readonly<Record<Locale, { row: string; some: string; all: string }>> = {
+  it: {
+    row: "Piatti scelti: Minestrone · Lasagne",
+    some: "Evelyn ti conferma il menù e propone i piatti per gli altri giorni.",
+    all: "Evelyn ti conferma il menù.",
+  },
+  es: {
+    row: "Platos elegidos: Minestrone · Lasaña",
+    some: "Evelyn te confirma el menú y propone los platos de los otros días.",
+    all: "Evelyn te confirma el menú.",
+  },
+  en: {
+    row: "Dishes chosen: Minestrone soup · Lasagne",
+    some: "Evelyn will confirm the menu and suggest dishes for the other days.",
+    all: "Evelyn will confirm the menu.",
+  },
+};
+
+for (const locale of LOCALES) {
+  test(`Evelyn (${locale}): los platos que eligió el cliente y de cuántos días, o que el menù lo propone ella`, () => {
+    const chosen = renderChefNotification(chefInput({ summary: WITH_MENU }), locale);
+    assert.ok(chosen.text.includes(`${CHEF_MENU[locale].chosen}\n`), chosen.text);
+    assert.ok(chosen.html.includes(escapeHtml(CHEF_MENU[locale].chosen)));
+    assert.ok(!chosen.text.includes(CHEF_MENU[locale].none));
+    const none = renderChefNotification(chefInput(), locale);
+    assert.ok(none.text.includes(CHEF_MENU[locale].none), none.text);
+    assert.ok(none.html.includes(escapeHtml(CHEF_MENU[locale].none)));
+  });
+
+  test(`cliente (${locale}): los platos que eligió y que Evelyn le confirma el menù; sin platos, nada`, () => {
+    const some = renderClientConfirmation(clientInput({ summary: WITH_MENU }), locale);
+    assert.ok(some.text.includes(`${CLIENT_MENU[locale].row}\n`), some.text);
+    assert.ok(some.text.includes(CLIENT_MENU[locale].some));
+    assert.ok(some.html.includes(escapeHtml(CLIENT_MENU[locale].some)));
+    // Un plato por día: el menù entero lo eligió el cliente.
+    const all = renderClientConfirmation(clientInput({ summary: { ...WITH_MENU, days: 2 } }), locale);
+    assert.ok(all.text.includes(CLIENT_MENU[locale].all));
+    assert.ok(!all.text.includes(CLIENT_MENU[locale].some));
+    const none = renderClientConfirmation(clientInput(), locale);
+    for (const line of Object.values(CLIENT_MENU[locale])) assert.ok(!none.text.includes(line), `${locale}: ${line}`);
+    assert.ok(!none.text.includes(CLIENT_MENU[locale].row.split(":")[0] ?? "x"));
+  });
+}
+
+test("menù: un día en singular, el nombre de la cocinera del que recibe la función y los nombres escapados", () => {
+  const one = { ...SUMMARY, days: 1, menu: [LASAGNE] };
+  assert.ok(renderChefNotification(chefInput({ summary: one }), "it").text.includes("Menù scelto dal cliente (1 di 1 giorno): Lasagne"));
+  assert.ok(renderChefNotification(chefInput({ summary: one }), "es").text.includes("Menú elegido por el cliente (1 de 1 día): Lasaña"));
+  assert.ok(renderChefNotification(chefInput({ summary: one }), "en").text.includes("Menu chosen by the client (1 of 1 day): Lasagne"));
+  assert.ok(renderClientConfirmation(clientInput({ chefName: "Eve", summary: one }), "it").text.includes("Eve ti conferma il menù."));
+  const odd = { ...SUMMARY, menu: [{ id: LASAGNE.id, name: { it: "Pasta <b>& fagioli</b>", es: null, en: null } }] };
+  for (const email of [renderChefNotification(chefInput({ summary: odd }), "it"), renderClientConfirmation(clientInput({ summary: odd }), "it")]) {
+    assert.ok(email.html.includes("Pasta &lt;b&gt;&amp; fagioli&lt;/b&gt;"));
+    assert.ok(!email.html.includes("<b>&"));
+  }
+});
+
+test("menù: al cliente nunca las alergias, aunque las haya escrito y haya elegido platos", () => {
+  for (const locale of LOCALES) {
+    const email = renderClientConfirmation(clientInput({ summary: { ...WITH_MENU, allergies: "listed" } }), locale);
+    assert.doesNotMatch(email.text, ALLERGY_WORDS, locale);
+    assert.doesNotMatch(email.html, ALLERGY_WORDS, locale);
   }
 });
 

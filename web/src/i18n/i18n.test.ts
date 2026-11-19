@@ -7,6 +7,7 @@ import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
 import { DEFAULT_PRICING, LIMITS } from "../engine.ts";
 import { formatCents } from "../lib/format.ts";
+import { ALLERGENS, DIETS } from "../../../supabase/functions/_shared/public_request.ts";
 import { DATE_WINDOW, MEAL_OPTIONS, REQUEST_TYPES } from "../request/model.ts";
 import { exampleQuote, EXAMPLE_INPUT } from "../request/quote.ts";
 import { FIELD_ORDER, fieldError } from "../request/validate.ts";
@@ -100,6 +101,24 @@ describe("claves usadas por la web", () => {
     const at = (key: string): number => requestHtml.indexOf(`data-i18n="${key}"`);
     expect(at("request.whenLegend")).toBeLessThan(at("request.allergiesLegend"));
     expect(at("request.allergiesLegend")).toBeLessThan(at("request.contactLegend"));
+  });
+
+  it("menù: después de «¿Cuándo?» (la temporada depende de la fecha) y antes de las alergias, con su error y su contador", () => {
+    const at = (key: string): number => requestHtml.indexOf(`data-i18n="${key}"`);
+    expect(at("request.whenLegend")).toBeLessThan(at("request.menu.legend"));
+    expect(at("request.menu.legend")).toBeLessThan(at("request.allergiesLegend"));
+    const panel = /<fieldset class="panel" id="menu-panel"[^>]*>([\s\S]*?)<\/fieldset>/.exec(requestHtml)?.[1] ?? "";
+    expect(panel).toContain('id="err-menu"');
+    expect(panel).toMatch(/<p class="menu__count" id="menu-count" aria-live="polite"/);
+    expect(panel).toMatch(/<div [^>]*id="menu-list" role="group" tabindex="-1"/);
+  });
+
+  it("los 14 alérgenos y las dietas del contrato tienen su nombre en los tres idiomas", () => {
+    for (const lang of LANGS) {
+      const keys = [...ALLERGENS.map((a) => `allergens.${a}`), ...DIETS.map((d) => `diets.${d}`)];
+      expect(keys.filter((key) => !(key in dicts[lang])), lang).toEqual([]);
+      expect(ALLERGENS.length).toBe(14);
+    }
   });
 
   it("el consentimiento de salud lleva a la sección de salud de la privacy, en los tres idiomas", () => {

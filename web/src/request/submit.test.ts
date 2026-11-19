@@ -24,6 +24,11 @@ const ESTIMATE = {
   savingsCents: 4000,
 } as const;
 const payload = buildPayload(validRequest(), { locale: "it", turnstileToken: TEST_TOKEN });
+/** Los platos que guardó el servidor (el `menu` del 201 de la versión 4). */
+const MENU = [
+  { id: "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab", name: { it: "Lasagne", es: "Lasaña", en: null } },
+  { id: "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab", name: { it: "Minestrone", es: null, en: null } },
+];
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
@@ -47,19 +52,27 @@ describe("publicRequestUrl", () => {
 });
 
 describe("interpretResponse (contrato §2)", () => {
-  it("201: guardado, con id y estimación del servidor", () => {
-    expect(interpretResponse(201, { requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE }, null)).toEqual({
+  it("201: guardado, con id, estimación y platos del servidor", () => {
+    expect(interpretResponse(201, { requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE, menu: MENU }, null)).toEqual({
       kind: "created",
       requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10",
       estimate: ESTIMATE,
+      menu: MENU,
       duplicate: false,
     });
+    expect(interpretResponse(201, { requestId: "abc", estimate: ESTIMATE, menu: [] }, null)).toMatchObject({ menu: [] });
+  });
+
+  it("201 sin menu (una función de antes) o con otra forma: menu null (la pantalla de gracias usa el catálogo)", () => {
+    expect(interpretResponse(201, { requestId: "abc", estimate: ESTIMATE }, null)).toMatchObject({ kind: "created", menu: null });
+    expect(interpretResponse(201, { requestId: "abc", estimate: ESTIMATE, menu: [{ id: "x" }] }, null)).toMatchObject({ menu: null });
+    expect(interpretResponse(201, { requestId: "abc", estimate: ESTIMATE, menu: "Lasagne" }, null)).toMatchObject({ menu: null });
   });
 
   it("201 con duplicate: true: el servidor ya tenía el pedido de un envío anterior con la misma clave", () => {
     expect(
       interpretResponse(201, { requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE, duplicate: true }, null),
-    ).toEqual({ kind: "created", requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE, duplicate: true });
+    ).toEqual({ kind: "created", requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE, menu: null, duplicate: true });
     // Solo cuenta el booleano true.
     expect(interpretResponse(201, { requestId: "x", estimate: ESTIMATE, duplicate: "true" }, null)).toMatchObject({ duplicate: false });
   });
@@ -75,16 +88,18 @@ describe("interpretResponse (contrato §2)", () => {
       kind: "created",
       requestId: "abc",
       estimate: ESTIMATE,
+      menu: null,
       duplicate: false,
     });
   });
 
   it("201 con un cuerpo raro igual es éxito (el pedido ya está guardado)", () => {
-    expect(interpretResponse(201, null, null)).toEqual({ kind: "created", requestId: null, estimate: null, duplicate: false });
+    expect(interpretResponse(201, null, null)).toEqual({ kind: "created", requestId: null, estimate: null, menu: null, duplicate: false });
     expect(interpretResponse(201, { requestId: 5, estimate: { ...ESTIMATE, serviceCents: 141.5 } }, null)).toEqual({
       kind: "created",
       requestId: null,
       estimate: null,
+      menu: null,
       duplicate: false,
     });
   });
@@ -149,9 +164,9 @@ describe("rateLimitMessage", () => {
 
 describe("sendPublicRequest", () => {
   it("POST JSON a la función, sin cookies ni apikey, y devuelve el resultado", async () => {
-    const fetchFn = vi.fn(async () => jsonResponse(201, { requestId: "abc-123", estimate: ESTIMATE }));
+    const fetchFn = vi.fn(async () => jsonResponse(201, { requestId: "abc-123", estimate: ESTIMATE, menu: MENU }));
     const outcome = await sendPublicRequest(URL_, payload, { fetch: fetchFn });
-    expect(outcome).toEqual({ kind: "created", requestId: "abc-123", estimate: ESTIMATE, duplicate: false });
+    expect(outcome).toEqual({ kind: "created", requestId: "abc-123", estimate: ESTIMATE, menu: MENU, duplicate: false });
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(URL_);

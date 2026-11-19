@@ -1,6 +1,7 @@
 // Envío del pedido a la Edge Function `public-request` y lectura de su respuesta
 // (docs/contracts/public-request.md §2). La función es pública: no hace falta apikey ni sesión.
 // Nunca se registran en consola los datos del pedido ni la respuesta.
+import { readMenuChoices, type MenuChoice } from "../../../supabase/functions/_shared/menu.ts";
 import type { MessageKey, Params } from "../i18n/core.ts";
 import { readPublicEstimate, type PublicRequestErrors, type PublicRequestEstimate, type PublicRequestPayload } from "./model.ts";
 
@@ -25,8 +26,16 @@ export type SubmitOutcome =
    * 2xx: el pedido quedó guardado (aunque el cuerpo no se pueda leer). `duplicate`: ya estaba guardado
    * de un envío anterior con la misma clave y este no cambió nada (la estimación es la guardada).
    * `estimate`: la que guardó el servidor (calcQuote con las tarifas de la cocinera), con precio o sin él.
+   * `menu`: los platos que guardó (los publicados de los que eligió, con sus nombres); null si no vino o
+   * vino con otra forma (la pantalla de gracias usa entonces los nombres del catálogo de la página).
    */
-  | { kind: "created"; requestId: string | null; estimate: PublicRequestEstimate | null; duplicate: boolean }
+  | {
+      kind: "created";
+      requestId: string | null;
+      estimate: PublicRequestEstimate | null;
+      menu: MenuChoice[] | null;
+      duplicate: boolean;
+    }
   /** 400: errores por campo (códigos del contrato). */
   | { kind: "invalid"; errors: PublicRequestErrors }
   /** 403: Turnstile rechazado. */
@@ -84,6 +93,7 @@ export function interpretResponse(status: number, body: unknown, retryAfter: str
       kind: "created",
       requestId: readRequestId(data),
       estimate: readPublicEstimate(data["estimate"]),
+      menu: readMenuChoices(data["menu"]),
       duplicate: data["duplicate"] === true,
     };
   }

@@ -398,6 +398,66 @@ input[type="radio"] {
   flex-shrink: 0;
 }
 
+/* Menù: tarjetas de platos con casilla (las de las opciones), el contador y los avisos. En el teléfono, una
+   columna; un nombre o una descripción sin espacios se parte antes de ensanchar la tarjeta. */
+.menu {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.menu__count {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* Más platos que días: el contador en el color de los errores hasta que los corrija. */
+.menu__count--over {
+  color: var(--error);
+}
+
+.menu__status {
+  margin: 0;
+  color: var(--terra-ink);
+  font-size: 1.12rem;
+  line-height: 1.4;
+}
+
+.menu__status:empty {
+  display: none;
+}
+
+.menu__list:focus {
+  outline: none;
+}
+
+.menu__list:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+}
+
+.dish .choice__body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dish__meta {
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.dish__diet {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Al tope de platos: las casillas sin marcar, deshabilitadas. */
+.choice:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* Opción secundaria dentro de un campo (confirmación por WhatsApp junto al teléfono) */
 .check--option {
   margin-top: 0.45rem;
