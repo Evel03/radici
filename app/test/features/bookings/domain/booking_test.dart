@@ -90,7 +90,6 @@ void main() {
         dates: fourWeeks,
         cookMinutes: 180,
         portions: 20,
-        groceriesEstCents: 6300,
         dryRun: true,
       ).toBody();
       expect(body, {
@@ -101,7 +100,6 @@ void main() {
         'dates': ['2026-11-18', '2026-11-25', '2026-12-02', '2026-12-09'],
         'cookMinutes': 180,
         'portions': 20,
-        'groceriesEstCents': 6300,
         'dryRun': true,
       });
     });
@@ -116,7 +114,6 @@ void main() {
         start: const ClockTime.hm(10, 0),
         cookMinutes: 180,
         portions: 20,
-        groceriesEstCents: 6300,
         serviceTotalCents: 56000,
         requestKey: key,
       ).toBody();
@@ -129,7 +126,6 @@ void main() {
         'start': '10:00',
         'cookMinutes': 180,
         'portions': 20,
-        'groceriesEstCents': 6300,
         'serviceTotalCents': 56000,
         'requestKey': key,
         'dryRun': false,
@@ -146,7 +142,6 @@ void main() {
         start: dryRun ? null : const ClockTime.hm(10, 0),
         cookMinutes: 180,
         portions: 20,
-        groceriesEstCents: 6300,
         serviceTotalCents: dryRun ? null : 14000,
         requestKey: dryRun ? null : key,
         dryRun: dryRun,
@@ -159,7 +154,6 @@ void main() {
         'dates': ['2026-11-18'],
         'cookMinutes': 180,
         'portions': 20,
-        'groceriesEstCents': 6300,
         'dryRun': true,
       });
       expect(manual(dryRun: false).toBody(), {
@@ -171,7 +165,6 @@ void main() {
         'start': '10:00',
         'cookMinutes': 180,
         'portions': 20,
-        'groceriesEstCents': 6300,
         'serviceTotalCents': 14000,
         'requestKey': key,
         'dryRun': false,
@@ -202,7 +195,6 @@ void main() {
         start: const ClockTime.hm(10, 0),
         cookMinutes: 180,
         portions: 20,
-        groceriesEstCents: 6300,
         dryRun: true,
       ).toBody();
       expect(body['start'], '10:00');

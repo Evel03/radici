@@ -176,17 +176,17 @@ const BookingHousehold defaultManualHousehold = BookingHousehold(
   meals: [Meal.dinner],
 );
 
-/// Minutos de cocina (con el tope de la hoja), porciones y compra de cada
-/// semana de una reserva a mano, de la copia Dart de calcQuote con las
-/// tarifas por defecto. Es una vista previa: el precio lo escribe Evelyn.
-({int cookMinutes, int portions, int groceriesEstCents}) manualBookingEstimate(
+/// Minutos de cocina (con el tope de la hoja) y porciones de cada semana de
+/// una reserva a mano, de la copia Dart de calcQuote con las tarifas por
+/// defecto. Es una vista previa: el precio lo escribe Evelyn (sin compra: la
+/// hace el cliente).
+({int cookMinutes, int portions}) manualBookingEstimate(
   BookingHousehold household,
 ) {
   final quote = calcQuote(household.toQuoteInput(), defaultPricing);
   return (
     cookMinutes: suggestedCookMinutes(quote.cookMinutes),
     portions: quote.portions,
-    groceriesEstCents: quote.groceriesEstCents,
   );
 }
 

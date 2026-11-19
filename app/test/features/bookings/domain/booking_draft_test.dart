@@ -263,12 +263,12 @@ void main() {
       );
     });
 
-    test('la estimación del hogar: 2 + 2, 5 días y cena dan 180 min, 20 porciones y 63 € de compra', () {
+    test('la estimación del hogar: 2 + 2, 5 días y cena dan 180 min y 20 porciones (sin compra)', () {
       expect(
         manualBookingEstimate(defaultManualHousehold),
-        (cookMinutes: 180, portions: 20, groceriesEstCents: 6300),
+        (cookMinutes: 180, portions: 20),
       );
-      // Con almuerzo y cena, el doble de porciones; los minutos, con tope de 300.
+      // Con almuerzo y cena, el doble de porciones; los minutos, con tope de 360.
       final both = manualBookingEstimate(
         defaultManualHousehold.withMeal(Meal.lunch, true),
       );

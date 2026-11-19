@@ -258,7 +258,6 @@ void main() {
       'start': '10:00',
       'cookMinutes': 180,
       'portions': 20,
-      'groceriesEstCents': 6300,
       'serviceTotalCents': 56000,
       'requestKey': 'key-1',
       'dryRun': false,
@@ -457,22 +456,22 @@ void main() {
     expect(tester.widget<FilledButton>(byKey('booking-whatsapp')).onPressed, isNull);
   });
 
-  testWidgets('más de 300 minutos se copian: «+» deshabilitado y «−» los lleva a 300', (tester) async {
+  testWidgets('más de 360 minutos se copian: «+» deshabilitado y «−» los lleva a 360', (tester) async {
     await openRenewal(
       tester,
       sessions: FakeSessionsRepository([
-        for (final session in buildBooking()) session.copyWith(cookMinutes: 360),
+        for (final session in buildBooking()) session.copyWith(cookMinutes: 420),
       ]),
     );
     await tester.ensureVisible(byKey('booking-cook-value'));
-    expect(textOf(tester, 'booking-cook-value'), '360 min');
+    expect(textOf(tester, 'booking-cook-value'), '420 min');
     expect(
       tester.widget<IconButton>(byKey('booking-cook-increment')).onPressed,
       isNull,
     );
     await tester.tap(byKey('booking-cook-decrement'));
     await tester.pumpAndSettle();
-    expect(textOf(tester, 'booking-cook-value'), '300 min');
+    expect(textOf(tester, 'booking-cook-value'), '360 min');
   });
 
   group('antes de la hoja', () {

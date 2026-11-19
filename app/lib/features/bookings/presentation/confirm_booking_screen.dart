@@ -555,7 +555,7 @@ class _BookingForm extends StatelessWidget {
             BookingSourceKind.manual => l10n.bookingCookHelpManual(
               maxBookingCookMinutes,
             ),
-            // Copiados tal cual (pueden pasar de 300): sin nombrar un máximo.
+            // Copiados tal cual (pueden pasar de 360): sin nombrar un máximo.
             BookingSourceKind.renewal => l10n.bookingCookHelpRenewal,
           }),
 
@@ -797,8 +797,8 @@ class _Header extends StatelessWidget {
 }
 
 /// «Persone e pasti» de una reserva a mano: adultos, niños, días a la semana
-/// y comidas (la última no se saca). Cambiarlos recalcula porciones, compra
-/// y, mientras no se toquen, los minutos.
+/// y comidas (la última no se saca). Cambiarlos recalcula las porciones y,
+/// mientras no se toquen, los minutos.
 class _HouseholdSection extends StatelessWidget {
   const _HouseholdSection({
     required this.household,

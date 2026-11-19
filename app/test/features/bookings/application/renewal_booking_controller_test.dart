@@ -61,7 +61,6 @@ void main() {
     'start': '10:00',
     'cookMinutes': 180,
     'portions': 20,
-    'groceriesEstCents': 6300,
     'dryRun': true,
   };
 
@@ -345,7 +344,7 @@ void main() {
   });
 
   group('el hogar y los minutos', () {
-    test('cambiar los adultos recalcula porciones y compra, pero no los minutos copiados', () async {
+    test('cambiar los adultos recalcula las porciones, pero no los minutos copiados', () async {
       save(buildBooking());
       await open();
       final dryRuns = bookings.dryRuns.length;
@@ -356,22 +355,21 @@ void main() {
       );
       expect(state().household?.adults, 3);
       expect(state().portions, estimate.portions);
-      expect(state().groceriesEstCents, estimate.groceriesEstCents);
       expect(state().cookMinutes, 180);
       expect(bookings.dryRuns, hasLength(dryRuns));
     });
 
-    test('más de 300 minutos se copian tal cual; «+» no los cambia y «−» los lleva a 300', () async {
+    test('más de 360 minutos se copian tal cual; «+» no los cambia y «−» los lleva a 360', () async {
       save([
-        for (final session in buildBooking()) session.copyWith(cookMinutes: 360),
+        for (final session in buildBooking()) session.copyWith(cookMinutes: 420),
       ]);
       await open();
-      expect(state().cookMinutes, 360);
-      expect(bookings.dryRuns.first.cookMinutes, 360);
+      expect(state().cookMinutes, 420);
+      expect(bookings.dryRuns.first.cookMinutes, 420);
       controller().stepCookMinutes(1);
-      expect(state().cookMinutes, 360);
+      expect(state().cookMinutes, 420);
       controller().stepCookMinutes(-1);
-      expect(state().cookMinutes, 300);
+      expect(state().cookMinutes, 360);
     });
   });
 

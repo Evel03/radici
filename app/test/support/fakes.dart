@@ -681,14 +681,14 @@ class FakeBookingsRepository implements BookingsRepository {
         clientId: clientId,
         requestId: requestId,
         date: week.date,
-        start: week.start ?? request.start ?? const ClockTime.hm(10, 0),
+        start: week.start ?? request.start ?? const ClockTime.hm(9, 0),
         cookMinutes: request.cookMinutes,
-        shopMinutes: 45,
+        // Sin compra: shop_minutes es 0 desde el 19/11/2026.
+        shopMinutes: 0,
         gapMinutes: 30,
         portions: request.portions ?? 0,
         status: SessionStatus.confirmed,
         serviceCents: week.serviceCents,
-        groceriesEstCents: request.groceriesEstCents ?? 0,
         client: client,
         request: created,
       );

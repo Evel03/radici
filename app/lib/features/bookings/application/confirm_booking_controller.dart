@@ -1,7 +1,7 @@
 // Hoja «Confirmar reserva», desde un pedido de la bandeja, a mano (una ficha
 // existente o una nueva) o «Rinnova» (ver BookingSource): las semanas (1 a 8)
 // y sus fechas cada 7 días, la hora de llegada que sugiere el servidor (en una
-// renovación, la copiada), los minutos de cocina (con tope de 300 en los
+// renovación, la copiada), los minutos de cocina (con tope de 360 en los
 // pasos), el precio del servicio de toda la reserva y, a mano o al renovar,
 // el hogar (adultos, niños, días y comidas) y el idioma de la clienta.
 //
@@ -165,9 +165,8 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
     /// Evelyn tocó el hogar.
     @Default(false) bool householdEdited,
 
-    /// Porciones y compra estimada de cada semana (van en el cuerpo).
+    /// Porciones de cada semana (van en el cuerpo).
     int? portions,
-    int? groceriesEstCents,
 
     /// El precio que propone la hoja (null: sin precio automático).
     int? suggestedPriceCents,
@@ -476,7 +475,6 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
       startEdited: value.startEdited,
       cookMinutes: value.cookMinutes,
       portions: value.portions,
-      groceriesEstCents: value.groceriesEstCents,
       suggestedPriceCents: value.priceRule.suggestedFor(weeks),
       failure: value.initialFailure,
     );
@@ -523,8 +521,8 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     unawaited(_runChecks());
   }
 
-  /// Media hora más ([direction] 1) o menos (-1) de cocina, de 30 a 300. Unos
-  /// minutos copiados de más de 300 (una renovación) no suben, y bajan a 300.
+  /// Media hora más ([direction] 1) o menos (-1) de cocina, de 30 a 360. Unos
+  /// minutos copiados de más de 360 (una renovación) no suben, y bajan a 360.
   void stepCookMinutes(int direction) {
     if (direction > 0 && state.cookMinutes >= maxBookingCookMinutes) return;
     final minutes = steppedCookMinutes(state.cookMinutes, direction);
@@ -560,8 +558,8 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     }
   }
 
-  /// El hogar cambia la estimación (porciones y compra) y, mientras Evelyn no
-  /// los toque, los minutos: eso vuelve a pedir el dryRun. En una ficha nueva
+  /// El hogar cambia la estimación (las porciones) y, mientras Evelyn no los
+  /// toque, los minutos: eso vuelve a pedir el dryRun. En una ficha nueva
   /// se escribe también en el borrador.
   void _setHousehold(BookingHousehold household) {
     final estimate = manualBookingEstimate(household);
@@ -573,7 +571,6 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
         household: household,
         householdEdited: true,
         portions: estimate.portions,
-        groceriesEstCents: estimate.groceriesEstCents,
         cookMinutes: minutes,
       ),
     );
@@ -705,7 +702,6 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
       start: start,
       cookMinutes: current.cookMinutes,
       portions: current.portions,
-      groceriesEstCents: current.groceriesEstCents,
       serviceTotalCents: serviceTotalCents,
       requestKey: requestKey,
       dryRun: dryRun,

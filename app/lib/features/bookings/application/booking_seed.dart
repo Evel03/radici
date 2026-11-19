@@ -196,7 +196,6 @@ final class BookingSeed {
     this.cookFollowsHousehold = false,
     required this.priceRule,
     this.portions,
-    this.groceriesEstCents,
     this.initialFailure,
     this.renewedFrom,
     this.renewedRequestId,
@@ -221,7 +220,6 @@ final class BookingSeed {
       cookMinutes: suggestedCookMinutes(request.estimate?.cookMinutes),
       priceRule: EstimatePriceRule(request.estimate),
       portions: request.estimate?.portions,
-      groceriesEstCents: request.estimate?.groceriesEstCents,
       // Ya no es un pedido nuevo: ni se pregunta al servidor.
       initialFailure: request.canConfirmBooking
           ? null
@@ -261,7 +259,6 @@ final class BookingSeed {
       cookFollowsHousehold: true,
       priceRule: const NoSuggestedPrice(),
       portions: estimate.portions,
-      groceriesEstCents: estimate.groceriesEstCents,
     );
   }
 
@@ -290,7 +287,6 @@ final class BookingSeed {
       estimate: plan.estimate,
     ),
     portions: plan.portions,
-    groceriesEstCents: plan.groceriesEstCents,
     renewedFrom: plan.last.date,
     renewedRequestId: plan.last.requestId,
     lastDiffers: plan.lastDiffers,
@@ -331,7 +327,6 @@ final class BookingSeed {
   final bool cookFollowsHousehold;
   final BookingPriceRule priceRule;
   final int? portions;
-  final int? groceriesEstCents;
 
   /// Una falla que la hoja ya conoce al abrirse (un pedido que ya no está
   /// nuevo): no se pregunta al servidor.

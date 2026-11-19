@@ -347,9 +347,9 @@ repositorios falsos (`test/support/fakes.dart`).
     sesiones no guardan cuál se movió y, con dos semanas distintas, no se puede saber (duda D7);
   - las semanas y el precio son los de la reserva, contando las sesiones canceladas (lo que se
     reservó y se acordó);
-  - la llegada (el primer `dryRun` ya la lleva), los minutos (tal cual, también más de 300: «+» no
-    sube y «−» lleva a 300), las porciones y la compra son los de la última sesión viva; los minutos
-    no siguen a las personas;
+  - la llegada (el primer `dryRun` ya la lleva), los minutos (tal cual, también más de 360: «+» no
+    sube y «−» lleva a 360) y las porciones son los de la última sesión viva (sin compra: la hace el
+    cliente); los minutos no siguen a las personas;
   - las personas, los días y las comidas (dentro de los límites del contrato) y el idioma son los
     del pedido renovado;
   - con otra cantidad de semanas, el precio sale de las tarifas de su estimación solo si el total

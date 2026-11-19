@@ -5,7 +5,8 @@
 // - Se puede renovar si el pedido embebido está aceptado, es semanal y hay al
 //   menos una sesión viva. La última viva manda: la primera fecha es esa
 //   + 7 días (mismo día de la semana) y se copian su llegada, sus minutos
-//   (tal cual: el contrato admite hasta 720), sus porciones y su compra.
+//   (tal cual: el contrato admite hasta 720) y sus porciones. Sin compra: la
+//   hace el cliente.
 // - Las semanas y el precio cuentan todas las sesiones de la reserva, también
 //   las canceladas: es lo que se reservó y se acordó (split_cents suma el
 //   total exacto).
@@ -34,7 +35,6 @@ final class RenewalPlan {
     required this.cookMinutes,
     required this.serviceTotalCents,
     required this.portions,
-    required this.groceriesEstCents,
     required this.household,
     required this.locale,
     this.estimate,
@@ -59,7 +59,6 @@ final class RenewalPlan {
   /// La suma del servicio de todas las sesiones, también las canceladas.
   final int serviceTotalCents;
   final int portions;
-  final int groceriesEstCents;
   final BookingHousehold household;
   final ClientLocale locale;
 
@@ -122,7 +121,6 @@ RenewalPlan? renewalPlan(Iterable<CookingSession> booking) {
     cookMinutes: last.cookMinutes,
     serviceTotalCents: sessions.fold(0, (sum, s) => sum + s.serviceCents),
     portions: last.portions,
-    groceriesEstCents: last.groceriesEstCents,
     household: _householdOf(request, last.client),
     locale: request.locale,
     estimate: request.estimate,

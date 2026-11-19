@@ -214,7 +214,6 @@ void main() {
         'dates': [for (final date in fourWeeks) date.toIso()],
         'cookMinutes': estimate.cookMinutes,
         'portions': estimate.portions,
-        'groceriesEstCents': estimate.groceriesEstCents,
         'dryRun': true,
       });
       expect(state().start, const ClockTime.hm(10, 0));
@@ -248,7 +247,6 @@ void main() {
         'start': '10:00',
         'cookMinutes': estimate.cookMinutes,
         'portions': estimate.portions,
-        'groceriesEstCents': estimate.groceriesEstCents,
         'serviceTotalCents': 56000,
         'requestKey': 'key-1',
         'dryRun': false,
@@ -361,7 +359,6 @@ void main() {
         'dates': [for (final date in fourWeeks) date.toIso()],
         'cookMinutes': estimate.cookMinutes,
         'portions': estimate.portions,
-        'groceriesEstCents': estimate.groceriesEstCents,
         'dryRun': true,
       });
 

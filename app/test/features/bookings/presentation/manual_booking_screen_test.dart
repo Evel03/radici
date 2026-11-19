@@ -177,7 +177,7 @@ void main() {
       await tester.ensureVisible(byKey('booking-locale-es'));
       expect(find.text('Lingua dei messaggi WhatsApp'), findsOneWidget);
       expect(tester.widget<ChoiceChip>(byKey('booking-locale-es')).selected, isTrue);
-      expect(find.text('Calcolato da persone e pasti, al massimo 300 min.'), findsOneWidget);
+      expect(find.text('Calcolato da persone e pasti, al massimo 360 min.'), findsOneWidget);
       // El precio, vacío y obligatorio: la barra lo dice con «Vedi».
       expect(tester.widget<TextField>(byKey('booking-price')).controller!.text, isEmpty);
       expect(textOf(tester, 'booking-blocker'), 'Manca il prezzo del servizio.');

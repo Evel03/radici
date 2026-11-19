@@ -1,15 +1,15 @@
 // «Rinnova» (decisión 2): de las sesiones de una reserva semanal (también
 // las canceladas) sale lo que propone la hoja. La primera fecha es la última
 // sesión viva + 7 días; se copian la llegada, los minutos (tal cual, también
-// más de 300), las porciones y la compra de esa sesión; las semanas y el
-// precio cuentan todas las sesiones, también las canceladas; el hogar
-// (ajustado a los límites del contrato) y el idioma son los del pedido. El
-// día y la hora salen de la última viva; si no son los de más de la mitad de
-// las vivas (alguna se movió), se avisa sin decir cuál, porque las sesiones
-// no lo guardan; con otro teléfono en el pedido, también. Al cambiar las
-// semanas, el precio sigue a las tarifas de la estimación solo si el total
-// era el de esas tarifas. Una sesión extra, sin pedido o sin sesiones vivas no
-// se renueva.
+// más de 360) y las porciones de esa sesión (sin compra: la hace el
+// cliente); las semanas y el precio cuentan todas las sesiones, también las
+// canceladas; el hogar (ajustado a los límites del contrato) y el idioma son
+// los del pedido. El día y la hora salen de la última viva; si no son los de
+// más de la mitad de las vivas (alguna se movió), se avisa sin decir cuál,
+// porque las sesiones no lo guardan; con otro teléfono en el pedido, también.
+// Al cambiar las semanas, el precio sigue a las tarifas de la estimación solo
+// si el total era el de esas tarifas. Una sesión extra, sin pedido o sin
+// sesiones vivas no se renueva.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
@@ -181,26 +181,24 @@ void main() {
   });
 
   group('lo que se copia', () {
-    test('la ficha, el idioma y la estimación del pedido; las porciones y la compra de la última viva', () {
+    test('la ficha, el idioma y la estimación del pedido; las porciones de la última viva', () {
       final booking = buildBooking(
         locale: ClientLocale.es,
         estimate: fourWeeksEstimate,
         portions: 15,
       );
-      booking[3] = booking[3].copyWith(groceriesEstCents: 5100);
       final plan = renewalPlan(booking)!;
       expect(plan.clientId, testClientId);
       expect(plan.locale, ClientLocale.es);
       expect(plan.estimate, fourWeeksEstimate);
       expect(plan.portions, 15);
-      expect(plan.groceriesEstCents, 5100);
     });
 
-    test('los minutos tal cual, también más de 300', () {
+    test('los minutos tal cual, también más de 360', () {
       final booking = [
-        for (final session in normal()) session.copyWith(cookMinutes: 360),
+        for (final session in normal()) session.copyWith(cookMinutes: 420),
       ];
-      expect(renewalPlan(booking)!.cookMinutes, 360);
+      expect(renewalPlan(booking)!.cookMinutes, 420);
     });
 
     test('el hogar del pedido, ajustado a los límites del contrato', () {

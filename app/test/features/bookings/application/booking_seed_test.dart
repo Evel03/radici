@@ -86,7 +86,7 @@ void main() {
   }
 
   group('desde un pedido (como el PR 5)', () {
-    test('las semanas del pedido desde la preferida, los minutos, porciones, compra y precio de la estimación', () async {
+    test('las semanas del pedido desde la preferida, los minutos, porciones y precio de la estimación', () async {
       requests.requests['req-1'] = buildRequest(
         weeks: 4,
         preferredDate: monday,
@@ -105,12 +105,11 @@ void main() {
       expect(seed.dates, weeklyDates(monday, 4));
       expect(seed.start, isNull);
       expect(seed.startEdited, isFalse);
-      expect(seed.cookMinutes, 300, reason: 'con el tope de la hoja');
+      expect(seed.cookMinutes, 360, reason: 'con el tope de la hoja');
       expect(seed.cookFollowsHousehold, isFalse);
       expect(seed.priceRule.suggestedFor(4), 56000);
       expect(seed.priceRule.suggestedFor(2), 30000);
       expect(seed.portions, 20);
-      expect(seed.groceriesEstCents, 6300);
       expect(seed.initialFailure, isNull);
       expect(seed.party.displayName, 'Giulia Rossi');
       expect(seed.party.firstName, 'Giulia');
@@ -149,7 +148,6 @@ void main() {
       final estimate = manualBookingEstimate(household);
       expect(seed.cookMinutes, estimate.cookMinutes);
       expect(seed.portions, estimate.portions);
-      expect(seed.groceriesEstCents, estimate.groceriesEstCents);
       expect(seed.cookFollowsHousehold, isTrue);
       expect(seed.priceRule.suggestedFor(4), isNull);
       expect(seed.party.displayName, 'Chiara Rossi');
@@ -327,7 +325,6 @@ void main() {
       expect(seed.priceRule.suggestedFor(4), 56000);
       expect(seed.priceRule.suggestedFor(2), 30000);
       expect(seed.portions, 20);
-      expect(seed.groceriesEstCents, 6300);
       expect(seed.renewedFrom, CalendarDate(2026, 12, 16));
       expect(seed.renewedRequestId, bookingRequestId);
       expect(seed.lastDiffers, isFalse);

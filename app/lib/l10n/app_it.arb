@@ -1081,7 +1081,7 @@
   "@bookingCookHelpManual": {
     "description": "Hoja de una reserva a mano, debajo del tiempo de cocina: sale de las personas y las comidas (sigue a ese cambio hasta que se toca) y tiene un tope.",
     "placeholders": {
-      "max": { "type": "int", "example": "300" }
+      "max": { "type": "int", "example": "360" }
     }
   },
   "bookingRetryKeepsOpen": "Questa pagina resta aperta finché non arriva una risposta: così la prenotazione non si duplica.",
@@ -1147,7 +1147,7 @@
   },
   "bookingCookHelpRenewal": "Come nella prenotazione precedente.",
   "@bookingCookHelpRenewal": {
-    "description": "Hoja «Rinnova prenotazione», debajo del tiempo de cocina: son los minutos de la última sesión de la reserva, tal cual (no siguen a las personas y pueden pasar de 300)."
+    "description": "Hoja «Rinnova prenotazione», debajo del tiempo de cocina: son los minutos de la última sesión de la reserva, tal cual (no siguen a las personas y pueden pasar de 360)."
   },
   "bookingChecksFailed": "Non è stato possibile verificare le date. Puoi confermare lo stesso: il server le ricontrolla.",
   "@bookingChecksFailed": {

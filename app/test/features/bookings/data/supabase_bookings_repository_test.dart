@@ -194,7 +194,6 @@ void main() {
           start: const ClockTime.hm(10, 0),
           cookMinutes: 180,
           portions: 20,
-          groceriesEstCents: 6300,
           serviceTotalCents: 28000,
           requestKey: key,
         ),
@@ -214,7 +213,6 @@ void main() {
         'start': '10:00',
         'cookMinutes': 180,
         'portions': 20,
-        'groceriesEstCents': 6300,
         'serviceTotalCents': 28000,
         'requestKey': key,
         'dryRun': false,
@@ -253,7 +251,6 @@ void main() {
           dates: [monday],
           cookMinutes: 180,
           portions: 20,
-          groceriesEstCents: 6300,
           dryRun: true,
         ),
       );
@@ -277,7 +274,6 @@ void main() {
         'dates': ['2026-11-23'],
         'cookMinutes': 180,
         'portions': 20,
-        'groceriesEstCents': 6300,
         'dryRun': true,
       });
     });
