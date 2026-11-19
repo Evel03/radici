@@ -114,7 +114,9 @@ repositorios falsos (`test/support/fakes.dart`).
   existía). La web deja de ofrecerlos en 1 o 2 minutos (`get_free_days` los descuenta; la
   disponibilidad se cachea 60 s). Marca los feriados nacionales (Pasquetta calculada; San Francesco
   desde 2026, legge n. 151/2025) y Sant'Alessandro (26/8) como festivo local de Bergamo.
-- **Detalle**: todos los datos (también las restricciones), la estimación guardada y las acciones:
+- **Detalle**: todos los datos (también las restricciones), la estimación guardada (el servicio, sin
+  compra ni total: la compra la hace el cliente; las claves de compra de los pedidos de antes se
+  ignoran) y las acciones:
   WhatsApp (`https://wa.me/<número sin +>?text=…` en el idioma del cliente), llamar (`tel:`),
   email (`mailto:`), rechazar (`new` → `rejected`) y deshacer el rechazo (`rejected` → `new`;
   como ya estaba visto, vuelve a Viste), las dos con confirmación. Al abrirlo se marca visto.
@@ -302,6 +304,8 @@ test/                  espejo de lib/ y tool/, más support/ con utilidades
 `lib/features/quote/domain/quote.dart` es una copia de `supabase/functions/_shared/quote.ts`, que es la fuente de verdad.
 `test/features/quote/quote_vectors_test.dart` lee `supabase/functions/_shared/quote_vectors.json` y verifica todos los vectores.
 Si cambia la fórmula, se cambian `quote.ts`, los vectores y esta copia en el mismo PR.
+Sin compra (19/11/2026): la hace el cliente, con la lista que le manda Evelyn. El motor no la estima
+y la calculadora (`/preventivo`) muestra porciones, recetas y el servicio.
 
 ## Textos
 

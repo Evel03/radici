@@ -35,9 +35,9 @@
   "@homeHeadline": {
     "description": "Título de bienvenida de la pantalla de inicio."
   },
-  "homeBody": "Evelyn fa la spesa, cucina da te per più giorni e lascia tutto in porzioni etichettate con piatto e data.",
+  "homeBody": "Evelyn cucina da te per più giorni e lascia tutto in porzioni etichettate con piatto e data. La spesa la fai tu, con la lista che ti manda lei.",
   "@homeBody": {
-    "description": "Explicación breve del servicio en la pantalla de inicio."
+    "description": "Explicación breve del servicio en la pantalla de inicio (pública: le habla al cliente). La compra la hace el cliente, con la lista que le manda Evelyn."
   },
   "homeQuoteCta": "Calcola preventivo",
   "@homeQuoteCta": {
@@ -155,21 +155,9 @@
       "maxPeople": { "type": "int", "example": "5" }
     }
   },
-  "quoteGroceries": "Spesa stimata",
-  "@quoteGroceries": {
-    "description": "Fila del desglose: insumos estimados (de la sesión, en un pedido que no es semanal)."
-  },
-  "quoteGroceriesWeekly": "Spesa stimata a settimana",
-  "@quoteGroceriesWeekly": {
-    "description": "Fila del desglose: insumos estimados de una semana (se pagan aparte, según el ticket)."
-  },
-  "quoteTotal": "Totale stimato",
-  "@quoteTotal": {
-    "description": "Fila del detalle de un pedido anterior al precio por semana: servicio + insumos estimados."
-  },
-  "quoteFootnote": "Il servizio è a settimana per una famiglia fino a {maxPeople} persone, qualunque siano i giorni e i pasti: comprende fare la spesa, lo spostamento e il tempo in cucina. Da {discountWeeks} settimane costa {discountRate} a settimana. La spesa si paga a parte, in base allo scontrino. È una stima: il prezzo finale lo conferma Evelyn.",
+  "quoteFootnote": "Il servizio è a settimana per una famiglia fino a {maxPeople} persone, qualunque siano i giorni e i pasti: comprende lo spostamento e il tempo in cucina. Da {discountWeeks} settimane costa {discountRate} a settimana. La spesa la fai tu, con la lista che ti manda Evelyn. È una stima: il prezzo finale lo conferma lei.",
   "@quoteFootnote": {
-    "description": "Nota bajo el desglose de la calculadora. Los números salen de las tarifas (defaultPricing).",
+    "description": "Nota bajo el desglose de la calculadora (pública: le habla al cliente). Los números salen de las tarifas (defaultPricing). La compra la hace el cliente, con la lista que le manda Evelyn.",
     "placeholders": {
       "maxPeople": { "type": "int", "example": "5" },
       "discountWeeks": { "type": "int", "example": "4" },
@@ -611,9 +599,9 @@
   "@detailNoEstimate": {
     "description": "El pedido no trae estimación."
   },
-  "detailEstimateFootnote": "Calcolata con le tue tariffe al momento della richiesta. La spesa si paga in base allo scontrino.",
+  "detailEstimateFootnote": "Calcolata con le tue tariffe al momento della richiesta. La spesa la fa il cliente, con la lista che gli mandi tu.",
   "@detailEstimateFootnote": {
-    "description": "Nota bajo la estimación guardada."
+    "description": "Nota bajo la estimación guardada (solo el servicio: la compra la hace el cliente)."
   },
   "detailPhone": "Telefono",
   "@detailPhone": {
@@ -1221,9 +1209,9 @@
       "portions": { "type": "int", "example": "4" }
     }
   },
-  "recipeIngredientsHelp": "Da qui nasce la lista della spesa: le quantità si adattano alle porzioni di ogni sessione.",
+  "recipeIngredientsHelp": "Da qui nasce la lista della spesa che mandi al cliente: le quantità si adattano alle porzioni di ogni sessione.",
   "@recipeIngredientsHelp": {
-    "description": "Ayuda de la sección de ingredientes."
+    "description": "Ayuda de la sección de ingredientes. La compra la hace el cliente, con la lista que le manda la cocinera."
   },
   "recipeIngredientName": "Ingrediente",
   "@recipeIngredientName": {
