@@ -39,7 +39,7 @@ Evelyn cocina **en la casa del cliente**: cocina para varios días y deja todo e
 
 ### Líneas de servicio
 Una sola marca, **Radici · Cucina privata**, con dos líneas. Los nombres son provisorios (sección 14): van en los textos de i18n, nunca en el código.
-- **Servicio semanal** («Radici Quotidiano»): la propuesta de arriba, de 1 a 8 semanas con un menú y una sesión por semana. Precio por semana estimado con 5.1 (sin precio automático para más de 5 personas) y día elegido en el calendario de disponibilidad (5.2), el mismo en cada semana. El menú lo decide Evelyn; el cliente activo puede sugerir platos.
+- **Servicio semanal** («Radici Quotidiano»): la propuesta de arriba, de 1 a 8 semanas con un menú y una sesión por semana. Precio por semana estimado con 5.1 (sin precio automático para más de 5 personas) y día elegido en el calendario de disponibilidad (5.2), el mismo en cada semana. El menú lo decide Evelyn: en el formulario de la web el cliente puede elegir hasta un plato por día de los publicados en el catálogo (opcional, desde el 19/11/2026: §4, «Menú de la web»), y el cliente activo puede sugerir platos (M2b).
 - **Cenas privadas y eventos** («Radici Privato»): sección y formulario propios, menú a medida y presupuesto que Evelyn pasa después de hablar con el cliente, sin precio automático (5.3).
 
 ### Roles
@@ -52,7 +52,7 @@ Una sola marca, **Radici · Cucina privata**, con dos líneas. Los nombres son p
 
 ### Estados del cliente
 La ficha (`clients.status`, una por cocinera) se muestra con dos estados (decisión del 15/11/2026):
-- **Prospecto** (`prospect`): pidió desde la web o, desde M2, se registró y todavía no es cliente. Con cuenta ve su perfil y sus pedidos y puede pedir presupuesto; no ve el catálogo de platos ni sugiere.
+- **Prospecto** (`prospect`): pidió desde la web o, desde M2, se registró y todavía no es cliente. Con cuenta ve su perfil y sus pedidos y puede pedir presupuesto; no ve el catálogo de platos ni sugiere (los platos publicados del menú de la web los ve cualquiera en el formulario, §4).
 - **Cliente activo** (`trial` o `active`): además ve el catálogo de temporada y sugiere platos. Pasa a este estado al aceptar su primer presupuesto (lo hace el servidor, M4), cuando Evelyn le confirma una reserva (5.3) o cuando Evelyn toca «Segna come cliente».
 
 `paused` y `churned` siguen en el enum y no cuentan como activos. El estado lo cambian la cocinera o el servidor, nunca el cliente.
@@ -274,7 +274,7 @@ Con los valores por defecto (150 € por semana, 140 € desde 4 semanas, hasta 
 - Evelyn puede **ajustar el servicio a mano** antes de enviar; se guarda en `quotes.service_cents` y el motivo en `pricing_snapshot`.
 - Al enviar se guarda un **snapshot** con tarifas y resultado: si Evelyn cambia tarifas después, los presupuestos enviados no cambian.
 - Un presupuesto vence a las 48 h (`hold_until`); vencido, el pedido pasa a `expired` y se libera el horario. El de un evento tiene un plazo propio, más largo (5.3).
-- Platos (D4, decisión del 15/11/2026): el cliente solo sugiere los que le gustan, sin cantidad fija, y Evelyn decide y arma el menú. La cantidad de `recetas` sigue saliendo de esta fórmula: ni la fórmula ni los vectores cambian por las sugerencias.
+- Platos (D4, decisión del 15/11/2026): el cliente solo sugiere los que le gustan, sin cantidad fija, y Evelyn decide y arma el menú. Desde el 19/11/2026 (comentarios de Evelyn) el formulario de la web le deja elegir hasta un plato por día del pedido (`days`) entre los publicados, opcional: si elige menos o ninguno, el resto lo propone Evelyn, que tiene la última palabra (alergias, temporada). La cantidad de `recetas` sigue saliendo de esta fórmula: ni la fórmula ni los vectores cambian por las sugerencias ni por lo elegido.
 - Eventos privados: sin estimación automática. Evelyn fija el presupuesto después de hablar con el cliente (5.3).
 
 ### 5.2 Disponibilidad y horarios libres
@@ -455,7 +455,7 @@ Ver `docs/prototipo.html`; cambiar de vista con el selector de arriba.
 
 Un prospecto con cuenta ve Inicio, Pedir (sin platos deseados) y su perfil; no ve el catálogo ni sugiere platos (§1).
 
-**Cliente nuevo (web pública)**: explicación en 4 pasos, el mismo formulario de pedido con datos de contacto y consentimiento; después, seguimiento del estado y aceptación del presupuesto, que crea la cuenta si todavía no tiene (desde M2 también puede registrarse antes). **Eventos privados** (M3b): sección propia y formulario con fecha libre, invitados, hora aproximada e idea del evento, sin calendario ni precio (5.3).
+**Cliente nuevo (web pública)**: explicación en 4 pasos, el mismo formulario de pedido con datos de contacto y consentimiento, y la pestaña «Menù» (19/11/2026): los platos publicados de la temporada, cada uno con su descripción, alérgenos y dieta, para elegir hasta uno por día (opcional; lo elegido llega en el pedido y en el email a Evelyn); después, seguimiento del estado y aceptación del presupuesto, que crea la cuenta si todavía no tiene (desde M2 también puede registrarse antes). **Eventos privados** (M3b): sección propia y formulario con fecha libre, invitados, hora aproximada e idea del evento, sin calendario ni precio (5.3).
 
 **Evelyn** (pensado primero para el celular). Un colaborador suyo (§1) entra a las mismas pantallas con su cuenta; Ajustes y el menú de la cuenta dicen «Colaborador de Evelyn», las notas privadas (de un día bloqueado) dicen que no las ven los clientes en lugar de «solo tú», y el WhatsApp que la app le prepara para un cliente sale de su propio teléfono, así que escribe de parte de ella («te escribo de parte de Evelyn de Radici») en lugar de «soy Evelyn».
 - **Hoy** (el inicio después del login, área de Evelyn): la sesión de hoy o la próxima (clienta, hora de llegada, personas, las alergias del pedido resaltadas, «Cómo llegar» y WhatsApp) y pendientes accionables, cada uno en uno o dos toques (pedidos y eventos nuevos, pedidos especiales por aprobar, reservas que terminan, con «Renovar»), ocupación de 7 días, ingreso por servicio, por cobrar y retenido.
@@ -502,7 +502,7 @@ Sin notificaciones entre las 21:00 y las 8:00 (hora de Roma), salvo fallos de pa
 8. Enviar un menú con una receta que choca con una restricción exige confirmación explícita.
 9. Cancelar una sesión con retención libera el importe en Stripe.
 10. La app funciona en italiano y español; los textos no están hardcodeados.
-11. Ningún texto de la web, de los emails ni de la app dice que Evelyn hace la compra ni muestra una compra estimada (19/11/2026). La única excepción es la privacy, cuyo punto 3 (`privacy.purposeBody`) nombra la compra entre las tareas del servicio: se saca en la próxima versión del texto (`CONSENT_VERSION`), porque cambiarlo exige una versión nueva.
+11. Ningún texto de la web, de los emails ni de la app dice que Evelyn hace la compra ni muestra una compra estimada (19/11/2026). Tampoco la privacy, desde su versión `2026-11-19`.
 12. Solo un cliente activo (`trial` o `active`) lee el catálogo y guarda sugerencias de platos; un prospecto, con o sin cuenta, no (test de RLS).
 
 ---
