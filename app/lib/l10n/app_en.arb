@@ -123,6 +123,8 @@
   "detailSectionEstimate": "Estimate",
   "detailSectionContact": "Contact",
   "detailMenuTitle": "{days, plural, =1{Menu chosen by the client ({chosen} of 1 day)} other{Menu chosen by the client ({chosen} of {days} days)}}",
+  "detailMenuTitleNoDays": "{chosen, plural, =1{Menu chosen by the client (1 dish)} other{Menu chosen by the client ({chosen} dishes)}}",
+  "detailMenuLoading": "Loading the chosen dishes",
   "detailMenuDeleted": "Dish deleted",
   "detailMenuLoadFailed": "Couldn't load the chosen dishes. Check your connection and try again.",
   "detailType": "Type",

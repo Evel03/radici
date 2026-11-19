@@ -120,12 +120,14 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Detalle**: todos los datos (también las restricciones), la estimación guardada (el servicio, sin
   compra ni total: la compra la hace el cliente; las claves de compra de los pedidos de antes se
   ignoran) y las acciones. Si el cliente eligió platos en la web, arriba va un recuadro destacado
-  «Menù scelto dal cliente (2 di 5 giorni)» con los nombres en el orden en que los tildó (en el idioma
-  de la app, con el italiano si falta la traducción); un plato que después se borró dice «Piatto
-  eliminato». Los nombres se piden por id a `recipes` (`wishes` es un `uuid[]` sin FK: no se puede
-  embeber), solo si hay platos elegidos, y marcar visto no los vuelve a pedir. Si no se pueden leer,
-  el recuadro igual avisa, con «Riprova». Sin platos elegidos, nada (el menú lo propone Evelyn, que
-  tiene la última palabra). Las acciones:
+  «Menù scelto dal cliente (2 di 5 giorni)» (si el pedido no dice los días, «(2 piatti)») con los
+  nombres en el orden en que los tildó (en el idioma de la app, con el italiano si falta la
+  traducción); un plato que después se borró dice «Piatto eliminato». Los nombres se piden por id a
+  `recipes` (`wishes` es un `uuid[]` sin FK: no se puede embeber), solo si hay platos elegidos; ni
+  marcar visto ni releer la bandeja (reconexión, deslizar para actualizar) los vuelve a pedir, porque
+  depende del contenido de los ids. Si no se pueden leer, el recuadro lo avisa enseguida, con
+  «Riprova» (sin los reintentos automáticos de Riverpod). Sin platos elegidos, nada (el menú lo
+  propone Evelyn, que tiene la última palabra). Las acciones:
   WhatsApp (`https://wa.me/<número sin +>?text=…` en el idioma del cliente), llamar (`tel:`),
   email (`mailto:`), rechazar (`new` → `rejected`) y deshacer el rechazo (`rejected` → `new`;
   como ya estaba visto, vuelve a Viste), las dos con confirmación. Al abrirlo se marca visto.

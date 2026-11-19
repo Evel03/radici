@@ -560,6 +560,17 @@
       "chosen": { "type": "int", "example": "2" }
     }
   },
+  "detailMenuTitleNoDays": "{chosen, plural, =1{Menù scelto dal cliente (1 piatto)} other{Menù scelto dal cliente ({chosen} piatti)}}",
+  "@detailMenuTitleNoDays": {
+    "description": "Como detailMenuTitle, para un pedido que no dice cuántos días (requests.days vacío): solo cuántos platos eligió, sin inventar los días.",
+    "placeholders": {
+      "chosen": { "type": "int", "example": "2" }
+    }
+  },
+  "detailMenuLoading": "Caricamento dei piatti scelti",
+  "@detailMenuLoading": {
+    "description": "Lectura de pantalla de la barra de carga del recuadro del menú elegido, mientras llegan los nombres de los platos."
+  },
   "detailMenuDeleted": "Piatto eliminato",
   "@detailMenuDeleted": {
     "description": "En el menú elegido del detalle: un plato que el cliente eligió y que después se borró del catálogo."

@@ -123,6 +123,8 @@
   "detailSectionEstimate": "Estimación",
   "detailSectionContact": "Contacto",
   "detailMenuTitle": "{days, plural, =1{Menú elegido por el cliente ({chosen} de 1 día)} other{Menú elegido por el cliente ({chosen} de {days} días)}}",
+  "detailMenuTitleNoDays": "{chosen, plural, =1{Menú elegido por el cliente (1 plato)} other{Menú elegido por el cliente ({chosen} platos)}}",
+  "detailMenuLoading": "Cargando los platos elegidos",
   "detailMenuDeleted": "Plato eliminado",
   "detailMenuLoadFailed": "No se pudieron cargar los platos elegidos. Revisa la conexión y vuelve a intentarlo.",
   "detailType": "Tipo",

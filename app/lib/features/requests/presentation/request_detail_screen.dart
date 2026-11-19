@@ -503,9 +503,10 @@ class _RequestDetail extends ConsumerWidget {
 }
 
 /// Los platos que eligió el cliente en la pestaña «Menù» de la web: cuántos de
-/// cuántos días y sus nombres en el orden en que los tildó, en el idioma de la
-/// app (con el italiano si falta la traducción). El título sale del pedido:
-/// se ve aunque los nombres no hayan llegado o no se puedan leer.
+/// cuántos días (o cuántos, si el pedido no dice los días) y sus nombres en el
+/// orden en que los tildó, en el idioma de la app (con el italiano si falta la
+/// traducción). El título sale del pedido: se ve aunque los nombres no hayan
+/// llegado o no se puedan leer.
 class _ChosenMenu extends ConsumerWidget {
   const _ChosenMenu({required this.request});
 
@@ -518,7 +519,6 @@ class _ChosenMenu extends ConsumerWidget {
     final ink = theme.colorScheme.onPrimaryContainer;
     final language = Localizations.localeOf(context).languageCode;
     final menu = ref.watch(chosenMenuProvider(request.id));
-    final chosen = request.wishes.length;
 
     return Container(
       key: const ValueKey('detail-menu'),
@@ -537,10 +537,12 @@ class _ChosenMenu extends ConsumerWidget {
               Icon(Icons.restaurant_menu, size: 20, color: ink),
               const SizedBox(width: 8),
               Expanded(
+                // Un nodo propio: el encabezado es el título, no los platos.
                 child: Semantics(
                   header: true,
+                  container: true,
                   child: Text(
-                    l10n.detailMenuTitle(request.days ?? chosen, chosen),
+                    l10n.menuTitle(request),
                     key: const ValueKey('detail-menu-title'),
                     style: theme.textTheme.titleSmall?.copyWith(
                       color: ink,
@@ -583,10 +585,11 @@ class _ChosenMenu extends ConsumerWidget {
                 ),
             ],
             loading: () => [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: LinearProgressIndicator(
-                  key: ValueKey('detail-menu-loading'),
+                  key: const ValueKey('detail-menu-loading'),
+                  semanticsLabel: l10n.detailMenuLoading,
                 ),
               ),
             ],

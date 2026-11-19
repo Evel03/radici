@@ -156,6 +156,14 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
   /// Los ids de cada [fetchMenuDishes], en orden.
   final List<List<String>> dishCalls = [];
 
+  /// Como Supabase: cada lectura ([fetchRequests], [fetchRequest]) devuelve
+  /// pedidos nuevos, con listas nuevas (iguales en contenido, no las mismas).
+  bool freshCopies = false;
+
+  ChefRequest _read(ChefRequest request) => freshCopies
+      ? request.copyWith(wishes: List.of(request.wishes))
+      : request;
+
   final _realtime = StreamController<RequestsRealtimeEvent>.broadcast();
   int realtimeListeners = 0;
 
@@ -174,15 +182,18 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
   Future<List<ChefRequest>> fetchRequests({required String chefId}) async {
     fetchCalls++;
     if (failFetch) throw const RequestsFailure(RequestsFailureKind.unavailable);
-    final list = requests.values.where((r) => r.chefId == chefId).toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final list = [
+      for (final r in requests.values)
+        if (r.chefId == chefId) _read(r),
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return list;
   }
 
   @override
   Future<ChefRequest?> fetchRequest(String id) async {
     if (failFetch) throw const RequestsFailure(RequestsFailureKind.unavailable);
-    return requests[id];
+    final request = requests[id];
+    return request == null ? null : _read(request);
   }
 
   @override

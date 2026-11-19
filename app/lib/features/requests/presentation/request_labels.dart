@@ -76,6 +76,14 @@ extension RequestLabels on AppLocalizations {
     if (request.days case final days?) requestDaysCount(days),
     if (request.meals.isNotEmpty) meals(request.meals),
   ].join(' · ');
+
+  /// Título del menú elegido: cuántos platos de cuántos días ("Menù scelto
+  /// dal cliente (2 di 5 giorni)"). Si el pedido no dice los días, solo los
+  /// platos ("(2 piatti)"): no se inventan días.
+  String menuTitle(ChefRequest request) => switch (request.days) {
+    final days? => detailMenuTitle(days, request.wishes.length),
+    null => detailMenuTitleNoDays(request.wishes.length),
+  };
 }
 
 /// Formatos de fecha y hora en el idioma de la interfaz. Las horas se

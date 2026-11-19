@@ -1,6 +1,7 @@
 // El menú que eligió el cliente de un pedido, para el detalle: los platos de
-// requests.wishes en orden, con sus nombres, sin consultar nada si no eligió
-// y sin volver a pedirlos cuando el pedido cambia por otra cosa.
+// requests.wishes en orden, con sus nombres, sin consultar nada si no eligió,
+// sin volver a pedirlos cuando el pedido cambia por otra cosa o se relee y sin
+// reintentar solo si fallan.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock.dart';
@@ -26,9 +27,11 @@ void main() {
   late FakeChefRequestsRepository repository;
   late ProviderContainer container;
 
-  Future<void> start() async {
+  /// Con [defaultRetry], el contenedor con el reintento por defecto de
+  /// Riverpod, como en la app (los tests van sin reintentos).
+  Future<void> start({bool defaultRetry = false}) async {
     container = ProviderContainer.test(
-      retry: noRetry,
+      retry: defaultRetry ? null : noRetry,
       overrides: [
         authRepositoryProvider.overrideWithValue(
           FakeAuthRepository(user: chefUser),
@@ -111,4 +114,48 @@ void main() {
       expect(repository.dishCalls, hasLength(2));
     },
   );
+
+  // Supabase devuelve objetos nuevos en cada lectura: una reconexión de
+  // Realtime o deslizar para actualizar traen los mismos ids en otra lista.
+  test('releer la bandeja (reconexión o deslizar) no vuelve a pedir los nombres: si fallaran, siguen', () async {
+    repository.freshCopies = true;
+    await start();
+    await menuOf('with-menu');
+    expect(repository.dishCalls, hasLength(1));
+
+    repository.failDishes = true;
+    final inboxReads = repository.fetchCalls;
+    repository
+      ..emitRealtime(const RealtimeConnected())
+      ..emitRealtime(const RealtimeConnected());
+    await pumpEventQueue();
+    await container.read(chefInboxProvider.notifier).refresh();
+    await pumpEventQueue();
+
+    expect(
+      repository.fetchCalls,
+      inboxReads + 2,
+      reason: 'la reconexión y el deslizar releyeron la bandeja',
+    );
+    expect(repository.dishCalls, hasLength(1));
+    final menu = container.read(chosenMenuProvider('with-menu'));
+    expect(menu.hasError, isFalse);
+    expect(menu.requireValue.map((chosen) => chosen.dish?.nameIt), [
+      'Minestrone di verdure',
+      null,
+      'Lasagne alla bolognese',
+    ]);
+  });
+
+  // En la app, Riverpod reintenta solo unas 10 veces (~38 s) con la barra de
+  // carga: el detalle tiene que decir enseguida que falló, con «Riprova».
+  test('con el reintento por defecto de Riverpod, el error llega enseguida y no reintenta solo', () async {
+    repository.failDishes = true;
+    await start(defaultRetry: true);
+    final failed = await menuOf('with-menu');
+
+    expect(failed.isLoading, isFalse);
+    expect(failed.error, isA<RequestsFailure>());
+    expect(repository.dishCalls, hasLength(1));
+  });
 }

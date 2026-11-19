@@ -540,7 +540,7 @@ void main() {
     Future<ChefApp> openMenu(
       WidgetTester tester, {
       List<String> wishes = const [minestroneId, lasagneId],
-      int days = 5,
+      int? days = 5,
       Locale deviceLocale = const Locale('it', 'IT'),
       Size size = const Size(400, 1800),
       bool failDishes = false,
@@ -582,6 +582,18 @@ void main() {
     testWidgets('un solo día: «1 di 1 giorno»', (tester) async {
       await openMenu(tester, wishes: const [lasagneId], days: 1);
       expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (1 di 1 giorno)');
+    });
+
+    // requests.days puede venir vacío: no se inventan los días.
+    testWidgets('un pedido sin días: «(2 piatti)», sin días inventados', (tester) async {
+      await openMenu(tester, days: null);
+      expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (2 piatti)');
+      expect(textOf(tester, 'detail-menu-dish-1'), 'Lasagne alla bolognese');
+    });
+
+    testWidgets('sin días y un solo plato: «(1 piatto)»', (tester) async {
+      await openMenu(tester, wishes: const [lasagneId], days: null);
+      expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (1 piatto)');
     });
 
     testWidgets('en español, el nombre traducido', (tester) async {
@@ -632,6 +644,16 @@ void main() {
       }
       expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (1 di 5 giorni)');
       expect(find.byKey(const ValueKey('detail-menu-loading')), findsOneWidget);
+      // El lector de pantalla dice qué carga.
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('detail-menu-loading'))),
+        matchesSemantics(label: 'Caricamento dei piatti scelti'),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('detail-menu-title'))),
+        matchesSemantics(label: 'Menù scelto dal cliente (1 di 5 giorni)', isHeader: true),
+        reason: 'el encabezado es solo el título',
+      );
 
       requests.pendingDishes!.complete();
       await tester.pumpAndSettle();
