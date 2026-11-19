@@ -16,7 +16,7 @@ Actualizado el 19/11/2026: Evelyn no hace la compra (la hace el cliente, con la 
 | `/sessions/move` | `chef_move_session` | mover una semana (§5) |
 | `/sessions/cancel` | `chef_cancel_sessions` | cancelar una o varias semanas (§6) |
 
-  Con el plan crecen: `/sessions/receipts` y `/receipts/remove` (PR 9a, tickets), `/sessions/cooked`, `/sessions/uncook`, `/payments`, `/payments/void` y `/payments/refund` (PR 10a, «Cociné» y cobros).
+  Con el plan crecen: `/sessions/cooked`, `/sessions/uncook`, `/payments`, `/payments/void` y `/payments/refund` (PR 10a, «Cociné» y cobros). Las de los tickets (`/sessions/receipts` y `/receipts/remove`, PR 9a) salieron el 19/11/2026: sin compra no hay tickets.
 
 ## 2. Autenticación y CORS
 

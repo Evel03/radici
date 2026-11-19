@@ -131,8 +131,8 @@ describe("despliegue: la web y la función no coinciden unos minutos", () => {
     expect(noFreeDays(state)).toBe(false);
     expect(initialMonthIndex(state)).toBe(0);
     // Sin ningún libre en esos 14 días, el aviso dice que no hay lugar en las 8 semanas aunque solo se
-    // consultaron 2. Dura lo que el despliegue; con más de 300 min de cocina es cierto igual (no entra ningún
-    // día) y mandarlo sin fecha es lo único que se puede hacer.
+    // consultaron 2. Dura lo que el despliegue; con más de 360 min de cocina (el tope del horario sin compra) es
+    // cierto igual (no entra ningún día) y mandarlo sin fecha es lo único que se puede hacer.
     expect(noFreeDays(input({ availability: received({ ...full, days: full.days.slice(0, 14).map((d) => ({ ...d, available: false })) }) }))).toBe(true);
   });
 

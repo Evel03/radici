@@ -502,7 +502,7 @@ Sin notificaciones entre las 21:00 y las 8:00 (hora de Roma), salvo fallos de pa
 8. Enviar un menú con una receta que choca con una restricción exige confirmación explícita.
 9. Cancelar una sesión con retención libera el importe en Stripe.
 10. La app funciona en italiano y español; los textos no están hardcodeados.
-11. Ningún texto de la web, de los emails ni de la app dice que Evelyn hace la compra ni muestra una compra estimada (19/11/2026).
+11. Ningún texto de la web, de los emails ni de la app dice que Evelyn hace la compra ni muestra una compra estimada (19/11/2026). La única excepción es la privacy, cuyo punto 3 (`privacy.purposeBody`) nombra la compra entre las tareas del servicio: se saca en la próxima versión del texto (`CONSENT_VERSION`), porque cambiarlo exige una versión nueva.
 12. Solo un cliente activo (`trial` o `active`) lee el catálogo y guarda sugerencias de platos; un prospecto, con o sin cuenta, no (test de RLS).
 
 ---
