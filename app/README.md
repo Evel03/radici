@@ -154,14 +154,18 @@ repositorios falsos (`test/support/fakes.dart`).
   `save_recipe`, con un id generado en el teléfono: un reintento no lo duplica y, si falla, no se
   pierde lo cargado. No deja guardar un plato vegano con leche, huevos, pescado o mariscos, ni uno
   vegetariano con pescado o mariscos (`save_recipe` tampoco lo acepta). Duplicar abre la copia (otro
-  id) para cambiarle el nombre; desactivar y reactivar tienen «Annulla». Un plato nunca se borra.
+  id) para cambiarle el nombre, sin las descripciones de la web: la copia queda «Senza descrizione: non
+  è sul sito» hasta que tenga la suya, así no sale en la web con la del original. Desactivar y
+  reactivar tienen «Annulla». Un plato nunca se borra.
 - **Descripción de la web** (migración `20261119150000_menu_web.sql`): una frase corta en italiano y,
   si quiere, en español e inglés (`recipes.description_it/_es/_en`), que la web muestra al lado del
   nombre en la pestaña «Menù» del formulario de pedido. Un plato sale en la web si está activo, en el
   catálogo y con la descripción en italiano (`get_public_menu`); sin la española o la inglesa, la web
   muestra la italiana. Hasta 200 caracteres, una sola línea, sin espacios de más (como los nombres,
-  `normalizeRecipeText`); el contador avisa sin cortar lo escrito y al guardar lo dice el error. Se
-  guardan con `save_recipe`, que recibe siempre las tres (null borra la que se vació).
+  `normalizeRecipeText`); el contador avisa sin cortar lo escrito y al guardar lo dice el error. El
+  contador cuenta como la validación y la base (`recipeTextLength`: sin los espacios de más, por
+  caracteres como `char_length`; una bandera cuenta dos). Se guardan con `save_recipe`, que recibe
+  siempre las tres (null borra la que se vació).
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
   entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).

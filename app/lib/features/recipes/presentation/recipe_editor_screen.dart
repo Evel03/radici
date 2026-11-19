@@ -777,6 +777,12 @@ class _SaveBar extends StatelessWidget {
 /// teclado ofrece «Siguiente» o «Listo», no un salto de línea), que se ve en
 /// hasta tres. El contador avisa los 200 caracteres sin cortar lo escrito: si
 /// se pasa, lo dice el error al guardar, como en los nombres.
+///
+/// El contador cuenta como la validación ([recipeTextLength]: el texto sin
+/// espacios de más, por caracteres como la base), no como el de TextField
+/// (lo escrito, por letras): con espacios dobles decía «205/200» en rojo y se
+/// guardaba, y con una bandera, «200/200» y daba error. Por eso no hay
+/// maxLength: el contador y el rojo de pasarse salen de acá.
 class _DescriptionField extends StatelessWidget {
   const _DescriptionField({
     required this.fieldKey,
@@ -796,24 +802,43 @@ class _DescriptionField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final material = MaterialLocalizations.of(context);
+    const max = maxRecipeDescriptionLength;
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: TextField(
-        key: fieldKey,
-        controller: controller,
-        minLines: 1,
-        maxLines: 3,
-        maxLength: maxRecipeDescriptionLength,
-        maxLengthEnforcement: MaxLengthEnforcement.none,
-        keyboardType: TextInputType.text,
-        textCapitalization: TextCapitalization.sentences,
-        textInputAction: textInputAction,
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          labelText: label,
-          errorText: error,
-          errorMaxLines: 2,
-        ),
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) {
+          final length = recipeTextLength(value.text);
+          final tooLong = length > max;
+          return TextField(
+            key: fieldKey,
+            controller: controller,
+            minLines: 1,
+            maxLines: 3,
+            keyboardType: TextInputType.text,
+            textCapitalization: TextCapitalization.sentences,
+            textInputAction: textInputAction,
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              labelText: label,
+              // Pasada, en rojo como el contador de TextField, aunque todavía
+              // no se haya intentado guardar.
+              errorText: error ?? (tooLong ? '' : null),
+              errorMaxLines: 2,
+              counterText: '$length/$max',
+              semanticCounterText: material.remainingTextFieldCharacterCount(
+                (max - length).clamp(0, max),
+              ),
+              counterStyle: tooLong
+                  ? theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    )
+                  : null,
+            ),
+          );
+        },
       ),
     );
   }

@@ -240,6 +240,16 @@ void main() {
       expect(textLength('🍝ab'), 3);
       expect(textLength('Città'), 5);
     });
+
+    // El que usan la validación y el contador del editor: lo que va a
+    // guardar la base, contado como char_length.
+    test('recipeTextLength: sin los espacios de más, una bandera o un acento aparte cuentan dos', () {
+      expect(recipeTextLength('  Pesto   alla\tgenovese \n'), 'Pesto alla genovese'.length);
+      expect(recipeTextLength('   '), 0);
+      expect(recipeTextLength('🇮🇹'), 2, reason: 'dos code points, aunque se vea uno');
+      expect(recipeTextLength('Città'), 6, reason: 'la «à» en NFD es una a y el acento');
+      expect(recipeTextLength('🍝'), 1);
+    });
   });
 
   group('temporada', () {

@@ -319,9 +319,15 @@ final RegExp _spaceOrControl = RegExp(r'[\s\u0000-\u001f\u007f-\u009f  ]+');
 String normalizeRecipeText(String text) =>
     text.replaceAll(_spaceOrControl, ' ').trim();
 
-/// Largo de [text] como lo cuenta Postgres (char_length): por caracteres, no
-/// por unidades UTF-16 (un emoji cuenta uno).
+/// Largo de [text] como lo cuenta Postgres (char_length): por caracteres
+/// (code points), no por unidades UTF-16 ni por lo que se ve como una letra
+/// (🍝 cuenta uno; una bandera o una «é» con el acento aparte, dos).
 int textLength(String text) => text.runes.length;
+
+/// Largo de un nombre o una descripción como lo valida la base: el texto ya
+/// normalizado ([normalizeRecipeText]) contado con [textLength]. Lo usan la
+/// validación del formulario y el contador del editor: cuentan lo mismo.
+int recipeTextLength(String raw) => textLength(normalizeRecipeText(raw));
 
 /// Los meses de una temporada, en orden y sin repetir. Ninguno o los 12 es
 /// «todo el año»: null. Lanza [RangeError] con un mes fuera de 1 a 12.

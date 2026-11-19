@@ -71,10 +71,16 @@ void main() {
       expect(risottoDraft.notes, 'Si può fare senza burro e parmigiano.');
     });
 
-    test('una copia: todo igual menos el id', () {
-      final copy = recipeDraftFrom(risotto(), id: _newId);
+    // La copia es otro plato: no sale en la web con la descripción del
+    // original hasta que Evelyn le escriba la suya.
+    test('una copia: todo igual menos el id, y sin las descripciones de la web', () {
+      final copy = recipeDraftFrom(lasagne(), id: _newId);
       expect(copy.id, _newId);
-      expect(copy.copyWith(id: risottoId), recipeDraftFrom(risotto()));
+      expect([copy.descriptionIt, copy.descriptionEs, copy.descriptionEn], ['', '', '']);
+      expect(
+        copy.copyWith(id: lasagneId, descriptionIt: lasagneDescriptionIt, descriptionEs: lasagneDescriptionEs),
+        recipeDraftFrom(lasagne()),
+      );
     });
 
     test('toString no muestra las notas (son de la cocinera)', () {

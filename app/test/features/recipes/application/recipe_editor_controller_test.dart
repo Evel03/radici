@@ -337,12 +337,16 @@ void main() {
       expect(repository.recipes[frittataId]!.active, isFalse);
     });
 
-    test('la copia se guarda como un plato nuevo y el original no cambia', () async {
+    test('la copia se guarda como un plato nuevo, sin las descripciones de la web, y el original no cambia', () async {
       await start();
       final editor = open(copyLasagne)..setNameIt('Lasagne vegetariane');
       expect(await editor.save(), RecipeSaveResult.saved);
 
-      expect(inCatalog(_id1), lasagne().copyWith(id: _id1, nameIt: 'Lasagne vegetariane'));
+      expect(
+        inCatalog(_id1),
+        lasagne().copyWith(id: _id1, nameIt: 'Lasagne vegetariane', descriptionIt: null, descriptionEs: null),
+      );
+      expect(inCatalog(_id1)!.webStatus, RecipeWebStatus.missingDescription);
       expect(inCatalog(lasagneId), lasagne());
     });
 

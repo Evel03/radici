@@ -93,15 +93,18 @@ abstract class RecipeDraft with _$RecipeDraft {
 RecipeDraft emptyRecipeDraft(String id) => RecipeDraft(id: id);
 
 /// El formulario de [recipe]; con [id], el de una copia (duplicar es guardar
-/// el mismo plato con un id nuevo). Las filas llevan las claves 0, 1, 2…
+/// el mismo plato con un id nuevo), sin las descripciones de la web: la copia
+/// es otro plato y no tiene que salir en la web con la descripción del
+/// original («Senza descrizione: non è sul sito» hasta que tenga la suya).
+/// Las filas llevan las claves 0, 1, 2…
 RecipeDraft recipeDraftFrom(Recipe recipe, {String? id}) => RecipeDraft(
   id: id ?? recipe.id,
   nameIt: recipe.nameIt,
   nameEs: recipe.nameEs ?? '',
   nameEn: recipe.nameEn ?? '',
-  descriptionIt: recipe.descriptionIt ?? '',
-  descriptionEs: recipe.descriptionEs ?? '',
-  descriptionEn: recipe.descriptionEn ?? '',
+  descriptionIt: id == null ? recipe.descriptionIt ?? '' : '',
+  descriptionEs: id == null ? recipe.descriptionEs ?? '' : '',
+  descriptionEn: id == null ? recipe.descriptionEn ?? '' : '',
   allergens: recipe.allergens.toSet(),
   diet: recipe.diet,
   months: {...?recipe.seasonMonths},
@@ -188,9 +191,9 @@ final class RecipeDraftErrors {
 }
 
 TextError? _nameError(String raw, int max, {bool required = false}) {
-  final clean = normalizeRecipeText(raw);
-  if (clean.isEmpty) return required ? TextError.required : null;
-  return textLength(clean) > max ? TextError.tooLong : null;
+  final length = recipeTextLength(raw);
+  if (length == 0) return required ? TextError.required : null;
+  return length > max ? TextError.tooLong : null;
 }
 
 /// [raw] como número de días entre [min] y [max], o null si no vale.
