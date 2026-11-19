@@ -1,9 +1,9 @@
-// Una sesión en Hoy: la clienta, sus horas («Spesa dalle 09:15 · Arrivo
-// 10:00 · fino alle 13:00», salidas de la sesión), las personas, el estado si
-// no está confirmada (una de hoy que ya terminó dice «Terminata» si estaba
-// confirmada o con la compra hecha; cocinada o cobrada, su estado), las
-// alergias resaltadas (con la nota de contaminación cruzada si hay gluten,
-// SPEC §5.6, como en la ficha) y las notas de cocina.
+// Una sesión en Hoy: la clienta, sus horas («Arrivo 10:00 · fino alle
+// 13:00», salidas de la sesión), las personas, el estado si no está
+// confirmada (una vieja en shopping_done se ve como confirmada; una de hoy
+// que ya terminó dice «Terminata» si estaba confirmada; cocinada o cobrada,
+// su estado), las alergias resaltadas (con la nota de contaminación cruzada
+// si hay gluten, SPEC §5.6, como en la ficha) y las notas de cocina.
 // Toda la tarjeta abre la ficha; para el lector de pantalla, la cabecera es el
 // botón (con la acción de tocar en su nodo: en /gestione/ el clic de
 // VoiceOver solo llega a un nodo que la tiene) y las alergias se leen aparte.
@@ -43,11 +43,10 @@ class TodaySessionCard extends StatelessWidget {
       final count? => l10n.requestPeopleCount(count),
       null => null,
     };
-    // Cocinada o cobrada ya lo dicen; confirmada (o con la compra hecha) y con
-    // la hora pasada, «Terminata».
-    final status = switch (session.status) {
-      SessionStatus.confirmed ||
-      SessionStatus.shoppingDone when finished => l10n.todaySessionFinished,
+    // Cocinada o cobrada ya lo dicen; confirmada (también una vieja en
+    // shopping_done, SessionStatus.shown) y con la hora pasada, «Terminata».
+    final status = switch (session.status.shown) {
+      SessionStatus.confirmed when finished => l10n.todaySessionFinished,
       SessionStatus.confirmed => null,
       _ => l10n.sessionStatus(session.status),
     };
