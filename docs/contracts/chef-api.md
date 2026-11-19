@@ -114,7 +114,7 @@ Las claves que el contrato no tiene se ignoran. Entre ellas `groceriesEstCents`,
 | `past` | la fecha ya pasó (hoy no cuenta como pasado) |
 | `blocked` | día bloqueado (puede ser justo el que Evelyn bloqueó por la sesión acordada) |
 | `closed` | ese día de la semana no tiene horario |
-| `outside` | la compra empieza antes de la apertura o la cocina termina después del cierre |
+| `outside` | la llegada (menos los minutos de compra de `chef_settings`: 0 desde el 19/11/2026) es antes de la apertura, o la cocina termina después del cierre |
 | `ok` | todo bien |
 
 ### Reglas
