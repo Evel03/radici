@@ -22,15 +22,17 @@ export const PUBLIC_REQUEST_VERSION = 4;
 export const PUBLIC_REQUEST_VERSIONS: readonly number[] = [PUBLIC_REQUEST_VERSION, 3, 2];
 
 /** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
-export const CONSENT_VERSION = "2026-11-16";
+export const CONSENT_VERSION = "2026-11-19";
 /**
  * Versiones de la privacy con que se puede guardar un pedido de la versión vigente del contrato. Al cambiar
  * el texto sin cambiar el contrato, agregar la nueva y dejar la anterior mientras haya páginas en caché (y
  * mientras la web y la función se despliegan, que corren por separado).
  * 2026-11-16 suma la pregunta de alergias y las consultas del calendario (GET …/availability, que guardan
- * un hash de la IP para el límite de consultas).
+ * un hash de la IP para el límite de consultas). 2026-11-19 suma el menú (los platos elegidos y las
+ * consultas de GET …/menu en el mismo límite) y saca la compra de las tareas de Evelyn; 2026-11-16 queda
+ * para las páginas abiertas antes del despliegue, que no mandan platos.
  */
-export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION];
+export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-11-16"];
 /**
  * Privacy de las páginas de la versión 1 del contrato: 2026-11-15 (sin la pregunta de alergias ni las
  * consultas del calendario) y 2026-10-19 (el borrador, solo prueba interna). Nunca se guardan: se aceptan
@@ -47,10 +49,11 @@ export const LEGACY_PAGE_CONSENT_VERSIONS: readonly string[] = ["2026-11-15", "2
  * privacy) no cambió. Si siguiera sola a CONSENT_VERSION, un cambio de la privacy que no toca la salud
  * rechazaría el consentimiento de las páginas ya abiertas. Una versión que se saca a propósito (el texto
  * de salud cambió) no deja a nadie trabado: la página vieja pide recargar (translateErrors en la web).
- * Hoy solo 2026-11-16: ningún texto anterior pedía las alergias escritas (el de 2026-10-19 era el de
- * los alérgenos marcados con casillas; el de 2026-11-15 no pedía datos de salud).
+ * 2026-11-19 no cambió el texto de salud (la casilla y el punto 5), así que 2026-11-16 sigue valiendo.
+ * Ningún texto anterior pedía las alergias escritas (el de 2026-10-19 era el de los alérgenos marcados con
+ * casillas; el de 2026-11-15 no pedía datos de salud).
  */
-export const HEALTH_CONSENT_VERSIONS: readonly string[] = ["2026-11-16"];
+export const HEALTH_CONSENT_VERSIONS: readonly string[] = ["2026-11-19", "2026-11-16"];
 
 /** Los 14 alérgenos del Reg. UE 1169/2011, en el orden del enum `allergen` de la base. */
 export const ALLERGENS = [

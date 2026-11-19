@@ -232,8 +232,12 @@ test("fecha preferida: de mañana a +56 días (8 semanas), fechas reales", () =>
   assert.equal(errorsOf(payload({ preferredDate: "20/10/2026" })).preferredDate, "invalid");
 });
 
-test("textos de 2026-11-16: privacy y salud; las privacy viejas solo para que una página v1 reciba errores de página", () => {
-  assert.equal(CONSENT_VERSION, "2026-11-16");
+test("textos de 2026-11-19 (y 2026-11-16 para las páginas abiertas antes): privacy y salud; las privacy viejas solo para que una página v1 reciba errores de página", () => {
+  assert.equal(CONSENT_VERSION, "2026-11-19");
+  // Una página abierta antes del despliegue manda la privacy de 2026-11-16 (sin el menú, que esa página no
+  // tiene): se sigue guardando, con su salud.
+  assert.ok(parsePublicRequest(payload({ version: 3, consents: { privacy: "2026-11-16", health: null } }), { today: TODAY }).ok);
+  assert.ok(parsePublicRequest(withAllergies({ version: 3, consents: { privacy: "2026-11-16", health: "2026-11-16" } }), { today: TODAY }).ok);
   // La página de la versión 1 en caché manda la privacy de 2026-11-15 y no manda noAllergies: solo errores
   // de página (la web vieja muestra "página desactualizada", sin marcar la casilla de privacy como faltante).
   const { noAllergies: _sinRespuesta, ...old } = payload({ version: 1, consents: { privacy: "2026-11-15", health: null } });
@@ -253,7 +257,8 @@ test("versiones aceptadas: la vigente vale para la privacy y para la salud, y la
   );
   // No sigue sola a CONSENT_VERSION: un cambio de la privacy que no toca la parte de salud no deja
   // afuera el consentimiento de salud que mandan las páginas ya abiertas (o la web vieja durante el despliegue).
-  assert.deepEqual([...HEALTH_CONSENT_VERSIONS], ["2026-11-16"]);
+  assert.deepEqual([...HEALTH_CONSENT_VERSIONS], ["2026-11-19", "2026-11-16"]);
+  assert.deepEqual([...CONSENT_VERSIONS], ["2026-11-19", "2026-11-16"]);
   for (const list of [CONSENT_VERSIONS, HEALTH_CONSENT_VERSIONS, LEGACY_PAGE_CONSENT_VERSIONS]) {
     assert.equal(new Set(list).size, list.length, `sin repetidas: ${list.join(", ")}`);
   }
