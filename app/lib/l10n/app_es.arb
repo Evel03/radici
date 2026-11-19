@@ -352,7 +352,7 @@
   "shoppingSectionPantry": "Almacén",
   "shoppingSectionFrozen": "Congelados",
   "shoppingSectionOther": "Otros",
-  "recipeNotesLabel": "Notas (solo las ves tú)",
+  "recipeNotesLabel": "Notas (los clientes no las ven)",
   "recipeNotesHelper": "No escribas datos de clientes.",
   "recipeSaveFailed": "No se pudo guardar el plato. Revisa la conexión y vuelve a intentarlo.",
   "recipeSaveRejected": "El servidor no aceptó el plato. Revisa los datos y vuelve a intentarlo.",

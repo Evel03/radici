@@ -1665,9 +1665,9 @@
   "@shoppingSectionOther": {
     "description": "Sección del súper (other)."
   },
-  "recipeNotesLabel": "Note (le vedi solo tu)",
+  "recipeNotesLabel": "Note (i clienti non le vedono)",
   "@recipeNotesLabel": {
-    "description": "Campo opcional de notas del plato."
+    "description": "Campo opcional de notas del plato (recipe_notes). Las ven la cocinera y sus colaboradores, nunca los clientes; por eso no dice «solo tu»."
   },
   "recipeNotesHelper": "Non scrivere dati dei clienti.",
   "@recipeNotesHelper": {

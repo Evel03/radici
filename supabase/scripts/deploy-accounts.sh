@@ -156,12 +156,6 @@ members() {
       echo "::warning::Sin cocinera no hay de quién ser colaborador: CHEF_MEMBER_EMAILS se aplica en el despliegue que la cree."
     fi
   else
-    # La privacy vigente nombra solo a Evelyn y, para la asistencia técnica, a quien gestiona el sistema;
-    # un colaborador ve lo mismo que ella, también alergias y direcciones (SPEC §14). Cuando una versión
-    # nueva de la privacy lo resuelva, este aviso se saca (deploy-supabase.test.ts lo ata a esa versión).
-    if [ "${total_list}" != "0" ]; then
-      echo "::warning::CHEF_MEMBER_EMAILS trae ${total_list} colaborador(es): ven lo mismo que Evelyn, también alergias y direcciones, y la privacy vigente (2026-11-16) no los nombra. Ver la decisión pendiente de SPEC §14."
-    fi
     for ((i = 0; i < total_list; i++)); do
       email=$(jq -r --argjson i "${i}" '.[$i].email' <<< "${list}")
       masked=$(jq -r --argjson i "${i}" '.[$i].masked' <<< "${list}")

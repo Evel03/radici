@@ -352,7 +352,7 @@
   "shoppingSectionPantry": "Pantry",
   "shoppingSectionFrozen": "Frozen",
   "shoppingSectionOther": "Other",
-  "recipeNotesLabel": "Notes (only you can see them)",
+  "recipeNotesLabel": "Notes (clients can't see them)",
   "recipeNotesHelper": "Don't write client details.",
   "recipeSaveFailed": "Couldn't save the dish. Check your connection and try again.",
   "recipeSaveRejected": "The server didn't accept the dish. Check the details and try again.",
