@@ -42,8 +42,8 @@ test("ruta y versión de la respuesta", () => {
 });
 
 test("get_public_menu: los platos tal como los manda la base, en su orden", () => {
-  assert.deepEqual(menuDishesFromRpc([LASAGNE, MINESTRONE]), [LASAGNE, MINESTRONE]);
-  assert.deepEqual(menuDishesFromRpc([]), [], "sin platos publicados: un array vacío");
+  assert.deepEqual(menuDishesFromRpc([LASAGNE, MINESTRONE]), { dishes: [LASAGNE, MINESTRONE], skipped: 0 });
+  assert.deepEqual(menuDishesFromRpc([]), { dishes: [], skipped: 0 }, "sin platos publicados: un array vacío");
 });
 
 test("un plato se arma solo con las claves del contrato: nunca ingredientes ni notas", () => {
@@ -91,9 +91,16 @@ test("cualquier plato con otra forma: null (y la lista entera también)", () => 
   ];
   for (const value of bad) {
     assert.equal(readMenuDish(value), null, JSON.stringify(value));
-    assert.equal(menuDishesFromRpc([MINESTRONE, value]), null, `lista con ${JSON.stringify(value)}`);
+    // Un plato roto se saltea: no apaga el menú de los demás.
+    assert.deepEqual(menuDishesFromRpc([MINESTRONE, value]), { dishes: [MINESTRONE], skipped: 1 }, `lista con ${JSON.stringify(value)}`);
   }
   for (const data of [null, {}, "x", { dishes: [] }]) assert.equal(menuDishesFromRpc(data), null, JSON.stringify(data));
+  // Una traducción en blanco (también con el espacio duro, que la base deja pasar) es null: cae al italiano.
+  for (const blank of ["", "   ", " ", "  "]) {
+    const dish = readMenuDish({ ...LASAGNE, name: { ...LASAGNE.name, es: blank }, description: { ...LASAGNE.description, en: blank } });
+    assert.equal(dish?.name.es, null, JSON.stringify(blank));
+    assert.equal(dish?.description.en, null, JSON.stringify(blank));
+  }
 });
 
 test("respuesta de GET …/menu: se arma y se lee con la misma forma; otra versión u otra forma, null", () => {

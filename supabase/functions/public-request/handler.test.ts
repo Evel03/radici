@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { AVAILABILITY_DAYS, AVAILABILITY_PATH, buildAvailabilityResponse } from "../_shared/availability.ts";
 import { hashSubject } from "../_shared/client_ip.ts";
 import { MENU_PATH, buildMenuResponse, type MenuChoice, type MenuDish } from "../_shared/menu.ts";
-import { CONSENT_VERSION, PUBLIC_REQUEST_VERSION, publicEstimate, type PublicRequestPayload } from "../_shared/public_request.ts";
+import { CONSENT_VERSION, HEALTH_CONSENT_VERSION, PUBLIC_REQUEST_VERSION, publicEstimate, type PublicRequestPayload } from "../_shared/public_request.ts";
 import { DEFAULT_PRICING, calcQuote } from "../_shared/quote.ts";
 import { RESEND_API_URL } from "../_shared/resend.ts";
 import { TURNSTILE_VERIFY_URL } from "../_shared/turnstile.ts";
@@ -89,7 +89,7 @@ function payload(overrides: Partial<PublicRequestPayload> = {}): PublicRequestPa
     whatsappOptIn: true,
     notes: "NOTA-LIBRE-yyy",
     locale: "it",
-    consents: { privacy: CONSENT_VERSION, health: CONSENT_VERSION },
+    consents: { privacy: CONSENT_VERSION, health: HEALTH_CONSENT_VERSION },
     turnstileToken: "XXXX.DUMMY.TOKEN.XXXX",
     ...overrides,
   };
@@ -565,7 +565,7 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
     notes: "NOTA-LIBRE-yyy",
     locale: "it",
     privacy_consent_version: CONSENT_VERSION,
-    health_consent_version: CONSENT_VERSION,
+    health_consent_version: HEALTH_CONSENT_VERSION,
     estimate: { ...quote, pricing: CHEF.pricing },
     request_key: null,
     wishes: [],
@@ -736,7 +736,7 @@ test("segundo plano: aviso a Evelyn en su idioma, confirmación al cliente en el
 test("nadie tiene alergias: no_allergies a la base, sin restricciones ni consentimiento de salud; los emails lo confirman", async () => {
   const { handle, store, fetchCalls, settle } = harness();
   const response = await handle(
-    post(payload({ noAllergies: true, allergens: [], restrictionsNote: "", consents: { privacy: CONSENT_VERSION, health: CONSENT_VERSION } })),
+    post(payload({ noAllergies: true, allergens: [], restrictionsNote: "", consents: { privacy: CONSENT_VERSION, health: HEALTH_CONSENT_VERSION } })),
   );
   assert.equal(response.status, 201);
   assert.deepEqual(

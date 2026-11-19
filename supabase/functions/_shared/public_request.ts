@@ -49,11 +49,18 @@ export const LEGACY_PAGE_CONSENT_VERSIONS: readonly string[] = ["2026-11-15", "2
  * privacy) no cambió. Si siguiera sola a CONSENT_VERSION, un cambio de la privacy que no toca la salud
  * rechazaría el consentimiento de las páginas ya abiertas. Una versión que se saca a propósito (el texto
  * de salud cambió) no deja a nadie trabado: la página vieja pide recargar (translateErrors en la web).
- * 2026-11-19 no cambió el texto de salud (la casilla y el punto 5), así que 2026-11-16 sigue valiendo.
  * Ningún texto anterior pedía las alergias escritas (el de 2026-10-19 era el de los alérgenos marcados con
  * casillas; el de 2026-11-15 no pedía datos de salud).
  */
-export const HEALTH_CONSENT_VERSIONS: readonly string[] = ["2026-11-19", "2026-11-16"];
+export const HEALTH_CONSENT_VERSIONS: readonly string[] = ["2026-11-16"];
+/**
+ * Versión del texto de salud (la casilla y el punto 5 de la privacy) que manda la web en consents.health.
+ * Va aparte de CONSENT_VERSION: la privacy 2026-11-19 no tocó la salud, y si la web mandara la versión de
+ * la privacy, submit_public_request cerraría el consentimiento de salud vigente de un prospecto que vuelve
+ * con alergias escritas (otra versión del texto), y con él consents_purge_health_data le borraría las
+ * restricciones del hogar. Cambia solo cuando cambia el texto de salud.
+ */
+export const HEALTH_CONSENT_VERSION = "2026-11-16";
 
 /** Los 14 alérgenos del Reg. UE 1169/2011, en el orden del enum `allergen` de la base. */
 export const ALLERGENS = [

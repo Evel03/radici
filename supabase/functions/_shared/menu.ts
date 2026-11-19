@@ -62,15 +62,20 @@ function isText(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
 }
 
-/** { it, es, en }: el italiano obligatorio; los otros, texto o null ("" o ausente también es null). */
+/**
+ * { it, es, en }: el italiano obligatorio; los otros, texto o null. Ausente, "" o solo espacios (también
+ * los de Unicode, como el espacio duro, que el check de la base deja pasar porque btrim recorta solo los
+ * ASCII) también es null: una traducción en blanco cae al italiano.
+ */
 function readLocalizedText(value: unknown): LocalizedText | null {
   if (!isRecord(value)) return null;
   const it = value["it"];
   if (!isText(it)) return null;
   const optional = (key: "es" | "en"): string | null | undefined => {
     const item = value[key];
-    if (item === undefined || item === null || item === "") return null;
-    return isText(item) ? item : undefined;
+    if (item === undefined || item === null) return null;
+    if (typeof item !== "string") return undefined;
+    return isText(item) ? item : null;
   };
   const es = optional("es");
   const en = optional("en");
@@ -128,9 +133,19 @@ function readDishes(value: unknown): MenuDish[] | null {
   return dishes;
 }
 
-/** Lo que devuelve public.get_public_menu (un array, vacío si no hay platos), o null si tiene otra forma. */
-export function menuDishesFromRpc(data: unknown): MenuDish[] | null {
-  return readDishes(data);
+/**
+ * Lo que devuelve public.get_public_menu (un array, vacío si no hay platos), o null si no es un array. Un
+ * plato con otra forma (por ejemplo, un nombre en italiano que es solo un espacio duro) se saltea y se
+ * cuenta en skipped: no apaga el menú de los demás.
+ */
+export function menuDishesFromRpc(data: unknown): { dishes: MenuDish[]; skipped: number } | null {
+  if (!Array.isArray(data)) return null;
+  const dishes: MenuDish[] = [];
+  for (const item of data) {
+    const dish = readMenuDish(item);
+    if (dish) dishes.push(dish);
+  }
+  return { dishes, skipped: data.length - dishes.length };
 }
 
 /** La respuesta de GET …/menu. */

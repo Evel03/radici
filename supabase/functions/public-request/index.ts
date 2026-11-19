@@ -136,9 +136,11 @@ function createStore(): PublicRequestStore {
       const { data, error } = await supabase.rpc("get_public_menu", { p_chef_id: chefId });
       if (error) throw storeError("public_menu", error);
       // Se arma de nuevo plato por plato: nada que no sea del contrato (ingredientes, notas) sale a la web.
-      const dishes = menuDishesFromRpc(data);
-      if (!dishes) throw new StoreError("public_menu", null, "unexpected_result");
-      return dishes;
+      const result = menuDishesFromRpc(data);
+      if (!result) throw new StoreError("public_menu", null, "unexpected_result");
+      // Solo la cantidad: nunca los nombres ni los ids.
+      if (result.skipped > 0) consoleLogger("warn", "public_menu_dish_skipped", { count: result.skipped });
+      return result.dishes;
     },
   };
 }

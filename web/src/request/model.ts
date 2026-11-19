@@ -10,6 +10,7 @@ import { MEALS, cleanMultiLine, type Meal, type RequestType } from "../../../sup
 
 export {
   CONSENT_VERSION,
+  HEALTH_CONSENT_VERSION,
   DATE_WINDOW,
   LOCALES,
   MAX_PAYLOAD_BYTES,

@@ -3,6 +3,7 @@
 // así el JSON no crece con caracteres de control escapados y lo que se valida acá es lo que se guarda.
 import {
   CONSENT_VERSION,
+  HEALTH_CONSENT_VERSION,
   PUBLIC_REQUEST_VERSION,
   cleanMultiLine,
   cleanOneLine,
@@ -52,8 +53,9 @@ export function buildPayload(data: RequestData, opts: PayloadOptions): PublicReq
     consents: {
       // "" = no aceptó: el servidor responde consentRequired.
       privacy: data.consentPrivacy ? CONSENT_VERSION : "",
-      // Solo con alergias escritas: sin datos de salud no hay consentimiento de salud que guardar.
-      health: hasHealthData(data) && data.consentHealth ? CONSENT_VERSION : null,
+      // Solo con alergias escritas: sin datos de salud no hay consentimiento de salud que guardar. Con la
+      // versión del texto de salud, no la de la privacy (HEALTH_CONSENT_VERSION).
+      health: hasHealthData(data) && data.consentHealth ? HEALTH_CONSENT_VERSION : null,
     },
     turnstileToken: opts.turnstileToken,
     // Los platos elegidos, en el orden en que los tildó ([] si el menù lo propone Evelyn).

@@ -211,8 +211,8 @@
       "loading": "Sto caricando i piatti…",
       "empty": "Il menù te lo propone Evelyn: se vuoi, scrivi nelle note i piatti che ti piacciono.",
       "error": "Non riusciamo a mostrare i piatti: il menù te lo propone Evelyn. Puoi inviare la richiesta lo stesso.",
-      "removedOne": "{dishes} non è di stagione nel mese che hai scelto e non fa più parte del tuo menù.",
-      "removedOther": "{dishes} non sono di stagione nel mese che hai scelto e non fanno più parte del tuo menù.",
+      "removedOne": "{dishes} non è di stagione per la data del menù e non ne fa più parte.",
+      "removedOther": "{dishes} non sono di stagione per la data del menù e non ne fanno più parte.",
       "allergens": "Allergeni: {list}",
       "allergensNone": "Nessuno dei 14 allergeni principali"
     },

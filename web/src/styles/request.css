@@ -423,8 +423,14 @@ input[type="radio"] {
   line-height: 1.4;
 }
 
+/* Vacía sale de la grilla (sin el hueco del gap) pero sigue en el árbol de accesibilidad: un role="status"
+   con display: none no anuncia el texto que se le pone después (el aviso de temporada). */
 .menu__status:empty {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 .menu__list:focus {

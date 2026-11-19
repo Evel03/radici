@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { TEST_TOKEN, TODAY, validRequest } from "./fixtures.ts";
 import {
   CONSENT_VERSION,
+  HEALTH_CONSENT_VERSION,
   MAX_PAYLOAD_BYTES,
   PUBLIC_REQUEST_VERSION,
   TEXT_LIMITS,
@@ -96,12 +97,12 @@ describe("buildPayload", () => {
     const data = validRequest({ noAllergies: false, restrictionsNote: " Celiachia \r\n\r\n\r\n Noci ", consentHealth: true });
     const payload = buildPayload(data, { locale: "it", turnstileToken: TEST_TOKEN });
     expect(payload).toMatchObject({ noAllergies: false, allergens: [], diets: [], restrictionsNote: "Celiachia\n\nNoci" });
-    expect(payload.consents.health).toBe(CONSENT_VERSION);
+    expect(payload.consents.health).toBe(HEALTH_CONSENT_VERSION);
     const result = serverParse(data);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toMatchObject({ noAllergies: false, hasRestrictions: true, restrictionsNote: "Celiachia\n\nNoci" });
-    expect(result.value.consents.health).toBe(CONSENT_VERSION);
+    expect(result.value.consents.health).toBe(HEALTH_CONSENT_VERSION);
   });
 
   it("sin la casilla y sin escribir nada: sin consentimiento de salud (no hay datos que cubra) y el servidor pide la nota", () => {

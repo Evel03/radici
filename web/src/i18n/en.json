@@ -211,8 +211,8 @@
       "loading": "Loading the dishes…",
       "empty": "Evelyn will suggest the menu: if you like, write the dishes you enjoy in the notes.",
       "error": "We can't show the dishes right now: Evelyn will suggest the menu. You can still send your request.",
-      "removedOne": "{dishes} isn't in season in the month you chose, so it's no longer in your menu.",
-      "removedOther": "{dishes} aren't in season in the month you chose, so they're no longer in your menu.",
+      "removedOne": "{dishes} isn't in season for the menu's date, so it's no longer in your menu.",
+      "removedOther": "{dishes} aren't in season for the menu's date, so they're no longer in your menu.",
       "allergens": "Allergens: {list}",
       "allergensNone": "None of the 14 major allergens"
     },

@@ -104,13 +104,13 @@ describe("temporada", () => {
     const after = reconcileMenu([MINESTRONE.id, LASAGNE.id], READY, 7);
     expect(after).toEqual({ selected: [MINESTRONE.id], removed: [LASAGNE] });
     expect(view({ selected: after.selected, removed: after.removed, month: 7 }).message).toBe(
-      "Lasagne non è di stagione nel mese che hai scelto e non fa più parte del tuo menù.",
+      "Lasagne non è di stagione per la data del menù e non ne fa più parte.",
     );
     // Sin nada fuera de temporada, nada que avisar; sin catálogo, nada que sacar.
     expect(reconcileMenu([MINESTRONE.id, LASAGNE.id], READY, NOVEMBER)).toEqual({ selected: [MINESTRONE.id, LASAGNE.id], removed: [] });
     expect(reconcileMenu([LASAGNE.id], { kind: "error" }, 7)).toEqual({ selected: [LASAGNE.id], removed: [] });
     const two = view({ removed: [LASAGNE, PANZANELLA] }, "es").message;
-    expect(two).toBe("Lasaña, Panzanella no son de temporada en el mes que elegiste y ya no están en tu menú.");
+    expect(two).toBe("Lasaña, Panzanella no son de temporada para la fecha del menú y ya no están en él.");
   });
 });
 
