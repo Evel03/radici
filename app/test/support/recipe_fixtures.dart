@@ -10,12 +10,16 @@ const String frittataId = 'a0000000-0000-4000-8000-000000000010';
 /// Fila de PostgREST como la devuelve `select(recipeColumns)`: los alérgenos
 /// y los ingredientes llegan embebidos, en cualquier orden, y las notas como
 /// una lista de cero o una fila de recipe_notes ([notes] de texto se arma así;
-/// otro valor va tal cual).
+/// otro valor va tal cual). Las descripciones por defecto son las de
+/// [lasagne].
 Map<String, dynamic> recipeRow({
   String id = lasagneId,
   Object? nameIt = 'Lasagne alla bolognese',
   Object? nameEs = 'Lasaña a la boloñesa',
   Object? nameEn = 'Lasagne Bolognese',
+  Object? descriptionIt = lasagneDescriptionIt,
+  Object? descriptionEs = lasagneDescriptionEs,
+  Object? descriptionEn,
   Object? diet,
   Object? seasonMonths,
   Object? fridgeDays = 3,
@@ -39,6 +43,9 @@ Map<String, dynamic> recipeRow({
   'name_it': nameIt,
   'name_es': nameEs,
   'name_en': nameEn,
+  'description_it': descriptionIt,
+  'description_es': descriptionEs,
+  'description_en': descriptionEn,
   'diet': diet,
   'season_months': seasonMonths,
   'fridge_days': fridgeDays,
@@ -56,11 +63,18 @@ Map<String, dynamic> recipeRow({
   'ingredients': ingredients,
 };
 
+/// La descripción de la web de [lasagne] (sin la inglesa: la web usa esta).
+const String lasagneDescriptionIt = 'Ragù cotto piano e besciamella fatta in casa.';
+const String lasagneDescriptionEs = 'Ragú cocido despacio y bechamel casera.';
+
+/// Publicado en la web, con la descripción en italiano y en español.
 Recipe lasagne() => const Recipe(
   id: lasagneId,
   nameIt: 'Lasagne alla bolognese',
   nameEs: 'Lasaña a la boloñesa',
   nameEn: 'Lasagne Bolognese',
+  descriptionIt: lasagneDescriptionIt,
+  descriptionEs: lasagneDescriptionEs,
   allergens: [Allergen.gluten, Allergen.eggs, Allergen.milk, Allergen.celery],
   freezable: true,
   ingredients: [
@@ -78,11 +92,13 @@ Recipe lasagne() => const Recipe(
   ],
 );
 
+/// Publicado en la web, solo con la descripción en italiano.
 Recipe risotto() => const Recipe(
   id: risottoId,
   nameIt: 'Risotto ai funghi porcini',
   nameEs: 'Risotto de hongos porcini',
   nameEn: 'Porcini mushroom risotto',
+  descriptionIt: 'Porcini freschi e parmigiano.',
   diet: Diet.vegetarian,
   allergens: [Allergen.milk, Allergen.celery, Allergen.sulphites],
   seasonMonths: [9, 10, 11],
@@ -90,6 +106,7 @@ Recipe risotto() => const Recipe(
   notes: 'Si può fare senza burro e parmigiano.',
 );
 
+/// Activo, pero sin descripción: no sale en la web.
 Recipe minestrone() => const Recipe(
   id: minestroneId,
   nameIt: 'Minestrone di verdure',
@@ -102,10 +119,12 @@ Recipe minestrone() => const Recipe(
   freezerDays: 90,
 );
 
+/// Desactivado (con descripción: igual no sale en la web).
 Recipe frittata() => const Recipe(
   id: frittataId,
   nameIt: 'Frittata di zucchine',
   nameEs: 'Tortilla de zapallitos',
+  descriptionIt: 'Zucchine, uova e menta.',
   diet: Diet.vegetarian,
   allergens: [Allergen.eggs, Allergen.milk],
   seasonMonths: [5, 6, 7, 8, 9],

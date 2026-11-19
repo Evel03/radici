@@ -13,6 +13,11 @@
 // Las notas del plato son de la cocinera: viven en recipe_notes, que el
 // cliente no lee (en recipes las vería: la RLS filtra filas, no columnas), y
 // nunca se loguean ni salen en toString.
+//
+// La descripción corta (en italiano y, si quiere, en español e inglés) es
+// pública: la web la muestra al lado del nombre en la pestaña «Menù» del
+// formulario de pedido (migración 20261119150000_menu_web.sql). Sin la
+// italiana, el plato no sale en la web.
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
@@ -23,6 +28,7 @@ const int recipeBasePortions = 4;
 
 /// Límites de la base (checks de recipes y recipe_ingredients).
 const int maxRecipeNameLength = 120;
+const int maxRecipeDescriptionLength = 200;
 const int maxIngredientNameLength = 80;
 const int maxIngredients = 50;
 const int maxIngredientQuantity = 100000;
@@ -75,6 +81,20 @@ abstract class RecipeIngredient with _$RecipeIngredient {
   bool get toTaste => amount == null;
 }
 
+/// Si un plato sale en el menú de la web (get_public_menu): tiene que estar
+/// activo, en el catálogo y con la descripción en italiano. La lista solo trae
+/// platos del catálogo (`catalog_visible`).
+enum RecipeWebStatus {
+  /// Sale en la web.
+  published,
+
+  /// Activo, pero sin descripción en italiano: no sale.
+  missingDescription,
+
+  /// Desactivado: no sale (la lista ya lo marca).
+  inactive,
+}
+
 /// Un plato del catálogo. [allergens] va en el orden del enum, sin repetir;
 /// [seasonMonths], en orden y sin repetir (null = todo el año).
 @Freezed(fromJson: false, toJson: false, toStringOverride: false)
@@ -84,6 +104,13 @@ abstract class Recipe with _$Recipe {
     required String nameIt,
     String? nameEs,
     String? nameEn,
+
+    /// Descripción corta para la web (null = sin descripción). Sin la
+    /// italiana el plato no sale en la web; sin la española o la inglesa, la
+    /// web muestra la italiana.
+    String? descriptionIt,
+    String? descriptionEs,
+    String? descriptionEn,
     Diet? diet,
     @Default(<Allergen>[]) List<Allergen> allergens,
     List<int>? seasonMonths,
@@ -131,6 +158,9 @@ abstract class Recipe with _$Recipe {
       nameIt: nameIt,
       nameEs: _optionalText(json['name_es']),
       nameEn: _optionalText(json['name_en']),
+      descriptionIt: _optionalText(json['description_it']),
+      descriptionEs: _optionalText(json['description_es']),
+      descriptionEn: _optionalText(json['description_en']),
       diet: _dietFromJson(json['diet']),
       allergens: _allergensFromJson(allergens),
       seasonMonths: _monthsFromJson(json['season_months']),
@@ -143,6 +173,14 @@ abstract class Recipe with _$Recipe {
     );
   }
 
+  /// Si sale en el menú de la web.
+  RecipeWebStatus get webStatus {
+    if (!active) return RecipeWebStatus.inactive;
+    return descriptionIt == null
+        ? RecipeWebStatus.missingDescription
+        : RecipeWebStatus.published;
+  }
+
   @override
   String toString() => 'Recipe($id)';
 }
@@ -151,7 +189,8 @@ abstract class Recipe with _$Recipe {
 /// las notas embebidos (FK compuestas `(recipe_id, chef_id) → recipes (id,
 /// chef_id)`). Las notas llegan como una lista de cero o una fila.
 const String recipeColumns =
-    'id, name_it, name_es, name_en, diet, season_months, fridge_days, '
+    'id, name_it, name_es, name_en, description_it, description_es, '
+    'description_en, diet, season_months, fridge_days, '
     'freezable, freezer_days, active, '
     'allergens:recipe_allergens(allergen), '
     'ingredients:recipe_ingredients(position, name, section, quantity, unit), '
@@ -160,12 +199,16 @@ const String recipeColumns =
 /// El argumento `p` de save_recipe: el plato entero. Los ingredientes van en
 /// orden (la base les pone la posición). Nunca lleva `active` ni
 /// `catalog_visible`: save_recipe no toca una clave que no viene, así guardar
-/// no reactiva un plato ni pasa una receta de evento al catálogo.
+/// no reactiva un plato ni pasa una receta de evento al catálogo. Las
+/// descripciones van siempre (null = sin descripción: borra la que había).
 Map<String, Object?> recipeSavePayload(Recipe recipe) => {
   'id': recipe.id,
   'name_it': recipe.nameIt,
   'name_es': recipe.nameEs,
   'name_en': recipe.nameEn,
+  'description_it': recipe.descriptionIt,
+  'description_es': recipe.descriptionEs,
+  'description_en': recipe.descriptionEn,
   'diet': recipe.diet?.name,
   'season_months': recipe.seasonMonths,
   'fridge_days': recipe.fridgeDays,
@@ -267,12 +310,12 @@ List<RecipeIngredient> _ingredientsFromJson(List<dynamic> rows) {
 }
 
 /// Espacios (de cualquier tipo) y caracteres de control, que la base no
-/// acepta en un nombre: un salto de línea rompería la lista copiada a Notas o
-/// WhatsApp.
+/// acepta en un nombre ni en una descripción: un salto de línea rompería la
+/// lista copiada a Notas o WhatsApp.
 final RegExp _spaceOrControl = RegExp(r'[\s\u0000-\u001f\u007f-\u009f  ]+');
 
-/// Un nombre como lo guarda la base: sin espacios al borde, sin caracteres de
-/// control y con un solo espacio entre palabras.
+/// Un nombre (o una descripción) como lo guarda la base: sin espacios al
+/// borde, sin caracteres de control y con un solo espacio entre palabras.
 String normalizeRecipeText(String text) =>
     text.replaceAll(_spaceOrControl, ' ').trim();
 

@@ -1,5 +1,6 @@
 // Aviso emergente "Nuova richiesta da …" (MaterialBanner) en cualquier
-// pantalla de la app, con botón para abrir el pedido.
+// pantalla de la app, con botón para abrir el pedido. Si el cliente eligió
+// platos en la web, lo dice.
 //
 // Va en el `builder` de MaterialApp, por encima de todas las rutas: así sigue
 // escuchando aunque la cocinera esté en el detalle de otro pedido (las rutas
@@ -42,9 +43,19 @@ class NewRequestAlertListener extends ConsumerWidget {
   ) {
     final l10n = AppLocalizations.of(context);
     final single = alert.requests.length == 1;
-    final text = single
-        ? l10n.newRequestBanner(alert.latest.client.displayName)
-        : l10n.newRequestsBanner(alert.requests.length);
+    final name = alert.latest.client.displayName;
+    final dishes = alert.latest.wishes.length;
+    final count = alert.requests.length;
+    final withMenu = alert.withMenu;
+    final text = switch (single) {
+      true when dishes > 0 => l10n.newRequestBannerWithMenu(dishes, name),
+      true => l10n.newRequestBanner(name),
+      false when withMenu > 0 => l10n.newRequestsBannerWithMenu(
+        count,
+        withMenu,
+      ),
+      false => l10n.newRequestsBanner(count),
+    };
 
     void open() {
       final router = ref.read(routerProvider);

@@ -7,11 +7,19 @@ import 'package:radici/features/requests/presentation/request_detail_screen.dart
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
+import '../../../support/recipe_fixtures.dart';
 import '../../../support/request_fixtures.dart';
 
 void main() {
   FakeChefRequestsRepository sample() => FakeChefRequestsRepository([
-    buildRequest(id: 'new-1', name: 'Giulia Rossi', createdAt: DateTime.utc(2026, 10, 19, 9)),
+    // Con platos elegidos en la web y restricciones: las dos marcas en la fila.
+    buildRequest(
+      id: 'new-1',
+      name: 'Giulia Rossi',
+      createdAt: DateTime.utc(2026, 10, 19, 9),
+      wishes: const [lasagneId, minestroneId],
+      restrictions: const RequestRestrictions(allergens: [Allergen.milk]),
+    ),
     buildRequest(
       id: 'new-2',
       name: 'Marco Bianchi',
@@ -81,6 +89,27 @@ void main() {
       find.descendant(of: tile('new-1'), matching: find.textContaining('settimane')),
       findsNothing,
     );
+  });
+
+  // El aviso que pidió Evelyn: se ve en la lista, sin abrir el pedido.
+  testWidgets('la fila de un pedido con platos elegidos en la web lleva la marca «menù»', (tester) async {
+    await pumpChefApp(tester, requests: sample());
+
+    final mark = find.byKey(const ValueKey('request-menu-new-1'));
+    expect(find.descendant(of: tile('new-1'), matching: mark), findsOneWidget);
+    expect(find.descendant(of: mark, matching: find.text('menù')), findsOneWidget);
+    expect(find.descendant(of: mark, matching: find.byIcon(Icons.restaurant_menu)), findsOneWidget);
+    // Un solo nodo para el lector de pantalla, con la frase entera.
+    expect(tester.widget<Semantics>(mark).properties.label, 'Menù scelto dal cliente');
+    expect(find.byKey(const ValueKey('request-menu-new-2')), findsNothing);
+    expect(find.descendant(of: tile('new-2'), matching: find.text('menù')), findsNothing);
+  });
+
+  testWidgets('la marca en español', (tester) async {
+    await pumpChefApp(tester, requests: sample(), deviceLocales: const [Locale('es', 'ES')]);
+    final mark = find.byKey(const ValueKey('request-menu-new-1'));
+    expect(find.descendant(of: mark, matching: find.text('menú')), findsOneWidget);
+    expect(tester.widget<Semantics>(mark).properties.label, 'Menú elegido por el cliente');
   });
 
   testWidgets('pestañas Viste y Rifiutate', (tester) async {

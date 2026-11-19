@@ -64,6 +64,11 @@ abstract class RecipeDraft with _$RecipeDraft {
     @Default('') String nameIt,
     @Default('') String nameEs,
     @Default('') String nameEn,
+
+    /// La descripción corta de la web, en los tres idiomas.
+    @Default('') String descriptionIt,
+    @Default('') String descriptionEs,
+    @Default('') String descriptionEn,
     @Default(<Allergen>{}) Set<Allergen> allergens,
     Diet? diet,
 
@@ -94,6 +99,9 @@ RecipeDraft recipeDraftFrom(Recipe recipe, {String? id}) => RecipeDraft(
   nameIt: recipe.nameIt,
   nameEs: recipe.nameEs ?? '',
   nameEn: recipe.nameEn ?? '',
+  descriptionIt: recipe.descriptionIt ?? '',
+  descriptionEs: recipe.descriptionEs ?? '',
+  descriptionEn: recipe.descriptionEn ?? '',
   allergens: recipe.allergens.toSet(),
   diet: recipe.diet,
   months: {...?recipe.seasonMonths},
@@ -132,6 +140,9 @@ final class RecipeDraftErrors {
     this.nameIt,
     this.nameEs,
     this.nameEn,
+    this.descriptionIt,
+    this.descriptionEs,
+    this.descriptionEn,
     this.notes,
     this.dietConflicts = const [],
     this.fridgeDays = false,
@@ -143,6 +154,11 @@ final class RecipeDraftErrors {
   final TextError? nameIt;
   final TextError? nameEs;
   final TextError? nameEn;
+
+  /// Las descripciones son opcionales: solo pueden ser demasiado largas.
+  final TextError? descriptionIt;
+  final TextError? descriptionEs;
+  final TextError? descriptionEn;
   final TextError? notes;
 
   /// Los alérgenos marcados que la dieta elegida no admite.
@@ -160,6 +176,9 @@ final class RecipeDraftErrors {
       nameIt == null &&
       nameEs == null &&
       nameEn == null &&
+      descriptionIt == null &&
+      descriptionEs == null &&
+      descriptionEn == null &&
       notes == null &&
       dietConflicts.isEmpty &&
       !fridgeDays &&
@@ -186,9 +205,9 @@ int? _quantity(String raw) {
   return value == null || value < 1 || value > maxIngredientQuantity ? null : value;
 }
 
-/// Valida [draft] con las reglas de la base (nombres, cantidades, hasta 50
-/// ingredientes), los topes de conservación del formulario y la dieta contra
-/// los alérgenos.
+/// Valida [draft] con las reglas de la base (nombres, descripciones,
+/// cantidades, hasta 50 ingredientes), los topes de conservación del
+/// formulario y la dieta contra los alérgenos.
 RecipeDraftErrors validateRecipeDraft(RecipeDraft draft) {
   final rows = [
     for (final row in draft.ingredients)
@@ -214,6 +233,9 @@ RecipeDraftErrors validateRecipeDraft(RecipeDraft draft) {
     nameIt: _nameError(draft.nameIt, maxRecipeNameLength, required: true),
     nameEs: _nameError(draft.nameEs, maxRecipeNameLength),
     nameEn: _nameError(draft.nameEn, maxRecipeNameLength),
+    descriptionIt: _nameError(draft.descriptionIt, maxRecipeDescriptionLength),
+    descriptionEs: _nameError(draft.descriptionEs, maxRecipeDescriptionLength),
+    descriptionEn: _nameError(draft.descriptionEn, maxRecipeDescriptionLength),
     notes: textLength(notes) > maxRecipeNotesLength ? TextError.tooLong : null,
     dietConflicts: dietConflicts(draft.diet, draft.allergens),
     fridgeDays: _days(draft.fridgeDays, 0, maxFridgeDays) == null,
@@ -223,9 +245,9 @@ RecipeDraftErrors validateRecipeDraft(RecipeDraft draft) {
   );
 }
 
-/// El plato que sale de [draft], listo para save_recipe: nombres limpios,
-/// traducciones y notas vacías en null, los 12 meses como todo el año y sin
-/// las filas vacías. [saved] es el plato guardado (null si es nuevo): de él
+/// El plato que sale de [draft], listo para save_recipe: nombres y
+/// descripciones limpios, traducciones, descripciones y notas vacías en null,
+/// los 12 meses como todo el año y sin las filas vacías. [saved] es el plato guardado (null si es nuevo): de él
 /// salen el estado (guardar no lo cambia) y, si no se puede congelar y el
 /// número de días del freezer no vale, esos días. Lanza [ArgumentError] si
 /// [draft] tiene errores.
@@ -244,6 +266,9 @@ Recipe recipeFromDraft(RecipeDraft draft, {Recipe? saved}) {
     nameIt: normalizeRecipeText(draft.nameIt),
     nameEs: optional(draft.nameEs),
     nameEn: optional(draft.nameEn),
+    descriptionIt: optional(draft.descriptionIt),
+    descriptionEs: optional(draft.descriptionEs),
+    descriptionEn: optional(draft.descriptionEn),
     diet: draft.diet,
     allergens: [
       for (final allergen in Allergen.values)

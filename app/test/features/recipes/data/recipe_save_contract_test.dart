@@ -53,20 +53,14 @@ void main() {
   final source = _saveRecipeSource();
   final payload = recipeSavePayload(lasagne());
 
-  test('cada clave que manda la app la conoce save_recipe, y viceversa salvo active, catalog_visible y las descripciones', () {
+  test('cada clave que manda la app la conoce save_recipe, y viceversa salvo active y catalog_visible', () {
     final keys = _constant(source, 'c_keys');
     expect(keys.containsAll(payload.keys), isTrue, reason: '${payload.keys.toSet().difference(keys)}');
     // La app no manda nunca active ni catalog_visible: guardar no reactiva un
     // plato ni pasa una receta de evento al catálogo. Las descripciones del
     // menú de la web (migración 20261119150000_menu_web.sql) las manda el
-    // editor desde el PR de la app del menú, que las saca de esta lista.
-    expect(keys.difference(payload.keys.toSet()), {
-      'active',
-      'catalog_visible',
-      'description_it',
-      'description_es',
-      'description_en',
-    });
+    // editor.
+    expect(keys.difference(payload.keys.toSet()), {'active', 'catalog_visible'});
   });
 
   test('las claves de cada ingrediente son las de save_recipe', () {

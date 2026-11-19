@@ -54,10 +54,12 @@ void main() {
       expect(request.url.path, '/rest/v1/recipes');
       final query = request.url.queryParameters;
       // Las notas, de recipe_notes (solo de la cocinera): recipes ya no las
-      // tiene, porque el cliente lee la fila entera.
+      // tiene, porque el cliente lee la fila entera. Las descripciones de la
+      // web, de recipes (20261119150000_menu_web.sql).
       expect(
         query['select'],
-        'id,name_it,name_es,name_en,diet,season_months,fridge_days,freezable,'
+        'id,name_it,name_es,name_en,description_it,description_es,description_en,'
+        'diet,season_months,fridge_days,freezable,'
         'freezer_days,active,allergens:recipe_allergens(allergen),'
         'ingredients:recipe_ingredients(position,name,section,quantity,unit),'
         'notes:recipe_notes(notes)',

@@ -66,6 +66,26 @@ void main() {
       expect(recipe.seasonMonths, isNull);
     });
 
+    test('las descripciones de la web en los tres idiomas; sin descripción (o vacía) queda en null', () {
+      final recipe = Recipe.fromJson(recipeRow(descriptionEn: 'Slow-cooked ragù and homemade béchamel.'));
+      expect(recipe.descriptionIt, 'Ragù cotto piano e besciamella fatta in casa.');
+      expect(recipe.descriptionEs, 'Ragú cocido despacio y bechamel casera.');
+      expect(recipe.descriptionEn, 'Slow-cooked ragù and homemade béchamel.');
+
+      final none = Recipe.fromJson(recipeRow(descriptionIt: null, descriptionEs: ''));
+      expect(none.descriptionIt, isNull);
+      expect(none.descriptionEs, isNull);
+      expect(none.descriptionEn, isNull);
+      // Una fila de antes de la migración del menú (sin las columnas).
+      final old = Recipe.fromJson(
+        recipeRow()
+          ..remove('description_it')
+          ..remove('description_es')
+          ..remove('description_en'),
+      );
+      expect(old.descriptionIt, isNull);
+    });
+
     test('las cuatro secciones compuestas y las tres unidades se leen bien', () {
       final recipe = Recipe.fromJson(
         recipeRow(
@@ -93,6 +113,7 @@ void main() {
     for (final (label, row) in [
       ('sin id', recipeRow(id: '')),
       ('nombre que no es texto', recipeRow(nameIt: 3)),
+      ('descripción que no es texto', recipeRow(descriptionIt: 3)),
       ('alérgeno desconocido', recipeRow(allergens: const [{'allergen': 'kiwi'}])),
       ('dieta desconocida', recipeRow(diet: 'pescatarian')),
       ('sección desconocida', recipeRow(ingredients: const [
@@ -137,6 +158,9 @@ void main() {
         'name_it': 'Lasagne alla bolognese',
         'name_es': 'Lasaña a la boloñesa',
         'name_en': 'Lasagne Bolognese',
+        'description_it': 'Ragù cotto piano e besciamella fatta in casa.',
+        'description_es': 'Ragú cocido despacio y bechamel casera.',
+        'description_en': null,
         'diet': null,
         'season_months': null,
         'fridge_days': 3,
@@ -161,12 +185,46 @@ void main() {
       expect(payload['ingredients'], isEmpty);
     });
 
+    // Las tres van siempre: null borra la que se vació en el editor
+    // (save_recipe solo deja como está una clave que no viene).
+    test('las tres descripciones van siempre, null si no hay', () {
+      final payload = recipeSavePayload(minestrone());
+      expect(payload.containsKey('description_it'), isTrue);
+      expect(payload['description_it'], isNull);
+      expect(payload['description_es'], isNull);
+      expect(payload['description_en'], isNull);
+      expect(recipeSavePayload(risotto())['description_it'], 'Porcini freschi e parmigiano.');
+    });
+
     // Activar o desactivar es otra acción: guardar nunca reactiva un plato
     // (save_recipe no toca una clave que no viene).
     test('nunca manda active ni catalog_visible', () {
       final payload = recipeSavePayload(frittata());
       expect(payload.containsKey('active'), isFalse);
       expect(payload.containsKey('catalog_visible'), isFalse);
+    });
+  });
+
+  // get_public_menu: activo, en el catálogo (la lista solo trae esos) y con
+  // descripción en italiano.
+  group('en la web', () {
+    test('publicado si está activo y tiene la descripción en italiano', () {
+      expect(lasagne().webStatus, RecipeWebStatus.published);
+      expect(risotto().webStatus, RecipeWebStatus.published, reason: 'sin la española ni la inglesa también');
+    });
+
+    test('activo sin descripción en italiano: le falta para estar en la web', () {
+      expect(minestrone().webStatus, RecipeWebStatus.missingDescription);
+      expect(
+        lasagne().copyWith(descriptionIt: null).webStatus,
+        RecipeWebStatus.missingDescription,
+        reason: 'la española sola no alcanza',
+      );
+    });
+
+    test('desactivado no sale, tenga o no descripción', () {
+      expect(frittata().webStatus, RecipeWebStatus.inactive);
+      expect(minestrone().copyWith(active: false).webStatus, RecipeWebStatus.inactive);
     });
   });
 

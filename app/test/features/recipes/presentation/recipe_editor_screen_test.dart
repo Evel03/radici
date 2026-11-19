@@ -484,6 +484,56 @@ void main() {
     );
   });
 
+  testWidgets('la descripción de la web: la ayuda, los tres campos con lo guardado y se guarda recortada', (
+    tester,
+  ) async {
+    await openEditor(tester, location: '/altro/piatti/$lasagneId');
+    expect(find.text('Descrizione sul sito'), findsOneWidget);
+    expect(
+      find.text(
+        'Una frase breve: compare sul sito, nel modulo di richiesta, accanto al nome. '
+        'Senza la descrizione in italiano il piatto non si vede sul sito. '
+        'In spagnolo e in inglese, se manca, si vede quella in italiano.',
+      ),
+      findsOneWidget,
+    );
+    String text(String key) => tester.widget<TextField>(byKey(key)).controller!.text;
+    expect(text('recipe-description-it'), 'Ragù cotto piano e besciamella fatta in casa.');
+    expect(text('recipe-description-es'), 'Ragú cocido despacio y bechamel casera.');
+    expect(text('recipe-description-en'), isEmpty);
+    expect(find.widgetWithText(TextField, 'Descrizione in italiano'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Descrizione in spagnolo'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Descrizione in inglese'), findsOneWidget);
+    // Una línea: el teclado no ofrece salto de línea (la base no lo acepta).
+    final field = tester.widget<TextField>(byKey('recipe-description-it'));
+    expect(field.keyboardType, TextInputType.text);
+    expect(field.maxLength, 200);
+
+    await tapVisible(tester, byKey('recipe-description-en'));
+    await tester.enterText(byKey('recipe-description-en'), '  Slow-cooked   ragù. ');
+    await tester.enterText(byKey('recipe-description-es'), '   ');
+    await save(tester);
+
+    final saved = repository.saveCalls.single;
+    expect(saved.descriptionIt, 'Ragù cotto piano e besciamella fatta in casa.');
+    expect(saved.descriptionEs, isNull);
+    expect(saved.descriptionEn, 'Slow-cooked ragù.');
+  });
+
+  testWidgets('a 375×667, una descripción de más de 200 caracteres no se guarda y lleva al error', (tester) async {
+    await openEditor(tester, size: const Size(375, 667));
+    await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
+    await tapVisible(tester, byKey('recipe-description-it'));
+    await tester.enterText(byKey('recipe-description-it'), 'd' * 201);
+    await tester.drag(byKey('recipe-editor'), const Offset(0, 3000));
+    await tester.pumpAndSettle();
+    await save(tester);
+
+    expect(repository.saveCalls, isEmpty);
+    expect(find.text('Al massimo 200 caratteri.').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('«Tutto l\'anno» o meses sueltos', (tester) async {
     await openEditor(tester, location: '/altro/piatti/$risottoId');
     FilterChip chip(String key) => tester.widget<FilterChip>(byKey(key));

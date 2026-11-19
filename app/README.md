@@ -101,7 +101,10 @@ repositorios falsos (`test/support/fakes.dart`).
   «Collaboratore di Evelyn» en lugar del nombre (`chefAccountTitle`). El WhatsApp que le prepara el
   detalle de un pedido sale de su propio teléfono, así que escribe de parte de ella («ti scrivo da
   parte di Evelyn di Radici», `contactWhatsAppMessageOnBehalf`) en lugar de «sono Evelyn».
-- **Richieste**: pestañas Nuove (sin `seen_at`), Viste y Rifiutate, con contador de nuevas.
+- **Richieste**: pestañas Nuove (sin `seen_at`), Viste y Rifiutate, con contador de nuevas. La fila
+  de un pedido en el que el cliente eligió platos en la pestaña «Menù» de la web (`requests.wishes`)
+  lleva la marca **menù** (ícono y texto; el lector de pantalla dice «Menù scelto dal cliente»): es el
+  aviso que pidió Evelyn. También en la agenda, que usa la misma fila.
 - **Franja**: la bandeja, el detalle y la agenda muestran mañana o tarde si el pedido la trae. La web
   ya no la pregunta y manda `any`, que la app lee como sin franja y no muestra (como los emails).
 - **Agenda**: mes y semana por `preferred_date` con la franja, más la lista "Senza data". "Hoy"
@@ -116,7 +119,13 @@ repositorios falsos (`test/support/fakes.dart`).
   desde 2026, legge n. 151/2025) y Sant'Alessandro (26/8) como festivo local de Bergamo.
 - **Detalle**: todos los datos (también las restricciones), la estimación guardada (el servicio, sin
   compra ni total: la compra la hace el cliente; las claves de compra de los pedidos de antes se
-  ignoran) y las acciones:
+  ignoran) y las acciones. Si el cliente eligió platos en la web, arriba va un recuadro destacado
+  «Menù scelto dal cliente (2 di 5 giorni)» con los nombres en el orden en que los tildó (en el idioma
+  de la app, con el italiano si falta la traducción); un plato que después se borró dice «Piatto
+  eliminato». Los nombres se piden por id a `recipes` (`wishes` es un `uuid[]` sin FK: no se puede
+  embeber), solo si hay platos elegidos, y marcar visto no los vuelve a pedir. Si no se pueden leer,
+  el recuadro igual avisa, con «Riprova». Sin platos elegidos, nada (el menú lo propone Evelyn, que
+  tiene la última palabra). Las acciones:
   WhatsApp (`https://wa.me/<número sin +>?text=…` en el idioma del cliente), llamar (`tel:`),
   email (`mailto:`), rechazar (`new` → `rejected`) y deshacer el rechazo (`rejected` → `new`;
   como ya estaba visto, vuelve a Viste), las dos con confirmación. Al abrirlo se marca visto.
@@ -132,22 +141,32 @@ repositorios falsos (`test/support/fakes.dart`).
   pantallas anchas.
 - **Piatti** (catálogo, migración `20261116170000_recipe_catalog.sql`): lista con búsqueda en los
   nombres en italiano, español e inglés (sin mayúsculas ni acentos), los activos primero y los
-  desactivados al final, cada plato con sus alérgenos, dieta y temporada. El editor pone primero lo
-  rápido (nombre en italiano, los 14 alérgenos, dieta y meses con «Tutto l'anno») y después lo
-  opcional: nombres en español e inglés, conservación, ingredientes (cantidad entera para 4
+  desactivados al final, cada plato con sus alérgenos, dieta, temporada y, si está activo, si sale en
+  la web («Sul sito») o le falta la descripción para salir («Senza descrizione: non è sul sito»). El
+  editor pone primero lo rápido (nombre en italiano, los 14 alérgenos, dieta, meses con «Tutto
+  l'anno» y la descripción de la web) y después lo opcional: nombres en español e inglés, conservación, ingredientes (cantidad entera para 4
   porciones en g, ml o piezas, o «q.b.»; sección del súper; orden con botones) y notas (de la
   cocinera y sus colaboradores: se leen de `recipe_notes`, que el cliente no lee). Guarda el plato entero con
   `save_recipe`, con un id generado en el teléfono: un reintento no lo duplica y, si falla, no se
   pierde lo cargado. No deja guardar un plato vegano con leche, huevos, pescado o mariscos, ni uno
   vegetariano con pescado o mariscos (`save_recipe` tampoco lo acepta). Duplicar abre la copia (otro
   id) para cambiarle el nombre; desactivar y reactivar tienen «Annulla». Un plato nunca se borra.
+- **Descripción de la web** (migración `20261119150000_menu_web.sql`): una frase corta en italiano y,
+  si quiere, en español e inglés (`recipes.description_it/_es/_en`), que la web muestra al lado del
+  nombre en la pestaña «Menù» del formulario de pedido. Un plato sale en la web si está activo, en el
+  catálogo y con la descripción en italiano (`get_public_menu`); sin la española o la inglesa, la web
+  muestra la italiana. Hasta 200 caracteres, una sola línea, sin espacios de más (como los nombres,
+  `normalizeRecipeText`); el contador avisa sin cortar lo escrito y al guardar lo dice el error. Se
+  guardan con `save_recipe`, que recibe siempre las tres (null borra la que se vació).
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
   entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).
 - **Avisos de la web** (arriba de cualquier pantalla, también del login): versión nueva publicada y,
   en Safari del iPhone, abrir Radici desde el ícono (ver [Web /gestione/](#web-gestione)).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
-  emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Al reconectar
+  emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla; si el cliente eligió
+  platos en la web lo dice ("…, con 2 piatti scelti dal menù"; con varios pedidos, "3 nuove richieste
+  (1 con menù)"). Al reconectar
   (corte de red, app que vuelve del segundo plano) se relee la lista y se avisa lo que llegó.
 - Los teléfonos se normalizan con `lib/core/phone.dart`, copia de `normalizePhone`
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
@@ -166,6 +185,9 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   Su guarda `requests_guard_update` deja a la app pasar `new` → `rejected` y `rejected` → `new`, y
   desde `20261019160000_public_request_hardening.sql` también vale en el alta (un pedido nace en `new`).
   Esa migración agrega `requests.contact` (el contacto con que llegó cada pedido).
+- Migración `supabase/migrations/20261119150000_menu_web.sql`: `recipes.description_*` (las lee el
+  editor y las guarda `save_recipe`) y el uso de `requests.wishes` (los platos elegidos en la web, que
+  la bandeja y el detalle leen; la columna existe desde la primera migración).
 - `clients.status`: la cocinera lo cambia (privilegio por columna y `clients_guard_update`); la app lo
   pasa de `prospect` a `trial` con "Segna come cliente".
 - `profiles.locale`: el usuario lo puede cambiar en su propio perfil (`grant update (full_name,

@@ -15,6 +15,7 @@ import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/chosen_menu.dart';
 
 class MockAuthRepository extends Mock implements AuthRepository {}
 
@@ -144,6 +145,17 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
   /// Fichas (client_id) marcadas como clientes.
   final List<String> markedClients = [];
 
+  /// Nombres de los platos (recipes) "en el servidor", por id: los que lee
+  /// [fetchMenuDishes]. Un id que no está es un plato borrado.
+  final Map<String, MenuDish> dishes = {};
+  bool failDishes = false;
+
+  /// Si no es null, [fetchMenuDishes] espera a que se complete.
+  Completer<void>? pendingDishes;
+
+  /// Los ids de cada [fetchMenuDishes], en orden.
+  final List<List<String>> dishCalls = [];
+
   final _realtime = StreamController<RequestsRealtimeEvent>.broadcast();
   int realtimeListeners = 0;
 
@@ -225,6 +237,17 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
         client: request.client.copyWith(status: ClientStatus.trial),
       );
     }
+  }
+
+  @override
+  Future<List<MenuDish>> fetchMenuDishes(List<String> ids) async {
+    dishCalls.add(List.of(ids));
+    final fail = failDishes;
+    final found = [for (final id in ids) ?dishes[id]];
+    final pending = pendingDishes;
+    if (pending != null) await pending.future;
+    if (fail) throw const RequestsFailure(RequestsFailureKind.unavailable);
+    return found;
   }
 
   @override

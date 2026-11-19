@@ -145,6 +145,20 @@ void main() {
       );
       expect(draft.freezable, isTrue);
     });
+
+    test('las descripciones de la web en los tres idiomas', () async {
+      await start();
+      open(create)
+        ..setDescriptionIt('Basilico fresco e pinoli.')
+        ..setDescriptionEs('Albahaca fresca y piñones.')
+        ..setDescriptionEn('Fresh basil and pine nuts.');
+      final draft = stateOf(create).draft;
+      expect(
+        [draft.descriptionIt, draft.descriptionEs, draft.descriptionEn],
+        ['Basilico fresco e pinoli.', 'Albahaca fresca y piñones.', 'Fresh basil and pine nuts.'],
+      );
+      expect(stateOf(create).dirty, isTrue);
+    });
   });
 
   group('ingredientes', () {
@@ -290,6 +304,29 @@ void main() {
       expect(await editor.save(), RecipeSaveResult.saved);
       expect(repository.saveCalls.single, lasagne().copyWith(nameIt: 'Lasagne verdi'));
       expect(stateOf(editLasagne).dirty, isFalse);
+    });
+
+    test('la descripción: se manda recortada y la que se vació va en null', () async {
+      await start();
+      final editor = open(editLasagne)
+        ..setDescriptionIt('  Ragù di manzo e maiale,   besciamella. ')
+        ..setDescriptionEs('   ')
+        ..setDescriptionEn('Beef and pork ragù.');
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      final saved = repository.saveCalls.single;
+      expect(saved.descriptionIt, 'Ragù di manzo e maiale, besciamella.');
+      expect(saved.descriptionEs, isNull);
+      expect(saved.descriptionEn, 'Beef and pork ragù.');
+      expect(inCatalog(lasagneId)!.descriptionIt, 'Ragù di manzo e maiale, besciamella.');
+    });
+
+    test('una descripción de más de 200 caracteres no deja guardar', () async {
+      await start();
+      final editor = open(editLasagne)..setDescriptionIt('d' * 201);
+      expect(await editor.save(), RecipeSaveResult.invalid);
+      expect(stateOf(editLasagne).errors.descriptionIt, TextError.tooLong);
+      expect(repository.saveCalls, isEmpty);
     });
 
     test('guardar uno desactivado no lo reactiva', () async {

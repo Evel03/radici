@@ -264,7 +264,8 @@ abstract class RequestClient with _$RequestClient {
 /// (FK `requests (client_id, chef_id) → clients (id, chef_id)`).
 const String chefRequestColumns =
     'id, chef_id, client_id, type, status, adults, kids, days, meals, weeks, '
-    'restrictions, no_allergies, notes, preferred_date, preferred_slot, locale, '
+    'restrictions, no_allergies, notes, wishes, preferred_date, '
+    'preferred_slot, locale, '
     'whatsapp_opt_in, estimate, source, seen_at, created_at, contact, '
     'client:clients(display_name, contact_email, contact_phone, zone, status)';
 
@@ -312,6 +313,12 @@ abstract class ChefRequest with _$ChefRequest {
     /// mostrarla, [allergyAnswer].
     @JsonKey(name: 'no_allergies') bool? noAllergies,
     String? notes,
+
+    /// Platos que eligió el cliente en la pestaña «Menù» de la web
+    /// (`requests.wishes`, ids de `recipes`), en el orden en que los tildó:
+    /// hasta uno por día, opcional. Vacía = no eligió (el menú lo propone la
+    /// cocinera, que tiene la última palabra).
+    @JsonKey(fromJson: _wishesFromJson) @Default(<String>[]) List<String> wishes,
     @JsonKey(name: 'preferred_date')
     @CalendarDateConverter()
     CalendarDate? preferredDate,
@@ -370,6 +377,9 @@ abstract class ChefRequest with _$ChefRequest {
 
   bool get hasRestrictions => !(restrictions?.isEmpty ?? true);
 
+  /// El cliente eligió platos en la web: la bandeja y el aviso lo marcan.
+  bool get hasMenu => wishes.isNotEmpty;
+
   /// Qué mostrar de alergias. Con restricciones, siempre
   /// [AllergyAnswer.listed] (más vale mostrarlas, aunque diga lo contrario);
   /// sin ellas, [AllergyAnswer.none] solo si lo confirmó y si no,
@@ -388,3 +398,13 @@ abstract class ChefRequest with _$ChefRequest {
 }
 
 List<Meal> _mealsFromJson(Object? json) => _knownValues(Meal.values, json);
+
+/// Los ids de `requests.wishes` en orden, sin repetir y sin lo que no sea un
+/// texto (la base ya los guarda así: esto es para no romper la bandeja).
+List<String> _wishesFromJson(Object? json) {
+  if (json is! List) return const [];
+  return {
+    for (final id in json)
+      if (id is String && id.isNotEmpty) id,
+  }.toList();
+}
