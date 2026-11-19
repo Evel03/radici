@@ -16,6 +16,8 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/clock.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/bookings/domain/booking_draft.dart'
+    show defaultBookingArrival;
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
@@ -188,7 +190,7 @@ class MoveSessionController extends Notifier<MoveSessionState> {
         today: today,
         session: session,
         date: args.date ?? session?.date ?? today,
-        start: session?.start ?? const ClockTime.hm(10, 0),
+        start: session?.start ?? defaultBookingArrival,
         failure: SessionFailure(
           session == null
               ? SessionFailureKind.notFound

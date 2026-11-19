@@ -109,9 +109,12 @@ repositorios falsos (`test/support/fakes.dart`).
   ya no la pregunta y manda `any`, que la app lee como sin franja y no muestra (como los emails).
 - **Agenda**: mes y semana con las **sesiones** (`features/sessions/`): en el mes, un punto por
   sesión en la celda (el texto accesible las cuenta) y, al tocar el día, sus bloques junto a la
-  tarjeta del día; en la semana, bloques «Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00» con
-  las horas de cada sesión (`start_time`, `shop_minutes` y `cook_minutes` guardados en ella; nada
-  fijo). Cada bloque abre la ficha de la sesión. `SessionsRepository` las lee con la RLS («la
+  tarjeta del día; en la semana, bloques «Arrivo 10:00 · fino alle 13:00» con las horas de cada
+  sesión (`start_time` y `cook_minutes` guardados en ella; nada fijo). Sin compra (19/11/2026): la
+  de las sesiones de antes (`shop_minutes`, 45 min) no se muestra, y una en `shopping_done` (sin
+  uso desde entonces) se ve como confirmada, en el bloque y en la ficha («Confermata», sin
+  etiqueta); la app no ofrece pasar a ese estado. Cada bloque abre la ficha de la sesión.
+  `SessionsRepository` las lee con la RLS («la
   cocinera lee las suyas»), con la ficha (`clients`, y sus `client_restrictions`) y el pedido de la
   reserva embebidos por el nombre de la FK (`requests.target_session_id` también apunta a
   `sessions`), desde el lunes de la primera semana del mes de hoy (o del mes elegido, si es
@@ -134,8 +137,9 @@ repositorios falsos (`test/support/fakes.dart`).
   un nodo que la tiene.
 - **Ficha de la sesión** (`/sessioni/:id`, a pantalla completa; abierta con un enlace directo, sin
   nada debajo, su flecha de volver lleva a la Agenda): el día, «Settimana k di N» (sin
-  contar las canceladas), las horas (el renglón se parte solo después de un «·»: nunca «fino alle»
-  y la hora en dos renglones), «Come arrivare» (la dirección de la ficha en Apple Maps en el
+  contar las canceladas), las horas (la llegada y el fin de la cocina; el renglón se parte solo
+  después de un «·»: nunca «fino alle» y la hora en dos renglones), «Come arrivare» (la dirección
+  de la ficha en Apple Maps en el
   iPhone, también en `/gestione/` con Safari, y en Google Maps en el resto), WhatsApp en el idioma
   de la clienta (la fecha y, según la sesión, la hora de llegada; nunca la dirección ni las
   alergias) y llamar. Si la abre un colaborador, el WhatsApp sale de su propio teléfono y escribe

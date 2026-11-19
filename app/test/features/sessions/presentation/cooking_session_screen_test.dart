@@ -124,7 +124,7 @@ void main() {
     expect(textOf(tester, 'session-week'), 'Settimana 2 di 4');
     expect(
       plainSpaces(textOf(tester, 'session-times')),
-      'Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
+      'Arrivo 10:00 · fino alle 13:00',
     );
     // Confirmada: sin etiqueta de estado.
     expect(byKey('session-status'), findsNothing);
@@ -735,7 +735,7 @@ void main() {
   });
 
   testWidgets(
-    'una cocinada no se mueve ni se cancela; una con la compra hecha se cancela pero no se mueve',
+    'una cocinada no se mueve ni se cancela; una vieja en shopping_done se ve como confirmada (sin etiqueta), se cancela pero no se mueve',
     (tester) async {
       await openSession(
         tester,
@@ -752,9 +752,14 @@ void main() {
 
       final week2 = byKey('session-week-${sessionId(2)}');
       await reveal(tester, week2);
+      // En la lista de semanas, solo la hora, como una confirmada.
+      expect(
+        find.descendant(of: week2, matching: find.text('10:00')),
+        findsOneWidget,
+      );
       await tester.tap(week2);
       await tester.pumpAndSettle();
-      expect(textOf(tester, 'session-status'), 'Spesa fatta');
+      expect(byKey('session-status'), findsNothing);
       expect(byKey('session-move'), findsNothing);
       expect(byKey('session-cancel'), findsOneWidget);
     },

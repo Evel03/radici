@@ -150,7 +150,8 @@ class _SessionView extends ConsumerWidget {
   }
 }
 
-/// El día, «Semana k de N», el estado (si no está confirmada) y las horas.
+/// El día, «Semana k de N», el estado (si no está confirmada; una vieja en
+/// shopping_done se ve como confirmada) y las horas.
 class _Header extends StatelessWidget {
   const _Header({required this.detail});
 
@@ -163,7 +164,7 @@ class _Header extends StatelessWidget {
     final formats = RequestFormats(context);
     final session = detail.session;
     final position = detail.position;
-    final status = session.status == SessionStatus.confirmed
+    final status = session.status.shown == SessionStatus.confirmed
         ? null
         : [
             l10n.sessionStatus(session.status),
@@ -615,7 +616,7 @@ class _Weeks extends StatelessWidget {
                 subtitle: Text(
                   [
                     week.start.toHhMm(),
-                    if (week.status != SessionStatus.confirmed)
+                    if (week.status.shown != SessionStatus.confirmed)
                       l10n.sessionStatus(week.status),
                   ].join(' · '),
                 ),

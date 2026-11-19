@@ -1,9 +1,10 @@
 // Una sesión como la lee la app con la RLS: la fila de PostgREST con la
 // ficha, sus restricciones y el pedido embebidos; las horas que salen de lo
-// guardado (compra, llegada y fin); de dónde salen el nombre, el teléfono, la
-// zona y el idioma; las alergias de la ficha y del pedido (también como
-// llegan de la web: solo la nota); la dirección como se guarda, y que nada de
-// eso se imprime.
+// guardado (llegada y fin, sin la compra de las sesiones de antes del
+// 19/11/2026) y shopping_done, que se ve como confirmada; de dónde salen el
+// nombre, el teléfono, la zona y el idioma; las alergias de la ficha y del
+// pedido (también como llegan de la web: solo la nota); la dirección como se
+// guarda, y que nada de eso se imprime.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
@@ -28,7 +29,7 @@ void main() {
         // "10:00:00" de Postgres, como hora del día.
         expect(session.start, const ClockTime.hm(10, 0));
         expect(session.cookMinutes, 180);
-        expect(session.shopMinutes, 45);
+        expect(session.shopMinutes, 0);
         expect(session.gapMinutes, 30);
         expect(session.portions, 20);
         expect(session.status, SessionStatus.confirmed);
@@ -50,6 +51,14 @@ void main() {
         expect(session.status, status);
       }
       expect(SessionStatus.shoppingDone.dbName, 'shopping_done');
+    });
+
+    test('shopping_done (sin uso desde el 19/11/2026) se ve como confirmada; los demás, como son', () {
+      expect(SessionStatus.shoppingDone.shown, SessionStatus.confirmed);
+      for (final status in SessionStatus.values) {
+        if (status == SessionStatus.shoppingDone) continue;
+        expect(status.shown, status);
+      }
     });
 
     test('una sesión sin pedido y una cancelada, con su motivo', () {
@@ -115,42 +124,33 @@ void main() {
   });
 
   group('las horas salen de la sesión', () {
-    test(
-      'compra desde la llegada menos la compra, hasta la llegada más la cocina',
-      () {
-        final times = buildSession().times;
-        expect(SessionTimes.hhmm(times.shopStart), '09:15');
-        expect(SessionTimes.hhmm(times.arrival), '10:00');
-        expect(SessionTimes.hhmm(times.end), '13:00');
-      },
-    );
+    test('desde la llegada hasta la llegada más la cocina', () {
+      final times = buildSession().times;
+      expect(SessionTimes.hhmm(times.arrival), '10:00');
+      expect(SessionTimes.hhmm(times.end), '13:00');
+    });
 
     test('con otros minutos guardados, otras horas (nada fijo)', () {
       final times = buildSession(
-        start: const ClockTime.hm(11, 30),
-        shopMinutes: 60,
-        cookMinutes: 210,
+        start: const ClockTime.hm(9, 0),
+        cookMinutes: 360,
         gapMinutes: 0,
       ).times;
-      expect(SessionTimes.hhmm(times.shopStart), '10:30');
-      expect(SessionTimes.hhmm(times.arrival), '11:30');
+      expect(SessionTimes.hhmm(times.arrival), '09:00');
       expect(SessionTimes.hhmm(times.end), '15:00');
     });
 
-    test('sin compra, la compra empieza a la llegada; cruzar la medianoche no rompe el texto', () {
-      final noShopping = buildSession(shopMinutes: 0).times;
-      expect(noShopping.shopStart, noShopping.arrival);
+    test('la compra de una sesión de antes del 19/11/2026 (45 min) no cambia las horas; cruzar la medianoche no rompe el texto', () {
+      final old = CookingSession.fromJson(sessionRow(shopMinutes: 45));
+      expect(old.shopMinutes, 45);
+      expect(SessionTimes.hhmm(old.times.arrival), '10:00');
+      expect(SessionTimes.hhmm(old.times.end), '13:00');
 
       final late = buildSession(
         start: const ClockTime.hm(22, 0),
         cookMinutes: 180,
       ).times;
       expect(SessionTimes.hhmm(late.end), '01:00');
-      final early = buildSession(
-        start: const ClockTime.hm(0, 30),
-        shopMinutes: 45,
-      ).times;
-      expect(SessionTimes.hhmm(early.shopStart), '23:45');
     });
   });
 

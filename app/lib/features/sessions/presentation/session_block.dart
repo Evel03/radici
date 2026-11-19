@@ -1,8 +1,9 @@
-// Una sesión en la agenda: la clienta y sus horas («Spesa dalle 09:15 ·
-// Arrivo 10:00 · fino alle 13:00», salidas de la sesión), y el estado si no
-// es una confirmada. Toda la fila abre su ficha (un solo objetivo, también
-// para el lector de pantalla: el nodo lleva la acción de tocar, porque en
-// /gestione/ el clic de VoiceOver solo llega a un nodo que la tiene).
+// Una sesión en la agenda: la clienta y sus horas («Arrivo 10:00 · fino alle
+// 13:00», salidas de la sesión), y el estado si no es una confirmada (una
+// vieja en shopping_done se ve como confirmada). Toda la fila abre su ficha
+// (un solo objetivo, también para el lector de pantalla: el nodo lleva la
+// acción de tocar, porque en /gestione/ el clic de VoiceOver solo llega a un
+// nodo que la tiene).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -23,7 +24,7 @@ class SessionBlock extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final times = l10n.sessionTimesLine(session);
-    final status = session.status == SessionStatus.confirmed
+    final status = session.status.shown == SessionStatus.confirmed
         ? null
         : l10n.sessionStatus(session.status);
     final name = session.displayName;

@@ -158,7 +158,7 @@ void main() {
         arrival: true,
       ),
       (
-        name: 'de hoy, con la compra hecha',
+        name: 'de hoy, vieja en shopping_done (como confirmada)',
         status: SessionStatus.shoppingDone,
         today: sessionDay,
         arrival: true,
@@ -170,7 +170,7 @@ void main() {
         arrival: false,
       ),
       (
-        name: 'de la semana pasada, con la compra hecha',
+        name: 'de la semana pasada, vieja en shopping_done',
         status: SessionStatus.shoppingDone,
         today: CalendarDate(2026, 12, 2),
         arrival: false,

@@ -1,6 +1,7 @@
 // Agenda con sesiones: un punto por sesión en la celda del mes (y en el texto
 // accesible), sus bloques en la tarjeta del día y en la semana con las horas
-// de la sesión («Spesa dalle · Arrivo · fino alle»), cada uno abre su ficha
+// de la sesión («Arrivo · fino alle», sin compra; una vieja en shopping_done,
+// sin estado, como una confirmada), cada uno abre su ficha
 // (también con el lector de pantalla), que tapa la barra de navegación como
 // su hoja «Sposta» (al volver, la Agenda sigue elegida); los pedidos aceptados
 // ya no se listan por fecha preferida; bloquear un día con sesión avisa que no
@@ -107,7 +108,7 @@ void main() {
         plainSpaces(
           tester.widget<Text>(byKey('session-${sessionId(1)}-times')).data!,
         ),
-        'Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
+        'Arrivo 10:00 · fino alle 13:00',
       );
       expect(byKey('request-nuovo'), findsOneWidget);
       expect(byKey('request-$bookingRequestId'), findsNothing);
@@ -136,6 +137,8 @@ void main() {
     (tester) async {
       final sessions = FakeSessionsRepository([
         ...booking(),
+        // De antes del 19/11/2026: guarda 45 min de compra, que no se
+        // muestran.
         buildSession(
           n: 9,
           requestId: 'altra',
@@ -143,6 +146,7 @@ void main() {
           date: CalendarDate(2026, 10, 23),
           start: const ClockTime.hm(11, 30),
           cookMinutes: 150,
+          shopMinutes: 45,
           status: SessionStatus.held,
         ),
         buildSession(
@@ -161,9 +165,7 @@ void main() {
       expect(
         find.descendant(
           of: wednesdayCard,
-          matching: findPlainText(
-            'Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
-          ),
+          matching: findPlainText('Arrivo 10:00 · fino alle 13:00'),
         ),
         findsOneWidget,
       );
@@ -171,9 +173,7 @@ void main() {
       expect(
         find.descendant(
           of: fridayCard,
-          matching: findPlainText(
-            'Spesa dalle 10:45 · Arrivo 11:30 · fino alle 14:00',
-          ),
+          matching: findPlainText('Arrivo 11:30 · fino alle 14:00'),
         ),
         findsOneWidget,
       );
@@ -347,9 +347,41 @@ void main() {
       final node = tester.getSemantics(byKey('session-${sessionId(1)}'));
       expect(
         plainSpaces(node.getSemanticsData().label),
-        'Giulia Rossi, Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
+        'Giulia Rossi, Arrivo 10:00 · fino alle 13:00',
       );
       expect(node, isSemantics(isButton: true, hasTapAction: true));
+      semantics.dispose();
+    },
+  );
+
+  testWidgets(
+    'una vieja en shopping_done se ve como confirmada: su bloque no lleva etiqueta de estado, en el día ni en la semana',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openAgenda(
+        tester,
+        sessions: FakeSessionsRepository(
+          buildBooking(
+            first: wednesday,
+            statuses: {1: SessionStatus.shoppingDone},
+          ),
+        ),
+      );
+      final block = byKey('session-${sessionId(1)}');
+      final status = byKey('session-${sessionId(1)}-status');
+
+      await selectDay(tester, '2026-10-21');
+      expect(block, findsOneWidget);
+      expect(status, findsNothing);
+
+      await tester.tap(byKey('agenda-view-week'));
+      await tester.pumpAndSettle();
+      expect(block, findsOneWidget);
+      expect(status, findsNothing);
+      expect(
+        plainSpaces(tester.getSemantics(block).getSemanticsData().label),
+        'Giulia Rossi, Arrivo 10:00 · fino alle 13:00',
+      );
       semantics.dispose();
     },
   );
@@ -495,7 +527,6 @@ void main() {
               date: busy,
               start: ClockTime.hm(8 + n, 0),
               cookMinutes: 30,
-              shopMinutes: 0,
               gapMinutes: 0,
             ),
         ]),

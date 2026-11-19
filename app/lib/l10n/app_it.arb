@@ -856,7 +856,7 @@
   },
   "bookingStartSuggested": "Suggerita: {time}, l'inizio del tuo orario.",
   "@bookingStartSuggested": {
-    "description": "Debajo de las horas de llegada: la que sugiere el servidor, el comienzo del horario de ese día (la apertura a la media hora siguiente; sin compra desde el 19/11/2026).",
+    "description": "Debajo de las horas de llegada, en «Confirmar reserva» y en la hoja «Sposta»: la que sugiere el servidor, el comienzo del horario de ese día (la apertura a la media hora siguiente; sin compra desde el 19/11/2026).",
     "placeholders": {
       "time": { "type": "String", "example": "10:00" }
     }
@@ -1109,11 +1109,7 @@
   },
   "sessionStatusConfirmed": "Confermata",
   "@sessionStatusConfirmed": {
-    "description": "Estado de una sesión confirmed."
-  },
-  "sessionStatusShoppingDone": "Spesa fatta",
-  "@sessionStatusShoppingDone": {
-    "description": "Estado de una sesión shopping_done (ya se cargó el ticket de la compra)."
+    "description": "Estado de una sesión confirmed. También el de una sesión vieja en shopping_done (la compra hecha, sin uso desde el 19/11/2026: la compra la hace el cliente), que todavía no se cocinó."
   },
   "sessionStatusCooked": "Cucinata",
   "@sessionStatusCooked": {
@@ -1121,17 +1117,16 @@
   },
   "sessionStatusPaid": "Pagata",
   "@sessionStatusPaid": {
-    "description": "Estado de una sesión paid (servicio y compra cobrados)."
+    "description": "Estado de una sesión paid (el servicio cobrado)."
   },
   "sessionStatusCancelled": "Annullata",
   "@sessionStatusCancelled": {
     "description": "Estado de una sesión cancelled."
   },
-  "sessionTimes": "Spesa dalle {shop} · Arrivo {arrival} · fino alle {end}",
+  "sessionTimes": "Arrivo {arrival} · fino alle {end}",
   "@sessionTimes": {
-    "description": "Horas de una sesión, salidas de lo guardado en ella: la compra empieza antes de llegar a la casa y la cocina termina a {end}.",
+    "description": "Horas de una sesión, salidas de lo guardado en ella: la llegada a la casa y el fin de la cocina. Sin compra (la hace el cliente desde el 19/11/2026): la de las sesiones de antes no se muestra.",
     "placeholders": {
-      "shop": { "type": "String", "example": "09:15" },
       "arrival": { "type": "String", "example": "10:00" },
       "end": { "type": "String", "example": "13:00" }
     }

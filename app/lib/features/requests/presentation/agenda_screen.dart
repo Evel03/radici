@@ -1,5 +1,5 @@
 // Agenda en vista mensual o semanal: las sesiones de cada día (en la semana,
-// bloques «Spesa · Arrivo · fino alle» con las horas de la sesión; cada una
+// bloques «Arrivo · fino alle» con las horas de la sesión; cada una
 // abre su ficha), los pedidos que todavía no son una reserva por su fecha
 // preferida, con la franja, la lista "senza data" y la disponibilidad de cada
 // día: bloqueados (la web no los ofrece), feriados y el botón «Blocca giorni»
@@ -521,8 +521,8 @@ class _WeekView extends ConsumerWidget {
                     ),
                   ),
                   DayAvailabilityCard(day: day, compact: true),
-                  // Bloques «Spesa · Arrivo · fino alle», con las horas de
-                  // cada sesión.
+                  // Bloques «Arrivo · fino alle», con las horas de cada
+                  // sesión.
                   for (final session
                       in sessionsByDate[day] ?? const <CookingSession>[])
                     Padding(

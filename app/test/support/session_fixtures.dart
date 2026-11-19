@@ -27,7 +27,7 @@ Map<String, dynamic> sessionRow({
   String date = '2026-11-25',
   String startTime = '10:00:00',
   int cookMinutes = 180,
-  int shopMinutes = 45,
+  int shopMinutes = 0,
   int gapMinutes = 30,
   String status = 'confirmed',
   String? requestId = bookingRequestId,
@@ -49,8 +49,6 @@ Map<String, dynamic> sessionRow({
   'portions': 20,
   'status': status,
   'service_cents': 14000,
-  'groceries_est_cents': 6300,
-  'groceries_actual_cents': null,
   'cancelled_at': status == 'cancelled' ? '2026-11-20T10:00:00+00:00' : null,
   'cancel_reason': status == 'cancelled' ? 'client_cancelled' : null,
   'client': {
@@ -78,14 +76,15 @@ Map<String, dynamic> sessionRow({
 
 /// Sesión armada a mano (sin pasar por JSON): por defecto, una semana
 /// confirmada de la reserva [bookingRequestId], el miércoles 25/11/2026 a
-/// las 10:00, con 45 min de compra y 180 de cocina.
+/// las 10:00, con 180 min de cocina y sin compra (`shop_minutes` 0, como las
+/// sesiones creadas desde el 19/11/2026; las de antes guardan 45).
 CookingSession buildSession({
   int n = 1,
   String? id,
   CalendarDate? date,
   ClockTime start = const ClockTime.hm(10, 0),
   int cookMinutes = 180,
-  int shopMinutes = 45,
+  int shopMinutes = 0,
   int gapMinutes = 30,
   SessionStatus status = SessionStatus.confirmed,
   String? requestId = bookingRequestId,
@@ -111,7 +110,6 @@ CookingSession buildSession({
   portions: 20,
   status: status,
   serviceCents: 14000,
-  groceriesEstCents: 6300,
   cancelledAt: status == SessionStatus.cancelled
       ? DateTime.utc(2026, 11, 20, 10)
       : null,

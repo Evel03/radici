@@ -24,6 +24,11 @@ enum SessionStatus {
   /// Presupuesto enviado: retiene el horario hasta `hold_until`.
   held('held'),
   confirmed('confirmed'),
+
+  /// La compra hecha: sin uso desde el 19/11/2026 (la compra la hace el
+  /// cliente). La base todavía lo tiene y la app lo lee, pero no lo ofrece
+  /// como paso: una sesión vieja en este estado se ve como confirmada
+  /// ([shown]).
   shoppingDone('shopping_done'),
   cooked('cooked'),
   paid('paid'),
@@ -36,6 +41,10 @@ enum SessionStatus {
   /// El de la base, o null si no es uno conocido.
   static SessionStatus? fromDb(Object? value) =>
       values.where((status) => status.dbName == value).firstOrNull;
+
+  /// Cómo se muestra: [shoppingDone] como [confirmed], porque todavía no se
+  /// cocinó y la compra ya no es un paso del servicio. Los demás, como son.
+  SessionStatus get shown => this == shoppingDone ? confirmed : this;
 }
 
 /// Columnas que la app lee de `sessions`, con la ficha (y sus restricciones) y
@@ -44,7 +53,7 @@ enum SessionStatus {
 const String cookingSessionColumns =
     'id, chef_id, client_id, request_id, date, start_time, cook_minutes, '
     'shop_minutes, gap_minutes, portions, status, service_cents, '
-    'groceries_est_cents, groceries_actual_cents, cancelled_at, cancel_reason, '
+    'cancelled_at, cancel_reason, '
     'client:clients!sessions_client_id_chef_id_fkey(display_name, '
     'contact_email, contact_phone, zone, address, adults, kids, kitchen_notes, '
     'status, restrictions:client_restrictions(allergen, diet)), '
@@ -111,18 +120,14 @@ abstract class SessionClient with _$SessionClient {
   String toString() => 'SessionClient(<oculto>)';
 }
 
-/// Horas de una sesión, en minutos desde la medianoche de Roma, como las arma
-/// `sessions.busy` (SPEC §5.2): la compra empieza `shop_minutes` antes de la
-/// llegada y la cocina termina `cook_minutes` después. El margen
-/// (`gap_minutes`) va después y no se muestra.
+/// Horas de una sesión, en minutos desde la medianoche de Roma: la llegada a
+/// la casa y el fin de la cocina, `cook_minutes` después. `sessions.busy`
+/// (SPEC §5.2) suma antes la compra (`shop_minutes`: 0 desde el 19/11/2026;
+/// las sesiones de antes guardan 45) y después el margen (`gap_minutes`):
+/// ninguno de los dos se muestra.
 final class SessionTimes {
-  const SessionTimes({
-    required this.shopStart,
-    required this.arrival,
-    required this.end,
-  });
+  const SessionTimes({required this.arrival, required this.end});
 
-  final int shopStart;
   final int arrival;
   final int end;
 
@@ -145,18 +150,18 @@ abstract class CookingSession with _$CookingSession {
     /// Día en Roma.
     required CalendarDate date,
 
-    /// Llegada a la casa (hora de Roma); la compra es antes.
+    /// Llegada a la casa (hora de Roma).
     required ClockTime start,
     required int cookMinutes,
 
     /// Copiados de chef_settings al crearla: no se mueven si cambian después.
+    /// La compra (`shop_minutes`) es 0 desde el 19/11/2026 y la app no la
+    /// muestra; las sesiones de antes guardan sus 45 min.
     required int shopMinutes,
     required int gapMinutes,
     @Default(0) int portions,
     required SessionStatus status,
     @Default(0) int serviceCents,
-    @Default(0) int groceriesEstCents,
-    int? groceriesActualCents,
     DateTime? cancelledAt,
 
     /// El código guardado (`chef_cancelled`, `client_cancelled`,
@@ -214,8 +219,6 @@ abstract class CookingSession with _$CookingSession {
       portions: _intOrNull(json['portions']) ?? 0,
       status: status,
       serviceCents: _intOrNull(json['service_cents']) ?? 0,
-      groceriesEstCents: _intOrNull(json['groceries_est_cents']) ?? 0,
-      groceriesActualCents: _intOrNull(json['groceries_actual_cents']),
       cancelledAt: cancelledAt == null
           ? null
           : DateTime.parse(cancelledAt as String),
@@ -234,7 +237,8 @@ abstract class CookingSession with _$CookingSession {
   bool get canMove =>
       status == SessionStatus.held || status == SessionStatus.confirmed;
 
-  /// Se cancela desde held, confirmed o shopping_done (chef_cancel_sessions).
+  /// Se cancela desde held, confirmed o shopping_done (chef_cancel_sessions;
+  /// shopping_done, solo en una sesión de antes del 19/11/2026).
   bool get canCancel =>
       status == SessionStatus.held ||
       status == SessionStatus.confirmed ||
@@ -243,12 +247,10 @@ abstract class CookingSession with _$CookingSession {
   /// Lunes de su semana (como `sessions.week_start`).
   CalendarDate get weekStart => date.startOfWeek;
 
-  /// Compra, llegada y fin de la cocina, de lo guardado en la sesión.
-  SessionTimes get times => SessionTimes(
-    shopStart: start.minutes - shopMinutes,
-    arrival: start.minutes,
-    end: start.minutes + cookMinutes,
-  );
+  /// Llegada y fin de la cocina, de lo guardado en la sesión (sin la compra
+  /// de las sesiones de antes del 19/11/2026).
+  SessionTimes get times =>
+      SessionTimes(arrival: start.minutes, end: start.minutes + cookMinutes);
 
   /// El nombre: el del pedido de la reserva (el contacto con que llegó, y lo
   /// que falte de la ficha), como en la bandeja; sin pedido, el de la ficha.
