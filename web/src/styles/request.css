@@ -835,11 +835,10 @@ input[type="radio"] {
   line-height: 1.3;
 }
 
-/* La compra va aparte: un filete punteado la separa del servicio (y del ahorro). */
+/* Las porciones (la única fila de esta lista) se ven solo en escritorio: en el teléfono el panel fijo abajo
+   muestra el precio y la nota. Sin la lista entera, no queda un hueco entre los dos. */
 .quote__list--apart {
-  margin-top: 0.2rem;
-  padding-top: 0.2rem;
-  border-top: 1px dashed var(--rule);
+  display: none;
 }
 
 /* Si no entra al lado del rótulo, el importe baja y queda a la derecha. */
@@ -885,10 +884,6 @@ input[type="radio"] {
   .quote__note {
     font-size: 1rem;
   }
-}
-
-.quote__row--portions {
-  display: none;
 }
 
 .quote__note {
@@ -956,9 +951,6 @@ input[type="radio"] {
   .quote__list,
   .quote__list--apart {
     display: block;
-    margin-top: 0;
-    padding-top: 0;
-    border-top: 0;
   }
 
   .quote__row,

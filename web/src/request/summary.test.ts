@@ -10,12 +10,10 @@ const ONE_WEEK: PublicRequestEstimate = {
   portions: 20,
   recipes: 3,
   cookMinutes: 180,
-  groceriesEstCents: 6300,
   autoPrice: true,
   weeklyServiceCents: 15000,
   serviceCents: 15000,
   savingsCents: 0,
-  totalCents: 21300,
 };
 
 function local(data: RequestData): PublicRequestEstimate {
@@ -53,7 +51,6 @@ describe("summaryRows (pantalla de gracias)", () => {
       "Giorno preferito": "lunedì 26 ottobre 2026",
       "Allergie e intolleranze": "Nessuna",
       "Prezzo del servizio": expect.stringMatching(euros("150,00 €")) as unknown as string,
-      "Spesa stimata a settimana": expect.stringMatching(euros("63,00 €")) as unknown as string,
     });
     // El precio del servicio es lo que se destaca.
     const total = summaryRows(validRequest(), ONE_WEEK, i18nFor("it")).filter((row) => row.total);
@@ -88,18 +85,44 @@ describe("summaryRows (pantalla de gracias)", () => {
     expect(three["Risparmi"]).toBeUndefined();
   });
 
-  it("sin precio automático: más de 5 personas o una sesión extra, «Preventivo di Evelyn», con la compra", () => {
+  it("sin precio automático: más de 5 personas o una sesión extra, «Preventivo di Evelyn»", () => {
     const six = rows("it", { adults: 3, kids: 3 });
     expect(six["Prezzo del servizio"]).toBe("Preventivo di Evelyn");
-    expect(six["Spesa stimata a settimana"]).toMatch(euros("94,50 €"));
     expect(rows("en", { adults: 3, kids: 3 })["Service price"]).toBe("Evelyn will send a quote");
     const extra = rows("es", { type: "extra", weeks: 4 });
     expect(extra["Precio del servicio"]).toBe("Presupuesto de Evelyn");
     // Una sesión extra no tiene semanas: sin la fila, y sus días no son «por semana».
     expect(extra["Semanas"]).toBeUndefined();
     expect(extra["Días"]).toBe("5");
-    expect(extra["Compra estimada"]).toMatch(euros("63,00 €"));
     expect(summaryRows(validRequest({ type: "extra" }), local(validRequest({ type: "extra" })), i18nFor("it")).some((r) => r.total)).toBe(false);
+  });
+
+  it("sin compra (la hace el cliente con la lista de Evelyn): el precio es solo el servicio, también con una estimación de antes", () => {
+    // Las guardadas antes del 19/11/2026 traían la compra y el total (servicio más compra): no se muestran.
+    const before = { ...ONE_WEEK, groceriesEstCents: 6300, totalCents: 21300 } as PublicRequestEstimate;
+    const cases: [Partial<RequestData>, PublicRequestEstimate | undefined][] = [
+      [{}, before],
+      [{ weeks: 4 }, undefined],
+      [{ adults: 3, kids: 3 }, undefined],
+      [{ type: "extra" }, undefined],
+    ];
+    for (const lang of ["it", "es", "en"] as const) {
+      for (const [overrides, estimate] of cases) {
+        const data = validRequest(overrides);
+        const text = JSON.stringify(summaryRows(data, estimate ?? local(data), i18nFor(lang)));
+        expect(text, lang).not.toMatch(/spesa|compra|grocer|shopping/i);
+      }
+    }
+    expect(Object.keys(rows("it", {}, before))).toEqual([
+      "Servizio",
+      "Settimane",
+      "Persone",
+      "Giorni a settimana",
+      "Pasti",
+      "Giorno preferito",
+      "Allergie e intolleranze",
+      "Prezzo del servizio",
+    ]);
   });
 
   it("alergias: confirma lo que contestó, nunca cuáles", () => {
@@ -121,7 +144,6 @@ describe("summaryRows (pantalla de gracias)", () => {
   it("sin estimación (no se sabe qué guardó el servidor), no muestra precio", () => {
     const labels = summaryRows(validRequest(), null, i18nFor("it")).map((r) => r.label);
     expect(labels).not.toContain("Prezzo del servizio");
-    expect(labels).not.toContain("Spesa stimata a settimana");
   });
 
   it("no incluye datos personales ni de salud", () => {

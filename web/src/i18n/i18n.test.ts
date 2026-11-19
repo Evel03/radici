@@ -252,7 +252,6 @@ describe("precio por semana: los textos no escriben números, salen de DEFAULT_P
       expect(i18n.t("landing.pricing.exampleWeeklyValue")).toBe(money(example.weeklyServiceCents));
       expect(i18n.t("landing.pricing.exampleTotalValue")).toBe(money(example.serviceCents));
       expect(i18n.t("landing.pricing.exampleNote")).toContain(money(example.savingsCents));
-      expect(i18n.t("landing.pricing.exampleGroceriesValue")).toBe(money(example.groceriesEstCents));
       expect(i18n.t("request.quote.savings", { amount: money(example.savingsCents) })).toContain(money(DEFAULT_PRICING.weeklyRateCents));
     });
   }
@@ -268,6 +267,45 @@ describe("precio por semana: los textos no escriben números, salen de DEFAULT_P
       expect(JSON.stringify(dicts[lang]), lang).not.toMatch(expected[lang].before);
     }
   });
+});
+
+describe("la compra la hace el cliente, con la lista de Evelyn (decisión del 19/11/2026)", () => {
+  // Evelyn no hace la compra ni la estima: antes de cada sesión le manda al cliente la lista de ingredientes,
+  // con las cantidades. Las frases de referencia son las acordadas para la web, los emails y la app. La
+  // privacy no entra: cambiar su texto exige una versión nueva del texto y del consentimiento.
+  const expected: Record<Lang, { long: string; short: string; before: RegExp }> = {
+    it: {
+      long: "La spesa la fai tu: prima di ogni sessione Evelyn ti manda la lista degli ingredienti, con le quantità.",
+      short: "La spesa la fai tu, con la lista che ti manda Evelyn.",
+      before: /scontrin|spesa stimata|fa la spesa|compra tutto|niente spesa|spesa più leggera|tempo per la spesa|spesa a parte|spesa si paga|spesa, al costo/i,
+    },
+    es: {
+      long: "La compra la haces tú: antes de cada sesión Evelyn te manda la lista de ingredientes, con las cantidades.",
+      short: "La compra la haces tú, con la lista que te manda Evelyn.",
+      before: /ticket|compra estimada|hace la compra|compra todo|sin compras|compra más ligera|tiempo para la compra|compra aparte|compra se paga|precio de coste/i,
+    },
+    en: {
+      long: "You do the shopping: before each session Evelyn sends you the list of ingredients, with quantities.",
+      short: "You do the shopping, with the list Evelyn sends you.",
+      before: /receipt|grocer|does the shopping|buys everything|no shopping|time to shop|paid separately|at cost/i,
+    },
+  };
+
+  for (const lang of LANGS) {
+    it(`${lang}: la portada, la FAQ del precio y el recuadro del precio lo dicen con las frases de referencia`, () => {
+      const text = (key: string): string => dicts[lang][key] ?? "";
+      expect(text("landing.included.item2Text")).toBe(expected[lang].long);
+      for (const key of ["landing.how.step3Text", "landing.faq.aPrice", "request.quote.note"]) {
+        expect(text(key), key).toContain(expected[lang].short);
+      }
+    });
+
+    it(`${lang}: ningún texto (salvo la privacy) dice que Evelyn hace la compra, ni habla de tickets ni de compra estimada`, () => {
+      const offending = Object.entries(dicts[lang]).filter(([key, value]) => !key.startsWith("privacy.") && expected[lang].before.test(value));
+      expect(offending).toEqual([]);
+      expect(Object.keys(dicts[lang]).filter((key) => /grocer/i.test(key))).toEqual([]);
+    });
+  }
 });
 
 describe("privacy", () => {
