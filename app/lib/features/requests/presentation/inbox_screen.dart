@@ -135,8 +135,8 @@ class _RequestList extends ConsumerWidget {
 }
 
 /// Fila de un pedido: nombre, resumen y fecha preferida, con las marcas de
-/// platos elegidos en la web («menù») y de restricciones. Se usa en la bandeja
-/// y en la agenda.
+/// platos elegidos en la web («menù», debajo del resumen) y de restricciones
+/// (al lado de la fecha). Se usa en la bandeja y en la agenda.
 class RequestTile extends StatelessWidget {
   const RequestTile({
     super.key,
@@ -190,12 +190,25 @@ class RequestTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: isNew ? const TextStyle(fontWeight: FontWeight.w700) : null,
       ),
-      subtitle: Text(
-        [l10n.requestSummary(request), if (when.isNotEmpty) when].join('\n'),
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
+      subtitle: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            [l10n.requestSummary(request), if (when.isNotEmpty) when].join('\n'),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          // La marca va acá y no al lado de la fecha: ListTile le da al
+          // trailing hasta 56 px de alto y, con el texto grande, no entraba.
+          if (request.hasMenu)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: _MenuMark(requestId: request.id),
+            ),
+        ],
       ),
-      isThreeLine: when.isNotEmpty,
+      isThreeLine: when.isNotEmpty || request.hasMenu,
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -204,22 +217,13 @@ class RequestTile extends StatelessWidget {
             formats.instantDate(request.createdAt),
             style: theme.textTheme.labelSmall,
           ),
-          if (request.hasMenu || request.hasRestrictions) ...[
+          if (request.hasRestrictions) ...[
             const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (request.hasMenu) _MenuMark(requestId: request.id),
-                if (request.hasMenu && request.hasRestrictions)
-                  const SizedBox(width: 6),
-                if (request.hasRestrictions)
-                  Icon(
-                    Icons.health_and_safety_outlined,
-                    size: 18,
-                    color: theme.colorScheme.tertiary,
-                    semanticLabel: l10n.detailSectionRestrictions,
-                  ),
-              ],
+            Icon(
+              Icons.health_and_safety_outlined,
+              size: 18,
+              color: theme.colorScheme.tertiary,
+              semanticLabel: l10n.detailSectionRestrictions,
             ),
           ],
         ],
@@ -257,9 +261,15 @@ class _MenuMark extends StatelessWidget {
             children: [
               Icon(Icons.restaurant_menu, size: 14, color: ink),
               const SizedBox(width: 3),
-              Text(
-                l10n.requestMenuTag,
-                style: theme.textTheme.labelSmall?.copyWith(color: ink),
+              // Con el texto muy grande en un teléfono angosto, se corta
+              // antes que desbordar (el ícono y el lector de pantalla quedan).
+              Flexible(
+                child: Text(
+                  l10n.requestMenuTag,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(color: ink),
+                ),
               ),
             ],
           ),

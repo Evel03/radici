@@ -103,8 +103,10 @@ repositorios falsos (`test/support/fakes.dart`).
   parte di Evelyn di Radici», `contactWhatsAppMessageOnBehalf`) en lugar de «sono Evelyn».
 - **Richieste**: pestañas Nuove (sin `seen_at`), Viste y Rifiutate, con contador de nuevas. La fila
   de un pedido en el que el cliente eligió platos en la pestaña «Menù» de la web (`requests.wishes`)
-  lleva la marca **menù** (ícono y texto; el lector de pantalla dice «Menù scelto dal cliente»): es el
-  aviso que pidió Evelyn. También en la agenda, que usa la misma fila.
+  lleva la marca **menù** debajo del resumen (ícono y texto; el lector de pantalla dice «Menù scelto
+  dal cliente»): es el aviso que pidió Evelyn. No va al lado de la fecha porque `ListTile` le da a esa
+  columna hasta 56 px de alto y, con el texto grande, no entraba. También en la agenda, que usa la
+  misma fila.
 - **Franja**: la bandeja, el detalle y la agenda muestran mañana o tarde si el pedido la trae. La web
   ya no la pregunta y manda `any`, que la app lee como sin franja y no muestra (como los emails).
 - **Agenda**: mes y semana por `preferred_date` con la franja, más la lista "Senza data". "Hoy"
