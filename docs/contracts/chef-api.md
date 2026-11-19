@@ -2,6 +2,7 @@
 
 Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2).
 Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, e `index.ts`). Si este documento y el código difieren, manda el código.
+Actualizado el 19/11/2026: Evelyn no hace la compra (la hace el cliente, con la lista de ingredientes y cantidades que ella le manda). `POST /bookings` ya no tiene `groceriesEstCents`: si llega (la app de antes lo manda), se ignora como cualquier otra clave que el contrato no tiene, valga lo que valga, y la función le pasa siempre `p_groceries_est_cents: 0` a `chef_create_booking`, cuya firma no cambia (§4, §7). Sin compra, `chef_settings.shop_minutes` es 0 (migración `20261119090000_sin_compra.sql`): la llegada sugerida de un día de 9:00 a 15:00 es las 9:00.
 
 ## 1. Para qué
 
@@ -79,10 +80,11 @@ Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato;
 | `start` | `"HH:MM"` | llegada de todas las semanas. Puede faltar solo en el `dryRun`: cada fecha se evalúa con su llegada sugerida |
 | `cookMinutes` | entero de 1 a 720 | minutos de cocina de cada semana. La compra y el margen los copia la base de `chef_settings` |
 | `portions` | entero de 0 a 840 | porciones de cada semana (0 por defecto) |
-| `groceriesEstCents` | entero de 0 a 10 000 000 | compra estimada de cada semana (0 por defecto). La compra va aparte, al costo del ticket |
 | `serviceTotalCents` | entero de 0 a 10 000 000 | precio del servicio de **toda** la reserva, que fija Evelyn. **Obligatorio** salvo en el `dryRun` (`required`): ninguna ruta lo cambia después. `0` vale (sin cargo); en un `dryRun` sin precio las semanas salen con 0. Se reparte en centavos entre las semanas: los que sobran van a las primeras (500 € en 3 son 166,67 + 166,67 + 166,66) |
 | `requestKey` | uuid | idempotencia. Obligatoria a mano salvo en el `dryRun`; desde un pedido es opcional (ver abajo) |
 | `dryRun` | boolean | `true`: solo devuelve el estado de cada fecha, sin escribir nada |
+
+Las claves que el contrato no tiene se ignoran. Entre ellas `groceriesEstCents`, la compra estimada, que existió hasta el 19/11/2026: la compra la hace el cliente, y si la app de antes la manda no da error con ningún valor.
 
 ### Respuesta
 
@@ -96,14 +98,14 @@ Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato;
   "clientId": "uuid",
   "weeks": [
     { "date": "2026-11-25", "start": "10:00", "cookMinutes": 240, "status": "ok",
-      "suggestedStart": "10:00", "serviceCents": 14000, "sessionId": "uuid" }
+      "suggestedStart": "09:00", "serviceCents": 14000, "sessionId": "uuid" }
   ]
 }
 ```
 
 - `weeks`: las semanas vivas de la reserva en orden de fecha (en el `dryRun`, las pedidas, con `sessionId: null`).
 - `requestId` es null en el `dryRun` de una reserva a mano; `clientId`, en el `dryRun` de una ficha nueva. `start` es null solo en un `dryRun` sin hora para un día sin horario.
-- `suggestedStart`: la primera llegada del día, la misma que ofrece el calendario de la web (apertura + compra, redondeada a la media hora siguiente); null si ese día no tiene horario.
+- `suggestedStart`: la primera llegada del día, la misma que ofrece el calendario de la web (apertura + compra, redondeada a la media hora siguiente); null si ese día no tiene horario. Sin compra (0 minutos desde el 19/11/2026) es la apertura: las 9:00 en el horario de Evelyn.
 - `status` de cada fecha, en orden de prioridad. Solo `busy` impide crear; los demás son avisos para la hoja «Confirmar reserva»:
 
 | `status` | Qué significa |
@@ -137,7 +139,7 @@ Respuesta `200`:
 
 ```json
 { "dryRun": false, "sessionId": "uuid", "requestId": "uuid", "date": "2026-12-03", "start": "11:00",
-  "cookMinutes": 200, "status": "ok", "suggestedStart": "10:00", "weekTaken": false }
+  "cookMinutes": 200, "status": "ok", "suggestedStart": "09:00", "weekTaken": false }
 ```
 
 - Solo una sesión `held` o `confirmed` (`409 sessionNotMovable`). La compra y el margen guardados no cambian.
@@ -169,7 +171,7 @@ Respuesta `200`:
 
 Las funciones son de la migración `20261116150100_bookings.sql` (SPEC §4, «Reservas»): `security definer`, `search_path = ''`, ejecutables solo por `service_role`. Ninguna escribe en el log.
 
-- `public.chef_create_booking(p_chef_id, p_dates, p_start, p_cook_minutes, p_service_total_cents, p_portions, p_groceries_est_cents, p_request_id, p_client_id, p_new_client, p_type, p_household, p_locale, p_request_key, p_dry_run) → jsonb`. `p_service_total_cents` no tiene valor por defecto (null es `invalid_cents`).
+- `public.chef_create_booking(p_chef_id, p_dates, p_start, p_cook_minutes, p_service_total_cents, p_portions, p_groceries_est_cents, p_request_id, p_client_id, p_new_client, p_type, p_household, p_locale, p_request_key, p_dry_run) → jsonb`. `p_service_total_cents` no tiene valor por defecto (null es `invalid_cents`). `p_groceries_est_cents` sigue en la firma, pero la Edge Function le pasa siempre 0 (sin compra desde el 19/11/2026); la columna `sessions.groceries_est_cents` queda en 0 en las reservas nuevas.
 - `public.chef_move_session(p_chef_id, p_session_id, p_date, p_start, p_cook_minutes, p_dry_run) → jsonb`
 - `public.chef_cancel_sessions(p_chef_id, p_session_ids, p_reason, p_allow_with_payments) → jsonb`
 
