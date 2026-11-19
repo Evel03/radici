@@ -1,5 +1,5 @@
 // Reglas de la hoja «Confirmar reserva»: semanas y fechas cada 7 días, lo que
-// impide mandar una fecha, los minutos con tope de 300, el precio que se
+// impide mandar una fecha, los minutos con tope de 360, el precio que se
 // propone y las horas de llegada.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
@@ -125,18 +125,19 @@ void main() {
   });
 
   group('minutos de cocina', () {
-    test('los de la estimación, con tope de 300', () {
+    test('los de la estimación, con tope de 360', () {
       expect(suggestedCookMinutes(180), 180);
-      expect(suggestedCookMinutes(300), 300);
-      expect(suggestedCookMinutes(420), 300);
+      expect(suggestedCookMinutes(360), 360);
+      expect(suggestedCookMinutes(420), 360);
       expect(suggestedCookMinutes(null), defaultBookingCookMinutes);
       expect(suggestedCookMinutes(10), minBookingCookMinutes);
     });
 
-    test('de a 30, entre 30 y 300', () {
+    test('de a 30, entre 30 y 360', () {
       expect(steppedCookMinutes(240, 1), 270);
       expect(steppedCookMinutes(240, -1), 210);
-      expect(steppedCookMinutes(300, 1), 300);
+      expect(steppedCookMinutes(300, 1), 330);
+      expect(steppedCookMinutes(360, 1), 360);
       expect(steppedCookMinutes(30, -1), 30);
       // Una estimación que no es múltiplo de 30 vuelve a la grilla.
       expect(steppedCookMinutes(195, 1), 210);
@@ -199,7 +200,7 @@ void main() {
       expect(suggestedServiceCents(noRates, weeks: 2), 30000);
       expect(suggestedServiceCents(noRates, weeks: 3), isNull);
       // Una de antes del precio por semana: una semana, su servicio.
-      const legacy = RequestEstimate(serviceCents: 7800, totalCents: 14100);
+      const legacy = RequestEstimate(serviceCents: 7800);
       expect(suggestedServiceCents(legacy, weeks: 1), 7800);
       expect(suggestedServiceCents(legacy, weeks: 2), isNull);
     });
@@ -220,9 +221,9 @@ void main() {
       );
     });
 
-    test('sin sugerida (día sin horario), desde las 10:00', () {
+    test('sin sugerida (día sin horario), desde las 9:00', () {
       expect(arrivalOptions().first, defaultBookingArrival);
-      expect(defaultBookingArrival, const ClockTime.hm(10, 0));
+      expect(defaultBookingArrival, const ClockTime.hm(9, 0));
     });
 
     test('la elegida con «Otra hora» se suma, en orden', () {

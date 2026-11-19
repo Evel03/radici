@@ -134,7 +134,7 @@ repositorios falsos (`test/support/fakes.dart`).
   permite) y traduce los errores a `BookingFailure` sin loguear nada (contrato
   `docs/contracts/chef-api.md`). Prellena las semanas con `requests.weeks`,
   las fechas cada 7 días desde la preferida (cambiar la primera mueve todas), la llegada que sugiere
-  el `dryRun`, los minutos de la estimación (tope de 300) y el precio de la estimación (con las
+  el `dryRun`, los minutos de la estimación (tope de 360: de 9:00 a 15:00, sin compra antes) y el precio de la estimación (con las
   tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
   se pasa a centavos sin `double` (`parseEuroCents`). Cada cambio de fechas, hora o minutos vuelve a
   pedir el `dryRun`: cada semana dice si está libre, un aviso (bloqueado, sin horario, fuera de

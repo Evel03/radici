@@ -31,8 +31,6 @@ const RequestEstimate fourWeeksEstimate = RequestEstimate(
   weeklyServiceCents: 14000,
   serviceCents: 56000,
   savingsCents: 4000,
-  groceriesEstCents: 6300,
-  totalCents: 81200,
   maxPeople: 5,
   weeklyRateCents: 15000,
   weeklyRateDiscountedCents: 14000,

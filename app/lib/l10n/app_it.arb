@@ -828,7 +828,7 @@
   },
   "bookingStatusOutside": "Fuori dal tuo orario",
   "@bookingStatusOutside": {
-    "description": "Aviso de una semana: la compra empieza antes de la apertura o la cocina termina después del cierre."
+    "description": "Aviso de una semana: la llegada es antes de la apertura o la cocina termina después del cierre."
   },
   "bookingStatusChecking": "Verifica in corso…",
   "@bookingStatusChecking": {
@@ -854,9 +854,9 @@
   "@bookingStartSection": {
     "description": "Hoja «Confirmar reserva»: encabezado de las horas de llegada (la misma todas las semanas)."
   },
-  "bookingStartSuggested": "Suggerita: {time} (apertura più il tempo della spesa).",
+  "bookingStartSuggested": "Suggerita: {time}, l'inizio del tuo orario.",
   "@bookingStartSuggested": {
-    "description": "Debajo de las horas de llegada: la que sugiere el servidor, la primera que ofrece el calendario de la web.",
+    "description": "Debajo de las horas de llegada: la que sugiere el servidor, el comienzo del horario de ese día (la apertura a la media hora siguiente; sin compra desde el 19/11/2026).",
     "placeholders": {
       "time": { "type": "String", "example": "10:00" }
     }
@@ -869,12 +869,12 @@
   "@bookingCookHelp": {
     "description": "Debajo del tiempo de cocina: sale de la estimación y tiene un tope.",
     "placeholders": {
-      "max": { "type": "int", "example": "300" }
+      "max": { "type": "int", "example": "360" }
     }
   },
   "bookingPriceLabel": "{count, plural, =1{Prezzo del servizio} other{Prezzo del servizio, tutte le settimane}}",
   "@bookingPriceLabel": {
-    "description": "Etiqueta del campo del precio del servicio de toda la reserva (lo fija Evelyn; la compra va aparte). count: cuántas semanas.",
+    "description": "Etiqueta del campo del precio del servicio de toda la reserva (lo fija Evelyn). count: cuántas semanas.",
     "placeholders": {
       "count": { "type": "int", "example": "4" }
     }
@@ -907,10 +907,6 @@
     "placeholders": {
       "max": { "type": "String", "example": "100.000,00 €" }
     }
-  },
-  "bookingGroceriesNote": "La spesa si paga a parte, in base allo scontrino.",
-  "@bookingGroceriesNote": {
-    "description": "Nota debajo del precio: la compra no está incluida."
   },
   "bookingConfirmAction": "{count, plural, =1{Conferma prenotazione} other{Conferma {count} settimane}}",
   "@bookingConfirmAction": {

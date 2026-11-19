@@ -142,7 +142,7 @@ void main() {
         isFalse,
       );
       expect(
-        find.text('Suggerita: 10:00 (apertura più il tempo della spesa).'),
+        find.text("Suggerita: 10:00, l'inizio del tuo orario."),
         findsOneWidget,
       );
       // Minutos de la estimación y su precio, con lo que queda por semana.
@@ -344,7 +344,6 @@ void main() {
             cookMinutes: 240,
             autoPrice: false,
             reason: NoAutoPriceReason.people,
-            groceriesEstCents: 9450,
             maxPeople: 5,
           ),
         ),
@@ -558,7 +557,6 @@ void main() {
             cookMinutes: 240,
             autoPrice: false,
             reason: NoAutoPriceReason.people,
-            groceriesEstCents: 9450,
             maxPeople: 5,
           ),
         ),
