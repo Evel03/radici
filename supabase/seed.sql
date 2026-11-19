@@ -197,6 +197,31 @@ from (values
 ) as v (id, name_en, months)
 where r.id = v.id::uuid;
 
+-- Pestaña «Menù» de la web (migración 20261119150000_menu_web.sql): descripción corta. Un plato sale
+-- en la web si está activo, visible en el catálogo y tiene descripción en italiano: el salmón queda
+-- sin ella, para ver en local uno que no se publica. Algunas sin traducción (la web usa la italiana).
+update public.recipes r
+set description_it = v.it, description_es = v.es, description_en = v.en
+from (values
+  ('a0000000-0000-4000-8000-000000000001', 'Ragù di manzo cotto a lungo, besciamella e sfoglia all''uovo.',
+   'Ragú de carne cocido a fuego lento, bechamel y pasta al huevo.', 'Slow-cooked beef ragù, béchamel and egg pasta.'),
+  ('a0000000-0000-4000-8000-000000000002', 'Riso Carnaroli mantecato con porcini freschi.',
+   'Arroz Carnaroli cremoso con porcini frescos.', 'Creamy Carnaroli rice with fresh porcini.'),
+  ('a0000000-0000-4000-8000-000000000003', 'Verdure di stagione e legumi, senza carne.',
+   'Verduras de estación y legumbres, sin carne.', 'Seasonal vegetables and pulses, no meat.'),
+  ('a0000000-0000-4000-8000-000000000004', 'Polpette di manzo al pomodoro, come a casa.', null, null),
+  ('a0000000-0000-4000-8000-000000000005', 'Petto di pollo al limone e prezzemolo, senza farina.',
+   'Pechuga de pollo al limón y perejil, sin harina.', null),
+  ('a0000000-0000-4000-8000-000000000006', 'Zuppa densa di borlotti e pasta corta.', null, null),
+  ('a0000000-0000-4000-8000-000000000007', 'Polenta di grano saraceno con manzo brasato al vino rosso.',
+   'Polenta de trigo sarraceno con carne estofada al vino tinto.', 'Buckwheat polenta with beef braised in red wine.'),
+  ('a0000000-0000-4000-8000-000000000008', 'Ravioli bergamaschi con burro, salvia e pancetta.',
+   'Ravioles de Bérgamo con manteca, salvia y panceta.', 'Bergamo ravioli with butter, sage and pancetta.'),
+  ('a0000000-0000-4000-8000-000000000010', 'Frittata al forno con zucchine e Parmigiano.', null, null),
+  ('a0000000-0000-4000-8000-000000000021', 'Risotto allo zafferano con midollo.', null, null)
+) as v (id, it, es, en)
+where r.id = v.id::uuid;
+
 insert into public.recipe_ingredients (recipe_id, chef_id, position, name, section, quantity, unit)
 select v.recipe_id::uuid, 'cef00000-0000-4000-8000-000000000001'::uuid, v.position, v.name,
        v.section::public.shopping_section, v.quantity, v.unit::public.ingredient_unit

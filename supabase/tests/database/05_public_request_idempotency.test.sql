@@ -112,8 +112,8 @@ values ('first', public.submit_public_request(pg_temp.payload('{"request_key": "
 
 select is(
   (select r - 'request_id' from results where k = 'first'),
-  jsonb_build_object('duplicate', false, 'estimate', pg_temp.payload() -> 'estimate'),
-  'pedido nuevo: duplicate false y la estimación que se guardó'
+  jsonb_build_object('duplicate', false, 'estimate', pg_temp.payload() -> 'estimate', 'menu', '[]'::jsonb),
+  'pedido nuevo: duplicate false, la estimación que se guardó y el menu (sin platos elegidos, []: 17_menu_web)'
 );
 select results_eq(
   $$ select r.request_key, r.source, r.status::text, c.display_name
