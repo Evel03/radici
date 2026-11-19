@@ -16,9 +16,8 @@
 #   (opcionales: WHATSAPP_TOKEN y CHEF_MEMBER_EMAILS)
 #   · CHEF_MEMBER_EMAILS: los colaboradores de la cocinera (emails separados por coma), cuentas que entran
 #     a /gestione/ con el mismo acceso que ella, también a las alergias y las direcciones de los clientes.
-#     ANTES DE CARGARLO, resolver la decisión pendiente de SPEC §14: la privacy y el consentimiento de
-#     salud vigentes (2026-11-16) nombran solo a Evelyn y, para la asistencia técnica, a quien gestiona
-#     el sistema. Mientras la lista traiga emails, el paso «Colaboradores de la cocinera» lo avisa.
+#     Solo quien gestiona el sistema por cuenta de Evelyn (SPEC §6, decidido el 16/11/2026): sumar a
+#     otra persona exige antes una versión nueva de la privacy y del consentimiento de salud.
 #     La lista manda: un email nuevo recibe su cuenta confirmada; uno que sale pierde el acceso y su cuenta
 #     se borra (la de una ficha de cliente, o una que no se puede borrar, queda como cuenta de cliente sin
 #     sesiones); vacía o sin cargar, ningún colaborador. Cambiar el secreto no hace nada hasta el próximo
