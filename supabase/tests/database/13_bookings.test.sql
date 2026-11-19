@@ -30,9 +30,12 @@ select plan(163);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
---   C1: compra 45, margen 30 y horizonte 56 (por defecto), sin aviso mínimo (get_free_days ofrece
---       cualquier día desde mañana); lunes a viernes de 9 a 15, el horario de Evelyn.
+--   C1: margen 30 y horizonte 56 (por defecto), sin aviso mínimo (get_free_days ofrece cualquier
+--       día desde mañana); lunes a viernes de 9 a 15, el horario de Evelyn.
 --   C2: otra cocinera (aislamiento y pruebas de la guarda).
+--   Las dos con 45 minutos de compra, fijos: desde el 19/11/2026 el valor por defecto es 0 (la
+--   compra la hace el cliente), pero la cuenta con compra sigue en la base (la llegada sugerida,
+--   outside y busy) y estos tests la prueban. Sin compra: 16_sin_compra.test.sql.
 --   Fichas de C1: P (prospecto, pedido R1 de la web por 2 semanas, que Evelyn confirma por 4),
 --   Q (prospecto: R2 extra, R3 de 3 semanas, RW de la web con clave y RC, un pedido de cambio),
 --   A (activa), O (activa, con una sesión el miércoles d(9) a las 10:00) y S (prospecto).
@@ -47,9 +50,9 @@ where id in ('7e630000-0000-4000-8000-00000000c001', '7e630000-0000-4000-8000-00
 insert into public.chefs (id, profile_id, display_name) values
   ('7e631000-0000-4000-8000-000000000001', '7e630000-0000-4000-8000-00000000c001', 'Chef Uno'),
   ('7e631000-0000-4000-8000-000000000002', '7e630000-0000-4000-8000-00000000c002', 'Chef Due');
-insert into public.chef_settings (chef_id, min_notice_hours) values
-  ('7e631000-0000-4000-8000-000000000001', 0),
-  ('7e631000-0000-4000-8000-000000000002', 0);
+insert into public.chef_settings (chef_id, shop_minutes, min_notice_hours) values
+  ('7e631000-0000-4000-8000-000000000001', 45, 0),
+  ('7e631000-0000-4000-8000-000000000002', 45, 0);
 insert into public.availability_rules (chef_id, dow, start_time, end_time)
 select c, d, time '09:00', time '15:00'
 from unnest(array['7e631000-0000-4000-8000-000000000001', '7e631000-0000-4000-8000-000000000002']::uuid[]) as c
