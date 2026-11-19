@@ -8,9 +8,9 @@
 // de hasta weeklyRateMaxPeople personas (adultos y niños), sin importar los días ni las comidas, e
 // incluye el traslado; desde weeklyDiscountMinWeeks semanas, cada semana cuesta la tarifa con
 // descuento. Con más personas, o en una sesión extra suelta, no hay precio automático: la cocinera
-// pasa el presupuesto. La compra va aparte, al costo del ticket: el motor da una estimación por
-// semana con las porciones. El tiempo de cocina se estima como siempre: de él dependen los días
-// libres del calendario (get_free_days) y el tope de 300 min.
+// pasa el presupuesto. La compra la hace el cliente (decisión del 19/11/2026), así que el motor no
+// la estima. El tiempo de cocina se estima como siempre: de él dependen los días libres del
+// calendario (get_free_days) y el tope de cocina del horario.
 
 /** "week": semana de comidas (1 a 8 semanas, precio por semana); "extra": sesión extra suelta (sin precio automático). */
 export type QuoteType = "week" | "extra";
@@ -24,10 +24,6 @@ export interface PricingSettings {
   weeklyDiscountMinWeeks: number;
   /** Hasta cuántas personas (adultos y niños) tiene precio automático un pedido semanal. */
   weeklyRateMaxPeople: number;
-  adultPortionCents: number;
-  kidPortionCents: number;
-  /** Margen de la pre-autorización de la compra (§5.4, M6). */
-  preauthBufferPct: number;
   minCookMinutes: number;
 }
 
@@ -52,10 +48,6 @@ interface QuoteBase {
   recipes: number;
   /** Minutos de cocina de cada sesión (los que pide el calendario). */
   cookMinutes: number;
-  /** Compra estimada de una semana; se paga aparte, al costo del ticket. */
-  groceriesEstCents: number;
-  /** Pre-autorización de la compra de una semana (compra + margen, §5.4). */
-  preauthCents: number;
 }
 
 export interface PricedQuote extends QuoteBase {
@@ -66,8 +58,6 @@ export interface PricedQuote extends QuoteBase {
   serviceCents: number;
   /** Lo que se ahorra frente a la tarifa sin descuento (0 si no hay descuento). */
   savingsCents: number;
-  /** Servicio y compra estimada de todas las semanas. */
-  totalCents: number;
 }
 
 /** Por qué no hay precio automático: más personas que weeklyRateMaxPeople, o una sesión extra. */
@@ -91,9 +81,6 @@ export const DEFAULT_PRICING: PricingSettings = {
   weeklyRateDiscountedCents: 14000,
   weeklyDiscountMinWeeks: 4,
   weeklyRateMaxPeople: 5,
-  adultPortionCents: 380,
-  kidPortionCents: 250,
-  preauthBufferPct: 15,
   minCookMinutes: 90,
 };
 
@@ -138,9 +125,6 @@ function validateSettings(s: PricingSettings): void {
   assertInt("weeklyRateDiscountedCents", s.weeklyRateDiscountedCents, 0, s.weeklyRateCents);
   assertInt("weeklyDiscountMinWeeks", s.weeklyDiscountMinWeeks, 1, LIMITS.maxWeeks);
   assertInt("weeklyRateMaxPeople", s.weeklyRateMaxPeople, 1, 2 * LIMITS.maxPeople);
-  assertInt("adultPortionCents", s.adultPortionCents, 0, 100_000);
-  assertInt("kidPortionCents", s.kidPortionCents, 0, 100_000);
-  assertInt("preauthBufferPct", s.preauthBufferPct, 0, 100);
   assertInt("minCookMinutes", s.minCookMinutes, 0, 24 * 60);
 }
 
@@ -164,9 +148,6 @@ export function calcQuote(input: QuoteInput, settings: PricingSettings = DEFAULT
     divUp(300 + 150 * recipes + 6 * portions, 150) * 30,
   );
 
-  const groceriesEstCents = adultPortions * settings.adultPortionCents + kidPortions * settings.kidPortionCents;
-  const preauthCents = divUp(groceriesEstCents * (100 + settings.preauthBufferPct), 100);
-
   const base: QuoteBase = {
     weeks: input.weeks,
     adultPortions,
@@ -174,8 +155,6 @@ export function calcQuote(input: QuoteInput, settings: PricingSettings = DEFAULT
     portions,
     recipes,
     cookMinutes,
-    groceriesEstCents,
-    preauthCents,
   };
   if (input.type === "extra") return { ...base, autoPrice: false, reason: "extra" };
   if (input.adults + input.kids > settings.weeklyRateMaxPeople) return { ...base, autoPrice: false, reason: "people" };
@@ -189,6 +168,5 @@ export function calcQuote(input: QuoteInput, settings: PricingSettings = DEFAULT
     weeklyServiceCents,
     serviceCents,
     savingsCents: settings.weeklyRateCents * input.weeks - serviceCents,
-    totalCents: serviceCents + groceriesEstCents * input.weeks,
   };
 }
