@@ -11,6 +11,8 @@
 --      tocar las que tienen otro valor ni las sesiones que ya existen. db reset aplica las
 --      migraciones sobre una base vacía y siembra después: la llamada de la migración no encuentra
 --      filas y lo que se prueba es la función.
+--   4. private.clear_upcoming_shop_minutes: las sesiones held o confirmed desde hoy dejan la compra
+--      (su rango ocupado empieza en la llegada); una pasada guarda sus 45 minutos.
 --
 -- La cuenta con compra (un valor distinto de 0) la siguen probando 01_sessions_no_overlap,
 -- 07_free_slots y 13_bookings, con 45 minutos fijos.
@@ -18,7 +20,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(20);
+select plan(25);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
@@ -197,6 +199,44 @@ select is(
    where has_function_privilege(r, 'private.replace_shop_minutes(integer, integer)', 'EXECUTE')),
   null::text[],
   'ningún rol de la API la ejecuta (la corren la migración o el dueño desde el SQL editor)'
+);
+
+-- =====================================================================
+-- 4. private.clear_upcoming_shop_minutes
+-- =====================================================================
+-- Una sesión pasada de C45 con sus 45 minutos (la de 2027 es futura y sigue con los suyos).
+insert into public.sessions (id, chef_id, client_id, date, start_time, cook_minutes, shop_minutes, status)
+values ('7e644000-0000-4000-8000-000000000046', '7e641000-0000-4000-8000-000000000045',
+        '7e642000-0000-4000-8000-000000000045', '2026-01-05', '10:00', 180, 45, 'confirmed');
+
+-- Las vivas desde hoy con compra en este momento (también las del seed, si las hubiera).
+create temp table vivas_con_compra as
+select id from public.sessions
+where shop_minutes > 0 and status in ('held', 'confirmed') and "date" >= (now() at time zone 'Europe/Rome')::date;
+
+select is(
+  private.clear_upcoming_shop_minutes(),
+  (select count(*)::int from vivas_con_compra),
+  'devuelve cuántas sesiones cambió: las held o confirmed desde hoy que tenían compra'
+);
+select is(
+  (select format('%s %s', s.shop_minutes, s.busy = tstzrange('2027-03-02 10:00 Europe/Rome', '2027-03-02 13:30 Europe/Rome', '[)'))
+   from public.sessions s where s.id = '7e644000-0000-4000-8000-000000000045'),
+  '0 t',
+  'la sesión futura de C45 deja la compra: su rango ocupado empieza en la llegada (10:00)'
+);
+select is(
+  (select shop_minutes from public.sessions where id = '7e644000-0000-4000-8000-000000000046'),
+  45,
+  'la sesión pasada guarda sus 45 minutos'
+);
+select is(private.clear_upcoming_shop_minutes(), 0, 'otra corrida no cambia nada');
+select is(
+  (select array_agg(r order by r)
+   from unnest(array['anon', 'authenticated', 'service_role']) as r
+   where has_function_privilege(r, 'private.clear_upcoming_shop_minutes()', 'EXECUTE')),
+  null::text[],
+  'ningún rol de la API ejecuta clear_upcoming_shop_minutes'
 );
 
 select finish();
