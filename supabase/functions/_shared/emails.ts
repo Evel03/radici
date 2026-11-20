@@ -12,7 +12,8 @@
 // identidad de la web (logotipo en texto, paleta del manual de marca) y sin fuentes remotas.
 // Importes con aritmética entera; fechas sin zona horaria (son días de calendario).
 // Precio por semana (SPEC §5.1): con precio automático, el servicio por semana, el de todas las semanas
-// y el ahorro; sin él, quién prepara el presupuesto. La compra estimada siempre aparte, por el ticket.
+// y el ahorro; sin él, quién prepara el presupuesto. La compra la hace el cliente con la lista que le
+// manda Evelyn (decisión del 19/11/2026): ningún email la estima; al cliente se le recuerda, a Evelyn no.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import { weeklyDates, type Locale, type Meal, type RequestType, type Slot } from "./public_request.ts";
 import type { NoAutoPriceReason } from "./quote.ts";
@@ -28,15 +29,12 @@ export type EstimateSummary =
       savingsCents: number;
       /** La tarifa por semana sin descuento: frente a qué es el ahorro. */
       regularWeeklyCents: number;
-      /** Compra estimada de una semana (o de la sesión). */
-      groceriesEstCents: number;
     }
   | {
       autoPrice: false;
       reason: NoAutoPriceReason;
       /** Hasta cuántas personas hay precio automático: por qué este pedido no lo tiene. */
       maxPeople: number;
-      groceriesEstCents: number;
     };
 
 /**
@@ -137,14 +135,13 @@ interface Messages {
     /** El servicio de todas las semanas (más de una). */
     serviceWeeks: (weeks: number) => string;
     savings: string;
-    groceries: string;
-    groceriesWeekly: string;
     reference: string;
   };
   /** "40,00 € rispetto a 150,00 € a settimana". */
   savingsValue: (savings: string, regular: string) => string;
   noDate: string;
   estimateTitle: string;
+  /** Con precio automático, debajo del importe: que es una estimación (al cliente, el precio final se lo confirma Evelyn). */
   estimateNote: string;
   client: {
     subject: (brand: string) => string;
@@ -153,6 +150,8 @@ interface Messages {
     intro: (chef: string) => string;
     /** Sin precio automático: quién prepara el presupuesto del servicio, y por qué. */
     noAutoPrice: Readonly<Record<NoAutoPriceReason, (chef: string, maxPeople: number) => string>>;
+    /** La compra la hace el cliente, con la lista que le manda la cocinera (la misma frase que la web). */
+    shopping: (chef: string) => string;
     summaryTitle: string;
     /**
      * Confirmó que nadie tiene alergias: se lo repite, para que vea si se equivocó. Con alergias escritas
@@ -215,14 +214,12 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       weeklyService: "Servizio a settimana",
       serviceWeeks: (weeks) => `Servizio, ${weeks} settimane`,
       savings: "Risparmio",
-      groceries: "Spesa stimata",
-      groceriesWeekly: "Spesa stimata a settimana",
       reference: "Riferimento",
     },
     savingsValue: (savings, regular) => `${savings} rispetto a ${regular} a settimana`,
     noDate: "Nessuna preferenza",
     estimateTitle: "Preventivo stimato",
-    estimateNote: "La spesa si paga a parte, al costo reale dello scontrino. Questa è una stima.",
+    estimateNote: "Questa è una stima.",
     client: {
       subject: (brand) => `${brand}: abbiamo ricevuto la tua richiesta`,
       preheader: (chef) => `${chef} ti contatterà al più presto.`,
@@ -233,6 +230,7 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
         people: (chef, maxPeople) => `Per più di ${maxPeople} persone il preventivo per il servizio te lo prepara ${chef}.`,
         extra: (chef) => `Per eventi e sessioni extra il preventivo per il servizio te lo prepara ${chef}.`,
       },
+      shopping: (chef) => `La spesa la fai tu, con la lista che ti manda ${chef}.`,
       summaryTitle: "La tua richiesta",
       allergiesNone: "Hai confermato che nessuno ha allergie, intolleranze alimentari o celiachia.",
       reply: "Vuoi aggiungere o cambiare qualcosa? Rispondi a questa email.",
@@ -293,14 +291,12 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       weeklyService: "Servicio por semana",
       serviceWeeks: (weeks) => `Servicio, ${weeks} semanas`,
       savings: "Ahorro",
-      groceries: "Compra estimada",
-      groceriesWeekly: "Compra estimada por semana",
       reference: "Referencia",
     },
     savingsValue: (savings, regular) => `${savings} frente a ${regular} por semana`,
     noDate: "Sin preferencia",
     estimateTitle: "Presupuesto estimado",
-    estimateNote: "La compra se paga aparte, al precio real del ticket. Esto es una estimación.",
+    estimateNote: "Esto es una estimación.",
     client: {
       subject: (brand) => `${brand}: hemos recibido tu solicitud`,
       preheader: (chef) => `${chef} te contactará lo antes posible.`,
@@ -311,6 +307,7 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
         people: (chef, maxPeople) => `Para más de ${maxPeople} personas, el presupuesto del servicio te lo prepara ${chef}.`,
         extra: (chef) => `Para eventos y sesiones extra, el presupuesto del servicio te lo prepara ${chef}.`,
       },
+      shopping: (chef) => `La compra la haces tú, con la lista que te manda ${chef}.`,
       summaryTitle: "Tu solicitud",
       allergiesNone: "Confirmaste que nadie tiene alergias, intolerancias alimentarias ni celiaquía.",
       reply: "¿Quieres añadir o cambiar algo? Responde a este email.",
@@ -371,14 +368,12 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       weeklyService: "Service per week",
       serviceWeeks: (weeks) => `Service, ${weeks} weeks`,
       savings: "Saving",
-      groceries: "Estimated groceries",
-      groceriesWeekly: "Estimated groceries per week",
       reference: "Reference",
     },
     savingsValue: (savings, regular) => `${savings} compared with ${regular} a week`,
     noDate: "No preference",
     estimateTitle: "Estimated quote",
-    estimateNote: "Groceries are paid separately, at the actual receipt cost. This is an estimate.",
+    estimateNote: "This is an estimate.",
     client: {
       subject: (brand) => `${brand}: we've received your request`,
       preheader: (chef) => `${chef} will contact you as soon as possible.`,
@@ -389,6 +384,7 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
         people: (chef, maxPeople) => `For more than ${maxPeople} people, ${chef} will send you a quote for the service.`,
         extra: (chef) => `For events and extra sessions, ${chef} will send you a quote for the service.`,
       },
+      shopping: (chef) => `You do the shopping, with the list ${chef} sends you.`,
       summaryTitle: "Your request",
       allergiesNone: "You confirmed that nobody has any food allergies, intolerances or coeliac disease.",
       reply: "Want to add or change something? Just reply to this email.",
@@ -762,13 +758,15 @@ function strongRow(label: string, cents: number, locale: Locale): Row {
 
 /**
  * El precio: con precio automático, el servicio (por semana y de todas las semanas, y el ahorro si hay
- * descuento); sin él, `noPrice` dice quién prepara el precio. La compra estimada siempre, aparte.
+ * descuento); sin él, `noPrice` dice quién prepara el precio. Ninguna fila de compra: la hace el cliente.
+ * `note` va debajo (si está vacía, no va).
  */
-function estimateBlocks(summary: RequestSummary, messages: Messages, locale: Locale, noPrice: string): Block[] {
+function estimateBlocks(summary: RequestSummary, messages: Messages, locale: Locale, noPrice: string, note: string): Block[] {
   const { estimate } = summary;
   const money = (cents: number): string => formatCents(cents, locale);
-  const rows: Row[] = [];
+  const blocks: Block[] = [{ kind: "title", text: messages.estimateTitle }];
   if (estimate.autoPrice) {
+    const rows: Row[] = [];
     if (summary.weeks > 1) {
       rows.push({ label: messages.labels.weeklyService, value: money(estimate.weeklyServiceCents) });
       rows.push(strongRow(messages.labels.serviceWeeks(summary.weeks), estimate.serviceCents, locale));
@@ -778,14 +776,11 @@ function estimateBlocks(summary: RequestSummary, messages: Messages, locale: Loc
     if (estimate.savingsCents > 0) {
       rows.push({ label: messages.labels.savings, value: messages.savingsValue(money(estimate.savingsCents), money(estimate.regularWeeklyCents)) });
     }
+    blocks.push({ kind: "rows", rows });
+  } else {
+    blocks.push({ kind: "paragraph", text: noPrice });
   }
-  rows.push({
-    label: summary.type === "week" ? messages.labels.groceriesWeekly : messages.labels.groceries,
-    value: money(estimate.groceriesEstCents),
-  });
-  const blocks: Block[] = [{ kind: "title", text: messages.estimateTitle }];
-  if (!estimate.autoPrice) blocks.push({ kind: "paragraph", text: noPrice });
-  blocks.push({ kind: "rows", rows }, { kind: "note", text: messages.estimateNote });
+  if (note) blocks.push({ kind: "note", text: note });
   return blocks;
 }
 
@@ -805,7 +800,10 @@ export function renderClientConfirmation(input: ClientConfirmationInput, locale:
   const noPrice = summary.estimate.autoPrice
     ? ""
     : messages.client.noAutoPrice[summary.estimate.reason](input.chefName, summary.estimate.maxPeople);
-  blocks.push(...estimateBlocks(summary, messages, locale, noPrice));
+  // Con precio, que es una estimación; siempre, que la compra la hace él con la lista de la cocinera.
+  const shopping = messages.client.shopping(input.chefName);
+  const note = summary.estimate.autoPrice ? `${messages.estimateNote} ${shopping}` : shopping;
+  blocks.push(...estimateBlocks(summary, messages, locale, noPrice, note));
   blocks.push({ kind: "paragraph", text: messages.client.reply });
   if (privacyUrl) blocks.push({ kind: "link", label: messages.client.privacy, href: privacyUrl });
   blocks.push({ kind: "note", text: `${messages.labels.reference}: ${summary.requestId.slice(0, 8)}` });
@@ -852,7 +850,8 @@ export function renderChefNotification(input: ChefNotificationInput, locale: Loc
   ];
   if (input.hasNotes) blocks.push({ kind: "note", text: messages.chef.notes });
   const noPrice = summary.estimate.autoPrice ? "" : messages.chef.noAutoPrice[summary.estimate.reason](summary.estimate.maxPeople);
-  blocks.push(...estimateBlocks(summary, messages, locale, noPrice));
+  // A Evelyn, nada de compra: con precio, solo que es una estimación.
+  blocks.push(...estimateBlocks(summary, messages, locale, noPrice, summary.estimate.autoPrice ? messages.estimateNote : ""));
   if (inboxUrl) blocks.push({ kind: "button", label: messages.chef.button, href: inboxRequestUrl(inboxUrl, summary.requestId) });
 
   return render({

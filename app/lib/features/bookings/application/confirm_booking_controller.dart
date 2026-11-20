@@ -1,7 +1,7 @@
 // Hoja «Confirmar reserva» desde un pedido de la bandeja: las semanas (1 a 8,
 // prellenadas con requests.weeks) y sus fechas cada 7 días desde la
 // preferida, la hora de llegada que sugiere el servidor, los minutos de cocina
-// de la estimación (con tope de 300) y el precio del servicio de toda la
+// de la estimación (con tope de 360) y el precio del servicio de toda la
 // reserva (el de la estimación, editable; vacío sin precio automático).
 //
 // Cada cambio de fechas, hora o minutos vuelve a pedir el dryRun a la Edge
@@ -359,7 +359,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     unawaited(_runChecks());
   }
 
-  /// Media hora más ([direction] 1) o menos (-1) de cocina, de 30 a 300.
+  /// Media hora más ([direction] 1) o menos (-1) de cocina, de 30 a 360.
   void stepCookMinutes(int direction) {
     final minutes = steppedCookMinutes(state.cookMinutes, direction);
     if (_locked || minutes == state.cookMinutes) return;
@@ -395,7 +395,6 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
             start: current.start,
             cookMinutes: current.cookMinutes,
             portions: request.estimate?.portions,
-            groceriesEstCents: request.estimate?.groceriesEstCents,
             serviceTotalCents: current.serviceTotalCents,
             requestKey: _requestKey,
           );
@@ -465,7 +464,6 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
           start: sentStart,
           cookMinutes: current.cookMinutes,
           portions: request.estimate?.portions,
-          groceriesEstCents: request.estimate?.groceriesEstCents,
           dryRun: true,
         ),
       );

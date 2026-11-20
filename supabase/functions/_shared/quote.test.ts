@@ -24,7 +24,10 @@ const fixture: Fixture = JSON.parse(
 );
 
 /** Lo que solo existe con precio automático. */
-const PRICE_KEYS = ["weeklyServiceCents", "serviceCents", "savingsCents", "totalCents"] as const;
+const PRICE_KEYS = ["weeklyServiceCents", "serviceCents", "savingsCents"] as const;
+
+/** Lo de la compra, que desde el 19/11/2026 hace el cliente: el motor ya no lo calcula. */
+const GROCERY_KEYS = ["groceriesEstCents", "preauthCents", "totalCents"] as const;
 
 test("los valores por defecto coinciden con el fixture", () => {
   assert.deepEqual(DEFAULT_PRICING, fixture.defaultSettings);
@@ -39,6 +42,10 @@ for (const v of fixture.vectors) {
     // Sin precio automático las claves del precio no van (ni null ni 0): así se guardan y se responden.
     if (!q.autoPrice) for (const key of PRICE_KEYS) assert.ok(!(key in q), `sin precio no lleva ${key}`);
     else for (const key of PRICE_KEYS) assert.ok(key in v.expected, `el vector ${v.id} fija ${key}`);
+    for (const key of GROCERY_KEYS) {
+      assert.ok(!(key in q), `la compra la hace el cliente: no hay ${key}`);
+      assert.ok(!(key in v.expected), `el vector ${v.id} no fija ${key}`);
+    }
   });
 }
 
@@ -106,11 +113,11 @@ test("reglas del precio por semana: los días y las comidas no cambian el servic
   assert.equal(priced({ weeks: 4 }).serviceCents, 56000);
 });
 
-test("más de 5 personas (adultos y niños) o una sesión extra: sin precio automático, con la compra estimada", () => {
+test("más de 5 personas (adultos y niños) o una sesión extra: sin precio automático, con porciones y minutos", () => {
   const people = calcQuote({ type: "week", adults: 5, kids: 1, days: 5, meals: 1, weeks: 4 });
   assert.equal(people.autoPrice, false);
   assert.equal(people.autoPrice === false && people.reason, "people");
-  assert.equal(people.groceriesEstCents, 5 * 5 * 380 + 5 * 250);
+  assert.equal(people.portions, 6 * 5);
   assert.equal(people.weeks, 4, "las semanas del pedido quedan en la estimación");
   const extra = calcQuote({ type: "extra", adults: 2, kids: 0, days: 1, meals: 1, weeks: 1 });
   assert.equal(extra.autoPrice === false && extra.reason, "extra");
@@ -138,13 +145,9 @@ test("todos los importes son enteros en todo el rango de entradas", () => {
               }
               assert.equal(q.cookMinutes % 30, 0);
               assert.ok(q.recipes >= 2 && q.recipes <= 6);
-              assert.ok(q.preauthCents >= q.groceriesEstCents);
               assert.equal(q.portions, q.adultPortions + q.kidPortions);
               assert.equal(q.autoPrice, adults + kids <= settings.weeklyRateMaxPeople);
-              if (q.autoPrice) {
-                assert.equal(q.serviceCents, q.weeklyServiceCents * weeks);
-                assert.equal(q.totalCents, q.serviceCents + q.groceriesEstCents * weeks);
-              }
+              if (q.autoPrice) assert.equal(q.serviceCents, q.weeklyServiceCents * weeks);
             }
           }
         }
@@ -163,9 +166,6 @@ const COLUMNS: Readonly<Record<keyof PricingSettings, string>> = {
   weeklyRateDiscountedCents: "weekly_rate_discounted_cents",
   weeklyDiscountMinWeeks: "weekly_discount_min_weeks",
   weeklyRateMaxPeople: "weekly_rate_max_people",
-  adultPortionCents: "adult_portion_cents",
-  kidPortionCents: "kid_portion_cents",
-  preauthBufferPct: "preauth_buffer_pct",
   minCookMinutes: "min_cook_minutes",
 };
 

@@ -7,7 +7,8 @@
 // La base (migración 20261116170000_recipe_catalog.sql) guarda un plato entero
 // con save_recipe: la receta, sus alérgenos y sus ingredientes en una sola
 // transacción, así nunca queda con los alérgenos a medio guardar. La lista de
-// compras de una sesión sale de los ingredientes (PR de la lista de compras).
+// compras de una sesión sale de los ingredientes (PR de la lista de compras):
+// es la que la cocinera le manda al cliente, que hace la compra.
 //
 // Las notas del plato son de la cocinera: viven en recipe_notes, que el
 // cliente no lee (en recipes las vería: la RLS filtra filas, no columnas), y

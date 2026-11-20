@@ -1,5 +1,5 @@
 // Hoja «Confirmar reserva» sin widgets: lo que se prellena desde el pedido,
-// lo que dice el dryRun de cada semana, la cadencia de 7 días, el tope de 300
+// lo que dice el dryRun de cada semana, la cadencia de 7 días, el tope de 360
 // minutos, el precio (vacío sin precio automático) y la confirmación, con una
 // clave por intento que se repite en los reintentos. "Hoy": lunes 19/10/2026.
 import 'dart:async';
@@ -109,7 +109,7 @@ void main() {
       expect(state().priceEdited, isFalse);
       expect(state().suggestedPriceCents, 56000);
       expect(state().serviceTotalCents, 56000);
-      // La llegada es la que sugiere el servidor (apertura más la compra).
+      // La llegada es la que sugiere el servidor (el comienzo del horario).
       expect(state().start, const ClockTime.hm(10, 0));
       expect(state().startEdited, isFalse);
       expect(state().suggestedStart, const ClockTime.hm(10, 0));
@@ -121,7 +121,6 @@ void main() {
       expect(dryRun.start, isNull);
       expect(dryRun.cookMinutes, 180);
       expect(dryRun.portions, 20);
-      expect(dryRun.groceriesEstCents, 6300);
       expect(dryRun.serviceTotalCents, isNull);
       expect(dryRun.requestKey, isNull);
 
@@ -131,17 +130,17 @@ void main() {
     });
 
     test(
-      'los minutos de cocina salen de la estimación, con tope de 300',
+      'los minutos de cocina salen de la estimación, con tope de 360',
       () async {
         await open(weekly(estimate: fourWeeks.copyWith(cookMinutes: 420)));
-        expect(state().cookMinutes, 300);
+        expect(state().cookMinutes, 360);
 
         controller().stepCookMinutes(1);
-        expect(state().cookMinutes, 300);
+        expect(state().cookMinutes, 360);
         controller().stepCookMinutes(-1);
         await pumpEventQueue();
-        expect(state().cookMinutes, 270);
-        expect(bookings.dryRuns.last.cookMinutes, 270);
+        expect(state().cookMinutes, 330);
+        expect(bookings.dryRuns.last.cookMinutes, 330);
         expect(bookings.dryRuns.last.start, const ClockTime.hm(10, 0));
       },
     );
@@ -156,7 +155,6 @@ void main() {
             cookMinutes: 240,
             autoPrice: false,
             reason: NoAutoPriceReason.people,
-            groceriesEstCents: 9450,
             maxPeople: 5,
           ),
         ),
@@ -496,7 +494,6 @@ void main() {
       expect(sent.cookMinutes, 180);
       expect(sent.serviceTotalCents, 56000);
       expect(sent.portions, 20);
-      expect(sent.groceriesEstCents, 6300);
       expect(sent.requestKey, 'key-1');
 
       expect(state().result?.weeks.map((w) => w.sessionId), [

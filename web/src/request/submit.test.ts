@@ -12,18 +12,16 @@ import {
 } from "./submit.ts";
 
 const URL_ = "https://abcdefgh.supabase.co/functions/v1/public-request";
-// La del 201 de la versión 3 (vector 3: 4 semanas).
+// La del 201 de la versión 3 (vector 3: 4 semanas), sin compra ni total desde el 19/11/2026.
 const ESTIMATE = {
   weeks: 4,
   portions: 20,
   recipes: 3,
   cookMinutes: 180,
-  groceriesEstCents: 6300,
   autoPrice: true,
   weeklyServiceCents: 14000,
   serviceCents: 56000,
   savingsCents: 4000,
-  totalCents: 81200,
 } as const;
 const payload = buildPayload(validRequest(), { locale: "it", turnstileToken: TEST_TOKEN });
 
@@ -67,13 +65,23 @@ describe("interpretResponse (contrato §2)", () => {
   });
 
   it("201 sin precio automático: la estimación sin claves de precio, con el motivo", () => {
-    const unpriced = { weeks: 1, portions: 16, recipes: 2, cookMinutes: 150, groceriesEstCents: 5300, autoPrice: false, reason: "extra" };
+    const unpriced = { weeks: 1, portions: 16, recipes: 2, cookMinutes: 150, autoPrice: false, reason: "extra" };
     expect(interpretResponse(201, { requestId: "abc", estimate: unpriced }, null)).toMatchObject({ kind: "created", estimate: unpriced });
+  });
+
+  it("201 de antes del 19/11/2026, con la compra y el total: la estimación se lee sin esas claves", () => {
+    const before = { ...ESTIMATE, groceriesEstCents: 6300, totalCents: 81200 };
+    expect(interpretResponse(201, { requestId: "abc", estimate: before }, null)).toEqual({
+      kind: "created",
+      requestId: "abc",
+      estimate: ESTIMATE,
+      duplicate: false,
+    });
   });
 
   it("201 con un cuerpo raro igual es éxito (el pedido ya está guardado)", () => {
     expect(interpretResponse(201, null, null)).toEqual({ kind: "created", requestId: null, estimate: null, duplicate: false });
-    expect(interpretResponse(201, { requestId: 5, estimate: { ...ESTIMATE, totalCents: 141.5 } }, null)).toEqual({
+    expect(interpretResponse(201, { requestId: 5, estimate: { ...ESTIMATE, serviceCents: 141.5 } }, null)).toEqual({
       kind: "created",
       requestId: null,
       estimate: null,

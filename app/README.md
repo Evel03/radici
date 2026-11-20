@@ -97,10 +97,10 @@ repositorios falsos (`test/support/fakes.dart`).
   cocinera, con la ficha de su cocina (`current_chef_id()`, la misma función que la RLS, y su fila de
   `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz pasa al idioma del perfil
   (ver [Idioma](#idioma)). Un colaborador de la cocinera (`chef_members`) entra igual, con su
-  cuenta: ve y hace lo mismo que ella, e Impostazioni y el menú de la cuenta dicen «Collaboratore di
-  Evelyn» en lugar del nombre (`chefAccountTitle`). El WhatsApp que le prepara el detalle de un pedido sale de su propio teléfono, así que
-  escribe de parte de ella («ti scrivo da parte di Evelyn di Radici», `contactWhatsAppMessageOnBehalf`)
-  en lugar de «sono Evelyn».
+  cuenta: ve y hace lo mismo que ella, y «Altro», Impostazioni y el menú de la cuenta dicen
+  «Collaboratore di Evelyn» en lugar del nombre (`chefAccountTitle`). El WhatsApp que le prepara el
+  detalle de un pedido sale de su propio teléfono, así que escribe de parte de ella («ti scrivo da
+  parte di Evelyn di Radici», `contactWhatsAppMessageOnBehalf`) en lugar de «sono Evelyn».
 - **Richieste**: pestañas Nuove (sin `seen_at` y no aceptadas), Viste, Prenotazioni (los pedidos
   `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
   nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos
@@ -124,8 +124,7 @@ repositorios falsos (`test/support/fakes.dart`).
   sesiones).
   Días bloqueados (`availability_exceptions`, sin migración: la RLS y los grants ya estaban): la
   tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada (los clientes no la
-  ven; la cocinera y sus colaboradores, sí), y el botón
-  «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
+  ven; la cocinera y sus colaboradores, sí), y el botón «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
   existía). La web deja de ofrecerlos en 1 o 2 minutos (`get_free_days` los descuenta; la
   disponibilidad se cachea 60 s). Marca los feriados nacionales (Pasquetta calculada; San Francesco
   desde 2026, legge n. 151/2025) y Sant'Alessandro (26/8) como festivo local de Bergamo. Un día con
@@ -178,7 +177,9 @@ repositorios falsos (`test/support/fakes.dart`).
   canceladas en otro dispositivo, `alreadyCancelled`); los errores se traducen a
   `SessionFailure` sin loguear nada (contrato `docs/contracts/chef-api.md` §5 y §6). Los modelos
   no imprimen la dirección, las alergias ni las notas en `toString`.
-- **Detalle**: todos los datos (también las restricciones), la estimación guardada y las acciones:
+- **Detalle**: todos los datos (también las restricciones), la estimación guardada (el servicio, sin
+  compra ni total: la compra la hace el cliente; las claves de compra de los pedidos de antes se
+  ignoran) y las acciones:
   WhatsApp (`https://wa.me/<número sin +>?text=…` en el idioma del cliente), llamar (`tel:`),
   email (`mailto:`), rechazar (`new` → `rejected`) y deshacer el rechazo (`rejected` → `new`;
   como ya estaba visto, vuelve a Viste), las dos con confirmación. Al abrirlo se marca visto.
@@ -193,7 +194,7 @@ repositorios falsos (`test/support/fakes.dart`).
   permite) y traduce los errores a `BookingFailure` sin loguear nada (contrato
   `docs/contracts/chef-api.md`). Prellena las semanas con `requests.weeks`,
   las fechas cada 7 días desde la preferida (cambiar la primera mueve todas), la llegada que sugiere
-  el `dryRun`, los minutos de la estimación (tope de 300) y el precio de la estimación (con las
+  el `dryRun`, los minutos de la estimación (tope de 360: de 9:00 a 15:00, sin compra antes) y el precio de la estimación (con las
   tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
   se pasa a centavos sin `double` (`parseEuroCents`). Cada cambio de fechas, hora o minutos vuelve a
   pedir el `dryRun`: cada semana dice si está libre, un aviso (bloqueado, sin horario, fuera de
@@ -217,25 +218,24 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
-- **Impostazioni** (menú de la cuenta): idioma de la app (Español, Italiano, English), la cuenta (el
-  nombre de la cocinera, o «Collaboratore di …» si entró un colaborador), salir y, en la web, la
-  versión abierta («Versione abc1234»).
-- **Altro** (Más): el tercer destino de la barra (o del riel en pantallas anchas), con la cuenta,
-  Piatti, Impostazioni y salir. En el teléfono reemplaza al menú de la cuenta de la barra superior,
-  que queda solo en pantallas anchas.
+- **Altro** (Más): el tercer destino de la barra (o del riel en pantallas anchas), con la cuenta (el
+  nombre de la cocinera, o «Collaboratore di …» si entró un colaborador), Piatti, Impostazioni y
+  salir. En el teléfono reemplaza al menú de la cuenta de la barra superior, que queda solo en
+  pantallas anchas.
 - **Piatti** (catálogo, migración `20261116170000_recipe_catalog.sql`): lista con búsqueda en los
   nombres en italiano, español e inglés (sin mayúsculas ni acentos), los activos primero y los
   desactivados al final, cada plato con sus alérgenos, dieta y temporada. El editor pone primero lo
   rápido (nombre en italiano, los 14 alérgenos, dieta y meses con «Tutto l'anno») y después lo
   opcional: nombres en español e inglés, conservación, ingredientes (cantidad entera para 4
-  porciones en g, ml o piezas, o «q.b.»; sección del súper; orden con botones) y notas (solo de la
-  cocinera: se leen de `recipe_notes`, que el cliente no lee). Guarda el plato entero con
+  porciones en g, ml o piezas, o «q.b.»; sección del súper; orden con botones) y notas (de la
+  cocinera y sus colaboradores: se leen de `recipe_notes`, que el cliente no lee). Guarda el plato entero con
   `save_recipe`, con un id generado en el teléfono: un reintento no lo duplica y, si falla, no se
   pierde lo cargado. No deja guardar un plato vegano con leche, huevos, pescado o mariscos, ni uno
   vegetariano con pescado o mariscos (`save_recipe` tampoco lo acepta). Duplicar abre la copia (otro
   id) para cambiarle el nombre; desactivar y reactivar tienen «Annulla». Un plato nunca se borra.
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
-  app (Español, Italiano, English), salir y, en la web, la versión abierta («Versione abc1234»).
+  app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
+  entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).
 - **Avisos de la web** (arriba de cualquier pantalla, también del login, salvo con el teclado o un
   diálogo abiertos): versión nueva publicada y, en Safari del iPhone, abrir Radici desde el ícono
   (ver [Web /gestione/](#web-gestione)).
@@ -287,10 +287,9 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   Evelyn ya tenía la app abierta cuando se corrió, tiene que salir y volver a entrar con el código.
 - Colaboradores: sus cuentas también las crea el workflow, en cada despliegue (en su último paso), con
   el secreto `CHEF_MEMBER_EMAILS` (la lista manda; contrato §10.1). Cambiar el secreto no hace nada
-  hasta correr Deploy Supabase a mano. **Antes de cargar el primero en producción**, la decisión de
-  privacy de SPEC §14: un colaborador ve también las alergias y las direcciones, y la privacy vigente
-  nombra solo a Evelyn y, para la asistencia técnica, a quien gestiona el sistema. En local,
-  `marco@example.test` es colaborador de Evelyn en el seed.
+  hasta correr Deploy Supabase a mano. Solo quien gestiona el sistema por cuenta de Evelyn (SPEC §6):
+  un colaborador ve también las alergias y las direcciones, así que sumar a otra persona exige antes
+  una privacy nueva. En local, `marco@example.test` es colaborador de Evelyn en el seed.
 
 ## Web `/gestione/`
 
@@ -416,6 +415,8 @@ test/                  espejo de lib/ y tool/, más support/ con utilidades
 `lib/features/quote/domain/quote.dart` es una copia de `supabase/functions/_shared/quote.ts`, que es la fuente de verdad.
 `test/features/quote/quote_vectors_test.dart` lee `supabase/functions/_shared/quote_vectors.json` y verifica todos los vectores.
 Si cambia la fórmula, se cambian `quote.ts`, los vectores y esta copia en el mismo PR.
+Sin compra (19/11/2026): la hace el cliente, con la lista que le manda Evelyn. El motor no la estima
+y la calculadora (`/preventivo`) muestra porciones, recetas y el servicio.
 
 ## Textos
 

@@ -19,13 +19,12 @@ const money = (text: string): string => text.replace(/ €/g, " €");
 const glued = (text: string): string => text.replace(/ (a|por) (settimana|semana|week)./, " $1 $2.");
 
 describe("recuadro del precio del formulario (quoteBoxView)", () => {
-  it("1 semana: el precio del servicio destacado, sin fila por semana ni ahorro; la compra y las porciones de la semana", () => {
+  it("1 semana: el precio del servicio destacado, sin fila por semana ni ahorro; las porciones de la semana", () => {
     expect(view("it")).toEqual({
       manual: null,
       total: { label: "Prezzo del servizio", value: money("150,00 €") },
       weekly: null,
       savings: null,
-      groceries: { label: "Spesa stimata a settimana", value: money("63,00 €") },
       portions: { label: "Porzioni a settimana", value: "20" },
     });
   });
@@ -45,43 +44,50 @@ describe("recuadro del precio del formulario (quoteBoxView)", () => {
       total: { label: "Servizio, 4 settimane", value: money("560,00 €") },
       weekly: money("140,00 €"),
       savings: glued(money("Risparmi 40,00 € rispetto a 150,00 € a settimana.")),
-      groceries: { label: "Spesa stimata a settimana", value: money("63,00 €") },
       portions: { label: "Porzioni a settimana", value: "20" },
     });
     expect(view("es", { weeks: 4 })).toMatchObject({
       total: { label: "Servicio, 4 semanas", value: money("560,00 €") },
       weekly: money("140,00 €"),
       savings: glued(money("Ahorras 40,00 € frente a 150,00 € por semana.")),
-      groceries: { label: "Compra estimada por semana" },
+      portions: { label: "Porciones por semana" },
     });
     expect(view("en", { weeks: 8 })).toMatchObject({
       total: { label: "Service, 8 weeks", value: "€1,120.00" },
       weekly: "€140.00",
       savings: glued("You save €80.00 compared with €150.00 a week."),
-      groceries: { label: "Estimated groceries per week", value: "€63.00" },
     });
   });
 
-  it("6 personas: sin precio automático; en lugar del total, que el presupuesto lo prepara Evelyn (con el tope), y la compra", () => {
+  it("6 personas: sin precio automático; en lugar del total, que el presupuesto lo prepara Evelyn (con el tope)", () => {
     expect(view("it", { adults: 3, kids: 3, weeks: 4 })).toEqual({
       manual: "Per più di 5 persone il preventivo per il servizio te lo prepara Evelyn.",
       total: null,
       weekly: null,
       savings: null,
-      groceries: { label: "Spesa stimata a settimana", value: money("94,50 €") },
       portions: { label: "Porzioni a settimana", value: "30" },
     });
     expect(view("en", { adults: 3, kids: 3 }).manual).toBe("For more than 5 people, Evelyn will send you a quote for the service.");
   });
 
-  it("sesión extra con el selector en 4: sin precio, el motivo de la extra y la compra de la sesión (no por semana)", () => {
+  it("sesión extra con el selector en 4: sin precio, el motivo de la extra y las porciones de la sesión (no por semana)", () => {
     expect(view("es", { type: "extra", weeks: 4 })).toEqual({
       manual: "Para eventos y sesiones extra, el presupuesto del servicio te lo prepara Evelyn.",
       total: null,
       weekly: null,
       savings: null,
-      groceries: { label: "Compra estimada", value: money("63,00 €") },
       portions: { label: "Porciones", value: "20" },
     });
+  });
+
+  it("ninguna fila de compra (la hace el cliente con la lista de Evelyn), con o sin precio, en it, es y en", () => {
+    const cases: Partial<RequestData>[] = [{}, { weeks: 4 }, { adults: 3, kids: 3 }, { type: "extra" }];
+    for (const lang of ["it", "es", "en"] as const) {
+      for (const overrides of cases) {
+        const box = view(lang, overrides);
+        expect(Object.keys(box), lang).toEqual(["manual", "total", "weekly", "savings", "portions"]);
+        expect(JSON.stringify(box), lang).not.toMatch(/spesa|compra|grocer|shopping/i);
+      }
+    }
   });
 });

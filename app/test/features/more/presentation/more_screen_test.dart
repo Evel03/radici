@@ -74,6 +74,25 @@ void main() {
       }
     });
 
+    testWidgets('«Altro» de un colaborador: «Collaboratore di Evelyn», como en '
+        'Impostazioni', (tester) async {
+      await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+        recipes: FakeRecipesRepository(sampleRecipes()),
+        accounts: FakeAccountRepository(
+          chefAccountData.copyWith(
+            chef: chefAccount.copyWith(collaborator: true),
+          ),
+        ),
+      );
+      await openMore(tester);
+
+      expect(find.text('Collaboratore di Evelyn'), findsOneWidget);
+      expect(find.text('Evelyn'), findsNothing);
+      expect(find.text("Hai effettuato l'accesso come evelyn@example.test"), findsOneWidget);
+    });
+
     testWidgets('Piatti abre el catálogo y volver lleva a «Altro»', (tester) async {
       await openApp(tester);
       await openMore(tester);
