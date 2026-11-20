@@ -14,7 +14,11 @@
 // Precio por semana (SPEC §5.1): con precio automático, el servicio por semana, el de todas las semanas
 // y el ahorro; sin él, quién prepara el presupuesto. La compra la hace el cliente con la lista que le
 // manda Evelyn (decisión del 19/11/2026): ningún email la estima; al cliente se le recuerda, a Evelyn no.
+// Menù (versión 4, 19/11/2026): los platos que eligió el cliente en la web, con los nombres de la receta en
+// el idioma del email (o en italiano si no están traducidos). A Evelyn, cuáles y de cuántos días, o que lo
+// propone ella; al cliente, cuáles y que Evelyn le confirma el menù. Nunca sus alérgenos.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
+import { localizedText, type MenuChoice } from "./menu.ts";
 import { weeklyDates, type Locale, type Meal, type RequestType, type Slot } from "./public_request.ts";
 import type { NoAutoPriceReason } from "./quote.ts";
 
@@ -71,6 +75,8 @@ export interface RequestSummary {
   /** Qué contestó sobre alergias, nunca cuáles. */
   allergies: AllergyAnswer;
   estimate: EstimateSummary;
+  /** Los platos que eligió en la web (los que guardó la base, en orden); [] si el menù lo propone Evelyn. */
+  menu: readonly MenuChoice[];
 }
 
 export interface ClientConfirmationInput {
@@ -153,6 +159,10 @@ interface Messages {
     /** La compra la hace el cliente, con la lista que le manda la cocinera (la misma frase que la web). */
     shopping: (chef: string) => string;
     summaryTitle: string;
+    /** Fila del resumen con los platos que eligió. */
+    menuChosen: string;
+    /** Debajo del resumen: que la cocinera le confirma el menù y, si eligió menos platos que días, el resto. */
+    menuConfirm: (chef: string, complete: boolean) => string;
     /**
      * Confirmó que nadie tiene alergias: se lo repite, para que vea si se equivocó. Con alergias escritas
      * o sin respuesta no se dice nada (el email no está verificado; lo que contestó lo vio al enviar).
@@ -182,6 +192,10 @@ interface Messages {
     noAutoPrice: Readonly<Record<NoAutoPriceReason, (maxPeople: number) => string>>;
     /** Una línea por respuesta: nadie tiene, las ve en la app, o que pregunte (pedido sin respuesta). */
     allergies: Readonly<Record<AllergyAnswer, string>>;
+    /** «Menù scelto dal cliente (2 di 5 giorni): Lasagne · Minestrone». */
+    menuChosen: (chosen: number, days: number, dishes: string) => string;
+    /** Sin platos elegidos: el menù lo propone ella. */
+    menuNone: string;
     notes: string;
     button: string;
     footer: (brand: string) => string;
@@ -232,6 +246,9 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       },
       shopping: (chef) => `La spesa la fai tu, con la lista che ti manda ${chef}.`,
       summaryTitle: "La tua richiesta",
+      menuChosen: "Piatti scelti",
+      menuConfirm: (chef, complete) =>
+        complete ? `${chef} ti conferma il menù.` : `${chef} ti conferma il menù e propone i piatti per gli altri giorni.`,
       allergiesNone: "Hai confermato che nessuno ha allergie, intolleranze alimentari o celiachia.",
       reply: "Vuoi aggiungere o cambiare qualcosa? Rispondi a questa email.",
       privacy: "Informativa privacy",
@@ -261,6 +278,8 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
         listed: "Ha indicato restrizioni alimentari: le trovi nell'app.",
         unknown: "Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.",
       },
+      menuChosen: (chosen, days, dishes) => `Menù scelto dal cliente (${chosen} di ${days} ${days === 1 ? "giorno" : "giorni"}): ${dishes}`,
+      menuNone: "Senza menù: lo proponi tu.",
       notes: "Ha lasciato delle note: le trovi nell'app.",
       button: "Apri la richiesta",
       footer: (brand) => `Avviso automatico di ${brand}.`,
@@ -309,6 +328,9 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       },
       shopping: (chef) => `La compra la haces tú, con la lista que te manda ${chef}.`,
       summaryTitle: "Tu solicitud",
+      menuChosen: "Platos elegidos",
+      menuConfirm: (chef, complete) =>
+        complete ? `${chef} te confirma el menú.` : `${chef} te confirma el menú y propone los platos de los otros días.`,
       allergiesNone: "Confirmaste que nadie tiene alergias, intolerancias alimentarias ni celiaquía.",
       reply: "¿Quieres añadir o cambiar algo? Responde a este email.",
       privacy: "Política de privacidad",
@@ -338,6 +360,8 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
         listed: "Indicó restricciones alimentarias: las ves en la app.",
         unknown: "Sin datos de alergias: pregúntale al cliente antes de preparar el menú.",
       },
+      menuChosen: (chosen, days, dishes) => `Menú elegido por el cliente (${chosen} de ${days} ${days === 1 ? "día" : "días"}): ${dishes}`,
+      menuNone: "Sin menú: lo propones tú.",
       notes: "Dejó notas: las ves en la app.",
       button: "Abrir en la bandeja",
       footer: (brand) => `Aviso automático de ${brand}.`,
@@ -386,6 +410,9 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       },
       shopping: (chef) => `You do the shopping, with the list ${chef} sends you.`,
       summaryTitle: "Your request",
+      menuChosen: "Dishes chosen",
+      menuConfirm: (chef, complete) =>
+        complete ? `${chef} will confirm the menu.` : `${chef} will confirm the menu and suggest dishes for the other days.`,
       allergiesNone: "You confirmed that nobody has any food allergies, intolerances or coeliac disease.",
       reply: "Want to add or change something? Just reply to this email.",
       privacy: "Privacy policy",
@@ -415,6 +442,8 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
         listed: "They mentioned dietary restrictions: see them in the app.",
         unknown: "No allergy information: ask the client before planning the menu.",
       },
+      menuChosen: (chosen, days, dishes) => `Menu chosen by the client (${chosen} of ${days} ${days === 1 ? "day" : "days"}): ${dishes}`,
+      menuNone: "No menu chosen: you suggest one.",
       notes: "They left some notes: see them in the app.",
       button: "Open in the inbox",
       footer: (brand) => `Automatic notice from ${brand}.`,
@@ -750,6 +779,11 @@ function summaryRows(summary: RequestSummary, messages: Messages, locale: Locale
   return rows;
 }
 
+/** Los nombres de los platos en el idioma del email (o en italiano), separados por «·». */
+function menuNames(menu: readonly MenuChoice[], locale: Locale): string {
+  return menu.map((dish) => localizedText(dish.name, locale)).join(" · ");
+}
+
 /** Fila con el importe destacado (el servicio que se paga). */
 function strongRow(label: string, cents: number, locale: Locale): Row {
   const value = formatCents(cents, locale);
@@ -789,11 +823,18 @@ export function renderClientConfirmation(input: ClientConfirmationInput, locale:
   const messages = MESSAGES[locale];
   const { summary } = input;
   const privacyUrl = safeHttpUrl(input.privacyUrl);
+  const rows = summaryRows(summary, messages, locale);
+  // Los platos que eligió: los nombres de las recetas, nunca sus alérgenos. Sin platos no se dice nada (el
+  // intro ya dice que la cocinera le confirma el menù).
+  if (summary.menu.length > 0) rows.push({ label: messages.client.menuChosen, value: menuNames(summary.menu, locale) });
   const blocks: Block[] = [
     { kind: "paragraph", text: messages.client.intro(input.chefName) },
     { kind: "title", text: messages.client.summaryTitle },
-    { kind: "rows", rows: summaryRows(summary, messages, locale) },
+    { kind: "rows", rows },
   ];
+  if (summary.menu.length > 0) {
+    blocks.push({ kind: "note", text: messages.client.menuConfirm(input.chefName, summary.menu.length >= summary.days) });
+  }
   // De las alergias, solo "nadie tiene", para que vea si se equivocó. "Hay alergias" no sale hacia una
   // dirección que nadie verificó (es un dato de salud); sin respuesta, tampoco se dice nada.
   if (summary.allergies === "none") blocks.push({ kind: "note", text: messages.client.allergiesNone });
@@ -846,6 +887,10 @@ export function renderChefNotification(input: ChefNotificationInput, locale: Loc
     { kind: "rows", rows: contact },
     { kind: "title", text: messages.chef.summaryTitle },
     { kind: "rows", rows: summaryRows(summary, messages, locale) },
+    // El menù que eligió el cliente (cuáles y de cuántos días), o que lo propone ella.
+    summary.menu.length > 0
+      ? { kind: "paragraph", text: messages.chef.menuChosen(summary.menu.length, summary.days, menuNames(summary.menu, locale)) }
+      : { kind: "note", text: messages.chef.menuNone },
     { kind: "note", text: messages.chef.allergies[summary.allergies] },
   ];
   if (input.hasNotes) blocks.push({ kind: "note", text: messages.chef.notes });

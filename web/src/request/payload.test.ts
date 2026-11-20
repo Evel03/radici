@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { TEST_TOKEN, TODAY, validRequest } from "./fixtures.ts";
 import {
   CONSENT_VERSION,
+  HEALTH_CONSENT_VERSION,
   MAX_PAYLOAD_BYTES,
   PUBLIC_REQUEST_VERSION,
   TEXT_LIMITS,
@@ -50,7 +51,7 @@ describe("buildPayload", () => {
       validRequest({ meals: "both", preferredDate: "2026-10-26", whatsappOptIn: true }),
       { locale: "es", turnstileToken: TEST_TOKEN },
     );
-    expect(PUBLIC_REQUEST_VERSION).toBe(3);
+    expect(PUBLIC_REQUEST_VERSION).toBe(4);
     expect(payload).toMatchObject({
       version: PUBLIC_REQUEST_VERSION,
       type: "week",
@@ -63,6 +64,16 @@ describe("buildPayload", () => {
       turnstileToken: TEST_TOKEN,
     });
     expect(buildPayload(validRequest({ preferredDate: "" }), { locale: "it", turnstileToken: "t" }).preferredDate).toBeNull();
+  });
+
+  it("manda los platos elegidos en el orden en que los tildó; sin elegir, la lista vacía", () => {
+    const menu = ["1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab", "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab"];
+    expect(buildPayload(validRequest({ menu }), { locale: "it", turnstileToken: TEST_TOKEN }).menu).toEqual(menu);
+    expect(buildPayload(validRequest(), { locale: "it", turnstileToken: TEST_TOKEN }).menu).toEqual([]);
+    const result = serverParse(validRequest({ days: 2, menu }));
+    expect(result.ok && result.value.menu).toEqual(menu);
+    // Más platos que días: el servidor lo rechaza (la página frena el envío antes, con la misma validación).
+    expect(serverParse(validRequest({ days: 1, menu })).ok).toBe(false);
   });
 
   it("todas las combinaciones de comidas y tipos pasan", () => {
@@ -86,12 +97,12 @@ describe("buildPayload", () => {
     const data = validRequest({ noAllergies: false, restrictionsNote: " Celiachia \r\n\r\n\r\n Noci ", consentHealth: true });
     const payload = buildPayload(data, { locale: "it", turnstileToken: TEST_TOKEN });
     expect(payload).toMatchObject({ noAllergies: false, allergens: [], diets: [], restrictionsNote: "Celiachia\n\nNoci" });
-    expect(payload.consents.health).toBe(CONSENT_VERSION);
+    expect(payload.consents.health).toBe(HEALTH_CONSENT_VERSION);
     const result = serverParse(data);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toMatchObject({ noAllergies: false, hasRestrictions: true, restrictionsNote: "Celiachia\n\nNoci" });
-    expect(result.value.consents.health).toBe(CONSENT_VERSION);
+    expect(result.value.consents.health).toBe(HEALTH_CONSENT_VERSION);
   });
 
   it("sin la casilla y sin escribir nada: sin consentimiento de salud (no hay datos que cubra) y el servidor pide la nota", () => {

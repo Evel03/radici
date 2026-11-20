@@ -38,6 +38,7 @@ export function validRequest(overrides: Partial<RequestData> = {}): RequestData 
     noAllergies: true,
     restrictionsNote: "",
     consentHealth: false,
+    menu: [],
     ...overrides,
   };
 }

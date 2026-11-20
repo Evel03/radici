@@ -201,6 +201,21 @@
               </div>
             </fieldset>
 
+            <!-- Menù: los platos de Evelyn (GET …/menu), hasta uno por día y opcional. Después de «Quando?»: la
+                 temporada depende de la fecha. La ayuda, el contador, los avisos y las tarjetas (casillas name="menu")
+                 los dibuja richiesta.ts con src/request/menu.ts. Sin platos o sin respuesta, el aviso dice que el
+                 menù lo propone Evelyn. -->
+            <fieldset class="panel" id="menu-panel" aria-describedby="hint-menu">
+              <legend class="panel__title" id="menu-legend" data-i18n="request.menu.legend"></legend>
+              <div class="menu">
+                <p class="field__hint" id="hint-menu" hidden></p>
+                <p class="menu__count" id="menu-count" aria-live="polite" hidden></p>
+                <p class="field__error" id="err-menu" hidden></p>
+                <p class="menu__status" id="menu-status" role="status"></p>
+                <div class="choices menu__list" id="menu-list" role="group" tabindex="-1" aria-labelledby="menu-legend menu-count" hidden></div>
+              </div>
+            </fieldset>
+
             <fieldset class="panel">
               <legend class="panel__title" data-i18n="request.allergiesLegend"></legend>
               <p class="panel__intro" data-i18n="request.allergiesIntro"></p>

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { i18nFor, validRequest } from "./fixtures.ts";
 import { publicEstimate, type PublicRequestEstimate, type RequestData } from "./model.ts";
 import { computeQuote } from "./quote.ts";
-import { doneEstimate, peopleText, summaryRows } from "./summary.ts";
+import type { MenuChoice } from "./menu.ts";
+import { doneEstimate, menuSummary, peopleText, summaryRows } from "./summary.ts";
 
 /** La que devuelve el servidor para el vector 1 (una semana). */
 const ONE_WEEK: PublicRequestEstimate = {
@@ -49,6 +50,8 @@ describe("summaryRows (pantalla de gracias)", () => {
       "Giorni a settimana": "5",
       Pasti: "Cena",
       "Giorno preferito": "lunedì 26 ottobre 2026",
+      // Sin platos elegidos: el menù lo propone Evelyn.
+      Menù: "Lo propone Evelyn",
       "Allergie e intolleranze": "Nessuna",
       "Prezzo del servizio": expect.stringMatching(euros("150,00 €")) as unknown as string,
     });
@@ -120,6 +123,7 @@ describe("summaryRows (pantalla de gracias)", () => {
       "Giorni a settimana",
       "Pasti",
       "Giorno preferito",
+      "Menù",
       "Allergie e intolleranze",
       "Prezzo del servizio",
     ]);
@@ -152,6 +156,29 @@ describe("summaryRows (pantalla de gracias)", () => {
     for (const secret of ["citofono", "Redona", "Giulia", "333", "lattosio"]) {
       expect(text).not.toContain(secret);
     }
+  });
+});
+
+describe("menù en la pantalla de gracias", () => {
+  const LASAGNE: MenuChoice = { id: "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab", name: { it: "Lasagne", es: "Lasaña", en: null } };
+  const MINESTRONE: MenuChoice = { id: "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab", name: { it: "Minestrone", es: null, en: "Minestrone soup" } };
+
+  it("los platos que guardó el servidor, en orden; si son menos que los días, que el resto lo propone Evelyn", () => {
+    const row = (lang: "it" | "es" | "en", days: number, menu: MenuChoice[]) =>
+      Object.fromEntries(summaryRows(validRequest({ days }), ONE_WEEK, i18nFor(lang), menu).map((r) => [r.label, r.value]));
+    expect(row("it", 5, [MINESTRONE, LASAGNE])["Menù"]).toBe("Minestrone · Lasagne; il resto lo propone Evelyn");
+    expect(row("it", 2, [MINESTRONE, LASAGNE])["Menù"]).toBe("Minestrone · Lasagne");
+    // En el idioma de la página, con respaldo al italiano.
+    expect(row("es", 2, [MINESTRONE, LASAGNE])["Menú"]).toBe("Minestrone · Lasaña");
+    expect(row("en", 3, [MINESTRONE, LASAGNE])["Menu"]).toBe("Minestrone soup · Lasagne; Evelyn will suggest the rest");
+    expect(row("en", 3, [])["Menu"]).toBe("Evelyn will suggest it");
+    expect(menuSummary([], 5, i18nFor("es"))).toBe("Lo propone Evelyn");
+  });
+
+  it("va después de la fecha y antes de las alergias", () => {
+    const labels = summaryRows(validRequest(), ONE_WEEK, i18nFor("it"), [LASAGNE]).map((r) => r.label);
+    expect(labels.indexOf("Menù")).toBe(labels.indexOf("Giorno preferito") + 1);
+    expect(labels.indexOf("Allergie e intolleranze")).toBe(labels.indexOf("Menù") + 1);
   });
 });
 

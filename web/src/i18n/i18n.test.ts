@@ -7,6 +7,7 @@ import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
 import { DEFAULT_PRICING, LIMITS } from "../engine.ts";
 import { formatCents } from "../lib/format.ts";
+import { ALLERGENS, DIETS } from "../../../supabase/functions/_shared/public_request.ts";
 import { DATE_WINDOW, MEAL_OPTIONS, REQUEST_TYPES } from "../request/model.ts";
 import { exampleQuote, EXAMPLE_INPUT } from "../request/quote.ts";
 import { FIELD_ORDER, fieldError } from "../request/validate.ts";
@@ -100,6 +101,24 @@ describe("claves usadas por la web", () => {
     const at = (key: string): number => requestHtml.indexOf(`data-i18n="${key}"`);
     expect(at("request.whenLegend")).toBeLessThan(at("request.allergiesLegend"));
     expect(at("request.allergiesLegend")).toBeLessThan(at("request.contactLegend"));
+  });
+
+  it("menù: después de «¿Cuándo?» (la temporada depende de la fecha) y antes de las alergias, con su error y su contador", () => {
+    const at = (key: string): number => requestHtml.indexOf(`data-i18n="${key}"`);
+    expect(at("request.whenLegend")).toBeLessThan(at("request.menu.legend"));
+    expect(at("request.menu.legend")).toBeLessThan(at("request.allergiesLegend"));
+    const panel = /<fieldset class="panel" id="menu-panel"[^>]*>([\s\S]*?)<\/fieldset>/.exec(requestHtml)?.[1] ?? "";
+    expect(panel).toContain('id="err-menu"');
+    expect(panel).toMatch(/<p class="menu__count" id="menu-count" aria-live="polite"/);
+    expect(panel).toMatch(/<div [^>]*id="menu-list" role="group" tabindex="-1"/);
+  });
+
+  it("los 14 alérgenos y las dietas del contrato tienen su nombre en los tres idiomas", () => {
+    for (const lang of LANGS) {
+      const keys = [...ALLERGENS.map((a) => `allergens.${a}`), ...DIETS.map((d) => `diets.${d}`)];
+      expect(keys.filter((key) => !(key in dicts[lang])), lang).toEqual([]);
+      expect(ALLERGENS.length).toBe(14);
+    }
   });
 
   it("el consentimiento de salud lleva a la sección de salud de la privacy, en los tres idiomas", () => {
@@ -272,7 +291,7 @@ describe("precio por semana: los textos no escriben números, salen de DEFAULT_P
 describe("la compra la hace el cliente, con la lista de Evelyn (decisión del 19/11/2026)", () => {
   // Evelyn no hace la compra ni la estima: antes de cada sesión le manda al cliente la lista de ingredientes,
   // con las cantidades. Las frases de referencia son las acordadas para la web, los emails y la app. La
-  // privacy no entra: cambiar su texto exige una versión nueva del texto y del consentimiento.
+  // privacy también entra desde su versión 2026-11-19, que sacó la compra de las tareas de Evelyn.
   const expected: Record<Lang, { long: string; short: string; before: RegExp }> = {
     it: {
       long: "La spesa la fai tu: prima di ogni sessione Evelyn ti manda la lista degli ingredienti, con le quantità.",
@@ -300,8 +319,8 @@ describe("la compra la hace el cliente, con la lista de Evelyn (decisión del 19
       }
     });
 
-    it(`${lang}: ningún texto (salvo la privacy) dice que Evelyn hace la compra, ni habla de tickets ni de compra estimada`, () => {
-      const offending = Object.entries(dicts[lang]).filter(([key, value]) => !key.startsWith("privacy.") && expected[lang].before.test(value));
+    it(`${lang}: ningún texto dice que Evelyn hace la compra, ni habla de tickets ni de compra estimada`, () => {
+      const offending = Object.entries(dicts[lang]).filter(([, value]) => expected[lang].before.test(value));
       expect(offending).toEqual([]);
       expect(Object.keys(dicts[lang]).filter((key) => /grocer/i.test(key))).toEqual([]);
     });
@@ -309,6 +328,17 @@ describe("la compra la hace el cliente, con la lista de Evelyn (decisión del 19
 });
 
 describe("privacy", () => {
+  // 2026-11-19: el menú. Los platos elegidos son datos de la solicitud (y facultativos), y las consultas de
+  // GET …/menu entran en el mismo límite por IP que las del calendario, con la misma huella y conservación.
+  const menu = { it: "menù", es: "menú", en: "menu" } as const;
+  for (const lang of LANGS) {
+    it(`${lang}: cuenta el menú (los platos elegidos y sus consultas, en el límite por IP)`, () => {
+      for (const key of ["privacy.dataBody", "privacy.legalBody", "privacy.flowBody", "privacy.retentionBody", "privacy.requiredBody"]) {
+        expect(dicts[lang][key], key).toContain(menu[lang]);
+      }
+    });
+  }
+
   // El calendario pide la disponibilidad (GET …/availability, contrato §11) mientras se completa el
   // formulario, antes de enviar, y cada consulta deja la huella (hash) de la IP para su límite. La
   // privacy lo cuenta donde dice qué sale antes del envío, con qué base y cuánto dura la huella.

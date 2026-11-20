@@ -1,12 +1,14 @@
-// Edge Function public-request: pedido del formulario público (POST) y disponibilidad por día
-// del calendario (GET …/availability) (docs/contracts/public-request.md §2 y §11).
+// Edge Function public-request: pedido del formulario público (POST), disponibilidad por día del
+// calendario (GET …/availability) y platos de la pestaña «Menù» (GET …/menu)
+// (docs/contracts/public-request.md §2, §11 y §12).
 // Este archivo solo conecta lo real (Deno, supabase-js con la clave secreta, EdgeRuntime);
 // la lógica y sus tests están en handler.ts.
 //
 // Pública: verify_jwt = false en supabase/config.toml. Las claves nuevas (sb_publishable_…,
 // sb_secret_…) no son JWT y el chequeo de la plataforma no autentica a nadie: la protección es
-// Turnstile + límite por IP + validación (la lectura de disponibilidad: límite por IP propio).
+// Turnstile + límite por IP + validación (las lecturas de disponibilidad y del menù: límite por IP propio).
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { menuDishesFromRpc } from "../_shared/menu.ts";
 import {
   CHEF_SETTINGS_COLUMNS,
   StoreError,
@@ -57,10 +59,11 @@ function createStore(): PublicRequestStore {
       submit: () => fail("submit"),
       markChefNotificationSent: () => fail("mark_sent"),
       freeDays: () => fail("free_days"),
+      publicMenu: () => fail("public_menu"),
     };
   }
 
-  // Clave secreta (sin RLS): solo para las funciones del pedido, la notificación y la disponibilidad.
+  // Clave secreta (sin RLS): solo para las funciones del pedido, la notificación, la disponibilidad y el menù.
   const supabase = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
@@ -127,6 +130,17 @@ function createStore(): PublicRequestStore {
       const dates = availableDatesFromRpc(data);
       if (!dates) throw new StoreError("free_days", null, "unexpected_result");
       return dates;
+    },
+
+    async publicMenu(chefId) {
+      const { data, error } = await supabase.rpc("get_public_menu", { p_chef_id: chefId });
+      if (error) throw storeError("public_menu", error);
+      // Se arma de nuevo plato por plato: nada que no sea del contrato (ingredientes, notas) sale a la web.
+      const result = menuDishesFromRpc(data);
+      if (!result) throw new StoreError("public_menu", null, "unexpected_result");
+      // Solo la cantidad: nunca los nombres ni los ids.
+      if (result.skipped > 0) consoleLogger("warn", "public_menu_dish_skipped", { count: result.skipped });
+      return result.dishes;
     },
   };
 }

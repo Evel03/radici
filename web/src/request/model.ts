@@ -5,10 +5,12 @@
 // consentimiento de salud). Los alérgenos y las dietas del contrato van vacíos.
 // Franja horaria: no se pregunta. El día se elige en un calendario con la disponibilidad de Evelyn y
 // la hora se acuerda después; el contrato conserva `slot` y la web manda siempre "any".
+// Menù: los platos que eligió en la pestaña «Menù» (menu.ts), hasta uno por día y opcional.
 import { MEALS, cleanMultiLine, type Meal, type RequestType } from "../../../supabase/functions/_shared/public_request.ts";
 
 export {
   CONSENT_VERSION,
+  HEALTH_CONSENT_VERSION,
   DATE_WINDOW,
   LOCALES,
   MAX_PAYLOAD_BYTES,
@@ -73,6 +75,11 @@ export interface RequestData {
   restrictionsNote: string;
   /** Consentimiento explícito para esas alergias (dato de salud). Se manda solo con alergias escritas. */
   consentHealth: boolean;
+  /**
+   * Los platos elegidos en la pestaña «Menù» (ids del catálogo), en el orden en que los tildó: hasta uno por
+   * día; [] si el menù lo propone Evelyn. La página los guarda en ese orden (el del formulario es otro).
+   */
+  menu: string[];
 }
 
 export function mealsOf(option: MealOption): Meal[] {

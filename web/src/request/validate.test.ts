@@ -7,11 +7,11 @@ import { FIELD_ORDER, PAGE_FIELDS, fieldError, firstErrorField, translateErrors,
 
 const ALL_FIELDS: readonly PublicRequestField[] = [
   "payload", "version", "type", "adults", "kids", "people", "days", "meals", "weeks", "noAllergies", "allergens", "diets",
-  "restrictionsNote", "preferredDate", "slot", "name", "zone", "phone", "email", "whatsappOptIn", "notes",
+  "restrictionsNote", "preferredDate", "menu", "slot", "name", "zone", "phone", "email", "whatsappOptIn", "notes",
   "locale", "consentPrivacy", "consentHealth", "turnstileToken", "requestKey",
 ];
 const ALL_CODES: readonly ErrorCode[] = [
-  "required", "invalid", "range", "tooLong", "dateOutOfRange", "consentRequired", "healthConsentRequired",
+  "required", "invalid", "range", "tooLong", "dateOutOfRange", "consentRequired", "healthConsentRequired", "tooMany",
 ];
 
 function validate(overrides: Partial<RequestData> = {}, token = TEST_TOKEN) {
@@ -132,6 +132,28 @@ describe("validateRequest (la misma validación del servidor)", () => {
     it("la casilla de WhatsApp es opcional", () => {
       expect(validate({ whatsappOptIn: true })).toEqual({});
       expect(validate({ whatsappOptIn: false })).toEqual({});
+    });
+  });
+
+  describe("menù", () => {
+    const A = "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
+    const B = "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
+
+    it("opcional y hasta un plato por día", () => {
+      expect(validate({ menu: [] })).toEqual({});
+      expect(validate({ days: 2, menu: [A, B] })).toEqual({});
+    });
+
+    it("si bajan los días por debajo de lo elegido, el envío se frena con el mensaje del campo", () => {
+      expect(validate({ days: 1, menu: [A, B] })).toEqual({ menu: { key: "errors.menuTooMany" } });
+      // Va después de «Quando?» y antes de las alergias.
+      expect(firstErrorField(validate({ days: 1, menu: [A, B], noAllergies: false, preferredDate: "2026-10-19" }))).toBe("preferredDate");
+      expect(firstErrorField(validate({ days: 1, menu: [A, B], noAllergies: false }))).toBe("menu");
+    });
+
+    it("el servidor: tooMany es el error del campo; invalid, de una página vieja o alterada", () => {
+      expect(translateErrors({ menu: "tooMany" })).toEqual({ fields: { menu: { key: "errors.menuTooMany" } }, outdated: false });
+      expect(translateErrors({ menu: "invalid" }).fields).toEqual({ menu: { key: "errors.invalid" } });
     });
   });
 
