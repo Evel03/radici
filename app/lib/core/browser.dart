@@ -1,6 +1,6 @@
 // Lo que la app usa del navegador cuando corre como web (/gestione/): leer un
-// archivo sin caché, recargar la página, qué navegador es y una marca guardada
-// en el dispositivo. Fuera de la web (iOS, Android y los tests en la VM) no
+// archivo sin caché, recargar la página, qué navegador es, una marca guardada
+// en el dispositivo y soltar una URL blob:. Fuera de la web (iOS, Android y los tests en la VM) no
 // hace nada: el import condicional elige browser_stub.dart y package:web nunca
 // se compila ahí.
 import 'package:flutter/foundation.dart' show immutable;
@@ -60,6 +60,11 @@ abstract interface class Browser {
   /// Guarda una marca en este dispositivo. Nunca lanza: si el almacenamiento
   /// falla (Safari privado, datos del sitio borrados), no queda guardada.
   void writeFlag(String key, String value);
+
+  /// Suelta [url] si es una URL `blob:` (`URL.revokeObjectURL`): el navegador
+  /// libera lo que guardaba (la foto elegida). Con otra URL y fuera de la web
+  /// no hace nada. Nunca lanza.
+  void revokeObjectUrl(String url);
 }
 
 /// El navegador real en la web; fuera de la web, uno que no hace nada.

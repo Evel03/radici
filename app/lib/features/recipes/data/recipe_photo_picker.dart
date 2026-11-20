@@ -7,10 +7,13 @@
 // no decodifica 12 MP en el hilo principal. Después processRecipePhoto la
 // endereza, la achica de verdad y le saca los metadatos (el selector los
 // conserva). requestFullMetadata: false: en el iPhone no pide permiso a la
-// fototeca (no hace falta para elegir una foto).
+// fototeca (no hace falta para elegir una foto). En la web la foto llega en una
+// URL blob: (la achicada por image_picker_for_web): leídos los bytes, se
+// suelta.
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:radici/core/browser.dart';
 import 'package:radici/features/recipes/domain/recipe_photo.dart';
 
 /// De dónde sale la foto.
@@ -40,13 +43,15 @@ abstract interface class RecipePhotoPicker {
 }
 
 final recipePhotoPickerProvider = Provider<RecipePhotoPicker>(
-  (ref) => ImagePickerRecipePhotoPicker(ImagePicker()),
+  (ref) =>
+      ImagePickerRecipePhotoPicker(ImagePicker(), ref.watch(browserProvider)),
 );
 
 class ImagePickerRecipePhotoPicker implements RecipePhotoPicker {
-  ImagePickerRecipePhotoPicker(this._picker);
+  ImagePickerRecipePhotoPicker(this._picker, this._browser);
 
   final ImagePicker _picker;
+  final Browser _browser;
 
   @override
   Future<Uint8List?> pick(RecipePhotoSource source) async {
@@ -61,7 +66,11 @@ class ImagePickerRecipePhotoPicker implements RecipePhotoPicker {
         requestFullMetadata: false,
       );
       if (file == null) return null;
-      return await file.readAsBytes();
+      try {
+        return await file.readAsBytes();
+      } finally {
+        _browser.revokeObjectUrl(file.path);
+      }
     } on PlatformException catch (error) {
       // No se loguea: el mensaje puede traer la ruta del archivo.
       throw RecipePhotoPickFailure(switch (error.code) {

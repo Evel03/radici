@@ -1,23 +1,28 @@
 // El selector de fotos sobre image_picker (un ImagePicker simulado): pide la
 // foto ya achicada a 1200 px y sin pedir permiso a la fototeca, devuelve los
-// bytes o null si se canceló, y traduce los errores.
+// bytes (y suelta su URL blob: en la web) o null si se canceló, y traduce los
+// errores.
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:radici/features/recipes/data/recipe_photo_picker.dart';
 
+import '../../../support/browser_fakes.dart';
+
 class _MockImagePicker extends Mock implements ImagePicker {}
 
 void main() {
   late _MockImagePicker imagePicker;
+  late FakeBrowser browser;
   late ImagePickerRecipePhotoPicker picker;
 
   setUpAll(() => registerFallbackValue(ImageSource.gallery));
 
   setUp(() {
     imagePicker = _MockImagePicker();
-    picker = ImagePickerRecipePhotoPicker(imagePicker);
+    browser = FakeBrowser();
+    picker = ImagePickerRecipePhotoPicker(imagePicker, browser);
   });
 
   void answer(Future<XFile?> Function() result) => when(
@@ -46,6 +51,17 @@ void main() {
         ),
       ).called(1);
     }
+  });
+
+  // En la web image_picker_for_web devuelve la foto achicada en una URL
+  // blob:: leídos los bytes, se suelta (fuera de la web no hace nada).
+  test('leída la foto, suelta su URL', () async {
+    const url = 'blob:https://radicicucina.app/0f6c';
+    final bytes = Uint8List.fromList([0xff, 0xd8, 0xff, 2]);
+    answer(() async => XFile.fromData(bytes, path: url));
+
+    expect(await picker.pick(RecipePhotoSource.gallery), bytes);
+    expect(browser.revoked, [url]);
   });
 
   test('cancelar devuelve null', () async {
