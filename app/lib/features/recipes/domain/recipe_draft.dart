@@ -241,7 +241,17 @@ int? _quantity(String raw) {
 /// Valida [draft] con las reglas de la base (nombres, descripciones,
 /// cantidades, hasta 50 ingredientes), los topes de conservación del
 /// formulario y la dieta contra los alérgenos.
-RecipeDraftErrors validateRecipeDraft(RecipeDraft draft) {
+///
+/// Las del editor desde que el español es la fuente (20/11/2026): con
+/// [requireSpanish], el nombre en español es obligatorio (un plato nuevo, o
+/// uno que ya lo tenía); con [willTranslate], el nombre en italiano vacío no
+/// falta si sale del español (lo traduce el guardado). Sin ellas, las de la
+/// base: el italiano es obligatorio.
+RecipeDraftErrors validateRecipeDraft(
+  RecipeDraft draft, {
+  bool requireSpanish = false,
+  bool willTranslate = false,
+}) {
   final rows = [
     for (final row in draft.ingredients)
       if (!row.isBlank) row,
@@ -262,9 +272,13 @@ RecipeDraftErrors validateRecipeDraft(RecipeDraft draft) {
     }
   }
   final notes = draft.notes.trim();
+  // Sin el español, si es obligatorio, lo que falta es el español: el
+  // italiano sale de ahí.
+  final italianFromSpanish =
+      willTranslate && (requireSpanish || normalizeRecipeText(draft.nameEs).isNotEmpty);
   return RecipeDraftErrors(
-    nameIt: _nameError(draft.nameIt, maxRecipeNameLength, required: true),
-    nameEs: _nameError(draft.nameEs, maxRecipeNameLength),
+    nameIt: _nameError(draft.nameIt, maxRecipeNameLength, required: !italianFromSpanish),
+    nameEs: _nameError(draft.nameEs, maxRecipeNameLength, required: requireSpanish),
     nameEn: _nameError(draft.nameEn, maxRecipeNameLength),
     descriptionIt: _nameError(draft.descriptionIt, maxRecipeDescriptionLength),
     descriptionEs: _nameError(draft.descriptionEs, maxRecipeDescriptionLength),

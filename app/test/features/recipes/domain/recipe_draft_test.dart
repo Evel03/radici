@@ -116,6 +116,30 @@ void main() {
       expect(validateRecipeDraft(_valid(nameIt: '🍝' * 120)).nameIt, isNull);
     });
 
+    // Desde el 20/11/2026 el español es la fuente: obligatorio en un plato
+    // nuevo (y en uno que ya lo tenía); el italiano vacío se traduce de él.
+    test('el nombre en español, obligatorio si el editor lo pide', () {
+      final withoutSpanish = _valid();
+      expect(validateRecipeDraft(withoutSpanish).nameEs, isNull, reason: 'un plato viejo sin español se guarda');
+      expect(validateRecipeDraft(withoutSpanish, requireSpanish: true).nameEs, TextError.required);
+      expect(validateRecipeDraft(withoutSpanish.copyWith(nameEs: '  '), requireSpanish: true).nameEs, TextError.required);
+      expect(validateRecipeDraft(withoutSpanish.copyWith(nameEs: 'Pasta'), requireSpanish: true).isEmpty, isTrue);
+      expect(validateRecipeDraft(withoutSpanish.copyWith(nameEs: 'b' * 121), requireSpanish: true).nameEs, TextError.tooLong);
+    });
+
+    test('el nombre en italiano vacío no falta si se va a traducir del español', () {
+      final onlySpanish = emptyRecipeDraft(_newId).copyWith(nameEs: 'Locro');
+      expect(validateRecipeDraft(onlySpanish).nameIt, TextError.required, reason: 'la regla de la base');
+      expect(validateRecipeDraft(onlySpanish, requireSpanish: true, willTranslate: true).isEmpty, isTrue);
+      // Sin español no hay de dónde traducirlo.
+      final nothing = emptyRecipeDraft(_newId);
+      final errors = validateRecipeDraft(nothing, requireSpanish: true, willTranslate: true);
+      expect(errors.nameEs, TextError.required);
+      expect(errors.nameIt, isNull, reason: 'falta el español: el italiano sale de ahí');
+      expect(validateRecipeDraft(nothing, willTranslate: true).nameIt, TextError.required, reason: 'un plato viejo');
+      expect(validateRecipeDraft(onlySpanish.copyWith(nameIt: 'a' * 121), willTranslate: true).nameIt, TextError.tooLong);
+    });
+
     test('las traducciones son opcionales, con el mismo largo', () {
       final draft = _valid().copyWith(nameEs: '   ', nameEn: 'b' * 121);
       final errors = validateRecipeDraft(draft);
