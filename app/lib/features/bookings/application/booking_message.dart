@@ -34,7 +34,7 @@ Uri? bookingWhatsAppUri({
   final name = client.firstName.isNotEmpty
       ? client.firstName
       : client.displayName;
-  final format = _messageDateFormat(locale);
+  final format = messageDateFormat(locale);
   final dates = [
     for (final week in weeks) format.format(week.date.toDateTime()),
   ];
@@ -56,10 +56,11 @@ Uri? bookingWhatsAppUri({
   );
 }
 
-/// Fecha de cada sesión en el mensaje: «lunedì 23 novembre», «Monday,
-/// November 23» y, en español, «lunes 23 de noviembre» (en prosa, sin la coma
-/// del formato de intl: «del lunes 23 de noviembre»).
-DateFormat _messageDateFormat(String locale) => locale == 'es'
+/// Fecha de una sesión en un mensaje a la clienta: «lunedì 23 novembre»,
+/// «Monday, November 23» y, en español, «lunes 23 de noviembre» (en prosa,
+/// sin la coma del formato de intl: «del lunes 23 de noviembre»). También la
+/// usa el WhatsApp de la ficha de la sesión.
+DateFormat messageDateFormat(String locale) => locale == 'es'
     ? DateFormat("EEEE d 'de' MMMM", 'es')
     : DateFormat.MMMMEEEEd(locale);
 

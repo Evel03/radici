@@ -1,21 +1,31 @@
 // Aviso emergente en tiempo real: "Nuova richiesta da …" con botón para
-// abrirla, desde cualquier pantalla de la cocinera. Con una hoja de reserva
-// abierta (o tapada por otro pedido), «Apri» nunca la saca.
+// abrirla, en las pantallas de la cocinera salvo la ficha de una sesión y el
+// formulario del editor de platos (tienen su propio ScaffoldMessenger y, en el
+// navegador raíz, tapan el Scaffold de la barra): ahí aparece al volver.
+// Con una hoja de reserva o la ficha de una sesión (con su hoja «Sposta»)
+// abierta o tapada por otro pedido, «Apri» nunca la saca, y la hoja «Sposta»
+// que termina de mover con un pedido encima no lo cierra.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/core/router.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
+import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
+import 'package:radici/features/recipes/presentation/recipes_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
+import 'package:radici/features/sessions/presentation/move_session_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
 import '../../../support/request_fixtures.dart';
+import '../../../support/session_fixtures.dart';
 
 void main() {
   final arrived = buildRequest(
@@ -266,6 +276,289 @@ void main() {
       expect(find.byType(ConfirmBookingScreen), findsOneWidget);
       expect(tester.widget<TextField>(byKey('booking-price')).controller!.text, '600');
     });
+  });
+
+  group('con la ficha de una sesión y su hoja «Sposta»', () {
+    // La reserva de prueba: miércoles 25/11, 2/12, 9/12 y 16/12. Se mueve la
+    // semana 2 (2/12) al jueves 3/12.
+    Finder byKey(String key) => find.byKey(ValueKey(key));
+    Finder snackBarAction(String label) =>
+        find.descendant(of: find.byType(SnackBar), matching: find.text(label));
+    ChefRequest incoming(String id, String name, int hour) =>
+        buildRequest(id: id, name: name, createdAt: DateTime.utc(2026, 10, 19, hour));
+
+    /// La ficha de la semana 2 y, desde «Sposta», la hoja con el 3/12.
+    Future<ChefApp> openMoveSheet(WidgetTester tester, FakeSessionsRepository sessions) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+        sessions: sessions,
+        location: '/sessioni/${sessionId(2)}',
+      );
+      await tester.tap(byKey('session-move'));
+      await tester.pumpAndSettle();
+      final picker = find.byType(DatePickerDialog);
+      await tester.tap(find.descendant(of: picker, matching: find.text('3')).first);
+      await tester.pumpAndSettle();
+      final ok = MaterialLocalizations.of(tester.element(picker)).okButtonLabel;
+      await tester.tap(find.descendant(of: picker, matching: find.text(ok)));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsOneWidget);
+      return app;
+    }
+
+    testWidgets('un pedido llega mientras se mueve: «Apri» lo abre encima, la hoja no lo cierra al terminar y, '
+        'al volver, la ficha ofrece «Annulla»', (tester) async {
+      final sessions = FakeSessionsRepository(buildBooking())..pendingMove = Completer<void>();
+      final app = await openMoveSheet(tester, sessions);
+      await tester.tap(byKey('move-confirm'));
+      await tester.pump();
+
+      app.requests.insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(bannerText(tester), 'Nuova richiesta da Marco Bianchi');
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.widgetWithText(AppBar, 'Marco Bianchi'), findsOneWidget);
+
+      sessions.pendingMove!.complete();
+      await tester.pumpAndSettle();
+      expect(sessions.moves.single.date, CalendarDate(2026, 12, 3));
+      // Movida con el pedido encima: el pedido sigue abierto.
+      expect(find.widgetWithText(AppBar, 'Marco Bianchi'), findsOneWidget);
+
+      // Al volver, la hoja se cierra y la ficha ofrece «Annulla».
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsNothing);
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      expect(find.text('Sessione spostata a gio 3 dic, arrivo alle 10:00.'), findsOneWidget);
+      await tester.tap(snackBarAction('Annulla'));
+      await tester.pumpAndSettle();
+      expect(sessions.moves.last.date, CalendarDate(2026, 12, 2));
+    });
+
+    // go reemplaza toda la pila: sacaba la hoja a medio mover (sin pasar por
+    // su PopScope) y la ficha, y con ellas el resultado y su «Annulla».
+    testWidgets('dos pedidos llegan mientras se mueve: «Apri» abre encima el más reciente (no la bandeja) y, '
+        'al volver, la ficha ofrece «Annulla»', (tester) async {
+      final sessions = FakeSessionsRepository(buildBooking())..pendingMove = Completer<void>();
+      final app = await openMoveSheet(tester, sessions);
+      await tester.tap(byKey('move-confirm'));
+      await tester.pump();
+
+      app.requests
+        ..insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13))
+        ..insertFromRealtime(incoming('req-9', 'Anna Verdi', 14));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(bannerText(tester), '2 nuove richieste');
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+      expect(find.byType(InboxScreen), findsNothing);
+      expect(find.byType(MoveSessionScreen, skipOffstage: false), findsOneWidget);
+
+      sessions.pendingMove!.complete();
+      await tester.pumpAndSettle();
+      expect(sessions.moves.single.date, CalendarDate(2026, 12, 3));
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      expect(find.text('Sessione spostata a gio 3 dic, arrivo alle 10:00.'), findsOneWidget);
+      expect(snackBarAction('Annulla'), findsOneWidget);
+    });
+
+    testWidgets('sin mandar todavía: «Apri» con varios no saca la hoja y, al volver, sigue la fecha elegida', (
+      tester,
+    ) async {
+      final sessions = FakeSessionsRepository(buildBooking());
+      final app = await openMoveSheet(tester, sessions);
+      app.requests
+        ..insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13))
+        ..insertFromRealtime(incoming('req-9', 'Anna Verdi', 14));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsOneWidget);
+      expect(find.text('giovedì 3 dicembre 2026'), findsOneWidget);
+      await tester.tap(byKey('move-confirm'));
+      await tester.pumpAndSettle();
+      expect(sessions.moves.single.date, CalendarDate(2026, 12, 3));
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+    });
+
+    // Con la ficha a la vista el aviso hoy no aparece (la ficha tiene su
+    // propio ScaffoldMessenger): la regla se mira directo.
+    testWidgets('la ficha cuenta como la hoja de reserva: por enlace directo, con su hoja o tapada por un pedido', (
+      tester,
+    ) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+        sessions: FakeSessionsRepository(buildBooking()),
+      );
+      final router = app.container.read(routerProvider);
+      Future<bool> at(String location) async {
+        app.go(location);
+        await tester.pumpAndSettle();
+        return bookingOrSessionInStack(router);
+      }
+
+      expect(await at('/agenda'), isFalse);
+      expect(await at('/richieste/req-1'), isFalse);
+      expect(await at('/sessioni/${sessionId(2)}'), isTrue);
+      expect(await at('/sessioni/${sessionId(2)}/sposta?data=2026-12-03'), isTrue);
+
+      // Abierta desde la agenda y tapada por un pedido abierto desde el aviso.
+      expect(await at('/agenda'), isFalse);
+      unawaited(router.push('/sessioni/${sessionId(2)}'));
+      await tester.pumpAndSettle();
+      unawaited(router.push('/richieste/req-1'));
+      await tester.pumpAndSettle();
+      expect(find.byType(RequestDetailScreen), findsOneWidget);
+      expect(bookingOrSessionInStack(router), isTrue);
+    });
+  });
+
+  group('desde la Agenda (el recorrido del teléfono: día, sesión, ficha)', () {
+    // La reserva de prueba empieza el miércoles 21/10 (hoy: lunes 19/10).
+    final wednesday = CalendarDate(2026, 10, 21);
+    Finder byKey(String key) => find.byKey(ValueKey(key));
+    final navBar = byKey('chef-nav-bar');
+    ChefRequest incoming(String id, String name, int hour) =>
+        buildRequest(id: id, name: name, createdAt: DateTime.utc(2026, 10, 19, hour));
+
+    /// La Agenda con el miércoles 21/10 elegido y, desde ahí, la ficha de su
+    /// sesión (la semana 1).
+    Future<ChefApp> openSessionFromAgenda(WidgetTester tester, FakeSessionsRepository sessions) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+        sessions: sessions,
+        location: '/agenda',
+        // Alto: el día y su sesión a la vista sin desplazar.
+        size: const Size(400, 2000),
+      );
+      await tester.tap(byKey('agenda-day-2026-10-21'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('session-${sessionId(1)}'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      return app;
+    }
+
+    /// La Agenda, con la barra de navegación y Agenda elegida.
+    void expectAgendaWithBar(WidgetTester tester) {
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(navBar.hitTestable(), findsOneWidget);
+      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+    }
+
+    // Sobre la ficha el aviso no sale: tiene su propio ScaffoldMessenger (el
+    // del «Annulla» después de mover). Aparece al volver (ver README).
+    testWidgets('con la ficha a la vista el aviso no sale; al volver a la Agenda está y «Apri» abre el pedido', (
+      tester,
+    ) async {
+      final app = await openSessionFromAgenda(tester, FakeSessionsRepository(buildBooking(first: wednesday)));
+      app.requests.insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13));
+      await tester.pumpAndSettle();
+      expect(find.byKey(banner), findsNothing);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expectAgendaWithBar(tester);
+      expect(bannerText(tester), 'Nuova richiesta da Marco Bianchi');
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Marco Bianchi'), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expectAgendaWithBar(tester);
+    });
+
+    testWidgets('mientras se mueve llegan dos pedidos: «Apri» desde «Sposta» abre encima el más reciente; al terminar '
+        'y volver, la ficha ofrece «Annulla» y, al volver, la Agenda sigue con la barra y el día elegido', (
+      tester,
+    ) async {
+      final sessions = FakeSessionsRepository(buildBooking(first: wednesday))..pendingMove = Completer<void>();
+      final app = await openSessionFromAgenda(tester, sessions);
+      // «Sposta»: el jueves 22/10 en el calendario.
+      await tester.tap(byKey('session-move'));
+      await tester.pumpAndSettle();
+      final picker = find.byType(DatePickerDialog);
+      await tester.tap(find.descendant(of: picker, matching: find.text('22')).first);
+      await tester.pumpAndSettle();
+      final ok = MaterialLocalizations.of(tester.element(picker)).okButtonLabel;
+      await tester.tap(find.descendant(of: picker, matching: find.text(ok)));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsOneWidget);
+
+      await tester.tap(byKey('move-confirm'));
+      await tester.pump();
+      app.requests
+        ..insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13))
+        ..insertFromRealtime(incoming('req-9', 'Anna Verdi', 14));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(bannerText(tester), '2 nuove richieste');
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+      expect(find.byType(MoveSessionScreen, skipOffstage: false), findsOneWidget);
+
+      sessions.pendingMove!.complete();
+      await tester.pumpAndSettle();
+      expect(sessions.moves.single.date, CalendarDate(2026, 10, 22));
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+
+      // Al volver, la hoja se cierra y la ficha ofrece «Annulla».
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(MoveSessionScreen), findsNothing);
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+      await tester.tap(find.descendant(of: find.byType(SnackBar), matching: find.text('Annulla')));
+      await tester.pumpAndSettle();
+      expect(sessions.moves.last.date, wednesday);
+
+      // La Agenda, con el día que estaba elegido y la sesión de vuelta ahí.
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expectAgendaWithBar(tester);
+      expect(find.text('mercoledì 21 ottobre 2026'), findsOneWidget);
+      expect(byKey('session-${sessionId(1)}'), findsOneWidget);
+    });
+  });
+
+  // Como la ficha, el editor tiene su propio ScaffoldMessenger (ver README).
+  testWidgets('sobre el editor de platos el aviso no sale; al volver a Piatti, sí', (tester) async {
+    final app = await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([buildRequest()]),
+      location: '/altro/piatti',
+    );
+    app.go('/altro/piatti/nuovo');
+    await tester.pumpAndSettle();
+    expect(find.byType(RecipeEditorScreen), findsOneWidget);
+    app.requests.insertFromRealtime(arrived);
+    await tester.pumpAndSettle();
+    expect(find.byKey(banner), findsNothing);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(RecipesScreen), findsOneWidget);
+    expect(bannerText(tester), 'Nuova richiesta da Marco Bianchi');
   });
 
   testWidgets('al reconectar avisa lo que llegó sin conexión', (tester) async {

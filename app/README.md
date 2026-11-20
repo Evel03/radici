@@ -107,16 +107,80 @@ repositorios falsos (`test/support/fakes.dart`).
   y no la tapa.
 - **Franja**: la bandeja, el detalle y la agenda muestran mañana o tarde si el pedido la trae. La web
   ya no la pregunta y manda `any`, que la app lee como sin franja y no muestra (como los emails).
-- **Agenda**: mes y semana por `preferred_date` con la franja, más la lista "Senza data". "Hoy"
+- **Agenda**: mes y semana con las **sesiones** (`features/sessions/`): en el mes, un punto por
+  sesión en la celda (el texto accesible las cuenta) y, al tocar el día, sus bloques junto a la
+  tarjeta del día; en la semana, bloques «Arrivo 10:00 · fino alle 13:00» con las horas de cada
+  sesión (`start_time` y `cook_minutes` guardados en ella; nada fijo). Sin compra (19/11/2026): la
+  de las sesiones de antes (`shop_minutes`, 45 min) no se muestra, y una en `shopping_done` (sin
+  uso desde entonces) se ve como confirmada, en el bloque y en la ficha («Confermata», sin
+  etiqueta); la app no ofrece pasar a ese estado. Cada bloque abre la ficha de la sesión.
+  `SessionsRepository` las lee con la RLS («la
+  cocinera lee las suyas»), con la ficha (`clients`, y sus `client_restrictions`) y el pedido de la
+  reserva embebidos por el nombre de la FK (`requests.target_session_id` también apunta a
+  `sessions`), desde el lunes de la primera semana del mes de hoy (o del mes elegido, si es
+  anterior). Los pedidos que todavía no son una reserva siguen por `preferred_date` con la franja,
+  más la lista "Senza data"; los `accepted` ya no (se ven por sus sesiones). "Hoy"
   (Europe/Rome) cambia a la medianoche sin reabrir la app: se vuelve a mirar la fecha a la
   medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
-  Si estaba elegido "hoy", la agenda pasa al día nuevo; si no, respeta el día elegido.
+  Si estaba elegido "hoy", la agenda pasa al día nuevo; si no, respeta el día elegido. Deslizar
+  para actualizar vuelve a leer la bandeja, la disponibilidad y las sesiones (sin Realtime de
+  sesiones).
   Días bloqueados (`availability_exceptions`, sin migración: la RLS y los grants ya estaban): la
   tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada (los clientes no la
   ven; la cocinera y sus colaboradores, sí), y el botón «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
   existía). La web deja de ofrecerlos en 1 o 2 minutos (`get_free_days` los descuenta; la
   disponibilidad se cachea 60 s). Marca los feriados nacionales (Pasquetta calculada; San Francesco
-  desde 2026, legge n. 151/2025) y Sant'Alessandro (26/8) como festivo local de Bergamo.
+  desde 2026, legge n. 151/2025) y Sant'Alessandro (26/8) como festivo local de Bergamo. Un día con
+  sesiones (y el rango que las incluya) avisa que bloquearlo no las cancela; si las sesiones no se
+  pudieron leer, el rango lo dice en lugar de callarse. La celda del día y cada bloque llevan la
+  acción de tocar en su nodo de accesibilidad: en `/gestione/`, el clic de VoiceOver solo llega a
+  un nodo que la tiene.
+- **Ficha de la sesión** (`/sessioni/:id`, a pantalla completa; abierta con un enlace directo, sin
+  nada debajo, su flecha de volver lleva a la Agenda): el día, «Settimana k di N» (sin
+  contar las canceladas), las horas (la llegada y el fin de la cocina; el renglón se parte solo
+  después de un «·»: nunca «fino alle» y la hora en dos renglones), «Come arrivare» (la dirección
+  de la ficha en Apple Maps en el
+  iPhone, también en `/gestione/` con Safari, y en Google Maps en el resto), WhatsApp en el idioma
+  de la clienta (la fecha y, según la sesión, la hora de llegada; nunca la dirección ni las
+  alergias) y llamar. Si la abre un colaborador, el WhatsApp sale de su propio teléfono y escribe
+  de parte de la cocinera (`sessionWhatsAppMessageOnBehalf`; el del detalle es
+  `contactWhatsAppMessageOnBehalf` y el de la reserva, `bookingWhatsAppMessageOnBehalf`): «ti
+  scrivo da parte di Evelyn di Radici per la sessione di…, con arrivo di Evelyn alle 10:00» en
+  lugar de «sono Evelyn… con arrivo alle 10:00». Los dos mensajes de la ficha (el de la cocinera
+  y el del colaborador) describen el horario y no afirman que la llegada sea futura: valen también
+  en una sesión de hoy cuya llegada ya pasó. La hora de llegada va solo si la sesión no está
+  cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, que en una ficha abierta
+  cambia a la medianoche); en las demás (de un día que ya pasó, cocinada, cobrada o cancelada) el
+  mensaje nombra la sesión por su fecha, sin la hora: «Ti scrivo per la sessione di mercoledì 25
+  novembre.» (`sessionWhatsAppMessageNoArrival`; de parte de la cocinera,
+  `sessionWhatsAppMessageNoArrivalOnBehalf`). El formulario web
+  no pide la dirección: sin ella, WhatsApp pasa a ser el botón principal y en lugar de «Come
+  arrivare» va «Aggiungi indirizzo», que la guarda en la ficha (`clients.address`, con la RLS «la
+  cocinera gestiona los suyos» y el grant por columna; vale para todas sus sesiones y se corrige
+  desde la fila de la dirección). Después, las alergias de la ficha y del pedido, con la nota del
+  pedido resaltada (también sola, como llega de la web) y, con gluten, la de contaminación cruzada
+  (SPEC §5.6), cada una un nodo propio en el orden en que se ven (el lector de pantalla no las
+  mezcla con el título); los datos de la clienta y las semanas de la reserva (cada una abre su
+  ficha). Abajo, **Mover**:
+  el calendario y una hoja (`/sessioni/:id/sposta`) que pide el `dryRun` de
+  `POST chef/sessions/move` antes de confirmar (libre, un aviso, un choque o la semana con otra
+  sesión de la reserva, que ofrece «Passa alla fine della prenotazione»: una por semana; no deja
+  mover hasta que vuelve, y el lector de pantalla anuncia lo que dice); al mover, la ficha ofrece
+  «Annulla», que la devuelve a su fecha y hora (si la hoja termina tapada por un pedido abierto
+  desde el aviso, se cierra al volver a ella). Y **Cancelar** (`POST chef/sessions/cancel`), con
+  confirmación (que no promete que la web vuelva a ofrecer el día: no lo hace si está bloqueado,
+  pasó o no queda lugar), el motivo (la lista cerrada del contrato, preseleccionado el neutro
+  `chef_cancelled`: la clienta con cuenta puede leerlo) y «anche le successive». Un 409
+  `hasPayments` no cancela nada y dice qué semanas están cobradas, por fecha: si se cancelaba solo
+  la de la ficha, ofrece pasarla al final de la reserva (decisión 5 del plan); si eran varias,
+  cancelar solo las que no están cobradas (pasarla al final la dejaría detrás de las que se querían
+  cancelar). Lo explica igual si llega al tocar «Riprova» después de una falla de red. La
+  cancelación con devolución llega con los cobros (PR 10): la app nunca manda `allowWithPayments`.
+  Mientras una sesión espera al servidor, Mover y Cancelar quedan deshabilitados. Lo que devuelve
+  la función se aplica en la agenda y en la ficha sin volver a leer (también las que ya estaban
+  canceladas en otro dispositivo, `alreadyCancelled`); los errores se traducen a
+  `SessionFailure` sin loguear nada (contrato `docs/contracts/chef-api.md` §5 y §6). Los modelos
+  no imprimen la dirección, las alergias ni las notas en `toString`.
 - **Detalle**: todos los datos (también las restricciones), la estimación guardada (el servicio, sin
   compra ni total: la compra la hace el cliente; las claves de compra de los pedidos de antes se
   ignoran) y las acciones:
@@ -176,24 +240,29 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
   entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).
-- **Avisos de la web** (arriba de cualquier pantalla, también del login, salvo con el teclado
-  abierto): versión nueva publicada y, en Safari del iPhone, abrir Radici desde el ícono (ver
-  [Web /gestione/](#web-gestione)).
+- **Avisos de la web** (arriba de cualquier pantalla, también del login, salvo con el teclado o un
+  diálogo abiertos): versión nueva publicada y, en Safari del iPhone, abrir Radici desde el ícono
+  (ver [Web /gestione/](#web-gestione)).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
-  emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Con varios
+  emergente "Nuova richiesta da …", con botón para abrirla, en cualquier pantalla salvo la ficha de
+  una sesión y el formulario del editor de platos (y sus diálogos): tienen su propio
+  `ScaffoldMessenger` y, en el navegador raíz, tapan el Scaffold de la barra, que es donde sale el
+  aviso. Ahí no se ve, y aparece al volver de esas pantallas. Con varios
   pedidos («N nuove richieste») el botón lleva a la bandeja, salvo con una hoja «Conferma
-  prenotazione» abierta (o tapada por otro pedido): ahí abre encima el más reciente, porque ir a la
-  bandeja sacaría la hoja sin preguntar, y mientras se manda se perdería la pantalla final con el
-  WhatsApp. Al reconectar (corte de red, app que vuelve del segundo plano) se relee la lista y se
-  avisa lo que llegó.
+  prenotazione» o la ficha de una sesión (con su hoja «Sposta») abierta o tapada por otro pedido:
+  ahí abre encima el más reciente, porque ir a la bandeja las sacaría sin preguntar, y se perdería
+  lo que tienen a medias (mientras se manda la reserva, la pantalla final con el WhatsApp; mientras
+  se mueve una sesión, el «Annulla» de la ficha). Al reconectar (corte de red, app que vuelve del
+  segundo plano) se relee la lista y se avisa lo que llegó.
 - Los teléfonos se normalizan con `lib/core/phone.dart`, copia de `normalizePhone`
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
 
 Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace del email a Evelyn):
 `/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`,
-`/richieste/:id/prenota`, `/agenda`, `/impostazioni`, `/altro`, `/altro/piatti`,
-`/altro/piatti/nuovo` (con `?copia=<id>`, la copia de un plato) y `/altro/piatti/:id`, más `/` y
-`/preventivo` (públicas). En la web `/` lleva al login.
+`/richieste/:id/prenota`, `/agenda`, `/sessioni/:id`, `/sessioni/:id/sposta` (con `?data=AAAA-MM-DD`
+si la fecha ya se eligió), `/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con
+`?copia=<id>`, la copia de un plato) y `/altro/piatti/:id`, más `/` y `/preventivo` (públicas). En la
+web `/` lleva al login.
 
 ### Requisitos en Supabase
 
@@ -271,12 +340,16 @@ hace falta: sin `BUILD_ID` la app no avisa nada.
   primer layout y un cambio de foco en ese momento mide los botones (con uno sin tamaño, «RenderBox
   was not laid out»). La app de abajo va en su propio contenedor de semántica: la barrera de cada
   ruta (un `BlockSemantics`) descarta lo pintado antes en el mismo contenedor, y sin eso VoiceOver no
-  vería los avisos. Sus botones quedan a 8 px o más de lo de abajo (las acciones de cada barra,
-  como «Salva» del calendario de rango). Con el teclado abierto (Flutter web lo informa como
-  `viewInsets`) los avisos se esconden y vuelven al cerrarlo: le quitan su alto a todas las
-  pantallas, y en un iPhone SE en Safari la hoja «Conferma prenotazione» se quedaba sin lugar para
-  el campo que se escribe y, con los dos avisos, «Conferma» bajaba detrás del teclado. Esconder la
-  tarjeta de Safari no es cerrarla.
+  vería los avisos. Sus botones quedan a 8 px o más de lo de abajo (las acciones de cada barra).
+  Con el teclado abierto (Flutter web lo informa como `viewInsets`) los avisos se esconden y vuelven
+  al cerrarlo: le quitan su alto a todas las pantallas, y en un iPhone SE en Safari la hoja
+  «Conferma prenotazione» se quedaba sin lugar para el campo que se escribe y, con los dos avisos,
+  «Conferma» bajaba detrás del teclado. Mientras haya un diálogo abierto en el navegador raíz
+  (`showDialog`, el calendario o el reloj; los cuenta `OpenDialogsObserver`, en
+  `lib/core/open_dialogs.dart`, hasta que cada uno termina de cerrarse), también: los diálogos van
+  en el Navigator, debajo de los avisos, y con los dos, a 375×548, las filas del calendario medían
+  14 px y «OK» del reloj quedaba cortado, sin poder tocarse. Los menús y las listas desplegables no
+  los esconden. Esconder la tarjeta de Safari no es cerrarla.
 - **iPhone** (`web/index.html`, `web/manifest.json`): `<meta name="viewport">` solo para la pantalla
   de carga (al arrancar, Flutter pone el suyo; por eso tampoco va `viewport-fit=cover`),
   `apple-mobile-web-app-capable` y la barra de estado `default`; en la carga, el ícono y la rueda, sin

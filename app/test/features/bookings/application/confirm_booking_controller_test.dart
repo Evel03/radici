@@ -20,6 +20,8 @@ import 'package:radici/features/requests/application/chef_inbox_controller.dart'
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/domain/inbox.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart';
+import 'package:radici/features/sessions/data/sessions_repository.dart';
 
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';
@@ -33,6 +35,7 @@ void main() {
 
   late FakeChefRequestsRepository requests;
   late FakeBookingsRepository bookings;
+  late FakeSessionsRepository sessions;
   late ProviderContainer container;
   late int keys;
 
@@ -63,6 +66,7 @@ void main() {
         ),
         chefRequestsRepositoryProvider.overrideWithValue(requests),
         bookingsRepositoryProvider.overrideWithValue(bookings),
+        sessionsRepositoryProvider.overrideWithValue(sessions),
         clockProvider.overrideWithValue(() => testNow),
         newIdProvider.overrideWithValue(() => 'key-${++keys}'),
       ],
@@ -90,6 +94,7 @@ void main() {
     keys = 0;
     requests = FakeChefRequestsRepository(const []);
     bookings = FakeBookingsRepository(requests: requests);
+    sessions = FakeSessionsRepository();
   });
 
   group('prellenado', () {
@@ -506,6 +511,25 @@ void main() {
       expect(booked.weeks, 4);
       expect(booked.client.status, ClientStatus.trial);
       expect(inboxTabOf(booked), InboxTab.bookings);
+    });
+
+    test('con la agenda ya cargada, al confirmar vuelve a leer las sesiones', () async {
+      await open(weekly());
+      container.listen(sessionsControllerProvider, (_, _) {});
+      await pumpEventQueue();
+      final reads = sessions.fetchCalls;
+
+      await controller().confirm();
+      await pumpEventQueue();
+
+      expect(sessions.fetchCalls, reads + 1);
+    });
+
+    test('sin la agenda abierta no lee sesiones (las lee al abrirla)', () async {
+      await open(weekly());
+      await controller().confirm();
+      await pumpEventQueue();
+      expect(sessions.fetchCalls, 0);
     });
 
     test('mientras envía el botón queda deshabilitado: un segundo toque no manda nada', () async {

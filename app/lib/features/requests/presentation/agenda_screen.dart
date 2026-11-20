@@ -1,7 +1,11 @@
-// Agenda: pedidos por fecha preferida en vista mensual o semanal, con la
-// franja (mañana, tarde, indistinto), la lista "senza data" y la
-// disponibilidad de cada día: bloqueados (la web no los ofrece), feriados y
-// el botón «Blocca giorni» para un rango.
+// Agenda en vista mensual o semanal: las sesiones de cada día (en la semana,
+// bloques «Arrivo · fino alle» con las horas de la sesión; cada una
+// abre su ficha), los pedidos que todavía no son una reserva por su fecha
+// preferida, con la franja, la lista "senza data" y la disponibilidad de cada
+// día: bloqueados (la web no los ofrece), feriados y el botón «Blocca giorni»
+// para un rango.
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/rome_time.dart';
@@ -19,6 +23,10 @@ import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart';
+import 'package:radici/features/sessions/data/sessions_repository.dart';
+import 'package:radici/features/sessions/domain/cooking_session.dart';
+import 'package:radici/features/sessions/presentation/session_block.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 class AgendaScreen extends ConsumerWidget {
@@ -53,16 +61,18 @@ class AgendaScreen extends ConsumerWidget {
 class _AgendaList extends ConsumerWidget {
   const _AgendaList();
 
-  /// Deslizar para actualizar: la bandeja y la disponibilidad juntas. Si
-  /// alguna falla, queda lo que había y se avisa.
+  /// Deslizar para actualizar: la bandeja, la disponibilidad y las sesiones
+  /// juntas. Si alguna falla, queda lo que había y se avisa.
   Future<void> _refresh(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     final message = AppLocalizations.of(context).inboxRefreshError;
     final inbox = ref.read(chefInboxProvider.notifier);
     final availability = ref.read(availabilityControllerProvider.notifier);
+    final sessions = ref.read(sessionsControllerProvider.notifier);
     final results = await Future.wait([
       _attempt(inbox.refresh),
       _attempt(availability.refresh),
+      _attempt(sessions.refresh),
     ]);
     if (results.contains(false) && messenger.mounted) {
       messenger.showSnackBar(SnackBar(content: Text(message)));
@@ -76,6 +86,8 @@ class _AgendaList extends ConsumerWidget {
     } on RequestsFailure {
       return false;
     } on AvailabilityFailure {
+      return false;
+    } on SessionFailure {
       return false;
     }
   }
@@ -103,6 +115,7 @@ class _AgendaList extends ConsumerWidget {
             children: [
               if (loading) const LinearProgressIndicator(),
               const _AgendaToolbar(),
+              const _SessionsLoadError(),
               const SizedBox(height: 8),
               switch (view) {
                 AgendaView.month => const _MonthView(),
@@ -231,8 +244,10 @@ class _MonthViewState extends ConsumerState<_MonthView> {
       agendaControllerProvider.select((s) => s.selectedDay),
     );
     final byDate = ref.watch(agendaByDateProvider);
+    final sessionsByDate = ref.watch(agendaSessionsByDateProvider);
     final weeks = monthGrid(selected);
     final dayRequests = byDate[selected] ?? const <ChefRequest>[];
+    final daySessions = sessionsByDate[selected] ?? const <CookingSession>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -264,6 +279,7 @@ class _MonthViewState extends ConsumerState<_MonthView> {
                     day: day,
                     inMonth: day.isSameMonth(selected),
                     count: byDate[day]?.length ?? 0,
+                    sessionCount: sessionsByDate[day]?.length ?? 0,
                     onTap: () => _select(day),
                   ),
                 ),
@@ -275,9 +291,12 @@ class _MonthViewState extends ConsumerState<_MonthView> {
           children: [
             _SectionTitle(formats.longDate(selected)),
             DayAvailabilityCard(day: selected),
+            // Las sesiones del día (cada una abre su ficha), con la tarjeta:
+            // al elegir el día se ven sin desplazar.
+            for (final session in daySessions) SessionBlock(session: session),
           ],
         ),
-        if (dayRequests.isEmpty)
+        if (dayRequests.isEmpty && daySessions.isEmpty)
           _EmptyText(l10n.agendaNoRequestsDay, key: const ValueKey('agenda-day-empty'))
         else
           for (final request in dayRequests)
@@ -287,17 +306,27 @@ class _MonthViewState extends ConsumerState<_MonthView> {
   }
 }
 
+/// Cuántas sesiones se marcan como mucho en una celda del mes (un punto cada
+/// una); el texto accesible dice todas.
+const int _maxSessionDots = 3;
+
 class _DayCell extends ConsumerWidget {
   const _DayCell({
     required this.day,
     required this.inMonth,
     required this.count,
+    required this.sessionCount,
     required this.onTap,
   });
 
   final CalendarDate day;
   final bool inMonth;
+
+  /// Pedidos que lo preferían.
   final int count;
+
+  /// Sesiones vivas de ese día.
+  final int sessionCount;
   final VoidCallback onTap;
 
   @override
@@ -331,6 +360,7 @@ class _DayCell extends ConsumerWidget {
 
     final label = [
       formats.longDate(day),
+      if (sessionCount > 0) l10n.agendaSessionCount(sessionCount),
       l10n.agendaDayCount(count),
       if (isBlocked) l10n.availabilityBlockedA11y,
       if (holiday != null) l10n.holidayLine(holiday),
@@ -341,6 +371,9 @@ class _DayCell extends ConsumerWidget {
       selected: isSelected,
       label: label,
       excludeSemantics: true,
+      // La acción va en el nodo: excludeSemantics descarta la del InkWell, y
+      // en /gestione/ el clic de VoiceOver solo llega a un nodo que la tiene.
+      onTap: onTap,
       child: InkWell(
         key: ValueKey('agenda-day-${day.toIso()}'),
         customBorder: const CircleBorder(),
@@ -398,11 +431,37 @@ class _DayCell extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 2),
+              // Debajo del número: un punto por sesión (en el color principal)
+              // y la cantidad de pedidos que lo preferían.
               SizedBox(
                 height: 12,
-                child: count == 0
-                    ? null
-                    : Text(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (sessionCount > 0)
+                      Row(
+                        key: ValueKey('agenda-day-sessions-${day.toIso()}'),
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (
+                            var i = 0;
+                            i < math.min(sessionCount, _maxSessionDots);
+                            i++
+                          )
+                            Container(
+                              width: 6,
+                              height: 6,
+                              margin: const EdgeInsets.symmetric(horizontal: 1),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: colors.primary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    if (sessionCount > 0 && count > 0) const SizedBox(width: 3),
+                    if (count > 0)
+                      Text(
                         '$count',
                         key: ValueKey('agenda-day-count-${day.toIso()}'),
                         style: theme.textTheme.labelSmall?.copyWith(
@@ -411,6 +470,8 @@ class _DayCell extends ConsumerWidget {
                           height: 1,
                         ),
                       ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -432,6 +493,7 @@ class _WeekView extends ConsumerWidget {
     );
     final today = ref.watch(romeTodayProvider);
     final byDate = ref.watch(agendaByDateProvider);
+    final sessionsByDate = ref.watch(agendaSessionsByDateProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -459,6 +521,14 @@ class _WeekView extends ConsumerWidget {
                     ),
                   ),
                   DayAvailabilityCard(day: day, compact: true),
+                  // Bloques «Arrivo · fino alle», con las horas de cada
+                  // sesión.
+                  for (final session
+                      in sessionsByDate[day] ?? const <CookingSession>[])
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: SessionBlock(session: session),
+                    ),
                   for (final request in byDate[day] ?? const <ChefRequest>[])
                     RequestTile(request: request, showSlotOnly: true),
                 ],
@@ -466,6 +536,45 @@ class _WeekView extends ConsumerWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Si no se pudieron leer las sesiones, el aviso con «Riprova» (sin él, la
+/// agenda parecería vacía). Mientras cargan, nada: aparecen solas.
+class _SessionsLoadError extends ConsumerWidget {
+  const _SessionsLoadError();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final failed = ref.watch(
+      sessionsControllerProvider.select(
+        (sessions) => sessions.hasError && !sessions.isLoading,
+      ),
+    );
+    if (!failed) return const SizedBox.shrink();
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return Padding(
+      key: const ValueKey('sessions-load-error'),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            l10n.sessionsLoadFailed,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+          TextButton(
+            key: const ValueKey('sessions-retry'),
+            onPressed: () => ref.invalidate(sessionsControllerProvider),
+            child: Text(l10n.actionRetry),
+          ),
+        ],
+      ),
     );
   }
 }

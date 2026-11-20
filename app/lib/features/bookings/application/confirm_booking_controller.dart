@@ -26,6 +26,7 @@ import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart';
 
 part 'confirm_booking_controller.freezed.dart';
 
@@ -397,12 +398,16 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
             serviceTotalCents: current.serviceTotalCents,
             requestKey: _requestKey,
           );
-    // La bandeja se actualiza aunque la hoja se cierre mientras tanto.
+    // La bandeja y la agenda se actualizan aunque la hoja se cierre mientras
+    // tanto.
     final inbox = ref.read(chefInboxProvider.notifier);
+    final refreshSessions = agendaSessionsRefresher(ref);
     state = current.copyWith(sending: true, failure: null, sent: booking);
     try {
       final result = await _repository.createBooking(booking);
       inbox.applyBooking(request.id, weeks: result.weeks.length);
+      // Las sesiones nuevas aparecen en la agenda.
+      if (refreshSessions != null) unawaited(refreshSessions());
       if (!ref.mounted) return;
       state = state.copyWith(sending: false, result: result);
     } on BookingFailure catch (failure) {

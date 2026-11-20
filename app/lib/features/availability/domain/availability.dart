@@ -244,7 +244,8 @@ RangeSummary summarizeRange(
 }
 
 /// Lo que la agenda muestra de un día: estado, feriado, horario, la nota si
-/// está bloqueado y cuántos pedidos activos lo preferían.
+/// está bloqueado, cuántos pedidos activos lo preferían y cuántas sesiones
+/// tiene (bloquearlo no las cancela).
 @Freezed(fromJson: false, toJson: false, toStringOverride: false)
 abstract class AgendaDayAvailability with _$AgendaDayAvailability {
   const factory AgendaDayAvailability({
@@ -258,6 +259,9 @@ abstract class AgendaDayAvailability with _$AgendaDayAvailability {
     /// Las franjas de ese día de la semana, por hora de inicio.
     @Default(<AvailabilityRule>[]) List<AvailabilityRule> hours,
     @Default(0) int requestCount,
+
+    /// Sesiones vivas de ese día.
+    @Default(0) int sessionCount,
   }) = _AgendaDayAvailability;
 
   const AgendaDayAvailability._();
@@ -276,13 +280,14 @@ abstract class AgendaDayAvailability with _$AgendaDayAvailability {
       'AgendaDayAvailability(${day.toIso()}, ${status.name})';
 }
 
-/// Arma [AgendaDayAvailability] para [day], con hoy en Roma y los pedidos
-/// activos que lo preferían.
+/// Arma [AgendaDayAvailability] para [day], con hoy en Roma, los pedidos
+/// activos que lo preferían y sus sesiones.
 AgendaDayAvailability agendaDayAvailability({
   required CalendarDate day,
   required CalendarDate today,
   required AvailabilitySnapshot snapshot,
   int requestsThatDay = 0,
+  int sessionsThatDay = 0,
 }) {
   final status = dayStatus(day, today: today, availability: snapshot);
   return AgendaDayAvailability(
@@ -292,5 +297,6 @@ AgendaDayAvailability agendaDayAvailability({
     blocked: status == DayStatus.blocked ? snapshot.blocked[day] : null,
     hours: snapshot.rulesFor(day.weekday),
     requestCount: requestsThatDay,
+    sessionCount: sessionsThatDay,
   );
 }

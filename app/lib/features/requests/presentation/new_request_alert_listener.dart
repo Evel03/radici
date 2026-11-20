@@ -1,5 +1,8 @@
-// Aviso emergente "Nuova richiesta da …" (MaterialBanner) en cualquier
-// pantalla de la app, con botón para abrir el pedido.
+// Aviso emergente "Nuova richiesta da …" (MaterialBanner), con botón para
+// abrir el pedido, en el ScaffoldMessenger de la app: sale en cualquier
+// pantalla salvo la ficha de una sesión y el formulario del editor de platos
+// (y sus diálogos), que tienen el suyo y, en el navegador raíz, tapan el
+// Scaffold de la barra, que es donde sale; aparece al volver de ahí.
 //
 // Va en el `builder` de MaterialApp, por encima de todas las rutas: así sigue
 // escuchando aunque la cocinera esté en el detalle de otro pedido (las rutas
@@ -50,9 +53,10 @@ class NewRequestAlertListener extends ConsumerWidget {
       final router = ref.read(routerProvider);
       ref.read(newRequestAlertProvider.notifier).dismiss();
       // push: al volver, la cocinera sigue donde estaba. Con varios, la
-      // bandeja (go reemplaza toda la pila), salvo con una hoja de reserva en
-      // la pila: ahí se abre encima el más reciente, para no perder la hoja.
-      if (single || bookingSheetInStack(router)) {
+      // bandeja (go reemplaza toda la pila), salvo con una hoja de reserva o
+      // la ficha de una sesión en la pila: ahí se abre encima el más
+      // reciente, para no perder lo que tienen a medias.
+      if (single || bookingOrSessionInStack(router)) {
         router.push(AppRoutes.requestDetail(alert.latest.id));
       } else {
         router.go(AppRoutes.requests);

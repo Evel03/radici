@@ -7,6 +7,10 @@
 // teclado abierto se esconden y vuelven al cerrarlo: le quitan su alto a
 // todas las pantallas, y en un iPhone en Safari no quedaba lugar para el campo
 // que se escribe y la acción de abajo (como «Conferma» de la hoja de reserva).
+// Mientras haya un diálogo abierto, también (ver OpenDialogsObserver): los
+// diálogos van en el Navigator, debajo de los avisos, y en un iPhone SE en
+// Safari el calendario quedaba aplastado y «OK» del reloj, cortado y sin
+// poder tocarse.
 //
 // Va en el builder de MaterialApp (app.dart), encima del Navigator: sigue ahí
 // aunque cambie la ruta, pero no tiene Overlay, así que los botones llevan
@@ -16,6 +20,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:radici/core/open_dialogs.dart';
 import 'package:radici/features/web_app/application/app_update_controller.dart';
 import 'package:radici/features/web_app/application/install_hint_controller.dart';
 import 'package:radici/l10n/app_localizations.dart';
@@ -67,9 +72,10 @@ class _WebAppNoticesState extends ConsumerState<WebAppNotices> {
     final updateAvailable = ref.watch(appUpdateControllerProvider);
     final showInstallHint = ref.watch(installHintControllerProvider);
     // Flutter web informa el teclado del teléfono como viewInsets. Esconder
-    // un aviso no es cerrarlo: vuelve al cerrar el teclado.
+    // un aviso no es cerrarlo: vuelve al cerrar el teclado o el diálogo.
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
-    final visible = _firstFrameDone && !keyboardOpen;
+    final dialogOpen = ref.watch(openDialogsProvider.select((n) => n > 0));
+    final visible = _firstFrameDone && !keyboardOpen && !dialogOpen;
     final notices = [
       if (visible && updateAvailable) const _UpdateBanner(),
       if (visible && showInstallHint) const _InstallHintCard(),
@@ -129,7 +135,8 @@ class _UpdateBanner extends ConsumerWidget {
       color: colors.primaryContainer,
       child: Padding(
         // 8 abajo: «Aggiorna» queda a 8 px de lo de abajo (las acciones de la
-        // barra de cada pantalla, como «Salva» del calendario de rango).
+        // barra de cada pantalla; con un diálogo abierto, como el calendario
+        // de rango con «Salva» arriba, el aviso no está).
         padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 8, 8),
         child: Row(
           children: [

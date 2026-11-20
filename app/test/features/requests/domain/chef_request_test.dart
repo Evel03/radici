@@ -329,16 +329,12 @@ void main() {
       }
     });
 
-    test('activos para la agenda: new, quoted y accepted', () {
+    test('activos para la agenda: new y quoted (una reserva ya tiene sus sesiones)', () {
       final active = {
         for (final status in RequestStatus.values)
           if (buildRequest(status: status).isActive) status,
       };
-      expect(active, {
-        RequestStatus.newRequest,
-        RequestStatus.quoted,
-        RequestStatus.accepted,
-      });
+      expect(active, {RequestStatus.newRequest, RequestStatus.quoted});
     });
 
     test('alergias: indicadas si hay restricciones; nadie solo si lo confirmó; si no, sin datos', () {

@@ -1,5 +1,6 @@
 // Redirecciones según la sesión (core/routes.dart).
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
@@ -126,6 +127,32 @@ void main() {
   test('requestDetail codifica el id', () {
     expect(AppRoutes.requestDetail('abc'), '/richieste/abc');
     expect(AppRoutes.requestDetail('a/b'), '/richieste/a%2Fb');
+  });
+
+  test('la ficha de una sesión y su hoja «Sposta» son del área de la cocinera', () {
+    expect(AppRoutes.sessionDetail('abc'), '/sessioni/abc');
+    expect(AppRoutes.sessionDetail('a/b'), '/sessioni/a%2Fb');
+    expect(AppRoutes.sessionMove('abc'), '/sessioni/abc/sposta');
+    expect(
+      AppRoutes.sessionMove('a/b', date: CalendarDate(2026, 12, 3)),
+      '/sessioni/a%2Fb/sposta?data=2026-12-03',
+    );
+    for (final path in ['/sessioni/abc', '/sessioni/abc/sposta']) {
+      expect(isChefPath(path), isTrue, reason: path);
+      expect(_redirect(chef, path), isNull, reason: path);
+    }
+    // Con la fecha en la URL, también vuelve ahí después de entrar.
+    expect(
+      _redirect(signedOut, '/sessioni/abc/sposta?data=2026-12-03'),
+      '/accedi?from=%2Fsessioni%2Fabc%2Fsposta%3Fdata%3D2026-12-03',
+    );
+    expect(
+      _redirect(chef, '/accedi?from=%2Fsessioni%2Fabc'),
+      '/sessioni/abc',
+    );
+    // Sin id no es una ruta (ni del área).
+    expect(isChefPath('/sessioni'), isFalse);
+    expect(_redirect(client, '/sessioni/abc'), '/area-clienti');
   });
 
   test('la hoja «Conferma prenotazione» cuelga del detalle y es del área de la cocinera', () {
