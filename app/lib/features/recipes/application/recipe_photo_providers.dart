@@ -35,10 +35,10 @@ final recipePhotoUrlProvider = Provider.autoDispose
 /// La imagen de una URL pública de foto. En la web, Flutter la pide con
 /// XMLHttpRequest (connect-src de /gestione/) y, en Safari y Firefox, la
 /// decodifica en un `<img>` con una URL blob: (img-src blob:). Los tests la
-/// reemplazan por una en memoria.
-final recipePhotoImageProvider = Provider.family<ImageProvider<Object>, String>(
-  (ref, url) => NetworkImage(url),
-);
+/// reemplazan por una en memoria. La imagen ya cargada queda en el ImageCache
+/// de Flutter: el provider se descarta cuando nadie la muestra.
+final recipePhotoImageProvider = Provider.autoDispose
+    .family<ImageProvider<Object>, String>((ref, url) => NetworkImage(url));
 
 /// Prepara una foto elegida (processRecipePhoto). Lanza
 /// [RecipePhotoFormatException].
