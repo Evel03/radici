@@ -75,6 +75,7 @@ class FakeRecipePhotosRepository implements RecipePhotosRepository {
   bool failDelete = false;
 
   Completer<void>? pendingUpload;
+  Completer<void>? pendingSet;
 
   /// La foto de cada [upload], en orden (también las que fallaron).
   final List<String> uploadCalls = [];
@@ -118,6 +119,8 @@ class FakeRecipePhotosRepository implements RecipePhotosRepository {
     } else {
       photoOf[recipeId] = photoId;
     }
+    final wait = pendingSet;
+    if (wait != null) await wait.future;
     return previous == photoId ? null : previous;
   }
 

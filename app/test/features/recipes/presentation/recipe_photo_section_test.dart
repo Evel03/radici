@@ -188,6 +188,61 @@ void main() {
     },
   );
 
+  // En el iPhone el selector se cierra y la foto sigue cargando (de iCloud):
+  // si «Salva» funcionara, el plato se guardaría y se cerraría sin la foto.
+  testWidgets('mientras llega y se prepara la foto lo dice y «Salva» espera', (
+    tester,
+  ) async {
+    await openEditor(tester);
+    await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
+    picker.pending = Completer<void>();
+    await tapVisible(tester, byKey('recipe-photo-choose'));
+    await tester.tap(byKey('recipe-photo-gallery'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(statusText(tester), 'Preparo la foto…');
+    expect(byKey('recipe-photo-progress'), findsOneWidget);
+    expect(tester.widget<FilledButton>(byKey('recipe-save')).onPressed, isNull);
+    expect(
+      tester.widget<OutlinedButton>(byKey('recipe-photo-choose')).onPressed,
+      isNull,
+    );
+
+    picker.pending!.complete();
+    await tester.pumpAndSettle();
+    expect(statusText(tester), 'La foto si carica quando salvi.');
+    expect(
+      tester.widget<FilledButton>(byKey('recipe-save')).onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets(
+    'mientras saca la foto dice «Tolgo la foto…», también al lector de pantalla',
+    (tester) async {
+      lasagneWithPhoto();
+      await openEditor(tester, location: '/altro/piatti/$lasagneId');
+      await tapVisible(tester, byKey('recipe-photo-remove'));
+      photos.pendingSet = Completer<void>();
+
+      await tester.tap(byKey('recipe-save'));
+      await tester.pump();
+      await tester.pump();
+      expect(statusText(tester), 'Tolgo la foto…');
+      await tester.ensureVisible(byKey('recipe-photo-status'));
+      await tester.pump();
+      expect(
+        tester.getSemantics(byKey('recipe-photo-status')),
+        matchesSemantics(label: 'Tolgo la foto…', isLiveRegion: true),
+      );
+
+      photos.pendingSet!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(RecipesScreen), findsOneWidget);
+    },
+  );
+
   testWidgets('mientras sube la foto lo dice, y después vuelve a la lista', (
     tester,
   ) async {

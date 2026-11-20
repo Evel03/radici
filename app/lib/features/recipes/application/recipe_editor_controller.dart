@@ -10,11 +10,15 @@
 // preparada (achicada y sin metadatos) y se sube al guardar, después del
 // plato (los archivos van en la carpeta del plato y set_recipe_photo exige que
 // exista). Si la foto falla, el plato queda guardado y la foto sigue en el
-// editor para reintentar, con el mismo uuid.
+// editor para reintentar, con el mismo uuid. Mientras se elige o se prepara una
+// foto no se guarda; una que llega mientras guarda (en la web) queda para el
+// próximo guardado y el editor no se cierra. El guardado sigue (plato, foto)
+// aunque el editor se cierre: lo hace el catálogo, que no se descarta.
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:radici/core/platform.dart';
 import 'package:radici/core/uuid.dart';
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
 import 'package:radici/features/recipes/application/recipe_photo_providers.dart';
@@ -72,11 +76,15 @@ abstract class RecipeEditorState with _$RecipeEditorState {
     /// Lo que se cambia en la foto al guardar (null = nada).
     RecipePhotoChange? photoChange,
 
-    /// Se está preparando la foto elegida (achicar, sacar metadatos).
+    /// Se está eligiendo o preparando una foto: en el teléfono, desde que se
+    /// abre el selector (sigue cargando la foto, por ejemplo de iCloud, con el
+    /// selector ya cerrado); en la web, desde que llega (ahí la cancelación
+    /// puede no llegar nunca).
     @Default(false) bool preparingPhoto,
 
-    /// Se está subiendo la foto (mientras guarda, después del plato).
-    @Default(false) bool uploadingPhoto,
+    /// El cambio de foto que se está guardando (mientras guarda, después del
+    /// plato); null si no.
+    RecipePhotoChange? photoInFlight,
 
     /// Por qué falló la foto en el último guardado (el plato sí se guardó);
     /// null si no falló.
@@ -98,6 +106,9 @@ abstract class RecipeEditorState with _$RecipeEditorState {
   /// otra o si se va a sacar.
   String? get shownSavedPhotoId => photoChange == null ? savedPhotoId : null;
 
+  /// Se está subiendo (o sacando) la foto.
+  bool get uploadingPhoto => photoInFlight != null;
+
   RecipeDraftErrors get errors => validateRecipeDraft(draft);
 
   @override
@@ -117,6 +128,10 @@ enum RecipeSaveResult {
   /// El plato se guardó, pero la foto no (ver
   /// [RecipeEditorState.photoError]): sigue en el editor para reintentar.
   photoFailed,
+
+  /// Se guardó, pero mientras guardaba se eligió otra foto (o se está
+  /// preparando): queda en el editor para guardarla, que no se cierra.
+  photoPending,
 
   /// Ya se estaba guardando.
   busy,
@@ -335,6 +350,9 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
       state = state.copyWith(showErrors: true, saveError: null);
       return RecipeSaveResult.invalid;
     }
+    // Antes del primer await: si el editor se cierra mientras guarda, el
+    // catálogo (que no se descarta) termina de guardar el plato y la foto.
+    final catalog = ref.read(recipeCatalogProvider.notifier);
     final draft = state.draft;
     final photoChange = state.photoChange;
     final recipeChanged =
@@ -346,7 +364,7 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
         saved: state.isNew ? null : state.source,
       );
       try {
-        final saved = await ref.read(recipeCatalogProvider.notifier).save(recipe);
+        final saved = await catalog.save(recipe);
         if (ref.mounted) {
           state = state.copyWith(
             saving: photoChange != null,
@@ -362,11 +380,24 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
         return RecipeSaveResult.failed;
       }
     }
-    if (photoChange == null || !ref.mounted) return RecipeSaveResult.saved;
-    return _savePhoto(draft.id, photoChange);
+    final result = photoChange == null
+        ? RecipeSaveResult.saved
+        : await _savePhoto(catalog, draft.id, photoChange);
+    // Mientras guardaba llegó otra foto (en la web, una elegida justo antes de
+    // tocar «Salva»): no se guardó, así que el editor no se cierra.
+    if (result == RecipeSaveResult.saved &&
+        ref.mounted &&
+        (state.photoChange != null || state.preparingPhoto)) {
+      return RecipeSaveResult.photoPending;
+    }
+    return result;
   }
 
+  /// Guarda [change] en el plato [recipeId] por [catalog], también si el
+  /// editor se cerró. Al terminar, el editor deja de tener pendiente [change]
+  /// solo si sigue siendo el suyo: una foto elegida mientras tanto queda.
   Future<RecipeSaveResult> _savePhoto(
+    RecipeCatalogController catalog,
     String recipeId,
     RecipePhotoChange change,
   ) async {
@@ -374,28 +405,31 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
       ReplaceRecipePhoto(:final photo) => photo,
       RemoveRecipePhoto() => null,
     };
-    state = state.copyWith(uploadingPhoto: true);
+    if (ref.mounted) state = state.copyWith(photoInFlight: change);
     try {
-      await ref.read(recipeCatalogProvider.notifier).setPhoto(recipeId, photo);
+      await catalog.setPhoto(recipeId, photo);
       if (ref.mounted) {
         state = state.copyWith(
           saving: false,
-          uploadingPhoto: false,
-          photoChange: null,
+          photoInFlight: null,
+          photoChange: state.photoChange == change ? null : state.photoChange,
           savedPhotoId: photo?.photoId,
           source: state.source?.copyWith(photoId: photo?.photoId),
         );
       }
       return RecipeSaveResult.saved;
     } on RecipePhotoFailure catch (failure) {
-      if (ref.mounted) {
-        state = state.copyWith(
-          saving: false,
-          uploadingPhoto: false,
-          photoError: failure.kind,
-        );
-      }
-      return RecipeSaveResult.photoFailed;
+      if (!ref.mounted) return RecipeSaveResult.photoFailed;
+      final stillPending = state.photoChange == change;
+      state = state.copyWith(
+        saving: false,
+        photoInFlight: null,
+        photoError: stillPending ? failure.kind : null,
+      );
+      // Si ya se eligió otra, esta no importa: queda la nueva para guardar.
+      return stillPending
+          ? RecipeSaveResult.photoFailed
+          : RecipeSaveResult.photoPending;
     }
   }
 
@@ -404,15 +438,29 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
   /// lugar de la que tenga. Devuelve por qué no quedó (null si quedó o si se
   /// canceló).
   Future<RecipePhotoPickError?> pickPhoto(RecipePhotoSource source) async {
-    // Sin una marca de «selector abierto»: en un navegador sin el evento
-    // cancel, el selector de la web nunca termina si se cancela, y la marca
-    // dejaría el botón sin hacer nada. El selector tapa la pantalla mientras
-    // está abierto.
     if (state.saving || state.preparingPhoto) return null;
+    final picker = ref.read(recipePhotoPickerProvider);
+    final processor = ref.read(recipePhotoProcessorProvider);
+    final newId = ref.read(newIdProvider);
+    // En el teléfono el selector siempre termina, también si se cancela: la
+    // foto cuenta como «preparando» desde que se abre (y mientras carga con el
+    // selector ya cerrado), así «Salva» espera y un segundo toque no cancela
+    // el primero. En la web, si se cancela en un navegador sin el evento
+    // cancel, el selector no termina nunca y la marca dejaría todo trabado:
+    // ahí se marca recién cuando llega la foto.
+    final markWhilePicking = !ref.read(isWebProvider);
+    if (markWhilePicking) state = state.copyWith(preparingPhoto: true);
+    void stopPicking() {
+      if (markWhilePicking && ref.mounted) {
+        state = state.copyWith(preparingPhoto: false);
+      }
+    }
+
     final Uint8List? bytes;
     try {
-      bytes = await ref.read(recipePhotoPickerProvider).pick(source);
+      bytes = await picker.pick(source);
     } on RecipePhotoPickFailure catch (failure) {
+      stopPicking();
       return switch (failure.kind) {
         RecipePhotoPickFailureKind.permissionDenied =>
           RecipePhotoPickError.permissionDenied,
@@ -420,16 +468,24 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
           RecipePhotoPickError.unavailable,
       };
     }
-    if (bytes == null || !ref.mounted) return null;
+    if (bytes == null) {
+      stopPicking();
+      return null;
+    }
+    if (!ref.mounted) return null;
+    // Si mientras tanto empezó a guardar (en la web: sin marca mientras elige),
+    // el guardado en curso ya tomó su cambio de foto y no toca esta: queda
+    // para el próximo guardado y, como sigue «preparando», el editor no se
+    // cierra al terminar.
     state = state.copyWith(preparingPhoto: true);
     try {
-      final photo = await ref.read(recipePhotoProcessorProvider)(bytes);
+      final photo = await processor(bytes);
       if (!ref.mounted) return null;
       state = state.copyWith(
         preparingPhoto: false,
         photoError: null,
         photoChange: ReplaceRecipePhoto(
-          NewRecipePhoto(photoId: ref.read(newIdProvider)(), photo: photo),
+          NewRecipePhoto(photoId: newId(), photo: photo),
         ),
       );
       return null;

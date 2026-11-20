@@ -139,6 +139,8 @@ class RecipePhotoSection extends ConsumerWidget {
 
     final String? status = switch (state) {
       _ when state.preparingPhoto => l10n.recipePhotoPreparing,
+      _ when state.photoInFlight is RemoveRecipePhoto =>
+        l10n.recipePhotoRemoving,
       _ when state.uploadingPhoto => l10n.recipePhotoUploading,
       _ when state.photoError != null => null,
       _ when newPhoto != null => l10n.recipePhotoPending,

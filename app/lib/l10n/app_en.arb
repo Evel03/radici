@@ -332,6 +332,7 @@
   "recipePhotoPreview": "Dish photo",
   "recipePhotoPreparing": "Preparing the photo…",
   "recipePhotoUploading": "Uploading the photo…",
+  "recipePhotoRemoving": "Removing the photo…",
   "recipePhotoPending": "The photo is uploaded when you save.",
   "recipePhotoRemovePending": "The photo is removed when you save.",
   "recipePhotoUnreadable": "Couldn't open this photo. Try another one.",

@@ -332,6 +332,7 @@
   "recipePhotoPreview": "Foto del plato",
   "recipePhotoPreparing": "Preparando la foto…",
   "recipePhotoUploading": "Subiendo la foto…",
+  "recipePhotoRemoving": "Quitando la foto…",
   "recipePhotoPending": "La foto se sube al guardar.",
   "recipePhotoRemovePending": "La foto se quita al guardar.",
   "recipePhotoUnreadable": "No se puede abrir esta foto. Prueba con otra.",

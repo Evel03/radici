@@ -1523,6 +1523,10 @@
   "@recipePhotoUploading": {
     "description": "Mientras se sube la foto, después de guardar el plato."
   },
+  "recipePhotoRemoving": "Tolgo la foto…",
+  "@recipePhotoRemoving": {
+    "description": "Mientras se saca la foto del plato, después de guardarlo."
+  },
   "recipePhotoPending": "La foto si carica quando salvi.",
   "@recipePhotoPending": {
     "description": "Debajo de la foto elegida que todavía no se subió."

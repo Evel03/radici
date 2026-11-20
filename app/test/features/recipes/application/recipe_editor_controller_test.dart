@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/platform.dart';
 import 'package:radici/core/uuid.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
@@ -43,10 +44,13 @@ void main() {
   const editFrittata = RecipeEditorTarget.edit(frittataId);
   const copyLasagne = RecipeEditorTarget.copy(lasagneId);
 
-  Future<void> start() async {
+  /// [isWeb]: la versión web (/gestione/), donde la cancelación del selector
+  /// puede no llegar.
+  Future<void> start({bool isWeb = false}) async {
     container = ProviderContainer.test(
       retry: noRetry,
       overrides: [
+        isWebProvider.overrideWithValue(isWeb),
         authRepositoryProvider.overrideWithValue(FakeAuthRepository(user: chefUser)),
         accountRepositoryProvider.overrideWithValue(FakeAccountRepository(chefAccountData)),
         recipesRepositoryProvider.overrideWithValue(repository),
@@ -644,6 +648,167 @@ void main() {
       expect(stateOf(create).photoError, isNull);
       expect(stateOf(create).newPhoto!.photoId, '0e5b3c1a-2f4d-4a6b-8c9d-000000000003');
     });
+  });
+
+  // En el iPhone el selector se cierra y la foto sigue cargando (de iCloud) y
+  // achicándose sin trabar la pantalla; en la web, el navegador la achica
+  // después de elegirla. Si se guarda en ese hueco, el plato no puede cerrarse
+  // sin la foto ni guardar una foto vieja encima de la nueva.
+  group('foto: elegir y guardar a la vez', () {
+    const otherPhoto = '0e5b3c1a-2f4d-4a6b-8c9d-000000000003';
+
+    test('en el teléfono, desde que se abre el selector hasta que llega la foto: «preparando», no guarda y un segundo toque no hace nada', () async {
+      await start();
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      picker.pending = Completer<void>();
+
+      final picking = editor.pickPhoto(RecipePhotoSource.gallery);
+      await pumpEventQueue();
+      expect(stateOf(create).preparingPhoto, isTrue);
+      expect(await editor.save(), RecipeSaveResult.busy);
+      expect(await editor.pickPhoto(RecipePhotoSource.camera), isNull);
+      expect(picker.calls, [RecipePhotoSource.gallery], reason: 'el segundo toque no abre otro selector');
+      expect(repository.saveCalls, isEmpty);
+
+      picker.pending!.complete();
+      await picking;
+      expect(stateOf(create).preparingPhoto, isFalse);
+      expect(stateOf(create).newPhoto!.photoId, _id2);
+    });
+
+    test('en el teléfono, cancelar o un error del selector deja de «preparar»', () async {
+      await start();
+      final editor = open(create);
+      picker.result = null;
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+      expect(stateOf(create).preparingPhoto, isFalse);
+      picker.failure = RecipePhotoPickFailureKind.unavailable;
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+      expect(stateOf(create).preparingPhoto, isFalse);
+    });
+
+    test('en la web no marca mientras el selector está abierto (si se cancela puede no avisar nunca)', () async {
+      await start(isWeb: true);
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      picker.pending = Completer<void>();
+
+      unawaited(editor.pickPhoto(RecipePhotoSource.gallery));
+      await pumpEventQueue();
+      expect(stateOf(create).preparingPhoto, isFalse);
+      // Un selector que no termina nunca no traba el guardado.
+      expect(await editor.save(), RecipeSaveResult.saved);
+    });
+
+    test('en la web, una foto que llega mientras guarda queda para el próximo guardado y el editor no se cierra', () async {
+      await start(isWeb: true);
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      picker.pending = Completer<void>();
+      final picking = editor.pickPhoto(RecipePhotoSource.gallery);
+      repository.pendingSave = Completer<void>();
+
+      final saving = editor.save();
+      await pumpEventQueue();
+      picker.pending!.complete();
+      await picking;
+      repository.pendingSave!.complete();
+
+      expect(await saving, RecipeSaveResult.photoPending);
+      expect(photos.uploadCalls, isEmpty, reason: 'ese guardado no tenía foto');
+      expect(stateOf(create).newPhoto!.photoId, _id2);
+      expect(stateOf(create).dirty, isTrue);
+
+      expect(await editor.save(), RecipeSaveResult.saved);
+      expect(repository.saveCalls, hasLength(1), reason: 'el plato ya estaba');
+      expect(photos.setCalls, [(recipeId: _id1, photoId: _id2)]);
+    });
+
+    test('con una foto A pendiente, elegir B mientras sube A: A se guarda y B queda (no la pisa)', () async {
+      nextIds.add(otherPhoto);
+      await start(isWeb: true);
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      await editor.pickPhoto(RecipePhotoSource.gallery); // A = _id2
+      picker.pending = Completer<void>();
+      final pickingB = editor.pickPhoto(RecipePhotoSource.gallery);
+      photos.pendingUpload = Completer<void>();
+
+      final saving = editor.save();
+      await pumpEventQueue();
+      expect(stateOf(create).uploadingPhoto, isTrue);
+      picker.pending!.complete();
+      await pickingB;
+      photos.pendingUpload!.complete();
+
+      expect(await saving, RecipeSaveResult.photoPending);
+      var state = stateOf(create);
+      expect(state.savedPhotoId, _id2, reason: 'A quedó guardada');
+      expect(state.newPhoto!.photoId, otherPhoto, reason: 'B sigue pendiente');
+      expect(state.photoError, isNull);
+
+      photos.pendingUpload = null;
+      expect(await editor.save(), RecipeSaveResult.saved);
+      state = stateOf(create);
+      expect(photos.setCalls.map((c) => c.photoId), [_id2, otherPhoto]);
+      expect(state.savedPhotoId, otherPhoto);
+      expect(state.photoChange, isNull);
+    });
+
+    test('si falla la subida de A cuando ya se eligió B: el error de A no se muestra y B queda', () async {
+      nextIds.add(otherPhoto);
+      await start(isWeb: true);
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+      picker.pending = Completer<void>();
+      final pickingB = editor.pickPhoto(RecipePhotoSource.gallery);
+      photos
+        ..pendingUpload = Completer<void>()
+        ..uploadFailure = RecipePhotoFailureKind.unavailable;
+
+      final saving = editor.save();
+      await pumpEventQueue();
+      picker.pending!.complete();
+      await pickingB;
+      photos.pendingUpload!.complete();
+
+      expect(await saving, RecipeSaveResult.photoPending);
+      expect(stateOf(create).photoError, isNull);
+      expect(stateOf(create).newPhoto!.photoId, otherPhoto);
+    });
+
+    test('mientras se saca la foto, el cambio en curso es «sacar»', () async {
+      repository.recipes[lasagneId] = lasagne().copyWith(photoId: 'f0000000-0000-4000-8000-0000000000aa');
+      photos.photoOf[lasagneId] = 'f0000000-0000-4000-8000-0000000000aa';
+      await start();
+      final editor = open(editLasagne)..removePhoto();
+      photos.pendingSet = Completer<void>();
+
+      final saving = editor.save();
+      await pumpEventQueue();
+      expect(stateOf(editLasagne).photoInFlight, const RemoveRecipePhoto());
+      photos.pendingSet!.complete();
+      expect(await saving, RecipeSaveResult.saved);
+      expect(stateOf(editLasagne).photoInFlight, isNull);
+    });
+  });
+
+  // El editor se puede cerrar mientras guarda (por ejemplo, al abrir el aviso
+  // de un pedido nuevo): el catálogo termina de guardar el plato y la foto.
+  test('si el editor se cierra mientras guarda el plato, la foto se sube igual', () async {
+    await start();
+    final subscription = container.listen(recipeEditorProvider(create), (_, _) {});
+    final editor = container.read(recipeEditorProvider(create).notifier)..setNameIt('Pasta al pesto');
+    await editor.pickPhoto(RecipePhotoSource.gallery);
+    repository.pendingSave = Completer<void>();
+
+    final saving = editor.save();
+    await pumpEventQueue();
+    subscription.close();
+    await pumpEventQueue();
+    repository.pendingSave!.complete();
+    await saving;
+
+    expect(photos.uploadCalls, [_id2]);
+    expect(photos.setCalls, [(recipeId: _id1, photoId: _id2)]);
+    expect(inCatalog(_id1)!.photoId, _id2);
   });
 
   test('aviso de nombre repetido: la copia tiene el mismo nombre hasta cambiarlo', () async {

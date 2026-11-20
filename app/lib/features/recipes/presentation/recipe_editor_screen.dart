@@ -198,10 +198,11 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
                 : null,
           ),
         );
-      case RecipeSaveResult.photoFailed:
-        // El plato se guardó (no se cierra): la sección «Foto» lo dice, con
-        // su «Riprova», y se lleva a la vista. Sin aviso abajo: con el texto
-        // grande se desbordaba y tapaba el «Riprova» de la sección.
+      case RecipeSaveResult.photoFailed || RecipeSaveResult.photoPending:
+        // El plato se guardó, pero no se cierra: la foto falló (la sección lo
+        // dice, con su «Riprova») o se eligió otra mientras guardaba (queda
+        // para guardar). La sección se lleva a la vista. Sin aviso abajo: con
+        // el texto grande se desbordaba y tapaba el «Riprova» de la sección.
         final photo = _photoKey.currentContext;
         if (photo != null && photo.mounted) {
           unawaited(
@@ -737,7 +738,11 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
               ),
             ),
           ),
-          bottomNavigationBar: _SaveBar(saving: state.saving, onSave: _save),
+          bottomNavigationBar: _SaveBar(
+            saving: state.saving,
+            preparingPhoto: state.preparingPhoto,
+            onSave: _save,
+          ),
         ),
       ),
     );
@@ -749,9 +754,17 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
 /// el cuerpo), así que el margen del teclado lo pone la barra misma. Sigue
 /// siendo la barra de abajo para que los avisos salgan encima.
 class _SaveBar extends StatelessWidget {
-  const _SaveBar({required this.saving, required this.onSave});
+  const _SaveBar({
+    required this.saving,
+    required this.preparingPhoto,
+    required this.onSave,
+  });
 
   final bool saving;
+
+  /// Se está eligiendo o preparando una foto: «Salva» espera (si no, el plato
+  /// se guardaría sin ella).
+  final bool preparingPhoto;
   final VoidCallback onSave;
 
   @override
@@ -777,7 +790,7 @@ class _SaveBar extends StatelessWidget {
                   width: double.infinity,
                   child: FilledButton(
                     key: const ValueKey('recipe-save'),
-                    onPressed: saving ? null : onSave,
+                    onPressed: saving || preparingPhoto ? null : onSave,
                     child: saving
                         ? const SizedBox.square(
                             dimension: 20,
