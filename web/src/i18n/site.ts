@@ -3,7 +3,7 @@
 // la portada. Así los textos no repiten números: salen del motor (DEFAULT_PRICING, LIMITS) y del contrato.
 // - Precio por semana: {weeklyRate}, {discountRate}, {discountWeeks}, {maxPeople}, {maxWeeks}.
 // - Ejemplo de la portada (EXAMPLE_INPUT): {exAdults}, {exKids}, {exDays}, {exWeeks}, {exPortions},
-//   {exWeekly}, {exService}, {exSavings}, {exGroceries}.
+//   {exWeekly}, {exService}, {exSavings}. Sin la compra: la hace el cliente con la lista de Evelyn.
 // La ventana de la fecha preferida va en semanas ({horizonWeeks}): «hasta dentro de 56 días» se lee mal.
 // El tiempo de cocina no se muestra: lo usa el motor para los horarios, no el cliente.
 import { DEFAULT_PRICING, LIMITS } from "../engine.ts";
@@ -41,6 +41,5 @@ export function createSiteI18n(lang: Lang, dict: Dict, brand: string): I18n {
     exWeekly: money(example.weeklyServiceCents),
     exService: money(example.serviceCents),
     exSavings: money(example.savingsCents),
-    exGroceries: money(example.groceriesEstCents),
   });
 }

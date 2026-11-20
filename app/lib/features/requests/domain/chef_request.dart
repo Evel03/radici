@@ -142,7 +142,11 @@ abstract class RequestRestrictions with _$RequestRestrictions {
 /// Desde el precio por semana (SPEC §5.1) trae `weeks` y `autoPrice`, y el
 /// precio solo si lo hay: el servicio por semana, el de todas las semanas y el
 /// ahorro; sin precio, el motivo. Las guardadas antes no tienen `autoPrice`
-/// (eran de una semana, con el servicio por hora y el total).
+/// (eran de una semana, con el servicio por hora).
+///
+/// Sin compra: la hace el cliente (19/11/2026). Las claves de compra que traen
+/// las guardadas antes (`groceriesEstCents`, `totalCents`, `preauthCents`) se
+/// ignoran, como cualquier otra que no se use.
 @Freezed(fromJson: false, toJson: false)
 abstract class RequestEstimate with _$RequestEstimate {
   const factory RequestEstimate({
@@ -157,12 +161,6 @@ abstract class RequestEstimate with _$RequestEstimate {
     int? weeklyServiceCents,
     int? serviceCents,
     int? savingsCents,
-
-    /// Compra estimada (de una semana desde el precio por semana).
-    int? groceriesEstCents,
-
-    /// Servicio y compra: lo que mostraban los pedidos de antes.
-    int? totalCents,
 
     /// Hasta cuántas personas había precio automático con esas tarifas
     /// (`pricing.weeklyRateMaxPeople`), para decir por qué no lo hay.
@@ -196,14 +194,12 @@ abstract class RequestEstimate with _$RequestEstimate {
       weeklyServiceCents: read('weeklyServiceCents'),
       serviceCents: read('serviceCents'),
       savingsCents: read('savingsCents'),
-      groceriesEstCents: read('groceriesEstCents'),
-      totalCents: read('totalCents'),
       maxPeople: pricing is Map ? readFrom(pricing, 'weeklyRateMaxPeople') : null,
     );
   }
 
   /// Guardada antes del precio por semana (sin `autoPrice`): una semana, con
-  /// el servicio por hora y el total.
+  /// el servicio por hora.
   bool get isLegacy => autoPrice == null;
 
   /// Hay precio automático: el de las guardadas antes también (siempre lo
@@ -216,9 +212,7 @@ abstract class RequestEstimate with _$RequestEstimate {
       portions == null &&
       recipes == null &&
       cookMinutes == null &&
-      serviceCents == null &&
-      groceriesEstCents == null &&
-      totalCents == null;
+      serviceCents == null;
 }
 
 /// `client_status` de la ficha (`public.clients.status`).

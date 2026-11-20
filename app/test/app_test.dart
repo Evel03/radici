@@ -43,6 +43,9 @@ void main() {
   testWidgets('arranca en el inicio, en italiano', (tester) async {
     await _pumpApp(tester);
     expect(find.text('Cucina di casa, a casa tua'), findsOneWidget);
+    // La compra la hace el cliente, no Evelyn.
+    expect(find.textContaining('La spesa la fai tu, con la lista che ti manda lei.'), findsOneWidget);
+    expect(find.textContaining('Evelyn fa la spesa'), findsNothing);
     expect(find.text('Calcola preventivo'), findsOneWidget);
     expect(find.text('Accedi'), findsOneWidget);
   });

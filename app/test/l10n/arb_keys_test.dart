@@ -68,4 +68,37 @@ void main() {
       AppLocalizations.supportedLocales.toSet(),
     );
   });
+
+  // Decisión del 19/11/2026: la compra la hace el cliente, con la lista que le
+  // manda Evelyn. Ningún texto dice que ella compra, ni habla de tickets ni de
+  // compra estimada (como los tests de la web y de los emails). Las frases
+  // nuevas («La spesa la fa il cliente…», «The client does the shopping…»)
+  // no entran en estos patrones.
+  const before = {
+    'it':
+        r'scontrin|spesa stimata|fa la spesa|fare la spesa|spesa a parte|'
+        r'spesa si paga|tempo della spesa|spesa dalle|spesa fatta',
+    'es':
+        r'ticket|compra estimada|hace la compra|hace las compras|'
+        r'hacer la compra|compra aparte|compra va aparte|compra se paga|'
+        r'tiempo de la compra|compra desde|compra hecha',
+    'en':
+        r'receipt|grocer|evelyn does the shopping|covers the shopping|'
+        r'shopping time|paid separately|shopping from|shopping done',
+  };
+  for (final MapEntry(key: locale, value: pattern) in before.entries) {
+    test('app_$locale.arb: ningún texto dice que Evelyn hace la compra', () {
+      final arb = _arb(locale);
+      final regex = RegExp(pattern, caseSensitive: false);
+      final offending = [
+        for (final key in _messageKeys(arb))
+          if (regex.hasMatch(arb[key] as String)) key,
+      ];
+      expect(offending, isEmpty);
+      expect(
+        _messageKeys(arb).where((k) => k.toLowerCase().contains('grocer')),
+        isEmpty,
+      );
+    });
+  }
 }

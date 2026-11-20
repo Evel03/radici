@@ -82,7 +82,7 @@ test("un pedido válido se normaliza y trae la estimación del vector 1", () => 
   assert.deepEqual(result.value.quoteInput, { type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 });
   assert.deepEqual(result.estimate, calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 }));
   assert.ok(result.estimate.autoPrice && result.estimate.serviceCents === 15000);
-  assert.equal(result.estimate.groceriesEstCents, 6300);
+  assert.equal(result.estimate.portions, 20);
 });
 
 test("limpia espacios y caracteres de control, y pasa el email a minúsculas", () => {
@@ -103,7 +103,7 @@ test("las comidas se devuelven en orden canónico y sin repetir", () => {
   if (ok.ok) {
     assert.deepEqual(ok.value.meals, ["lunch", "dinner"]);
     assert.equal(ok.value.quoteInput.meals, 2);
-    assert.equal(ok.estimate.groceriesEstCents, 12600);
+    assert.equal(ok.estimate.portions, 40);
   }
   assert.equal(errorsOf(payload({ meals: ["lunch", "lunch"] })).meals, "invalid");
   assert.equal(errorsOf(payload({ meals: [] })).meals, "invalid");
@@ -341,19 +341,17 @@ test("weeklyDates: el primer día y el mismo día de cada semana siguiente", () 
   assert.equal(weeklyDates("2026-11-23", 8).at(-1), "2027-01-11");
 });
 
-test("estimación del 201: con precio, sin precio y la guardada antes del precio por semana", () => {
+test("estimación del 201: con precio, sin precio, sin compra y la guardada antes del precio por semana", () => {
   const priced = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 4 });
   assert.deepEqual(publicEstimate(priced), {
     weeks: 4,
     portions: 20,
     recipes: 3,
     cookMinutes: 180,
-    groceriesEstCents: 6300,
     autoPrice: true,
     weeklyServiceCents: 14000,
     serviceCents: 56000,
     savingsCents: 4000,
-    totalCents: 81200,
   });
   const unpriced = calcQuote({ type: "extra", adults: 10, kids: 6, days: 1, meals: 1, weeks: 1 });
   assert.deepEqual(publicEstimate(unpriced), {
@@ -361,7 +359,6 @@ test("estimación del 201: con precio, sin precio y la guardada antes del precio
     portions: 16,
     recipes: 2,
     cookMinutes: 150,
-    groceriesEstCents: 5300,
     autoPrice: false,
     reason: "extra",
   });
@@ -370,6 +367,12 @@ test("estimación del 201: con precio, sin precio y la guardada antes del precio
     assert.deepEqual(readPublicEstimate({ ...quote, pricing: DEFAULT_PRICING }), publicEstimate(quote));
     assert.deepEqual(readPublicEstimate(JSON.parse(JSON.stringify(publicEstimate(quote)))), publicEstimate(quote));
   }
+  // Las guardadas antes del 19/11/2026 traen la compra y el total: se leen igual, sin esas claves.
+  const withGroceries = { ...publicEstimate(priced), groceriesEstCents: 6300, preauthCents: 7245, totalCents: 81200 };
+  assert.deepEqual(readPublicEstimate(withGroceries), publicEstimate(priced));
+  for (const estimate of [publicEstimate(priced), publicEstimate(unpriced)]) {
+    for (const key of ["groceriesEstCents", "preauthCents", "totalCents"]) assert.ok(!(key in estimate), key);
+  }
   // Las guardadas antes del precio por semana (servicio por hora): una semana y con precio, sin ahorro.
   const legacy = { portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300, totalCents: 14100, preauthCents: 7245, holdCents: 15045, pricing: { hourlyRateCents: 2200 } };
   assert.deepEqual(readPublicEstimate(legacy), {
@@ -377,19 +380,18 @@ test("estimación del 201: con precio, sin precio y la guardada antes del precio
     portions: 20,
     recipes: 3,
     cookMinutes: 180,
-    groceriesEstCents: 6300,
     autoPrice: true,
     weeklyServiceCents: 7800,
     serviceCents: 7800,
     savingsCents: 0,
-    totalCents: 14100,
   });
   const bad: unknown[] = [
     null,
     "x",
     [],
     {},
-    { ...legacy, totalCents: 1.5 },
+    { ...legacy, serviceCents: 1.5 },
+    { ...legacy, serviceCents: undefined },
     { ...legacy, portions: -1 },
     { ...legacy, recipes: undefined },
     { ...publicEstimate(priced), autoPrice: "true" },

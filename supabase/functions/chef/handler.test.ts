@@ -272,7 +272,6 @@ function bookingBody(overrides: Record<string, unknown> = {}): Record<string, un
     start: "10:00",
     cookMinutes: 240,
     portions: 50,
-    groceriesEstCents: 7550,
     serviceTotalCents: 56000,
     ...overrides,
   };
@@ -536,7 +535,6 @@ test("400 por campo: 0 o 9 semanas, centavos no enteros, sin precio y fechas en 
     [{ dates: nine }, { errors: { dates: "range" } }],
     [{ serviceTotalCents: 560.5 }, { errors: { serviceTotalCents: "invalid" } }],
     [{ serviceTotalCents: undefined }, { errors: { serviceTotalCents: "required" } }],
-    [{ groceriesEstCents: 75.5 }, { errors: { groceriesEstCents: "invalid" } }],
     [{ dates: ["2026-11-23", "2026-11-27"] }, { errors: { dates: "sameWeek" }, date: "2026-11-27" }],
     [{ dates: ["2026-11-30", "2026-11-23"] }, { errors: { dates: "order" }, date: "2026-11-23" }],
   ];
@@ -562,7 +560,7 @@ test("confirmar un pedido: 201 con las 4 semanas; la base recibe todo en snake_c
       p_start: "10:00",
       p_cook_minutes: 240,
       p_portions: 50,
-      p_groceries_est_cents: 7550,
+      p_groceries_est_cents: 0,
       p_service_total_cents: 56000,
       p_request_id: REQUEST_ID,
       p_client_id: null,
@@ -591,6 +589,16 @@ test("confirmar un pedido: 201 con las 4 semanas; la base recibe todo en snake_c
     })),
   });
   assert.ok(logs.some((entry) => entry.event === "booking_created" && entry.fields["requestId"] === REQUEST_ID && entry.fields["sessions"] === 4 && entry.fields["client"] === "request"));
+});
+
+test("groceriesEstCents (la app de antes del 19/11/2026 lo manda): se ignora con cualquier valor y la base recibe 0", async () => {
+  const { handle, store } = harness();
+  for (const groceriesEstCents of [7550, 75.5, "7550", -1]) {
+    const response = await handle(post("/bookings", bookingBody({ groceriesEstCents })));
+    assert.equal(response.status, 201, String(groceriesEstCents));
+  }
+  assert.equal(store.bookingCalls.length, 4);
+  for (const call of store.bookingCalls) assert.equal(call.p_groceries_est_cents, 0, "la compra la hace el cliente");
 });
 
 test("la cocinera sale siempre del token: un chefId o p_chef_id en el cuerpo se ignora, en todas las rutas", async () => {

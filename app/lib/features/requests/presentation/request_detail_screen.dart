@@ -399,7 +399,7 @@ class _RequestDetail extends ConsumerWidget {
             ),
 
             _Section(title: l10n.detailSectionEstimate),
-            _Estimate(estimate: request.estimate, weekly: weekly),
+            _Estimate(estimate: request.estimate),
 
             _Section(title: l10n.detailSectionContact),
             if (client.contactPhone case final phone?) ...[
@@ -497,16 +497,13 @@ class _RequestDetail extends ConsumerWidget {
 }
 
 /// La estimación guardada. Desde el precio por semana: el servicio por semana,
-/// el de todas las semanas y el ahorro, o por qué no hay precio automático; la
-/// compra estimada aparte. Las de antes (servicio por hora): servicio, compra y
-/// total, como se guardaron.
+/// el de todas las semanas y el ahorro, o por qué no hay precio automático. Las
+/// de antes (servicio por hora): el servicio, como se guardó. Sin compra ni
+/// total, tampoco en las de antes: la compra la hace el cliente.
 class _Estimate extends StatelessWidget {
-  const _Estimate({required this.estimate, required this.weekly});
+  const _Estimate({required this.estimate});
 
   final RequestEstimate? estimate;
-
-  /// Pedido semanal: la compra es de cada semana.
-  final bool weekly;
 
   @override
   Widget build(BuildContext context) {
@@ -548,12 +545,8 @@ class _Estimate extends StatelessWidget {
           ),
         if (estimate.isLegacy) ...[
           if (estimate.serviceCents case final cents?)
-            _InfoRow(label: l10n.quoteService, value: money(cents)),
-          if (estimate.groceriesEstCents case final cents?)
-            _InfoRow(label: l10n.quoteGroceries, value: money(cents)),
-          if (estimate.totalCents case final cents?)
             _InfoRow(
-              label: l10n.quoteTotal,
+              label: l10n.quoteService,
               value: money(cents),
               valueKey: const ValueKey('detail-estimate-total'),
               emphasized: true,
@@ -577,12 +570,6 @@ class _Estimate extends StatelessWidget {
               label: l10n.quoteSavings,
               value: money(savings),
               valueKey: const ValueKey('detail-estimate-savings'),
-            ),
-          if (estimate.groceriesEstCents case final cents?)
-            _InfoRow(
-              label: weekly ? l10n.quoteGroceriesWeekly : l10n.quoteGroceries,
-              value: money(cents),
-              valueKey: const ValueKey('detail-estimate-groceries'),
             ),
         ],
         const SizedBox(height: 4),

@@ -56,10 +56,32 @@ void main() {
     // Estimación guardada en centavos → euros.
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('detail-estimate-total'))).data,
-      '141,00 €',
+      '78,00 €',
     );
     // Llegó a las 09:15 UTC = 11:15 en Roma.
     expect(find.text('Ricevuta il 19/10/2026 alle 11:15'), findsOneWidget);
+  });
+
+  testWidgets('pedido viejo con la compra guardada: solo el servicio, sin compra ni total', (tester) async {
+    // requestRow guarda groceriesEstCents (6300), preauthCents (7245) y
+    // totalCents (14100), como los pedidos de antes del 19/11/2026.
+    await openDetail(tester, ChefRequest.fromJson(requestRow()));
+
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('detail-estimate-total'))).data,
+      '78,00 €',
+    );
+    expect(find.text('63,00 €'), findsNothing);
+    expect(find.text('72,45 €'), findsNothing);
+    expect(find.text('141,00 €'), findsNothing);
+    expect(
+      find.text(
+        'Calcolata con le tue tariffe al momento della richiesta. '
+        'La spesa la fa il cliente, con la lista che gli mandi tu.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('scontrino'), findsNothing);
   });
 
   testWidgets('al abrirlo se marca visto', (tester) async {
@@ -317,7 +339,7 @@ void main() {
     String textOf(WidgetTester tester, String key) =>
         tester.widget<Text>(find.byKey(ValueKey(key))).data!;
 
-    testWidgets('4 semanas: las semanas, las fechas siguientes, el precio por semana, el total, el ahorro y la compra', (tester) async {
+    testWidgets('4 semanas: las semanas, las fechas siguientes, el precio por semana, el total y el ahorro, sin compra', (tester) async {
       await openDetail(
         tester,
         buildRequest(
@@ -332,8 +354,6 @@ void main() {
             weeklyServiceCents: 14000,
             serviceCents: 56000,
             savingsCents: 4000,
-            groceriesEstCents: 6300,
-            totalCents: 81200,
             maxPeople: 5,
           ),
         ),
@@ -351,12 +371,10 @@ void main() {
       expect(textOf(tester, 'detail-estimate-total'), '560,00 €');
       expect(textOf(tester, 'detail-estimate-weekly'), '140,00 €');
       expect(textOf(tester, 'detail-estimate-savings'), '40,00 €');
-      expect(textOf(tester, 'detail-estimate-groceries'), '63,00 €');
-      expect(find.text('Spesa stimata a settimana'), findsOneWidget);
+      // La compra la hace el cliente: no hay fila de compra.
+      expect(find.byKey(const ValueKey('detail-estimate-groceries')), findsNothing);
       // Evelyn sí ve el tiempo de cocina (es de cada sesión).
       expect(find.text('180 min'), findsOneWidget);
-      // El total de servicio y compra (81200) no se muestra: la compra va aparte.
-      expect(find.text('812,00 €'), findsNothing);
     });
 
     testWidgets('una semana: solo el precio del servicio, sin fechas siguientes ni ahorro', (tester) async {
@@ -370,8 +388,6 @@ void main() {
             weeklyServiceCents: 15000,
             serviceCents: 15000,
             savingsCents: 0,
-            groceriesEstCents: 6300,
-            totalCents: 21300,
           ),
         ),
       );
@@ -392,7 +408,6 @@ void main() {
             portions: 30,
             autoPrice: false,
             reason: NoAutoPriceReason.people,
-            groceriesEstCents: 9450,
             maxPeople: 6,
           ),
         ),
@@ -402,10 +417,10 @@ void main() {
         'Più di 6 persone: senza prezzo automatico, prepara tu il preventivo.',
       );
       expect(find.byKey(const ValueKey('detail-estimate-total')), findsNothing);
-      expect(textOf(tester, 'detail-estimate-groceries'), '94,50 €');
+      expect(find.byKey(const ValueKey('detail-estimate-groceries')), findsNothing);
     });
 
-    testWidgets('sesión extra: sin semanas, días sin «a settimana» y la compra de la sesión', (tester) async {
+    testWidgets('sesión extra: sin semanas, días sin «a settimana» y sin compra', (tester) async {
       await openDetail(
         tester,
         buildRequest(
@@ -415,7 +430,6 @@ void main() {
             portions: 16,
             autoPrice: false,
             reason: NoAutoPriceReason.extra,
-            groceriesEstCents: 5300,
           ),
         ),
       );
@@ -425,7 +439,7 @@ void main() {
         textOf(tester, 'detail-no-auto-price'),
         'Evento o sessione extra: senza prezzo automatico, prepara tu il preventivo.',
       );
-      expect(find.text('Spesa stimata'), findsOneWidget);
+      expect(find.byKey(const ValueKey('detail-estimate-groceries')), findsNothing);
     });
   });
 

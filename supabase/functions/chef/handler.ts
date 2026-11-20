@@ -87,7 +87,8 @@ export type CreateBookingParams = {
   p_start: string | null;
   p_cook_minutes: number;
   p_portions: number;
-  p_groceries_est_cents: number;
+  /** Siempre 0: la compra la hace el cliente (19/11/2026). La firma de la función SQL no cambia. */
+  p_groceries_est_cents: 0;
   p_service_total_cents: number;
   p_request_id: string | null;
   p_client_id: string | null;
@@ -142,7 +143,7 @@ export function toCreateBookingParams(chefId: string, value: NormalizedBooking):
     p_start: value.start,
     p_cook_minutes: value.cookMinutes,
     p_portions: value.portions,
-    p_groceries_est_cents: value.groceriesEstCents,
+    p_groceries_est_cents: 0,
     p_service_total_cents: value.serviceTotalCents,
     p_request_id: client.kind === "request" ? client.requestId : null,
     p_client_id: client.kind === "client" ? client.clientId : null,
