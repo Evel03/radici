@@ -1615,7 +1615,7 @@
   },
   "recipeUnitPieces": "pz",
   "@recipeUnitPieces": {
-    "description": "Unidad: piezas (abreviatura)."
+    "description": "Unidad por cantidad, abreviada: la cantidad cuenta cosas enteras («2 cipolle», «1 limone»). En la base es «pcs». En español «unid.» y en inglés «ea» (each)."
   },
   "recipeUnitToTaste": "q.b.",
   "@recipeUnitToTaste": {
