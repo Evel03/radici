@@ -168,22 +168,32 @@ repositorios falsos (`test/support/fakes.dart`).
   caracteres como `char_length`; una bandera cuenta dos). Se guardan con `save_recipe`, que recibe
   siempre las tres (null borra la que se vació).
 - **Traducción automática** (SPEC §4, contrato chef-api.md §12): Evelyn escribe en español y al
-  guardar el editor manda el nombre y la descripción a `POST …/chef/translate`
-  (`TranslationRepository`: `functions.invoke('chef/translate')` con la sesión de quien entró,
-  `?forceFunctionRegion=eu-central-1` y sin la cabecera `x-region`; espera hasta 60 s, porque la
-  función corta a los 40). Debajo de los campos en español, el aviso de no escribir datos de clientes
-  (ese texto va a Anthropic). La regla de qué se traduce es Dart puro (`planRecipeTranslation`, en
-  `domain/recipe_translation.dart`): lo vacío y lo automático cuyo español cambió; lo escrito a mano
-  nunca se pisa; si se borra la descripción en español, las descripciones automáticas se vacían. El
-  nombre en español es obligatorio en un plato nuevo o una copia y en uno que ya lo tenía; un plato
-  viejo sin español se guarda como está. Lo que llenó el traductor lleva la marca «Tradotto
-  automaticamente» y se guarda en `auto_translated`; escribir en el campo lo saca. Mientras traduce,
-  «Traduzione in corso…» en el botón y el formulario sin tocar. Si falla, no se guarda nada y un aviso
-  dice por qué y ofrece «Riprova» (503, sin red o el tiempo agotado; nunca ante 429, 422, 501 ni 500),
-  «Salva senza tradurre» (lo automático viejo se vacía; no se puede si el nombre en italiano queda
-  vacío) y «Scrivo io». Con la traducción apagada (`501`) y solo campos vacíos para traducir, guarda
-  sin traducir sin el aviso y la lista lo dice. Duplicar copia las marcas de los nombres, no las de
-  las descripciones.
+  guardar el editor manda el nombre (y la descripción, solo si hay una que traducir) a
+  `POST …/chef/translate` (`TranslationRepository`: `functions.invoke('chef/translate')` con la
+  sesión de quien entró, `?forceFunctionRegion=eu-central-1` y sin la cabecera `x-region`, como pide
+  el contrato §2; espera hasta 60 s, porque la función corta a los 40; ante un `401` renueva la sesión
+  una vez y reintenta una vez). Debajo de los campos en español, el aviso de no escribir datos de
+  clientes (ese texto va a Anthropic). La regla de qué se traduce es Dart puro
+  (`planRecipeTranslation`, en `domain/recipe_translation.dart`): lo vacío y lo automático cuyo
+  español cambió; lo escrito a mano nunca se pisa; si se borra la descripción en español, las
+  descripciones automáticas se vacían. El nombre en español es obligatorio en un plato nuevo o una
+  copia y en uno que ya lo tenía; un plato viejo sin español se guarda como está, salvo que tenga una
+  descripción en español que traducir (ahí lo pide, con el motivo). El nombre en español repetido se
+  avisa mientras se escribe. Lo que llenó el traductor lleva la marca «Tradotto automaticamente» y se
+  guarda en `auto_translated`; escribir en el campo lo saca. Mientras traduce, «Traduzione in
+  corso…» en el botón (región viva para el lector de pantalla), el formulario sin tocar, «Annulla»
+  de un aviso sin efecto y volver deshabilitado; si igual cambió algo, no guarda y lo dice. Si falla,
+  no se guarda nada y un aviso dice por qué y ofrece «Scrivo io» (enfoca el primer campo que había
+  que traducir), «Salva senza tradurre» (lo automático viejo se vacía; avisa si el plato sale de la
+  web; no se puede si el nombre en italiano queda vacío) y «Riprova» solo si la falla puede ser
+  pasajera (`TranslationFailureKind.canRetry`: `503`, un 502 o 504 de la plataforma, un 429 de la
+  plataforma sin el código de la función, la función sin desplegar, sin conexión o 60 s sin
+  respuesta); nunca ante `422`, `429`, `501`, `500` (también un
+  200 roto o un error de la app), `403`, `400` ni el `401` que sigue después de renovar la sesión
+  («La sessione è scaduta: esci e rientra»). Después de un `422` o un `429`, el mismo pedido no
+  vuelve a la red. Con la traducción apagada (`501`) o un `422`, y solo campos vacíos para traducir,
+  guarda sin traducir sin el aviso y la lista lo dice, con el motivo, en un aviso que dura como un
+  error. Duplicar copia las marcas de los nombres, no las de las descripciones.
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
   entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).
