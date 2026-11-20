@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildMenuResponse, recipePhotoUrls } from "../../../supabase/functions/_shared/menu.ts";
 import { i18nFor, validRequest } from "./fixtures.ts";
 import {
+  DISH_PHOTO_SIZE,
+  dishPhoto,
   dishesInSeason,
   doneMenu,
   fetchMenu,
@@ -14,6 +16,7 @@ import {
   toggleDish,
   type MenuDish,
   type MenuPanelInput,
+  type DishPhotoElement,
   type MenuState,
 } from "./menu.ts";
 
@@ -186,6 +189,7 @@ describe("panel", () => {
         description: "Ragù e besciamella.",
         allergens: "Allergeni: glutine, uova, latte e derivati",
         diet: null,
+        photo: LASAGNE_PHOTO.thumb,
         checked: false,
         disabled: false,
       },
@@ -195,6 +199,7 @@ describe("panel", () => {
         description: "Verdure di stagione.",
         allergens: "Nessuno dei 14 allergeni principali",
         diet: "Vegano",
+        photo: null,
         checked: false,
         disabled: false,
       },
@@ -228,6 +233,79 @@ describe("panel", () => {
       const panel = view({ state, month });
       expect(panel, state.kind).toMatchObject({ hint: null, count: null, overLimit: false, cards: [], message });
     }
+  });
+});
+
+describe("foto del plato", () => {
+  /** Una <img> simulada: anota en qué orden se pone el listener y el src, y deja disparar el error. */
+  function fakeImage() {
+    const steps: string[] = [];
+    const listeners: Array<() => void> = [];
+    let src = "";
+    const img: DishPhotoElement & { steps: string[]; removed: boolean; fail(): void } = {
+      className: "",
+      alt: "Lasagne",
+      width: 0,
+      height: 0,
+      loading: "eager",
+      decoding: "auto",
+      get src() {
+        return src;
+      },
+      set src(value: string) {
+        steps.push("src");
+        src = value;
+      },
+      addEventListener(type, listener, options) {
+        steps.push(`${type}${options?.once ? " (una vez)" : ""}`);
+        listeners.push(listener);
+      },
+      remove() {
+        img.removed = true;
+      },
+      steps,
+      removed: false,
+      fail() {
+        for (const listener of listeners) listener();
+      },
+    };
+    return img;
+  }
+
+  it("con foto, la tarjeta trae la miniatura (la de 480 px); sin foto, null y se ve como antes", () => {
+    const cards = view().cards;
+    expect(cards.map((card) => [card.name, card.photo])).toEqual([
+      ["Lasagne", LASAGNE_PHOTO.thumb],
+      ["Minestrone", null],
+    ]);
+  });
+
+  it("miniatura cuadrada de tamaño fijo, perezosa y con alt vacío (el nombre está al lado)", () => {
+    const img = dishPhoto(fakeImage(), LASAGNE_PHOTO.thumb, () => {});
+    expect(DISH_PHOTO_SIZE).toBeGreaterThanOrEqual(72);
+    expect(DISH_PHOTO_SIZE).toBeLessThanOrEqual(88);
+    expect(img).toMatchObject({
+      className: "dish__photo",
+      alt: "",
+      width: DISH_PHOTO_SIZE,
+      height: DISH_PHOTO_SIZE,
+      loading: "lazy",
+      decoding: "async",
+      src: LASAGNE_PHOTO.thumb,
+    });
+    // El listener va antes del src: un error inmediato (por ejemplo, de la caché) no se pierde.
+    expect(img.steps).toEqual(["error (una vez)", "src"]);
+  });
+
+  it("si la imagen no carga, se saca (sin un hueco roto) y avisa para que la tarjeta quede como sin foto", () => {
+    let failed = 0;
+    const img = dishPhoto(fakeImage(), LASAGNE_PHOTO.thumb, () => {
+      failed += 1;
+    });
+    expect(img.removed).toBe(false);
+    img.fail();
+    expect(img.removed).toBe(true);
+    expect(failed).toBe(1);
   });
 });
 

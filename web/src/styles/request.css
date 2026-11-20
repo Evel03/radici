@@ -447,6 +447,44 @@ input[type="radio"] {
   overflow-wrap: anywhere;
 }
 
+/* Con foto: la miniatura (80 px, fija y cuadrada: DISH_PHOTO_SIZE en menu.ts) flota a la izquierda del texto,
+   que la rodea y sigue debajo.
+   Si la imagen no carga, richiesta.ts la saca y quita dish--photo: la tarjeta vuelve a la de siempre. */
+.dish--photo .choice__body {
+  display: flow-root;
+  flex: 1;
+  container-type: inline-size;
+}
+
+.dish--photo .choice__body > span {
+  display: block;
+}
+
+.dish--photo .choice__body > span + span {
+  margin-top: 0.15rem;
+}
+
+.dish__photo {
+  float: left;
+  width: 80px;
+  height: 80px;
+  margin: 0.15rem 0.75rem 0.3rem 0;
+  border-radius: calc(var(--radius) / 2);
+  background: var(--line);
+  object-fit: cover;
+}
+
+/* Con letra grande (o en un teléfono de 320 px) al lado de la foto quedaban unos 100 px y los nombres se
+   partían a mitad de palabra: si el texto no tiene 11em (em del texto: crece con la letra), la foto va arriba.
+   A 375 px con la letra normal hay unos 12,7em y queda al costado. Sin container queries, siempre al costado. */
+@container (max-width: 11em) {
+  .dish__photo {
+    display: block;
+    float: none;
+    margin: 0.15rem 0 0.5rem;
+  }
+}
+
 .dish__meta {
   color: var(--muted);
   font-size: 1.05rem;

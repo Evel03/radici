@@ -26,6 +26,7 @@ import {
 } from "../request/calendar.ts";
 import { hiddenPanels, weeksFromForm } from "../request/form.ts";
 import {
+  dishPhoto,
   doneMenu,
   fetchMenu,
   menuMax,
@@ -547,7 +548,11 @@ function startRequestPage(shell: Shell): void {
     );
   };
 
-  /** Una tarjeta de plato: la casilla, el nombre (su nombre accesible) y, como descripción, el texto, los alérgenos y la dieta. */
+  /**
+   * Una tarjeta de plato: la casilla, el nombre (su nombre accesible) y, como descripción, el texto, los alérgenos
+   * y la dieta. Con foto, la miniatura va primera en el texto (dish--photo: flota a la izquierda y el texto la
+   * rodea; con letra grande, arriba); si no carga, se saca y la tarjeta queda como una sin foto.
+   */
   const dishNode = (card: DishCard): HTMLLabelElement => {
     const label = document.createElement("label");
     label.className = "choice dish";
@@ -574,6 +579,10 @@ function startRequestPage(shell: Shell): void {
       meta.append("\u00a0· ", diet);
     }
     body.append(part("choice__title", `${idBase}-name`, card.name), part("choice__hint", `${idBase}-desc`, card.description), meta);
+    if (card.photo) {
+      label.classList.add("dish--photo");
+      body.prepend(dishPhoto(document.createElement("img"), card.photo, () => label.classList.remove("dish--photo")));
+    }
     input.setAttribute("aria-labelledby", `${idBase}-name`);
     input.setAttribute("aria-describedby", `${idBase}-desc ${idBase}-meta`);
     label.append(input, body);
@@ -595,7 +604,10 @@ function startRequestPage(shell: Shell): void {
     setText(menuEls.status, view.message);
     menuEls.list.hidden = view.cards.length === 0;
 
-    const signature = JSON.stringify([i18n.lang, view.cards.map((card) => [card.id, card.name, card.description, card.allergens, card.diet])]);
+    const signature = JSON.stringify([
+      i18n.lang,
+      view.cards.map((card) => [card.id, card.name, card.description, card.allergens, card.diet, card.photo]),
+    ]);
     if (signature !== menuPainted) {
       menuPainted = signature;
       const active = document.activeElement;
