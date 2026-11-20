@@ -104,22 +104,19 @@ void main() {
       final draft = recipeDraftFrom(pastel());
       expect([draft.nameEs, draft.nameIt], ['Pastel de papa', '']);
       expect([draft.descriptionEs, draft.descriptionIt], [pastelDescription, '']);
-      expect(italianMovedToSpanish(pastel()), {
-        TranslatedField.nameIt: 'Pastel de papa',
-        TranslatedField.descriptionIt: pastelDescription,
-      });
+      expect(italianMovedToSpanish(pastel()), {TranslatedField.nameIt, TranslatedField.descriptionIt});
 
       // Con la descripción en español, queda la suya y la italiana no se toca.
       final withSpanish = pastel().copyWith(descriptionEs: 'Pastel de carne y papa.');
       final kept = recipeDraftFrom(withSpanish);
       expect([kept.descriptionEs, kept.descriptionIt], ['Pastel de carne y papa.', pastelDescription]);
-      expect(italianMovedToSpanish(withSpanish), {TranslatedField.nameIt: 'Pastel de papa'});
+      expect(italianMovedToSpanish(withSpanish), {TranslatedField.nameIt});
 
       // La copia: el nombre, igual; las descripciones no se copian.
       final copy = recipeDraftFrom(pastel(), id: _newId);
       expect([copy.nameEs, copy.nameIt], ['Pastel de papa', '']);
       expect([copy.descriptionIt, copy.descriptionEs, copy.descriptionEn], ['', '', '']);
-      expect(italianMovedToSpanish(pastel(), copy: true), {TranslatedField.nameIt: 'Pastel de papa'});
+      expect(italianMovedToSpanish(pastel(), copy: true), {TranslatedField.nameIt});
 
       // Uno que ya tiene el nombre en español abre como está.
       expect(italianMovedToSpanish(lasagne()), isEmpty);

@@ -292,7 +292,7 @@
   "recipeTranslateSessionExpired": "Your session has expired: sign out and sign in again.",
   "recipeSaving": "Saving…",
   "recipeTranslateSkipHint": "What you wrote hasn't been lost. You can write the translations yourself or save without them: the fields to translate stay empty and are translated the next time you save.",
-  "recipeTranslateSkipKeepsItalian": "What you wrote hasn't been lost. You can write the translations yourself or save without them: the Italian still to translate stays as it was, and the other empty fields are translated the next time you save.",
+  "recipeTranslateSkipKeepsItalian": "What you wrote hasn't been lost. You can write the translations yourself or save without them: what needs translating stays as it was and is translated the next time you save.",
   "recipeTranslateSkipOffWeb": "Without the Italian description the dish isn't on the website.",
   "recipeTranslateNeedsItalianName": "What you wrote hasn't been lost. To save without translating, write the Italian name yourself.",
   "recipeTranslateSkip": "Save without translating",

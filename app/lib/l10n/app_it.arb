@@ -1347,9 +1347,9 @@
   "@recipeTranslateSkipHint": {
     "description": "Qué hacer cuando la traducción falló y se puede guardar sin traducir: lo automático viejo se vacía (nunca queda una traducción del español anterior)."
   },
-  "recipeTranslateSkipKeepsItalian": "Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: l'italiano da tradurre resta com'era e gli altri campi vuoti si traducono la prossima volta che salvi.",
+  "recipeTranslateSkipKeepsItalian": "Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: quello che è da tradurre resta com'era e si traduce la prossima volta che salvi.",
   "@recipeTranslateSkipKeepsItalian": {
-    "description": "Como recipeTranslateSkipHint, en un plato viejo (guardado sin nombre en español, que se abrió con el italiano en el español): guardar sin traducir deja en el italiano el texto que tenía antes, no vacío."
+    "description": "Como recipeTranslateSkipHint, en un plato viejo (guardado sin nombre en español, que se abrió con el italiano en el español) que sigue viejo: guardar sin traducir le deja el español en el italiano y el nombre en español vacío, como estaba, así se vuelve a abrir igual y se traduce la próxima vez que se guarde."
   },
   "recipeTranslateSkipOffWeb": "Senza la descrizione in italiano il piatto non è sul sito.",
   "@recipeTranslateSkipOffWeb": {

@@ -833,7 +833,7 @@ void main() {
     // Decisión del 20/11/2026: Evelyn cargó los platos en español en el campo
     // italiano. Un plato guardado sin nombre en español abre con ese texto en
     // el español y el italiano vacío, sin la marca: lo traduce el guardado, y
-    // si no se puede, vuelve el italiano de antes (nunca queda trabado).
+    // si se guarda sin traducir sigue viejo (nunca queda trabado).
     group('un plato viejo (sin nombre en español)', () {
       setUp(() => repository.recipes[pastelId] = pastel());
 
@@ -863,7 +863,7 @@ void main() {
         expect(find.text('«[it] Pastel de papa» salvato.'), findsOneWidget);
       });
 
-      testWidgets('con la traducción apagada guarda sin pedir el italiano, con el de antes, y la lista lo dice', (
+      testWidgets('con la traducción apagada guarda sin pedir el italiano, como estaba, y la lista lo dice', (
         tester,
       ) async {
         translator.failure = TranslationFailureKind.notConfigured;
@@ -876,21 +876,22 @@ void main() {
           find.text('«Pastel de papa» salvato senza tradurre: la traduzione automatica è spenta.'),
           findsOneWidget,
         );
-        expect(repository.saveCalls.single, pastel().copyWith(nameEs: 'Pastel de papa', descriptionEs: pastelDescription));
+        expect(repository.saveCalls.single, pastel(), reason: 'sigue viejo');
       });
 
-      testWidgets('si el traductor no responde, «Salva senza tradurre» dice que el italiano queda como estaba y lo guarda', (
+      testWidgets('si el traductor no responde, «Salva senza tradurre» lo deja como estaba con lo corregido, y al volver a abrirlo se traduce', (
         tester,
       ) async {
         translator.failure = TranslationFailureKind.unavailable;
         await openEditor(tester, location: '/altro/piatti/$pastelId');
+        await tester.enterText(byKey('recipe-name-es'), 'Pastel de papas');
         await save(tester);
 
         expect(byKey('recipe-translate-failed'), findsOneWidget);
         expect(
           find.text(
-            "Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: l'italiano da "
-            'tradurre resta com\'era e gli altri campi vuoti si traducono la prossima volta che salvi.',
+            'Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: quello che è da '
+            "tradurre resta com'era e si traduce la prossima volta che salvi.",
           ),
           findsOneWidget,
         );
@@ -899,8 +900,19 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(RecipesScreen), findsOneWidget);
-        expect(repository.saveCalls.single, pastel().copyWith(nameEs: 'Pastel de papa', descriptionEs: pastelDescription));
+        expect(repository.saveCalls.single, pastel().copyWith(nameIt: 'Pastel de papas'), reason: 'sigue viejo');
         expect(find.descendant(of: tile(pastelId), matching: find.text('Sul sito')), findsOneWidget);
+
+        // Vuelve a abrir como viejo, y guardar lo traduce.
+        translator.failure = null;
+        await tapVisible(tester, tile(pastelId));
+        expect(textOf(tester, 'recipe-name-es'), 'Pastel de papas');
+        expect(textOf(tester, 'recipe-name-it'), isEmpty);
+        expect(textOf(tester, 'recipe-description-es'), pastelDescription);
+        await save(tester);
+        final saved = repository.saveCalls.last;
+        expect([saved.nameEs, saved.nameIt], ['Pastel de papas', '[it] Pastel de papas']);
+        expect(find.text('«[it] Pastel de papas» salvato.'), findsOneWidget);
       });
 
       testWidgets('escribir el italiano a mano lo respeta', (tester) async {
@@ -912,6 +924,30 @@ void main() {
         final saved = repository.saveCalls.single;
         expect([saved.nameIt, saved.nameEs, saved.nameEn], ['Pasticcio di patate', 'Pastel de papa', '[en] Pastel de papa']);
         expect(saved.autoTranslated, isNot(contains(TranslatedField.nameIt)));
+      });
+
+      testWidgets('con el italiano escrito a mano, sin traducir deja de ser viejo y el aviso dice que sale de la web', (
+        tester,
+      ) async {
+        translator.failure = TranslationFailureKind.unavailable;
+        await openEditor(tester, location: '/altro/piatti/$pastelId');
+        await tapVisible(tester, byKey('recipe-name-it'));
+        await tester.enterText(byKey('recipe-name-it'), 'Pasticcio di patate');
+        await save(tester);
+
+        expect(
+          find.text(
+            'Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: i campi da '
+            'tradurre restano vuoti e si traducono la prossima volta che salvi. Senza la descrizione in italiano '
+            'il piatto non è sul sito.',
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(byKey('recipe-translate-skip'));
+        await tester.pumpAndSettle();
+        final saved = repository.saveCalls.single;
+        expect([saved.nameIt, saved.nameEs], ['Pasticcio di patate', 'Pastel de papa']);
+        expect([saved.descriptionIt, saved.descriptionEs], [null, pastelDescription]);
       });
     });
 

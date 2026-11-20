@@ -121,22 +121,21 @@ RecipeDraft emptyRecipeDraft(String id) => RecipeDraft(id: id);
 /// Evelyn cargó los platos en español en el campo italiano, el único
 /// principal del editor de antes (decisión de Nicolas del 20/11/2026; SPEC
 /// §4). Devuelve los campos en italiano de [recipe] cuyo texto pasa al
-/// español, con ese texto: el nombre, y la descripción si no tenía la
-/// española (no en una copia, [copy]: no lleva las descripciones). Vacío si
-/// [recipe] tiene el nombre en español.
+/// español: el nombre, y la descripción si no tenía la española (no en una
+/// copia, [copy]: no lleva las descripciones). Vacío si [recipe] tiene el
+/// nombre en español.
 ///
 /// En el formulario esos campos quedan vacíos (se traducen al guardar, sin la
-/// marca de lo automático: nada los tradujo todavía); si se guarda sin
-/// traducirlos, vuelven a este texto (`untranslatedFallback` de
-/// planRecipeTranslation), así nunca hace falta escribir el italiano para
-/// guardar.
-Map<TranslatedField, String> italianMovedToSpanish(Recipe recipe, {bool copy = false}) {
+/// marca de lo automático: nada los tradujo todavía). Si se guarda sin
+/// traducirlos, el plato sigue siendo viejo: el español vuelve a esos campos
+/// y queda vacío (`movedToSpanish` de planRecipeTranslation), así nunca hace
+/// falta escribir el italiano para guardar y la próxima vez se traduce.
+Set<TranslatedField> italianMovedToSpanish(Recipe recipe, {bool copy = false}) {
   if (recipe.nameEs != null) return const {};
-  final description = recipe.descriptionIt;
   return {
-    TranslatedField.nameIt: recipe.nameIt,
-    if (!copy && recipe.descriptionEs == null && description != null)
-      TranslatedField.descriptionIt: description,
+    TranslatedField.nameIt,
+    if (!copy && recipe.descriptionEs == null && recipe.descriptionIt != null)
+      TranslatedField.descriptionIt,
   };
 }
 
@@ -151,19 +150,23 @@ Map<TranslatedField, String> italianMovedToSpanish(Recipe recipe, {bool copy = f
 RecipeDraft recipeDraftFrom(Recipe recipe, {String? id}) {
   final copy = id != null;
   final moved = italianMovedToSpanish(recipe, copy: copy);
-  final movedName = moved[TranslatedField.nameIt];
-  final movedDescription = moved[TranslatedField.descriptionIt];
+  final movedName = moved.contains(TranslatedField.nameIt);
+  final movedDescription = moved.contains(TranslatedField.descriptionIt);
   return RecipeDraft(
     id: id ?? recipe.id,
-    nameIt: movedName == null ? recipe.nameIt : '',
-    nameEs: movedName ?? recipe.nameEs ?? '',
+    nameIt: movedName ? '' : recipe.nameIt,
+    nameEs: movedName ? recipe.nameIt : recipe.nameEs ?? '',
     nameEn: recipe.nameEn ?? '',
-    descriptionIt: copy || movedDescription != null ? '' : recipe.descriptionIt ?? '',
-    descriptionEs: copy ? '' : movedDescription ?? recipe.descriptionEs ?? '',
+    descriptionIt: copy || movedDescription ? '' : recipe.descriptionIt ?? '',
+    descriptionEs: copy
+        ? ''
+        : movedDescription
+        ? recipe.descriptionIt ?? ''
+        : recipe.descriptionEs ?? '',
     descriptionEn: copy ? '' : recipe.descriptionEn ?? '',
     autoTranslated: {
       for (final field in recipe.autoTranslated)
-        if ((!copy || field.isName) && !moved.containsKey(field)) field,
+        if ((!copy || field.isName) && !moved.contains(field)) field,
     },
     allergens: recipe.allergens.toSet(),
     diet: recipe.diet,

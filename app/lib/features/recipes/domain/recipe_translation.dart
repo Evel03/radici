@@ -15,8 +15,10 @@
 // - sin el nombre en español no se traduce nada (el traductor lo exige);
 // - un plato viejo (guardado sin el nombre en español) abre con su italiano
 //   en el español y el italiano vacío (italianMovedToSpanish): se traduce
-//   como cualquier campo vacío, y si se guarda sin traducir vuelve el
-//   italiano de antes (untranslatedFallback), nunca vacío.
+//   como cualquier campo vacío; si se guarda sin traducir y el nombre en
+//   italiano no se escribió a mano, sigue siendo viejo: el español vuelve a
+//   esos campos y queda vacío (skippedToSave), así la próxima vez se
+//   traduce.
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/domain/recipe_draft.dart';
 
@@ -59,7 +61,7 @@ final class RecipeTranslationPlan {
     required this.translate,
     required this.clear,
     required this.source,
-    required this.untranslatedFallback,
+    required this.movedToSpanish,
   });
 
   /// El formulario del que sale el plan.
@@ -76,11 +78,9 @@ final class RecipeTranslationPlan {
   /// El español de [draft].
   final SpanishText source;
 
-  /// Lo que vuelve a un campo de [translate] que queda sin traducir, en
-  /// lugar de quedar vacío: en un plato viejo, el italiano que tenía antes de
-  /// pasar al español (italianMovedToSpanish). Así se puede guardar sin
-  /// escribir el italiano y no se pierde la descripción de la web.
-  final Map<TranslatedField, String> untranslatedFallback;
+  /// En un plato viejo, los campos en italiano cuyo texto pasó al español al
+  /// abrirlo (italianMovedToSpanish). Vacío en los demás.
+  final Set<TranslatedField> movedToSpanish;
 
   /// Lo que se manda al traductor: el nombre en español y la descripción
   /// solo si hay una descripción que traducir (a Anthropic va lo justo).
@@ -109,7 +109,7 @@ final class RecipeTranslationPlan {
     for (final field in translate) {
       final text = translatedTextOf(translation, field);
       if (text == null || normalizeRecipeText(text).isEmpty) {
-        result = _untranslated(result, auto, field);
+        result = _withoutTranslation(result, auto, field);
       } else {
         result = result.withText(field, text);
         auto.add(field);
@@ -121,57 +121,66 @@ final class RecipeTranslationPlan {
     return result.copyWith(autoTranslated: auto);
   }
 
-  /// [draft] para guardar sin traducir: lo automático que habría que
-  /// traducir de nuevo (y las descripciones de [clear]) queda vacío, para no
-  /// guardar una traducción vieja como si fuera la del español nuevo; lo
+  /// El formulario después de guardar sin traducir: lo automático que habría
+  /// que traducir de nuevo (y las descripciones de [clear]) queda vacío, para
+  /// no guardar una traducción vieja como si fuera la del español nuevo; lo
   /// vacío queda vacío, y lo escrito a mano, como estaba. Lo vacío se
-  /// traduce la próxima vez que se guarde. Lo que tiene
-  /// [untranslatedFallback] vuelve a ese texto (escrito a mano), no queda
-  /// vacío.
+  /// traduce la próxima vez que se guarde. Lo que se guarda es
+  /// [skippedToSave].
   RecipeDraft get skipped {
     var result = draft;
     final auto = {...draft.autoTranslated};
-    for (final field in translate) {
-      result = _untranslated(result, auto, field);
-    }
-    for (final field in clear) {
+    for (final field in {...translate, ...clear}) {
       result = _withoutTranslation(result, auto, field);
     }
     return result.copyWith(autoTranslated: auto);
   }
 
-  /// [field], de [translate], sin traducir: si es automático se vacía (nunca
-  /// una traducción vieja) y, si tiene [untranslatedFallback], vuelve a ese
-  /// texto.
-  RecipeDraft _untranslated(
-    RecipeDraft result,
-    Set<TranslatedField> auto,
-    TranslatedField field,
-  ) {
-    final emptied = _withoutTranslation(result, auto, field);
-    final fallback = untranslatedFallback[field];
-    if (fallback == null ||
-        normalizeRecipeText(emptied.textOf(field)).isNotEmpty) {
-      return emptied;
+  /// Guardado sin traducir, el plato viejo sigue siendo viejo: su nombre en
+  /// italiano todavía está por traducir (no se escribió a mano ni quedó una
+  /// traducción). Si se escribió a mano, deja de ser viejo y todo sigue la
+  /// regla de siempre.
+  bool get skipKeepsOld =>
+      translate.contains(TranslatedField.nameIt) &&
+      movedToSpanish.contains(TranslatedField.nameIt);
+
+  /// Lo que se guarda sin traducir: [skipped] y, si [skipKeepsOld], como un
+  /// plato viejo, para que se vuelva a abrir igual y se traduzca la próxima
+  /// vez que se guarde: los campos de [movedToSpanish] que quedaban por
+  /// traducir llevan el texto de su español como está (con lo que se haya
+  /// corregido) y ese español queda vacío (`name_es` y `description_es` en
+  /// null). Un campo automático que se queda sin su español se vacía: nada
+  /// queda marcado sin el original del que salió.
+  RecipeDraft get skippedToSave {
+    var result = skipped;
+    if (!skipKeepsOld) return result;
+    for (final field in translate.intersection(movedToSpanish)) {
+      result = result.withText(field, result.sourceOf(field));
+      result = field.isName
+          ? result.copyWith(nameEs: '')
+          : result.copyWith(descriptionEs: '');
     }
-    return emptied.withText(field, fallback);
+    final auto = {...result.autoTranslated};
+    for (final field in TranslatedField.values) {
+      if (normalizeRecipeText(result.sourceOf(field)).isEmpty) {
+        result = _withoutTranslation(result, auto, field);
+      }
+    }
+    return result.copyWith(autoTranslated: auto);
   }
 
   /// Se puede guardar sin traducir: el nombre en italiano (obligatorio en la
   /// base) no queda vacío.
-  bool get canSkip => normalizeRecipeText(skipped.nameIt).isNotEmpty;
-
-  /// Guardar sin traducir deja en algún campo en italiano el texto de antes
-  /// ([untranslatedFallback]): el aviso lo dice, en lugar de que los campos
-  /// por traducir quedan vacíos.
-  bool get skipKeepsItalian => translate.any(untranslatedFallback.containsKey);
+  bool get canSkip => normalizeRecipeText(skippedToSave.nameIt).isNotEmpty;
 
   /// Guardar sin traducir vacía la descripción en italiano que había (por
-  /// vieja o porque se borró la española), y sin ella el plato no sale en la
-  /// web. Si ya estaba vacía, no cambia nada.
+  /// vieja, porque se borró la española o, en un plato viejo que deja de
+  /// serlo, porque había pasado al español), y sin ella el plato no sale en
+  /// la web. Si ya estaba vacía, no cambia nada.
   bool get skipEmptiesItalianDescription =>
-      normalizeRecipeText(draft.descriptionIt).isNotEmpty &&
-      normalizeRecipeText(skipped.descriptionIt).isEmpty;
+      (normalizeRecipeText(draft.descriptionIt).isNotEmpty ||
+          movedToSpanish.contains(TranslatedField.descriptionIt)) &&
+      normalizeRecipeText(skippedToSave.descriptionIt).isEmpty;
 }
 
 /// Si [field] es automático, lo vacía y le saca la marca (de [auto]); si no,
@@ -187,12 +196,12 @@ RecipeDraft _withoutTranslation(
 
 /// El plan de [draft]. [translatedFrom] es el español del que salen sus
 /// campos automáticos: el guardado al abrir el editor, o el de la última
-/// traducción. [untranslatedFallback]: lo que vuelve a un campo que se
-/// guarda sin traducir (en un plato viejo, el italiano de antes).
+/// traducción. [movedToSpanish]: en un plato viejo, los campos en italiano
+/// que pasaron al español al abrirlo.
 RecipeTranslationPlan planRecipeTranslation(
   RecipeDraft draft, {
   required SpanishText translatedFrom,
-  Map<TranslatedField, String> untranslatedFallback = const {},
+  Set<TranslatedField> movedToSpanish = const {},
 }) {
   final source = spanishTextOf(draft);
   final translate = <TranslatedField>{};
@@ -218,6 +227,6 @@ RecipeTranslationPlan planRecipeTranslation(
     translate: translate,
     clear: clear,
     source: source,
-    untranslatedFallback: untranslatedFallback,
+    movedToSpanish: movedToSpanish,
   );
 }

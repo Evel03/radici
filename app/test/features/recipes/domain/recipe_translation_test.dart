@@ -91,14 +91,15 @@ void main() {
   });
 
   // Decisión del 20/11/2026: un plato guardado sin nombre en español abre con
-  // su italiano en el español y el italiano vacío (recipeDraftFrom); si no se
-  // traduce, el italiano vuelve al texto de antes (italianMovedToSpanish).
+  // su italiano en el español y el italiano vacío (recipeDraftFrom). Si se
+  // guarda sin traducir y el nombre en italiano sigue por traducir, sigue
+  // siendo viejo (skippedToSave): el español vuelve al italiano y queda vacío.
   group('un plato viejo (sin nombre en español)', () {
     final old = pastel();
-    RecipeTranslationPlan planOf(RecipeDraft draft) => planRecipeTranslation(
+    RecipeTranslationPlan planOf(RecipeDraft draft, {SpanishText? translatedFrom}) => planRecipeTranslation(
       draft,
-      translatedFrom: spanishTextOf(recipeDraftFrom(old)),
-      untranslatedFallback: italianMovedToSpanish(old),
+      translatedFrom: translatedFrom ?? spanishTextOf(recipeDraftFrom(old)),
+      movedToSpanish: italianMovedToSpanish(old),
     );
 
     test('se traduce todo lo que quedó vacío, del texto que estaba en italiano', () {
@@ -112,42 +113,67 @@ void main() {
       expect(translated.autoTranslated, allFields);
     });
 
-    test('guardar sin traducir vuelve al italiano de antes: se puede sin escribirlo', () {
+    test('guardar sin traducir lo deja viejo: el español en el italiano y vacío; el formulario sigue por traducir', () {
       final plan = planOf(recipeDraftFrom(old));
-      final skipped = plan.skipped;
-      expect([skipped.nameIt, skipped.descriptionIt], ['Pastel de papa', pastelDescription]);
-      expect([skipped.nameEs, skipped.descriptionEs], ['Pastel de papa', pastelDescription]);
-      expect([skipped.nameEn, skipped.descriptionEn], ['', '']);
-      expect(skipped.autoTranslated, isEmpty, reason: 'nada lo tradujo');
-      expect(plan.canSkip, isTrue);
-      expect(plan.skipKeepsItalian, isTrue);
-      expect(plan.skipEmptiesItalianDescription, isFalse, reason: 'la descripción italiana vuelve');
+      expect(plan.skipKeepsOld, isTrue);
+      expect(plan.canSkip, isTrue, reason: 'sin escribir el italiano');
+      expect(plan.skipEmptiesItalianDescription, isFalse, reason: 'sigue en la web');
+      final stored = plan.skippedToSave;
+      expect([stored.nameIt, stored.descriptionIt], ['Pastel de papa', pastelDescription]);
+      expect([stored.nameEs, stored.descriptionEs, stored.nameEn, stored.descriptionEn], ['', '', '', '']);
+      expect(stored.autoTranslated, isEmpty, reason: 'nada lo tradujo');
+      expect(recipeFromDraft(stored), old, reason: 'se guarda como estaba');
+      expect(plan.skipped, recipeDraftFrom(old), reason: 'el formulario, como se vuelve a abrir');
     });
 
-    test('lo escrito a mano en italiano queda, y entonces no vuelve nada', () {
-      final written = recipeDraftFrom(old).copyWith(nameIt: 'Pasticcio di patate', descriptionIt: 'Carne e purè.');
+    test('lo que se corrigió en el español es lo que pasa al italiano', () {
+      final corrected = recipeDraftFrom(old).copyWith(nameEs: ' Pastel de  papas ', descriptionEs: 'Carne y puré.');
+      final stored = planOf(corrected).skippedToSave;
+      expect(recipeFromDraft(stored), old.copyWith(nameIt: 'Pastel de papas', descriptionIt: 'Carne y puré.'));
+    });
+
+    test('con el nombre en italiano escrito a mano deja de ser viejo: todo sigue la regla de siempre', () {
+      final written = recipeDraftFrom(old).copyWith(nameIt: 'Pasticcio di patate');
       final plan = planOf(written);
-      expect(plan.translate, {TranslatedField.nameEn, TranslatedField.descriptionEn});
-      expect([plan.skipped.nameIt, plan.skipped.descriptionIt], ['Pasticcio di patate', 'Carne e purè.']);
-      expect(plan.skipKeepsItalian, isFalse);
+      expect(plan.skipKeepsOld, isFalse);
+      expect(plan.skippedToSave, plan.skipped);
+      expect([plan.skipped.nameIt, plan.skipped.nameEs], ['Pasticcio di patate', 'Pastel de papa']);
+      // La descripción que había pasado al español queda por traducir: sin
+      // italiano, y el aviso lo dice.
+      expect([plan.skipped.descriptionIt, plan.skipped.descriptionEs], ['', pastelDescription]);
+      expect(plan.skipEmptiesItalianDescription, isTrue);
+
+      final both = written.copyWith(descriptionIt: 'Carne e purè.');
+      expect(planOf(both).skipEmptiesItalianDescription, isFalse, reason: 'la descripción también es suya');
     });
 
-    test('una respuesta sin la descripción que se pidió deja la de antes, no vacía', () {
-      final plan = planOf(recipeDraftFrom(old));
-      final translated = plan.translated((
-        it: (name: 'Pasticcio di patate', description: null),
-        en: (name: 'Potato pie', description: null),
-      ));
-      expect(translated.descriptionIt, pastelDescription);
-      expect(translated.descriptionEn, isEmpty);
-      expect(translated.autoTranslated, {TranslatedField.nameIt, TranslatedField.nameEn});
+    test('con la descripción italiana escrita a mano sigue viejo por el nombre, y la descripción es la suya', () {
+      final written = recipeDraftFrom(old).copyWith(descriptionIt: 'Carne e purè.');
+      final plan = planOf(written);
+      expect(plan.skipKeepsOld, isTrue);
+      final stored = plan.skippedToSave;
+      expect([stored.nameIt, stored.nameEs], ['Pastel de papa', '']);
+      expect([stored.descriptionIt, stored.descriptionEs], ['Carne e purè.', pastelDescription]);
     });
 
-    test('sin italiano de antes (un plato que no es viejo), guardar sin traducir no inventa nada', () {
+    test('nada queda marcado sin el español del que salió', () {
+      // El inglés lo tradujo una traducción que no se guardó y Evelyn vació el
+      // italiano a mano.
+      final draft = recipeDraftFrom(old).copyWith(nameEn: '[en] Pastel de papa', autoTranslated: {TranslatedField.nameEn});
+      final plan = planOf(draft, translatedFrom: spanishTextOf(draft));
+      expect(plan.translate, {TranslatedField.nameIt, TranslatedField.descriptionIt, TranslatedField.descriptionEn});
+      final stored = plan.skippedToSave;
+      expect(stored.nameEs, isEmpty);
+      expect(stored.nameEn, isEmpty);
+      expect(stored.autoTranslated, isEmpty);
+    });
+
+    test('un plato que no es viejo no cambia: lo que se guarda es el formulario', () {
       final plan = _planFor(emptyRecipeDraft(_newId).copyWith(nameEs: 'Locro'));
-      expect(plan.untranslatedFallback, isEmpty);
-      expect(plan.skipKeepsItalian, isFalse);
-      expect(plan.skipped.nameIt, isEmpty);
+      expect(plan.movedToSpanish, isEmpty);
+      expect(plan.skipKeepsOld, isFalse);
+      expect(plan.skippedToSave, plan.skipped);
+      expect(plan.canSkip, isFalse, reason: 'sin el nombre en italiano');
     });
   });
 

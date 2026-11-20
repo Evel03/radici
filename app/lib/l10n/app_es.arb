@@ -292,7 +292,7 @@
   "recipeTranslateSessionExpired": "La sesión venció: sal y vuelve a entrar.",
   "recipeSaving": "Guardando…",
   "recipeTranslateSkipHint": "Lo que escribiste no se perdió. Puedes escribir tú las traducciones o guardar sin ellas: los campos por traducir quedan vacíos y se traducen la próxima vez que guardes.",
-  "recipeTranslateSkipKeepsItalian": "Lo que escribiste no se perdió. Puedes escribir tú las traducciones o guardar sin ellas: el italiano por traducir queda como estaba y los demás campos vacíos se traducen la próxima vez que guardes.",
+  "recipeTranslateSkipKeepsItalian": "Lo que escribiste no se perdió. Puedes escribir tú las traducciones o guardar sin ellas: lo que hay que traducir queda como estaba y se traduce la próxima vez que guardes.",
   "recipeTranslateSkipOffWeb": "Sin la descripción en italiano el plato no sale en la web.",
   "recipeTranslateNeedsItalianName": "Lo que escribiste no se perdió. Para guardar sin traducción, escribe tú el nombre en italiano.",
   "recipeTranslateSkip": "Guardar sin traducir",

@@ -282,11 +282,11 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
       TranslationFailureKind.forbidden ||
       TranslationFailureKind.invalid => l10n.recipeTranslateBroken,
     };
-    // En un plato viejo, guardar sin traducir deja el italiano de antes: el
-    // aviso no dice que queda vacío.
+    // Un plato viejo que sigue viejo queda como estaba (con el español en el
+    // italiano): el aviso no dice que lo que hay que traducir queda vacío.
     final next = plan.canSkip
         ? [
-            if (plan.skipKeepsItalian)
+            if (plan.skipKeepsOld)
               l10n.recipeTranslateSkipKeepsItalian
             else
               l10n.recipeTranslateSkipHint,

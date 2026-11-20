@@ -16,8 +16,10 @@
 //
 // Un plato viejo (guardado sin el nombre en español) abre con su italiano en
 // el español y el italiano vacío, para traducir (italianMovedToSpanish:
-// Evelyn cargó los platos en español en el campo italiano). Si no se
-// traduce, se guarda con el italiano que tenía: nunca queda trabado.
+// Evelyn cargó los platos en español en el campo italiano). Si se guarda sin
+// traducir, sigue siendo viejo: el español vuelve al campo italiano y
+// name_es queda null (RecipeTranslationPlan.skippedToSave), así nunca hace
+// falta escribir el italiano y la próxima vez que se guarde se traduce.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/uuid.dart';
@@ -62,12 +64,10 @@ abstract class RecipeEditorState with _$RecipeEditorState {
     /// guardado al abrir, o el de la última traducción.
     required SpanishText translatedFrom,
 
-    /// En un plato viejo, el italiano guardado de los campos que abrieron
-    /// vacíos porque su texto pasó al español (italianMovedToSpanish): si se
-    /// guardan sin traducir, vuelven a eso. Vacío en los demás y después de
-    /// guardar (el plato ya tiene el nombre en español).
-    @Default(<TranslatedField, String>{})
-    Map<TranslatedField, String> untranslatedFallback,
+    /// En un plato viejo (como está guardado), los campos en italiano que
+    /// abrieron vacíos porque su texto pasó al español
+    /// (italianMovedToSpanish). Vacío en los demás.
+    @Default(<TranslatedField>{}) Set<TranslatedField> movedToSpanish,
 
     /// Después del primer intento de guardar con errores: se muestran.
     @Default(false) bool showErrors,
@@ -118,7 +118,7 @@ abstract class RecipeEditorState with _$RecipeEditorState {
   RecipeTranslationPlan get translationPlan => planRecipeTranslation(
     draft,
     translatedFrom: translatedFrom,
-    untranslatedFallback: untranslatedFallback,
+    movedToSpanish: movedToSpanish,
   );
 
   @override
@@ -251,7 +251,7 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
       isNew: isNew,
       // Los campos automáticos de un plato guardado salen de su español.
       translatedFrom: spanishTextOf(draft),
-      untranslatedFallback: source == null
+      movedToSpanish: source == null
           ? const {}
           : italianMovedToSpanish(source, copy: target is CopyRecipe),
     );
@@ -404,7 +404,7 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
     final plan = state.translationPlan;
     // Sin nada que traducir puede haber descripciones automáticas que vaciar
     // (se borró la española).
-    if (!plan.needsTranslation) return _persist(plan.skipped);
+    if (!plan.needsTranslation) return _persistSkipped(plan);
     final request = plan.request;
     final refusal = state.refusal;
     // El mismo pedido ya tuvo un 422 o un 429: reintentar no sirve (y un 429
@@ -445,8 +445,10 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
 
   /// La traducción falló con [kind]. Apagada (501) o un texto que no se
   /// puede traducir (422) con solo campos vacíos: no queda nada viejo, así
-  /// que guarda sin traducir y la lista lo dice. Si no, no guarda y
-  /// [RecipeEditorState.translateError] dice por qué.
+  /// que guarda sin traducir y la lista lo dice (un plato viejo, como viejo).
+  /// Si no, o si así el plato saldría de la web (un plato viejo con el nombre
+  /// en italiano escrito a mano y la descripción que había pasado al
+  /// español), no guarda y [RecipeEditorState.translateError] dice por qué.
   Future<RecipeSaveResult> _translationFailed(
     RecipeTranslationPlan plan,
     TranslationFailureKind kind,
@@ -455,8 +457,9 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
             kind == TranslationFailureKind.untranslatable) &&
         plan.fillsOnlyEmpty &&
         plan.canSkip &&
+        !plan.skipEmptiesItalianDescription &&
         state.draft == plan.draft) {
-      final result = await _persist(plan.skipped, untranslatedBecause: kind);
+      final result = await _persistSkipped(plan, untranslatedBecause: kind);
       return result == RecipeSaveResult.saved
           ? RecipeSaveResult.savedUntranslated
           : result;
@@ -468,17 +471,30 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
   /// Guarda sin traducir, después de una traducción que falló: lo
   /// automático que había que traducir de nuevo queda vacío (nunca una
   /// traducción vieja como si fuera la del español nuevo), lo vacío queda
-  /// vacío y lo escrito a mano, como estaba; en un plato viejo, el italiano
-  /// vuelve al de antes ([RecipeEditorState.untranslatedFallback]). Sin el
-  /// nombre en italiano no se puede ([RecipeTranslationPlan.canSkip]): no
-  /// manda nada.
+  /// vacío y lo escrito a mano, como estaba; un plato viejo sigue siendo
+  /// viejo ([RecipeTranslationPlan.skippedToSave]). Sin el nombre en
+  /// italiano no se puede ([RecipeTranslationPlan.canSkip]): no manda nada.
   Future<RecipeSaveResult> saveWithoutTranslating() async {
     if (state.busy) return RecipeSaveResult.busy;
     if (!_validate()) return RecipeSaveResult.invalid;
     final plan = state.translationPlan;
     if (!plan.canSkip) return RecipeSaveResult.invalid;
-    return _persist(plan.skipped);
+    return _persistSkipped(plan);
   }
+
+  /// Guarda sin traducir lo que diga [plan]: el formulario queda como
+  /// [RecipeTranslationPlan.skipped] (lo que quedó por traducir, vacío: se
+  /// traduce la próxima vez) y se guarda
+  /// [RecipeTranslationPlan.skippedToSave] (en un plato viejo que sigue
+  /// viejo, el español en el italiano y name_es en null).
+  Future<RecipeSaveResult> _persistSkipped(
+    RecipeTranslationPlan plan, {
+    TranslationFailureKind? untranslatedBecause,
+  }) => _persist(
+    plan.skipped,
+    stored: plan.skippedToSave,
+    untranslatedBecause: untranslatedBecause,
+  );
 
   /// Sin errores; si hay, los muestra.
   bool _validate() {
@@ -491,16 +507,19 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
     return false;
   }
 
-  /// Guarda [draft] (ya traducido o sin traducir) con save_recipe. El
-  /// formulario pasa a [draft]: sus campos automáticos salen del español de
-  /// [draft], se guarde o no. [untranslatedBecause]: se guarda sin traducir
-  /// sin preguntar, por eso.
+  /// Guarda [draft] (ya traducido o sin traducir) con save_recipe, o
+  /// [stored] si lo que se guarda no es lo que muestra el formulario (un
+  /// plato viejo que sigue viejo). El formulario pasa a [draft]: sus campos
+  /// automáticos salen del español de [draft], se guarde o no; si falla,
+  /// queda así para reintentar. [untranslatedBecause]: se guarda sin
+  /// traducir sin preguntar, por eso.
   Future<RecipeSaveResult> _persist(
     RecipeDraft draft, {
+    RecipeDraft? stored,
     TranslationFailureKind? untranslatedBecause,
   }) async {
     final recipe = recipeFromDraft(
-      draft,
+      stored ?? draft,
       saved: state.isNew ? null : state.source,
     );
     state = state.copyWith(
@@ -520,8 +539,9 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
           source: saved,
           isNew: false,
           untranslatedBecause: untranslatedBecause,
-          // Ya tiene el nombre en español: lo de antes es lo guardado.
-          untranslatedFallback: const {},
+          // Como quedó guardado: si sigue viejo, el formulario es el mismo
+          // con que se volvería a abrir.
+          movedToSpanish: italianMovedToSpanish(saved),
         );
       }
       return RecipeSaveResult.saved;
