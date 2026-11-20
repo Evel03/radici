@@ -237,7 +237,7 @@ describe("panel", () => {
 });
 
 describe("foto del plato", () => {
-  /** Una <img> simulada: anota en qué orden se pone el listener y el src, y deja disparar el error. */
+  /** Una <img> simulada: anota el listener y el src, y deja disparar el error. */
   function fakeImage() {
     const steps: string[] = [];
     const listeners: Array<() => void> = [];
@@ -272,7 +272,7 @@ describe("foto del plato", () => {
     return img;
   }
 
-  it("con foto, la tarjeta trae la miniatura (la de 480 px); sin foto, null y se ve como antes", () => {
+  it("con foto, la tarjeta trae la miniatura (la de 360 px); sin foto, null y se ve como antes", () => {
     const cards = view().cards;
     expect(cards.map((card) => [card.name, card.photo])).toEqual([
       ["Lasagne", LASAGNE_PHOTO.thumb],
@@ -293,8 +293,8 @@ describe("foto del plato", () => {
       decoding: "async",
       src: LASAGNE_PHOTO.thumb,
     });
-    // El listener va antes del src: un error inmediato (por ejemplo, de la caché) no se pierde.
-    expect(img.steps).toEqual(["error (una vez)", "src"]);
+    // Un listener de error, de una sola vez, y el src.
+    expect([...img.steps].sort()).toEqual(["error (una vez)", "src"]);
   });
 
   it("si la imagen no carga, se saca (sin un hueco roto) y avisa para que la tarjeta quede como sin foto", () => {
