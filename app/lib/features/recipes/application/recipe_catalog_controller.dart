@@ -1,11 +1,16 @@
 // Catálogo de platos de la cocinera: la lista, la búsqueda y los cambios.
 // Guardar deja el plato en la lista con lo que se mandó (sin volver a leer);
-// desactivar o reactivar se ve enseguida y vuelve atrás si el servidor falla.
+// desactivar o reactivar se ve enseguida y vuelve atrás si el servidor falla;
+// la foto cambia en la lista cuando la base la guardó.
 // Entre dos dispositivos alcanza con deslizar para actualizar (sin Realtime).
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
+import 'package:radici/features/recipes/domain/recipe_photo.dart';
 
 final recipeCatalogProvider =
     AsyncNotifierProvider<RecipeCatalogController, List<Recipe>>(
@@ -90,13 +95,16 @@ class RecipeCatalogController extends AsyncNotifier<List<Recipe>> {
   }
 
   /// Guarda [recipe] entero y lo deja en la lista. Guardar no cambia si está
-  /// activo: el plato de la lista conserva su estado. Devuelve el plato como
-  /// quedó. Si falla, la lista no cambia y se relanza [RecipesFailure].
+  /// activo ni su foto (save_recipe no las toca): el plato de la lista las
+  /// conserva. Devuelve el plato como quedó. Si falla, la lista no cambia y se
+  /// relanza [RecipesFailure].
   Future<Recipe> save(Recipe recipe) async {
     final saved = await _change(() async {
       await _repository.save(recipe);
       final current = _find(recipe.id);
-      return current == null ? recipe : recipe.copyWith(active: current.active);
+      return current == null
+          ? recipe
+          : recipe.copyWith(active: current.active, photoId: current.photoId);
     });
     if (ref.mounted) _put(saved);
     return saved;
@@ -117,6 +125,59 @@ class RecipeCatalogController extends AsyncNotifier<List<Recipe>> {
         rethrow;
       }
     });
+  }
+
+  /// Pone en el plato [recipeId] (ya guardado) la foto [photo], o se la saca
+  /// con null: sube los dos archivos, llama a set_recipe_photo y deja el plato
+  /// de la lista con la foto nueva. Después borra, sin esperar ni avisar si
+  /// falla, los archivos de la foto que dejó de usarse: la que devuelve la
+  /// base y la que tenía la lista (si la respuesta de un intento anterior se
+  /// perdió, la base ya no la devuelve). Si falla, la lista no cambia y se
+  /// relanza [RecipePhotoFailure].
+  Future<void> setPhoto(String recipeId, NewRecipePhoto? photo) async {
+    final chefId = _chefId;
+    if (chefId == null) {
+      throw const RecipePhotoFailure(RecipePhotoFailureKind.unavailable);
+    }
+    final photos = ref.read(recipePhotosRepositoryProvider);
+    final photoId = photo?.photoId;
+    await _change(() async {
+      if (photo != null) {
+        await photos.upload(chefId: chefId, recipeId: recipeId, photo: photo);
+      }
+      final known = _find(recipeId)?.photoId;
+      final previous = await photos.setPhoto(
+        recipeId: recipeId,
+        photoId: photoId,
+      );
+      if (ref.mounted) {
+        final current = _find(recipeId);
+        if (current != null) _put(current.copyWith(photoId: photoId));
+      }
+      final unused = {?previous, ?known}..remove(photoId);
+      if (unused.isNotEmpty) {
+        unawaited(_deleteQuietly(photos, chefId, recipeId, unused));
+      }
+    });
+  }
+
+  /// Si no se pueden borrar, quedan en el bucket: no se le avisa a la
+  /// cocinera (la foto del plato ya cambió).
+  Future<void> _deleteQuietly(
+    RecipePhotosRepository photos,
+    String chefId,
+    String recipeId,
+    Set<String> photoIds,
+  ) async {
+    try {
+      await photos.delete(
+        chefId: chefId,
+        recipeId: recipeId,
+        photoIds: photoIds,
+      );
+    } on Object {
+      // Mejor esfuerzo.
+    }
   }
 
   Future<T> _change<T>(Future<T> Function() body) async {

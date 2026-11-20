@@ -1,17 +1,29 @@
 // Editor de un plato: el formulario (RecipeDraft) con sus cambios, el
-// guardado entero por save_recipe y desactivar o reactivar.
+// guardado entero por save_recipe, la foto y desactivar o reactivar.
 //
 // Un plato nuevo (o una copia) lleva un id generado al abrir el editor: cada
 // reintento de guardar manda el mismo, así un guardado que llegó al servidor
 // pero cuya respuesta se perdió no duplica el plato. Si falla, el formulario
 // queda como estaba.
+//
+// La foto se elige en el mismo editor, también en un plato nuevo: queda
+// preparada (achicada y sin metadatos) y se sube al guardar, después del
+// plato (los archivos van en la carpeta del plato y set_recipe_photo exige que
+// exista). Si la foto falla, el plato queda guardado y la foto sigue en el
+// editor para reintentar, con el mismo uuid.
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/uuid.dart';
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
+import 'package:radici/features/recipes/application/recipe_photo_providers.dart';
+import 'package:radici/features/recipes/data/recipe_photo_picker.dart';
+import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/domain/recipe_draft.dart';
+import 'package:radici/features/recipes/domain/recipe_photo.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
 part 'recipe_editor_controller.freezed.dart';
@@ -52,12 +64,39 @@ abstract class RecipeEditorState with _$RecipeEditorState {
 
     /// Se está desactivando o reactivando.
     @Default(false) bool changingActive,
+
+    /// La foto que tiene guardada el plato (null = sin foto; también en uno
+    /// nuevo y en una copia: duplicar no copia la foto).
+    String? savedPhotoId,
+
+    /// Lo que se cambia en la foto al guardar (null = nada).
+    RecipePhotoChange? photoChange,
+
+    /// Se está preparando la foto elegida (achicar, sacar metadatos).
+    @Default(false) bool preparingPhoto,
+
+    /// Se está subiendo la foto (mientras guarda, después del plato).
+    @Default(false) bool uploadingPhoto,
+
+    /// Por qué falló la foto en el último guardado (el plato sí se guardó);
+    /// null si no falló.
+    RecipePhotoFailureKind? photoError,
   }) = _RecipeEditorState;
 
   const RecipeEditorState._();
 
-  /// Hay cambios sin guardar.
-  bool get dirty => draft != initial;
+  /// Hay cambios sin guardar (en el formulario o en la foto).
+  bool get dirty => draft != initial || photoChange != null;
+
+  /// La foto elegida que todavía no se subió (null si no hay).
+  NewRecipePhoto? get newPhoto => switch (photoChange) {
+    ReplaceRecipePhoto(:final photo) => photo,
+    _ => null,
+  };
+
+  /// La foto guardada que se ve en el editor: null si no tiene, si se eligió
+  /// otra o si se va a sacar.
+  String? get shownSavedPhotoId => photoChange == null ? savedPhotoId : null;
 
   RecipeDraftErrors get errors => validateRecipeDraft(draft);
 
@@ -75,12 +114,28 @@ enum RecipeSaveResult {
   /// El servidor no lo guardó (ver [RecipeEditorState.saveError]).
   failed,
 
+  /// El plato se guardó, pero la foto no (ver
+  /// [RecipeEditorState.photoError]): sigue en el editor para reintentar.
+  photoFailed,
+
   /// Ya se estaba guardando.
   busy,
 }
 
 /// Una fila quitada y dónde estaba, para «Deshacer».
 typedef RemovedIngredient = ({IngredientDraft row, int index});
+
+/// Por qué no quedó la foto elegida en [RecipeEditorController.pickPhoto].
+enum RecipePhotoPickError {
+  /// No es una foto que la app pueda abrir.
+  unreadable,
+
+  /// El teléfono no le da permiso a la app (la cámara).
+  permissionDenied,
+
+  /// El selector no se pudo abrir.
+  unavailable,
+}
 
 /// El editor de [RecipeEditorTarget]. Para editar o copiar, el catálogo tiene
 /// que estar cargado y tener el plato (la pantalla lo espera).
@@ -120,6 +175,9 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
   /// Clave de la próxima fila de ingrediente.
   int _nextKey = 0;
 
+  /// El selector de fotos está abierto.
+  bool _picking = false;
+
   @override
   RecipeEditorState build() {
     // Se lee una vez: el formulario no se rearma si el catálogo cambia
@@ -144,6 +202,7 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
       initial: draft,
       source: source,
       isNew: isNew,
+      savedPhotoId: isNew ? null : source?.photoId,
     );
   }
 
@@ -268,38 +327,128 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
     _edit((d) => d.copyWith(ingredients: rows));
   }
 
-  /// Valida y guarda el plato entero. Con errores no manda nada y los
-  /// muestra. Si el servidor falla, el formulario queda como estaba y el
-  /// próximo intento manda el mismo id.
+  /// Valida y guarda el plato entero y, si cambió, la foto. Con errores no
+  /// manda nada y los muestra. Si el servidor falla, el formulario queda como
+  /// estaba y el próximo intento manda el mismo id. Si solo cambió la foto de
+  /// un plato ya guardado (por ejemplo, el reintento después de que falló la
+  /// foto), no vuelve a mandar el plato.
   Future<RecipeSaveResult> save() async {
-    if (state.saving) return RecipeSaveResult.busy;
+    if (state.saving || state.preparingPhoto) return RecipeSaveResult.busy;
     if (!state.errors.isEmpty) {
       state = state.copyWith(showErrors: true, saveError: null);
       return RecipeSaveResult.invalid;
     }
     final draft = state.draft;
-    final recipe = recipeFromDraft(
-      draft,
-      saved: state.isNew ? null : state.source,
-    );
-    state = state.copyWith(saving: true, saveError: null);
+    final photoChange = state.photoChange;
+    final recipeChanged =
+        state.isNew || draft != state.initial || photoChange == null;
+    state = state.copyWith(saving: true, saveError: null, photoError: null);
+    if (recipeChanged) {
+      final recipe = recipeFromDraft(
+        draft,
+        saved: state.isNew ? null : state.source,
+      );
+      try {
+        final saved = await ref.read(recipeCatalogProvider.notifier).save(recipe);
+        if (ref.mounted) {
+          state = state.copyWith(
+            saving: photoChange != null,
+            initial: draft,
+            source: saved,
+            isNew: false,
+          );
+        }
+      } on RecipesFailure catch (failure) {
+        if (ref.mounted) {
+          state = state.copyWith(saving: false, saveError: failure.kind);
+        }
+        return RecipeSaveResult.failed;
+      }
+    }
+    if (photoChange == null || !ref.mounted) return RecipeSaveResult.saved;
+    return _savePhoto(draft.id, photoChange);
+  }
+
+  Future<RecipeSaveResult> _savePhoto(
+    String recipeId,
+    RecipePhotoChange change,
+  ) async {
+    final photo = switch (change) {
+      ReplaceRecipePhoto(:final photo) => photo,
+      RemoveRecipePhoto() => null,
+    };
+    state = state.copyWith(uploadingPhoto: true);
     try {
-      final saved = await ref.read(recipeCatalogProvider.notifier).save(recipe);
+      await ref.read(recipeCatalogProvider.notifier).setPhoto(recipeId, photo);
       if (ref.mounted) {
         state = state.copyWith(
           saving: false,
-          initial: draft,
-          source: saved,
-          isNew: false,
+          uploadingPhoto: false,
+          photoChange: null,
+          savedPhotoId: photo?.photoId,
+          source: state.source?.copyWith(photoId: photo?.photoId),
         );
       }
       return RecipeSaveResult.saved;
-    } on RecipesFailure catch (failure) {
+    } on RecipePhotoFailure catch (failure) {
       if (ref.mounted) {
-        state = state.copyWith(saving: false, saveError: failure.kind);
+        state = state.copyWith(
+          saving: false,
+          uploadingPhoto: false,
+          photoError: failure.kind,
+        );
       }
-      return RecipeSaveResult.failed;
+      return RecipeSaveResult.photoFailed;
     }
+  }
+
+  /// Abre el selector en [source] y prepara la foto elegida (derecha,
+  /// achicada y sin metadatos), con un uuid nuevo: se sube al guardar, en
+  /// lugar de la que tenga. Devuelve por qué no quedó (null si quedó o si se
+  /// canceló).
+  Future<RecipePhotoPickError?> pickPhoto(RecipePhotoSource source) async {
+    if (_picking || state.saving || state.preparingPhoto) return null;
+    _picking = true;
+    final Uint8List? bytes;
+    try {
+      bytes = await ref.read(recipePhotoPickerProvider).pick(source);
+    } on RecipePhotoPickFailure catch (failure) {
+      return switch (failure.kind) {
+        RecipePhotoPickFailureKind.permissionDenied =>
+          RecipePhotoPickError.permissionDenied,
+        RecipePhotoPickFailureKind.unavailable =>
+          RecipePhotoPickError.unavailable,
+      };
+    } finally {
+      _picking = false;
+    }
+    if (bytes == null || !ref.mounted) return null;
+    state = state.copyWith(preparingPhoto: true);
+    try {
+      final photo = await ref.read(recipePhotoProcessorProvider)(bytes);
+      if (!ref.mounted) return null;
+      state = state.copyWith(
+        preparingPhoto: false,
+        photoError: null,
+        photoChange: ReplaceRecipePhoto(
+          NewRecipePhoto(photoId: ref.read(newIdProvider)(), photo: photo),
+        ),
+      );
+      return null;
+    } on RecipePhotoFormatException {
+      if (ref.mounted) state = state.copyWith(preparingPhoto: false);
+      return RecipePhotoPickError.unreadable;
+    }
+  }
+
+  /// Saca la foto: la elegida y todavía no subida se descarta; la guardada
+  /// se saca al guardar.
+  void removePhoto() {
+    if (state.saving || state.preparingPhoto) return;
+    state = state.copyWith(
+      photoError: null,
+      photoChange: state.savedPhotoId == null ? null : const RemoveRecipePhoto(),
+    );
   }
 
   /// Desactiva o reactiva el plato (solo uno guardado). No toca el

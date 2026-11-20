@@ -195,6 +195,8 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
                 : null,
           ),
         );
+      // Sin la sección «Foto» el editor no cambia la foto: no pasa.
+      case RecipeSaveResult.photoFailed:
       case RecipeSaveResult.busy:
         break;
     }

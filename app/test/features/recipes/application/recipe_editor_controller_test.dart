@@ -1,6 +1,8 @@
 // Editor de un plato: nuevo, guardado o copia; los chips de alérgenos, dieta
 // y meses; las filas de ingredientes (agregar, mover, quitar y deshacer); el
-// guardado con el mismo id en cada reintento, y desactivar o reactivar.
+// guardado con el mismo id en cada reintento; la foto (elegirla también en un
+// plato nuevo, sacarla, subirla después del plato y reintentar), y desactivar
+// o reactivar.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,12 +12,17 @@ import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
 import 'package:radici/features/recipes/application/recipe_editor_controller.dart';
+import 'package:radici/features/recipes/application/recipe_photo_providers.dart';
+import 'package:radici/features/recipes/data/recipe_photo_picker.dart';
+import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/domain/recipe_draft.dart';
+import 'package:radici/features/recipes/domain/recipe_photo.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
 import '../../../support/fakes.dart';
+import '../../../support/photo_fakes.dart';
 import '../../../support/pump_app.dart';
 import '../../../support/recipe_fixtures.dart';
 import '../../../support/request_fixtures.dart';
@@ -25,6 +32,9 @@ const String _id2 = '0e5b3c1a-2f4d-4a6b-8c9d-000000000002';
 
 void main() {
   late FakeRecipesRepository repository;
+  late FakeRecipePhotosRepository photos;
+  late FakeRecipePhotoPicker picker;
+  late RecipePhotoProcessor processor;
   late ProviderContainer container;
   late List<String> nextIds;
 
@@ -40,6 +50,9 @@ void main() {
         authRepositoryProvider.overrideWithValue(FakeAuthRepository(user: chefUser)),
         accountRepositoryProvider.overrideWithValue(FakeAccountRepository(chefAccountData)),
         recipesRepositoryProvider.overrideWithValue(repository),
+        recipePhotosRepositoryProvider.overrideWithValue(photos),
+        recipePhotoPickerProvider.overrideWithValue(picker),
+        recipePhotoProcessorProvider.overrideWithValue((bytes) => processor(bytes)),
         newIdProvider.overrideWithValue(() => nextIds.removeAt(0)),
       ],
     );
@@ -59,6 +72,9 @@ void main() {
 
   setUp(() {
     repository = FakeRecipesRepository(sampleRecipes());
+    photos = FakeRecipePhotosRepository();
+    picker = FakeRecipePhotoPicker();
+    processor = fakeProcessRecipePhoto;
     nextIds = [_id1, _id2];
   });
 
@@ -395,6 +411,238 @@ void main() {
       await start();
       await open(create).setActive(active: false);
       expect(repository.setActiveCalls, isEmpty);
+    });
+  });
+
+  group('foto', () {
+    const savedPhoto = 'f0000000-0000-4000-8000-0000000000aa';
+
+    /// La lasaña con [savedPhoto] en el catálogo y en la base.
+    void lasagneWithPhoto() {
+      repository.recipes[lasagneId] = lasagne().copyWith(photoId: savedPhoto);
+      photos
+        ..uploaded.add('$lasagneId/$savedPhoto')
+        ..photoOf[lasagneId] = savedPhoto;
+    }
+
+    test('al abrir: la foto guardada del plato; uno nuevo y una copia, sin foto (duplicar no la copia)', () async {
+      lasagneWithPhoto();
+      await start();
+      open(editLasagne);
+      open(create);
+      open(copyLasagne);
+
+      expect(stateOf(editLasagne).savedPhotoId, savedPhoto);
+      expect(stateOf(editLasagne).shownSavedPhotoId, savedPhoto);
+      expect(stateOf(create).savedPhotoId, isNull);
+      expect(stateOf(copyLasagne).savedPhotoId, isNull);
+      expect(stateOf(editLasagne).dirty, isFalse);
+    });
+
+    test('elegir una foto en un plato nuevo: queda preparada con un uuid nuevo y es un cambio sin guardar', () async {
+      await start();
+      final editor = open(create);
+
+      expect(await editor.pickPhoto(RecipePhotoSource.camera), isNull);
+
+      final state = stateOf(create);
+      expect(picker.calls, [RecipePhotoSource.camera]);
+      expect(state.newPhoto, NewRecipePhoto(photoId: _id2, photo: samplePhoto));
+      expect(state.newPhoto!.photo, same(samplePhoto));
+      expect(state.dirty, isTrue);
+      expect(state.preparingPhoto, isFalse);
+    });
+
+    test('cancelar el selector no cambia nada', () async {
+      await start();
+      final editor = open(create);
+      picker.result = null;
+      expect(await editor.pickPhoto(RecipePhotoSource.gallery), isNull);
+      expect(stateOf(create).photoChange, isNull);
+      expect(stateOf(create).dirty, isFalse);
+    });
+
+    test('lo que no se pudo elegir lo dice, sin cambiar la foto', () async {
+      await start();
+      final editor = open(create);
+
+      picker.failure = RecipePhotoPickFailureKind.permissionDenied;
+      expect(await editor.pickPhoto(RecipePhotoSource.camera), RecipePhotoPickError.permissionDenied);
+      picker.failure = RecipePhotoPickFailureKind.unavailable;
+      expect(await editor.pickPhoto(RecipePhotoSource.gallery), RecipePhotoPickError.unavailable);
+      picker
+        ..failure = null
+        ..result = unreadablePhotoBytes;
+      expect(await editor.pickPhoto(RecipePhotoSource.gallery), RecipePhotoPickError.unreadable);
+
+      expect(stateOf(create).photoChange, isNull);
+      expect(stateOf(create).preparingPhoto, isFalse);
+    });
+
+    test('mientras prepara la foto no se puede guardar ni elegir otra', () async {
+      await start();
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      final preparing = Completer<ProcessedRecipePhoto>();
+      processor = (_) => preparing.future;
+
+      final picking = editor.pickPhoto(RecipePhotoSource.gallery);
+      await pumpEventQueue();
+      expect(stateOf(create).preparingPhoto, isTrue);
+      expect(await editor.save(), RecipeSaveResult.busy);
+      expect(await editor.pickPhoto(RecipePhotoSource.gallery), isNull);
+      expect(picker.calls, hasLength(1));
+
+      preparing.complete(samplePhoto);
+      await picking;
+      expect(stateOf(create).preparingPhoto, isFalse);
+      expect(repository.saveCalls, isEmpty);
+    });
+
+    test('guardar un plato nuevo con foto: primero el plato, después los archivos y set_recipe_photo', () async {
+      await start();
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      expect(repository.saveCalls.single.id, _id1);
+      expect(photos.uploadCalls, [_id2]);
+      expect(photos.setCalls, [(recipeId: _id1, photoId: _id2)]);
+      final state = stateOf(create);
+      expect(state.savedPhotoId, _id2);
+      expect(state.photoChange, isNull);
+      expect(state.dirty, isFalse);
+      expect(state.saving, isFalse);
+      expect(state.uploadingPhoto, isFalse);
+      expect(state.source!.photoId, _id2);
+      expect(inCatalog(_id1)!.photoId, _id2);
+    });
+
+    test('mientras sube la foto sigue guardando, y lo dice', () async {
+      await start();
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+      photos.pendingUpload = Completer<void>();
+
+      final saving = editor.save();
+      await pumpEventQueue();
+      expect(stateOf(create).saving, isTrue);
+      expect(stateOf(create).uploadingPhoto, isTrue);
+      expect(stateOf(create).isNew, isFalse, reason: 'el plato ya se guardó');
+
+      photos.pendingUpload!.complete();
+      expect(await saving, RecipeSaveResult.saved);
+    });
+
+    test('si la foto falla, el plato queda guardado y la foto sigue; el reintento sube solo la foto, con el mismo uuid', () async {
+      await start();
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+      photos.uploadFailure = RecipePhotoFailureKind.unavailable;
+
+      expect(await editor.save(), RecipeSaveResult.photoFailed);
+
+      var state = stateOf(create);
+      expect(inCatalog(_id1), isNotNull, reason: 'el plato está guardado');
+      expect(inCatalog(_id1)!.photoId, isNull);
+      expect(state.isNew, isFalse);
+      expect(state.photoError, RecipePhotoFailureKind.unavailable);
+      expect(state.newPhoto!.photoId, _id2);
+      expect(state.dirty, isTrue, reason: 'la foto falta');
+      expect(state.saving, isFalse);
+
+      photos.uploadFailure = null;
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      state = stateOf(create);
+      expect(repository.saveCalls, hasLength(1), reason: 'el plato no se vuelve a mandar');
+      expect(photos.uploadCalls, [_id2, _id2]);
+      expect(state.photoError, isNull);
+      expect(state.savedPhotoId, _id2);
+      expect(inCatalog(_id1)!.photoId, _id2);
+    });
+
+    test('si el plato no se guarda, la foto ni se intenta', () async {
+      await start();
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+      repository.saveFailure = RecipesFailureKind.unavailable;
+
+      expect(await editor.save(), RecipeSaveResult.failed);
+      expect(photos.uploadCalls, isEmpty);
+      expect(stateOf(create).newPhoto, isNotNull);
+      expect(stateOf(create).isNew, isTrue);
+    });
+
+    test('cambiar la foto de un plato guardado: no vuelve a mandar el plato y borra la vieja', () async {
+      lasagneWithPhoto();
+      await start();
+      final editor = open(editLasagne);
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+      expect(stateOf(editLasagne).shownSavedPhotoId, isNull, reason: 'se ve la nueva');
+
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      expect(repository.saveCalls, isEmpty);
+      expect(photos.setCalls, [(recipeId: lasagneId, photoId: _id1)]);
+      expect(photos.deleteCalls.single.photoIds, {savedPhoto});
+      expect(stateOf(editLasagne).savedPhotoId, _id1);
+    });
+
+    test('con otros cambios, guarda el plato y la foto', () async {
+      lasagneWithPhoto();
+      await start();
+      final editor = open(editLasagne)..setNameIt('Lasagne verdi');
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+
+      expect(await editor.save(), RecipeSaveResult.saved);
+      expect(repository.saveCalls.single.nameIt, 'Lasagne verdi');
+      expect(inCatalog(lasagneId)!.photoId, _id1);
+      expect(inCatalog(lasagneId)!.nameIt, 'Lasagne verdi');
+    });
+
+    test('sacar la foto guardada: se saca al guardar', () async {
+      lasagneWithPhoto();
+      await start();
+      final editor = open(editLasagne)..removePhoto();
+
+      var state = stateOf(editLasagne);
+      expect(state.photoChange, const RemoveRecipePhoto());
+      expect(state.shownSavedPhotoId, isNull);
+      expect(state.dirty, isTrue);
+
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      state = stateOf(editLasagne);
+      expect(photos.setCalls, [(recipeId: lasagneId, photoId: null)]);
+      expect(photos.deleteCalls.single.photoIds, {savedPhoto});
+      expect(state.savedPhotoId, isNull);
+      expect(state.dirty, isFalse);
+      expect(inCatalog(lasagneId)!.photoId, isNull);
+    });
+
+    test('sacar una foto elegida y no subida la descarta (nada que guardar)', () async {
+      await start();
+      final editor = open(create);
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+      editor.removePhoto();
+
+      expect(stateOf(create).photoChange, isNull);
+      expect(stateOf(create).dirty, isFalse);
+    });
+
+    test('elegir otra después de que falló la subida la reemplaza y borra el error', () async {
+      nextIds.add('0e5b3c1a-2f4d-4a6b-8c9d-000000000003');
+      await start();
+      final editor = open(create)..setNameIt('Pasta al pesto');
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+      photos.uploadFailure = RecipePhotoFailureKind.rejected;
+      await editor.save();
+      expect(stateOf(create).photoError, RecipePhotoFailureKind.rejected);
+
+      await editor.pickPhoto(RecipePhotoSource.gallery);
+      expect(stateOf(create).photoError, isNull);
+      expect(stateOf(create).newPhoto!.photoId, '0e5b3c1a-2f4d-4a6b-8c9d-000000000003');
     });
   });
 
