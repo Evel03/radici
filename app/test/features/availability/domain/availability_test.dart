@@ -239,6 +239,18 @@ void main() {
       expect(day.holiday, isNull);
       expect(day.canBlock, isTrue);
       expect(day.canUnblock, isFalse);
+      expect(day.sessionCount, 0);
+    });
+
+    test('con sus sesiones: se puede bloquear igual (bloquearlo no las cancela)', () {
+      final day = agendaDayAvailability(
+        day: CalendarDate(2026, 10, 21),
+        today: today,
+        snapshot: snapshot(),
+        sessionsThatDay: 1,
+      );
+      expect(day.sessionCount, 1);
+      expect(day.canBlock, isTrue);
     });
 
     test('las franjas del día van por hora de inicio', () {

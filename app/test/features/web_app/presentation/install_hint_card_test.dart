@@ -15,7 +15,7 @@ import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
-import 'package:radici/features/requests/presentation/inbox_screen.dart';
+import 'package:radici/features/today/presentation/today_screen.dart';
 import 'package:radici/features/web_app/data/published_build_repository.dart';
 import 'package:radici/features/web_app/domain/install_hint.dart';
 
@@ -192,7 +192,7 @@ void main() {
       overrides: [browserProvider.overrideWithValue(browser)],
     );
 
-    expect(find.byType(InboxScreen), findsOneWidget);
+    expect(find.byType(TodayScreen), findsOneWidget);
     expect(
       find.text(
         'Para no volver a entrar, abre Radici desde el ícono de tu pantalla de '
@@ -256,6 +256,117 @@ void main() {
     expect(
       tester.getBottomLeft(hint()).dy,
       lessThanOrEqualTo(tester.getTopLeft(find.byType(AppBar)).dy),
+    );
+  });
+
+  // Flutter web informa el teclado del iPhone como viewInsets. En un iPhone
+  // en Safari, con los avisos arriba no quedaba lugar para el campo que se
+  // escribe y la acción de abajo (como «Conferma» de la hoja de reserva).
+  testWidgets('con el teclado abierto los dos avisos se esconden y la pantalla usa ese alto; al cerrarlo vuelven', (
+    tester,
+  ) async {
+    await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([buildRequest()]),
+      size: const Size(375, 667),
+      overrides: [
+        browserProvider.overrideWithValue(browser),
+        buildIdProvider.overrideWithValue('abc1234'),
+        publishedBuildRepositoryProvider.overrideWithValue(
+          FakePublishedBuildRepository('def5678'),
+        ),
+      ],
+    );
+    final banner = find.byKey(const ValueKey('update-banner'));
+    expect(banner, findsOneWidget);
+    expect(hint(), findsOneWidget);
+    expect(tester.getTopLeft(find.byType(AppBar)).dy, greaterThan(0));
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    expect(banner, findsNothing);
+    expect(hint(), findsNothing);
+    expect(tester.getTopLeft(find.byType(AppBar)).dy, 0);
+
+    tester.view.resetViewInsets();
+    await tester.pumpAndSettle();
+    expect(banner, findsOneWidget);
+    expect(hint(), findsOneWidget);
+    expect(browser.flags, isEmpty, reason: 'esconderla no es cerrarla');
+  });
+
+  // Los diálogos van en el Navigator, debajo de los avisos: con los dos, en un
+  // iPhone SE el calendario quedaba aplastado y «OK» del reloj, cortado y sin
+  // poder tocarse (ver session_notices_test).
+  testWidgets('con un diálogo abierto los dos avisos se esconden y el diálogo usa todo el alto; '
+      'vuelven cuando termina de cerrarse', (tester) async {
+    await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([buildRequest()]),
+      location: '/richieste/req-1',
+      size: const Size(375, 667),
+      overrides: [
+        browserProvider.overrideWithValue(browser),
+        buildIdProvider.overrideWithValue('abc1234'),
+        publishedBuildRepositoryProvider.overrideWithValue(
+          FakePublishedBuildRepository('def5678'),
+        ),
+      ],
+    );
+    final banner = find.byKey(const ValueKey('update-banner'));
+    final dialog = find.byKey(const ValueKey('reject-dialog'));
+    expect(banner, findsOneWidget);
+    expect(hint(), findsOneWidget);
+
+    // «Rifiuta», al final del pedido (la lista arma solo lo que está cerca).
+    final reject = find.byKey(const ValueKey('action-reject'));
+    await tester.scrollUntilVisible(
+      reject,
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const ValueKey('request-detail')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(reject);
+    await tester.pumpAndSettle();
+    expect(dialog, findsOneWidget);
+    expect(banner, findsNothing);
+    expect(hint(), findsNothing);
+    // La barrera del diálogo tapa toda la pantalla, desde arriba.
+    expect(tester.getTopLeft(find.byType(ModalBarrier).last).dy, 0);
+
+    await tester.tap(find.byKey(const ValueKey('reject-cancel')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(dialog, findsOneWidget, reason: 'todavía se está yendo');
+    expect(banner, findsNothing);
+    await tester.pumpAndSettle();
+    expect(dialog, findsNothing);
+    expect(banner, findsOneWidget);
+    expect(hint(), findsOneWidget);
+    expect(browser.flags, isEmpty, reason: 'esconderla no es cerrarla');
+  });
+
+  testWidgets('login: mientras se escribe el email el aviso no está; al cerrar el teclado vuelve '
+      'y lo escrito sigue (la pantalla de abajo no se rehace)', (tester) async {
+    await openLogin(tester);
+    final email = find.byKey(const ValueKey('login-email'));
+    await tester.enterText(email, 'evelyn@example.com');
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    expect(hint(), findsNothing);
+    expect(email.hitTestable(), findsOneWidget);
+
+    tester.view.resetViewInsets();
+    await tester.pumpAndSettle();
+    expect(hint(), findsOneWidget);
+    expect(
+      find.descendant(of: email, matching: find.text('evelyn@example.com')),
+      findsOneWidget,
     );
   });
 }

@@ -77,14 +77,14 @@ void main() {
   const before = {
     'it':
         r'scontrin|spesa stimata|fa la spesa|fare la spesa|spesa a parte|'
-        r'spesa si paga|tempo della spesa',
+        r'spesa si paga|tempo della spesa|spesa dalle|spesa fatta',
     'es':
         r'ticket|compra estimada|hace la compra|hace las compras|'
         r'hacer la compra|compra aparte|compra va aparte|compra se paga|'
-        r'tiempo de la compra',
+        r'tiempo de la compra|compra desde|compra hecha',
     'en':
         r'receipt|grocer|evelyn does the shopping|covers the shopping|'
-        r'shopping time|paid separately',
+        r'shopping time|paid separately|shopping from|shopping done',
   };
   for (final MapEntry(key: locale, value: pattern) in before.entries) {
     test('app_$locale.arb: ningún texto dice que Evelyn hace la compra', () {

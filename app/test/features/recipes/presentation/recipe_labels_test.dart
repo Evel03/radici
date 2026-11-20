@@ -32,10 +32,10 @@ void main() {
     expect(l10n('en').shoppingSection(ShoppingSection.produce), 'Fruit and veg');
   });
 
-  test('unidades: g, ml, piezas y «q.b.» en cada idioma', () {
+  test('unidades: g, ml, por unidad y «q.b.» en cada idioma', () {
     expect(UnitChoice.values.map(l10n('it').unitChoice), ['g', 'ml', 'pz', 'q.b.']);
-    expect(UnitChoice.values.map(l10n('es').unitChoice), ['g', 'ml', 'pzas', 'al gusto']);
-    expect(UnitChoice.values.map(l10n('en').unitChoice), ['g', 'ml', 'pcs', 'to taste']);
+    expect(UnitChoice.values.map(l10n('es').unitChoice), ['g', 'ml', 'unid.', 'al gusto']);
+    expect(UnitChoice.values.map(l10n('en').unitChoice), ['g', 'ml', 'ea', 'to taste']);
   });
 
   test('choque de dieta: nombra los alérgenos que sobran, después de dos puntos y separados por «·»', () {

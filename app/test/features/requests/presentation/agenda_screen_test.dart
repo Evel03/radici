@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/availability/domain/availability.dart';
@@ -74,8 +75,8 @@ void main() {
       reason: 'el rechazado no cuenta',
     );
     expect(find.byKey(const ValueKey('agenda-day-count-2026-10-20')), findsNothing);
-    // Hoy (19/10) está elegido y no tiene pedidos.
-    expect(find.text('Nessuna richiesta per questo giorno.'), findsOneWidget);
+    // Hoy (19/10) está elegido y no tiene pedidos (ni sesiones).
+    expect(find.text('Niente per questo giorno: né sessioni né richieste.'), findsOneWidget);
   });
 
   testWidgets('los días de los meses vecinos van en el color secundario, sin transparencia (contraste AA)', (
@@ -203,6 +204,136 @@ void main() {
     await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
     expect(find.byType(AgendaScreen), findsOneWidget);
+  });
+
+  testWidgets('en el iPhone, tocar la barra de estado sube la lista', (
+    tester,
+  ) async {
+    // Una barra de estado de 47 de alto: el Scaffold atiende el toque si su
+    // zona de arriba está ahí.
+    tester.view.padding = const FakeViewPadding(top: 47);
+    tester.view.viewPadding = const FakeViewPadding(top: 47);
+    addTearDown(tester.view.resetPadding);
+    addTearDown(tester.view.resetViewPadding);
+    await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([
+        for (var i = 0; i < 20; i++)
+          buildRequest(id: 'senza-data-$i', noDate: true),
+      ]),
+      location: '/agenda',
+      size: const Size(375, 667),
+    );
+    final list = find.byKey(const ValueKey('agenda'));
+    await tester.drag(list, const Offset(0, -800));
+    await tester.pumpAndSettle();
+    final position = tester
+        .state<ScrollableState>(
+          find.descendant(of: list, matching: find.byType(Scrollable)).first,
+        )
+        .position;
+    expect(position.pixels, greaterThan(0));
+
+    // Lo que manda iOS al tocar la barra de estado.
+    await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      'flutter/status_bar',
+      const JSONMethodCodec().encodeMethodCall(
+        const MethodCall('handleScrollToTop'),
+      ),
+      (_) {},
+    );
+    await tester.pumpAndSettle();
+    expect(position.pixels, 0);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+  testWidgets('desde la agenda, confirmar una reserva tapa la barra; al volver regresa a la agenda, con la '
+      'barra y Agenda elegida', (tester) async {
+    final app = await pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([
+        buildRequest(
+          id: 'no-date',
+          name: 'Sara Gialli',
+          noDate: true,
+          weeks: 4,
+          estimate: fourWeeksEstimate,
+        ),
+      ]),
+      location: '/agenda',
+      size: const Size(400, 2000),
+    );
+    final navBar = find.byKey(const ValueKey('chef-nav-bar'));
+    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 2);
+    await tester.tap(tile('no-date'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('action-confirm-booking')));
+    await tester.pumpAndSettle();
+    expect(navBar, findsNothing, reason: 'la hoja tapa la barra');
+    await tester.tap(find.byKey(const ValueKey('booking-confirm')));
+    await tester.pumpAndSettle();
+    expect(app.bookings.confirmations, hasLength(1));
+    expect(navBar, findsNothing, reason: 'la pantalla final tapa la barra');
+
+    await tester.tap(find.byKey(const ValueKey('booking-done-close')));
+    await tester.pumpAndSettle();
+    expect(find.byType(RequestDetailScreen), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(AgendaScreen), findsOneWidget);
+    expect(navBar.hitTestable(), findsOneWidget);
+    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 2);
+    expect(
+      find.descendant(of: navBar, matching: find.byType(NavigationDestination)),
+      findsNWidgets(4),
+    );
+  });
+
+  group('la bandeja desde el arranque (armada antes de que cargue la cuenta, con la lista vacía)', () {
+    Finder byKey(String key) => find.byKey(ValueKey(key));
+
+    testWidgets('si no se pudo leer, el error con «Riprova», que la vuelve a leer', (
+      tester,
+    ) async {
+      final requests = sample()..failFetch = true;
+      await pumpChefApp(
+        tester,
+        requests: requests,
+        location: '/agenda',
+        size: const Size(400, 2000),
+      );
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(byKey('load-error'), findsOneWidget);
+
+      requests.failFetch = false;
+      await tester.tap(byKey('load-error-retry'));
+      await tester.pumpAndSettle();
+      expect(byKey('load-error'), findsNothing);
+      expect(tile('no-date'), findsOneWidget);
+    });
+
+    testWidgets('mientras se lee, la barra de carga; al llegar, los pedidos', (
+      tester,
+    ) async {
+      final requests = sample()..pendingFetch = Completer<void>();
+      await pumpChefApp(
+        tester,
+        requests: requests,
+        location: '/agenda',
+        size: const Size(400, 2000),
+        settle: false,
+      );
+      for (var i = 0; i < 10 && find.byType(AgendaScreen).evaluate().isEmpty; i++) {
+        await tester.pump();
+      }
+      await tester.pump();
+      expect(find.byType(AgendaScreen), findsOneWidget);
+      expect(byKey('agenda-loading'), findsOneWidget);
+
+      requests.pendingFetch!.complete();
+      await tester.pumpAndSettle();
+      expect(byKey('agenda-loading'), findsNothing);
+      expect(tile('no-date'), findsOneWidget);
+    });
   });
 
   for (final locale in const [Locale('it'), Locale('es'), Locale('en')]) {
@@ -609,6 +740,39 @@ void main() {
 
     const refreshFailed = 'Aggiornamento non riuscito. Controlla la connessione.';
 
+    testWidgets('«Ricarica», arriba, hace lo mismo sin deslizar (VoiceOver y el mouse no deslizan); si falla, avisa', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      final app = await openDays(tester);
+      final reload = byKey('chef-reload');
+      expect(
+        tester.getSemantics(reload),
+        isSemantics(tooltip: 'Ricarica', isButton: true, hasTapAction: true),
+      );
+      final calls = (
+        availability: app.availability.fetchCalls,
+        requests: app.requests.fetchCalls,
+        sessions: app.sessions.fetchCalls,
+      );
+
+      await tester.tap(reload);
+      await tester.pumpAndSettle();
+      expect(app.availability.fetchCalls, calls.availability + 1);
+      expect(app.requests.fetchCalls, calls.requests + 1);
+      expect(app.sessions.fetchCalls, calls.sessions + 1);
+      expect(find.byType(SnackBar), findsNothing);
+
+      app.requests.failFetch = true;
+      await tester.tap(reload);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: find.byType(SnackBar), matching: find.text(refreshFailed)),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
     testWidgets('si al deslizar no se pueden leer los días bloqueados, avisa y deja lo que había', (
       tester,
     ) async {
@@ -936,6 +1100,100 @@ void main() {
         expect(tile(id), findsOneWidget);
         expect(find.textContaining('preferiva'), findsNothing, reason: iso);
       }
+    });
+
+    group('para el lector de pantalla', () {
+      // En /gestione/ un encabezado con hijos sale como <header> (banner) y no
+      // como encabezado; un texto fundido en un nodo con hijos tampoco se lee
+      // como un texto.
+      void expectHeader(WidgetTester tester, String date) {
+        final node = tester.getSemantics(find.text(date));
+        expect(node, isSemantics(label: date, isHeader: true), reason: date);
+        expect(node.childrenCount, 0, reason: date);
+      }
+
+      /// [text] es un nodo propio, sin hijos, que no es encabezado, con [label]
+      /// (por defecto, el texto).
+      void expectOwnNode(WidgetTester tester, String text, {String? label}) {
+        final node = tester.getSemantics(find.text(text));
+        expect(node.label, label ?? text);
+        expect(node, isSemantics(isHeader: false), reason: text);
+        expect(node.childrenCount, 0, reason: text);
+      }
+
+      /// Un pedido del día: un nodo propio, sin hijos.
+      void expectRequestNode(WidgetTester tester, String name) {
+        final node = tester.getSemantics(find.text(name));
+        expect(node.label, contains(name));
+        expect(node, isSemantics(isHeader: false), reason: name);
+        expect(node.childrenCount, 0, reason: name);
+      }
+
+      FakeAvailabilityRepository fridayBlocked() => FakeAvailabilityRepository(
+        blocked: [BlockedDay(id: 'b1', date: friday, note: 'Ferie')],
+      );
+
+      testWidgets('vista mensual: el título del día elegido es un encabezado propio, sin su tarjeta adentro, y cada línea de abajo, un nodo propio', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        await openDays(tester, availability: fridayBlocked());
+
+        // Hoy, lunes 19/10: sin pedidos.
+        expectHeader(tester, 'lunedì 19 ottobre 2026');
+        expectOwnNode(tester, "Orario 09:00–15:00: il sito lo offre se c'è posto.");
+        expectOwnNode(tester, 'Niente per questo giorno: né sessioni né richieste.');
+
+        await selectDay(tester, wednesdayIso);
+        expectHeader(tester, 'mercoledì 21 ottobre 2026');
+        expectOwnNode(tester, "Orario 09:00–15:00: il sito lo offre se c'è posto.");
+        expectOwnNode(
+          tester,
+          '2 richieste preferivano questo giorno: bloccarlo non le rifiuta.',
+        );
+        expectRequestNode(tester, 'Giulia Rossi');
+        expectRequestNode(tester, 'Marco Bianchi');
+
+        await selectDay(tester, friday.toIso());
+        expectHeader(tester, 'venerdì 23 ottobre 2026');
+        expectOwnNode(tester, 'Giorno bloccato: il sito non lo offre.');
+        expectOwnNode(
+          tester,
+          'Ferie',
+          label: 'Nota (i clienti non la vedono)\nFerie',
+        );
+        semantics.dispose();
+      });
+
+      testWidgets('vista semanal: el título de cada día es un encabezado propio, sin su tarjeta adentro, y cada línea de abajo, un nodo propio', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        await openDays(tester, availability: fridayBlocked());
+        await tester.tap(byKey('agenda-view-week'));
+        await tester.pumpAndSettle();
+
+        for (final date in [
+          'lunedì 19 ottobre 2026',
+          'martedì 20 ottobre 2026',
+          'mercoledì 21 ottobre 2026',
+          'giovedì 22 ottobre 2026',
+          'venerdì 23 ottobre 2026',
+          'sabato 24 ottobre 2026',
+          'domenica 25 ottobre 2026',
+        ]) {
+          expectHeader(tester, date);
+        }
+        expectRequestNode(tester, 'Giulia Rossi');
+        expectRequestNode(tester, 'Marco Bianchi');
+        expectOwnNode(tester, 'Giorno bloccato: il sito non lo offre.');
+        expectOwnNode(
+          tester,
+          'Ferie',
+          label: 'Nota (i clienti non la vedono)\nFerie',
+        );
+        semantics.dispose();
+      });
     });
   });
 }
