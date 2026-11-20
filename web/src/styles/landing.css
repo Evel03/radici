@@ -509,15 +509,6 @@
   line-height: 1.1;
 }
 
-/* La compra va aparte: separada del servicio con aire y un filete punteado, para que el destacado de arriba
-   no se lea como la suma de las filas. */
-.example__row--apart {
-  margin-top: 0.75rem;
-  border-top: 1px dashed rgb(245 237 225 / 45%);
-  border-bottom: 0;
-  padding-top: 0.75rem;
-}
-
 @media (min-width: 48rem) {
   .price-grid {
     grid-template-columns: repeat(2, 1fr);

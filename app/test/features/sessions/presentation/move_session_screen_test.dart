@@ -1,7 +1,8 @@
 // Hoja «Sposta la sessione»: desde la ficha, el calendario y después lo que
 // dice el servidor de esa fecha antes de confirmar (libre, un aviso, un
 // choque o la semana con otra sesión de la reserva, que ofrece pasarla al
-// final; el lector de pantalla lo anuncia), mover y «Annulla» en la ficha (se
+// final; el lector de pantalla lo anuncia) y la llegada que sugiere (el
+// comienzo del horario, sin compra), mover y «Annulla» en la ficha (se
 // va a los 6 s; con VoiceOver, se cierra con la X). En español, las fechas
 // dentro de una frase van sin la coma de intl. Los campos del calendario y
 // del reloj en modo escritura tienen letra de 16 px o más (si no, iOS hace
@@ -106,6 +107,10 @@ void main() {
       );
       expect(find.text('giovedì 3 dicembre 2026'), findsOneWidget);
       expect(textOf(tester, 'move-date-status'), 'Libero');
+      expect(
+        find.text("Suggerita: 10:00, l'inizio del tuo orario."),
+        findsOneWidget,
+      );
       expect(app.sessions.checks.single.date, thursday);
       expect(app.sessions.checks.single.start, const ClockTime.hm(10, 0));
       expect(textOf(tester, 'move-summary'), 'gio 3 dic, arrivo alle 10:00');
@@ -246,6 +251,10 @@ void main() {
         'Ahora: mié 2 de dic, llegada a las 10:00',
       );
       expect(textOf(tester, 'move-summary'), 'jue 3 de dic, llegada a las 10:00');
+      expect(
+        find.text('Sugerida: 10:00, el comienzo de tu horario.'),
+        findsOneWidget,
+      );
       expect(find.text('Mover al jue 3 de dic'), findsOneWidget);
 
       await tester.tap(byKey('move-confirm'));

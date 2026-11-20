@@ -37,7 +37,6 @@ void main() {
     expect(_textOf(tester, 'quote-weeks-value'), '1');
     expect(_textOf(tester, 'quote-portions'), '20');
     expect(_textOf(tester, 'quote-recipes'), '3');
-    expect(_textOf(tester, 'quote-groceries'), '63,00$_nbsp€');
     expect(_textOf(tester, 'quote-total'), '150,00$_nbsp€');
     expect(find.text('Prezzo del servizio'), findsOneWidget);
     // Con una semana no se repite el precio por semana, ni hay ahorro.
@@ -50,6 +49,23 @@ void main() {
       contains('fino a 5 persone'),
     );
     expect(_textOf(tester, 'quote-footnote'), contains('140,00$_nbsp€'));
+  });
+
+  testWidgets('sin compra: la hace el cliente, con la lista de Evelyn', (
+    tester,
+  ) async {
+    setSurfaceSize(tester, phone);
+    await pumpLocalized(tester, const QuoteCalculatorScreen());
+
+    expect(find.byKey(const ValueKey('quote-groceries')), findsNothing);
+    final footnote = _textOf(tester, 'quote-footnote');
+    expect(
+      footnote,
+      contains('La spesa la fai tu, con la lista che ti manda Evelyn.'),
+    );
+    expect(footnote, contains('comprende lo spostamento e il tempo in cucina'));
+    expect(footnote, isNot(contains('fare la spesa')));
+    expect(footnote, isNot(contains('scontrino')));
   });
 
   testWidgets('no muestra el tiempo de cocina, como la web', (tester) async {
@@ -77,11 +93,9 @@ void main() {
     expect(_textOf(tester, 'quote-total'), '560,00$_nbsp€');
     expect(_textOf(tester, 'quote-weekly'), '140,00$_nbsp€');
     expect(_textOf(tester, 'quote-savings'), '40,00$_nbsp€');
-    // La compra sigue siendo de una semana.
-    expect(_textOf(tester, 'quote-groceries'), '63,00$_nbsp€');
   });
 
-  testWidgets('los días y las comidas no cambian el servicio, sí la compra', (
+  testWidgets('las comidas cambian las porciones, no el servicio', (
     tester,
   ) async {
     setSurfaceSize(tester, phone);
@@ -92,7 +106,6 @@ void main() {
 
     // Como el vector 12, con una semana.
     expect(_textOf(tester, 'quote-portions'), '40');
-    expect(_textOf(tester, 'quote-groceries'), '126,00$_nbsp€');
     expect(_textOf(tester, 'quote-total'), '150,00$_nbsp€');
   });
 
@@ -103,7 +116,6 @@ void main() {
     await _tap(tester, 'quote-adults-increment');
     // 3 adultos y 2 niños: todavía con precio.
     expect(_textOf(tester, 'quote-total'), '150,00$_nbsp€');
-    expect(_textOf(tester, 'quote-groceries'), '82,00$_nbsp€');
 
     await _tap(tester, 'quote-kids-increment');
     expect(find.byKey(const ValueKey('quote-total')), findsNothing);
@@ -111,8 +123,6 @@ void main() {
       _textOf(tester, 'quote-no-auto-price'),
       'Per più di 5 persone il preventivo per il servizio te lo prepara Evelyn.',
     );
-    // La compra estimada se sigue viendo.
-    expect(_textOf(tester, 'quote-groceries'), '94,50$_nbsp€');
   });
 
   testWidgets('los botones se deshabilitan en los límites', (tester) async {

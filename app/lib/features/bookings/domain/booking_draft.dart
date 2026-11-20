@@ -9,18 +9,19 @@ import 'package:radici/features/requests/domain/chef_request.dart';
 /// Una reserva es de 1 a 8 semanas, con una sesión por semana.
 const int maxBookingWeeks = 8;
 
-/// Minutos de cocina: de a 30, de 30 a 300. Con la llegada sugerida de las
-/// 10:00 (la apertura de las 9 más la compra), 300 minutos terminan a las
-/// 15:00, el cierre de Evelyn.
+/// Minutos de cocina: de a 30, de 30 a 360. Con la llegada sugerida de las
+/// 9:00 (la apertura: sin compra desde el 19/11/2026), 360 minutos terminan a
+/// las 15:00, el cierre de Evelyn.
 const int bookingCookMinutesStep = 30;
 const int minBookingCookMinutes = 30;
-const int maxBookingCookMinutes = 300;
+const int maxBookingCookMinutes = 360;
 
 /// Si la estimación no trae minutos de cocina.
 const int defaultBookingCookMinutes = 180;
 
-/// Llegada si el servidor no sugiere ninguna (ese día no tiene horario).
-const ClockTime defaultBookingArrival = ClockTime.hm(10, 0);
+/// Llegada si el servidor no sugiere ninguna (ese día no tiene horario): la
+/// apertura de Evelyn, sin compra antes desde el 19/11/2026.
+const ClockTime defaultBookingArrival = ClockTime.hm(9, 0);
 
 /// Horas de llegada que se ofrecen: la sugerida y las siguientes.
 const int arrivalOptionsCount = 5;
@@ -106,7 +107,7 @@ List<BookingDateIssue?> bookingDateIssues(
 ];
 
 /// Minutos de cocina que propone la hoja: los de la estimación (de cada
-/// semana), entre 30 y el tope de 300.
+/// semana), entre 30 y el tope de 360.
 int suggestedCookMinutes(int? estimateMinutes) =>
     (estimateMinutes ?? defaultBookingCookMinutes).clamp(
       minBookingCookMinutes,
@@ -115,7 +116,7 @@ int suggestedCookMinutes(int? estimateMinutes) =>
 
 /// Un paso de los minutos de cocina: [direction] 1 suma y -1 resta media
 /// hora. Un valor fuera de la grilla de 30 pasa al múltiplo siguiente o al
-/// anterior. Siempre entre 30 y 300.
+/// anterior. Siempre entre 30 y 360.
 int steppedCookMinutes(int minutes, int direction) {
   final offGrid = minutes % bookingCookMinutesStep;
   final int next;

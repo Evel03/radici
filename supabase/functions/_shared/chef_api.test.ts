@@ -36,7 +36,6 @@ function fromRequest(overrides: Record<string, unknown> = {}): Record<string, un
     start: "10:00",
     cookMinutes: 240,
     portions: 50,
-    groceriesEstCents: 7550,
     serviceTotalCents: 56000,
     ...overrides,
   };
@@ -109,7 +108,6 @@ test("reserva desde un pedido: valores normalizados y los opcionales por defecto
     start: "10:00",
     cookMinutes: 240,
     portions: 50,
-    groceriesEstCents: 7550,
     serviceTotalCents: 56000,
     requestKey: null,
     dryRun: false,
@@ -119,7 +117,6 @@ test("reserva desde un pedido: valores normalizados y los opcionales por defecto
   assert.ok(minimal.ok);
   assert.equal(minimal.value.client.kind === "request" && minimal.value.client.requestId, REQUEST_ID, "uuid en minúsculas");
   assert.equal(minimal.value.portions, 0);
-  assert.equal(minimal.value.groceriesEstCents, 0);
   assert.equal(minimal.value.serviceTotalCents, 0, "un 0 explícito vale: sin cargo");
 });
 
@@ -157,7 +154,6 @@ test("reserva a mano con ficha nueva: texto limpio, teléfono E.164, email en mi
     start: "10:00",
     cookMinutes: 240,
     portions: 0,
-    groceriesEstCents: 0,
     serviceTotalCents: 15000,
     requestKey: REQUEST_KEY,
     dryRun: false,
@@ -283,11 +279,22 @@ test("minutos de cocina, porciones y centavos: enteros dentro de sus límites", 
   assert.deepEqual(field({ portions: 841 }), { portions: "range" });
   // Dinero siempre en centavos enteros: 140,50 € es 14050, nunca 140.5.
   assert.deepEqual(field({ serviceTotalCents: 140.5 }), { serviceTotalCents: "invalid" });
-  assert.deepEqual(field({ groceriesEstCents: "7550" }), { groceriesEstCents: "invalid" });
   assert.deepEqual(field({ serviceTotalCents: -100 }), { serviceTotalCents: "range" });
   assert.deepEqual(field({ serviceTotalCents: MAX_CENTS + 1 }), { serviceTotalCents: "range" });
-  assert.deepEqual(field({ groceriesEstCents: Number.NaN }), { groceriesEstCents: "invalid" });
   assert.ok(parseBookingRequest(fromRequest({ serviceTotalCents: MAX_CENTS, cookMinutes: 720, portions: 840 }), OPTS).ok);
+});
+
+test("groceriesEstCents ya no existe (19/11/2026, la compra la hace el cliente): si llega, se ignora como cualquier clave desconocida", () => {
+  // La app de otras ramas todavía lo manda: no puede fallar, valga lo que valga.
+  for (const groceriesEstCents of [7550, 0, "7550", 75.5, -1, Number.NaN, null]) {
+    for (const body of [fromRequest({ groceriesEstCents }), manual({ groceriesEstCents })]) {
+      const result = parseBookingRequest(body, OPTS);
+      assert.ok(result.ok, String(groceriesEstCents));
+      assert.ok(!("groceriesEstCents" in result.value), "no pasa a la reserva");
+      const { groceriesEstCents: _ignorada, ...rest } = body;
+      assert.deepEqual(result.value, (parseBookingRequest(rest, OPTS) as { value: unknown }).value);
+    }
+  }
 });
 
 test("requestKey: uuid (en minúsculas); obligatoria a mano salvo en el dryRun", () => {

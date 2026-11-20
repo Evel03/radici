@@ -174,7 +174,8 @@ export interface ChefInfo {
 
 /**
  * Lo que se guarda en requests.estimate: calcQuote con las tarifas usadas. Siempre trae weeks, autoPrice,
- * las porciones, los minutos y la compra; las claves del precio, solo con precio automático (SPEC §5.1).
+ * las porciones y los minutos; las claves del precio, solo con precio automático (SPEC §5.1). Sin compra
+ * (la hace el cliente, decisión del 19/11/2026): ni estimación ni las tarifas por porción.
  */
 export type StoredEstimate = Quote & { pricing: PricingSettings };
 
@@ -244,10 +245,12 @@ export interface PublicRequestStore {
  * Columnas de chef_settings que lee la función: las tarifas del motor (PricingSettings) y el nombre de la
  * cocinera. Las del precio por semana son de 20261116120000_weekly_pricing.sql: sin esa migración la
  * consulta falla (500, load_chef) y no se guarda ningún pedido de varias semanas como si fuera de una.
+ * adult_portion_cents, kid_portion_cents y preauth_buffer_pct siguen en la base, pero el motor ya no
+ * estima la compra: no se leen.
  * Un solo literal, sin concatenar: supabase-js lee el tipo del select del texto.
  */
 export const CHEF_SETTINGS_COLUMNS =
-  "weekly_rate_cents, weekly_rate_discounted_cents, weekly_discount_min_weeks, weekly_rate_max_people, adult_portion_cents, kid_portion_cents, preauth_buffer_pct, min_cook_minutes, chefs(display_name)";
+  "weekly_rate_cents, weekly_rate_discounted_cents, weekly_discount_min_weeks, weekly_rate_max_people, min_cook_minutes, chefs(display_name)";
 
 /** Fila de chef_settings con el nombre de la cocinera embebido (chefs.display_name). */
 export function chefFromRow(row: Readonly<Record<string, unknown>>): ChefInfo {
@@ -266,9 +269,6 @@ export function chefFromRow(row: Readonly<Record<string, unknown>>): ChefInfo {
       weeklyRateDiscountedCents: int("weekly_rate_discounted_cents"),
       weeklyDiscountMinWeeks: int("weekly_discount_min_weeks"),
       weeklyRateMaxPeople: int("weekly_rate_max_people"),
-      adultPortionCents: int("adult_portion_cents"),
-      kidPortionCents: int("kid_portion_cents"),
-      preauthBufferPct: int("preauth_buffer_pct"),
       minCookMinutes: int("min_cook_minutes"),
     },
   };
@@ -594,13 +594,11 @@ function summaryOf(context: NotifyContext): RequestSummary {
           serviceCents: estimate.serviceCents,
           savingsCents: estimate.savingsCents,
           regularWeeklyCents: chef.pricing.weeklyRateCents,
-          groceriesEstCents: estimate.groceriesEstCents,
         }
       : {
           autoPrice: false,
           reason: estimate.reason,
           maxPeople: chef.pricing.weeklyRateMaxPeople,
-          groceriesEstCents: estimate.groceriesEstCents,
         },
   };
 }

@@ -105,8 +105,8 @@ export interface BookingPayload {
   cookMinutes: number;
   /** Porciones de cada semana (0 por defecto). */
   portions?: number;
-  /** Compra estimada de cada semana, en centavos (0 por defecto). */
-  groceriesEstCents?: number;
+  // Sin groceriesEstCents desde el 19/11/2026: la compra la hace el cliente. Si llega (la app de antes lo
+  // manda), se ignora como cualquier otra clave que el contrato no tiene.
   /**
    * Precio del servicio de toda la reserva, en centavos, que fija Evelyn; se reparte entre las
    * semanas. Obligatorio salvo en el dryRun (ninguna ruta lo cambia después); 0 vale: sin cargo.
@@ -179,7 +179,6 @@ export interface NormalizedBooking {
   start: string | null;
   cookMinutes: number;
   portions: number;
-  groceriesEstCents: number;
   serviceTotalCents: number;
   requestKey: string | null;
   dryRun: boolean;
@@ -239,7 +238,6 @@ export type ChefApiField =
   | "start"
   | "cookMinutes"
   | "portions"
-  | "groceriesEstCents"
   | "serviceTotalCents"
   | "cents"
   | "requestKey"
@@ -573,10 +571,9 @@ export function parseBookingRequest(input: unknown, opts: { today: string }): Ch
   if (absent(input["cookMinutes"])) errors.cookMinutes = "required";
   else cookMinutes = readInt(errors, "cookMinutes", input["cookMinutes"], 1, MAX_COOK_MINUTES);
 
-  const optionalInt = (field: "portions" | "groceriesEstCents" | "serviceTotalCents", max: number): number =>
+  const optionalInt = (field: "portions" | "serviceTotalCents", max: number): number =>
     absent(input[field]) ? 0 : readInt(errors, field, input[field], 0, max) ?? 0;
   const portions = optionalInt("portions", MAX_PORTIONS);
-  const groceriesEstCents = optionalInt("groceriesEstCents", MAX_CENTS);
   // El precio lo fija Evelyn al confirmar y ninguna ruta lo cambia después: sin él no se crea nada
   // (0 vale: sin cargo). En el dryRun puede faltar (las semanas salen con 0).
   if (absent(input["serviceTotalCents"]) && !dryRun) errors.serviceTotalCents = "required";
@@ -606,7 +603,6 @@ export function parseBookingRequest(input: unknown, opts: { today: string }): Ch
       start,
       cookMinutes,
       portions,
-      groceriesEstCents,
       serviceTotalCents,
       requestKey,
       dryRun,

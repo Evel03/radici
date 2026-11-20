@@ -135,16 +135,15 @@ test("colaboradores: crea la cuenta que falta, aplica la lista con el SQL de che
   assertNoEmails(run.out, [EVELYN, SOCIO, NUEVA, VIEJO]);
 });
 
-test("colaboradores: con la lista cargada avisa que la privacy vigente no los nombra (SPEC §14); vacía, no", { skip }, () => {
+test("colaboradores: con la lista cargada y las cuentas al día no avisa nada; vacía, saca a todos", { skip }, () => {
   const state: FakeState = { chefs: [EVELYN], users: [confirmed(EVELYN), confirmed(SOCIO)], members: [SOCIO] };
   const loaded = accounts("members", state, { CHEF_MEMBER_EMAILS: SOCIO });
   assert.equal(loaded.code, 0, loaded.out);
-  assert.match(loaded.out, /^::warning::CHEF_MEMBER_EMAILS trae 1 colaborador\(es\): .*privacy vigente .*SPEC §14/m);
+  assert.doesNotMatch(loaded.out, /::warning::/);
 
   // Lista vacía (o el secreto sin cargar): saca a todos, sin crear cuentas ni leer la clave secreta.
   const empty = accounts("members", state);
   assert.equal(empty.code, 0, empty.out);
-  assert.doesNotMatch(empty.out, /privacy/);
   assert.deepEqual(syncCalls(empty), [syncMembersSql([])]);
   assert.deepEqual(empty.state.members, []);
   assert.equal(empty.calls.filter((call) => !call.query).length, 0, "ni la clave secreta ni Auth");

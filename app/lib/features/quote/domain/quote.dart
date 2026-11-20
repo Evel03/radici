@@ -8,7 +8,7 @@
 // mismo cada semana para un hogar de hasta `weeklyRateMaxPeople` personas,
 // sin importar días ni comidas; desde `weeklyDiscountMinWeeks` semanas, la
 // tarifa con descuento. Con más personas, o en una sesión extra, no hay precio
-// automático. La compra va aparte: el motor da una estimación por semana.
+// automático. La compra la hace el cliente (19/11/2026): el motor no la estima.
 //
 // Solo aritmética entera (`int`, `~/`): ningún paso usa decimales.
 // Dart puro: sin Flutter, para poder testearlo y reutilizarlo en cualquier capa.
@@ -33,9 +33,6 @@ abstract class PricingSettings with _$PricingSettings {
 
     /// Hasta cuántas personas (adultos y niños) hay precio automático.
     required int weeklyRateMaxPeople,
-    required int adultPortionCents,
-    required int kidPortionCents,
-    required int preauthBufferPct,
     required int minCookMinutes,
   }) = _PricingSettings;
 
@@ -92,7 +89,7 @@ enum NoAutoPriceReason { people, extra }
 
 /// Resultado del presupuesto. Montos en centavos, tiempos en minutos.
 ///
-/// Porciones, recetas, minutos y compra son de una semana (una sesión). Sin
+/// Porciones, recetas y minutos son de una semana (una sesión). Sin
 /// precio automático ([autoPrice] false) los campos del precio quedan en null
 /// y [reason] dice por qué; con precio, [reason] es null.
 @freezed
@@ -104,12 +101,6 @@ abstract class Quote with _$Quote {
     required int portions,
     required int recipes,
     required int cookMinutes,
-
-    /// Compra estimada de una semana: se paga aparte, al costo del ticket.
-    required int groceriesEstCents,
-
-    /// Pre-autorización de la compra de una semana (§5.4).
-    required int preauthCents,
     required bool autoPrice,
     NoAutoPriceReason? reason,
 
@@ -121,9 +112,6 @@ abstract class Quote with _$Quote {
 
     /// Ahorro frente a la tarifa sin descuento.
     int? savingsCents,
-
-    /// Servicio y compra estimada de todas las semanas.
-    int? totalCents,
   }) = _Quote;
 }
 
@@ -134,9 +122,6 @@ const PricingSettings defaultPricing = PricingSettings(
   weeklyRateDiscountedCents: 14000,
   weeklyDiscountMinWeeks: 4,
   weeklyRateMaxPeople: 5,
-  adultPortionCents: 380,
-  kidPortionCents: 250,
-  preauthBufferPct: 15,
   minCookMinutes: 90,
 );
 
@@ -224,9 +209,6 @@ void _validateSettings(PricingSettings s) {
     1,
     2 * QuoteLimits.maxPeople,
   );
-  _assertInt('adultPortionCents', s.adultPortionCents, 0, 100000);
-  _assertInt('kidPortionCents', s.kidPortionCents, 0, 100000);
-  _assertInt('preauthBufferPct', s.preauthBufferPct, 0, 100);
   _assertInt('minCookMinutes', s.minCookMinutes, 0, 24 * 60);
 }
 
@@ -256,14 +238,6 @@ Quote calcQuote(QuoteInput input, [PricingSettings settings = defaultPricing]) {
     _divUp(300 + 150 * recipes + 6 * portions, 150) * 30,
   );
 
-  final groceriesEstCents =
-      adultPortions * settings.adultPortionCents +
-      kidPortions * settings.kidPortionCents;
-  final preauthCents = _divUp(
-    groceriesEstCents * (100 + settings.preauthBufferPct),
-    100,
-  );
-
   final NoAutoPriceReason? reason;
   if (input.type == QuoteType.extra) {
     reason = NoAutoPriceReason.extra;
@@ -280,8 +254,6 @@ Quote calcQuote(QuoteInput input, [PricingSettings settings = defaultPricing]) {
     portions: portions,
     recipes: recipes,
     cookMinutes: cookMinutes,
-    groceriesEstCents: groceriesEstCents,
-    preauthCents: preauthCents,
     autoPrice: false,
     reason: why,
   );
@@ -298,12 +270,9 @@ Quote calcQuote(QuoteInput input, [PricingSettings settings = defaultPricing]) {
     portions: portions,
     recipes: recipes,
     cookMinutes: cookMinutes,
-    groceriesEstCents: groceriesEstCents,
-    preauthCents: preauthCents,
     autoPrice: true,
     weeklyServiceCents: weeklyServiceCents,
     serviceCents: serviceCents,
     savingsCents: settings.weeklyRateCents * input.weeks - serviceCents,
-    totalCents: serviceCents + groceriesEstCents * input.weeks,
   );
 }

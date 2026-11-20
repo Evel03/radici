@@ -12,8 +12,11 @@ const _priceKeys = [
   'weeklyServiceCents',
   'serviceCents',
   'savingsCents',
-  'totalCents',
 ];
+
+/// Lo de la compra, que desde el 19/11/2026 hace el cliente: ningún vector lo
+/// fija (en TS, quote.test.ts exige que el motor no lo devuelva).
+const _groceryKeys = ['groceriesEstCents', 'preauthCents', 'totalCents'];
 
 /// Todos los campos del resultado, con los mismos nombres y valores que en TS
 /// (el motivo, como texto). Sin precio, los del precio quedan en null.
@@ -24,14 +27,11 @@ Map<String, Object?> _fieldsOf(Quote q) => {
   'portions': q.portions,
   'recipes': q.recipes,
   'cookMinutes': q.cookMinutes,
-  'groceriesEstCents': q.groceriesEstCents,
-  'preauthCents': q.preauthCents,
   'autoPrice': q.autoPrice,
   'reason': q.reason?.name,
   'weeklyServiceCents': q.weeklyServiceCents,
   'serviceCents': q.serviceCents,
   'savingsCents': q.savingsCents,
-  'totalCents': q.totalCents,
 };
 
 List<Map<String, dynamic>> _objects(Object? list) =>
@@ -73,6 +73,9 @@ void main() {
         final expected = v['expected'] as Map<String, dynamic>;
 
         expect(expected, isNotEmpty);
+        for (final key in _groceryKeys) {
+          expect(expected.containsKey(key), isFalse, reason: key);
+        }
         for (final MapEntry(:key, :value) in expected.entries) {
           expect(
             actual.containsKey(key),
@@ -245,11 +248,6 @@ void main() {
                 expect(q.cookMinutes % 30, 0, reason: label);
                 expect(q.recipes, inInclusiveRange(2, 6), reason: label);
                 expect(
-                  q.preauthCents,
-                  greaterThanOrEqualTo(q.groceriesEstCents),
-                  reason: label,
-                );
-                expect(
                   q.portions,
                   q.adultPortions + q.kidPortions,
                   reason: label,
@@ -263,11 +261,6 @@ void main() {
                   expect(
                     q.serviceCents,
                     q.weeklyServiceCents! * weeks,
-                    reason: label,
-                  );
-                  expect(
-                    q.totalCents,
-                    q.serviceCents! + q.groceriesEstCents * weeks,
                     reason: label,
                   );
                 }
