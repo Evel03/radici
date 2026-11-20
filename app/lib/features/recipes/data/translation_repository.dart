@@ -33,8 +33,9 @@ final translationRepositoryProvider = Provider<TranslationRepository>((ref) {
 });
 
 enum TranslationFailureKind {
-  /// 503 (el traductor o la base no respondieron), otro 5xx, la función sin
-  /// desplegar o una respuesta con otra forma. Se puede reintentar.
+  /// 503 (Claude no respondió a tiempo, un error pasajero o la base que no
+  /// respondió), un 5xx de la plataforma, la función sin desplegar o una
+  /// respuesta con otra forma. Se puede reintentar.
   unavailable,
 
   /// Sin conexión: el pedido no salió. Se puede reintentar.
@@ -61,6 +62,10 @@ enum TranslationFailureKind {
 
   /// 403: el usuario no es la cocinera ni un colaborador suyo.
   forbidden,
+
+  /// 500: algo roto o mal configurado del lado del servidor (una clave de
+  /// Anthropic inválida, el SDK que no carga). Reintentar no lo arregla.
+  server,
 
   /// 400 y los otros 4xx: un cuerpo que la app no debería mandar.
   invalid;
@@ -152,6 +157,9 @@ TranslationFailure translationFailureFromResponse(int status, Object? body) {
     // /translate (notFound): se puede reintentar más tarde.
     404 || 429 => TranslationFailureKind.unavailable,
     >= 400 && < 500 => TranslationFailureKind.invalid,
+    // 500 `server` (o un 501 sin su código): roto, no pasajero.
+    500 || 501 => TranslationFailureKind.server,
+    // 503 y los 5xx de la plataforma (502, 504…): pasajeros.
     _ => TranslationFailureKind.unavailable,
   };
   return TranslationFailure(kind);

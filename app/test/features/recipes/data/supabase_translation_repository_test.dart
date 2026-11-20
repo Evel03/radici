@@ -244,12 +244,20 @@ void main() {
         'un 501 sin el código de la función',
         501,
         'Not Implemented',
-        TranslationFailureKind.unavailable,
+        TranslationFailureKind.server,
       ),
+      // Algo roto o mal configurado (una clave inválida, el SDK que no
+      // carga): reintentar no lo arregla.
       (
         'error del servidor',
         500,
         {'error': 'server'},
+        TranslationFailureKind.server,
+      ),
+      (
+        'la plataforma no llegó a la función (504)',
+        504,
+        'Gateway Timeout',
         TranslationFailureKind.unavailable,
       ),
       (
