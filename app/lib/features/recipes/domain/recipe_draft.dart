@@ -182,10 +182,16 @@ final class RecipeDraftErrors {
     this.freezerDays = false,
     this.ingredients = const {},
     this.tooManyIngredients = false,
+    this.spanishNameToTranslate = false,
   });
 
   final TextError? nameIt;
   final TextError? nameEs;
+
+  /// El nombre en español falta porque hace falta para traducir la
+  /// descripción en español (un plato viejo sin él): [nameEs] es
+  /// [TextError.required] y el editor dice por qué.
+  final bool spanishNameToTranslate;
   final TextError? nameEn;
 
   /// Las descripciones son opcionales: solo pueden ser demasiado largas.
@@ -245,7 +251,9 @@ int? _quantity(String raw) {
 /// Las del editor desde que el español es la fuente (20/11/2026): con
 /// [requireSpanish], el nombre en español es obligatorio (un plato nuevo, o
 /// uno que ya lo tenía); con [willTranslate], el nombre en italiano vacío no
-/// falta si sale del español (lo traduce el guardado). Sin ellas, las de la
+/// falta si sale del español (lo traduce el guardado), y el nombre en español
+/// falta si hay que traducir la descripción en español (la italiana o la
+/// inglesa vacía o automática): el traductor lo exige. Sin ellas, las de la
 /// base: el italiano es obligatorio.
 RecipeDraftErrors validateRecipeDraft(
   RecipeDraft draft, {
@@ -276,9 +284,26 @@ RecipeDraftErrors validateRecipeDraft(
   // italiano sale de ahí.
   final italianFromSpanish =
       willTranslate && (requireSpanish || normalizeRecipeText(draft.nameEs).isNotEmpty);
+  // Sin el nombre en español no se traduce nada: si hay una descripción en
+  // español que traducir, el nombre pasa a hacer falta.
+  final spanishNameToTranslate =
+      willTranslate &&
+      !requireSpanish &&
+      normalizeRecipeText(draft.nameEs).isEmpty &&
+      normalizeRecipeText(draft.descriptionEs).isNotEmpty &&
+      [TranslatedField.descriptionIt, TranslatedField.descriptionEn].any(
+        (field) =>
+            normalizeRecipeText(draft.textOf(field)).isEmpty ||
+            draft.autoTranslated.contains(field),
+      );
   return RecipeDraftErrors(
     nameIt: _nameError(draft.nameIt, maxRecipeNameLength, required: !italianFromSpanish),
-    nameEs: _nameError(draft.nameEs, maxRecipeNameLength, required: requireSpanish),
+    nameEs: _nameError(
+      draft.nameEs,
+      maxRecipeNameLength,
+      required: requireSpanish || spanishNameToTranslate,
+    ),
+    spanishNameToTranslate: spanishNameToTranslate,
     nameEn: _nameError(draft.nameEn, maxRecipeNameLength),
     descriptionIt: _nameError(draft.descriptionIt, maxRecipeDescriptionLength),
     descriptionEs: _nameError(draft.descriptionEs, maxRecipeDescriptionLength),

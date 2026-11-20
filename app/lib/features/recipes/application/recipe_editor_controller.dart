@@ -360,7 +360,7 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
     try {
       translation = await ref
           .read(translationRepositoryProvider)
-          .translate(plan.source);
+          .translate(plan.request);
     } on TranslationFailure catch (failure) {
       if (!ref.mounted) return RecipeSaveResult.translationFailed;
       if (failure.kind == TranslationFailureKind.notConfigured &&

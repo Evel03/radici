@@ -1272,6 +1272,10 @@
   "@recipeNameEsRequired": {
     "description": "Error: falta el nombre en español (obligatorio en un plato nuevo y en uno que ya lo tenía)."
   },
+  "recipeNameEsToTranslate": "Per tradurre la descrizione serve il nome in spagnolo.",
+  "@recipeNameEsToTranslate": {
+    "description": "Error en el nombre en español de un plato viejo que no lo tiene: hay una descripción en español que traducir y el traductor exige el nombre."
+  },
   "recipePrivacyHint": "Non scrivere dati dei clienti (nomi, indirizzi, salute): il nome e la descrizione vanno al servizio di traduzione automatica.",
   "@recipePrivacyHint": {
     "description": "Aviso debajo de los campos en español: su texto se manda a Anthropic para traducirlo (SPEC §6)."

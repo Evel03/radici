@@ -819,6 +819,21 @@ void main() {
       expect(find.text('Traducido automáticamente'), findsNothing, reason: 'un plato nuevo no tiene nada traducido');
     });
 
+    testWidgets('un plato viejo sin nombre en español y con una descripción que traducir: lo pide y dice por qué', (
+      tester,
+    ) async {
+      repository.recipes[lasagneId] = lasagne().copyWith(nameEs: null);
+      await openEditor(tester, location: '/altro/piatti/$lasagneId', size: const Size(375, 667));
+      await tester.drag(byKey('recipe-editor'), const Offset(0, -2000));
+      await tester.pumpAndSettle();
+      await save(tester);
+
+      expect(find.text('Per tradurre la descrizione serve il nome in spagnolo.').hitTestable(), findsOneWidget);
+      expect(translator.calls, isEmpty);
+      expect(repository.saveCalls, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('la marca en los campos automáticos; escribir en uno a mano la saca', (tester) async {
       await openEditor(tester, location: '/altro/piatti/$milanesaId', locale: const Locale('es', 'ES'));
       expect(byKey('recipe-auto-description_it'), findsOneWidget);

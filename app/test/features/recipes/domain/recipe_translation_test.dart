@@ -163,6 +163,8 @@ void main() {
     test('cambió el nombre en español: se traduce el nombre automático, no el escrito a mano', () {
       final plan = _planFor(draft().copyWith(nameEs: 'Milanesa napolitana'), saved: saved);
       expect(plan.translate, {TranslatedField.nameEn});
+      // Sin descripción que traducir, a Anthropic no va la descripción.
+      expect(plan.request, (name: 'Milanesa napolitana', description: null));
 
       final translated = plan.translated(_fake(plan.source));
       expect(translated.nameEn, '[en] Milanesa napolitana');
@@ -175,6 +177,7 @@ void main() {
       final plan = _planFor(draft().copyWith(descriptionEs: 'Con tomate y queso.'), saved: saved);
       expect(plan.translate, {TranslatedField.descriptionIt, TranslatedField.descriptionEn});
       expect(plan.source, (name: 'Milanesa a la napolitana', description: 'Con tomate y queso.'));
+      expect(plan.request, plan.source);
       final translated = plan.translated(_fake(plan.source));
       expect(translated.descriptionIt, '[it] Con tomate y queso.');
       expect(translated.nameEn, saved.nameEn);
@@ -261,6 +264,35 @@ void main() {
       final stale = recipeDraftFrom(milanesa()).copyWith(nameEs: 'Napolitana');
       expect(_planFor(stale, saved: milanesa()).fillsOnlyEmpty, isFalse);
       expect(_planFor(recipeDraftFrom(milanesa()), saved: milanesa()).fillsOnlyEmpty, isTrue, reason: 'nada que traducir');
+    });
+
+    test('avisa que el plato sale de la web solo si había descripción en italiano y queda vacía', () {
+      // Nuevo, con la descripción en español: la italiana ya estaba vacía.
+      final fresh = _planFor(
+        emptyRecipeDraft(_newId).copyWith(nameEs: 'Locro', nameIt: 'Locro', descriptionEs: 'Con zapallo.'),
+      );
+      expect(fresh.translate, contains(TranslatedField.descriptionIt));
+      expect(fresh.skipEmptiesItalianDescription, isFalse);
+      // La italiana automática y vieja: se vacía.
+      final stale = _planFor(recipeDraftFrom(milanesa()).copyWith(descriptionEs: 'Con tomate.'), saved: milanesa());
+      expect(stale.skipEmptiesItalianDescription, isTrue);
+      // Escrita a mano: queda.
+      final handWritten = _planFor(
+        recipeDraftFrom(milanesa()).copyWith(
+          descriptionEs: 'Con tomate.',
+          descriptionIt: 'Pomodoro e mozzarella.',
+          autoTranslated: {TranslatedField.nameEn, TranslatedField.descriptionEn},
+        ),
+        saved: milanesa(),
+      );
+      expect(handWritten.skipEmptiesItalianDescription, isFalse);
+      // Se borró la española (clear) y hay que traducir el nombre: también.
+      final cleared = _planFor(
+        recipeDraftFrom(milanesa()).copyWith(descriptionEs: '', nameEs: 'Napolitana'),
+        saved: milanesa(),
+      );
+      expect(cleared.clear, contains(TranslatedField.descriptionIt));
+      expect(cleared.skipEmptiesItalianDescription, isTrue);
     });
 
     test('sin nada que traducir, guardar sin traducir no cambia el formulario', () {

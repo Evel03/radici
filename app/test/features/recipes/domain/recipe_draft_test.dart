@@ -140,6 +140,30 @@ void main() {
       expect(validateRecipeDraft(onlySpanish.copyWith(nameIt: 'a' * 121), willTranslate: true).nameIt, TextError.tooLong);
     });
 
+    // Un plato viejo sin nombre en español no se traduce; si tiene una
+    // descripción en español que traducir, el nombre hace falta.
+    test('sin nombre en español y con una descripción en español que traducir, el nombre hace falta', () {
+      final old = recipeDraftFrom(lasagne().copyWith(nameEs: null));
+      // La lasaña no tiene la descripción en inglés.
+      final errors = validateRecipeDraft(old, willTranslate: true);
+      expect(errors.nameEs, TextError.required);
+      expect(errors.spanishNameToTranslate, isTrue);
+      expect(validateRecipeDraft(old).nameEs, isNull, reason: 'las reglas de la base no lo piden');
+
+      final allWritten = old.copyWith(descriptionEn: 'Slow-cooked ragù.');
+      expect(validateRecipeDraft(allWritten, willTranslate: true).isEmpty, isTrue, reason: 'nada que traducir');
+      final autoEnglish = allWritten.copyWith(autoTranslated: {TranslatedField.descriptionEn});
+      expect(validateRecipeDraft(autoEnglish, willTranslate: true).spanishNameToTranslate, isTrue);
+      final withoutDescription = old.copyWith(descriptionEs: ' ');
+      expect(validateRecipeDraft(withoutDescription, willTranslate: true).isEmpty, isTrue);
+      final withName = old.copyWith(nameEs: 'Lasaña');
+      expect(validateRecipeDraft(withName, willTranslate: true).isEmpty, isTrue);
+      // Si el español ya es obligatorio, el error es el de siempre.
+      final required = validateRecipeDraft(old, requireSpanish: true, willTranslate: true);
+      expect(required.nameEs, TextError.required);
+      expect(required.spanishNameToTranslate, isFalse);
+    });
+
     test('las traducciones son opcionales, con el mismo largo', () {
       final draft = _valid().copyWith(nameEs: '   ', nameEn: 'b' * 121);
       final errors = validateRecipeDraft(draft);

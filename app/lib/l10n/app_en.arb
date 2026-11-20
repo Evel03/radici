@@ -274,6 +274,7 @@
   "recipeNameEnLabel": "Name in English",
   "recipeNameEsHelper": "The Italian and English names are translated from this one when you save.",
   "recipeNameEsRequired": "Write the name in Spanish.",
+  "recipeNameEsToTranslate": "The Spanish name is needed to translate the description.",
   "recipePrivacyHint": "Don't write client details (names, addresses, health): the name and description go to the automatic translation service.",
   "recipeTranslationsSection": "Italian and English",
   "recipeTranslationsHelp": "Filled in automatically when you save, translated from Spanish. You can correct them: what you write yourself is no longer translated.",

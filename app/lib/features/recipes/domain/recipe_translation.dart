@@ -69,8 +69,17 @@ final class RecipeTranslationPlan {
   /// española. No hace falta el traductor.
   final Set<TranslatedField> clear;
 
-  /// Lo que se manda al traductor: el español de [draft].
+  /// El español de [draft].
   final SpanishText source;
+
+  /// Lo que se manda al traductor: el nombre en español y la descripción
+  /// solo si hay una descripción que traducir (a Anthropic va lo justo).
+  SpanishText get request => (
+    name: source.name,
+    description: translate.any((field) => !field.isName)
+        ? source.description
+        : null,
+  );
 
   /// Hay que llamar al traductor antes de guardar.
   bool get needsTranslation => translate.isNotEmpty;
@@ -120,10 +129,12 @@ final class RecipeTranslationPlan {
   /// base) no queda vacío.
   bool get canSkip => normalizeRecipeText(skipped.nameIt).isNotEmpty;
 
-  /// Guardar sin traducir deja vacía la descripción en italiano, y sin ella
-  /// el plato no sale en la web.
+  /// Guardar sin traducir vacía la descripción en italiano que había (por
+  /// vieja o porque se borró la española), y sin ella el plato no sale en la
+  /// web. Si ya estaba vacía, no cambia nada.
   bool get skipEmptiesItalianDescription =>
-      translate.contains(TranslatedField.descriptionIt);
+      normalizeRecipeText(draft.descriptionIt).isNotEmpty &&
+      normalizeRecipeText(skipped.descriptionIt).isEmpty;
 }
 
 /// Si [field] es automático, lo vacía y le saca la marca (de [auto]); si no,

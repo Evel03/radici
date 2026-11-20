@@ -575,7 +575,9 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
                     l10n,
                     errors.nameEs,
                     maxRecipeNameLength,
-                    required: l10n.recipeNameEsRequired,
+                    required: errors.spanishNameToTranslate
+                        ? l10n.recipeNameEsToTranslate
+                        : l10n.recipeNameEsRequired,
                   )
                 : null,
             errorMaxLines: 2,

@@ -451,6 +451,32 @@ void main() {
       expect(repository.saveCalls.single, old.copyWith(allergens: [...old.allergens, Allergen.sesame]));
     });
 
+    test('uno viejo sin nombre en español pero con una descripción que traducir: pide el nombre', () async {
+      final old = lasagne().copyWith(id: _id2, nameEs: null);
+      repository.recipes[_id2] = old;
+      await start();
+      const editOld = RecipeEditorTarget.edit(_id2);
+      final editor = open(editOld)..toggleAllergen(Allergen.sesame);
+
+      expect(await editor.save(), RecipeSaveResult.invalid);
+      expect(stateOf(editOld).errors.nameEs, TextError.required);
+      expect(stateOf(editOld).errors.spanishNameToTranslate, isTrue);
+      expect(translator.calls, isEmpty);
+      expect(repository.saveCalls, isEmpty);
+
+      editor.setNameEs('Lasaña a la boloñesa');
+      expect(await editor.save(), RecipeSaveResult.saved);
+      expect(repository.saveCalls.single.descriptionEn, '[en] $lasagneDescriptionEs');
+    });
+
+    test('sin descripción que traducir, a Anthropic no va la descripción', () async {
+      await start();
+      final editor = open(editMilanesa)..setNameEs('Napolitana');
+      expect(await editor.save(), RecipeSaveResult.saved);
+      expect(translator.calls, [(name: 'Napolitana', description: null)]);
+      expect(repository.saveCalls.single.descriptionIt, milanesa().descriptionIt);
+    });
+
     test('uno que ya tenía español no lo puede perder', () async {
       await start();
       final editor = open(editLasagne)..setNameEs(' ');
