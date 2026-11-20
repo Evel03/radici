@@ -3,6 +3,8 @@
 // Se usa para armar los links de WhatsApp (wa.me) y de llamada (tel:) a partir
 // de `clients.contact_phone`, que se guarda tal como lo escribió el cliente.
 // test/core/phone_test.dart corre los mismos casos que public_request.test.ts.
+// Al final, lo que limpia un teléfono escrito o pegado en la app
+// (phoneFromInput), con su propio test (test/core/phone_input_test.dart).
 //
 // Dart puro: las RegExp de Dart siguen la semántica de JavaScript, así que las
 // expresiones son las mismas que en TS.
@@ -37,3 +39,35 @@ String? normalizePhone(String raw) {
   }
   return _e164Digits.hasMatch(digits) ? '+$digits' : null;
 }
+
+// ---------------------------------------------------------------------------
+// Lo que se escribe o se pega en la app (fuera de la copia de la regla
+// compartida).
+// ---------------------------------------------------------------------------
+
+final RegExp _controlsAndBidi = RegExp(
+  r'[\u0000-\u001F\u007F\u202a-\u202e\u2066-\u2069]',
+);
+final RegExp _spaces = RegExp(r'\s+');
+
+/// Caracteres de formato (categoría Cf): no se ven en pantalla, como las
+/// marcas de dirección U+200E y U+200F o U+FEFF.
+final RegExp _formatChars = RegExp(r'\p{Cf}', unicode: true);
+
+/// Copia de `cleanOneLine` de _shared/public_request.ts, con la que el
+/// servidor limpia un campo de una línea antes de validarlo: los caracteres
+/// de control y las marcas de dirección (U+202A–U+202E y U+2066–U+2069) pasan
+/// a espacio, los espacios seguidos quedan en uno y se recortan los bordes.
+String cleanOneLine(String raw) =>
+    raw.replaceAll(_controlsAndBidi, ' ').replaceAll(_spaces, ' ').trim();
+
+/// [text] sin los caracteres de formato (Cf).
+String withoutFormatChars(String text) => text.replaceAll(_formatChars, '');
+
+/// Un teléfono escrito o pegado, en E.164, o null si no se puede normalizar.
+/// Al copiar un número de Contactos o del Teléfono, iOS lo envuelve en marcas
+/// invisibles de dirección (U+202A…U+202C, U+200E) que [normalizePhone] no
+/// saca: «+39 333 123 4567» entre U+202A y U+202C daba null. Con lo que se ve
+/// en pantalla da lo mismo que [normalizePhone].
+String? phoneFromInput(String raw) =>
+    normalizePhone(withoutFormatChars(cleanOneLine(raw)));

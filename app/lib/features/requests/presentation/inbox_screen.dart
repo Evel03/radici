@@ -1,14 +1,20 @@
-// Bandeja "Richieste": nuevas, vistas y rechazadas (contrato §7).
+// Bandeja "Richieste": nuevas, vistas, reservas (los pedidos aceptados) y
+// rechazadas (contrato §7). Hoy la abre en «Nuove» con un pedido de pestaña
+// (inboxTabRequestProvider). «Prenotazioni» tiene abajo «Nuova
+// prenotazione», para cargar una reserva a mano.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/application/inbox_tab_request.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/domain/inbox.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/features/sessions/presentation/session_widgets.dart'
+    show SessionBottomBar;
 import 'package:radici/l10n/app_localizations.dart';
 
 class InboxScreen extends ConsumerWidget {
@@ -19,26 +25,33 @@ class InboxScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final inbox = ref.watch(chefInboxProvider);
     final newCount = ref.watch(newRequestsCountProvider);
+    final tabRequest = ref.watch(inboxTabRequestProvider);
 
     return DefaultTabController(
+      // Cada pedido de pestaña (desde Hoy) la vuelve a armar en esa pestaña,
+      // aunque la cocinera la haya dejado en otra.
+      key: ValueKey(tabRequest?.serial ?? 0),
+      initialIndex: (tabRequest?.tab ?? InboxTab.fresh).index,
       length: InboxTab.values.length,
       child: Scaffold(
         appBar: AppBar(
           title: Text(l10n.navRequests),
           actions: const [ChefAccountMenuButton()],
+          // Cuatro pestañas: cada una con el ancho de su texto (con ancho
+          // fijo, «Rechazadas» o «Prenotazioni» se cortarían en un teléfono).
+          // En un teléfono de 375 entran las cuatro; si no, la barra se
+          // desliza y siempre muestra la elegida.
           bottom: TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 12),
             tabs: [
               Tab(
                 key: const ValueKey('inbox-tab-new'),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Flexible(
-                      child: Text(
-                        l10n.inboxTabNew,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+                    Text(l10n.inboxTabNew),
                     if (newCount > 0) ...[
                       const SizedBox(width: 6),
                       Badge.count(
@@ -54,26 +67,78 @@ class InboxScreen extends ConsumerWidget {
                 text: l10n.inboxTabSeen,
               ),
               Tab(
+                key: const ValueKey('inbox-tab-bookings'),
+                text: l10n.inboxTabBookings,
+              ),
+              Tab(
                 key: const ValueKey('inbox-tab-rejected'),
                 text: l10n.inboxTabRejected,
               ),
             ],
           ),
         ),
-        body: inbox.when(
-          data: (requests) => TabBarView(
-            children: [
-              for (final tab in InboxTab.values)
-                _RequestList(tab: tab, requests: requestsInTab(requests, tab)),
-            ],
-          ),
-          error: (_, _) => LoadErrorView(
-            message: l10n.inboxLoadError,
-            onRetry: () => ref.invalidate(chefInboxProvider),
-          ),
-          loading: () => const Center(child: CircularProgressIndicator()),
+        // Las pestañas están siempre: cada una dice si la bandeja carga o no
+        // se pudo leer. Así «Prenotazioni» tiene su barra «Nuova
+        // prenotazione» en los tres estados: la reserva a mano no depende de
+        // la bandeja.
+        body: TabBarView(
+          children: [
+            for (final tab in InboxTab.values)
+              if (tab == InboxTab.bookings)
+                Column(
+                  children: [
+                    Expanded(child: _TabContent(tab: tab, inbox: inbox)),
+                    const _NewBookingBar(),
+                  ],
+                )
+              else
+                _TabContent(tab: tab, inbox: inbox),
+          ],
         ),
       ),
+    );
+  }
+}
+
+/// Una pestaña según la bandeja: la rueda, el error con «Riprova» o la lista.
+class _TabContent extends ConsumerWidget {
+  const _TabContent({required this.tab, required this.inbox});
+
+  final InboxTab tab;
+  final AsyncValue<List<ChefRequest>> inbox;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    return inbox.when(
+      data: (requests) =>
+          _RequestList(tab: tab, requests: requestsInTab(requests, tab)),
+      error: (_, _) => LoadErrorView(
+        message: l10n.inboxLoadError,
+        onRetry: () => ref.invalidate(chefInboxProvider),
+      ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+/// La barra de «Prenotazioni»: cargar una reserva a mano. Es también la
+/// acción de la pestaña vacía, en el tercio inferior del teléfono.
+class _NewBookingBar extends StatelessWidget {
+  const _NewBookingBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SessionBottomBar(
+      children: [
+        FilledButton.icon(
+          key: const ValueKey('inbox-new-booking'),
+          onPressed: () => context.push(AppRoutes.newBooking),
+          icon: const Icon(Icons.add),
+          label: Text(l10n.newBookingAction),
+        ),
+      ],
     );
   }
 }
@@ -100,6 +165,7 @@ class _RequestList extends ConsumerWidget {
     final empty = switch (tab) {
       InboxTab.fresh => l10n.inboxEmptyNew,
       InboxTab.seen => l10n.inboxEmptySeen,
+      InboxTab.bookings => l10n.inboxEmptyBookings,
       InboxTab.rejected => l10n.inboxEmptyRejected,
     };
 
@@ -162,7 +228,12 @@ class RequestTile extends StatelessWidget {
       when = slot == null ? '' : l10n.slot(slot);
     } else {
       when = [
-        date == null ? l10n.requestNoDate : formats.shortDate(date),
+        if (date != null)
+          formats.shortDate(date)
+        // Una reserva sin fecha preferida (cargada a mano) no dice «Senza
+        // data»: sus fechas son las de sus sesiones.
+        else if (!request.isBooking)
+          l10n.requestNoDate,
         if (slot != null) l10n.slot(slot),
       ].join(' · ');
     }
@@ -189,10 +260,24 @@ class RequestTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: isNew ? const TextStyle(fontWeight: FontWeight.w700) : null,
       ),
-      subtitle: Text(
-        [l10n.requestSummary(request), if (when.isNotEmpty) when].join('\n'),
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
+      // La fecha va en su propia línea: un resumen largo («… · 4 settimane ·
+      // 4 persone · 5 giorni · Cena») se corta en dos líneas y no la tapa.
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.requestSummary(request),
+            maxLines: when.isEmpty ? 3 : 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (when.isNotEmpty)
+            Text(
+              when,
+              key: ValueKey('request-${request.id}-when'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+        ],
       ),
       isThreeLine: when.isNotEmpty,
       trailing: Column(

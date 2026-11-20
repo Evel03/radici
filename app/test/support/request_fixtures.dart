@@ -19,6 +19,24 @@ const Account chefAccountData = Account(
 /// "Ahora" de los tests: lunes 19/10/2026 a las 14:00 en Roma.
 final DateTime testNow = DateTime.utc(2026, 10, 19, 12);
 
+/// Estimación de 4 semanas con precio por semana: 140 € cada una (560 €), con
+/// las tarifas por defecto de chef_settings guardadas (150 €, 140 € desde 4
+/// semanas, hasta 5 personas).
+const RequestEstimate fourWeeksEstimate = RequestEstimate(
+  weeks: 4,
+  portions: 20,
+  recipes: 3,
+  cookMinutes: 180,
+  autoPrice: true,
+  weeklyServiceCents: 14000,
+  serviceCents: 56000,
+  savingsCents: 4000,
+  maxPeople: 5,
+  weeklyRateCents: 15000,
+  weeklyRateDiscountedCents: 14000,
+  weeklyDiscountMinWeeks: 4,
+);
+
 /// Fila de PostgREST como la devuelve `select(chefRequestColumns)`.
 Map<String, dynamic> requestRow({
   String id = 'req-1',
@@ -90,6 +108,17 @@ Map<String, dynamic> requestRow({
   },
 };
 
+/// La estimación de un pedido de antes del precio por semana (servicio por
+/// hora, sin autoPrice ni tarifas por semana): no propone el precio de otra
+/// cantidad de semanas. La compra que traía se ignora (sin compra desde el
+/// 19/11/2026).
+const RequestEstimate legacyEstimate = RequestEstimate(
+  portions: 20,
+  recipes: 3,
+  cookMinutes: 180,
+  serviceCents: 7800,
+);
+
 /// Pedido armado a mano (sin pasar por JSON).
 ChefRequest buildRequest({
   String id = 'req-1',
@@ -106,17 +135,14 @@ ChefRequest buildRequest({
   RequestRestrictions? restrictions,
   bool? noAllergies,
   // Por defecto, una estimación de antes del precio por semana (sin autoPrice).
-  RequestEstimate? estimate = const RequestEstimate(
-    portions: 20,
-    recipes: 3,
-    cookMinutes: 180,
-    serviceCents: 7800,
-  ),
+  RequestEstimate? estimate = legacyEstimate,
   String chefId = testChefId,
   String clientId = testClientId,
   ClientStatus? clientStatus = ClientStatus.prospect,
   RequestType type = RequestType.week,
   int weeks = 1,
+  // Origen (requests.source): por defecto, la web; una reserva a mano es de la app.
+  RequestSource source = RequestSource.web,
 }) => ChefRequest(
   id: id,
   chefId: chefId,
@@ -136,7 +162,7 @@ ChefRequest buildRequest({
   locale: locale,
   whatsappOptIn: true,
   estimate: estimate,
-  source: RequestSource.web,
+  source: source,
   seenAt: seenAt,
   createdAt: createdAt ?? DateTime.utc(2026, 10, 19, 9, 15),
   client: RequestClient(

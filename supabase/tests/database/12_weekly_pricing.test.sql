@@ -354,8 +354,8 @@ select is(
 );
 select is(
   (select array_agg(clave order by clave) from jsonb_object_keys((select res from ids where k = 'sin_precio')) as clave),
-  array['duplicate', 'estimate', 'request_id'],
-  'y la respuesta sigue siendo {request_id, duplicate, estimate}'
+  array['duplicate', 'estimate', 'menu', 'request_id'],
+  'y la respuesta sigue siendo {request_id, duplicate, estimate}, más menu (17_menu_web)'
 );
 
 -- =====================================================================
