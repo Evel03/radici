@@ -121,7 +121,7 @@ export interface DishCard {
   allergens: string;
   /** «Vegetariano», «Vegano» o null. */
   diet: string | null;
-  /** URL de la miniatura (la de 480 px); null = sin foto. */
+  /** URL de la miniatura (la de 360 px); null = sin foto. */
   photo: string | null;
   checked: boolean;
   /** Al tope, las que no están marcadas. */
@@ -199,7 +199,7 @@ export function menuPanelView(input: MenuPanelInput, i18n: I18n): MenuPanelView 
 
 /**
  * Lado de la miniatura en px CSS (el mismo de .dish__photo en request.css). Fijo, no crece con la letra: con
- * letra grande la foto pasa arriba del texto. El archivo tiene 480 px: alcanza para pantallas 3x.
+ * letra grande la foto pasa arriba del texto. El archivo tiene 360 px de lado mayor: alcanza para pantallas 3x.
  */
 export const DISH_PHOTO_SIZE = 80;
 
@@ -220,7 +220,8 @@ export interface DishPhotoElement {
  * La miniatura de un plato: cuadrada, con ancho y alto fijos (la tarjeta no salta cuando llega), perezosa
  * (loading="lazy", decoding="async") y con alt vacío (el nombre del plato está al lado). Si no carga, se saca
  * del todo (nada de ícono roto ni hueco) y avisa con onError, para que la tarjeta quede como una sin foto. El
- * listener se pone antes del src: un error que llegue enseguida (de la caché) no se pierde.
+ * evento error de una <img> llega siempre en una tarea encolada, así que el orden entre el listener y el src da
+ * igual.
  */
 export function dishPhoto<T extends DishPhotoElement>(img: T, src: string, onError: () => void): T {
   img.className = "dish__photo";

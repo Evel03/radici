@@ -30,11 +30,11 @@ export interface MenuChoice {
 
 /**
  * La foto de un plato: las URL públicas de sus dos archivos en el bucket recipe-photos
- * (supabase/migrations/20261120100000_recipe_photos.sql). Cada foto nueva tiene un id nuevo: una URL
- * nunca cambia de contenido.
+ * (supabase/migrations/20261120100000_recipe_photos.sql). Por convención de la app cada foto nueva tiene un id
+ * nuevo (sube archivos nuevos y borra los viejos), así una URL no cambia de contenido; la base no lo garantiza.
  */
 export interface MenuPhoto {
-  /** La miniatura (lado mayor 480 px): la que muestra la web. */
+  /** La miniatura (lado mayor 360 px): la que muestra la web. */
   thumb: string;
   /** La grande (lado mayor 1200 px). */
   full: string;
