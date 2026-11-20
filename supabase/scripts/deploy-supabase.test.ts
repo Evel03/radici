@@ -139,3 +139,26 @@ test("el encabezado del workflow documenta CHEF_MEMBER_EMAILS entre los secretos
   assert.match(header, /SPEC §6/, "quién puede ser colaborador sin cambiar la privacy");
   assert.match(header, /Run\s+#?\s*workflow/, "cambiar el secreto no hace nada hasta correr el workflow");
 });
+
+test("traducción: ANTHROPIC_API_KEY es un secreto opcional que carga el paso de los secretos, y avisa si falta", () => {
+  // La función chef la usa para traducir los platos (contrato chef-api.md §12); sin ella responde 503.
+  const run = step("Secretos de la función");
+  assert.match(run, /^\s+ANTHROPIC_API_KEY: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}$/m);
+  assert.ok(!WORKFLOW.includes("vars.ANTHROPIC_API_KEY"), "nunca como variable: saldría en claro en el log");
+  // Va en los pares que se cargan con supabase secrets set, sin pasar por echo.
+  const loop = /for name in ([\s\S]*?); do\n\s+value="\$\{!name:-\}"/.exec(run)?.[1] ?? "";
+  assert.match(loop, /\bANTHROPIC_API_KEY\b/, "se carga con los demás secretos");
+  // Opcional: no está entre las que hacen fallar el despliegue ni entre las que avisan como obligatorias.
+  const required = /for name in (TURNSTILE_SECRET_KEY IP_HASH_SALT[^;]*); do\n\s+grep -qx/.exec(run)?.[1] ?? "";
+  assert.ok(required !== "" && !required.includes("ANTHROPIC_API_KEY"), "no corta el despliegue");
+  assert.match(run, /if \[ -z "\$\{ANTHROPIC_API_KEY:-\}" \] && ! grep -qx "ANTHROPIC_API_KEY" <<< "\$\{names\}"; then\n\s+echo "::warning::Sin ANTHROPIC_API_KEY la traducción automática de los platos queda apagada/);
+  assert.doesNotMatch(run, /echo[^\n]*\$\{?ANTHROPIC_API_KEY\b/, "ningún echo imprime el valor");
+
+  // TRANSLATE_TRANSPORT=fake es de desarrollo: el workflow no lo carga y avisa si está en Supabase.
+  assert.ok(!/TRANSLATE_TRANSPORT: \$\{\{/.test(WORKFLOW), "no se carga desde GitHub");
+  assert.match(run, /grep -qx "TRANSLATE_TRANSPORT" <<< "\$\{names\}"/);
+
+  const header = WORKFLOW.slice(0, WORKFLOW.indexOf("\nname: "));
+  assert.match(header, /opcionales: [^)]*ANTHROPIC_API_KEY/);
+  assert.match(header, /solo[\s#]+van el nombre y la descripción del plato/, "qué se manda a Anthropic");
+});

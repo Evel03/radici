@@ -1,7 +1,8 @@
 # Despliega el backend de Supabase a producción: la configuración de Auth (desde config.toml y la
 # plantilla del código), migraciones (db push), la cuenta de la cocinera con su horario inicial la
-# primera vez, secretos de las Edge Functions, las funciones public-request y chef (el área de Evelyn)
-# y, al final, las cuentas de sus colaboradores, en cada despliegue. Contratos:
+# primera vez, secretos de las Edge Functions, las funciones public-request y chef (el área de Evelyn,
+# con la traducción de los platos) y, al final, las cuentas de sus colaboradores, en cada despliegue.
+# Contratos:
 # docs/contracts/public-request.md §8 y §10.1, y docs/contracts/chef-api.md §9.
 # - push a main que toque supabase/** (o este archivo) → producción
 # - workflow_dispatch → a mano, desde la pestaña Actions
@@ -13,7 +14,12 @@
 #   SUPABASE_DB_PASSWORD, RESEND_API_KEY, TURNSTILE_SECRET_KEY, IP_HASH_SALT
 #   y RESEND_SMTP_KEY (la segunda clave de Resend: SMTP de Auth; en Free, sin SMTP propio Supabase no deja
 #   poner la plantilla del código y Evelyn no puede entrar; sin ella el despliegue sigue y avisa)
-#   (opcionales: WHATSAPP_TOKEN y CHEF_MEMBER_EMAILS)
+#   (opcionales: WHATSAPP_TOKEN, CHEF_MEMBER_EMAILS y ANTHROPIC_API_KEY)
+#   · ANTHROPIC_API_KEY: la clave de la API de Claude con que la función chef traduce los platos del
+#     español al italiano y al inglés (POST /chef/translate, contrato chef-api.md §12). A Anthropic solo
+#     van el nombre y la descripción del plato, nunca datos de clientes ni de pedidos. Sin ella la
+#     traducción queda apagada (503: Evelyn escribe el italiano y el inglés a mano) y el paso de los
+#     secretos avisa.
 #   · CHEF_MEMBER_EMAILS: los colaboradores de la cocinera (emails separados por coma), cuentas que entran
 #     a /gestione/ con el mismo acceso que ella, también a las alergias y las direcciones de los clientes.
 #     Solo quien gestiona el sistema por cuenta de Evelyn (SPEC §6, decidido el 16/11/2026): sumar a
@@ -272,6 +278,7 @@ jobs:
           TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
           IP_HASH_SALT: ${{ secrets.IP_HASH_SALT }}
           WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CHEF_ID: ${{ vars.CHEF_ID }}
           CHEF_NOTIFY_EMAIL: ${{ vars.CHEF_NOTIFY_EMAIL }}
           CHEF_LOCALE: ${{ vars.CHEF_LOCALE }}
@@ -306,7 +313,7 @@ jobs:
 
           # Cada valor viaja como un argumento NOMBRE=valor (sin pasar por un .env ni por echo).
           pairs=()
-          for name in RESEND_API_KEY TURNSTILE_SECRET_KEY IP_HASH_SALT WHATSAPP_TOKEN \
+          for name in RESEND_API_KEY TURNSTILE_SECRET_KEY IP_HASH_SALT WHATSAPP_TOKEN ANTHROPIC_API_KEY \
                       CHEF_ID CHEF_NOTIFY_EMAIL CHEF_LOCALE MAIL_FROM MAIL_REPLY_TO EMAIL_TRANSPORT \
                       ALLOWED_ORIGINS INBOX_URL PUBLIC_SITE_URL WHATSAPP_PHONE_NUMBER_ID WHATSAPP_TEMPLATE; do
             value="${!name:-}"
@@ -335,6 +342,14 @@ jobs:
           # función responde 500 a todos los pedidos. Solo se leen los nombres, nunca los valores.
           names=$(supabase secrets list --project-ref "${SUPABASE_PROJECT_REF}" -o json \
             | jq -r '.. | objects | select(has("name")) | .name' 2>/dev/null || true)
+          # Opcional: sin la clave de Claude la función chef no traduce los platos (responde 503).
+          if [ -z "${ANTHROPIC_API_KEY:-}" ] && ! grep -qx "ANTHROPIC_API_KEY" <<< "${names}"; then
+            echo "::warning::Sin ANTHROPIC_API_KEY la traducción automática de los platos queda apagada: POST /chef/translate responde 503 y Evelyn escribe el italiano y el inglés a mano. Cargar el secreto en GitHub y volver a desplegar."
+          fi
+          # TRANSLATE_TRANSPORT=fake es de desarrollo (traducciones de mentira): este workflow nunca lo carga.
+          if grep -qx "TRANSLATE_TRANSPORT" <<< "${names}"; then
+            echo "::warning::TRANSLATE_TRANSPORT está en los secretos de Supabase: con fake la función chef devuelve traducciones de mentira. Borrarlo con supabase secrets unset TRANSLATE_TRANSPORT."
+          fi
           if [ -z "${names}" ]; then
             echo "::warning::No se pudo leer la lista de secretos de la función: comprobar a mano que estén TURNSTILE_SECRET_KEY e IP_HASH_SALT."
           else
@@ -356,13 +371,14 @@ jobs:
         # --use-api: el bundle lo arma Supabase, sin Docker.
         run: supabase functions deploy public-request --project-ref "${SUPABASE_PROJECT_REF}" --use-api
 
-      # El área de Evelyn (docs/contracts/chef-api.md): reservas, mover y cancelar sesiones. Va después
-      # de db push porque llama a las funciones chef_* de la migración de reservas (y a
-      # chef_id_for_user, de la de colaboradores). verify_jwt = true sale de supabase/config.toml
-      # ([functions.chef]): la plataforma exige un JWT y la función valida además que sea de la cocinera
-      # o de un colaborador suyo (public.chef_id_for_user). No tiene secretos propios: usa
-      # ALLOWED_ORIGINS (la misma variable que public-request, cargada en "Secretos de la función") y la
-      # URL y la clave secreta que pone Supabase. Cualquier origen de ALLOWED_ORIGINS puede llamarla con
+      # El área de Evelyn (docs/contracts/chef-api.md): reservas, mover y cancelar sesiones, y la
+      # traducción de los platos. Va después de db push porque llama a las funciones chef_* de la
+      # migración de reservas (y a chef_id_for_user, de la de colaboradores). verify_jwt = true sale de
+      # supabase/config.toml ([functions.chef]): la plataforma exige un JWT y la función valida además
+      # que sea de la cocinera o de un colaborador suyo (public.chef_id_for_user). Usa ALLOWED_ORIGINS
+      # (la misma variable que public-request) y ANTHROPIC_API_KEY (opcional: sin ella no traduce), las
+      # dos cargadas en "Secretos de la función", y la URL y la clave secreta que pone Supabase.
+      # Cualquier origen de ALLOWED_ORIGINS puede llamarla con
       # la sesión de Evelyn o de un colaborador: avisa si hay alguno además del de PUBLIC_SITE_URL (por
       # ejemplo, un dominio viejo).
       - name: Desplegar chef
