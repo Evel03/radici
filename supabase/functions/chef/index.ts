@@ -1,7 +1,8 @@
 // Edge Function chef: el área de Evelyn (docs/contracts/chef-api.md). Reservas de 1 a 8 semanas,
-// mover y cancelar sesiones, con las funciones SQL chef_* (solo service_role).
-// Este archivo solo conecta lo real (Deno y supabase-js con la clave secreta); la lógica y sus
-// tests están en handler.ts.
+// mover y cancelar sesiones, con las funciones SQL chef_* (solo service_role), y la traducción de los
+// platos con Claude (POST /translate).
+// Este archivo solo conecta lo real (Deno, supabase-js con la clave secreta y el traductor); la
+// lógica y sus tests están en handler.ts y translation.ts.
 //
 // Con JWT: verify_jwt = true en supabase/config.toml ([functions.chef]). Ese chequeo de la
 // plataforma también deja pasar las claves de API, así que la función valida además el token con
@@ -18,6 +19,8 @@ import {
   storeErrorFrom,
   type ChefStore,
 } from "./handler.ts";
+import { createClaudeTranslator } from "./claude_translator.ts";
+import { fakeTranslator, type Translator } from "./translation.ts";
 
 const env = (name: string): string | undefined => Deno.env.get(name);
 const config = readChefConfig(env);
@@ -26,6 +29,7 @@ const config = readChefConfig(env);
 if (config.missing.length > 0) consoleLogger("error", "config_missing", { missing: config.missing });
 const incomplete = chefConfigWarnings(config);
 if (incomplete.length > 0) consoleLogger("warn", "config_incomplete", { missing: incomplete });
+if (config.translation === "fake") consoleLogger("warn", "translate_fake");
 
 function createStore(): ChefStore {
   const supabaseUrl = env("SUPABASE_URL")?.trim();
@@ -39,6 +43,7 @@ function createStore(): ChefStore {
       createBooking: () => fail("create_booking"),
       moveSession: () => fail("move_session"),
       cancelSessions: () => fail("cancel_sessions"),
+      hitRateLimit: () => fail("rate_limit"),
     };
   }
 
@@ -84,13 +89,38 @@ function createStore(): ChefStore {
       if (error) throw storeErrorFrom("cancel_sessions", error);
       return data;
     },
+
+    async hitRateLimit(key, maxPerHour, maxPerDay) {
+      // La misma función que el límite del formulario, con la clave de la cocina (translateRateKey).
+      const { data, error } = await supabase.rpc("hit_public_request_rate", {
+        p_ip_hash: key,
+        p_max_hour: maxPerHour,
+        p_max_day: maxPerDay,
+      });
+      if (error) throw storeErrorFrom("rate_limit", error);
+      return data === true;
+    },
   };
+}
+
+/**
+ * Claude con ANTHROPIC_API_KEY (secreto de las funciones, lo carga deploy-supabase.yml); el de mentira
+ * con TRANSLATE_TRANSPORT=fake (desarrollo, sin gastar); sin clave, null: POST /translate responde 503
+ * y el arranque ya avisó (config_incomplete).
+ */
+function createTranslator(): Translator | null {
+  if (config.translation === "fake") return fakeTranslator;
+  if (config.translation === "off") return null;
+  const apiKey = env("ANTHROPIC_API_KEY")?.trim();
+  if (!apiKey) return null;
+  return createClaudeTranslator(apiKey);
 }
 
 Deno.serve(
   createChefHandler({
     config,
     store: createStore(),
+    translator: createTranslator(),
     now: () => new Date(),
     log: consoleLogger,
   }),
