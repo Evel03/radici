@@ -175,9 +175,6 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
   /// Clave de la próxima fila de ingrediente.
   int _nextKey = 0;
 
-  /// El selector de fotos está abierto.
-  bool _picking = false;
-
   @override
   RecipeEditorState build() {
     // Se lee una vez: el formulario no se rearma si el catálogo cambia
@@ -407,8 +404,11 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
   /// lugar de la que tenga. Devuelve por qué no quedó (null si quedó o si se
   /// canceló).
   Future<RecipePhotoPickError?> pickPhoto(RecipePhotoSource source) async {
-    if (_picking || state.saving || state.preparingPhoto) return null;
-    _picking = true;
+    // Sin una marca de «selector abierto»: en un navegador sin el evento
+    // cancel, el selector de la web nunca termina si se cancela, y la marca
+    // dejaría el botón sin hacer nada. El selector tapa la pantalla mientras
+    // está abierto.
+    if (state.saving || state.preparingPhoto) return null;
     final Uint8List? bytes;
     try {
       bytes = await ref.read(recipePhotoPickerProvider).pick(source);
@@ -419,8 +419,6 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
         RecipePhotoPickFailureKind.unavailable =>
           RecipePhotoPickError.unavailable,
       };
-    } finally {
-      _picking = false;
     }
     if (bytes == null || !ref.mounted) return null;
     state = state.copyWith(preparingPhoto: true);
