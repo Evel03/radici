@@ -1075,7 +1075,7 @@ test("traducir: 200 con el italiano y el inglés; el traductor recibe el plato r
     en: { name: "[en] Milanesaxyz a la napolitana", description: "[en] Con salsa de tomate y DescripQwe muzzarella." },
   });
   assert.deepEqual(translator.calls, [{ name: "Milanesaxyz a la napolitana", description: "Con salsa de tomate y DescripQwe muzzarella." }]);
-  assert.deepEqual(store.rateHits, [{ key: await translateRateKey(CHEF_ID), maxPerHour: 60, maxPerDay: 300 }]);
+  assert.deepEqual(store.rateHits, [{ key: await translateRateKey(CHEF_ID), maxPerHour: 60, maxPerDay: 150 }]);
   assert.equal(store.bookingCalls.length + store.moveCalls.length + store.cancelCalls.length, 0, "no toca ninguna sesión");
   const entry = logs.find((log) => log.event === "translated");
   assert.deepEqual(entry?.fields, { route: "/translate", ms: 0, nameLength: 27, descriptionLength: 44, userId: USER_EVELYN });
@@ -1113,15 +1113,30 @@ test("traducir: 400 por campo, sin traducir ni gastar el cupo", async () => {
   assert.ok(logs.some((entry) => entry.event === "invalid_payload" && entry.fields["route"] === "/translate" && JSON.stringify(entry.fields["fields"]) === '["name"]'));
 });
 
-test("traducir sin ANTHROPIC_API_KEY (traductor apagado): 503 unavailable sin gastar el cupo", async () => {
+test("traducir con la traducción apagada (sin ANTHROPIC_API_KEY): 501 notConfigured sin gastar el cupo", async () => {
   const { handle, store, logs } = harness({ translator: null });
   const response = await handle(post("/translate", DISH));
-  assert.equal(response.status, 503);
-  assert.deepEqual(await json(response), { error: "unavailable" });
+  assert.equal(response.status, 501);
+  assert.deepEqual(await json(response), { error: "notConfigured" });
   assert.equal(store.rateHits.length, 0, "no se gasta el cupo si no se puede traducir");
-  assert.ok(logs.some((entry) => entry.event === "translate_failed" && entry.fields["reason"] === "notConfigured" && entry.level === "error"));
+  assert.ok(logs.some((entry) => entry.event === "translate_failed" && entry.fields["reason"] === "notConfigured" && entry.level === "warn"));
   // Igual valida primero: un cuerpo roto sigue siendo un 400.
   assert.equal((await handle(post("/translate", {}))).status, 400);
+});
+
+test("traducir con TRANSLATE_TRANSPORT=fake fuera de un Supabase local: 501 notConfigured y un error en el log", async () => {
+  // index.ts no arma ningún traductor (la configuración dice off): el handler recibe null.
+  const { handle, store, logs } = harness({
+    env: { SUPABASE_URL: "https://abcdefghijklmnop.supabase.co", TRANSLATE_TRANSPORT: "fake" },
+    translator: null,
+  });
+  const response = await handle(post("/translate", DISH));
+  assert.equal(response.status, 501);
+  assert.deepEqual(await json(response), { error: "notConfigured" });
+  assert.equal(store.rateHits.length, 0);
+  const entry = logs.find((log) => log.event === "translate_failed");
+  assert.equal(entry?.fields["reason"], "fakeIgnored");
+  assert.equal(entry?.level, "error");
 });
 
 test("traducir pasado el límite de la cocina: 429 rateLimited con Retry-After, sin llamar al traductor", async () => {
@@ -1133,7 +1148,7 @@ test("traducir pasado el límite de la cocina: 429 rateLimited con Retry-After, 
   assert.equal(response.headers.get("retry-after"), "3600");
   assert.equal(response.headers.get("access-control-expose-headers"), "Retry-After", "la bandeja web lo puede leer");
   assert.equal(translator.calls.length, 0);
-  assert.equal(store.rateHits.length, 1);
+  assert.equal(store.rateHits.length, 1, "el intento rechazado también se registra");
   assert.ok(logs.some((entry) => entry.event === "rate_limited" && entry.fields["route"] === "/translate" && entry.fields["userId"] === USER_EVELYN));
 });
 
@@ -1154,33 +1169,41 @@ test("traducir con la base caída al contar el límite: 503 (o 500 si no se pued
   assert.equal(denied.translator.calls.length, 0);
 });
 
-test("traducir: si Claude declina, corta por max_tokens, no responde o la salida no sirve, 503 unavailable y nunca una traducción a medias", async () => {
-  const cases: Array<[string, TranslatorReply | Error, Record<string, unknown>]> = [
-    ["negativa", { kind: "refusal", category: "cyber" }, { reason: "refusal", category: "cyber" }],
-    ["max_tokens", { kind: "maxTokens" }, { reason: "maxTokens" }],
-    ["timeout", { kind: "failed", reason: "timeout", status: null }, { reason: "timeout", apiStatus: null }],
-    ["sin conexión", { kind: "failed", reason: "connection", status: null }, { reason: "connection" }],
-    ["sobrecargada", { kind: "failed", reason: "apiError", status: 529 }, { reason: "apiError", apiStatus: 529 }],
-    ["límite de Anthropic", { kind: "failed", reason: "rateLimited", status: 429 }, { reason: "rateLimited", apiStatus: 429 }],
-    ["otro stop_reason", { kind: "failed", reason: "stopReason", status: null }, { reason: "stopReason" }],
-    ["JSON cortado", { kind: "text", text: '{"it":{"name":"Cotoletta","description":"Con' }, { reason: "invalidOutput" }],
-    ["sin inglés", { kind: "text", text: JSON.stringify({ it: { name: "Cotoletta", description: "Con pomodoro." } }) }, { reason: "invalidOutput" }],
-    ["sin la descripción", { kind: "text", text: JSON.stringify({ it: { name: "A" }, en: { name: "B" } }) }, { reason: "invalidOutput" }],
-    ["explota", new Error("Milanesaxyz DescripQwe"), { reason: "unexpected" }],
+test("traducir sin traducción: 503 lo que se puede reintentar, 422 lo que no sale con este plato, 500 lo que está roto; nunca a medias", async () => {
+  const cases: Array<[string, TranslatorReply | Error, number, string, Record<string, unknown>, "warn" | "error"]> = [
+    // Se puede reintentar: tiempo agotado, conexión, 5xx o 429 de Anthropic.
+    ["timeout", { kind: "failed", reason: "timeout", status: null }, 503, "unavailable", { reason: "timeout", apiStatus: null }, "error"],
+    ["sin conexión", { kind: "failed", reason: "connection", status: null }, 503, "unavailable", { reason: "connection" }, "error"],
+    ["sobrecargada", { kind: "failed", reason: "apiError", status: 529 }, 503, "unavailable", { reason: "apiError", apiStatus: 529 }, "error"],
+    ["error interno", { kind: "failed", reason: "apiError", status: 500 }, 503, "unavailable", { reason: "apiError", apiStatus: 500 }, "error"],
+    ["límite de Anthropic", { kind: "failed", reason: "rateLimited", status: 429 }, 503, "unavailable", { reason: "rateLimited", apiStatus: 429 }, "error"],
+    // No sale con este plato.
+    ["negativa", { kind: "refusal", category: "cyber" }, 422, "untranslatable", { reason: "refusal", category: "cyber" }, "warn"],
+    ["max_tokens", { kind: "maxTokens" }, 422, "untranslatable", { reason: "maxTokens" }, "warn"],
+    ["otro stop_reason", { kind: "failed", reason: "stopReason", status: null }, 422, "untranslatable", { reason: "stopReason" }, "error"],
+    ["JSON cortado", { kind: "text", text: '{"it":{"name":"Cotoletta","description":"Con' }, 422, "untranslatable", { reason: "invalidOutput" }, "error"],
+    ["sin inglés", { kind: "text", text: JSON.stringify({ it: { name: "Cotoletta", description: "Con pomodoro." } }) }, 422, "untranslatable", { reason: "invalidOutput" }, "error"],
+    ["sin la descripción", { kind: "text", text: JSON.stringify({ it: { name: "A" }, en: { name: "B" } }) }, 422, "untranslatable", { reason: "invalidOutput" }, "error"],
+    // Roto o mal configurado: no sirve reintentar.
+    ["clave inválida", { kind: "failed", reason: "apiError", status: 401 }, 500, "server", { reason: "apiError", apiStatus: 401 }, "error"],
+    ["pedido rechazado", { kind: "failed", reason: "apiError", status: 400 }, 500, "server", { reason: "apiError", apiStatus: 400 }, "error"],
+    ["error del SDK", { kind: "failed", reason: "sdk", status: null }, 500, "server", { reason: "sdk" }, "error"],
+    ["el SDK no carga", { kind: "failed", reason: "sdkLoad", status: null }, 500, "server", { reason: "sdkLoad" }, "error"],
+    ["explota", new Error("Milanesaxyz DescripQwe"), 500, "server", { reason: "unexpected" }, "error"],
   ];
-  for (const [name, reply, expected] of cases) {
+  for (const [name, reply, status, error, expected, level] of cases) {
     const { handle, translator, logs } = harness();
     if (reply instanceof Error) translator.throws = reply;
     else translator.reply = reply;
     const response = await handle(post("/translate", DISH));
-    assert.equal(response.status, 503, name);
-    assert.deepEqual(await json(response), { error: "unavailable" }, name);
+    assert.equal(response.status, status, name);
+    assert.deepEqual(await json(response), { error }, name);
     const entry = logs.find((log) => log.event === "translate_failed");
     assert.ok(entry, name);
     for (const [field, value] of Object.entries(expected)) assert.equal(entry.fields[field], value, `${name}: ${field}`);
     assert.equal(entry.fields["route"], "/translate");
     assert.equal(entry.fields["nameLength"], 27);
-    assert.equal(entry.level, name === "negativa" || name === "max_tokens" ? "warn" : "error", name);
+    assert.equal(entry.level, level, name);
   }
 });
 
@@ -1361,12 +1384,15 @@ test("index.ts: la cocina del usuario sale de public.chef_id_for_user (la dueña
   assert.ok(!index.includes('from("chef_members")'), "ni a chef_members");
 });
 
-test("index.ts: el traductor real solo con ANTHROPIC_API_KEY; el de mentira con TRANSLATE_TRANSPORT=fake; la clave no se loguea", () => {
+test("index.ts: el traductor real solo con ANTHROPIC_API_KEY, cargado en la primera traducción; el de mentira con TRANSLATE_TRANSPORT=fake; la clave no se loguea", () => {
   const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
-  assert.match(index, /import \{ createClaudeTranslator \} from "\.\/claude_translator\.ts";/);
+  // El SDK no se importa al arrancar: una falla al cargarlo solo afecta a /translate.
+  assert.doesNotMatch(index, /^import [^\n]*claude_translator/m, "sin import estático de claude_translator.ts");
+  assert.doesNotMatch(index, /@anthropic-ai\/sdk/);
+  assert.match(index, /return lazyTranslator\(async \(\) => \{\s*const \{ createClaudeTranslator \} = await import\("\.\/claude_translator\.ts"\);\s*return createClaudeTranslator\(apiKey\);\s*\}\);/);
   assert.match(index, /if \(config\.translation === "fake"\) return fakeTranslator;/);
+  assert.match(index, /if \(config\.translationFakeIgnored\) consoleLogger\("error", "translate_fake_ignored"\);/, "error al arrancar, sin datos");
   assert.match(index, /if \(config\.translation === "off"\) return null;/);
-  assert.match(index, /return createClaudeTranslator\(apiKey\);/);
   assert.match(index, /translator: createTranslator\(\),/);
   // El límite por cocina va a la misma función SQL que el formulario, con la clave que arma el handler.
   assert.match(index, /supabase\.rpc\("hit_public_request_rate", \{\s*p_ip_hash: key,\s*p_max_hour: maxPerHour,\s*p_max_day: maxPerDay,\s*\}\)/);
@@ -1388,28 +1414,29 @@ test("handler.ts no conoce el SDK de Anthropic: recibe un Translator (index.ts a
   }
 });
 
-test("claude_translator.ts: el SDK oficial fijado, el pedido de translation.ts, timeout corto y un reintento; los errores sin mensaje", () => {
+test("claude_translator.ts: el SDK oficial fijado, sin nada del entorno, timeout por intento, un reintento y un tope de 40 s; los errores, a failureFrom", () => {
   // No corre en Node (importa npm:@anthropic-ai/sdk): esto cuida lo que el diseño fija de la llamada.
+  // El mapeo de errores se prueba de verdad en translation.test.ts (failureFrom, con clases inyectadas).
   const source = readFileSync(new URL("./claude_translator.ts", import.meta.url), "utf8");
   assert.match(source, /^import Anthropic from "npm:@anthropic-ai\/sdk@1\.6\.0";$/m, "versión exacta, la de la guía");
-  assert.match(source, /new Anthropic\(\{ apiKey, timeout: TRANSLATION_TIMEOUT_MS, maxRetries: TRANSLATION_MAX_RETRIES \}\)/);
-  assert.match(source, /await client\.beta\.messages\.create\(buildTranslationRequest\(source\)\)/, "beta: el fallback del servidor");
+  // La URL fija (ANTHROPIC_BASE_URL no desvía la clave), sin logs del SDK (ANTHROPIC_LOG=debug loguearía
+  // el cuerpo, con el plato) ni trazas (ANTHROPIC_OPEN_TELEMETRY_* podría exportar el contenido).
+  assert.match(
+    source,
+    /new Anthropic\(\{\s*apiKey,\s*baseURL: ANTHROPIC_API_URL,\s*logLevel: "off",\s*openTelemetry: false,\s*timeout: TRANSLATION_TIMEOUT_MS,\s*maxRetries: TRANSLATION_MAX_RETRIES,\s*\}\)/,
+  );
+  assert.doesNotMatch(source, /authToken|defaultHeaders|fetchOptions/, "ninguna otra credencial ni cabecera");
+  // El tope de toda la llamada (el SDK respeta el retry-after sin tope y esa espera no cuenta para el timeout).
+  assert.match(
+    source,
+    /await client\.beta\.messages\.create\(buildTranslationRequest\(source\), \{\s*signal: AbortSignal\.timeout\(TRANSLATION_DEADLINE_MS\),\s*\}\)/,
+    "beta: el fallback del servidor",
+  );
   assert.match(source, /return replyFromMessage\(message\);/, "stop_reason antes que el contenido, en la parte pura");
+  assert.match(source, /return failureFrom\(error, Anthropic\);/, "las clases de error del SDK, a la parte pura");
   for (const forbidden of [/\bstream\s*:/, /\bthinking\s*:/, /console\./, /error\.message/, /JSON\.stringify\(error/, /String\(error/]) {
     assert.doesNotMatch(source, forbidden);
   }
-  // Los errores tipados del SDK, del más específico al más general (en el SDK de TypeScript,
-  // APIConnectionTimeoutError hereda de APIConnectionError, y las dos de APIError).
-  const order = [
-    "Anthropic.APIConnectionTimeoutError",
-    "Anthropic.APIUserAbortError",
-    "Anthropic.APIConnectionError",
-    "Anthropic.RateLimitError",
-    "Anthropic.APIError",
-    "Anthropic.AnthropicError",
-  ].map((name) => source.indexOf(`instanceof ${name})`));
-  assert.ok(order.every((index) => index !== -1), "están todos");
-  assert.deepEqual([...order].sort((a, b) => a - b), order, "en ese orden");
 });
 
 test("authFailureKind: Auth rechaza el token (4xx) o no responde (429, 5xx, red)", () => {
@@ -1545,8 +1572,15 @@ test("readChefConfig: orígenes de ALLOWED_ORIGINS, lo que falta de Supabase y d
   assert.deepEqual(chefConfigWarnings(withKey), []);
   assert.ok(!JSON.stringify(withKey).includes("sk-ant-prueba"), "la clave no queda en la configuración (la lee solo index.ts)");
   const fake = readChefConfig((name) => ({ ...ENV, TRANSLATE_TRANSPORT: "fake" })[name]);
-  assert.equal(fake.translation, "fake");
+  assert.equal(fake.translation, "fake", "con el Supabase local de los tests (127.0.0.1)");
+  assert.equal(fake.translationFakeIgnored, false);
   assert.deepEqual(chefConfigWarnings(fake), []);
+  const fakeInProduction = readChefConfig(
+    (name) => ({ ...ENV, SUPABASE_URL: "https://abcdefghijklmnop.supabase.co", TRANSLATE_TRANSPORT: "fake", ANTHROPIC_API_KEY: "sk-ant-prueba" })[name],
+  );
+  assert.equal(fakeInProduction.translation, "off", "nunca traducciones de mentira en producción, aunque haya clave");
+  assert.equal(fakeInProduction.translationFakeIgnored, true);
+  assert.deepEqual(chefConfigWarnings(fakeInProduction), ["ANTHROPIC_API_KEY"]);
 
   const empty = readChefConfig(() => undefined);
   assert.deepEqual(empty.missing, ["SUPABASE_URL", "SUPABASE_SECRET_KEYS"]);

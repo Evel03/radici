@@ -9,10 +9,13 @@
 --
 --   1. recipes.auto_translated: los campos de destino que llenó el traductor y Evelyn no tocó a
 --      mano (name_it, description_it, name_en, description_en; el español es la fuente y nunca
---      está). Sin repetir, y ninguno marcado sin texto en la fila. Con esto la app sabe qué volver a
---      traducir cuando cambia el español sin pisar lo que Evelyn corrigió.
+--      está). Sin repetir, ninguno marcado sin texto en la fila y ninguno sin su fuente: un nombre
+--      marcado exige name_es y una descripción marcada, description_es. Con esto la app sabe qué
+--      volver a traducir cuando cambia el español sin pisar lo que Evelyn corrigió.
 --   2. save_recipe acepta la clave opcional auto_translated. Sin la clave la lista queda vacía,
 --      también al actualizar: una app que no la conoce guarda todo como escrito a mano.
+--   3. hit_public_request_rate y private.public_request_hits: los comentarios dicen que ahora
+--      también guardan el límite por cocina de POST /chef/translate (otra clave, la misma tabla).
 --
 -- Despliegue:
 --   * La columna nace vacía en todas las filas: lo cargado hasta hoy cuenta como escrito a mano.
@@ -37,10 +40,15 @@ alter table public.recipes
   add constraint recipes_auto_translated_con_texto check (
     ('description_it' <> all (auto_translated) or description_it is not null)
     and ('name_en' <> all (auto_translated) or name_en is not null)
-    and ('description_en' <> all (auto_translated) or description_en is not null));
+    and ('description_en' <> all (auto_translated) or description_en is not null)),
+  -- El español es la fuente: no hay traducción sin el texto del que sale.
+  add constraint recipes_auto_translated_con_fuente check (
+    (('name_it' <> all (auto_translated) and 'name_en' <> all (auto_translated)) or name_es is not null)
+    and (('description_it' <> all (auto_translated) and 'description_en' <> all (auto_translated))
+         or description_es is not null));
 
 comment on column public.recipes.auto_translated is
-  'Campos de destino que llenó la traducción automática (POST /chef/translate) y la cocinera no tocó a mano: name_it, description_it, name_en, description_en, sin repetir. El español es la fuente y nunca está. Un campo marcado siempre tiene texto. {} = todo escrito a mano.';
+  'Campos de destino que llenó la traducción automática (POST /chef/translate) y la cocinera no tocó a mano: name_it, description_it, name_en, description_en, sin repetir. El español es la fuente y nunca está. Un campo marcado siempre tiene texto, y su fuente también (name_es para un nombre, description_es para una descripción). {} = todo escrito a mano.';
 
 -- ---------------------------------------------------------------------
 -- 2. public.save_recipe(p jsonb)
@@ -49,9 +57,10 @@ comment on column public.recipes.auto_translated is
 --   auto_translated  lista de textos, sin repetir, de name_it, description_it, name_en y
 --                    description_en (en cualquier orden; se guarda en ese). Opcional: sin la clave
 --                    queda {} (al crear y al actualizar). Un valor fuera de la lista, repetido o que
---                    no es texto, o un campo marcado que no viene en p con texto, es invalid_payload
---                    con el elemento en el DETAIL (auto_translated[i]); si no es una lista,
---                    auto_translated.
+--                    no es texto, un campo marcado que no viene en p con texto, o uno cuya fuente
+--                    en español no viene en p con texto (name_es para name_it y name_en,
+--                    description_es para las descripciones), es invalid_payload con el elemento en
+--                    el DETAIL (auto_translated[i]); si no es una lista, auto_translated.
 -- Lo demás, igual.
 -- ---------------------------------------------------------------------
 create or replace function public.save_recipe(p jsonb)
@@ -130,9 +139,9 @@ begin
   v_desc_en := nullif(btrim(p ->> 'description_en'), '');
   v_notes   := nullif(btrim(p ->> 'notes'), '');
 
-  -- Lo que llenó el traductor (20/11/2026). Cada campo marcado tiene que venir en p con texto: al
-  -- actualizar, el guardado puede no ser el que se tradujo. El primer elemento que no sirve va en el
-  -- DETAIL; uno repetido cuenta en su segunda aparición.
+  -- Lo que llenó el traductor (20/11/2026). Cada campo marcado tiene que venir en p con texto, y su
+  -- fuente en español también: al actualizar, lo guardado puede no ser lo que se tradujo. El primer
+  -- elemento que no sirve va en el DETAIL; uno repetido cuenta en su segunda aparición.
   if p ? 'auto_translated' then
     if jsonb_typeof(p -> 'auto_translated') <> 'array' then
       raise exception 'invalid_payload' using errcode = '22023', detail = 'auto_translated';
@@ -143,7 +152,10 @@ begin
        or (t.e #>> '{}') <> all (c_translated_keys)
        or exists (select 1 from jsonb_array_elements(p -> 'auto_translated') with ordinality as u(e, o)
                   where u.o < t.o and u.e = t.e)
-       or nullif(btrim(p ->> (t.e #>> '{}')), '') is null;
+       or nullif(btrim(p ->> (t.e #>> '{}')), '') is null
+       or ((t.e #>> '{}') in ('name_it', 'name_en') and nullif(btrim(p ->> 'name_es'), '') is null)
+       or ((t.e #>> '{}') in ('description_it', 'description_en')
+           and nullif(btrim(p ->> 'description_es'), '') is null);
     if v_i is not null then
       raise exception 'invalid_payload' using errcode = '22023', detail = format('auto_translated[%s]', v_i);
     end if;
@@ -321,3 +333,20 @@ comment on function public.save_recipe(jsonb) is
 -- (authenticated); anon y service_role no la ejecutan.
 revoke all on function public.save_recipe(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.save_recipe(jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 3. El límite por cocina de POST /chef/translate
+--
+-- La Edge Function chef cuenta las traducciones de cada cocina con la misma función y la misma tabla
+-- que el límite por IP del formulario: la clave es el SHA-256 de "translate:<chef_id>" (sin sal, el
+-- id de la cocina no es un dato personal), otra fila que no gasta ningún cupo de la web. Nada cambia
+-- en la función ni en la tabla: solo sus comentarios.
+-- ---------------------------------------------------------------------
+comment on function public.hit_public_request_rate(text, int, int) is
+  'Límites por clave (hash de 64 caracteres hexadecimales): registra el intento y devuelve true si en la última hora hay como máximo p_max_hour intentos y en el último día p_max_day. El intento rechazado también se registra. Lo usan el formulario público (HMAC con IP_HASH_SALT de "<ruta>:<ip>", por IP) y la traducción de los platos de la función chef (SHA-256 de "translate:<chef_id>", por cocina). Borra los intentos de más de 1 día. Solo service role.';
+
+comment on table private.public_request_hits is
+  'Intentos de los límites por clave de hit_public_request_rate: los del formulario público (por IP, con HMAC) y los de POST /chef/translate (por cocina). Los de más de 1 día se borran en cada intento y en el borrado diario (purge_expired_prospects): ninguno dura 2 días.';
+
+comment on column private.public_request_hits.ip_hash is
+  'La clave del límite en hexadecimal (64 caracteres): el HMAC-SHA-256 de "<ruta>:<ip>" con IP_HASH_SALT (formulario; la IP nunca se guarda en claro) o el SHA-256 de "translate:<chef_id>" (traducción de los platos, por cocina).';

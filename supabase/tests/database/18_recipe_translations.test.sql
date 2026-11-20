@@ -2,17 +2,20 @@
 -- Traducción automática de los platos, la base (migración 20261120090000_recipe_translations.sql):
 --   * recipes.auto_translated: los campos de destino (name_it, description_it, name_en,
 --     description_en) que llenó el traductor y Evelyn no tocó a mano. Sin repetir, nunca el
---     español (es la fuente) y ninguno marcado sin texto en la fila.
+--     español (es la fuente), ninguno marcado sin texto en la fila y ninguno sin su fuente
+--     (name_es para un nombre, description_es para una descripción).
 --   * save_recipe: la clave opcional auto_translated. Sin ella, ninguno (una app que no la conoce
---     guarda todo como escrito a mano); un valor fuera de la lista, repetido, de otro tipo o un campo
---     marcado que no llega con texto es invalid_payload.
+--     guarda todo como escrito a mano); un valor fuera de la lista, repetido, de otro tipo, un campo
+--     marcado que no llega con texto o uno cuya fuente no llega con texto es invalid_payload.
+--   * Los comentarios de hit_public_request_rate y private.public_request_hits nombran el límite
+--     por cocina de POST /chef/translate.
 --
 -- C1 guarda sus platos con save_recipe, como la app.
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(25);
+select plan(29);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
@@ -24,13 +27,16 @@ insert into public.chefs (id, profile_id, display_name) values
   ('7e671000-0000-4000-8000-000000000001', '7e670000-0000-4000-8000-00000000c001', 'Chef Uno');
 insert into public.chef_settings (chef_id) values ('7e671000-0000-4000-8000-000000000001');
 
--- Un plato cargado antes de la migración (sin la columna en el insert) y otro con todos los textos.
+-- Un plato cargado antes de la migración (sin la columna en el insert), otro con todos los textos y
+-- un tercero sin español (cargado en italiano antes del 20/11/2026).
 insert into public.recipes (id, chef_id, name_it, name_es, name_en, description_it, description_es, description_en) values
   ('7e676000-0000-4000-8000-000000000001', '7e671000-0000-4000-8000-000000000001',
    'Empanadas di carne', 'Empanadas de carne', null, null, 'Al horno, con carne cortada a cuchillo.', null),
   ('7e676000-0000-4000-8000-000000000002', '7e671000-0000-4000-8000-000000000001',
    'Lasagne alla bolognese', 'Lasaña a la boloñesa', 'Lasagne Bolognese',
-   'Ragù di manzo e besciamella.', 'Ragú de carne y bechamel.', 'Beef ragù and béchamel.');
+   'Ragù di manzo e besciamella.', 'Ragú de carne y bechamel.', 'Beef ragù and béchamel.'),
+  ('7e676000-0000-4000-8000-000000000003', '7e671000-0000-4000-8000-000000000001',
+   'Tiramisù', null, 'Tiramisu', 'Savoiardi, caffè e mascarpone.', null, 'Ladyfingers, coffee and mascarpone.');
 
 -- El check que frena una sentencia como "SQLSTATE constraint", o null si no falla (el DETAIL de un
 -- check trae la fila entera).
@@ -118,8 +124,8 @@ select is(
   (select array_agg(k.conname::text order by k.conname)
    from pg_constraint k
    where k.conrelid = 'public.recipes'::regclass and k.contype = 'c' and k.conname like 'recipes_auto_translated%'),
-  array['recipes_auto_translated_con_texto', 'recipes_auto_translated_valido'],
-  'dos checks: la lista y que lo marcado tenga texto'
+  array['recipes_auto_translated_con_fuente', 'recipes_auto_translated_con_texto', 'recipes_auto_translated_valido'],
+  'tres checks: la lista, que lo marcado tenga texto y que tenga su fuente en español'
 );
 select is(
   (select array_agg(r.auto_translated::text order by r.id) from public.recipes r
@@ -159,6 +165,21 @@ select is(
   ],
   array['23514 recipes_auto_translated_con_texto', null],
   'borrar el texto de un campo marcado lo frena el check; sacándolo de la lista a la vez, pasa'
+);
+select is(
+  pg_temp.update_checks('7e676000-0000-4000-8000-000000000003',
+    array['{name_it}', '{name_en}', '{description_it}', '{description_en}', '{}']),
+  array['23514 recipes_auto_translated_con_fuente', '23514 recipes_auto_translated_con_fuente',
+        '23514 recipes_auto_translated_con_fuente', '23514 recipes_auto_translated_con_fuente', null],
+  'el español es la fuente: sin name_es no se marca un nombre, sin description_es no se marca una descripción'
+);
+select is(
+  array[
+    pg_temp.check_of($f$ update public.recipes set name_es = null where id = '7e676000-0000-4000-8000-000000000002' $f$),
+    pg_temp.check_of($f$ update public.recipes set description_es = null where id = '7e676000-0000-4000-8000-000000000002' $f$)
+  ],
+  array['23514 recipes_auto_translated_con_fuente', null],
+  'borrar el español de un nombre marcado lo frena el check; el de la descripción, sin descripciones marcadas, pasa'
 );
 
 -- =====================================================================
@@ -241,6 +262,21 @@ select is(
   '22023: invalid_payload (auto_translated[0])',
   'un campo marcado que no viene en p también: al actualizar, el texto guardado puede no ser el traducido'
 );
+select is(
+  array[
+    pg_temp.error_of($f$ select public.save_recipe(pg_temp.dish('{"auto_translated": ["name_it"], "name_es": null}')) $f$),
+    pg_temp.error_of($f$ select public.save_recipe(pg_temp.dish('{"auto_translated": ["name_en"], "name_es": "  "}')) $f$),
+    pg_temp.error_of($f$ select public.save_recipe(pg_temp.dish('{"auto_translated": ["name_en"]}') - 'name_es') $f$),
+    pg_temp.error_of($f$ select public.save_recipe(pg_temp.dish('{"auto_translated": ["name_it", "description_en"], "description_es": ""}')) $f$),
+    pg_temp.error_of($f$ select public.save_recipe(pg_temp.dish('{"auto_translated": ["description_it"]}') - 'description_es') $f$),
+    pg_temp.error_of($f$ select public.save_recipe(pg_temp.dish('{"id": "7e676000-0000-4000-8000-0000000000c3", "auto_translated": ["description_it", "description_en"], "name_es": null}')) $f$)
+  ],
+  array['22023: invalid_payload (auto_translated[0])', '22023: invalid_payload (auto_translated[0])',
+        '22023: invalid_payload (auto_translated[0])', '22023: invalid_payload (auto_translated[1])',
+        '22023: invalid_payload (auto_translated[0])', null],
+  'sin su fuente en español (null, vacía o que no viene en p) no hay marca: name_es para los nombres, '
+  'description_es para las descripciones; marcar solo descripciones no pide name_es'
+);
 
 -- Duplicar es guardar con un id nuevo, sin las descripciones de la web (SPEC §4): la copia no puede
 -- llevar las marcas de las descripciones.
@@ -270,6 +306,18 @@ select ok(
   and (select not p.prosecdef and p.proconfig @> array['search_path=""']
        from pg_proc p where p.oid = 'public.save_recipe(jsonb)'::regprocedure),
   'save_recipe sigue siendo security invoker, con search_path vacío y solo para authenticated'
+);
+
+-- =====================================================================
+-- 3. El límite por cocina de /chef/translate, en los comentarios
+-- =====================================================================
+select ok(
+  obj_description('public.hit_public_request_rate(text,integer,integer)'::regprocedure, 'pg_proc') like '%"translate:<chef_id>"%'
+  and obj_description('private.public_request_hits'::regclass, 'pg_class') like '%POST /chef/translate%'
+  and col_description('private.public_request_hits'::regclass,
+                      (select a.attnum from pg_attribute a
+                       where a.attrelid = 'private.public_request_hits'::regclass and a.attname = 'ip_hash')) like '%translate:<chef_id>%',
+  'hit_public_request_rate, su tabla y la columna de la clave dicen que también guardan el límite por cocina de la traducción'
 );
 
 select finish();

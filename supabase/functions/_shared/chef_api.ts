@@ -371,6 +371,8 @@ export type ChefErrorCode =
   | "hasPayments"
   | "conflict"
   | "rateLimited"
+  | "untranslatable"
+  | "notConfigured"
   | "server"
   | "unavailable";
 

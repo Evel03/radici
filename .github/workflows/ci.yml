@@ -21,6 +21,24 @@ jobs:
           node-version: 24
       - run: npm test
 
+  edge-functions:
+    name: Edge Functions (deno check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: 2.9.8
+      # Los tipos de las dos funciones con sus dependencias reales (supabase-js y el SDK de Anthropic).
+      # chef carga claude_translator.ts con un import dinámico: va explícito. --node-modules-dir=none:
+      # el package.json de la raíz es de los tests de Node, no de las funciones. --no-lock: el repo no
+      # tiene deno.lock (las versiones van fijas en cada import npm:).
+      - run: >-
+          deno check --no-lock --node-modules-dir=none
+          supabase/functions/chef/index.ts
+          supabase/functions/chef/claude_translator.ts
+          supabase/functions/public-request/index.ts
+
   web:
     name: Web pública
     runs-on: ubuntu-latest
