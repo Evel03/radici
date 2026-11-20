@@ -934,21 +934,53 @@ void main() {
 
       await tester.enterText(byKey('recipe-name-it'), 'Locro');
       await save(tester);
-      // El inglés vacío también se iba a traducir: ahora se puede guardar sin.
-      expect(byKey('recipe-translate-failed'), findsOneWidget);
-      expect(
-        find.text(
-          'Lo que escribiste no se perdió. Puedes escribir tú las traducciones o guardar sin ellas: los campos '
-          'por traducir quedan vacíos y se traducen la próxima vez que guardes.',
-        ),
-        findsOneWidget,
-      );
-      await tester.tap(byKey('recipe-translate-skip'));
-      await tester.pumpAndSettle();
-
+      // Solo quedaba el inglés vacío: con la traducción apagada guarda sin
+      // traducir, sin el aviso, y la lista lo dice.
+      expect(byKey('recipe-translate-failed'), findsNothing);
       expect(find.byType(RecipesScreen), findsOneWidget);
+      expect(find.text('«Locro» guardado sin traducir: la traducción automática está apagada.'), findsOneWidget);
       expect(repository.saveCalls.single, const Recipe(id: _newId, nameIt: 'Locro', nameEs: 'Locro'));
       expect(translator.calls, hasLength(2));
+    });
+
+    testWidgets('traducción apagada y solo campos vacíos: guarda sin el aviso y la lista lo dice, sin tapar «Nuovo piatto»', (
+      tester,
+    ) async {
+      translator.failure = TranslationFailureKind.notConfigured;
+      // La lasaña no tiene la descripción en inglés.
+      await openEditor(tester, location: '/altro/piatti/$lasagneId', size: const Size(375, 667));
+      await tapVisible(tester, byKey('recipe-allergen-sesame'));
+      await save(tester);
+
+      expect(byKey('recipe-translate-failed'), findsNothing);
+      expect(find.byType(RecipesScreen), findsOneWidget);
+      expect(
+        find.text('«Lasagne alla bolognese» salvato senza tradurre: la traduzione automatica è spenta.'),
+        findsOneWidget,
+      );
+      expect(
+        tester.getRect(byKey('recipes-new')).bottom,
+        lessThanOrEqualTo(tester.getRect(find.byType(SnackBar)).top),
+      );
+      expect(repository.saveCalls.single.descriptionEn, isNull);
+      expect(repository.saveCalls.single.allergens, contains(Allergen.sesame));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('traducción apagada pero con algo automático que quedaría viejo: sigue el aviso, sin «Riprova»', (
+      tester,
+    ) async {
+      translator.failure = TranslationFailureKind.notConfigured;
+      await openEditor(tester, location: '/altro/piatti/$milanesaId');
+      await tapVisible(tester, byKey('recipe-description-es'));
+      await tester.enterText(byKey('recipe-description-es'), 'Con tomate y queso.');
+      await save(tester);
+
+      expect(byKey('recipe-translate-failed'), findsOneWidget);
+      expect(find.text("La traduzione automatica è spenta: scrivi tu l'italiano e l'inglese."), findsOneWidget);
+      expect(byKey('recipe-translate-retry'), findsNothing);
+      expect(byKey('recipe-translate-skip'), findsOneWidget);
+      expect(repository.saveCalls, isEmpty);
     });
 
     testWidgets('cambió la descripción de un plato en la web y se pasó el límite: sin «Riprova»; «Salva senza tradurre» avisa que sale de la web', (

@@ -1149,6 +1149,13 @@
       "name": { "type": "String", "example": "Lasagne alla bolognese" }
     }
   },
+  "recipeSavedUntranslated": "«{name}» salvato senza tradurre: la traduzione automatica è spenta.",
+  "@recipeSavedUntranslated": {
+    "description": "Aviso en la lista después de guardar un plato sin traducir porque la traducción automática está apagada (501) y solo había campos vacíos para traducir.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
   "recipeEditTitle": "Modifica piatto",
   "@recipeEditTitle": {
     "description": "Título del editor de un plato guardado."

@@ -35,17 +35,24 @@ final recipeCatalogViewProvider =
           .whenData((recipes) => recipeCatalogView(recipes, query: query));
     });
 
+/// Un plato recién guardado en el editor. `untranslated`: se guardó sin
+/// traducir porque la traducción automática está apagada.
+typedef SavedRecipeNotice = ({Recipe recipe, bool untranslated});
+
 /// El plato recién guardado en el editor, para que la lista lo avise con su
 /// botón flotante a la vista (el editor tapa la lista y se cierra al
 /// guardar). La lista lo muestra y lo limpia.
 final recipeSavedNoticeProvider =
-    NotifierProvider<RecipeSavedNotice, Recipe?>(RecipeSavedNotice.new);
+    NotifierProvider<RecipeSavedNotice, SavedRecipeNotice?>(
+      RecipeSavedNotice.new,
+    );
 
-class RecipeSavedNotice extends Notifier<Recipe?> {
+class RecipeSavedNotice extends Notifier<SavedRecipeNotice?> {
   @override
-  Recipe? build() => null;
+  SavedRecipeNotice? build() => null;
 
-  void post(Recipe recipe) => state = recipe;
+  void post(Recipe recipe, {bool untranslated = false}) =>
+      state = (recipe: recipe, untranslated: untranslated);
 
   void clear() => state = null;
 }

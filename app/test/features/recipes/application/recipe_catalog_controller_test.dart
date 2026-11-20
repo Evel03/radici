@@ -203,7 +203,9 @@ void main() {
     await start();
     final notice = container.read(recipeSavedNoticeProvider.notifier);
     notice.post(lasagne());
-    expect(container.read(recipeSavedNoticeProvider), lasagne());
+    expect(container.read(recipeSavedNoticeProvider), (recipe: lasagne(), untranslated: false));
+    notice.post(lasagne(), untranslated: true);
+    expect(container.read(recipeSavedNoticeProvider), (recipe: lasagne(), untranslated: true));
     notice.clear();
     expect(container.read(recipeSavedNoticeProvider), isNull);
   });

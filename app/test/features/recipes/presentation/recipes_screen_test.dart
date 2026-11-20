@@ -215,6 +215,26 @@ void main() {
     expect(app.container.read(recipeSavedNoticeProvider), isNull);
   });
 
+  for (final (locale, text) in const [
+    (Locale('it', 'IT'), '«Lasagne alla bolognese» salvato senza tradurre: la traduzione automatica è spenta.'),
+    (Locale('es', 'ES'), '«Lasagne alla bolognese» guardado sin traducir: la traducción automática está apagada.'),
+    (Locale('en'), '“Lasagne alla bolognese” saved without translating: automatic translation is turned off.'),
+  ]) {
+    testWidgets('guardado sin traducir porque la traducción está apagada: la lista lo dice (${locale.languageCode})', (
+      tester,
+    ) async {
+      final app = await openList(tester, size: const Size(375, 667), locale: locale);
+      app.container.read(recipeSavedNoticeProvider.notifier).post(lasagne(), untranslated: true);
+      await tester.pumpAndSettle();
+      expect(find.text(text), findsOneWidget);
+      expect(
+        tester.getRect(byKey('recipes-new')).bottom,
+        lessThanOrEqualTo(tester.getRect(find.byType(SnackBar)).top),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('a 375×667, al final de la lista el botón flotante no tapa el último plato', (tester) async {
     await openList(tester, size: const Size(375, 667));
     await tester.drag(byKey('recipes-list'), const Offset(0, -2000));

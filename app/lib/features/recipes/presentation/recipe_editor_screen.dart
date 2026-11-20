@@ -199,11 +199,17 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     if (!mounted) return;
     final state = _state;
     switch (result) {
-      case RecipeSaveResult.saved:
-        // La lista lo avisa (este editor se cierra).
+      case RecipeSaveResult.saved || RecipeSaveResult.savedUntranslated:
+        // La lista lo avisa (este editor se cierra), y si se guardó sin
+        // traducir porque la traducción está apagada, también lo dice.
         final saved = state.source;
         if (saved != null) {
-          ref.read(recipeSavedNoticeProvider.notifier).post(saved);
+          ref
+              .read(recipeSavedNoticeProvider.notifier)
+              .post(
+                saved,
+                untranslated: result == RecipeSaveResult.savedUntranslated,
+              );
         }
         Navigator.of(context).pop();
       case RecipeSaveResult.invalid:

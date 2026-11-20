@@ -255,6 +255,14 @@ void main() {
       expect(plan.canSkip, isFalse);
     });
 
+    test('si todo lo que hay que traducir está vacío, guardar sin traducir no vacía nada automático', () {
+      expect(_planFor(recipeDraftFrom(lasagne()), saved: lasagne()).fillsOnlyEmpty, isTrue);
+      expect(_planFor(emptyRecipeDraft(_newId).copyWith(nameEs: 'Locro')).fillsOnlyEmpty, isTrue);
+      final stale = recipeDraftFrom(milanesa()).copyWith(nameEs: 'Napolitana');
+      expect(_planFor(stale, saved: milanesa()).fillsOnlyEmpty, isFalse);
+      expect(_planFor(recipeDraftFrom(milanesa()), saved: milanesa()).fillsOnlyEmpty, isTrue, reason: 'nada que traducir');
+    });
+
     test('sin nada que traducir, guardar sin traducir no cambia el formulario', () {
       final plan = _planFor(recipeDraftFrom(milanesa()), saved: milanesa());
       expect(plan.skipped, recipeDraftFrom(milanesa()));

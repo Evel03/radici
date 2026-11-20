@@ -611,6 +611,71 @@ void main() {
       expect(repository.saveCalls, isEmpty);
     });
 
+    // Decisión del 20/11/2026: con la traducción apagada (501) y solo campos
+    // vacíos para traducir no queda nada viejo, así que guarda sin traducir
+    // y la lista lo dice; si algo automático quedaría viejo, o falta el
+    // nombre en italiano, sigue el aviso con las salidas.
+    group('con la traducción apagada', () {
+      test('y solo campos vacíos para traducir: guarda sin traducir', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        // La lasaña no tiene la descripción en inglés.
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+
+        expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+        expect(translator.calls, hasLength(1));
+        expect(repository.saveCalls.single, lasagne().copyWith(allergens: [...lasagne().allergens, Allergen.sesame]));
+        expect(stateOf(editLasagne).translateError, isNull);
+        expect(stateOf(editLasagne).translating, isFalse);
+        expect(stateOf(editLasagne).dirty, isFalse);
+      });
+
+      test('un plato nuevo con el italiano escrito a mano: guarda sin traducir el inglés', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(create)
+          ..setNameEs('Locro')
+          ..setNameIt('Locro');
+        expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+        expect(repository.saveCalls.single, const Recipe(id: _id1, nameIt: 'Locro', nameEs: 'Locro'));
+      });
+
+      test('si algo automático quedaría viejo, no guarda y sigue el aviso', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(editMilanesa)..setDescriptionEs('Con tomate y queso.');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(stateOf(editMilanesa).translateError, TranslationFailureKind.notConfigured);
+        expect(repository.saveCalls, isEmpty);
+      });
+
+      test('un plato nuevo sin el nombre en italiano tampoco: sigue el aviso', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(create)..setNameEs('Locro');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(repository.saveCalls, isEmpty);
+      });
+
+      test('con otra falla y solo campos vacíos, no guarda: sigue el aviso', () async {
+        await start();
+        translator.failure = TranslationFailureKind.unavailable;
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(repository.saveCalls, isEmpty);
+      });
+
+      test('si save_recipe falla, lo dice como cualquier guardado y no se pierde nada', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        repository.saveFailure = RecipesFailureKind.unavailable;
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+        expect(await editor.save(), RecipeSaveResult.failed);
+        expect(stateOf(editLasagne).saveError, RecipesFailureKind.unavailable);
+        expect(stateOf(editLasagne).draft.allergens, contains(Allergen.sesame));
+      });
+    });
+
     group('guardar sin traducir', () {
       test('lo automático viejo se vacía, lo escrito a mano queda y el español se guarda', () async {
         await start();

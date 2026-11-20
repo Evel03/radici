@@ -86,9 +86,18 @@ class _RecipesScreenState extends ConsumerState<RecipesScreen> {
     final l10n = AppLocalizations.of(context);
     final view = ref.watch(recipeCatalogViewProvider);
     // El plato que se acaba de guardar en el editor (que ya se cerró).
-    ref.listen<Recipe?>(recipeSavedNoticeProvider, (_, saved) {
-      if (saved == null) return;
-      _show(SnackBar(content: Text(l10n.recipeSavedDone(saved.nameIt))));
+    ref.listen<SavedRecipeNotice?>(recipeSavedNoticeProvider, (_, notice) {
+      if (notice == null) return;
+      final name = notice.recipe.nameIt;
+      _show(
+        SnackBar(
+          content: Text(
+            notice.untranslated
+                ? l10n.recipeSavedUntranslated(name)
+                : l10n.recipeSavedDone(name),
+          ),
+        ),
+      );
       ref.read(recipeSavedNoticeProvider.notifier).clear();
     });
     final ready = view.hasValue && !view.hasError;

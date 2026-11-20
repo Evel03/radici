@@ -107,6 +107,10 @@ abstract class RecipeEditorState with _$RecipeEditorState {
 enum RecipeSaveResult {
   saved,
 
+  /// Guardado sin traducir: la traducción automática está apagada (501) y
+  /// lo único que había para traducir eran campos vacíos.
+  savedUntranslated,
+
   /// El formulario tiene errores: no se mandó nada.
   invalid,
 
@@ -334,7 +338,10 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
 
   /// Valida, traduce lo que diga el plan y guarda el plato entero. Con
   /// errores no manda nada y los muestra. Si el traductor falla, no guarda
-  /// nada y el formulario queda como estaba ([RecipeSaveResult.translationFailed]).
+  /// nada y el formulario queda como estaba ([RecipeSaveResult.translationFailed]),
+  /// salvo con la traducción apagada y solo campos vacíos para traducir: ahí
+  /// guarda sin traducir, porque no queda nada viejo
+  /// ([RecipeSaveResult.savedUntranslated]).
   /// Si el servidor falla al guardar, el formulario queda (con la traducción,
   /// que no se vuelve a pedir) y el próximo intento manda el mismo id.
   Future<RecipeSaveResult> save() async {
@@ -355,9 +362,18 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
           .read(translationRepositoryProvider)
           .translate(plan.source);
     } on TranslationFailure catch (failure) {
-      if (ref.mounted) {
-        state = state.copyWith(translating: false, translateError: failure.kind);
+      if (!ref.mounted) return RecipeSaveResult.translationFailed;
+      if (failure.kind == TranslationFailureKind.notConfigured &&
+          plan.fillsOnlyEmpty &&
+          plan.canSkip &&
+          state.draft == plan.draft) {
+        state = state.copyWith(translating: false);
+        final result = await _persist(plan.skipped);
+        return result == RecipeSaveResult.saved
+            ? RecipeSaveResult.savedUntranslated
+            : result;
       }
+      state = state.copyWith(translating: false, translateError: failure.kind);
       return RecipeSaveResult.translationFailed;
     }
     if (!ref.mounted) return RecipeSaveResult.stale;

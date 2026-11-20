@@ -247,6 +247,7 @@
   "recipeAllergensA11y": "Alérgenos: {allergens}",
   "recipeSeasonA11y": "Temporada: {season}",
   "recipeSavedDone": "«{name}» guardado.",
+  "recipeSavedUntranslated": "«{name}» guardado sin traducir: la traducción automática está apagada.",
   "recipeEditTitle": "Editar plato",
   "recipeCopyTitle": "Copia del plato",
   "recipeCopyHint": "Copia de «{name}»: cámbiale el nombre y guarda.",

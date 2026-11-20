@@ -75,6 +75,11 @@ final class RecipeTranslationPlan {
   /// Hay que llamar al traductor antes de guardar.
   bool get needsTranslation => translate.isNotEmpty;
 
+  /// Todo lo que hay que traducir está vacío: guardar sin traducir no vacía
+  /// nada automático (no queda ninguna traducción vieja).
+  bool get fillsOnlyEmpty =>
+      translate.every((field) => !draft.autoTranslated.contains(field));
+
   /// [draft] con la traducción en los campos de [translate] (que quedan
   /// automáticos) y las descripciones de [clear] vacías. Lo demás, como
   /// estaba. Un campo que la respuesta no trae (no debería pasar: la
