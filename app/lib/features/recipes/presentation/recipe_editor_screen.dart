@@ -1,7 +1,8 @@
 // Editor de un plato del catálogo, a pantalla completa. Primero lo rápido:
 // el nombre en italiano (el principal), los alérgenos, la dieta,
-// la temporada y la descripción de la web (sin la italiana el plato no sale
-// en el formulario de pedido); después lo opcional: nombres en español e
+// la temporada, la descripción de la web (sin la italiana el plato no sale
+// en el formulario de pedido) y la foto (también en un plato nuevo: se sube al
+// guardar); después lo opcional: nombres en español e
 // inglés, conservación, ingredientes con su cantidad para 4 porciones y notas.
 // «Salva» queda abajo, siempre a mano (con el teclado abierto, justo arriba de
 // él). Un plato guardado se puede duplicar y desactivar (nunca se borra). Solo
@@ -21,6 +22,7 @@ import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/domain/recipe_draft.dart';
 import 'package:radici/features/recipes/presentation/ingredient_row.dart';
 import 'package:radici/features/recipes/presentation/recipe_labels.dart';
+import 'package:radici/features/recipes/presentation/recipe_photo_section.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
@@ -97,6 +99,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
   final GlobalKey _nameKey = GlobalKey();
   final GlobalKey _dietKey = GlobalKey();
   final GlobalKey _descriptionKey = GlobalKey();
+  final GlobalKey _photoKey = GlobalKey();
   final GlobalKey _translationsKey = GlobalKey();
   final GlobalKey _storageKey = GlobalKey();
   final GlobalKey _notesKey = GlobalKey();
@@ -195,8 +198,20 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
                 : null,
           ),
         );
-      // Sin la sección «Foto» el editor no cambia la foto: no pasa.
       case RecipeSaveResult.photoFailed:
+        // El plato se guardó (no se cierra): la sección «Foto» lo dice, con
+        // su «Riprova», y se lleva a la vista. Sin aviso abajo: con el texto
+        // grande se desbordaba y tapaba el «Riprova» de la sección.
+        final photo = _photoKey.currentContext;
+        if (photo != null && photo.mounted) {
+          unawaited(
+            Scrollable.ensureVisible(
+              photo,
+              duration: const Duration(milliseconds: 300),
+              alignment: 0.1,
+            ),
+          );
+        }
       case RecipeSaveResult.busy:
         break;
     }
@@ -544,6 +559,11 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
         textInputAction: TextInputAction.done,
         onChanged: _editor.setDescriptionEn,
       ),
+      KeyedSubtree(
+        key: _photoKey,
+        child: _SectionTitle(l10n.recipePhotoSection),
+      ),
+      RecipePhotoSection(target: target, onRetry: () => unawaited(_save())),
       const Divider(height: 48),
       Semantics(
         header: true,

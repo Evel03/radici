@@ -1,6 +1,6 @@
 // Detalle del pedido: datos completos y acciones (WhatsApp, llamada, email,
 // rechazo). Verifica los links exactos que se abren. También el menú que
-// eligió el cliente en la web.
+// eligió el cliente en la web, con la miniatura de los platos con foto.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -12,6 +12,7 @@ import 'package:radici/features/requests/presentation/request_detail_screen.dart
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
+import '../../../support/photo_fakes.dart';
 import '../../../support/recipe_fixtures.dart';
 import '../../../support/request_fixtures.dart';
 
@@ -658,6 +659,63 @@ void main() {
       requests.pendingDishes!.complete();
       await tester.pumpAndSettle();
       expect(textOf(tester, 'detail-menu-dish-0'), 'Lasagne alla bolognese');
+    });
+
+    group('fotos', () {
+      const photoId = 'f0000000-0000-4000-8000-0000000000aa';
+      final withPhoto = minestrone.copyWith(photoId: photoId);
+
+      Future<List<String>> openWithPhoto(
+        WidgetTester tester, {
+        Size size = const Size(400, 1800),
+        Locale locale = const Locale('it', 'IT'),
+      }) async {
+        final urls = <String>[];
+        await pumpChefApp(
+          tester,
+          requests: FakeChefRequestsRepository([buildRequest(wishes: const [minestroneId, risottoId, lasagneId])])
+            ..dishes.addAll({lasagneId: lasagne, minestroneId: withPhoto}),
+          location: '/richieste/req-1',
+          size: size,
+          deviceLocales: [locale],
+          photoImage: (url) {
+            urls.add(url);
+            return MemoryImage(tinyJpeg);
+          },
+        );
+        return urls;
+      }
+
+      testWidgets('un plato con foto lleva su miniatura a la derecha; los otros, como siempre', (tester) async {
+        final urls = await openWithPhoto(tester);
+
+        final photo = find.byKey(const ValueKey('detail-menu-photo-0'));
+        expect(photo, findsOneWidget);
+        expect(tester.getSize(photo), const Size(48, 48));
+        expect(
+          tester.getTopLeft(photo).dx,
+          greaterThan(tester.getTopRight(find.byKey(const ValueKey('detail-menu-dish-0'))).dx),
+        );
+        expect(urls, ['https://fotos.test/$testChefId/$minestroneId/$photoId-thumb.jpg']);
+        // El plato borrado y el que no tiene foto, sin miniatura; los nombres
+        // quedan alineados.
+        expect(find.byKey(const ValueKey('detail-menu-photo-1')), findsNothing);
+        expect(find.byKey(const ValueKey('detail-menu-photo-2')), findsNothing);
+        expect(
+          tester.getTopLeft(find.byKey(const ValueKey('detail-menu-dish-0'))).dx,
+          tester.getTopLeft(find.byKey(const ValueKey('detail-menu-dish-2'))).dx,
+        );
+      });
+
+      for (final locale in const [Locale('it'), Locale('es'), Locale('en')]) {
+        testWidgets('con foto y el texto al doble, a 375×667, sin desbordes (${locale.languageCode})', (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = 2;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await openWithPhoto(tester, size: const Size(375, 667), locale: locale);
+          expect(tester.takeException(), isNull);
+          expect(find.byKey(const ValueKey('detail-menu-photo-0')), findsOneWidget);
+        });
+      }
     });
 
     for (final locale in const [Locale('it'), Locale('es'), Locale('en')]) {

@@ -54,7 +54,7 @@ class ChefApp {
 /// [photos] es el bucket de las fotos de los platos y [photoPicker] el
 /// selector; las fotos se preparan al instante ([fakeProcessRecipePhoto]) y
 /// [photoImage] es la imagen de cada URL (por defecto, un JPEG chiquito en
-/// memoria: sin red).
+/// memoria: sin red). [isWeb] simula la versión web (/gestione/).
 Future<ChefApp> pumpChefApp(
   WidgetTester tester, {
   required FakeChefRequestsRepository requests,
@@ -64,6 +64,7 @@ Future<ChefApp> pumpChefApp(
   FakeRecipePhotosRepository? photos,
   FakeRecipePhotoPicker? photoPicker,
   ImageProvider<Object> Function(String url)? photoImage,
+  bool isWeb = false,
   String? location,
   Size size = const Size(400, 900),
   List<Locale> deviceLocales = const [Locale('it', 'IT')],
@@ -82,6 +83,7 @@ Future<ChefApp> pumpChefApp(
     tester,
     deviceLocales: deviceLocales,
     clock: clock,
+    isWeb: isWeb,
     overrides: [
       authRepositoryProvider.overrideWithValue(auth),
       accountRepositoryProvider.overrideWithValue(account),
