@@ -67,7 +67,7 @@ void main() {
       final photo = await processRecipePhotoInBackground(input);
       final full = img.decodeJpg(photo.full)!;
       expect([full.width, full.height], [1200, 600]);
-      expect(img.decodeJpg(photo.thumb)!.width, 360);
+      expect(img.decodeJpg(photo.thumb)!.height, 320);
     });
 
     test('lo que no abre → RecipePhotoFormatException', () async {
