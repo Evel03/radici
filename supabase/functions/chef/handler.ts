@@ -646,22 +646,58 @@ async function cancelRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, in
   return reply(200, result);
 }
 
-/** Por qué no hubo traducción, con su nivel de log: una negativa o un corte no son errores del servidor. */
-function translateFailure(outcome: Exclude<TranslatorReply, { kind: "text" }>): { level: "warn" | "error"; fields: LogFields } {
+/** Una traducción que no salió: la respuesta, y el nivel y los campos del log translate_failed. */
+interface TranslateFailure {
+  status: 422 | 500 | 501 | 503;
+  body: ChefErrorBody;
+  level: "warn" | "error";
+  fields: LogFields;
+}
+
+const UNTRANSLATABLE: ChefErrorBody = { error: "untranslatable" };
+const UNAVAILABLE: ChefErrorBody = { error: "unavailable" };
+const SERVER: ChefErrorBody = { error: "server" };
+
+/**
+ * Por qué no hubo traducción → la respuesta (contrato §12). 503 solo lo que se puede reintentar (tiempo
+ * agotado, conexión, un 5xx o un 429 de Anthropic); 422 lo que no sale con este plato (una negativa,
+ * un corte por max_tokens, otro stop_reason o una salida que no pasa la validación); 500 lo que está
+ * mal configurado o roto (otro 4xx de Anthropic, como una clave inválida, o un error del SDK).
+ */
+export function translateFailure(outcome: Exclude<TranslatorReply, { kind: "text" }> | { kind: "invalidOutput" }): TranslateFailure {
   switch (outcome.kind) {
     case "refusal":
-      return { level: "warn", fields: { reason: "refusal", category: outcome.category } };
+      return { status: 422, body: UNTRANSLATABLE, level: "warn", fields: { reason: "refusal", category: outcome.category } };
     case "maxTokens":
-      return { level: "warn", fields: { reason: "maxTokens" } };
-    case "failed":
-      return { level: "error", fields: { reason: outcome.reason, apiStatus: outcome.status } };
+      return { status: 422, body: UNTRANSLATABLE, level: "warn", fields: { reason: "maxTokens" } };
+    case "invalidOutput":
+      return { status: 422, body: UNTRANSLATABLE, level: "error", fields: { reason: "invalidOutput" } };
+    case "failed": {
+      const fields: LogFields = { reason: outcome.reason, apiStatus: outcome.status };
+      switch (outcome.reason) {
+        case "stopReason":
+          return { status: 422, body: UNTRANSLATABLE, level: "error", fields };
+        case "timeout":
+        case "connection":
+        case "aborted":
+        case "rateLimited":
+          return { status: 503, body: UNAVAILABLE, level: "error", fields };
+        case "apiError":
+          return outcome.status !== null && outcome.status >= 500
+            ? { status: 503, body: UNAVAILABLE, level: "error", fields }
+            : { status: 500, body: SERVER, level: "error", fields };
+        default:
+          return { status: 500, body: SERVER, level: "error", fields };
+      }
+    }
   }
 }
 
 /**
- * POST /translate: el plato en español → italiano e inglés (contrato §12). Sin traductor, 503 sin
- * gastar el cupo; pasado el límite de la cocina, 429; si el traductor falla o su salida no pasa la
- * validación, 503. Nunca una traducción a medias. El log lleva largos y duración, nunca el texto.
+ * POST /translate: el plato en español → italiano e inglés (contrato §12). Sin traductor, 501 sin
+ * gastar el cupo; pasado el límite de la cocina, 429; si el traductor falla, 503, 422 o 500 según el
+ * motivo (translateFailure). Nunca una traducción a medias. El log lleva largos y duración, nunca el
+ * texto.
  */
 async function translateRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, input: unknown, reply: Reply): Promise<Response> {
   const { log } = deps;
@@ -674,13 +710,15 @@ async function translateRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller,
     nameLength: textLength(source.name),
     descriptionLength: source.description === null ? null : textLength(source.description),
   };
-  const unavailable = (level: "warn" | "error", fields: LogFields): Response => {
-    log(level, "translate_failed", { route, ...fields, ...lengths });
-    return reply(503, { error: "unavailable" });
+  const fail = (failure: TranslateFailure, extra: LogFields = {}): Response => {
+    log(failure.level, "translate_failed", { route, ...failure.fields, ...extra, ...lengths });
+    return reply(failure.status, failure.body);
   };
 
   const translator = deps.translator;
-  if (!translator) return unavailable("error", { reason: "notConfigured" });
+  if (!translator) {
+    return fail({ status: 501, body: { error: "notConfigured" }, level: "warn", fields: { reason: "notConfigured" } });
+  }
 
   let allowed: boolean;
   try {
@@ -705,12 +743,9 @@ async function translateRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller,
   }
   const ms = Math.max(0, deps.now().getTime() - started);
 
-  if (result.kind !== "text") {
-    const failure = translateFailure(result);
-    return unavailable(failure.level, { ...failure.fields, ms });
-  }
+  if (result.kind !== "text") return fail(translateFailure(result), { ms });
   const translation = readTranslationOutput(result.text, source);
-  if (!translation) return unavailable("error", { reason: "invalidOutput", ms });
+  if (!translation) return fail(translateFailure({ kind: "invalidOutput" }), { ms });
   log("info", "translated", { route, ms, ...lengths, userId });
   return reply(200, translation);
 }

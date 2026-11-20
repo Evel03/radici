@@ -59,9 +59,16 @@ export function translationModeFrom(get: (name: string) => string | undefined): 
 // Límite por cocina
 // ---------------------------------------------------------------------------
 
-/** Contrato §12: más de 60 por hora o 300 por día por cocina → 429. Cada llamada cuesta. */
-export const TRANSLATE_RATE_LIMITS = { perHour: 60, perDay: 300 } as const;
-/** La ventana corta es de una hora, como la del formulario. */
+/**
+ * Contrato §12: más de 60 por hora o 150 por día por cocina → 429. Cada llamada cuesta. Las ventanas
+ * son móviles (la última hora y las últimas 24 h) y el intento rechazado también cuenta: la app no
+ * reintenta sola.
+ */
+export const TRANSLATE_RATE_LIMITS = { perHour: 60, perDay: 150 } as const;
+/**
+ * Retry-After del 429: una hora, la ventana corta. hit_public_request_rate no dice qué tope se pasó:
+ * si fue el del día, a la hora puede seguir en 429 (contrato §12).
+ */
 export const TRANSLATE_RETRY_AFTER_SECONDS = 3600;
 
 /**

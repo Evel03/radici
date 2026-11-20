@@ -56,8 +56,8 @@ test("translationModeFrom: Claude con ANTHROPIC_API_KEY, apagada sin ella; TRANS
   assert.equal(mode({ TRANSLATE_TRANSPORT: "claude", ANTHROPIC_API_KEY: "sk-ant-prueba" }), "claude");
 });
 
-test("límite por cocina: 60 por hora y 300 por día, con el prefijo translate: y un SHA-256 de 64 caracteres", async () => {
-  assert.deepEqual(TRANSLATE_RATE_LIMITS, { perHour: 60, perDay: 300 });
+test("límite por cocina: 60 por hora y 150 por día, con el prefijo translate: y un SHA-256 de 64 caracteres", async () => {
+  assert.deepEqual(TRANSLATE_RATE_LIMITS, { perHour: 60, perDay: 150 });
   assert.equal(TRANSLATE_RETRY_AFTER_SECONDS, 3600);
   assert.equal(translateRateSubject(CHEF_ID), `translate:${CHEF_ID}`);
   assert.equal(translateRateSubject(CHEF_ID.toUpperCase()), `translate:${CHEF_ID}`);

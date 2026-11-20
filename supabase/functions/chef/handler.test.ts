@@ -1075,7 +1075,7 @@ test("traducir: 200 con el italiano y el inglés; el traductor recibe el plato r
     en: { name: "[en] Milanesaxyz a la napolitana", description: "[en] Con salsa de tomate y DescripQwe muzzarella." },
   });
   assert.deepEqual(translator.calls, [{ name: "Milanesaxyz a la napolitana", description: "Con salsa de tomate y DescripQwe muzzarella." }]);
-  assert.deepEqual(store.rateHits, [{ key: await translateRateKey(CHEF_ID), maxPerHour: 60, maxPerDay: 300 }]);
+  assert.deepEqual(store.rateHits, [{ key: await translateRateKey(CHEF_ID), maxPerHour: 60, maxPerDay: 150 }]);
   assert.equal(store.bookingCalls.length + store.moveCalls.length + store.cancelCalls.length, 0, "no toca ninguna sesión");
   const entry = logs.find((log) => log.event === "translated");
   assert.deepEqual(entry?.fields, { route: "/translate", ms: 0, nameLength: 27, descriptionLength: 44, userId: USER_EVELYN });
@@ -1113,13 +1113,13 @@ test("traducir: 400 por campo, sin traducir ni gastar el cupo", async () => {
   assert.ok(logs.some((entry) => entry.event === "invalid_payload" && entry.fields["route"] === "/translate" && JSON.stringify(entry.fields["fields"]) === '["name"]'));
 });
 
-test("traducir sin ANTHROPIC_API_KEY (traductor apagado): 503 unavailable sin gastar el cupo", async () => {
+test("traducir con la traducción apagada (sin ANTHROPIC_API_KEY): 501 notConfigured sin gastar el cupo", async () => {
   const { handle, store, logs } = harness({ translator: null });
   const response = await handle(post("/translate", DISH));
-  assert.equal(response.status, 503);
-  assert.deepEqual(await json(response), { error: "unavailable" });
+  assert.equal(response.status, 501);
+  assert.deepEqual(await json(response), { error: "notConfigured" });
   assert.equal(store.rateHits.length, 0, "no se gasta el cupo si no se puede traducir");
-  assert.ok(logs.some((entry) => entry.event === "translate_failed" && entry.fields["reason"] === "notConfigured" && entry.level === "error"));
+  assert.ok(logs.some((entry) => entry.event === "translate_failed" && entry.fields["reason"] === "notConfigured" && entry.level === "warn"));
   // Igual valida primero: un cuerpo roto sigue siendo un 400.
   assert.equal((await handle(post("/translate", {}))).status, 400);
 });
@@ -1133,7 +1133,7 @@ test("traducir pasado el límite de la cocina: 429 rateLimited con Retry-After, 
   assert.equal(response.headers.get("retry-after"), "3600");
   assert.equal(response.headers.get("access-control-expose-headers"), "Retry-After", "la bandeja web lo puede leer");
   assert.equal(translator.calls.length, 0);
-  assert.equal(store.rateHits.length, 1);
+  assert.equal(store.rateHits.length, 1, "el intento rechazado también se registra");
   assert.ok(logs.some((entry) => entry.event === "rate_limited" && entry.fields["route"] === "/translate" && entry.fields["userId"] === USER_EVELYN));
 });
 
@@ -1154,33 +1154,40 @@ test("traducir con la base caída al contar el límite: 503 (o 500 si no se pued
   assert.equal(denied.translator.calls.length, 0);
 });
 
-test("traducir: si Claude declina, corta por max_tokens, no responde o la salida no sirve, 503 unavailable y nunca una traducción a medias", async () => {
-  const cases: Array<[string, TranslatorReply | Error, Record<string, unknown>]> = [
-    ["negativa", { kind: "refusal", category: "cyber" }, { reason: "refusal", category: "cyber" }],
-    ["max_tokens", { kind: "maxTokens" }, { reason: "maxTokens" }],
-    ["timeout", { kind: "failed", reason: "timeout", status: null }, { reason: "timeout", apiStatus: null }],
-    ["sin conexión", { kind: "failed", reason: "connection", status: null }, { reason: "connection" }],
-    ["sobrecargada", { kind: "failed", reason: "apiError", status: 529 }, { reason: "apiError", apiStatus: 529 }],
-    ["límite de Anthropic", { kind: "failed", reason: "rateLimited", status: 429 }, { reason: "rateLimited", apiStatus: 429 }],
-    ["otro stop_reason", { kind: "failed", reason: "stopReason", status: null }, { reason: "stopReason" }],
-    ["JSON cortado", { kind: "text", text: '{"it":{"name":"Cotoletta","description":"Con' }, { reason: "invalidOutput" }],
-    ["sin inglés", { kind: "text", text: JSON.stringify({ it: { name: "Cotoletta", description: "Con pomodoro." } }) }, { reason: "invalidOutput" }],
-    ["sin la descripción", { kind: "text", text: JSON.stringify({ it: { name: "A" }, en: { name: "B" } }) }, { reason: "invalidOutput" }],
-    ["explota", new Error("Milanesaxyz DescripQwe"), { reason: "unexpected" }],
+test("traducir sin traducción: 503 lo que se puede reintentar, 422 lo que no sale con este plato, 500 lo que está roto; nunca a medias", async () => {
+  const cases: Array<[string, TranslatorReply | Error, number, string, Record<string, unknown>, "warn" | "error"]> = [
+    // Se puede reintentar: tiempo agotado, conexión, 5xx o 429 de Anthropic.
+    ["timeout", { kind: "failed", reason: "timeout", status: null }, 503, "unavailable", { reason: "timeout", apiStatus: null }, "error"],
+    ["sin conexión", { kind: "failed", reason: "connection", status: null }, 503, "unavailable", { reason: "connection" }, "error"],
+    ["sobrecargada", { kind: "failed", reason: "apiError", status: 529 }, 503, "unavailable", { reason: "apiError", apiStatus: 529 }, "error"],
+    ["error interno", { kind: "failed", reason: "apiError", status: 500 }, 503, "unavailable", { reason: "apiError", apiStatus: 500 }, "error"],
+    ["límite de Anthropic", { kind: "failed", reason: "rateLimited", status: 429 }, 503, "unavailable", { reason: "rateLimited", apiStatus: 429 }, "error"],
+    // No sale con este plato.
+    ["negativa", { kind: "refusal", category: "cyber" }, 422, "untranslatable", { reason: "refusal", category: "cyber" }, "warn"],
+    ["max_tokens", { kind: "maxTokens" }, 422, "untranslatable", { reason: "maxTokens" }, "warn"],
+    ["otro stop_reason", { kind: "failed", reason: "stopReason", status: null }, 422, "untranslatable", { reason: "stopReason" }, "error"],
+    ["JSON cortado", { kind: "text", text: '{"it":{"name":"Cotoletta","description":"Con' }, 422, "untranslatable", { reason: "invalidOutput" }, "error"],
+    ["sin inglés", { kind: "text", text: JSON.stringify({ it: { name: "Cotoletta", description: "Con pomodoro." } }) }, 422, "untranslatable", { reason: "invalidOutput" }, "error"],
+    ["sin la descripción", { kind: "text", text: JSON.stringify({ it: { name: "A" }, en: { name: "B" } }) }, 422, "untranslatable", { reason: "invalidOutput" }, "error"],
+    // Roto o mal configurado: no sirve reintentar.
+    ["clave inválida", { kind: "failed", reason: "apiError", status: 401 }, 500, "server", { reason: "apiError", apiStatus: 401 }, "error"],
+    ["pedido rechazado", { kind: "failed", reason: "apiError", status: 400 }, 500, "server", { reason: "apiError", apiStatus: 400 }, "error"],
+    ["error del SDK", { kind: "failed", reason: "sdk", status: null }, 500, "server", { reason: "sdk" }, "error"],
+    ["explota", new Error("Milanesaxyz DescripQwe"), 500, "server", { reason: "unexpected" }, "error"],
   ];
-  for (const [name, reply, expected] of cases) {
+  for (const [name, reply, status, error, expected, level] of cases) {
     const { handle, translator, logs } = harness();
     if (reply instanceof Error) translator.throws = reply;
     else translator.reply = reply;
     const response = await handle(post("/translate", DISH));
-    assert.equal(response.status, 503, name);
-    assert.deepEqual(await json(response), { error: "unavailable" }, name);
+    assert.equal(response.status, status, name);
+    assert.deepEqual(await json(response), { error }, name);
     const entry = logs.find((log) => log.event === "translate_failed");
     assert.ok(entry, name);
     for (const [field, value] of Object.entries(expected)) assert.equal(entry.fields[field], value, `${name}: ${field}`);
     assert.equal(entry.fields["route"], "/translate");
     assert.equal(entry.fields["nameLength"], 27);
-    assert.equal(entry.level, name === "negativa" || name === "max_tokens" ? "warn" : "error", name);
+    assert.equal(entry.level, level, name);
   }
 });
 
