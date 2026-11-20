@@ -687,7 +687,6 @@ export function translateFailure(outcome: Exclude<TranslatorReply, { kind: "text
           return { status: 422, body: UNTRANSLATABLE, level: "error", fields };
         case "timeout":
         case "connection":
-        case "aborted":
         case "rateLimited":
           return { status: 503, body: UNAVAILABLE, level: "error", fields };
         case "apiError":

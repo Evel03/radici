@@ -19,8 +19,9 @@ import {
   storeErrorFrom,
   type ChefStore,
 } from "./handler.ts";
-import { createClaudeTranslator } from "./claude_translator.ts";
-import { fakeTranslator, type Translator } from "./translation.ts";
+// claude_translator.ts (el SDK de Anthropic) no se importa acá: se carga en la primera traducción
+// (createTranslator), así una falla al cargarlo nunca tumba /bookings ni /sessions/*.
+import { fakeTranslator, lazyTranslator, type Translator } from "./translation.ts";
 
 const env = (name: string): string | undefined => Deno.env.get(name);
 const config = readChefConfig(env);
@@ -107,15 +108,20 @@ function createStore(): ChefStore {
 
 /**
  * Claude con ANTHROPIC_API_KEY (secreto de las funciones, lo carga deploy-supabase.yml); el de mentira
- * con TRANSLATE_TRANSPORT=fake (desarrollo, sin gastar); sin clave, null: POST /translate responde 503
- * y el arranque ya avisó (config_incomplete).
+ * con TRANSLATE_TRANSPORT=fake (solo con un Supabase local, desarrollo, sin gastar); si no, null: POST
+ * /translate responde 501 y el arranque ya avisó (config_incomplete). El SDK se carga con un import
+ * dinámico recién en la primera traducción y queda guardado (lazyTranslator); si no carga, esa
+ * traducción falla (sdkLoad) y la próxima lo vuelve a intentar.
  */
 function createTranslator(): Translator | null {
   if (config.translation === "fake") return fakeTranslator;
   if (config.translation === "off") return null;
   const apiKey = env("ANTHROPIC_API_KEY")?.trim();
   if (!apiKey) return null;
-  return createClaudeTranslator(apiKey);
+  return lazyTranslator(async () => {
+    const { createClaudeTranslator } = await import("./claude_translator.ts");
+    return createClaudeTranslator(apiKey);
+  });
 }
 
 Deno.serve(

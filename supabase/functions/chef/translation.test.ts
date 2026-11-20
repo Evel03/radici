@@ -1,15 +1,18 @@
 // Tests de las partes puras de la traducción de los platos (POST /chef/translate, contrato
 // docs/contracts/chef-api.md §12): el pedido a Claude, la lectura de su respuesta, la validación de
 // la salida, el límite por cocina y el traductor de mentira. Correr con: npm test (node --test).
-// La llamada real (claude_translator.ts, con el SDK) no corre en Node: handler.test.ts mira su texto.
+// La llamada real (claude_translator.ts, con el SDK) no corre en Node: handler.test.ts mira su texto, y
+// acá se prueba con clases de mentira el mapeo de sus errores (failureFrom).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { RECIPE_DESCRIPTION_MAX, RECIPE_NAME_MAX, type TranslationSource } from "../_shared/chef_api.ts";
 import {
+  ANTHROPIC_API_URL,
   TRANSLATE_RATE_LIMITS,
   TRANSLATE_RETRY_AFTER_SECONDS,
   TRANSLATION_BETAS,
+  TRANSLATION_DEADLINE_MS,
   TRANSLATION_EFFORT,
   TRANSLATION_MAX_RETRIES,
   TRANSLATION_MAX_TOKENS,
@@ -17,15 +20,18 @@ import {
   TRANSLATION_SYSTEM_PROMPT,
   TRANSLATION_TIMEOUT_MS,
   buildTranslationRequest,
+  failureFrom,
   fakeTranslator,
   readTranslationOutput,
   replyFromMessage,
   translateRateKey,
   translateRateSubject,
   isLocalSupabaseUrl,
+  lazyTranslator,
   readTranslationConfig,
   translationSchema,
   translationUserMessage,
+  type SdkErrorClasses,
 } from "./translation.ts";
 
 const CHEF_ID = "cef00000-0000-4000-8000-000000000001";
@@ -274,4 +280,117 @@ test("el traductor de mentira: «[it] \u2026» y «[en] \u2026», con la forma d
 
   const nameOnly = await fakeTranslator.translate(NAME_ONLY);
   assert.deepEqual(readTranslationOutput(nameOnly.kind === "text" ? nameOnly.text : "", NAME_ONLY)?.en, { name: "[en] Empanadas de carne", description: null });
+});
+
+// ---------------------------------------------------------------------------
+// Errores del SDK, su carga y el tope de tiempo
+// ---------------------------------------------------------------------------
+
+// Clases con la misma herencia que las del SDK 1.6.0 (core/error.d.ts): APIError y sus subclases
+// heredan de AnthropicError; APIConnectionError, APIUserAbortError y RateLimitError, de APIError;
+// APIConnectionTimeoutError, de APIConnectionError. El mensaje trae el plato: nunca tiene que salir.
+class FakeAnthropicError extends Error {}
+class FakeAPIError extends FakeAnthropicError {
+  status: number | undefined;
+  constructor(status: number | undefined) {
+    super(`Error ${status}: Milanesaxyz DescripQwe`);
+    this.status = status;
+  }
+}
+class FakeAPIConnectionError extends FakeAPIError {
+  constructor() {
+    super(undefined);
+  }
+}
+class FakeAPIConnectionTimeoutError extends FakeAPIConnectionError {}
+class FakeAPIUserAbortError extends FakeAPIError {
+  constructor() {
+    super(undefined);
+  }
+}
+class FakeRateLimitError extends FakeAPIError {
+  constructor() {
+    super(429);
+  }
+}
+const FAKE_ERRORS: SdkErrorClasses = {
+  APIConnectionTimeoutError: FakeAPIConnectionTimeoutError,
+  APIUserAbortError: FakeAPIUserAbortError,
+  APIConnectionError: FakeAPIConnectionError,
+  RateLimitError: FakeRateLimitError,
+  APIError: FakeAPIError,
+  AnthropicError: FakeAnthropicError,
+};
+
+test("failureFrom: cada error del SDK, del más específico al más general, a un motivo y un estado, sin el mensaje", () => {
+  const cases: Array<[string, unknown, string, number | null]> = [
+    ["timeout de un intento", new FakeAPIConnectionTimeoutError(), "timeout", null],
+    ["el tope de 40 s (AbortSignal)", new FakeAPIUserAbortError(), "timeout", null],
+    ["el AbortSignal fuera del SDK", new DOMException("signal timed out", "TimeoutError"), "timeout", null],
+    ["un AbortError fuera del SDK", new DOMException("aborted", "AbortError"), "timeout", null],
+    ["sin conexión", new FakeAPIConnectionError(), "connection", null],
+    ["429 de Anthropic", new FakeRateLimitError(), "rateLimited", 429],
+    ["clave inválida", new FakeAPIError(401), "apiError", 401],
+    ["pedido rechazado", new FakeAPIError(400), "apiError", 400],
+    ["sobrecargada", new FakeAPIError(529), "apiError", 529],
+    ["error interno", new FakeAPIError(500), "apiError", 500],
+    ["sin estado", new FakeAPIError(undefined), "apiError", null],
+    ["otro error del SDK", new FakeAnthropicError("Milanesaxyz"), "sdk", null],
+    ["otro DOMException", new DOMException("Milanesaxyz", "SyntaxError"), "unexpected", null],
+    ["un error cualquiera", new Error("Milanesaxyz DescripQwe"), "unexpected", null],
+    ["algo que no es un error", "Milanesaxyz", "unexpected", null],
+  ];
+  for (const [name, error, reason, status] of cases) {
+    const reply = failureFrom(error, FAKE_ERRORS);
+    assert.deepEqual(reply, { kind: "failed", reason, status }, name);
+    assert.ok(!JSON.stringify(reply).includes("Milanesaxyz"), `${name}: sin el mensaje`);
+  }
+});
+
+test("lazyTranslator: carga el traductor en la primera traducción, una sola vez; si la carga falla, sdkLoad y la próxima reintenta", async () => {
+  let loads = 0;
+  const lazy = lazyTranslator(async () => {
+    loads++;
+    return fakeTranslator;
+  });
+  assert.equal(loads, 0, "crearlo no carga nada (las otras rutas nunca cargan el SDK)");
+  const [first, second] = await Promise.all([lazy.translate(NAME_ONLY), lazy.translate(WITH_DESCRIPTION)]);
+  assert.equal(first.kind, "text");
+  assert.equal(second.kind, "text");
+  await lazy.translate(NAME_ONLY);
+  assert.equal(loads, 1, "una sola carga, también con dos traducciones a la vez");
+
+  let attempts = 0;
+  const flaky = lazyTranslator(async () => {
+    attempts++;
+    if (attempts === 1) throw new Error("Milanesaxyz: Module not found npm:@anthropic-ai/sdk");
+    return fakeTranslator;
+  });
+  assert.deepEqual(await flaky.translate(NAME_ONLY), { kind: "failed", reason: "sdkLoad", status: null });
+  assert.equal((await flaky.translate(NAME_ONLY)).kind, "text", "la próxima vuelve a intentar la carga");
+  assert.equal(attempts, 2);
+});
+
+test("el tope de toda la llamada es de 40 s y la URL de la API es fija", () => {
+  assert.equal(TRANSLATION_DEADLINE_MS, 40_000);
+  assert.ok(TRANSLATION_DEADLINE_MS > TRANSLATION_TIMEOUT_MS, "un intento entero entra");
+  assert.ok(TRANSLATION_DEADLINE_MS < 60_000, "y la app, que espera hasta 60 s, recibe la respuesta");
+  assert.equal(ANTHROPIC_API_URL, "https://api.anthropic.com");
+});
+
+test("replyFromMessage: un fallback primero y después bloques de pensamiento: solo el texto", () => {
+  assert.deepEqual(
+    replyFromMessage({
+      stop_reason: "end_turn",
+      content: [{ type: "fallback" }, { type: "thinking", text: "no" }, { type: "redacted_thinking" }, { type: "text", text: "{\"ok\":1}" }],
+    }),
+    { kind: "text", text: "{\"ok\":1}" },
+  );
+  assert.deepEqual(
+    replyFromMessage({
+      stop_reason: "end_turn",
+      content: [{ type: "thinking", text: "a" }, { type: "fallback" }, { type: "thinking", text: "b" }, { type: "text", text: "{}" }],
+    }),
+    { kind: "text", text: "{}" },
+  );
 });

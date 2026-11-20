@@ -25,10 +25,10 @@ import {
 export type TranslationFailure =
   | "timeout"
   | "connection"
-  | "aborted"
   | "rateLimited"
   | "apiError"
   | "sdk"
+  | "sdkLoad"
   | "stopReason"
   | "unexpected";
 
@@ -124,9 +124,17 @@ export const TRANSLATION_MODEL = "claude-opus-5-5";
 export const TRANSLATION_MAX_TOKENS = 8000;
 /** Tarea simple. En Opus 5.5 el pensamiento es adaptativo y no se apaga: el esfuerzo es el control. */
 export const TRANSLATION_EFFORT = "low";
-/** Por intento. Con un reintento, la app puede esperar hasta ~50 s antes del 503. */
+/** Por intento (lo que espera el SDK una respuesta), con un reintento. */
 export const TRANSLATION_TIMEOUT_MS = 25_000;
 export const TRANSLATION_MAX_RETRIES = 1;
+/**
+ * Tope de toda la llamada, con el reintento y la espera entre intentos: el SDK respeta el retry-after
+ * de Anthropic sin tope y esa espera no cuenta para el timeout. Lo corta un AbortSignal.timeout; la
+ * app espera hasta 60 s.
+ */
+export const TRANSLATION_DEADLINE_MS = 40_000;
+/** La API de Anthropic, fija: ANTHROPIC_BASE_URL no puede desviar la clave a otro lado. */
+export const ANTHROPIC_API_URL = "https://api.anthropic.com";
 /** Si el modelo declina por una política de seguridad, el servidor reintenta en el modelo que corresponda. */
 export const TRANSLATION_BETAS = ["server-side-fallback-2026-07-01"];
 
@@ -297,6 +305,66 @@ export function readTranslationOutput(text: string, source: TranslationSource): 
   const it = readDish(parsed["it"], withDescription);
   const en = readDish(parsed["en"], withDescription);
   return it && en ? { it, en } : null;
+}
+
+// ---------------------------------------------------------------------------
+// Los errores del SDK y su carga
+// ---------------------------------------------------------------------------
+
+/** Una clase de error del SDK (las pasa claude_translator.ts; los tests, unas de mentira). */
+export type SdkErrorClass = abstract new (...args: never[]) => unknown;
+
+/** Las clases de error que mira failureFrom: las estáticas de Anthropic (el cliente del SDK). */
+export interface SdkErrorClasses {
+  APIConnectionTimeoutError: SdkErrorClass;
+  APIUserAbortError: SdkErrorClass;
+  APIConnectionError: SdkErrorClass;
+  RateLimitError: SdkErrorClass;
+  APIError: SdkErrorClass;
+  AnthropicError: SdkErrorClass;
+}
+
+/**
+ * Error de la llamada → falla para el log, del más específico al más general (en el SDK,
+ * APIConnectionTimeoutError hereda de APIConnectionError, y las dos y APIUserAbortError de APIError).
+ * Solo el motivo y el estado HTTP: nunca el mensaje, que puede traer el texto del plato. El único
+ * corte es el de TRANSLATION_DEADLINE_MS: un APIUserAbortError, o el TimeoutError o AbortError del
+ * AbortSignal si salta fuera del SDK (mientras se lee la respuesta), es tiempo agotado.
+ */
+export function failureFrom(error: unknown, errors: SdkErrorClasses): TranslatorReply {
+  const failed = (reason: TranslationFailure, status: number | null = null): TranslatorReply => ({ kind: "failed", reason, status });
+  if (error instanceof errors.APIConnectionTimeoutError || error instanceof errors.APIUserAbortError) return failed("timeout");
+  if (error instanceof errors.APIConnectionError) return failed("connection");
+  if (error instanceof errors.RateLimitError) return failed("rateLimited", 429);
+  if (error instanceof errors.APIError) {
+    const status = (error as { status?: unknown }).status;
+    return failed("apiError", typeof status === "number" && Number.isInteger(status) ? status : null);
+  }
+  if (error instanceof errors.AnthropicError) return failed("sdk");
+  if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) return failed("timeout");
+  return failed("unexpected");
+}
+
+/**
+ * Un traductor que se carga en la primera traducción y queda guardado: index.ts le pasa el import
+ * dinámico de claude_translator.ts (el SDK). Si la carga falla, solo falla esa traducción (sdkLoad) y
+ * la próxima lo vuelve a intentar: /bookings y /sessions/* nunca cargan el SDK.
+ */
+export function lazyTranslator(load: () => Promise<Translator>): Translator {
+  let loading: Promise<Translator> | null = null;
+  return {
+    async translate(source) {
+      loading ??= load();
+      let translator: Translator;
+      try {
+        translator = await loading;
+      } catch {
+        loading = null;
+        return { kind: "failed", reason: "sdkLoad", status: null };
+      }
+      return await translator.translate(source);
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

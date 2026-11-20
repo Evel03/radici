@@ -1188,6 +1188,7 @@ test("traducir sin traducción: 503 lo que se puede reintentar, 422 lo que no sa
     ["clave inválida", { kind: "failed", reason: "apiError", status: 401 }, 500, "server", { reason: "apiError", apiStatus: 401 }, "error"],
     ["pedido rechazado", { kind: "failed", reason: "apiError", status: 400 }, 500, "server", { reason: "apiError", apiStatus: 400 }, "error"],
     ["error del SDK", { kind: "failed", reason: "sdk", status: null }, 500, "server", { reason: "sdk" }, "error"],
+    ["el SDK no carga", { kind: "failed", reason: "sdkLoad", status: null }, 500, "server", { reason: "sdkLoad" }, "error"],
     ["explota", new Error("Milanesaxyz DescripQwe"), 500, "server", { reason: "unexpected" }, "error"],
   ];
   for (const [name, reply, status, error, expected, level] of cases) {
@@ -1383,13 +1384,15 @@ test("index.ts: la cocina del usuario sale de public.chef_id_for_user (la dueña
   assert.ok(!index.includes('from("chef_members")'), "ni a chef_members");
 });
 
-test("index.ts: el traductor real solo con ANTHROPIC_API_KEY; el de mentira con TRANSLATE_TRANSPORT=fake; la clave no se loguea", () => {
+test("index.ts: el traductor real solo con ANTHROPIC_API_KEY, cargado en la primera traducción; el de mentira con TRANSLATE_TRANSPORT=fake; la clave no se loguea", () => {
   const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
-  assert.match(index, /import \{ createClaudeTranslator \} from "\.\/claude_translator\.ts";/);
+  // El SDK no se importa al arrancar: una falla al cargarlo solo afecta a /translate.
+  assert.doesNotMatch(index, /^import [^\n]*claude_translator/m, "sin import estático de claude_translator.ts");
+  assert.doesNotMatch(index, /@anthropic-ai\/sdk/);
+  assert.match(index, /return lazyTranslator\(async \(\) => \{\s*const \{ createClaudeTranslator \} = await import\("\.\/claude_translator\.ts"\);\s*return createClaudeTranslator\(apiKey\);\s*\}\);/);
   assert.match(index, /if \(config\.translation === "fake"\) return fakeTranslator;/);
   assert.match(index, /if \(config\.translationFakeIgnored\) consoleLogger\("error", "translate_fake_ignored"\);/, "error al arrancar, sin datos");
   assert.match(index, /if \(config\.translation === "off"\) return null;/);
-  assert.match(index, /return createClaudeTranslator\(apiKey\);/);
   assert.match(index, /translator: createTranslator\(\),/);
   // El límite por cocina va a la misma función SQL que el formulario, con la clave que arma el handler.
   assert.match(index, /supabase\.rpc\("hit_public_request_rate", \{\s*p_ip_hash: key,\s*p_max_hour: maxPerHour,\s*p_max_day: maxPerDay,\s*\}\)/);
@@ -1411,28 +1414,29 @@ test("handler.ts no conoce el SDK de Anthropic: recibe un Translator (index.ts a
   }
 });
 
-test("claude_translator.ts: el SDK oficial fijado, el pedido de translation.ts, timeout corto y un reintento; los errores sin mensaje", () => {
+test("claude_translator.ts: el SDK oficial fijado, sin nada del entorno, timeout por intento, un reintento y un tope de 40 s; los errores, a failureFrom", () => {
   // No corre en Node (importa npm:@anthropic-ai/sdk): esto cuida lo que el diseño fija de la llamada.
+  // El mapeo de errores se prueba de verdad en translation.test.ts (failureFrom, con clases inyectadas).
   const source = readFileSync(new URL("./claude_translator.ts", import.meta.url), "utf8");
   assert.match(source, /^import Anthropic from "npm:@anthropic-ai\/sdk@1\.6\.0";$/m, "versión exacta, la de la guía");
-  assert.match(source, /new Anthropic\(\{ apiKey, timeout: TRANSLATION_TIMEOUT_MS, maxRetries: TRANSLATION_MAX_RETRIES \}\)/);
-  assert.match(source, /await client\.beta\.messages\.create\(buildTranslationRequest\(source\)\)/, "beta: el fallback del servidor");
+  // La URL fija (ANTHROPIC_BASE_URL no desvía la clave), sin logs del SDK (ANTHROPIC_LOG=debug loguearía
+  // el cuerpo, con el plato) ni trazas (ANTHROPIC_OPEN_TELEMETRY_* podría exportar el contenido).
+  assert.match(
+    source,
+    /new Anthropic\(\{\s*apiKey,\s*baseURL: ANTHROPIC_API_URL,\s*logLevel: "off",\s*openTelemetry: false,\s*timeout: TRANSLATION_TIMEOUT_MS,\s*maxRetries: TRANSLATION_MAX_RETRIES,\s*\}\)/,
+  );
+  assert.doesNotMatch(source, /authToken|defaultHeaders|fetchOptions/, "ninguna otra credencial ni cabecera");
+  // El tope de toda la llamada (el SDK respeta el retry-after sin tope y esa espera no cuenta para el timeout).
+  assert.match(
+    source,
+    /await client\.beta\.messages\.create\(buildTranslationRequest\(source\), \{\s*signal: AbortSignal\.timeout\(TRANSLATION_DEADLINE_MS\),\s*\}\)/,
+    "beta: el fallback del servidor",
+  );
   assert.match(source, /return replyFromMessage\(message\);/, "stop_reason antes que el contenido, en la parte pura");
+  assert.match(source, /return failureFrom\(error, Anthropic\);/, "las clases de error del SDK, a la parte pura");
   for (const forbidden of [/\bstream\s*:/, /\bthinking\s*:/, /console\./, /error\.message/, /JSON\.stringify\(error/, /String\(error/]) {
     assert.doesNotMatch(source, forbidden);
   }
-  // Los errores tipados del SDK, del más específico al más general (en el SDK de TypeScript,
-  // APIConnectionTimeoutError hereda de APIConnectionError, y las dos de APIError).
-  const order = [
-    "Anthropic.APIConnectionTimeoutError",
-    "Anthropic.APIUserAbortError",
-    "Anthropic.APIConnectionError",
-    "Anthropic.RateLimitError",
-    "Anthropic.APIError",
-    "Anthropic.AnthropicError",
-  ].map((name) => source.indexOf(`instanceof ${name})`));
-  assert.ok(order.every((index) => index !== -1), "están todos");
-  assert.deepEqual([...order].sort((a, b) => a - b), order, "en ese orden");
 });
 
 test("authFailureKind: Auth rechaza el token (4xx) o no responde (429, 5xx, red)", () => {
