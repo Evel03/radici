@@ -83,6 +83,19 @@ void main() {
       );
     });
 
+    test('desde un plato guardado, con los campos de la traducción automática', () {
+      expect(recipeDraftFrom(milanesa()).autoTranslated, milanesa().autoTranslated);
+      expect(recipeDraftFrom(lasagne()).autoTranslated, isEmpty);
+    });
+
+    // SPEC §4: la copia no lleva las descripciones de la web, así que tampoco
+    // sus marcas; los nombres copiados quedan como estaban.
+    test('una copia lleva las marcas de los nombres, no las de las descripciones', () {
+      final copy = recipeDraftFrom(milanesa(), id: _newId);
+      expect(copy.autoTranslated, {TranslatedField.nameEn});
+      expect([copy.nameIt, copy.nameEs, copy.nameEn], [milanesa().nameIt, milanesa().nameEs, milanesa().nameEn]);
+    });
+
     test('toString no muestra las notas (son de la cocinera)', () {
       final draft = recipeDraftFrom(risotto());
       expect(draft.toString(), 'RecipeDraft($risottoId)');
@@ -267,6 +280,15 @@ void main() {
       for (final recipe in sampleRecipes()) {
         expect(recipeFromDraft(recipeDraftFrom(recipe), saved: recipe), recipe);
       }
+    });
+
+    test('los campos de la traducción automática pasan, salvo los que quedaron vacíos', () {
+      expect(recipeFromDraft(recipeDraftFrom(milanesa())).autoTranslated, milanesa().autoTranslated);
+      final cleared = recipeDraftFrom(milanesa()).copyWith(descriptionEn: '   ');
+      expect(recipeFromDraft(cleared).autoTranslated, {TranslatedField.descriptionIt, TranslatedField.nameEn});
+      // Ni una marca sin el español del que sale (save_recipe la rechaza).
+      final withoutSpanish = recipeDraftFrom(milanesa()).copyWith(descriptionEs: ' ');
+      expect(recipeFromDraft(withoutSpanish).autoTranslated, {TranslatedField.nameEn});
     });
 
     test('los 12 meses son todo el año', () {

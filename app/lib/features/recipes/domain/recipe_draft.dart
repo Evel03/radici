@@ -69,6 +69,10 @@ abstract class RecipeDraft with _$RecipeDraft {
     @Default('') String descriptionIt,
     @Default('') String descriptionEs,
     @Default('') String descriptionEn,
+
+    /// Los campos que llenó la traducción automática y la cocinera no tocó a
+    /// mano ([Recipe.autoTranslated]).
+    @Default(<TranslatedField>{}) Set<TranslatedField> autoTranslated,
     @Default(<Allergen>{}) Set<Allergen> allergens,
     Diet? diet,
 
@@ -85,6 +89,26 @@ abstract class RecipeDraft with _$RecipeDraft {
 
   const RecipeDraft._();
 
+  /// Lo escrito en [field].
+  String textOf(TranslatedField field) => switch (field) {
+    TranslatedField.nameIt => nameIt,
+    TranslatedField.descriptionIt => descriptionIt,
+    TranslatedField.nameEn => nameEn,
+    TranslatedField.descriptionEn => descriptionEn,
+  };
+
+  /// El español del que sale [field]: el nombre o la descripción.
+  String sourceOf(TranslatedField field) =>
+      field.isName ? nameEs : descriptionEs;
+
+  /// El formulario con [text] en [field] (las marcas no cambian).
+  RecipeDraft withText(TranslatedField field, String text) => switch (field) {
+    TranslatedField.nameIt => copyWith(nameIt: text),
+    TranslatedField.descriptionIt => copyWith(descriptionIt: text),
+    TranslatedField.nameEn => copyWith(nameEn: text),
+    TranslatedField.descriptionEn => copyWith(descriptionEn: text),
+  };
+
   @override
   String toString() => 'RecipeDraft($id)';
 }
@@ -96,7 +120,9 @@ RecipeDraft emptyRecipeDraft(String id) => RecipeDraft(id: id);
 /// el mismo plato con un id nuevo), sin las descripciones de la web: la copia
 /// es otro plato y no tiene que salir en la web con la descripción del
 /// original («Senza descrizione: non è sul sito» hasta que tenga la suya).
-/// Las filas llevan las claves 0, 1, 2…
+/// Por eso la copia no lleva las marcas de la traducción automática de las
+/// descripciones; las de los nombres, que sí copia, quedan (SPEC §4). Las
+/// filas llevan las claves 0, 1, 2…
 RecipeDraft recipeDraftFrom(Recipe recipe, {String? id}) => RecipeDraft(
   id: id ?? recipe.id,
   nameIt: recipe.nameIt,
@@ -105,6 +131,10 @@ RecipeDraft recipeDraftFrom(Recipe recipe, {String? id}) => RecipeDraft(
   descriptionIt: id == null ? recipe.descriptionIt ?? '' : '',
   descriptionEs: id == null ? recipe.descriptionEs ?? '' : '',
   descriptionEn: id == null ? recipe.descriptionEn ?? '' : '',
+  autoTranslated: {
+    for (final field in recipe.autoTranslated)
+      if (id == null || field.isName) field,
+  },
   allergens: recipe.allergens.toSet(),
   diet: recipe.diet,
   months: {...?recipe.seasonMonths},
@@ -250,7 +280,9 @@ RecipeDraftErrors validateRecipeDraft(RecipeDraft draft) {
 
 /// El plato que sale de [draft], listo para save_recipe: nombres y
 /// descripciones limpios, traducciones, descripciones y notas vacías en null,
-/// los 12 meses como todo el año y sin las filas vacías. [saved] es el plato guardado (null si es nuevo): de él
+/// los 12 meses como todo el año, sin las filas vacías y con las marcas de la
+/// traducción automática solo en los campos con texto y con el español del
+/// que salen (como exige save_recipe). [saved] es el plato guardado (null si es nuevo): de él
 /// salen el estado (guardar no lo cambia) y, si no se puede congelar y el
 /// número de días del freezer no vale, esos días. Lanza [ArgumentError] si
 /// [draft] tiene errores.
@@ -272,6 +304,12 @@ Recipe recipeFromDraft(RecipeDraft draft, {Recipe? saved}) {
     descriptionIt: optional(draft.descriptionIt),
     descriptionEs: optional(draft.descriptionEs),
     descriptionEn: optional(draft.descriptionEn),
+    autoTranslated: {
+      for (final field in draft.autoTranslated)
+        if (optional(draft.textOf(field)) != null &&
+            optional(draft.sourceOf(field)) != null)
+          field,
+    },
     diet: draft.diet,
     allergens: [
       for (final allergen in Allergen.values)

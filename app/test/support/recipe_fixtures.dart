@@ -6,12 +6,13 @@ const String lasagneId = 'a0000000-0000-4000-8000-000000000001';
 const String risottoId = 'a0000000-0000-4000-8000-000000000002';
 const String minestroneId = 'a0000000-0000-4000-8000-000000000003';
 const String frittataId = 'a0000000-0000-4000-8000-000000000010';
+const String milanesaId = 'a0000000-0000-4000-8000-000000000004';
 
 /// Fila de PostgREST como la devuelve `select(recipeColumns)`: los alérgenos
 /// y los ingredientes llegan embebidos, en cualquier orden, y las notas como
 /// una lista de cero o una fila de recipe_notes ([notes] de texto se arma así;
 /// otro valor va tal cual). Las descripciones por defecto son las de
-/// [lasagne].
+/// [lasagne], sin campos de la traducción automática.
 Map<String, dynamic> recipeRow({
   String id = lasagneId,
   Object? nameIt = 'Lasagne alla bolognese',
@@ -20,6 +21,7 @@ Map<String, dynamic> recipeRow({
   Object? descriptionIt = lasagneDescriptionIt,
   Object? descriptionEs = lasagneDescriptionEs,
   Object? descriptionEn,
+  Object? autoTranslated = const <String>[],
   Object? diet,
   Object? seasonMonths,
   Object? fridgeDays = 3,
@@ -46,6 +48,7 @@ Map<String, dynamic> recipeRow({
   'description_it': descriptionIt,
   'description_es': descriptionEs,
   'description_en': descriptionEn,
+  'auto_translated': autoTranslated,
   'diet': diet,
   'season_months': seasonMonths,
   'fridge_days': fridgeDays,
@@ -134,3 +137,18 @@ Recipe frittata() => const Recipe(
 
 /// Tres activos y uno desactivado, desordenados.
 List<Recipe> sampleRecipes() => [risotto(), frittata(), lasagne(), minestrone()];
+
+/// Escrito en español (20/11/2026): el italiano y el inglés los llenó la
+/// traducción automática, salvo el nombre en italiano, que Evelyn corrigió a
+/// mano. No está en [sampleRecipes].
+Recipe milanesa() => const Recipe(
+  id: milanesaId,
+  nameIt: 'Cotoletta alla napoletana',
+  nameEs: 'Milanesa a la napolitana',
+  nameEn: 'Neapolitan-style milanese',
+  descriptionIt: 'Con pomodoro, prosciutto cotto e mozzarella.',
+  descriptionEs: 'Con salsa de tomate, jamón y mozzarella.',
+  descriptionEn: 'With tomato sauce, ham and mozzarella.',
+  autoTranslated: {TranslatedField.descriptionIt, TranslatedField.nameEn, TranslatedField.descriptionEn},
+  allergens: [Allergen.gluten, Allergen.eggs, Allergen.milk],
+);
