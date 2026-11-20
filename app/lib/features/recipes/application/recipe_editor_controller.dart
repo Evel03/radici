@@ -173,6 +173,25 @@ final recipeNameTakenProvider = Provider.autoDispose
       return hasRecipeNamed(catalog, name, exceptId: id);
     });
 
+/// Ya hay otro plato con el nombre en español del editor: el aviso sale
+/// debajo del nombre en español mientras se escribe (un plato nuevo empieza
+/// por ahí). Es un aviso: no impide guardar.
+final recipeSpanishNameTakenProvider = Provider.autoDispose
+    .family<bool, RecipeEditorTarget>((ref, target) {
+      final (id, name) = ref.watch(
+        recipeEditorProvider(
+          target,
+        ).select((state) => (state.draft.id, state.draft.nameEs)),
+      );
+      final catalog = ref.watch(recipeCatalogProvider).value ?? const [];
+      return hasRecipeNamed(
+        catalog,
+        name,
+        exceptId: id,
+        nameOf: (recipe) => recipe.nameEs,
+      );
+    });
+
 /// El plato [id] tal como está en el catálogo (null si no está o mientras
 /// carga). El editor muestra de acá si está activo.
 final recipeByIdProvider = Provider.autoDispose.family<Recipe?, String>((

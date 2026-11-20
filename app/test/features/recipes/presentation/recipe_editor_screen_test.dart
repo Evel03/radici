@@ -272,7 +272,7 @@ void main() {
     await tester.tap(byKey('recipe-save'));
     await tester.pump();
 
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(byKey('recipe-back'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(RecipeEditorScreen), findsOneWidget);
@@ -637,7 +637,8 @@ void main() {
     expect(find.widgetWithText(AppBar, 'Copia del piatto'), findsOneWidget);
     expect(find.text('Copia di «Lasagne alla bolognese»: cambia il nome e salva.'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Lasagne alla bolognese'), findsOneWidget);
-    expect(find.text('Hai già un piatto con questo nome.'), findsOneWidget);
+    // El aviso, debajo del nombre en español y del italiano.
+    expect(find.text('Hai già un piatto con questo nome.'), findsNWidgets(2));
     expect(find.widgetWithText(TextField, 'Passata di pomodoro'), findsOneWidget);
     // Las descripciones de la web no se copian: la copia no sale en la web
     // con las del original.
@@ -645,6 +646,9 @@ void main() {
       expect(tester.widget<TextField>(byKey('recipe-description-$language')).controller!.text, isEmpty);
     }
 
+    await tester.enterText(byKey('recipe-name-es'), 'Lasaña vegetariana');
+    await tester.pump();
+    expect(find.text('Hai già un piatto con questo nome.'), findsOneWidget, reason: 'queda el del italiano');
     await tester.enterText(byKey('recipe-name-it'), 'Lasagne vegetariane');
     await tester.pump();
     expect(find.text('Hai già un piatto con questo nome.'), findsNothing);
@@ -652,7 +656,13 @@ void main() {
 
     expect(
       repository.recipes[_newId],
-      lasagne().copyWith(id: _newId, nameIt: 'Lasagne vegetariane', descriptionIt: null, descriptionEs: null),
+      lasagne().copyWith(
+        id: _newId,
+        nameIt: 'Lasagne vegetariane',
+        nameEs: 'Lasaña vegetariana',
+        descriptionIt: null,
+        descriptionEs: null,
+      ),
     );
     expect(repository.recipes[lasagneId], lasagne());
     expect(find.byType(RecipesScreen), findsOneWidget);
@@ -709,7 +719,7 @@ void main() {
 
   testWidgets('salir con cambios sin guardar pide confirmación; sin cambios, no', (tester) async {
     await openEditor(tester, location: '/altro/piatti/$lasagneId');
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(byKey('recipe-back'));
     await tester.pumpAndSettle();
     expect(find.byType(RecipesScreen), findsOneWidget, reason: 'sin cambios sale directo');
 
@@ -717,7 +727,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(byKey('recipe-name-it'), 'Lasagne verdi');
     await tester.pump();
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(byKey('recipe-back'));
     await tester.pumpAndSettle();
     expect(find.text('Scartare le modifiche?'), findsOneWidget);
 
@@ -725,7 +735,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.widgetWithText(TextField, 'Lasagne verdi'), findsOneWidget);
 
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(byKey('recipe-back'));
     await tester.pumpAndSettle();
     await tester.tap(byKey('recipe-discard-confirm'));
     await tester.pumpAndSettle();
@@ -882,7 +892,9 @@ void main() {
         isFalse,
         reason: 'la traducción pisaría lo que se cambie',
       );
-      await tester.tap(find.byType(BackButton));
+      // Atrás se ve deshabilitado.
+      expect(tester.widget<IconButton>(byKey('recipe-back')).onPressed, isNull);
+      await tester.tap(byKey('recipe-back'), warnIfMissed: false);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.byType(RecipeEditorScreen), findsOneWidget);
@@ -983,6 +995,73 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('la sesión vencida: lo dice, sin «Riprova»', (tester) async {
+      translator.failure = TranslationFailureKind.unauthorized;
+      await openEditor(tester, location: '/altro/piatti/$milanesaId', locale: const Locale('es', 'ES'));
+      await tester.enterText(byKey('recipe-name-es'), 'Napolitana');
+      await save(tester);
+      expect(find.text('La sesión venció: sal y vuelve a entrar.'), findsOneWidget);
+      expect(byKey('recipe-translate-retry'), findsNothing);
+      expect(repository.saveCalls, isEmpty);
+    });
+
+    testWidgets('el nombre en español repetido se avisa mientras se escribe', (tester) async {
+      await openEditor(tester, locale: const Locale('es', 'ES'));
+      await tester.enterText(byKey('recipe-name-es'), 'lasaña a la Boloñesa ');
+      await tester.pump();
+      expect(
+        find.descendant(of: byKey('recipe-name-es'), matching: find.text('Ya tienes un plato con este nombre.')),
+        findsOneWidget,
+      );
+      await tester.enterText(byKey('recipe-name-es'), 'Lasaña de verduras');
+      await tester.pump();
+      expect(find.text('Ya tienes un plato con este nombre.'), findsNothing);
+    });
+
+    testWidgets('la marca del nombre en italiano sigue con el aviso del nombre repetido', (tester) async {
+      repository.recipes[milanesaId] = milanesa().copyWith(
+        autoTranslated: {...milanesa().autoTranslated, TranslatedField.nameIt},
+      );
+      await openEditor(tester, location: '/altro/piatti/nuovo?copia=$milanesaId');
+      final nameIt = byKey('recipe-name-it');
+      expect(find.descendant(of: nameIt, matching: byKey('recipe-auto-name_it')), findsOneWidget);
+      expect(find.descendant(of: nameIt, matching: find.text('Hai già un piatto con questo nome.')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('lo que dice el lector de pantalla: la marca, «Traduzione in corso…» y «Salvataggio in corso…»', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      translator.pending = Completer<void>();
+      repository.pendingSave = Completer<void>();
+      await openEditor(tester, location: '/altro/piatti/$milanesaId');
+      // La marca, justo después de su campo.
+      expect(tester.getSemantics(byKey('recipe-auto-name_en')), isSemantics(label: 'Tradotto automaticamente'));
+      expect(tester.getSemantics(byKey('recipe-save')), isSemantics(label: 'Salva', isButton: true));
+
+      await tester.enterText(byKey('recipe-name-es'), 'Napolitana');
+      await tester.pump();
+      await tester.tap(byKey('recipe-save'));
+      await tester.pump();
+      // Se anuncia sola (región viva) y el botón la dice.
+      expect(
+        tester.getSemantics(byKey('recipe-save')),
+        isSemantics(label: 'Traduzione in corso…', isLiveRegion: true, isButton: true),
+      );
+      expect(tester.getSemantics(byKey('recipe-back')), isSemantics(isButton: true, isEnabled: false));
+
+      translator.pending!.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(tester.getSemantics(byKey('recipe-save')), isSemantics(label: 'Salvataggio in corso…'));
+
+      repository.pendingSave!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(RecipesScreen), findsOneWidget);
+      semantics.dispose();
+    });
+
     testWidgets('Claude no tradujo y solo había campos vacíos: guarda sin el aviso y la lista dice por qué', (
       tester,
     ) async {
@@ -1053,7 +1132,7 @@ void main() {
       await tester.enterText(byKey('recipe-description-es'), 'Con tomate y queso.');
       await save(tester);
 
-      expect(find.text("Hai chiesto molte traduzioni nell'ultima ora: riprova più tardi."), findsOneWidget);
+      expect(find.text('Hai raggiunto il limite di traduzioni automatiche: riprova più tardi.'), findsOneWidget);
       expect(
         find.text(
           'Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: i campi da '
@@ -1089,6 +1168,9 @@ void main() {
       expect(find.widgetWithText(TextButton, 'Save without translating'), findsOneWidget);
       await tester.tap(find.widgetWithText(TextButton, "I'll write them"));
       await tester.pumpAndSettle();
+      // Enfoca el primer campo que había que traducir: el nombre en inglés.
+      expect(field('recipe-name-en').hitTestable(), findsOneWidget);
+      expect(tester.widget<EditableText>(field('recipe-name-en')).focusNode.hasFocus, isTrue);
       expect(repository.saveCalls, isEmpty);
       expect(textOf(tester, 'recipe-name-es'), 'Milanesa napolitana');
       expect(byKey('recipe-auto-name_en'), findsOneWidget, reason: 'nada cambió: sigue siendo automático');

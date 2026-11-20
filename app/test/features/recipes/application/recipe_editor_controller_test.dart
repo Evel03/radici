@@ -909,6 +909,21 @@ void main() {
     });
   });
 
+  test('aviso de nombre en español repetido: un plato nuevo lo ve mientras escribe', () async {
+    await start();
+    final editor = open(create);
+    container.listen(recipeSpanishNameTakenProvider(create), (_, _) {});
+    expect(container.read(recipeSpanishNameTakenProvider(create)), isFalse, reason: 'vacío');
+    editor.setNameEs('  LASAÑA a la boloñesa');
+    expect(container.read(recipeSpanishNameTakenProvider(create)), isTrue);
+    editor.setNameEs('Lasaña de verduras');
+    expect(container.read(recipeSpanishNameTakenProvider(create)), isFalse);
+
+    open(editLasagne);
+    container.listen(recipeSpanishNameTakenProvider(editLasagne), (_, _) {});
+    expect(container.read(recipeSpanishNameTakenProvider(editLasagne)), isFalse, reason: 'su propio nombre');
+  });
+
   test('aviso de nombre repetido: la copia tiene el mismo nombre hasta cambiarlo', () async {
     await start();
     final editor = open(copyLasagne);

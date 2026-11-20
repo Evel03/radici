@@ -545,14 +545,21 @@ int _byItalianName(Recipe a, Recipe b) {
   return byName != 0 ? byName : a.id.compareTo(b.id);
 }
 
-/// Ya hay un plato (que no sea [exceptId]) con el nombre en italiano
-/// [nameIt], sin importar mayúsculas, acentos ni espacios.
+/// Ya hay un plato (que no sea [exceptId]) con el nombre [name], sin importar
+/// mayúsculas, acentos ni espacios. [nameOf] dice qué nombre de cada plato se
+/// compara: por defecto, el italiano.
 bool hasRecipeNamed(
   Iterable<Recipe> recipes,
-  String nameIt, {
+  String name, {
   String? exceptId,
+  String? Function(Recipe recipe) nameOf = _italianName,
 }) {
-  final wanted = foldForSearch(nameIt);
+  final wanted = foldForSearch(name);
   if (wanted.isEmpty) return false;
-  return recipes.any((r) => r.id != exceptId && foldForSearch(r.nameIt) == wanted);
+  return recipes.any((r) {
+    final other = nameOf(r);
+    return r.id != exceptId && other != null && foldForSearch(other) == wanted;
+  });
 }
+
+String? _italianName(Recipe recipe) => recipe.nameIt;

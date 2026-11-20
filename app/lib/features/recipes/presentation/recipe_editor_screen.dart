@@ -97,8 +97,11 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
   late final TextEditingController _freezerDays;
   late final TextEditingController _notes;
 
-  /// El nombre en italiano: «Scrivo io» lo enfoca si hay que escribirlo.
-  final FocusNode _nameItFocus = FocusNode();
+  /// Los campos en italiano y en inglés: «Scrivo io» enfoca el primero que
+  /// había que traducir.
+  final Map<TranslatedField, FocusNode> _translationFocus = {
+    for (final field in TranslatedField.values) field: FocusNode(),
+  };
 
   /// Los campos de cada fila de ingrediente, por su clave.
   final Map<int, IngredientRowControllers> _rows = {};
@@ -167,7 +170,9 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     ]) {
       controller.dispose();
     }
-    _nameItFocus.dispose();
+    for (final node in _translationFocus.values) {
+      node.dispose();
+    }
     for (final row in _rows.values) {
       row.dispose();
     }
@@ -272,8 +277,8 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
         l10n.recipeTranslateUntranslatable,
       TranslationFailureKind.notConfigured => l10n.recipeTranslateNotConfigured,
       TranslationFailureKind.rateLimited => l10n.recipeTranslateRateLimited,
+      TranslationFailureKind.unauthorized => l10n.recipeTranslateSessionExpired,
       TranslationFailureKind.server ||
-      TranslationFailureKind.unauthorized ||
       TranslationFailureKind.forbidden ||
       TranslationFailureKind.invalid => l10n.recipeTranslateBroken,
     };
@@ -335,11 +340,15 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     }
   }
 
-  /// Lleva a la vista el italiano y el inglés; si falta el nombre en
-  /// italiano, lo enfoca para escribirlo.
+  /// Enfoca el primer campo en italiano o en inglés que había que traducir
+  /// (con el teclado, para escribirlo) y lo lleva a la vista.
   void _revealTranslations(RecipeTranslationPlan plan) {
-    if (!plan.canSkip) _nameItFocus.requestFocus();
-    final target = _translationsKey.currentContext;
+    final field = TranslatedField.values.firstWhere(
+      plan.translate.contains,
+      orElse: () => TranslatedField.nameIt,
+    );
+    final node = _translationFocus[field]!..requestFocus();
+    final target = node.context ?? _translationsKey.currentContext;
     if (target == null) return;
     unawaited(
       Scrollable.ensureVisible(
@@ -532,6 +541,9 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     final formats = RecipeFormats(context);
     final state = ref.watch(recipeEditorProvider(widget.target));
     final nameTaken = ref.watch(recipeNameTakenProvider(widget.target));
+    final spanishNameTaken = ref.watch(
+      recipeSpanishNameTakenProvider(widget.target),
+    );
     final target = widget.target;
     // Si está activo se lee del catálogo: desactivar no pasa por el formulario.
     final saved = switch (target) {
@@ -582,7 +594,9 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
           onChanged: _editor.setNameEs,
           decoration: InputDecoration(
             labelText: l10n.recipeNameEsLabel,
-            helperText: l10n.recipeNameEsHelper,
+            helperText: spanishNameTaken
+                ? l10n.recipeNameTaken
+                : l10n.recipeNameEsHelper,
             helperMaxLines: 3,
             errorText: show
                 ? _textError(
@@ -692,18 +706,34 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
       TextField(
         key: const ValueKey('recipe-name-it'),
         controller: _nameIt,
-        focusNode: _nameItFocus,
+        focusNode: _translationFocus[TranslatedField.nameIt],
         textCapitalization: TextCapitalization.sentences,
         textInputAction: TextInputAction.next,
         onChanged: _editor.setNameIt,
         decoration: InputDecoration(
           labelText: l10n.recipeNameItLabel,
-          // El aviso del nombre repetido manda; si no, la marca o la ayuda.
-          helper: nameTaken ? null : autoMark(TranslatedField.nameIt),
-          helperText: nameTaken
-              ? l10n.recipeNameTaken
-              : draft.autoTranslated.contains(TranslatedField.nameIt)
+          // Automático: la marca, y debajo el aviso del nombre repetido si lo
+          // hay. Escrito a mano: el aviso o la ayuda.
+          helper: draft.autoTranslated.contains(TranslatedField.nameIt)
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    autoMark(TranslatedField.nameIt)!,
+                    if (nameTaken)
+                      Text(
+                        l10n.recipeNameTaken,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                )
+              : null,
+          helperText: draft.autoTranslated.contains(TranslatedField.nameIt)
               ? null
+              : nameTaken
+              ? l10n.recipeNameTaken
               : l10n.recipeNameItHelper,
           helperMaxLines: 2,
           errorText: show
@@ -720,6 +750,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
       _DescriptionField(
         fieldKey: const ValueKey('recipe-description-it'),
         controller: _descriptionIt,
+        focusNode: _translationFocus[TranslatedField.descriptionIt],
         label: l10n.recipeDescriptionItLabel,
         helper: autoMark(TranslatedField.descriptionIt),
         error: show
@@ -732,6 +763,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
       TextField(
         key: const ValueKey('recipe-name-en'),
         controller: _nameEn,
+        focusNode: _translationFocus[TranslatedField.nameEn],
         textCapitalization: TextCapitalization.sentences,
         textInputAction: TextInputAction.next,
         onChanged: _editor.setNameEn,
@@ -746,6 +778,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
       _DescriptionField(
         fieldKey: const ValueKey('recipe-description-en'),
         controller: _descriptionEn,
+        focusNode: _translationFocus[TranslatedField.descriptionEn],
         label: l10n.recipeDescriptionEnLabel,
         helper: autoMark(TranslatedField.descriptionEn),
         error: show
@@ -879,7 +912,21 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
       child: ScaffoldMessenger(
         key: _messenger,
         child: Scaffold(
-          appBar: AppBar(title: Text(title)),
+          appBar: AppBar(
+            // Mientras traduce o guarda no se puede salir: el botón se ve
+            // deshabilitado (el lector de pantalla lo dice).
+            leading: (ModalRoute.of(context)?.impliesAppBarDismissal ?? false)
+                ? IconButton(
+                    key: const ValueKey('recipe-back'),
+                    icon: const BackButtonIcon(),
+                    tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+                    onPressed: state.busy
+                        ? null
+                        : () => unawaited(Navigator.maybePop(context)),
+                  )
+                : null,
+            title: Text(title),
+          ),
           body: Align(
             alignment: Alignment.topCenter,
             child: ConstrainedBox(
@@ -976,9 +1023,13 @@ class _SaveBar extends StatelessWidget {
                           ),
                         ],
                       ),
-                      (true, _) => const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                      // La ruedita sola no dice nada al lector de pantalla.
+                      (true, _) => Semantics(
+                        label: l10n.recipeSaving,
+                        child: const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       ),
                       _ => Text(l10n.actionSave),
                     },
@@ -1012,10 +1063,12 @@ class _DescriptionField extends StatelessWidget {
     required this.textInputAction,
     required this.onChanged,
     this.helper,
+    this.focusNode,
   });
 
   final Key fieldKey;
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final String label;
   final String? error;
 
@@ -1040,6 +1093,7 @@ class _DescriptionField extends StatelessWidget {
           return TextField(
             key: fieldKey,
             controller: controller,
+            focusNode: focusNode,
             minLines: 1,
             maxLines: 3,
             keyboardType: TextInputType.text,

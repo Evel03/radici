@@ -1295,9 +1295,9 @@
   "@recipeTranslationsSection": {
     "description": "Sección del editor con el nombre y la descripción en italiano y en inglés, que llena la traducción automática."
   },
-  "recipeTranslationsHelp": "Si compilano da soli quando salvi, traducendo dallo spagnolo. Puoi correggerli: quello che scrivi tu non viene più tradotto.",
+  "recipeTranslationsHelp": "Si compilano da soli quando salvi, traducendo dallo spagnolo. Quello che correggi tu non viene sovrascritto; un campo vuoto si traduce quando salvi.",
   "@recipeTranslationsHelp": {
-    "description": "Ayuda de la sección del italiano y el inglés: tocar un campo a mano lo saca de la traducción automática."
+    "description": "Ayuda de la sección del italiano y el inglés: lo escrito a mano no se pisa, y un campo vacío se traduce al guardar."
   },
   "recipeAutoTranslated": "Tradotto automaticamente",
   "@recipeAutoTranslated": {
@@ -1331,13 +1331,21 @@
   "@recipeTranslateNotConfigured": {
     "description": "Causa: la traducción no está configurada (501, sin ANTHROPIC_API_KEY)."
   },
-  "recipeTranslateRateLimited": "Hai chiesto molte traduzioni nell'ultima ora: riprova più tardi.",
+  "recipeTranslateRateLimited": "Hai raggiunto il limite di traduzioni automatiche: riprova più tardi.",
   "@recipeTranslateRateLimited": {
-    "description": "Causa: la cocina pasó su límite de traducciones (429); la app no reintenta sola."
+    "description": "Causa: la cocina pasó su límite de traducciones (429; el de la hora o el del día, la función no dice cuál); la app no reintenta sola."
   },
   "recipeTranslateBroken": "Qualcosa non ha funzionato nella traduzione automatica.",
   "@recipeTranslateBroken": {
     "description": "Causa genérica, sin reintento: algo roto o mal configurado en el servidor (500), la sesión vencida, sin permiso o un pedido inválido."
+  },
+  "recipeTranslateSessionExpired": "La sessione è scaduta: esci e rientra.",
+  "@recipeTranslateSessionExpired": {
+    "description": "Causa: la función dio 401 también después de renovar la sesión; sin reintento."
+  },
+  "recipeSaving": "Salvataggio in corso…",
+  "@recipeSaving": {
+    "description": "Para el lector de pantalla, en el botón de guardar mientras guarda (se ve solo una ruedita)."
   },
   "recipeTranslateSkipHint": "Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: i campi da tradurre restano vuoti e si traducono la prossima volta che salvi.",
   "@recipeTranslateSkipHint": {

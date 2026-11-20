@@ -265,6 +265,16 @@ void main() {
     });
   });
 
+  test('nombre repetido, también por el nombre en español', () {
+    final recipes = sampleRecipes();
+    expect(hasRecipeNamed(recipes, 'lasagne ALLA bolognese'), isTrue);
+    expect(hasRecipeNamed(recipes, 'Lasaña a la boloñesa'), isFalse, reason: 'por defecto, el italiano');
+    expect(hasRecipeNamed(recipes, ' lasana a la bolonesa ', nameOf: (r) => r.nameEs), isTrue);
+    expect(hasRecipeNamed(recipes, 'Lasaña a la boloñesa', exceptId: lasagneId, nameOf: (r) => r.nameEs), isFalse);
+    // Un plato sin nombre en español no choca con nada.
+    expect(hasRecipeNamed([lasagne().copyWith(nameEs: null)], 'Lasagne alla bolognese', nameOf: (r) => r.nameEs), isFalse);
+  });
+
   group('nombres', () {
     test('sin espacios de más ni caracteres de control', () {
       expect(normalizeRecipeText('  Lasagne   alla\tbolognese \n'), 'Lasagne alla bolognese');
