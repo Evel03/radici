@@ -151,12 +151,18 @@ test("traducción: ANTHROPIC_API_KEY es un secreto opcional que carga el paso de
   // Opcional: no está entre las que hacen fallar el despliegue ni entre las que avisan como obligatorias.
   const required = /for name in (TURNSTILE_SECRET_KEY IP_HASH_SALT[^;]*); do\n\s+grep -qx/.exec(run)?.[1] ?? "";
   assert.ok(required !== "" && !required.includes("ANTHROPIC_API_KEY"), "no corta el despliegue");
-  assert.match(run, /if \[ -z "\$\{ANTHROPIC_API_KEY:-\}" \] && ! grep -qx "ANTHROPIC_API_KEY" <<< "\$\{names\}"; then\n\s+echo "::warning::Sin ANTHROPIC_API_KEY la traducción automática de los platos queda apagada/);
+  // Sin el secreto en GitHub: si sigue en Supabase, aviso de que la traducción sigue prendida (borrarlo
+  // de GitHub no lo saca de Supabase); si no está en ningún lado, aviso de que queda apagada.
+  assert.match(
+    run,
+    /if \[ -z "\$\{ANTHROPIC_API_KEY:-\}" \]; then\n\s+if grep -qx "ANTHROPIC_API_KEY" <<< "\$\{names\}"; then\n\s+echo "::notice::ANTHROPIC_API_KEY no está en GitHub pero sigue en los secretos de Supabase[^\n]*supabase secrets unset ANTHROPIC_API_KEY[^\n]*"\n\s+else\n\s+echo "::warning::Sin ANTHROPIC_API_KEY la traducción automática de los platos queda apagada/,
+  );
   assert.doesNotMatch(run, /echo[^\n]*\$\{?ANTHROPIC_API_KEY\b/, "ningún echo imprime el valor");
 
   const header = WORKFLOW.slice(0, WORKFLOW.indexOf("\nname: "));
   assert.match(header, /opcionales: [^)]*ANTHROPIC_API_KEY/);
   assert.match(header, /solo[\s#]+van el nombre y la descripción del plato/, "qué se manda a Anthropic");
+  assert.match(header, /Borrar el secreto de GitHub no la saca de Supabase[\s\S]*?supabase secrets unset ANTHROPIC_API_KEY/);
 });
 
 test("TRANSLATE_TRANSPORT nunca en producción: el workflow no lo carga y, si está en Supabase, el despliegue corta", () => {
