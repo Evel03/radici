@@ -293,7 +293,8 @@ detalle, reconexión del WebSocket y agenda: sin violaciones ni errores de conso
 
 ```
 default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';
-connect-src 'self' https://<ref>.supabase.co wss://<ref>.supabase.co; object-src 'none';
+img-src 'self' blob: https://<ref>.supabase.co;
+connect-src 'self' blob: https://<ref>.supabase.co wss://<ref>.supabase.co; object-src 'none';
 base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
 ```
 
@@ -303,6 +304,16 @@ base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-re
   del motor en `flutter_bootstrap.js` con `style-src 'self' 'nonce-…'`, pero en un sitio estático el
   nonce sería fijo por deploy (no por respuesta).
 - Los scripts siguen estrictos: sin `'unsafe-inline'` ni `'unsafe-eval'`.
+- `img-src` y `blob:` (20/11/2026, fotos de los platos), según el código del motor de Flutter 3.47.7 y
+  de image_picker_for_web 3.1.1: `Image.network` pide la foto con XMLHttpRequest (`connect-src`,
+  `WebHtmlElementStrategy.never` por defecto); Safari y Firefox (sin `ImageDecoder`, que el motor
+  solo usa en Chrome y Edge) decodifican toda imagen en un `<img>` con una URL `blob:` (`img-src
+  blob:`); image_picker_for_web achica la foto elegida en un `<img>` con su URL `blob:` y cross_file
+  la lee con XMLHttpRequest (`connect-src blob:`). El origen de Supabase en `img-src` es por si una
+  imagen se carga con un `<img>`. Sin probar todavía en Safari del iPhone.
+- La cámara en `/gestione/`: image_picker_for_web usa `<input type="file" capture>`, que abre la
+  cámara del sistema; la `Permissions-Policy: camera=()` de `/*` es para `getUserMedia` y no la
+  bloquea (también sin probar en el iPhone).
 - Caché: los nombres de archivo de Flutter **no** llevan hash. Nada de `immutable` ni `max-age` largo
   en `/gestione/*`: `_headers` pone `Cache-Control: no-cache` y cada carga revalida (304 si no
   cambió). En Cloudflare, Browser Cache TTL tiene que quedar en «Respect Existing Headers» (contrato

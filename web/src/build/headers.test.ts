@@ -210,13 +210,17 @@ describe("public/_headers real", () => {
     "/gestione/assets/fonts/MaterialIcons-Regular.otf",
   ];
 
-  it("/gestione/: CSP de Flutter (CanvasKit, estilos del motor, Supabase por https y wss) y no la de /*", () => {
+  it("/gestione/: CSP de Flutter (CanvasKit, estilos del motor, Supabase por https y wss, las fotos) y no la de /*", () => {
     for (const path of gestionePaths) {
       const policy = csp(path);
       expect(policy.get("default-src"), path).toEqual(["'self'"]);
       expect(policy.get("script-src"), path).toEqual(["'self'", "'wasm-unsafe-eval'"]);
       expect(policy.get("style-src"), path).toEqual(["'self'", "'unsafe-inline'"]);
-      expect(policy.get("connect-src"), path).toEqual(["'self'", origin, "wss://abcdefgh.supabase.co"]);
+      // Fotos de los platos: Safari y Firefox decodifican cada imagen en un <img> con una URL blob:, y la
+      // foto elegida se achica en un <img> y se lee con XMLHttpRequest desde su URL blob:. El bucket
+      // público está en el origen de Supabase.
+      expect(policy.get("img-src"), path).toEqual(["'self'", "blob:", origin]);
+      expect(policy.get("connect-src"), path).toEqual(["'self'", "blob:", origin, "wss://abcdefgh.supabase.co"]);
       expect(policy.get("object-src"), path).toEqual(["'none'"]);
       expect(policy.get("base-uri"), path).toEqual(["'self'"]);
       expect(policy.get("form-action"), path).toEqual(["'none'"]);
@@ -264,6 +268,20 @@ describe("public/_headers real", () => {
   it("/gestione/ en local (supabase start): Realtime por ws://", () => {
     const local = parseHeadersFile(renderHeadersFile(headersFile, "http://127.0.0.1:54321"));
     const policy = cspDirectives(headersFor(local, "/gestione/").get("Content-Security-Policy") ?? "");
-    expect(policy.get("connect-src")).toEqual(["'self'", "http://127.0.0.1:54321", "ws://127.0.0.1:54321"]);
+    expect(policy.get("connect-src")).toEqual(["'self'", "blob:", "http://127.0.0.1:54321", "ws://127.0.0.1:54321"]);
+    expect(policy.get("img-src")).toEqual(["'self'", "blob:", "http://127.0.0.1:54321"]);
+  });
+
+  it("/gestione/ sin Supabase configurado (vista previa de un PR): las imágenes y las conexiones, solo propias y blob:", () => {
+    const bare = parseHeadersFile(renderHeadersFile(headersFile, null));
+    const policy = cspDirectives(headersFor(bare, "/gestione/").get("Content-Security-Policy") ?? "");
+    expect(policy.get("img-src")).toEqual(["'self'", "blob:"]);
+    expect(policy.get("connect-src")).toEqual(["'self'", "blob:"]);
+  });
+
+  it("blob: solo en /gestione/ (la app Flutter): las páginas públicas no lo necesitan", () => {
+    for (const path of ["/", "/privacy/", "/richiesta/", "/no-existe"]) {
+      expect(headersFor(rules, path).get("Content-Security-Policy"), path).not.toContain("blob:");
+    }
   });
 });
