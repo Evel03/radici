@@ -9,47 +9,102 @@ import {
   localizedText,
   menuDishesFromRpc,
   parseMenuResponse,
+  photoOrigin,
   readMenuChoices,
   readMenuDish,
+  recipePhotoUrls,
+  RECIPE_PHOTOS_BUCKET,
   type MenuDish,
 } from "./menu.ts";
 
 const LASAGNE_ID = "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
 const MINESTRONE_ID = "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
+const CHEF_ID = "7e651000-0000-4000-8000-000000000001";
+const PHOTO_ID = "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f";
+const ORIGIN = "https://abcdefgh.supabase.co";
+/** Lo que necesita menuDishesFromRpc para armar las URL (index.ts: SUPABASE_URL y la cocinera). */
+const PHOTOS = { origin: ORIGIN, chefId: CHEF_ID };
 
-/** Como lo devuelve get_public_menu (contrato §12). */
-const LASAGNE = {
+/** Como lo devuelve get_public_menu (contrato §12.1). */
+const LASAGNE_ROW = {
   id: LASAGNE_ID,
   name: { it: "Lasagne", es: "Lasaña", en: null },
   description: { it: "Ragù, besciamella e sfoglia fatta in casa.", es: null, en: null },
   allergens: ["gluten", "eggs", "milk"],
   diet: null,
   seasonMonths: [10, 11, 12],
+  photoId: PHOTO_ID,
 };
 
-const MINESTRONE = {
+const MINESTRONE_ROW = {
   id: MINESTRONE_ID,
   name: { it: "Minestrone", es: null, en: "Minestrone soup" },
   description: { it: "Verdure di stagione.", es: "Verduras de temporada.", en: "Seasonal vegetables." },
   allergens: ["celery"],
   diet: "vegan",
   seasonMonths: null,
+  photoId: null,
 };
+
+const LASAGNE_PHOTO = {
+  thumb: `${ORIGIN}/storage/v1/object/public/recipe-photos/${CHEF_ID}/${LASAGNE_ID}/${PHOTO_ID}-thumb.jpg`,
+  full: `${ORIGIN}/storage/v1/object/public/recipe-photos/${CHEF_ID}/${LASAGNE_ID}/${PHOTO_ID}.jpg`,
+};
+
+/** Como sale en GET …/menu (contrato §12): la foto con sus dos URL, o null. */
+const { photoId: _lasagnePhotoId, ...LASAGNE_BASE } = LASAGNE_ROW;
+const { photoId: _minestronePhotoId, ...MINESTRONE_BASE } = MINESTRONE_ROW;
+const LASAGNE = { ...LASAGNE_BASE, photo: LASAGNE_PHOTO };
+const MINESTRONE = { ...MINESTRONE_BASE, photo: null };
 
 test("ruta y versión de la respuesta", () => {
   assert.equal(MENU_PATH, "/menu");
   assert.equal(MENU_VERSION, 1);
 });
 
-test("get_public_menu: los platos tal como los manda la base, en su orden", () => {
-  assert.deepEqual(menuDishesFromRpc([LASAGNE, MINESTRONE]), { dishes: [LASAGNE, MINESTRONE], skipped: 0 });
-  assert.deepEqual(menuDishesFromRpc([]), { dishes: [], skipped: 0 }, "sin platos publicados: un array vacío");
+test("get_public_menu: los platos tal como los manda la base, en su orden, con las URL de la foto", () => {
+  assert.deepEqual(menuDishesFromRpc([LASAGNE_ROW, MINESTRONE_ROW], PHOTOS), { dishes: [LASAGNE, MINESTRONE], skipped: 0 });
+  assert.deepEqual(menuDishesFromRpc([], PHOTOS), { dishes: [], skipped: 0 }, "sin platos publicados: un array vacío");
 });
 
 test("un plato se arma solo con las claves del contrato: nunca ingredientes ni notas", () => {
-  const dish = readMenuDish({ ...LASAGNE, ingredients: [{ name: "farina" }], notes: "NOTA-PRIVADA", active: true });
-  assert.deepEqual(Object.keys(dish ?? {}).sort(), ["allergens", "description", "diet", "id", "name", "seasonMonths"]);
-  assert.ok(!JSON.stringify(dish).includes("NOTA-PRIVADA"));
+  const row = { ...LASAGNE_ROW, ingredients: [{ name: "farina" }], notes: "NOTA-PRIVADA", active: true };
+  const fromRpc = menuDishesFromRpc([row], PHOTOS)?.dishes[0];
+  const fromResponse = readMenuDish({ ...LASAGNE, ingredients: [{ name: "farina" }], notes: "NOTA-PRIVADA" }, ORIGIN);
+  for (const dish of [fromRpc, fromResponse]) {
+    assert.deepEqual(Object.keys(dish ?? {}).sort(), ["allergens", "description", "diet", "id", "name", "photo", "seasonMonths"]);
+    assert.ok(!JSON.stringify(dish).includes("NOTA-PRIVADA"));
+  }
+  assert.ok(!("photoId" in (fromRpc ?? {})), "el photoId de la base no sale tal cual: sale la foto con sus URL");
+});
+
+test("fotos: las URL públicas del bucket recipe-photos, en minúsculas como las rutas de la base", () => {
+  assert.equal(RECIPE_PHOTOS_BUCKET, "recipe-photos");
+  assert.deepEqual(recipePhotoUrls(ORIGIN, CHEF_ID, LASAGNE_ID, PHOTO_ID), LASAGNE_PHOTO);
+  assert.deepEqual(recipePhotoUrls(ORIGIN, CHEF_ID.toUpperCase(), LASAGNE_ID.toUpperCase(), PHOTO_ID.toUpperCase()), LASAGNE_PHOTO);
+});
+
+test("fotos: el origen de Supabase, https (o http solo en la máquina local); si no, sin fotos", () => {
+  assert.equal(photoOrigin(" https://abcdefgh.supabase.co/ "), ORIGIN);
+  assert.equal(photoOrigin("https://abcdefgh.supabase.co/functions/v1"), ORIGIN);
+  assert.equal(photoOrigin("http://127.0.0.1:54321"), "http://127.0.0.1:54321");
+  assert.equal(photoOrigin("http://localhost:54321/"), "http://localhost:54321");
+  // supabase functions serve: SUPABASE_URL es la dirección interna de Docker, que el navegador no abre.
+  for (const raw of ["http://kong:8000", "http://abcdefgh.supabase.co", "ftp://x.supabase.co", "no es una url", "", null, undefined]) {
+    assert.equal(photoOrigin(raw), null, String(raw));
+  }
+});
+
+test("fotos desde get_public_menu: sin photoId (la base de antes), uno roto o sin origen, el plato sale sin foto", () => {
+  const { photoId: _, ...withoutPhotoId } = LASAGNE_ROW;
+  const noPhoto = { ...LASAGNE, photo: null };
+  for (const row of [withoutPhotoId, { ...LASAGNE_ROW, photoId: "no-es-uuid" }, { ...LASAGNE_ROW, photoId: 5 }]) {
+    assert.deepEqual(menuDishesFromRpc([row], PHOTOS), { dishes: [noPhoto], skipped: 0 }, JSON.stringify(row));
+  }
+  assert.deepEqual(menuDishesFromRpc([LASAGNE_ROW], { origin: null, chefId: CHEF_ID }), { dishes: [noPhoto], skipped: 0 });
+  // Solo cuenta photoId: una photo que mandara la base no se copia.
+  const sneaky = { ...LASAGNE_ROW, photoId: null, photo: { thumb: "https://evil.example/x.jpg", full: "https://evil.example/y.jpg" } };
+  assert.deepEqual(menuDishesFromRpc([sneaky], PHOTOS), { dishes: [noPhoto], skipped: 0 });
 });
 
 test("normaliza: id en minúsculas, alérgenos en el orden del enum, meses de menor a mayor, \"\" como null", () => {
@@ -59,12 +114,12 @@ test("normaliza: id en minúsculas, alérgenos en el orden del enum, meses de me
     name: { it: "Lasagne", es: "", en: undefined },
     allergens: ["milk", "gluten"],
     seasonMonths: [12, 1, 2],
-  });
+  }, ORIGIN);
   assert.equal(dish?.id, LASAGNE_ID);
   assert.deepEqual(dish?.name, { it: "Lasagne", es: null, en: null });
   assert.deepEqual(dish?.allergens, ["gluten", "milk"]);
   assert.deepEqual(dish?.seasonMonths, [1, 2, 12]);
-  assert.equal(readMenuDish({ ...LASAGNE, diet: undefined, seasonMonths: undefined })?.diet, null);
+  assert.equal(readMenuDish({ ...LASAGNE, diet: undefined, seasonMonths: undefined }, ORIGIN)?.diet, null);
 });
 
 test("cualquier plato con otra forma: null (y la lista entera también)", () => {
@@ -90,14 +145,14 @@ test("cualquier plato con otra forma: null (y la lista entera también)", () => 
     { ...LASAGNE, seasonMonths: "10" },
   ];
   for (const value of bad) {
-    assert.equal(readMenuDish(value), null, JSON.stringify(value));
+    assert.equal(readMenuDish(value, ORIGIN), null, JSON.stringify(value));
     // Un plato roto se saltea: no apaga el menú de los demás.
-    assert.deepEqual(menuDishesFromRpc([MINESTRONE, value]), { dishes: [MINESTRONE], skipped: 1 }, `lista con ${JSON.stringify(value)}`);
+    assert.deepEqual(menuDishesFromRpc([MINESTRONE_ROW, value], PHOTOS), { dishes: [MINESTRONE], skipped: 1 }, `lista con ${JSON.stringify(value)}`);
   }
-  for (const data of [null, {}, "x", { dishes: [] }]) assert.equal(menuDishesFromRpc(data), null, JSON.stringify(data));
+  for (const data of [null, {}, "x", { dishes: [] }]) assert.equal(menuDishesFromRpc(data, PHOTOS), null, JSON.stringify(data));
   // Una traducción en blanco (también con el espacio duro, que la base deja pasar) es null: cae al italiano.
   for (const blank of ["", "   ", " ", "  "]) {
-    const dish = readMenuDish({ ...LASAGNE, name: { ...LASAGNE.name, es: blank }, description: { ...LASAGNE.description, en: blank } });
+    const dish = readMenuDish({ ...LASAGNE, name: { ...LASAGNE.name, es: blank }, description: { ...LASAGNE.description, en: blank } }, ORIGIN);
     assert.equal(dish?.name.es, null, JSON.stringify(blank));
     assert.equal(dish?.description.en, null, JSON.stringify(blank));
   }
@@ -106,11 +161,58 @@ test("cualquier plato con otra forma: null (y la lista entera también)", () => 
 test("respuesta de GET …/menu: se arma y se lee con la misma forma; otra versión u otra forma, null", () => {
   const response = buildMenuResponse([LASAGNE, MINESTRONE] as MenuDish[]);
   assert.deepEqual(response, { version: 1, dishes: [LASAGNE, MINESTRONE] });
-  assert.deepEqual(parseMenuResponse(JSON.parse(JSON.stringify(response))), response);
-  assert.deepEqual(parseMenuResponse({ version: 1, dishes: [] }), { version: 1, dishes: [] });
+  assert.deepEqual(parseMenuResponse(JSON.parse(JSON.stringify(response)), ORIGIN), response);
+  assert.deepEqual(parseMenuResponse({ version: 1, dishes: [] }, ORIGIN), { version: 1, dishes: [] });
   for (const json of [null, [], { version: 2, dishes: [] }, { dishes: [] }, { version: 1 }, { version: 1, dishes: [{ ...LASAGNE, diet: "x" }] }, { error: "unavailable" }]) {
-    assert.equal(parseMenuResponse(json), null, JSON.stringify(json));
+    assert.equal(parseMenuResponse(json, ORIGIN), null, JSON.stringify(json));
   }
+});
+
+test("la web lee la foto: sin photo (la función de antes, durante el despliegue) es null", () => {
+  const { photo: _, ...withoutPhoto } = LASAGNE;
+  assert.deepEqual(parseMenuResponse({ version: 1, dishes: [withoutPhoto, MINESTRONE] }, ORIGIN), {
+    version: 1,
+    dishes: [{ ...LASAGNE, photo: null }, MINESTRONE],
+  });
+});
+
+test("la web descarta una foto que no sea del bucket recipe-photos en el origen de Supabase (el plato queda, sin foto)", () => {
+  const prefix = `${ORIGIN}/storage/v1/object/public/recipe-photos/${CHEF_ID}/${LASAGNE_ID}`;
+  const other = "1f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f";
+  const bad: unknown[] = [
+    "https://abcdefgh.supabase.co/x.jpg",
+    { thumb: LASAGNE_PHOTO.thumb },
+    { thumb: LASAGNE_PHOTO.thumb, full: 5 },
+    { ...LASAGNE_PHOTO, thumb: LASAGNE_PHOTO.thumb.replace("https://", "http://") },
+    { ...LASAGNE_PHOTO, thumb: LASAGNE_PHOTO.thumb.replace(ORIGIN, "https://evil.example") },
+    { ...LASAGNE_PHOTO, full: LASAGNE_PHOTO.full.replace(ORIGIN, "https://abcdefgh.supabase.co.evil.example") },
+    { ...LASAGNE_PHOTO, full: LASAGNE_PHOTO.full.replace(ORIGIN, "https://user@abcdefgh.supabase.co") },
+    { ...LASAGNE_PHOTO, thumb: LASAGNE_PHOTO.thumb.replace("/public/recipe-photos/", "/public/receipts/") },
+    { ...LASAGNE_PHOTO, thumb: LASAGNE_PHOTO.thumb.replace("/object/public/", "/object/sign/") },
+    { ...LASAGNE_PHOTO, thumb: `${LASAGNE_PHOTO.thumb}?token=x` },
+    { ...LASAGNE_PHOTO, thumb: `${LASAGNE_PHOTO.thumb}#x` },
+    { ...LASAGNE_PHOTO, thumb: LASAGNE_PHOTO.full },
+    { ...LASAGNE_PHOTO, full: LASAGNE_PHOTO.thumb },
+    { ...LASAGNE_PHOTO, full: `${prefix}/${other}.jpg` },
+    { ...LASAGNE_PHOTO, thumb: LASAGNE_PHOTO.thumb.replace(LASAGNE_ID, MINESTRONE_ID) },
+    { thumb: LASAGNE_PHOTO.thumb.replace(LASAGNE_ID, MINESTRONE_ID), full: LASAGNE_PHOTO.full.replace(LASAGNE_ID, MINESTRONE_ID) },
+    { ...LASAGNE_PHOTO, full: LASAGNE_PHOTO.full.replace(CHEF_ID, other) },
+    { ...LASAGNE_PHOTO, thumb: LASAGNE_PHOTO.thumb.replace(PHOTO_ID, PHOTO_ID.toUpperCase()) },
+    { ...LASAGNE_PHOTO, thumb: `${prefix}/../${LASAGNE_ID}/${PHOTO_ID}-thumb.jpg` },
+    { ...LASAGNE_PHOTO, full: `${prefix}/${PHOTO_ID}.png` },
+    { ...LASAGNE_PHOTO, thumb: "javascript:alert(1)" },
+  ];
+  for (const photo of bad) {
+    const dish = readMenuDish({ ...LASAGNE, photo }, ORIGIN);
+    assert.deepEqual(dish, { ...LASAGNE, photo: null }, JSON.stringify(photo));
+  }
+  // Sin el origen de Supabase (la web sin configurar) no hay con qué compararla: sin foto.
+  assert.equal(readMenuDish(LASAGNE, null)?.photo, null);
+  // En la máquina local (supabase start) el origen es http://127.0.0.1:54321.
+  const local = "http://127.0.0.1:54321";
+  const localPhoto = recipePhotoUrls(local, CHEF_ID, LASAGNE_ID, PHOTO_ID);
+  assert.deepEqual(readMenuDish({ ...LASAGNE, photo: localPhoto }, local)?.photo, localPhoto);
+  assert.equal(readMenuDish({ ...LASAGNE, photo: localPhoto }, ORIGIN)?.photo, null);
 });
 
 test("platos elegidos del 201 (y de submit_public_request): [{ id, name }] en orden; otra forma, null", () => {

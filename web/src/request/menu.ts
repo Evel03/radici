@@ -37,7 +37,11 @@ export interface MenuFetchOptions {
   timeoutMs?: number;
 }
 
-/** Los platos publicados, o null si no hubo una respuesta útil (sin conexión, tiempo agotado, error, otra forma). */
+/**
+ * Los platos publicados, o null si no hubo una respuesta útil (sin conexión, tiempo agotado, error, otra forma).
+ * Las fotos tienen que ser del mismo proyecto de Supabase que la función (el origen de url); las de otro lado
+ * se descartan y el plato sale sin foto.
+ */
 export async function fetchMenu(url: string, opts: MenuFetchOptions = {}): Promise<MenuDish[] | null> {
   // Llamada envuelta: algunos navegadores fallan si fetch se invoca sin su `this` (window).
   const fetchFn = opts.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
@@ -46,7 +50,7 @@ export async function fetchMenu(url: string, opts: MenuFetchOptions = {}): Promi
   try {
     const response = await fetchFn(url, { method: "GET", credentials: "omit", signal: controller.signal });
     if (!response.ok) return null;
-    return parseMenuResponse(JSON.parse(await response.text()) as unknown)?.dishes ?? null;
+    return parseMenuResponse(JSON.parse(await response.text()) as unknown, new URL(url).origin)?.dishes ?? null;
   } catch {
     return null;
   } finally {

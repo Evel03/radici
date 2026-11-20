@@ -8,7 +8,7 @@
 // sb_secret_…) no son JWT y el chequeo de la plataforma no autentica a nadie: la protección es
 // Turnstile + límite por IP + validación (las lecturas de disponibilidad y del menù: límite por IP propio).
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
-import { menuDishesFromRpc } from "../_shared/menu.ts";
+import { menuDishesFromRpc, photoOrigin } from "../_shared/menu.ts";
 import {
   CHEF_SETTINGS_COLUMNS,
   StoreError,
@@ -62,6 +62,11 @@ function createStore(): PublicRequestStore {
       publicMenu: () => fail("public_menu"),
     };
   }
+
+  // Las fotos de los platos son URL públicas de Storage en este origen. Con supabase functions serve,
+  // SUPABASE_URL es la dirección interna de Docker (http://kong:8000), que el navegador no abre: sin fotos.
+  const storageOrigin = photoOrigin(supabaseUrl);
+  if (!storageOrigin) consoleLogger("info", "menu_photos_off");
 
   // Clave secreta (sin RLS): solo para las funciones del pedido, la notificación, la disponibilidad y el menù.
   const supabase = createClient(supabaseUrl, serviceKey, {
@@ -136,7 +141,8 @@ function createStore(): PublicRequestStore {
       const { data, error } = await supabase.rpc("get_public_menu", { p_chef_id: chefId });
       if (error) throw storeError("public_menu", error);
       // Se arma de nuevo plato por plato: nada que no sea del contrato (ingredientes, notas) sale a la web.
-      const result = menuDishesFromRpc(data);
+      // La foto: las URL públicas de sus archivos (photoId de la base, este origen y la cocinera).
+      const result = menuDishesFromRpc(data, { origin: storageOrigin, chefId });
       if (!result) throw new StoreError("public_menu", null, "unexpected_result");
       // Solo la cantidad: nunca los nombres ni los ids.
       if (result.skipped > 0) consoleLogger("warn", "public_menu_dish_skipped", { count: result.skipped });

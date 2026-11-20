@@ -3,6 +3,8 @@
 // Contrato compartido entre la Edge Function y la web: un solo origen, nada copiado.
 // Un plato se arma solo con lo que lista este archivo: nunca ingredientes ni notas, aunque la base
 // mandara de más. Los nombres de los platos no son datos de salud; sus alérgenos los marca Evelyn.
+// La foto (20/11/2026) son dos URL públicas de Supabase Storage: la base da el photoId y la función arma
+// las URL con SUPABASE_URL; la web solo acepta las de ese origen y ese bucket.
 // Solo sintaxis borrable (corre en Node, Deno y Vite sin compilar) e imports con extensión .ts.
 import { ALLERGENS, DIETS, isOneOf, isUuid, type Allergen, type Diet, type Locale } from "./public_request.ts";
 
@@ -26,6 +28,18 @@ export interface MenuChoice {
   name: LocalizedText;
 }
 
+/**
+ * La foto de un plato: las URL públicas de sus dos archivos en el bucket recipe-photos
+ * (supabase/migrations/20261120100000_recipe_photos.sql). Cada foto nueva tiene un id nuevo: una URL
+ * nunca cambia de contenido.
+ */
+export interface MenuPhoto {
+  /** La miniatura (lado mayor 480 px): la que muestra la web. */
+  thumb: string;
+  /** La grande (lado mayor 1200 px). */
+  full: string;
+}
+
 /** Un plato publicado (activo, visible en el catálogo y con descripción en italiano). */
 export interface MenuDish extends MenuChoice {
   /** La descripción corta (de 1 a 200 caracteres); el italiano siempre está. */
@@ -35,6 +49,8 @@ export interface MenuDish extends MenuChoice {
   diet: Diet | null;
   /** Meses de 1 a 12 en que lo ofrece, de menor a mayor; null = todo el año. */
   seasonMonths: number[] | null;
+  /** null = sin foto (o una que no es del bucket recipe-photos en el origen de Supabase). */
+  photo: MenuPhoto | null;
 }
 
 export interface MenuResponse {
@@ -51,6 +67,71 @@ export function localizedText(text: LocalizedText, locale: Locale): string {
 /** true si el plato se ofrece en ese mes (1 a 12): todo el año o uno de sus meses. */
 export function dishInSeason(dish: Pick<MenuDish, "seasonMonths">, month: number): boolean {
   return dish.seasonMonths === null || dish.seasonMonths.includes(month);
+}
+
+/** El bucket público de las fotos de los platos. */
+export const RECIPE_PHOTOS_BUCKET = "recipe-photos";
+
+/** Ruta de un archivo público del bucket, después del origen de Supabase. */
+const PHOTO_PATH_PREFIX = `/storage/v1/object/public/${RECIPE_PHOTOS_BUCKET}/`;
+
+const LOWER_UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+/** {chef_id}/{recipe_id}/{photo_id}[-thumb].jpg, con los uuids en minúsculas (como las rutas de la base). */
+const PHOTO_FILE_RE = new RegExp(`^(${LOWER_UUID})/(${LOWER_UUID})/(${LOWER_UUID})(-thumb)?\\.jpg$`);
+
+/**
+ * El origen de Supabase para las URL de las fotos: https, o http solo en la máquina local (supabase start),
+ * como VITE_SUPABASE_URL en la web. null si no: con supabase functions serve, SUPABASE_URL es la dirección
+ * interna de Docker (http://kong:8000), que el navegador no abre, y los platos salen sin foto.
+ */
+export function photoOrigin(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  if (url.protocol === "https:" || (url.protocol === "http:" && local)) return url.origin;
+  return null;
+}
+
+/** Las URL públicas de los dos archivos de una foto. origin: el de photoOrigin. */
+export function recipePhotoUrls(origin: string, chefId: string, recipeId: string, photoId: string): MenuPhoto {
+  const base = `${origin}${PHOTO_PATH_PREFIX}${chefId.toLowerCase()}/${recipeId.toLowerCase()}/${photoId.toLowerCase()}`;
+  return { thumb: `${base}-thumb.jpg`, full: `${base}.jpg` };
+}
+
+/** Los ids de un archivo de foto si la URL es de ese origen y ese bucket, sin query ni fragmento; si no, null. */
+function readPhotoUrl(value: unknown, origin: string): { chefId: string; recipeId: string; photoId: string; thumb: boolean } | null {
+  if (typeof value !== "string" || !value.startsWith(`${origin}${PHOTO_PATH_PREFIX}`)) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  // Tal cual, sin nada que el navegador normalice (../, %2F, usuario, puerto de más).
+  if (url.href !== value || url.origin !== origin || url.search !== "" || url.hash !== "") return null;
+  const match = PHOTO_FILE_RE.exec(url.pathname.slice(PHOTO_PATH_PREFIX.length));
+  if (!match) return null;
+  return { chefId: match[1] ?? "", recipeId: match[2] ?? "", photoId: match[3] ?? "", thumb: match[4] !== undefined };
+}
+
+/**
+ * La foto de GET …/menu: { thumb, full } del mismo plato y la misma foto, en el bucket recipe-photos del
+ * origen de Supabase (photoOrigin). Cualquier otra cosa, o sin origen, es null: el plato se muestra sin foto.
+ */
+function readPhoto(value: unknown, dishId: string, origin: string | null): MenuPhoto | null {
+  const allowed = photoOrigin(origin);
+  if (!allowed || !isRecord(value)) return null;
+  const thumb = readPhotoUrl(value["thumb"], allowed);
+  const full = readPhotoUrl(value["full"], allowed);
+  if (!thumb || !full || !thumb.thumb || full.thumb) return null;
+  if (thumb.recipeId !== dishId || full.recipeId !== dishId) return null;
+  if (thumb.chefId !== full.chefId || thumb.photoId !== full.photoId) return null;
+  return { thumb: value["thumb"] as string, full: value["full"] as string };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -107,8 +188,8 @@ function readSeason(value: unknown): number[] | null | undefined {
   return [...(value as number[])].sort((a, b) => a - b);
 }
 
-/** Un plato de get_public_menu o de la respuesta de GET …/menu; null si no tiene la forma del contrato. */
-export function readMenuDish(value: unknown): MenuDish | null {
+/** Lo de un plato que es igual en get_public_menu y en GET …/menu (todo menos la foto); null con otra forma. */
+function readDishFields(value: unknown): Omit<MenuDish, "photo"> | null {
   const choice = readChoice(value);
   if (!choice || !isRecord(value)) return null;
   const description = readLocalizedText(value["description"]);
@@ -121,29 +202,54 @@ export function readMenuDish(value: unknown): MenuDish | null {
   return { id: choice.id, name: choice.name, description, allergens, diet, seasonMonths };
 }
 
+/**
+ * Un plato de la respuesta de GET …/menu; null si no tiene la forma del contrato. storageOrigin: el origen de
+ * Supabase de la web (VITE_SUPABASE_URL). Sin photo (una función de antes de las fotos) o con una que no es
+ * de ese origen y del bucket recipe-photos, el plato queda sin foto: la foto nunca descarta un plato.
+ */
+export function readMenuDish(value: unknown, storageOrigin: string | null): MenuDish | null {
+  const fields = readDishFields(value);
+  if (!fields || !isRecord(value)) return null;
+  return { ...fields, photo: readPhoto(value["photo"], fields.id, storageOrigin) };
+}
+
 /** Todos los platos o null si alguno no tiene la forma del contrato (una respuesta rota no se muestra a medias). */
-function readDishes(value: unknown): MenuDish[] | null {
+function readDishes(value: unknown, storageOrigin: string | null): MenuDish[] | null {
   if (!Array.isArray(value)) return null;
   const dishes: MenuDish[] = [];
   for (const item of value) {
-    const dish = readMenuDish(item);
+    const dish = readMenuDish(item, storageOrigin);
     if (!dish) return null;
     dishes.push(dish);
   }
   return dishes;
 }
 
+/** Con qué arma la función las URL de las fotos: el origen de SUPABASE_URL (photoOrigin) y la cocinera. */
+export interface PhotoSource {
+  /** null: los platos salen sin foto. */
+  origin: string | null;
+  chefId: string;
+}
+
 /**
  * Lo que devuelve public.get_public_menu (un array, vacío si no hay platos), o null si no es un array. Un
  * plato con otra forma (por ejemplo, un nombre en italiano que es solo un espacio duro) se saltea y se
- * cuenta en skipped: no apaga el menú de los demás.
+ * cuenta en skipped: no apaga el menú de los demás. La foto sale de photoId (un uuid; null o ausente = sin
+ * foto), con las URL públicas de photos; un photoId con otra forma deja el plato sin foto.
  */
-export function menuDishesFromRpc(data: unknown): { dishes: MenuDish[]; skipped: number } | null {
+export function menuDishesFromRpc(data: unknown, photos: PhotoSource): { dishes: MenuDish[]; skipped: number } | null {
   if (!Array.isArray(data)) return null;
   const dishes: MenuDish[] = [];
   for (const item of data) {
-    const dish = readMenuDish(item);
-    if (dish) dishes.push(dish);
+    const fields = readDishFields(item);
+    if (!fields || !isRecord(item)) continue;
+    const photoId = item["photoId"];
+    const photo =
+      photos.origin !== null && typeof photoId === "string" && isUuid(photoId)
+        ? recipePhotoUrls(photos.origin, photos.chefId, fields.id, photoId)
+        : null;
+    dishes.push({ ...fields, photo });
   }
   return { dishes, skipped: data.length - dishes.length };
 }
@@ -155,11 +261,12 @@ export function buildMenuResponse(dishes: readonly MenuDish[]): MenuResponse {
 
 /**
  * Lectura defensiva en la web: null si la respuesta no tiene la forma esperada (otra versión, un error,
- * un proxy). Con null el panel dice que el menù lo propone Evelyn y el pedido se manda igual.
+ * un proxy). Con null el panel dice que el menù lo propone Evelyn y el pedido se manda igual. storageOrigin:
+ * el origen de Supabase de la web; las fotos de otro lado se descartan (readMenuDish).
  */
-export function parseMenuResponse(json: unknown): MenuResponse | null {
+export function parseMenuResponse(json: unknown, storageOrigin: string | null): MenuResponse | null {
   if (!isRecord(json) || json["version"] !== MENU_VERSION) return null;
-  const dishes = readDishes(json["dishes"]);
+  const dishes = readDishes(json["dishes"], storageOrigin);
   return dishes ? { version: MENU_VERSION, dishes } : null;
 }
 

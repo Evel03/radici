@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AVAILABILITY_DAYS, AVAILABILITY_PATH, buildAvailabilityResponse } from "../_shared/availability.ts";
 import { hashSubject } from "../_shared/client_ip.ts";
-import { MENU_PATH, buildMenuResponse, type MenuChoice, type MenuDish } from "../_shared/menu.ts";
+import { MENU_PATH, buildMenuResponse, recipePhotoUrls, type MenuChoice, type MenuDish } from "../_shared/menu.ts";
 import { CONSENT_VERSION, HEALTH_CONSENT_VERSION, PUBLIC_REQUEST_VERSION, publicEstimate, type PublicRequestPayload } from "../_shared/public_request.ts";
 import { DEFAULT_PRICING, calcQuote } from "../_shared/quote.ts";
 import { RESEND_API_URL } from "../_shared/resend.ts";
@@ -101,9 +101,9 @@ const CHEF: ChefInfo = {
   pricing: { ...DEFAULT_PRICING, weeklyRateCents: 16000, weeklyRateDiscountedCents: 15000 },
 };
 
-// Platos publicados de la cocinera (get_public_menu). Las lasagne, solo de octubre a diciembre; el
-// minestrone, todo el año y sin traducción al español. UNPUBLISHED_ID: un plato que se despublicó entre la
-// carga de la página y el envío.
+// Platos publicados de la cocinera (get_public_menu, como los arma index.ts). Las lasagne, solo de octubre
+// a diciembre y con foto; el minestrone, todo el año, sin traducción al español y sin foto. UNPUBLISHED_ID:
+// un plato que se despublicó entre la carga de la página y el envío.
 const LASAGNE: MenuDish = {
   id: "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
   name: { it: "Lasagne", es: "Lasaña", en: null },
@@ -111,6 +111,7 @@ const LASAGNE: MenuDish = {
   allergens: ["gluten", "eggs", "milk"],
   diet: null,
   seasonMonths: [10, 11, 12],
+  photo: recipePhotoUrls("https://abcdefgh.supabase.co", CHEF_ID, "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab", "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f"),
 };
 const MINESTRONE: MenuDish = {
   id: "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
@@ -119,6 +120,7 @@ const MINESTRONE: MenuDish = {
   allergens: ["celery"],
   diet: "vegan",
   seasonMonths: null,
+  photo: null,
 };
 const UNPUBLISHED_ID = "2a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
 
@@ -1365,6 +1367,7 @@ test("menù: 200 con los platos publicados de la cocinera, CORS con la misma lis
   const run = harness();
   const response = await run.handle(getMenu());
   assert.equal(response.status, 200);
+  // Cada plato con su foto (las dos URL públicas) o photo: null.
   assert.deepEqual(await json(response), { version: 1, dishes: [LASAGNE, MINESTRONE] });
   assert.equal(response.headers.get("access-control-allow-origin"), "https://radicicucina.app");
   assert.equal(response.headers.get("vary"), "Origin");
