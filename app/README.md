@@ -94,13 +94,50 @@ repositorios falsos (`test/support/fakes.dart`).
   email del código llega en el idioma de `user_metadata.locale` (italiano si no hay; cambiar el idioma
   en Impostazioni también lo cambia).
 - Después del login se lee el perfil (`profiles.role` y `profiles.locale`): `chef` → área de la
-  cocinera, con la ficha de su cocina (`current_chef_id()`, la misma función que la RLS, y su fila de
-  `chefs`); cualquier otro → "Area clienti in preparazione". La interfaz pasa al idioma del perfil
-  (ver [Idioma](#idioma)). Un colaborador de la cocinera (`chef_members`) entra igual, con su
-  cuenta: ve y hace lo mismo que ella, y «Altro», Impostazioni y el menú de la cuenta dicen
-  «Collaboratore di Evelyn» en lugar del nombre (`chefAccountTitle`). El WhatsApp que le prepara el
-  detalle de un pedido sale de su propio teléfono, así que escribe de parte de ella («ti scrivo da
-  parte di Evelyn di Radici», `contactWhatsAppMessageOnBehalf`) en lugar de «sono Evelyn».
+  cocinera, que empieza en **Hoy** (`/oggi`), también al abrir la app con la sesión guardada; un
+  enlace directo (el botón del email, `/richieste/<id>`) abre lo suyo; la ficha de su cocina sale de
+  `current_chef_id()` (la misma función que la RLS) y de su fila de `chefs`. Cualquier otro →
+  "Area clienti in preparazione". La interfaz pasa al idioma del perfil (ver [Idioma](#idioma)). La
+  barra de abajo tiene cuatro destinos: Oggi, Richieste, Agenda y Altro (desde 840 px, el mismo riel
+  a la izquierda). Un colaborador de la cocinera (`chef_members`) entra igual, con su cuenta: ve y
+  hace lo mismo que ella, y «Altro», Impostazioni y el menú de la cuenta dicen «Collaboratore di
+  Evelyn» en lugar del nombre (`chefAccountTitle`). El WhatsApp que le prepara el detalle de un
+  pedido sale de su propio teléfono, así que escribe de parte de ella («ti scrivo da parte di Evelyn
+  di Radici», `contactWhatsAppMessageOnBehalf`) en lugar de «sono Evelyn».
+- **Hoy** (`features/today/`): la sesión de hoy o, si hoy no hay, la próxima (la más cercana que no
+  está cancelada). Con varias hoy, todas: primero las que todavía no terminaron, por llegada, y
+  después las terminadas (pasó la hora en que termina la cocina, en hora de Roma, o ya está cocinada
+  o cobrada); se reordena sola al minuto. Cada tarjeta dice la clienta, las horas de la sesión
+  («Arrivo 10:00 · fino alle 13:00», como en la ficha: sin compra), las personas, el estado si no
+  está confirmada (una vieja en `shopping_done` se ve como confirmada; una de hoy que ya terminó
+  dice «Terminata» si estaba confirmada; si está cocinada o cobrada, «Cucinata» o «Pagata»), las
+  alergias resaltadas como en la ficha (con la nota de contaminación cruzada si hay gluten, SPEC
+  §5.6) y las notas de cocina, y abre la ficha. Abajo, en el tercio inferior del teléfono, «Come
+  arrivare» (Apple Maps en
+  el iPhone, Google Maps en el resto) y WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi
+  indirizzo», como la ficha (con varias, una línea dice de quién son, con la hora primero: «Arrivo
+  16:00 · Marco Bianchi»; si no entra, se corta el nombre). El WhatsApp es el de la ficha
+  (`sessionLinksFor`, con el mismo día de Roma con que Hoy elige la sesión): lleva la hora de
+  llegada salvo en una sesión cocinada o cobrada (en Hoy no hay canceladas ni de días pasados) y,
+  si lo manda un colaborador, escribe de parte de la cocinera («ti scrivo da parte di Evelyn di
+  Radici…»). Pendientes de un toque: «N nuove richieste» (lleva a Richieste en «Nuove», aunque se
+  haya dejado en otra pestaña) y las reservas que terminan: las reservas semanales (un pedido
+  semanal aceptado; no un presupuesto enviado ni una sesión extra) cuya última sesión viva cae entre
+  hoy y los 6 días siguientes (abre la ficha de esa sesión; renovar desde Hoy llega después). La
+  tira de 7 días (hoy y los 6 siguientes) usa lo de la Agenda: un punto por sesión, el número
+  tachado si el día está bloqueado y un punto si es feriado en un día de trabajo; el lector de
+  pantalla dice cuál es hoy; si los 7 no entran con 48 dp cada uno (menos de 368 dp de ancho, como
+  360 o 320), van en dos filas (4 y 3); tocar un día abre la Agenda con ese día elegido y a la vista
+  (su primera sesión, por encima del botón flotante), igual aunque la Agenda haya quedado
+  desplazada: antes vuelve su lista arriba. "Hoy" es el día de Roma y cambia a la medianoche sin
+  reabrir la app (`romeTodayProvider`, el de la Agenda). Deslizar para actualizar, o «Ricarica» en
+  la barra de arriba (sin el gesto, que VoiceOver y el mouse de /gestione/ no hacen), vuelve a leer
+  la bandeja, la disponibilidad y las sesiones. Mientras cargan las sesiones (también mientras
+  Riverpod reintenta una lectura que falló), una rueda en el lugar de la tarjeta; si no se pudieron
+  leer, el aviso con «Riprova» en su lugar; en los dos casos, los pendientes y la tira siguen.
+  Mientras se lee la bandeja, los pendientes muestran una barra, y «Niente in sospeso» sale solo con
+  la bandeja y las sesiones leídas. Sin ninguna sesión, lo dice y ofrece ir a las solicitudes con un
+  botón abajo.
 - **Richieste**: pestañas Nuove (sin `seen_at` y no aceptadas), Viste, Prenotazioni (los pedidos
   `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
   nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos
@@ -123,8 +160,9 @@ repositorios falsos (`test/support/fakes.dart`).
   (Europe/Rome) cambia a la medianoche sin reabrir la app: se vuelve a mirar la fecha a la
   medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
   Si estaba elegido "hoy", la agenda pasa al día nuevo; si no, respeta el día elegido. Deslizar
-  para actualizar vuelve a leer la bandeja, la disponibilidad y las sesiones (sin Realtime de
-  sesiones).
+  para actualizar, o «Ricarica» en la barra de arriba, vuelve a leer la bandeja, la disponibilidad
+  y las sesiones (sin Realtime de sesiones). Mientras se lee la bandeja, una barra; si no se pudo
+  leer, el error con «Riprova» (también en la primera lectura).
   Días bloqueados (`availability_exceptions`, sin migración: la RLS y los grants ya estaban): la
   tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada (los clientes no la
   ven; la cocinera y sus colaboradores, sí), y el botón «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
@@ -222,7 +260,7 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
-- **Altro** (Más): el tercer destino de la barra (o del riel en pantallas anchas), con la cuenta (el
+- **Altro** (Más): el cuarto destino de la barra (o del riel en pantallas anchas), con la cuenta (el
   nombre de la cocinera, o «Collaboratore di …» si entró un colaborador), Piatti, Impostazioni y
   salir. En el teléfono reemplaza al menú de la cuenta de la barra superior, que queda solo en
   pantallas anchas.
@@ -247,18 +285,19 @@ repositorios falsos (`test/support/fakes.dart`).
   emergente "Nuova richiesta da …", con botón para abrirla, en cualquier pantalla salvo la ficha de
   una sesión y el formulario del editor de platos (y sus diálogos): tienen su propio
   `ScaffoldMessenger` y, en el navegador raíz, tapan el Scaffold de la barra, que es donde sale el
-  aviso. Ahí no se ve, y aparece al volver de esas pantallas. Con varios
-  pedidos («N nuove richieste») el botón lleva a la bandeja, salvo con una hoja «Conferma
-  prenotazione» o la ficha de una sesión (con su hoja «Sposta») abierta o tapada por otro pedido:
-  ahí abre encima el más reciente, porque ir a la bandeja las sacaría sin preguntar, y se perdería
-  lo que tienen a medias (mientras se manda la reserva, la pantalla final con el WhatsApp; mientras
-  se mueve una sesión, el «Annulla» de la ficha). Al reconectar (corte de red, app que vuelve del
-  segundo plano) se relee la lista y se avisa lo que llegó.
+  aviso. Ahí no se ve, y aparece al volver de esas pantallas. Con varios pedidos («N nuove
+  richieste») el botón lleva a la bandeja, en «Nuove» aunque se haya dejado en otra pestaña, salvo
+  con una hoja «Conferma prenotazione» o la ficha de una sesión (con su hoja «Sposta») abierta o
+  tapada por otro pedido: ahí abre encima el más reciente, porque ir a la bandeja las sacaría sin
+  preguntar, y se perdería lo que tienen a medias (mientras se manda la reserva, la pantalla final
+  con el WhatsApp; mientras se mueve una sesión, el «Annulla» de la ficha). Al reconectar (corte de
+  red, app que vuelve del segundo plano) se relee la lista y se avisa lo que llegó.
 - Los teléfonos se normalizan con `lib/core/phone.dart`, copia de `normalizePhone`
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
 
 Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace del email a Evelyn):
-`/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`,
+`/accedi`, `/caricamento`, `/area-clienti`, `/oggi` (el inicio de la cocinera), `/richieste`,
+`/richieste/:id`,
 `/richieste/:id/prenota`, `/agenda`, `/sessioni/:id`, `/sessioni/:id/sposta` (con `?data=AAAA-MM-DD`
 si la fecha ya se eligió), `/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con
 `?copia=<id>`, la copia de un plato) y `/altro/piatti/:id`, más `/` y `/preventivo` (públicas). En la

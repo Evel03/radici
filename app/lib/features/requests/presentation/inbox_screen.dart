@@ -1,10 +1,12 @@
 // Bandeja "Richieste": nuevas, vistas, reservas (los pedidos aceptados) y
-// rechazadas (contrato §7).
+// rechazadas (contrato §7). Hoy la abre en «Nuove» con un pedido de pestaña
+// (inboxTabRequestProvider).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/application/inbox_tab_request.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/domain/inbox.dart';
@@ -20,8 +22,13 @@ class InboxScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final inbox = ref.watch(chefInboxProvider);
     final newCount = ref.watch(newRequestsCountProvider);
+    final tabRequest = ref.watch(inboxTabRequestProvider);
 
     return DefaultTabController(
+      // Cada pedido de pestaña (desde Hoy) la vuelve a armar en esa pestaña,
+      // aunque la cocinera la haya dejado en otra.
+      key: ValueKey(tabRequest?.serial ?? 0),
+      initialIndex: (tabRequest?.tab ?? InboxTab.fresh).index,
       length: InboxTab.values.length,
       child: Scaffold(
         appBar: AppBar(

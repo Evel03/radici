@@ -311,6 +311,10 @@
     "description": "Explicación del área de clientes en preparación."
   },
 
+  "navToday": "Oggi",
+  "@navToday": {
+    "description": "Pestaña Hoy, el inicio de la cocinera: la sesión de hoy (o la próxima), los pendientes y los próximos 7 días."
+  },
   "navRequests": "Richieste",
   "@navRequests": {
     "description": "Pestaña de la bandeja de pedidos."
@@ -330,6 +334,87 @@
   "@navMore": {
     "description": "Pestaña «Más» de la cocinera: platos, impostazioni y salir. En el teléfono reemplaza al menú de la cuenta."
   },
+
+  "todayNoSessionToday": "Oggi non hai sessioni.",
+  "@todayNoSessionToday": {
+    "description": "Hoy: hoy no hay ninguna sesión (abajo va la próxima)."
+  },
+  "todayNextSession": "Prossima sessione · {date}",
+  "@todayNextSession": {
+    "description": "Hoy: título de la próxima sesión cuando hoy no hay ninguna.",
+    "placeholders": {
+      "date": { "type": "String", "example": "giovedì 19 novembre" }
+    }
+  },
+  "todayEmptyTitle": "Nessuna sessione in programma",
+  "@todayEmptyTitle": {
+    "description": "Hoy: no hay ninguna sesión desde hoy."
+  },
+  "todayEmptyBody": "Quando confermi una prenotazione da una richiesta, la trovi qui.",
+  "@todayEmptyBody": {
+    "description": "Hoy, sin sesiones: de dónde salen (se confirma una reserva desde un pedido)."
+  },
+  "todayEmptyAction": "Vedi le richieste",
+  "@todayEmptyAction": {
+    "description": "Hoy, sin sesiones: botón que lleva a la bandeja de pedidos."
+  },
+  "todayActionsFor": "Arrivo {time} · {name}",
+  "@todayActionsFor": {
+    "description": "Hoy, con varias sesiones: de quién son los botones de abajo («Come arrivare» y WhatsApp). La hora va primero, con la palabra de la línea de horas de la tarjeta («Arrivo 10:00»): en un renglón, si el nombre es largo se corta el nombre y no la hora.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" },
+      "time": { "type": "String", "example": "16:00" }
+    }
+  },
+  "todaySessionFinished": "Terminata",
+  "@todaySessionFinished": {
+    "description": "Hoy: en la tarjeta de una sesión de hoy que ya terminó (pasó la hora en que termina la cocina); con varias hoy, pasa al final. Femenino: la sessione."
+  },
+  "todayPendingTitle": "Da fare",
+  "@todayPendingTitle": {
+    "description": "Hoy: título de los pendientes (pedidos nuevos, reservas que terminan)."
+  },
+  "todayPendingNone": "Niente in sospeso.",
+  "@todayPendingNone": {
+    "description": "Hoy: no hay pendientes."
+  },
+  "todayNewRequests": "{count, plural, =1{1 nuova richiesta} other{{count} nuove richieste}}",
+  "@todayNewRequests": {
+    "description": "Hoy: pendiente con los pedidos nuevos (sin abrir); lleva a la bandeja, pestaña «Nuove».",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "todayRequestsError": "Impossibile caricare le richieste.",
+  "@todayRequestsError": {
+    "description": "Hoy: no se pudieron leer los pedidos (con el botón «Riprova»)."
+  },
+  "todayBookingEnding": "Finisce la prenotazione di {name}",
+  "@todayBookingEnding": {
+    "description": "Hoy: pendiente de una reserva cuya última sesión cae en los próximos 7 días; abre la ficha de esa sesión.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "todayBookingLastSession": "Ultima sessione: {date}",
+  "@todayBookingLastSession": {
+    "description": "Hoy: debajo de la reserva que termina, el día de su última sesión.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 18 nov" }
+    }
+  },
+  "todayStripTitle": "Prossimi 7 giorni",
+  "@todayStripTitle": {
+    "description": "Hoy: título de la tira con hoy y los 6 días siguientes."
+  },
+  "todayStripHint": "Tocca un giorno per aprirlo in agenda.",
+  "@todayStripHint": {
+    "description": "Hoy: ayuda debajo del título de la tira de 7 días."
+  },
+  "todayStripToday": "Oggi",
+  "@todayStripToday": {
+    "description": "Tira de 7 días, solo para el lector de pantalla: va antes de la fecha de la celda de hoy («Oggi, martedì 17 novembre 2026»), que en pantalla se marca con un aro."
+  },
   "moreRecipesSubtitle": "Allergeni, stagione e ingredienti",
   "@moreRecipesSubtitle": {
     "description": "Debajo de «Piatti» en la pestaña Más: qué se carga en el catálogo."
@@ -337,6 +422,10 @@
   "accountMenu": "Account",
   "@accountMenu": {
     "description": "Tooltip del menú de la cuenta (impostazioni y salir)."
+  },
+  "chefReload": "Ricarica",
+  "@chefReload": {
+    "description": "Botón con ícono de la barra de arriba de Hoy y de la Agenda (es su tooltip y lo que dice el lector de pantalla): vuelve a leer las solicitudes, la disponibilidad y las sesiones, como deslizar para actualizar. Distinto de «Aggiorna» (updateReload), el del aviso de versión nueva."
   },
 
   "settingsTitle": "Impostazioni",
@@ -1209,7 +1298,7 @@
   },
   "sessionWhatsAppMessage": "Ciao {name}, sono {chef} di {brand}. Ti scrivo per la sessione di {date}, con arrivo alle {time}.",
   "@sessionWhatsAppMessage": {
-    "description": "WhatsApp a la clienta desde la ficha de la sesión, en SU idioma (requests.locale), solo si la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, sin mirar la hora); si no (de un día anterior, cocinada, cobrada o cancelada), va sessionWhatsAppMessageNoArrival. Describe el horario de la sesión sin afirmar que la llegada es futura: vale también en una sesión de hoy después de la hora de llegada. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageOnBehalf. Solo fecha y hora: nunca dirección ni alergias.",
+    "description": "WhatsApp a la clienta desde la ficha de la sesión (también en los botones de Hoy), en SU idioma (requests.locale), solo si la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, sin mirar la hora); si no (de un día anterior, cocinada, cobrada o cancelada), va sessionWhatsAppMessageNoArrival. Describe el horario de la sesión sin afirmar que la llegada es futura: vale también en una sesión de hoy después de la hora de llegada. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageOnBehalf. Solo fecha y hora: nunca dirección ni alergias.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },
@@ -1220,7 +1309,7 @@
   },
   "sessionWhatsAppMessageOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand} per la sessione di {date}, con arrivo di {chef} alle {time}.",
   "@sessionWhatsAppMessageOnBehalf": {
-    "description": "El mismo WhatsApp a la clienta desde la ficha de la sesión cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella. Quien llega es ella, no quien escribe: «con arrivo di {chef} alle {time}». Como sessionWhatsAppMessage, describe el horario de la sesión sin afirmar que la llegada es futura, así que vale también en una sesión de hoy después de la hora de llegada. Va en los mismos casos que sessionWhatsAppMessage: la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, sin mirar la hora); si no, va sessionWhatsAppMessageNoArrivalOnBehalf. En SU idioma (requests.locale). Solo fecha y hora: nunca dirección ni alergias.",
+    "description": "El mismo WhatsApp a la clienta desde la ficha de la sesión (también en los botones de Hoy) cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella. Quien llega es ella, no quien escribe: «con arrivo di {chef} alle {time}». Como sessionWhatsAppMessage, describe el horario de la sesión sin afirmar que la llegada es futura, así que vale también en una sesión de hoy después de la hora de llegada. Va en los mismos casos que sessionWhatsAppMessage: la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, sin mirar la hora); si no, va sessionWhatsAppMessageNoArrivalOnBehalf. En SU idioma (requests.locale). Solo fecha y hora: nunca dirección ni alergias.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },
@@ -1231,7 +1320,7 @@
   },
   "sessionWhatsAppMessageNoArrival": "Ciao {name}, sono {chef} di {brand}. Ti scrivo per la sessione di {date}.",
   "@sessionWhatsAppMessageNoArrival": {
-    "description": "WhatsApp a la clienta desde la ficha de una sesión de un día anterior a hoy (el día de Roma), cocinada, cobrada o cancelada (una de hoy que no está cocinada, cobrada ni cancelada sigue con sessionWhatsAppMessage aunque su llegada ya haya pasado). En SU idioma (requests.locale). Nombra la sesión por su fecha, sin la hora de llegada que lleva sessionWhatsAppMessage. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageNoArrivalOnBehalf. Solo la fecha: nunca dirección ni alergias.",
+    "description": "WhatsApp a la clienta desde la ficha (también en los botones de Hoy) de una sesión de un día anterior a hoy (el día de Roma), cocinada, cobrada o cancelada (una de hoy que no está cocinada, cobrada ni cancelada sigue con sessionWhatsAppMessage aunque su llegada ya haya pasado). En SU idioma (requests.locale). Nombra la sesión por su fecha, sin la hora de llegada que lleva sessionWhatsAppMessage. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageNoArrivalOnBehalf. Solo la fecha: nunca dirección ni alergias.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },
@@ -1241,7 +1330,7 @@
   },
   "sessionWhatsAppMessageNoArrivalOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand} per la sessione di {date}.",
   "@sessionWhatsAppMessageNoArrivalOnBehalf": {
-    "description": "El mismo WhatsApp sin la hora de llegada (sessionWhatsAppMessageNoArrival) cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella. En SU idioma (requests.locale). Solo la fecha: nunca dirección ni alergias.",
+    "description": "El mismo WhatsApp sin la hora de llegada (sessionWhatsAppMessageNoArrival, también en los botones de Hoy) cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella. En SU idioma (requests.locale). Solo la fecha: nunca dirección ni alergias.",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia" },
       "chef": { "type": "String", "example": "Evelyn" },

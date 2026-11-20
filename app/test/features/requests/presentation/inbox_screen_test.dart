@@ -1,4 +1,5 @@
-// Bandeja: pestañas, contador, lista y navegación al detalle.
+// Bandeja: pestañas, contador, lista y navegación al detalle. Ya no es el
+// inicio de la cocinera (es Hoy): los tests la abren en /richieste.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
@@ -57,7 +58,7 @@ void main() {
   testWidgets('nuevas primero, con contador en la pestaña y en la navegación', (
     tester,
   ) async {
-    await pumpChefApp(tester, requests: sample());
+    await pumpChefApp(tester, requests: sample(), location: '/richieste');
 
     expect(find.byType(InboxScreen), findsOneWidget);
     expect(tile('new-1'), findsOneWidget);
@@ -102,7 +103,7 @@ void main() {
   });
 
   testWidgets('pestañas Viste, Prenotazioni y Rifiutate', (tester) async {
-    await pumpChefApp(tester, requests: sample());
+    await pumpChefApp(tester, requests: sample(), location: '/richieste');
 
     await openTab(tester, 'inbox-tab-seen');
     expect(tile('seen-1'), findsOneWidget);
@@ -128,7 +129,7 @@ void main() {
   });
 
   testWidgets('cuatro pestañas, cada una con el ancho de su texto', (tester) async {
-    await pumpChefApp(tester, requests: sample());
+    await pumpChefApp(tester, requests: sample(), location: '/richieste');
     final tabBar = tester.widget<TabBar>(find.byType(TabBar));
     expect(tabBar.tabs, hasLength(4));
     expect(tabBar.isScrollable, isTrue);
@@ -136,7 +137,7 @@ void main() {
   });
 
   testWidgets('pestañas vacías', (tester) async {
-    await pumpChefApp(tester, requests: FakeChefRequestsRepository(const []));
+    await pumpChefApp(tester, requests: FakeChefRequestsRepository(const []), location: '/richieste');
     expect(find.text('Nessuna richiesta nuova.'), findsOneWidget);
     final badge = tester.widget<Badge>(
       find.byKey(const ValueKey('new-requests-badge')).first,
@@ -152,7 +153,7 @@ void main() {
   });
 
   testWidgets('confirmar una reserva la pasa de Viste a Prenotazioni; la hoja y la pantalla final tapan la '
-      'barra, y al volver está con sus 3 destinos y Richieste elegida', (tester) async {
+      'barra, y al volver está con sus 4 destinos y Richieste elegida', (tester) async {
     final app = await pumpChefApp(
       tester,
       requests: FakeChefRequestsRepository([
@@ -164,6 +165,7 @@ void main() {
           seenAt: testNow,
         ),
       ]),
+      location: '/richieste',
     );
     final navBar = find.byKey(const ValueKey('chef-nav-bar'));
     expect(navBar, findsOneWidget);
@@ -185,10 +187,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(navBar.hitTestable(), findsOneWidget);
-    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 0);
+    expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
     expect(
       find.descendant(of: navBar, matching: find.byType(NavigationDestination)),
-      findsNWidgets(3),
+      findsNWidgets(4),
     );
     expect(tile('req-1'), findsNothing, reason: 'ya no está en Viste');
     await openTab(tester, 'inbox-tab-bookings');
@@ -200,7 +202,7 @@ void main() {
   });
 
   testWidgets('abrir un pedido lo marca visto y baja el contador', (tester) async {
-    final app = await pumpChefApp(tester, requests: sample());
+    final app = await pumpChefApp(tester, requests: sample(), location: '/richieste');
 
     await tester.tap(tile('new-1'));
     await tester.pumpAndSettle();
@@ -221,7 +223,7 @@ void main() {
 
   testWidgets('error al cargar: mensaje y reintentar', (tester) async {
     final requests = sample()..failFetch = true;
-    await pumpChefApp(tester, requests: requests);
+    await pumpChefApp(tester, requests: requests, location: '/richieste');
     expect(
       find.text(
         'Impossibile caricare le richieste. Controlla la connessione e riprova.',
@@ -236,7 +238,7 @@ void main() {
   });
 
   testWidgets('deslizar para actualizar trae pedidos nuevos', (tester) async {
-    final app = await pumpChefApp(tester, requests: sample());
+    final app = await pumpChefApp(tester, requests: sample(), location: '/richieste');
     app.requests.insertSilently(
       buildRequest(id: 'late', name: 'Sara Gialli', createdAt: DateTime.utc(2026, 10, 19, 11)),
     );
@@ -247,7 +249,7 @@ void main() {
   });
 
   testWidgets('pantalla ancha (web en computadora): riel lateral', (tester) async {
-    await pumpChefApp(tester, requests: sample(), size: const Size(1200, 800));
+    await pumpChefApp(tester, requests: sample(), size: const Size(1200, 800), location: '/richieste');
     expect(find.byKey(const ValueKey('chef-nav-rail')), findsOneWidget);
     expect(find.byKey(const ValueKey('chef-nav-bar')), findsNothing);
   });
@@ -261,6 +263,7 @@ void main() {
         requests: sample(),
         size: const Size(320, 640),
         deviceLocales: [locale],
+        location: '/richieste',
       );
       expect(tester.takeException(), isNull);
       expect(tile('new-1'), findsOneWidget);

@@ -12,7 +12,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/router.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/application/inbox_tab_request.dart';
 import 'package:radici/features/requests/application/new_request_alert.dart';
+import 'package:radici/features/requests/domain/inbox.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 class NewRequestAlertListener extends ConsumerWidget {
@@ -53,12 +55,14 @@ class NewRequestAlertListener extends ConsumerWidget {
       final router = ref.read(routerProvider);
       ref.read(newRequestAlertProvider.notifier).dismiss();
       // push: al volver, la cocinera sigue donde estaba. Con varios, la
-      // bandeja (go reemplaza toda la pila), salvo con una hoja de reserva o
+      // bandeja en «Nuove», donde están, aunque se haya dejado en otra
+      // pestaña (go reemplaza toda la pila), salvo con una hoja de reserva o
       // la ficha de una sesión en la pila: ahí se abre encima el más
       // reciente, para no perder lo que tienen a medias.
       if (single || bookingOrSessionInStack(router)) {
         router.push(AppRoutes.requestDetail(alert.latest.id));
       } else {
+        ref.read(inboxTabRequestProvider.notifier).show(InboxTab.fresh);
         router.go(AppRoutes.requests);
       }
     }

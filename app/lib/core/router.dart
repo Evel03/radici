@@ -28,6 +28,7 @@ import 'package:radici/features/requests/presentation/request_detail_screen.dart
 import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
 import 'package:radici/features/sessions/presentation/move_session_screen.dart';
 import 'package:radici/features/settings/presentation/settings_screen.dart';
+import 'package:radici/features/today/presentation/today_screen.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -111,7 +112,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       StatefulShellRoute.indexedStack(
         pageBuilder: (context, state, navigationShell) =>
             _page(state, ChefShell(navigationShell: navigationShell)),
+        // En el orden de la barra: Oggi, Richieste, Agenda y Altro.
         branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.today,
+                pageBuilder: (context, state) =>
+                    _page(state, const TodayScreen()),
+              ),
+            ],
+          ),
           StatefulShellBranch(
             routes: [
               GoRoute(

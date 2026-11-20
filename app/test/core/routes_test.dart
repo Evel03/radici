@@ -65,6 +65,7 @@ void main() {
 
   group('cocinera', () {
     test('se queda en su área', () {
+      expect(_redirect(chef, '/oggi'), isNull);
       expect(_redirect(chef, '/richieste'), isNull);
       expect(_redirect(chef, '/richieste/abc'), isNull);
       expect(_redirect(chef, '/agenda'), isNull);
@@ -89,15 +90,23 @@ void main() {
         expect(_redirect(client, path), '/area-clienti', reason: path);
       }
       expect(_redirect(chef, '/accedi?from=%2Faltro%2Fpiatti'), '/altro/piatti');
-      expect(_redirect(chef, '/altrove'), '/richieste');
+      expect(_redirect(chef, '/altrove'), '/oggi');
     });
 
-    test('desde el inicio, el login o la carga va a la bandeja (o a donde iba)', () {
-      expect(_redirect(chef, '/'), '/richieste');
-      expect(_redirect(chef, '/accedi'), '/richieste');
-      expect(_redirect(chef, '/area-clienti'), '/richieste');
+    test('desde el inicio, el login o la carga va a Hoy (o a donde iba)', () {
+      for (final web in [false, true]) {
+        expect(_redirect(chef, '/', isWeb: web), '/oggi');
+        expect(_redirect(chef, '/accedi', isWeb: web), '/oggi');
+        expect(_redirect(chef, '/caricamento', isWeb: web), '/oggi');
+        expect(_redirect(chef, '/area-clienti', isWeb: web), '/oggi');
+      }
+      // El botón del email abre el pedido, también después del login.
       expect(
         _redirect(chef, '/caricamento?from=%2Frichieste%2Fabc'),
+        '/richieste/abc',
+      );
+      expect(
+        _redirect(chef, '/accedi?from=%2Frichieste%2Fabc'),
         '/richieste/abc',
       );
       expect(_redirect(chef, '/accedi?from=%2Fagenda'), '/agenda');
@@ -106,10 +115,20 @@ void main() {
     test('`from` solo acepta rutas internas de la cocinera', () {
       expect(
         _redirect(chef, '/accedi?from=https%3A%2F%2Fevil.example%2Frichieste'),
-        '/richieste',
+        '/oggi',
       );
-      expect(_redirect(chef, '/accedi?from=%2F%2Fevil.example'), '/richieste');
-      expect(_redirect(chef, '/accedi?from=%2Fpreventivo'), '/richieste');
+      expect(_redirect(chef, '/accedi?from=%2F%2Fevil.example'), '/oggi');
+      expect(_redirect(chef, '/accedi?from=%2Fpreventivo'), '/oggi');
+    });
+
+    test('Hoy (/oggi) es del área de la cocinera', () {
+      expect(AppRoutes.today, '/oggi');
+      expect(isChefPath('/oggi'), isTrue);
+      expect(isChefPath('/oggi/abc'), isFalse);
+      expect(_redirect(signedOut, '/oggi'), '/accedi?from=%2Foggi');
+      expect(_redirect(loading, '/oggi'), '/caricamento?from=%2Foggi');
+      expect(_redirect(client, '/oggi'), '/area-clienti');
+      expect(_redirect(chef, '/accedi?from=%2Foggi'), '/oggi');
     });
   });
 

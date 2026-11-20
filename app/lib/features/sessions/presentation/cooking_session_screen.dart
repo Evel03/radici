@@ -18,7 +18,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/routes.dart';
-import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart'
     show LoadErrorView;
 import 'package:radici/features/requests/presentation/request_labels.dart';
@@ -139,7 +138,7 @@ class _SessionView extends ConsumerWidget {
               _Header(detail: detail),
               const SizedBox(height: 16),
               _ContactButtons(session: session),
-              _Allergies(session: session),
+              SessionAllergies(session: session),
               _Client(session: session),
               if (detail.weeks.length > 1) _Weeks(detail: detail),
             ],
@@ -321,191 +320,6 @@ class _ContactButtons extends ConsumerWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-/// Alergias y dietas de la ficha y del pedido, la nota del pedido resaltada
-/// y, con gluten, la nota de contaminación cruzada (SPEC §5.6). Cada pieza es
-/// un nodo propio del lector de pantalla, en el orden en que se ve: el título
-/// primero (ver SessionSection).
-class _Allergies extends StatelessWidget {
-  const _Allergies({required this.session});
-
-  final CookingSession session;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    final note = session.allergyNote;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SessionSection(l10n.sessionSectionAllergies),
-        ...switch (session.allergyAnswer) {
-          AllergyAnswer.none => [
-            MergeSemantics(
-              child: Text(
-                l10n.detailNoAllergies,
-                key: const ValueKey('session-no-allergies'),
-              ),
-            ),
-          ],
-          // Sin respuesta: que pregunte antes de cocinar (se destaca).
-          AllergyAnswer.unknown => [
-            MergeSemantics(
-              child: Text(
-                l10n.detailAllergiesUnknown,
-                key: const ValueKey('session-allergies-unknown'),
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: colors.error,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-          AllergyAnswer.listed => [
-            if (session.allergens.isNotEmpty)
-              _Chips(
-                keyName: 'session-allergens',
-                label: l10n.detailAllergens,
-                values: [for (final a in session.allergens) l10n.allergen(a)],
-              ),
-            if (session.diets.isNotEmpty)
-              _Chips(
-                keyName: 'session-diets',
-                label: l10n.detailDiets,
-                values: [for (final d in session.diets) l10n.diet(d)],
-              ),
-            if (note.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colors.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: MergeSemantics(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            l10n.sessionAllergyNote,
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: colors.onTertiaryContainer,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            note,
-                            key: const ValueKey('session-allergy-note'),
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              color: colors.onTertiaryContainer,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        },
-        if (session.needsCrossContaminationNote)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.errorContainer,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: MergeSemantics(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ExcludeSemantics(
-                        child: Icon(
-                          Icons.warning_amber_rounded,
-                          color: colors.onErrorContainer,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          l10n.sessionCrossContamination,
-                          key: const ValueKey('session-cross-contamination'),
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: colors.onErrorContainer,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _Chips extends StatelessWidget {
-  const _Chips({
-    required this.keyName,
-    required this.label,
-    required this.values,
-  });
-
-  final String keyName;
-  final String label;
-  final List<String> values;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      key: ValueKey(keyName),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      // La etiqueta y sus valores, un solo nodo («Alérgenos que evitar,
-      // Gluten, Leche»): sin esto la etiqueta se leía antes del título.
-      child: MergeSemantics(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final value in values)
-                  Chip(
-                    label: Text(value),
-                    backgroundColor: theme.colorScheme.tertiaryContainer,
-                    labelStyle: TextStyle(
-                      color: theme.colorScheme.onTertiaryContainer,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

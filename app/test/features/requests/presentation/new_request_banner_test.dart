@@ -4,7 +4,9 @@
 // navegador raíz, tapan el Scaffold de la barra): ahí aparece al volver.
 // Con una hoja de reserva o la ficha de una sesión (con su hoja «Sposta»)
 // abierta o tapada por otro pedido, «Apri» nunca la saca, y la hoja «Sposta»
-// que termina de mover con un pedido encima no lo cierra.
+// que termina de mover con un pedido encima no lo cierra. Con varios pedidos,
+// «Apri» abre la bandeja en «Nuove» (también desde Hoy, con la bandeja dejada
+// en otra pestaña).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -21,6 +23,7 @@ import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
 import 'package:radici/features/sessions/presentation/move_session_screen.dart';
+import 'package:radici/features/today/presentation/today_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
@@ -45,6 +48,7 @@ void main() {
     final app = await pumpChefApp(
       tester,
       requests: FakeChefRequestsRepository([buildRequest()]),
+      location: '/richieste',
     );
     expect(find.byKey(banner), findsNothing);
 
@@ -112,6 +116,70 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('request-second')), findsOneWidget);
     expect(find.byKey(const ValueKey('request-arrived')), findsOneWidget);
+  });
+
+  group('desde Hoy, con la bandeja dejada en «Viste»', () {
+    Finder byKey(String key) => find.byKey(ValueKey(key));
+
+    Future<ChefApp> openToday(WidgetTester tester) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([
+          buildRequest(id: 'visto', seenAt: DateTime.utc(2026, 10, 18, 10)),
+        ]),
+      );
+      Finder destination(String label) => find.descendant(
+        of: byKey('chef-nav-bar'),
+        matching: find.text(label),
+      );
+      expect(find.byType(TodayScreen), findsOneWidget);
+      await tester.tap(destination('Richieste'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('inbox-tab-seen'));
+      await tester.pumpAndSettle();
+      expect(byKey('inbox-list-seen').hitTestable(), findsOneWidget);
+      await tester.tap(destination('Oggi'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+      return app;
+    }
+
+    testWidgets('un pedido: el aviso sale sobre Hoy y «Apri» abre el detalle; al volver, Hoy', (
+      tester,
+    ) async {
+      final app = await openToday(tester);
+      app.requests.insertFromRealtime(arrived);
+      await tester.pumpAndSettle();
+      expect(find.byKey(banner).hitTestable(), findsOneWidget);
+
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pumpAndSettle();
+      expect(find.byType(RequestDetailScreen), findsOneWidget);
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+    });
+
+    testWidgets('varios: «Apri» abre la bandeja en «Nuove», donde están, y no en «Viste»', (
+      tester,
+    ) async {
+      final app = await openToday(tester);
+      app.requests
+        ..insertFromRealtime(arrived)
+        ..insertFromRealtime(
+          buildRequest(id: 'second', name: 'Anna Verdi', createdAt: DateTime.utc(2026, 10, 19, 13)),
+        );
+      await tester.pumpAndSettle();
+      expect(bannerText(tester), '2 nuove richieste');
+
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InboxScreen), findsOneWidget);
+      expect(byKey('inbox-list-fresh').hitTestable(), findsOneWidget);
+      expect(byKey('request-second').hitTestable(), findsOneWidget);
+      expect(byKey('request-arrived').hitTestable(), findsOneWidget);
+      expect(byKey('request-visto').hitTestable(), findsNothing);
+    });
   });
 
   testWidgets('varios pedidos con el detalle de otro abierto (sin hoja de reserva): «Apri» va a la bandeja', (
@@ -461,7 +529,7 @@ void main() {
     void expectAgendaWithBar(WidgetTester tester) {
       expect(find.byType(AgendaScreen), findsOneWidget);
       expect(navBar.hitTestable(), findsOneWidget);
-      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 1);
+      expect(tester.widget<NavigationBar>(navBar).selectedIndex, 2);
     }
 
     // Sobre la ficha el aviso no sale: tiene su propio ScaffoldMessenger (el
@@ -581,6 +649,7 @@ void main() {
     final app = await pumpChefApp(
       tester,
       requests: FakeChefRequestsRepository([buildRequest()]),
+      location: '/richieste',
     );
     app.requests.insertFromRealtime(arrived);
     await tester.pumpAndSettle();

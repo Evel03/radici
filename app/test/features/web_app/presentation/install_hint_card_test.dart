@@ -15,7 +15,7 @@ import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
-import 'package:radici/features/requests/presentation/inbox_screen.dart';
+import 'package:radici/features/today/presentation/today_screen.dart';
 import 'package:radici/features/web_app/data/published_build_repository.dart';
 import 'package:radici/features/web_app/domain/install_hint.dart';
 
@@ -192,7 +192,7 @@ void main() {
       overrides: [browserProvider.overrideWithValue(browser)],
     );
 
-    expect(find.byType(InboxScreen), findsOneWidget);
+    expect(find.byType(TodayScreen), findsOneWidget);
     expect(
       find.text(
         'Para no volver a entrar, abre Radici desde el ícono de tu pantalla de '
