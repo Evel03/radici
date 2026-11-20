@@ -12,7 +12,7 @@ vi.mock("../../../supabase/functions/_shared/quote.ts", async (importOriginal) =
 const VECTOR_1 = { type: "week", adults: 2, kids: 2, days: 5, meals: "dinner", weeks: 1 } as const;
 
 describe("calculadora de la web", () => {
-  it("usa calcQuote del motor compartido (vector 1 → 150 € de servicio y 63 € de compra)", () => {
+  it("usa calcQuote del motor compartido (vector 1 → 150 € de servicio, sin compra)", () => {
     vi.mocked(engine.calcQuote).mockClear();
     const quote = computeQuote(VECTOR_1);
     expect(engine.calcQuote).toHaveBeenCalledTimes(1);
@@ -21,8 +21,10 @@ describe("calculadora de la web", () => {
       engine.DEFAULT_PRICING,
     );
     expect(quote?.autoPrice && quote.serviceCents).toBe(15000);
-    expect(quote?.groceriesEstCents).toBe(6300);
     expect(quote?.cookMinutes).toBe(180);
+    // La compra la hace el cliente (19/11/2026): ni su estimación ni un total con ella.
+    expect(quote).not.toHaveProperty("groceriesEstCents");
+    expect(quote).not.toHaveProperty("totalCents");
   });
 
   it("'pranzo e cena' son 2 comidas por día; 'pranzo' o 'cena', 1", () => {
@@ -57,12 +59,12 @@ describe("calculadora de la web", () => {
     expect(computeQuote({ ...VECTOR_1, weeks: 9 })).toBeNull();
   });
 
-  it("el ejemplo de la portada es el vector 3: 4 semanas a 140 €", () => {
+  it("el ejemplo de la portada es el vector 3: 4 semanas a 140 €, sin compra", () => {
     expect(EXAMPLE_INPUT.weeks).toBe(4);
     const example = exampleQuote();
     expect(example.weeklyServiceCents).toBe(14000);
     expect(example.serviceCents).toBe(56000);
     expect(example.savingsCents).toBe(4000);
-    expect(example.groceriesEstCents).toBe(6300);
+    expect(example).not.toHaveProperty("groceriesEstCents");
   });
 });

@@ -18,10 +18,13 @@ select plan(78);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
---   C1: valores por defecto (compra 45, margen 30, paso 30, horizonte 56, aviso 24 h) y el
---       horario decidido el 15/11/2026: lunes a viernes de 9 a 15.
+--   C1: valores por defecto (margen 30, paso 30, horizonte 56, aviso 24 h) y el horario decidido
+--       el 15/11/2026: lunes a viernes de 9 a 15.
 --   C2: otra cocinera, todos los días de 9 a 15 (cambios de hora).
 --   C3: para las funciones públicas: todos los días de 8 a 20 y sin aviso mínimo.
+--   Las tres con 45 minutos de compra, fijos: desde el 19/11/2026 el valor por defecto es 0 (la
+--   compra la hace el cliente), pero la cuenta con compra sigue en la base (sessions.busy, la primera
+--   llegada y el aviso mínimo) y estos tests la prueban. Sin compra: 16_sin_compra.test.sql.
 -- ---------------------------------------------------------------------
 insert into auth.users (id, email) values
   ('7e5f0000-0000-4000-8000-00000000c001', 'chef1@slots.test'),
@@ -33,11 +36,11 @@ insert into public.chefs (id, profile_id, display_name) values
   ('7e5f1000-0000-4000-8000-000000000001', '7e5f0000-0000-4000-8000-00000000c001', 'Chef Uno'),
   ('7e5f1000-0000-4000-8000-000000000002', '7e5f0000-0000-4000-8000-00000000c002', 'Chef Due'),
   ('7e5f1000-0000-4000-8000-000000000003', '7e5f0000-0000-4000-8000-00000000c003', 'Chef Tre');
-insert into public.chef_settings (chef_id) values
-  ('7e5f1000-0000-4000-8000-000000000001'),
-  ('7e5f1000-0000-4000-8000-000000000002');
-insert into public.chef_settings (chef_id, min_notice_hours) values
-  ('7e5f1000-0000-4000-8000-000000000003', 0);
+insert into public.chef_settings (chef_id, shop_minutes) values
+  ('7e5f1000-0000-4000-8000-000000000001', 45),
+  ('7e5f1000-0000-4000-8000-000000000002', 45);
+insert into public.chef_settings (chef_id, shop_minutes, min_notice_hours) values
+  ('7e5f1000-0000-4000-8000-000000000003', 45, 0);
 
 insert into public.availability_rules (chef_id, dow, start_time, end_time)
 select '7e5f1000-0000-4000-8000-000000000001'::uuid, d, time '09:00', time '15:00' from generate_series(1, 5) as d

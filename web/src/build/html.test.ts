@@ -67,20 +67,38 @@ describe("renderPage con las páginas reales", () => {
     expect(out).toMatch(/140,00\s€/);
     expect(out).toMatch(/560,00\s€/);
     expect(out).toMatch(/40,00\s€/);
-    expect(out).toMatch(/63,00\s€/);
     expect(out).toMatch(/150,00\s€ a settimana/);
     expect(out).toContain("Nessun rinnovo automatico");
   });
 
-  it("el ejemplo de la portada no se lee como una suma: servicio por semana, servicio de las semanas (destacado) y la compra aparte, al final", () => {
+  it("el ejemplo de la portada: servicio por semana y servicio de las semanas (destacado, al final), sin fila de compra", () => {
     const out = renderPage(indexHtml, { i18n, config: baseConfig, pagePath: "/", partials });
-    const example = /<dl class="example">([\s\S]*?)<\/dl>/.exec(out)?.[1] ?? "";
+    const card = /<article class="card card--example">([\s\S]*?)<\/article>/.exec(out)?.[1] ?? "";
+    const example = /<dl class="example">([\s\S]*?)<\/dl>/.exec(card)?.[1] ?? "";
     const rows = [...example.matchAll(/<div class="([^"]+)">\s*<dt data-i18n="landing\.pricing\.(\w+)"/g)].map(([, cls = "", key = ""]) => ({ cls, key }));
-    expect(rows.map((row) => row.key)).toEqual(["exampleWeekly", "exampleTotal", "exampleGroceries"]);
-    // El destacado es el servicio, y la compra queda separada (no debajo del destacado como si fuera parte).
+    expect(rows.map((row) => row.key)).toEqual(["exampleWeekly", "exampleTotal"]);
     expect(rows[1]?.cls).toContain("example__row--total");
-    expect(rows[2]?.cls).toContain("example__row--apart");
-    expect(example).toMatch(/Spesa stimata a settimana, a[\s ]parte/);
+    // La compra la hace el cliente con la lista de Evelyn (19/11/2026): ni fila ni nota sobre ella.
+    expect(card).not.toMatch(/spesa|scontrin/i);
+  });
+
+  it("la portada dice que la compra la hace el cliente, con la lista de Evelyn, y no la promete en ningún lado", () => {
+    const out = renderPage(indexHtml, { i18n, config: baseConfig, pagePath: "/", partials });
+    const start = out.indexOf('<section id="prices"');
+    const prices = out.slice(start, out.indexOf("</section>", start));
+    expect(prices).toMatch(/<h3 class="card__title" data-i18n="landing\.pricing\.shoppingTitle">La spesa la fai tu<\/h3>/);
+    expect(prices).toContain("Prima di ogni sessione Evelyn ti manda la lista degli ingredienti, con le quantità.");
+    expect(out).toContain("La spesa la fai tu: prima di ogni sessione Evelyn ti manda la lista degli ingredienti, con le quantità.");
+    expect(out).not.toMatch(/scontrin|spesa stimata|fa la spesa|compra tutto|niente spesa/i);
+  });
+
+  it("el recuadro del precio del formulario no tiene fila de compra", () => {
+    const quote = /<aside id="quote"[\s\S]*?<\/aside>/.exec(requestHtml)?.[0] ?? "";
+    expect(quote).toContain('id="q-portions"');
+    expect(quote).not.toMatch(/groceries/);
+    const out = renderPage(requestHtml, { i18n, config: baseConfig, pagePath: "/richiesta/", partials });
+    expect(out).toContain("Il prezzo finale lo conferma Evelyn. La spesa la fai tu, con la lista che ti manda Evelyn.");
+    expect(out).not.toMatch(/scontrin|spesa stimata|spesa più leggera/i);
   });
 
   it("las frases de los recuadros de la portada se leen: lista con nombre, sin aria-hidden encima", () => {

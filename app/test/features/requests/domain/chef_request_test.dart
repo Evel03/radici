@@ -84,8 +84,27 @@ void main() {
     expect(estimate.recipes, 3);
     expect(estimate.cookMinutes, 180);
     expect(estimate.serviceCents, 7800);
-    expect(estimate.groceriesEstCents, 6300);
-    expect(estimate.totalCents, 14100);
+  });
+
+  test('una estimación vieja con compra se sigue leyendo: la compra y el total se ignoran', () {
+    // Como los pedidos de antes del 19/11/2026 (la compra ahora la hace el cliente).
+    final row = requestRow();
+    expect(row['estimate'], containsPair('groceriesEstCents', 6300));
+    expect(row['estimate'], containsPair('preauthCents', 7245));
+    expect(row['estimate'], containsPair('totalCents', 14100));
+    expect(
+      ChefRequest.fromJson(row).estimate,
+      const RequestEstimate(portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800),
+    );
+    // Si solo trae la compra, no queda nada que mostrar.
+    expect(
+      RequestEstimate.fromJson(const {
+        'groceriesEstCents': 6300,
+        'preauthCents': 7245,
+        'totalCents': 14100,
+      }).isEmpty,
+      isTrue,
+    );
   });
 
   test('la estimación de antes del precio por semana: servicio por hora, sin autoPrice, con precio', () {
@@ -102,7 +121,7 @@ void main() {
     expect(chefRequestColumns, contains('weeks'));
   });
 
-  test('la estimación con precio por semana: semanas, servicio por semana, total y ahorro', () {
+  test('la estimación con precio por semana: semanas, servicio por semana, total y ahorro, sin la compra que traía', () {
     final estimate = ChefRequest.fromJson(
       requestRow(
         weeks: 4,
@@ -133,13 +152,30 @@ void main() {
     expect(estimate.weeklyServiceCents, 14000);
     expect(estimate.serviceCents, 56000);
     expect(estimate.savingsCents, 4000);
-    expect(estimate.groceriesEstCents, 6300);
     expect(estimate.maxPeople, 5);
     expect(estimate.reason, isNull);
     // Las tarifas por semana con que se calculó (para otra cantidad de semanas).
     expect(estimate.weeklyRateCents, 15000);
     expect(estimate.weeklyRateDiscountedCents, 14000);
     expect(estimate.weeklyDiscountMinWeeks, 4);
+    // groceriesEstCents, preauthCents y totalCents no dejan rastro.
+    expect(
+      estimate,
+      const RequestEstimate(
+        weeks: 4,
+        portions: 20,
+        recipes: 3,
+        cookMinutes: 180,
+        autoPrice: true,
+        weeklyServiceCents: 14000,
+        serviceCents: 56000,
+        savingsCents: 4000,
+        maxPeople: 5,
+        weeklyRateCents: 15000,
+        weeklyRateDiscountedCents: 14000,
+        weeklyDiscountMinWeeks: 4,
+      ),
+    );
   });
 
   test('una estimación de antes no trae tarifas por semana', () {
@@ -149,13 +185,12 @@ void main() {
     expect(legacy.weeklyDiscountMinWeeks, isNull);
   });
 
-  test('sin precio automático: el motivo y la compra, sin servicio', () {
+  test('sin precio automático: el motivo, sin servicio', () {
     RequestEstimate read(String reason) => RequestEstimate.fromJson({
       'weeks': 1,
       'portions': 30,
       'recipes': 3,
       'cookMinutes': 210,
-      'groceriesEstCents': 9450,
       'autoPrice': false,
       'reason': reason,
       'pricing': {'weeklyRateMaxPeople': 6},
@@ -172,12 +207,12 @@ void main() {
 
   test('estimación parcial o con números raros: lo que falta queda en null', () {
     final estimate = RequestEstimate.fromJson(const {
-      'totalCents': 14100.0,
-      'serviceCents': 78.5,
+      'serviceCents': 7800.0,
+      'savingsCents': 78.5,
       'portions': '20',
     });
-    expect(estimate.totalCents, 14100);
-    expect(estimate.serviceCents, isNull);
+    expect(estimate.serviceCents, 7800);
+    expect(estimate.savingsCents, isNull);
     expect(estimate.portions, isNull);
     expect(estimate.isEmpty, isFalse);
     expect(RequestEstimate.fromJson(const {}).isEmpty, isTrue);

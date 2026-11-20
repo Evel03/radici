@@ -489,12 +489,10 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
       portions: 20,
       recipes: 3,
       cookMinutes: 180,
-      groceriesEstCents: 6300,
       autoPrice: true,
       weeklyServiceCents: 16000,
       serviceCents: 16000,
       savingsCents: 0,
-      totalCents: 22300,
     },
   });
 
@@ -524,6 +522,11 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
     estimate: { ...quote, pricing: CHEF.pricing },
     request_key: null,
   });
+  // Sin compra (la hace el cliente): ni la estimación ni las tarifas por porción en requests.estimate.
+  const stored = store.submitted[0]?.estimate as unknown as Record<string, unknown>;
+  for (const key of [...Object.keys(stored), ...Object.keys(stored["pricing"] as object)]) {
+    assert.doesNotMatch(key, /grocer|preauth|hold|total|portionCents/i, `requests.estimate no lleva ${key}`);
+  }
   assert.equal(background.length, 1, "los envíos van en segundo plano");
 });
 
@@ -549,14 +552,18 @@ test("4 semanas: weeks a la base, estimación con el descuento de la cocinera y 
   await run.settle();
   const chef = emailText(run, "evelyn@example.test");
   for (const line of ["Semanas: 4", "Semanas siguientes: 1 nov · 8 nov · 15 nov", "Servicio por semana: 150,00 €",
-    "Servicio, 4 semanas: 600,00 €", "Ahorro: 40,00 € frente a 160,00 € por semana", "Compra estimada por semana: 63,00 €"]) {
+    "Servicio, 4 semanas: 600,00 €", "Ahorro: 40,00 € frente a 160,00 € por semana", "Esto es una estimación."]) {
     assert.ok(chef.includes(line), `Evelyn: falta «${line}»`);
   }
+  // A Evelyn, nada de compra.
+  assert.doesNotMatch(chef, /compra/i);
   const client = emailText(run, "giulia.pii@example.test");
   for (const line of ["Settimane: 4", "Settimane successive: 1 nov · 8 nov · 15 nov", "Servizio, 4 settimane: 600,00 €",
-    "Risparmio: 40,00 € rispetto a 160,00 € a settimana", "Spesa stimata a settimana: 63,00 €", "prezzo finale"]) {
+    "Risparmio: 40,00 € rispetto a 160,00 € a settimana", "Questa è una stima. La spesa la fai tu, con la lista che ti manda Evelyn.",
+    "prezzo finale"]) {
     assert.ok(client.includes(line), `cliente: falta «${line}»`);
   }
+  assert.doesNotMatch(client, /spesa stimata|scontrino/i);
 });
 
 test("versión 2 (la web de antes, sin weeks): se guarda de una semana con la estimación nueva", async () => {
@@ -566,10 +573,11 @@ test("versión 2 (la web de antes, sin weeks): se guarda de una semana con la es
   assert.equal(response.status, 201);
   assert.equal(run.store.submitted[0]?.weeks, 1);
   const body = (await json(response)) as { estimate: Record<string, unknown> };
-  // Las seis claves que lee la página de la versión 2 siguen en la respuesta.
-  for (const key of ["portions", "recipes", "cookMinutes", "serviceCents", "groceriesEstCents", "totalCents"]) {
+  for (const key of ["portions", "recipes", "cookMinutes", "serviceCents"]) {
     assert.equal(typeof body.estimate[key], "number", key);
   }
+  // Desde el 19/11/2026 no hay compra ni total: la página de la versión 2 muestra su propio cálculo.
+  for (const key of ["groceriesEstCents", "totalCents"]) assert.ok(!(key in body.estimate), key);
   await run.settle();
 });
 
@@ -608,7 +616,7 @@ test("sin precio automático (más personas que el tope de la cocinera o sesión
     const estimate = ((await json(response)) as { estimate: Record<string, unknown> }).estimate;
     assert.equal(estimate["autoPrice"], false);
     assert.equal(estimate["reason"], reason);
-    for (const key of ["weeklyServiceCents", "serviceCents", "savingsCents", "totalCents"]) {
+    for (const key of ["weeklyServiceCents", "serviceCents", "savingsCents", "totalCents", "groceriesEstCents"]) {
       assert.ok(!(key in estimate), `${reason}: el 201 no lleva ${key}`);
       assert.ok(!(key in (run.store.submitted[0]?.estimate ?? {})), `${reason}: no se guarda ${key}`);
     }
@@ -924,7 +932,7 @@ test("duplicado: responde con la estimación guardada aunque hoy las tarifas den
   assert.deepEqual(run.store.marked, []);
 });
 
-test("duplicado de un pedido guardado antes del precio por semana: la estimación por hora, como una semana con precio", async () => {
+test("duplicado de un pedido guardado antes del precio por semana: la estimación por hora, como una semana con precio y sin compra", async () => {
   const run = harness();
   // La forma de requests.estimate de antes: calcQuote con la tarifa por hora, sin weeks ni autoPrice.
   const stored = {
@@ -938,8 +946,8 @@ test("duplicado de un pedido guardado antes del precio por semana: la estimació
   assert.deepEqual(await json(response), {
     requestId: REQUEST_ID,
     estimate: {
-      weeks: 1, portions: 20, recipes: 3, cookMinutes: 180, groceriesEstCents: 6300,
-      autoPrice: true, weeklyServiceCents: 7800, serviceCents: 7800, savingsCents: 0, totalCents: 14100,
+      weeks: 1, portions: 20, recipes: 3, cookMinutes: 180,
+      autoPrice: true, weeklyServiceCents: 7800, serviceCents: 7800, savingsCents: 0,
     },
     duplicate: true,
   });
@@ -1321,9 +1329,6 @@ test("chefFromRow: tarifas de chef_settings (precio por semana) y nombre de la c
     weekly_rate_discounted_cents: 15000,
     weekly_discount_min_weeks: 3,
     weekly_rate_max_people: 6,
-    adult_portion_cents: 400,
-    kid_portion_cents: 260,
-    preauth_buffer_pct: 10,
     min_cook_minutes: 60,
     chefs: { display_name: "Evelyn" },
   };
@@ -1334,12 +1339,11 @@ test("chefFromRow: tarifas de chef_settings (precio por semana) y nombre de la c
       weeklyRateDiscountedCents: 15000,
       weeklyDiscountMinWeeks: 3,
       weeklyRateMaxPeople: 6,
-      adultPortionCents: 400,
-      kidPortionCents: 260,
-      preauthBufferPct: 10,
       minCookMinutes: 60,
     },
   });
+  // Las tarifas por porción y el margen de la preautorización siguen en la base, pero ya no se leen.
+  assert.deepEqual(chefFromRow({ ...row, adult_portion_cents: 400, kid_portion_cents: 260, preauth_buffer_pct: 10 }), chefFromRow(row));
   assert.equal(chefFromRow({ ...row, chefs: [{ display_name: "Eve" }] }).displayName, "Eve");
   assert.equal(chefFromRow({ ...row, chefs: null }).displayName, "Evelyn", "sin nombre: Evelyn");
   assert.throws(() => chefFromRow({ ...row, weekly_rate_cents: "16000" }), TypeError);

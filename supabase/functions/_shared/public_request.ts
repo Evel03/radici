@@ -538,8 +538,6 @@ interface EstimateBase {
   portions: number;
   recipes: number;
   cookMinutes: number;
-  /** Compra estimada de una semana: se paga aparte, al costo del ticket. */
-  groceriesEstCents: number;
 }
 
 export interface PricedEstimate extends EstimateBase {
@@ -547,11 +545,6 @@ export interface PricedEstimate extends EstimateBase {
   weeklyServiceCents: number;
   serviceCents: number;
   savingsCents: number;
-  /**
-   * Servicio y compra estimada de todas las semanas. La web de la versión 3 muestra el servicio y la compra
-   * por separado; las páginas de la versión 2 muestran este total en la pantalla de gracias.
-   */
-  totalCents: number;
 }
 
 export interface UnpricedEstimate extends EstimateBase {
@@ -562,8 +555,9 @@ export interface UnpricedEstimate extends EstimateBase {
 
 /**
  * La estimación que devuelve el 201: la del motor con las tarifas de la cocinera, sin las tarifas. Sin
- * precio automático no lleva claves de precio. Con precio trae las seis de la versión 2 (portions, recipes,
- * cookMinutes, serviceCents, groceriesEstCents y totalCents): así una página de antes la sigue leyendo.
+ * precio automático no lleva claves de precio. Desde el 19/11/2026 no lleva la compra (groceriesEstCents)
+ * ni el total de servicio y compra (totalCents), porque la compra la hace el cliente: a una página de antes
+ * su readPublicEstimate le da null y la pantalla de gracias muestra su propio cálculo hasta que se recarga.
  */
 export type PublicRequestEstimate = PricedEstimate | UnpricedEstimate;
 
@@ -573,7 +567,6 @@ export function publicEstimate(quote: Quote): PublicRequestEstimate {
     portions: quote.portions,
     recipes: quote.recipes,
     cookMinutes: quote.cookMinutes,
-    groceriesEstCents: quote.groceriesEstCents,
   };
   if (!quote.autoPrice) return { ...base, autoPrice: false, reason: quote.reason };
   return {
@@ -582,15 +575,15 @@ export function publicEstimate(quote: Quote): PublicRequestEstimate {
     weeklyServiceCents: quote.weeklyServiceCents,
     serviceCents: quote.serviceCents,
     savingsCents: quote.savingsCents,
-    totalCents: quote.totalCents,
   };
 }
 
 /**
  * Lee una estimación: la del 201 (en la web) o la guardada en requests.estimate (en la función, para un
  * reintento; trae además pricing y otras claves del motor). Las guardadas antes del precio por semana no
- * tienen autoPrice ni weeks: eran de una semana y con precio (el servicio por hora), sin ahorro. null si
- * le falta algo o un número no es un entero ≥ 0.
+ * tienen autoPrice ni weeks: eran de una semana y con precio (el servicio por hora), sin ahorro. Las de
+ * antes del 19/11/2026 traen además la compra y el total (groceriesEstCents, totalCents): se ignoran, como
+ * cualquier otra clave de más. null si le falta algo o un número no es un entero ≥ 0.
  */
 export function readPublicEstimate(value: unknown): PublicRequestEstimate | null {
   if (!isRecord(value)) return null;
@@ -601,38 +594,32 @@ export function readPublicEstimate(value: unknown): PublicRequestEstimate | null
   const portions = int("portions");
   const recipes = int("recipes");
   const cookMinutes = int("cookMinutes");
-  const groceriesEstCents = int("groceriesEstCents");
   const serviceCents = int("serviceCents");
-  const totalCents = int("totalCents");
-  if (portions === null || recipes === null || cookMinutes === null || groceriesEstCents === null) return null;
+  if (portions === null || recipes === null || cookMinutes === null) return null;
 
   const autoPrice = value["autoPrice"];
   if (autoPrice === undefined) {
-    if (serviceCents === null || totalCents === null) return null;
+    if (serviceCents === null) return null;
     return {
       weeks: 1,
       portions,
       recipes,
       cookMinutes,
-      groceriesEstCents,
       autoPrice: true,
       weeklyServiceCents: serviceCents,
       serviceCents,
       savingsCents: 0,
-      totalCents,
     };
   }
   const weeks = int("weeks", 1, LIMITS.maxWeeks);
   if (weeks === null) return null;
-  const base: EstimateBase = { weeks, portions, recipes, cookMinutes, groceriesEstCents };
+  const base: EstimateBase = { weeks, portions, recipes, cookMinutes };
   if (autoPrice === false) {
     const reason = value["reason"];
     return isOneOf(NO_AUTO_PRICE_REASONS, reason) ? { ...base, autoPrice: false, reason } : null;
   }
   const weeklyServiceCents = int("weeklyServiceCents");
   const savingsCents = int("savingsCents");
-  if (autoPrice !== true || weeklyServiceCents === null || serviceCents === null || savingsCents === null || totalCents === null) {
-    return null;
-  }
-  return { ...base, autoPrice: true, weeklyServiceCents, serviceCents, savingsCents, totalCents };
+  if (autoPrice !== true || weeklyServiceCents === null || serviceCents === null || savingsCents === null) return null;
+  return { ...base, autoPrice: true, weeklyServiceCents, serviceCents, savingsCents };
 }

@@ -18,7 +18,7 @@ void main() {
     expect(draft().toInput().type, QuoteType.week);
     expect(quote().weeks, 1);
     expect(quote().serviceCents, 15000);
-    expect(quote().groceriesEstCents, 6300);
+    expect(quote().portions, 20);
   });
 
   test('pranzo y cena cuentan una comida; ambos, dos', () {
@@ -28,8 +28,9 @@ void main() {
 
     notifier().selectMealPlan(MealPlan.lunchAndDinner);
     expect(draft().toInput().meals, 2);
-    // Como el vector 12: la compra se duplica, el servicio por semana no.
-    expect(quote().groceriesEstCents, 12600);
+    // Como el vector 12 (de una semana): las porciones se duplican, el
+    // servicio por semana no.
+    expect(quote().portions, 40);
     expect(quote().serviceCents, 15000);
   });
 
