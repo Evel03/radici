@@ -12,7 +12,9 @@ import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
+import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
+import 'package:radici/features/recipes/domain/recipe_translation.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/domain/chosen_menu.dart';
@@ -484,5 +486,42 @@ class FakeLinkLauncher implements LinkLauncher {
   Future<bool> launch(Uri uri) async {
     launched.add(uri);
     return result;
+  }
+}
+
+/// Lo que devuelve [FakeTranslationRepository] (como TRANSLATE_TRANSPORT=fake
+/// en la función): «[it] …» y «[en] …», cortados a los largos de la base
+/// (por caracteres), la descripción solo si se mandó.
+RecipeTranslation fakeTranslation(SpanishText spanish) {
+  String cut(String text, int max) => String.fromCharCodes(text.runes.take(max));
+  String? description(String language) => spanish.description == null
+      ? null
+      : cut('[$language] ${spanish.description}', maxRecipeDescriptionLength);
+  return (
+    it: (name: cut('[it] ${spanish.name}', maxRecipeNameLength), description: description('it')),
+    en: (name: cut('[en] ${spanish.name}', maxRecipeNameLength), description: description('en')),
+  );
+}
+
+/// Traductor "en el servidor", en memoria ([fakeTranslation]). El pedido se
+/// registra en cuanto llega: [pending] demora solo la respuesta.
+class FakeTranslationRepository implements TranslationRepository {
+  /// Si no es null, [translate] falla con este error.
+  TranslationFailureKind? failure;
+
+  /// Si no es null, [translate] espera a que se complete.
+  Completer<void>? pending;
+
+  /// Cada español recibido, en orden (también los que fallaron).
+  final List<SpanishText> calls = [];
+
+  @override
+  Future<RecipeTranslation> translate(SpanishText spanish) async {
+    calls.add(spanish);
+    final fail = failure;
+    final wait = pending;
+    if (wait != null) await wait.future;
+    if (fail != null) throw TranslationFailure(fail);
+    return fakeTranslation(spanish);
   }
 }

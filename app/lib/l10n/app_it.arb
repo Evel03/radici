@@ -1082,7 +1082,7 @@
   "@recipesSearchClear": {
     "description": "Botón (y ayuda) que borra la búsqueda de platos."
   },
-  "recipesEmpty": "Non hai ancora piatti. Aggiungi il primo con «Nuovo piatto»: bastano il nome in italiano e gli allergeni.",
+  "recipesEmpty": "Non hai ancora piatti. Aggiungi il primo con «Nuovo piatto»: bastano il nome in spagnolo e gli allergeni.",
   "@recipesEmpty": {
     "description": "Catálogo vacío: propone cargar el primer plato con el botón flotante."
   },
@@ -1229,9 +1229,9 @@
   "@recipeDescriptionSection": {
     "description": "Sección del editor con la descripción corta del plato en italiano, español e inglés (recipes.description_*), la que muestra la web."
   },
-  "recipeDescriptionHelp": "Una frase breve: compare sul sito, nel modulo di richiesta, accanto al nome. Senza la descrizione in italiano il piatto non si vede sul sito. In spagnolo e in inglese, se manca, si vede quella in italiano.",
+  "recipeDescriptionHelp": "Una frase breve: compare sul sito, nel modulo di richiesta, accanto al nome. Scrivila in spagnolo: l'italiano e l'inglese si traducono quando salvi. Senza la descrizione in italiano il piatto non si vede sul sito.",
   "@recipeDescriptionHelp": {
-    "description": "Ayuda de la descripción: dónde aparece y que sin la italiana el plato no sale en la web (get_public_menu)."
+    "description": "Ayuda de la descripción: dónde aparece, que se escribe en español y que sin la italiana el plato no sale en la web (get_public_menu)."
   },
   "recipeDescriptionItLabel": "Descrizione in italiano",
   "@recipeDescriptionItLabel": {
@@ -1239,7 +1239,7 @@
   },
   "recipeDescriptionEsLabel": "Descrizione in spagnolo",
   "@recipeDescriptionEsLabel": {
-    "description": "Campo de la descripción en español (opcional)."
+    "description": "Campo de la descripción en español (opcional): la fuente de la traducción automática."
   },
   "recipeDescriptionEnLabel": "Descrizione in inglese",
   "@recipeDescriptionEnLabel": {
@@ -1251,11 +1251,91 @@
   },
   "recipeNameEsLabel": "Nome in spagnolo",
   "@recipeNameEsLabel": {
-    "description": "Campo opcional del nombre en español."
+    "description": "Campo del nombre en español, el primero del editor: la fuente de la traducción automática."
   },
   "recipeNameEnLabel": "Nome in inglese",
   "@recipeNameEnLabel": {
-    "description": "Campo opcional del nombre en inglés."
+    "description": "Campo del nombre en inglés (opcional; lo llena la traducción automática)."
+  },
+  "recipeNameEsHelper": "Da qui si traducono il nome in italiano e in inglese quando salvi.",
+  "@recipeNameEsHelper": {
+    "description": "Ayuda del nombre en español, el primer campo del editor: es la fuente de la traducción automática."
+  },
+  "recipeNameEsRequired": "Scrivi il nome in spagnolo.",
+  "@recipeNameEsRequired": {
+    "description": "Error: falta el nombre en español (obligatorio en un plato nuevo y en uno que ya lo tenía)."
+  },
+  "recipePrivacyHint": "Non scrivere dati dei clienti (nomi, indirizzi, salute): il nome e la descrizione vanno al servizio di traduzione automatica.",
+  "@recipePrivacyHint": {
+    "description": "Aviso debajo de los campos en español: su texto se manda a Anthropic para traducirlo (SPEC §6)."
+  },
+  "recipeTranslationsSection": "Italiano e inglese",
+  "@recipeTranslationsSection": {
+    "description": "Sección del editor con el nombre y la descripción en italiano y en inglés, que llena la traducción automática."
+  },
+  "recipeTranslationsHelp": "Si compilano da soli quando salvi, traducendo dallo spagnolo. Puoi correggerli: quello che scrivi tu non viene più tradotto.",
+  "@recipeTranslationsHelp": {
+    "description": "Ayuda de la sección del italiano y el inglés: tocar un campo a mano lo saca de la traducción automática."
+  },
+  "recipeAutoTranslated": "Tradotto automaticamente",
+  "@recipeAutoTranslated": {
+    "description": "Marca debajo de un campo en italiano o en inglés que llenó la traducción automática y nadie tocó a mano."
+  },
+  "recipeTranslating": "Traduzione in corso…",
+  "@recipeTranslating": {
+    "description": "En el botón de guardar mientras se traduce (puede tardar hasta un minuto)."
+  },
+  "recipeTranslateFailedTitle": "Traduzione non riuscita",
+  "@recipeTranslateFailedTitle": {
+    "description": "Título del aviso cuando la traducción automática falla al guardar: no se guardó nada."
+  },
+  "recipeTranslateUnavailable": "La traduzione automatica non risponde in questo momento.",
+  "@recipeTranslateUnavailable": {
+    "description": "Causa: la función o Claude no respondieron (503); se puede reintentar."
+  },
+  "recipeTranslateOffline": "Non c'è connessione.",
+  "@recipeTranslateOffline": {
+    "description": "Causa: sin red."
+  },
+  "recipeTranslateTimeout": "La traduzione automatica ci ha messo troppo.",
+  "@recipeTranslateTimeout": {
+    "description": "Causa: no respondió en un minuto."
+  },
+  "recipeTranslateUntranslatable": "La traduzione automatica non è riuscita a tradurre questo testo: riprovare non serve.",
+  "@recipeTranslateUntranslatable": {
+    "description": "Causa: Claude no lo tradujo (422); reintentar lo mismo no sirve."
+  },
+  "recipeTranslateNotConfigured": "La traduzione automatica è spenta: scrivi tu l'italiano e l'inglese.",
+  "@recipeTranslateNotConfigured": {
+    "description": "Causa: la traducción no está configurada (501, sin ANTHROPIC_API_KEY)."
+  },
+  "recipeTranslateRateLimited": "Hai chiesto molte traduzioni nell'ultima ora: riprova più tardi.",
+  "@recipeTranslateRateLimited": {
+    "description": "Causa: la cocina pasó su límite de traducciones (429); la app no reintenta sola."
+  },
+  "recipeTranslateBroken": "Qualcosa non ha funzionato nella traduzione automatica.",
+  "@recipeTranslateBroken": {
+    "description": "Causa genérica, sin reintento: algo roto o mal configurado en el servidor (500), la sesión vencida, sin permiso o un pedido inválido."
+  },
+  "recipeTranslateSkipHint": "Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: i campi da tradurre restano vuoti e si traducono la prossima volta che salvi.",
+  "@recipeTranslateSkipHint": {
+    "description": "Qué hacer cuando la traducción falló y se puede guardar sin traducir: lo automático viejo se vacía (nunca queda una traducción del español anterior)."
+  },
+  "recipeTranslateSkipOffWeb": "Senza la descrizione in italiano il piatto non è sul sito.",
+  "@recipeTranslateSkipOffWeb": {
+    "description": "Se agrega al anterior si guardar sin traducir deja vacía la descripción en italiano."
+  },
+  "recipeTranslateNeedsItalianName": "Quello che hai scritto non si è perso. Per salvare senza traduzione scrivi tu il nome in italiano.",
+  "@recipeTranslateNeedsItalianName": {
+    "description": "Qué hacer cuando la traducción falló y el nombre en italiano (obligatorio) quedaría vacío o con la traducción del nombre anterior."
+  },
+  "recipeTranslateSkip": "Salva senza tradurre",
+  "@recipeTranslateSkip": {
+    "description": "Botón del aviso: guarda sin traducir (lo que había que traducir queda vacío)."
+  },
+  "recipeTranslateWrite": "Scrivo io",
+  "@recipeTranslateWrite": {
+    "description": "Botón del aviso: vuelve al editor, a los campos en italiano e inglés, para escribirlos a mano."
   },
   "recipeStorageSection": "Conservazione",
   "@recipeStorageSection": {

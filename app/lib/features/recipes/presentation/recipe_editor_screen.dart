@@ -1,11 +1,16 @@
 // Editor de un plato del catálogo, a pantalla completa. Primero lo rápido:
-// el nombre en italiano (el principal), los alérgenos, la dieta,
-// la temporada y la descripción de la web (sin la italiana el plato no sale
-// en el formulario de pedido); después lo opcional: nombres en español e
-// inglés, conservación, ingredientes con su cantidad para 4 porciones y notas.
-// «Salva» queda abajo, siempre a mano (con el teclado abierto, justo arriba de
-// él). Un plato guardado se puede duplicar y desactivar (nunca se borra). Solo
-// muestra providers: la lógica está en RecipeEditorController.
+// el nombre y la descripción de la web en español (la fuente de la traducción
+// automática, 20/11/2026), los alérgenos, la dieta y la temporada; después el
+// italiano y el inglés (nombre y descripción), que llena la traducción al
+// guardar, con la marca «tradotto automaticamente» en lo que no se tocó a
+// mano (sin la descripción italiana el plato no sale en el formulario de
+// pedido); y lo opcional: conservación, ingredientes con su cantidad para 4
+// porciones y notas. «Salva» queda abajo, siempre a mano (con el teclado
+// abierto, justo arriba de él); mientras traduce dice que traduce y el
+// formulario no se puede tocar. Si la traducción falla, un aviso ofrece
+// reintentar, escribir a mano o guardar sin traducir. Un plato guardado se
+// puede duplicar y desactivar (nunca se borra). Solo muestra providers: la
+// lógica está en RecipeEditorController.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -17,8 +22,10 @@ import 'package:radici/features/availability/presentation/availability_actions.d
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
 import 'package:radici/features/recipes/application/recipe_editor_controller.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
+import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/domain/recipe_draft.dart';
+import 'package:radici/features/recipes/domain/recipe_translation.dart';
 import 'package:radici/features/recipes/presentation/ingredient_row.dart';
 import 'package:radici/features/recipes/presentation/recipe_labels.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
@@ -90,6 +97,9 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
   late final TextEditingController _freezerDays;
   late final TextEditingController _notes;
 
+  /// El nombre en italiano: «Scrivo io» lo enfoca si hay que escribirlo.
+  final FocusNode _nameItFocus = FocusNode();
+
   /// Los campos de cada fila de ingrediente, por su clave.
   final Map<int, IngredientRowControllers> _rows = {};
 
@@ -121,6 +131,25 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     _fridgeDays = TextEditingController(text: opened.fridgeDays);
     _freezerDays = TextEditingController(text: opened.freezerDays);
     _notes = TextEditingController(text: opened.notes);
+    // El italiano y el inglés también los cambia el guardado (la traducción,
+    // o vaciar lo automático): los campos muestran lo que tiene el formulario.
+    ref.listenManual(
+      recipeEditorProvider(widget.target).select((state) => state.draft),
+      (_, draft) {
+        _syncText(_nameIt, draft.nameIt);
+        _syncText(_descriptionIt, draft.descriptionIt);
+        _syncText(_nameEn, draft.nameEn);
+        _syncText(_descriptionEn, draft.descriptionEn);
+      },
+    );
+  }
+
+  void _syncText(TextEditingController controller, String text) {
+    if (controller.text == text) return;
+    controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 
   @override
@@ -138,6 +167,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     ]) {
       controller.dispose();
     }
+    _nameItFocus.dispose();
     for (final row in _rows.values) {
       row.dispose();
     }
@@ -158,10 +188,14 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
   /// Con VoiceOver o TalkBack el aviso no se va solo: se cierra con la X.
   bool get _persist => MediaQuery.accessibleNavigationOf(context);
 
-  Future<void> _save() async {
+  /// Guarda (traduciendo lo que haga falta) o, con [translate] en false,
+  /// guarda sin traducir.
+  Future<void> _save({bool translate = true}) async {
     FocusScope.of(context).unfocus();
     final l10n = AppLocalizations.of(context);
-    final result = await _editor.save();
+    final result = translate
+        ? await _editor.save()
+        : await _editor.saveWithoutTranslating();
     if (!mounted) return;
     final state = _state;
     switch (result) {
@@ -195,9 +229,105 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
                 : null,
           ),
         );
-      case RecipeSaveResult.busy:
+      case RecipeSaveResult.translationFailed:
+        await _translationFailed(state);
+      case RecipeSaveResult.stale || RecipeSaveResult.busy:
         break;
     }
+  }
+
+  /// La traducción falló: no se guardó nada. Dice por qué y ofrece
+  /// reintentar (si puede andar), guardar sin traducir (si el nombre en
+  /// italiano no queda vacío) o escribir a mano.
+  Future<void> _translationFailed(RecipeEditorState state) async {
+    final kind = state.translateError;
+    if (kind == null) return;
+    final l10n = AppLocalizations.of(context);
+    final plan = state.translationPlan;
+    final cause = switch (kind) {
+      TranslationFailureKind.unavailable => l10n.recipeTranslateUnavailable,
+      TranslationFailureKind.offline => l10n.recipeTranslateOffline,
+      TranslationFailureKind.timeout => l10n.recipeTranslateTimeout,
+      TranslationFailureKind.untranslatable =>
+        l10n.recipeTranslateUntranslatable,
+      TranslationFailureKind.notConfigured => l10n.recipeTranslateNotConfigured,
+      TranslationFailureKind.rateLimited => l10n.recipeTranslateRateLimited,
+      TranslationFailureKind.server ||
+      TranslationFailureKind.unauthorized ||
+      TranslationFailureKind.forbidden ||
+      TranslationFailureKind.invalid => l10n.recipeTranslateBroken,
+    };
+    final next = plan.canSkip
+        ? [
+            l10n.recipeTranslateSkipHint,
+            if (plan.skipEmptiesItalianDescription)
+              l10n.recipeTranslateSkipOffWeb,
+          ].join(' ')
+        : l10n.recipeTranslateNeedsItalianName;
+    final choice = await showDialog<_AfterTranslateFailure>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey('recipe-translate-failed'),
+        scrollable: true,
+        title: Text(l10n.recipeTranslateFailedTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(cause, key: const ValueKey('recipe-translate-cause')),
+            const SizedBox(height: 12),
+            Text(next, key: const ValueKey('recipe-translate-next')),
+          ],
+        ),
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            key: const ValueKey('recipe-translate-write'),
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_AfterTranslateFailure.write),
+            child: Text(l10n.recipeTranslateWrite),
+          ),
+          if (plan.canSkip)
+            TextButton(
+              key: const ValueKey('recipe-translate-skip'),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(_AfterTranslateFailure.skip),
+              child: Text(l10n.recipeTranslateSkip),
+            ),
+          if (kind.canRetry)
+            FilledButton(
+              key: const ValueKey('recipe-translate-retry'),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(_AfterTranslateFailure.retry),
+              child: Text(l10n.actionRetry),
+            ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case _AfterTranslateFailure.retry:
+        await _save();
+      case _AfterTranslateFailure.skip:
+        await _save(translate: false);
+      case _AfterTranslateFailure.write || null:
+        _revealTranslations(plan);
+    }
+  }
+
+  /// Lleva a la vista el italiano y el inglés; si falta el nombre en
+  /// italiano, lo enfoca para escribirlo.
+  void _revealTranslations(RecipeTranslationPlan plan) {
+    if (!plan.canSkip) _nameItFocus.requestFocus();
+    final target = _translationsKey.currentContext;
+    if (target == null) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        target,
+        duration: const Duration(milliseconds: 300),
+        alignment: 0.1,
+      ),
+    );
   }
 
   /// Lleva a la vista el primer campo con error, en el orden del formulario.
@@ -207,14 +337,15 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
         .where((row) => errors.ingredients.containsKey(row.key))
         .firstOrNull;
     final key = switch (errors) {
-      _ when errors.nameIt != null => _nameKey,
+      _ when errors.nameEs != null => _nameKey,
+      _ when errors.descriptionEs != null => _descriptionKey,
       _ when errors.dietConflicts.isNotEmpty => _dietKey,
       _
-          when errors.descriptionIt != null ||
-              errors.descriptionEs != null ||
+          when errors.nameIt != null ||
+              errors.descriptionIt != null ||
+              errors.nameEn != null ||
               errors.descriptionEn != null =>
-        _descriptionKey,
-      _ when errors.nameEs != null || errors.nameEn != null => _translationsKey,
+        _translationsKey,
       _ when errors.fridgeDays || errors.freezerDays => _storageKey,
       _ when firstRow != null => _rows[firstRow.key]?.anchor,
       _ when errors.notes != null => _notesKey,
@@ -359,7 +490,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
 
   /// Volver con cambios sin guardar: pregunta antes de descartarlos.
   Future<void> _confirmLeave() async {
-    if (_state.saving) return;
+    if (_state.busy) return;
     if (await _confirmDiscard() && mounted) Navigator.of(context).pop();
   }
 
@@ -391,6 +522,10 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     final draft = state.draft;
     final errors = state.errors;
     final show = state.showErrors;
+    Widget? autoMark(TranslatedField field) =>
+        draft.autoTranslated.contains(field)
+        ? _AutoTranslatedMark(key: ValueKey('recipe-auto-${field.dbValue}'))
+        : null;
 
     final title = switch (target) {
       CreateRecipe() => l10n.recipeNew,
@@ -419,27 +554,47 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
       KeyedSubtree(
         key: _nameKey,
         child: TextField(
-          key: const ValueKey('recipe-name-it'),
-          controller: _nameIt,
+          key: const ValueKey('recipe-name-es'),
+          controller: _nameEs,
           autofocus: target is! EditRecipe,
           textCapitalization: TextCapitalization.sentences,
-          textInputAction: TextInputAction.done,
-          onChanged: _editor.setNameIt,
+          textInputAction: TextInputAction.next,
+          onChanged: _editor.setNameEs,
           decoration: InputDecoration(
-            labelText: l10n.recipeNameItLabel,
-            helperText: nameTaken ? l10n.recipeNameTaken : l10n.recipeNameItHelper,
-            helperMaxLines: 2,
+            labelText: l10n.recipeNameEsLabel,
+            helperText: l10n.recipeNameEsHelper,
+            helperMaxLines: 3,
             errorText: show
                 ? _textError(
                     l10n,
-                    errors.nameIt,
+                    errors.nameEs,
                     maxRecipeNameLength,
-                    required: l10n.recipeNameRequired,
+                    required: l10n.recipeNameEsRequired,
                   )
                 : null,
             errorMaxLines: 2,
           ),
         ),
+      ),
+      KeyedSubtree(
+        key: _descriptionKey,
+        child: _SectionTitle(l10n.recipeDescriptionSection),
+      ),
+      _Hint(l10n.recipeDescriptionHelp),
+      _DescriptionField(
+        fieldKey: const ValueKey('recipe-description-es'),
+        controller: _descriptionEs,
+        label: l10n.recipeDescriptionEsLabel,
+        error: show
+            ? _textError(l10n, errors.descriptionEs, maxRecipeDescriptionLength)
+            : null,
+        textInputAction: TextInputAction.done,
+        onChanged: _editor.setDescriptionEs,
+      ),
+      // Lo escrito en español va a Anthropic para traducirlo (SPEC §6).
+      _Hint(
+        l10n.recipePrivacyHint,
+        key: const ValueKey('recipe-privacy-hint'),
       ),
       _SectionTitle(l10n.recipeAllergensSection),
       Wrap(
@@ -508,34 +663,69 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
         ],
       ),
       KeyedSubtree(
-        key: _descriptionKey,
-        child: _SectionTitle(l10n.recipeDescriptionSection),
+        key: _translationsKey,
+        child: _SectionTitle(l10n.recipeTranslationsSection),
       ),
-      _Hint(l10n.recipeDescriptionHelp),
+      _Hint(l10n.recipeTranslationsHelp, bottom: 4),
+      TextField(
+        key: const ValueKey('recipe-name-it'),
+        controller: _nameIt,
+        focusNode: _nameItFocus,
+        textCapitalization: TextCapitalization.sentences,
+        textInputAction: TextInputAction.next,
+        onChanged: _editor.setNameIt,
+        decoration: InputDecoration(
+          labelText: l10n.recipeNameItLabel,
+          // El aviso del nombre repetido manda; si no, la marca o la ayuda.
+          helper: nameTaken ? null : autoMark(TranslatedField.nameIt),
+          helperText: nameTaken
+              ? l10n.recipeNameTaken
+              : draft.autoTranslated.contains(TranslatedField.nameIt)
+              ? null
+              : l10n.recipeNameItHelper,
+          helperMaxLines: 2,
+          errorText: show
+              ? _textError(
+                  l10n,
+                  errors.nameIt,
+                  maxRecipeNameLength,
+                  required: l10n.recipeNameRequired,
+                )
+              : null,
+          errorMaxLines: 2,
+        ),
+      ),
       _DescriptionField(
         fieldKey: const ValueKey('recipe-description-it'),
         controller: _descriptionIt,
         label: l10n.recipeDescriptionItLabel,
+        helper: autoMark(TranslatedField.descriptionIt),
         error: show
             ? _textError(l10n, errors.descriptionIt, maxRecipeDescriptionLength)
             : null,
         textInputAction: TextInputAction.next,
         onChanged: _editor.setDescriptionIt,
       ),
-      _DescriptionField(
-        fieldKey: const ValueKey('recipe-description-es'),
-        controller: _descriptionEs,
-        label: l10n.recipeDescriptionEsLabel,
-        error: show
-            ? _textError(l10n, errors.descriptionEs, maxRecipeDescriptionLength)
-            : null,
+      const SizedBox(height: 12),
+      TextField(
+        key: const ValueKey('recipe-name-en'),
+        controller: _nameEn,
+        textCapitalization: TextCapitalization.sentences,
         textInputAction: TextInputAction.next,
-        onChanged: _editor.setDescriptionEs,
+        onChanged: _editor.setNameEn,
+        decoration: InputDecoration(
+          labelText: l10n.recipeNameEnLabel,
+          helper: autoMark(TranslatedField.nameEn),
+          errorText: show
+              ? _textError(l10n, errors.nameEn, maxRecipeNameLength)
+              : null,
+        ),
       ),
       _DescriptionField(
         fieldKey: const ValueKey('recipe-description-en'),
         controller: _descriptionEn,
         label: l10n.recipeDescriptionEnLabel,
+        helper: autoMark(TranslatedField.descriptionEn),
         error: show
             ? _textError(l10n, errors.descriptionEn, maxRecipeDescriptionLength)
             : null,
@@ -546,37 +736,6 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
       Semantics(
         header: true,
         child: Text(l10n.recipeOptionalSection, style: theme.textTheme.titleMedium),
-      ),
-      const SizedBox(height: 16),
-      KeyedSubtree(
-        key: _translationsKey,
-        child: TextField(
-          key: const ValueKey('recipe-name-es'),
-          controller: _nameEs,
-          textCapitalization: TextCapitalization.sentences,
-          textInputAction: TextInputAction.next,
-          onChanged: _editor.setNameEs,
-          decoration: InputDecoration(
-            labelText: l10n.recipeNameEsLabel,
-            errorText: show
-                ? _textError(l10n, errors.nameEs, maxRecipeNameLength)
-                : null,
-          ),
-        ),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        key: const ValueKey('recipe-name-en'),
-        controller: _nameEn,
-        textCapitalization: TextCapitalization.sentences,
-        textInputAction: TextInputAction.done,
-        onChanged: _editor.setNameEn,
-        decoration: InputDecoration(
-          labelText: l10n.recipeNameEnLabel,
-          errorText: show
-              ? _textError(l10n, errors.nameEn, maxRecipeNameLength)
-              : null,
-        ),
       ),
       KeyedSubtree(
         key: _storageKey,
@@ -691,7 +850,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     ];
 
     return PopScope<Object?>(
-      canPop: !state.dirty && !state.saving,
+      canPop: !state.dirty && !state.busy,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) unawaited(_confirmLeave());
       },
@@ -708,14 +867,26 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
               child: SingleChildScrollView(
                 key: const ValueKey('recipe-editor'),
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: form,
+                // Mientras traduce no se puede tocar ni escribir nada (la
+                // traducción pisaría lo nuevo); se puede seguir mirando.
+                child: AbsorbPointer(
+                  absorbing: state.translating,
+                  child: ExcludeFocus(
+                    excluding: state.translating,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: form,
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-          bottomNavigationBar: _SaveBar(saving: state.saving, onSave: _save),
+          bottomNavigationBar: _SaveBar(
+            saving: state.busy,
+            translating: state.translating,
+            onSave: _save,
+          ),
         ),
       ),
     );
@@ -727,9 +898,16 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
 /// el cuerpo), así que el margen del teclado lo pone la barra misma. Sigue
 /// siendo la barra de abajo para que los avisos salgan encima.
 class _SaveBar extends StatelessWidget {
-  const _SaveBar({required this.saving, required this.onSave});
+  const _SaveBar({
+    required this.saving,
+    required this.translating,
+    required this.onSave,
+  });
 
   final bool saving;
+
+  /// Traduciendo: puede tardar, así que además de la ruedita lo dice.
+  final bool translating;
   final VoidCallback onSave;
 
   @override
@@ -756,12 +934,32 @@ class _SaveBar extends StatelessWidget {
                   child: FilledButton(
                     key: const ValueKey('recipe-save'),
                     onPressed: saving ? null : onSave,
-                    child: saving
-                        ? const SizedBox.square(
+                    child: switch ((saving, translating)) {
+                      (_, true) => Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox.square(
                             dimension: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(l10n.actionSave),
+                          ),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            child: Semantics(
+                              liveRegion: true,
+                              child: Text(
+                                l10n.recipeTranslating,
+                                key: const ValueKey('recipe-translating'),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      (true, _) => const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      _ => Text(l10n.actionSave),
+                    },
                   ),
                 ),
               ),
@@ -791,12 +989,17 @@ class _DescriptionField extends StatelessWidget {
     required this.error,
     required this.textInputAction,
     required this.onChanged,
+    this.helper,
   });
 
   final Key fieldKey;
   final TextEditingController controller;
   final String label;
   final String? error;
+
+  /// Debajo del campo, a la izquierda del contador (la marca de la
+  /// traducción automática).
+  final Widget? helper;
   final TextInputAction textInputAction;
   final ValueChanged<String> onChanged;
 
@@ -823,6 +1026,7 @@ class _DescriptionField extends StatelessWidget {
             onChanged: onChanged,
             decoration: InputDecoration(
               labelText: label,
+              helper: helper,
               // Pasada, en rojo como el contador de TextField, aunque todavía
               // no se haya intentado guardar.
               errorText: error ?? (tooLong ? '' : null),
@@ -953,7 +1157,7 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _Hint extends StatelessWidget {
-  const _Hint(this.text, {this.bottom = 0});
+  const _Hint(this.text, {super.key, this.bottom = 0});
 
   final String text;
   final double bottom;
@@ -972,6 +1176,35 @@ class _Hint extends StatelessWidget {
     );
   }
 }
+
+/// Debajo de un campo en italiano o en inglés que llenó la traducción
+/// automática y nadie tocó a mano.
+class _AutoTranslatedMark extends StatelessWidget {
+  const _AutoTranslatedMark({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.tertiary;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.translate, size: 16, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            l10n.recipeAutoTranslated,
+            style: theme.textTheme.bodySmall?.copyWith(color: color),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Qué eligió Evelyn en el aviso de la traducción que falló.
+enum _AfterTranslateFailure { retry, skip, write }
 
 /// Enlace a un plato que no está en el catálogo.
 class _RecipeNotFound extends StatelessWidget {

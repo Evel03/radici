@@ -46,7 +46,7 @@ void main() {
 
     expect(
       find.text(
-        'Non hai ancora piatti. Aggiungi il primo con «Nuovo piatto»: bastano il nome in italiano e gli allergeni.',
+        'Non hai ancora piatti. Aggiungi il primo con «Nuovo piatto»: bastano il nome in spagnolo e gli allergeni.',
       ),
       findsOneWidget,
     );
