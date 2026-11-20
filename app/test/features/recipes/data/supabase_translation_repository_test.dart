@@ -110,6 +110,8 @@ void main() {
     },
   );
 
+  // Un 200 que no cumple el contrato es un problema de la función: no se
+  // ofrece reintentar.
   group('una respuesta 200 con otra forma: todo o nada', () {
     final cases = <(String, Object?)>[
       ('no es un objeto', 'ok'),
@@ -149,7 +151,7 @@ void main() {
         server.handler = (_) async => jsonResponse(body);
         await expectLater(
           repository.translate(milanesa),
-          _failure(TranslationFailureKind.unavailable),
+          _failure(TranslationFailureKind.server),
         );
       });
     }
@@ -157,7 +159,16 @@ void main() {
     test('con una descripción que no se pidió', () async {
       await expectLater(
         repository.translate((name: 'Locro', description: null)),
-        _failure(TranslationFailureKind.unavailable),
+        _failure(TranslationFailureKind.server),
+      );
+    });
+
+    test('un 200 que no es JSON', () async {
+      server.handler = (_) async =>
+          http.Response('ok', 200, headers: {'content-type': 'text/plain'});
+      await expectLater(
+        repository.translate(milanesa),
+        _failure(TranslationFailureKind.server),
       );
     });
   });
@@ -288,6 +299,36 @@ void main() {
       );
     });
 
+    // El SDK envuelve en FunctionsFetchException cualquier cosa que falle al
+    // mandar: un Error de la app no se esconde como falla de red.
+    test('un Error al mandar (un TypeError) no es sin conexión', () async {
+      server.handler = (_) async => throw TypeError();
+      await expectLater(
+        repository.translate(milanesa),
+        _failure(TranslationFailureKind.server),
+      );
+    });
+
+    group('el relay de la plataforma (x-relay-error), por su estado', () {
+      for (final (status, kind) in const [
+        (502, TranslationFailureKind.unavailable),
+        (504, TranslationFailureKind.unavailable),
+        (500, TranslationFailureKind.server),
+      ]) {
+        test('$status', () async {
+          server.handler = (_) async => http.Response(
+            '{"message":"relay"}',
+            status,
+            headers: {
+              'content-type': 'application/json',
+              'x-relay-error': 'true',
+            },
+          );
+          await expectLater(repository.translate(milanesa), _failure(kind));
+        });
+      }
+    });
+
     test('se puede reintentar solo lo de la red o del momento', () {
       expect(
         {
@@ -301,6 +342,68 @@ void main() {
         },
       );
     });
+  });
+
+  group('un 401: renueva la sesión una vez y reintenta una vez', () {
+    bool isRefresh(http.Request request) =>
+        request.url.path == '/auth/v1/token' &&
+        request.url.queryParameters['grant_type'] == 'refresh_token';
+    bool isTranslate(http.Request request) =>
+        request.url.path == '/functions/v1/chef/translate';
+    final renewed = fakeJwt('user-1-renovado');
+    Map<String, Object?> renewedSession() => {
+      ...fakeSessionJson('user-1', 'evelyn@example.test'),
+      'access_token': renewed,
+    };
+
+    test('con la sesión renovada, el reintento traduce', () async {
+      var calls = 0;
+      server.handler = (request) async {
+        if (isRefresh(request)) return jsonResponse(renewedSession());
+        calls++;
+        return calls == 1
+            ? jsonResponse({'error': 'unauthorized'}, status: 401)
+            : jsonResponse(translated());
+      };
+
+      final result = await repository.translate(milanesa);
+
+      expect(result.it.name, 'Cotoletta alla napoletana');
+      final translateCalls = server.requests.where(isTranslate).toList();
+      expect(translateCalls, hasLength(2));
+      expect(server.requests.where(isRefresh), hasLength(1));
+      expect(translateCalls.last.headers['Authorization'], 'Bearer $renewed');
+    });
+
+    test('si vuelve a dar 401, unauthorized, sin más intentos', () async {
+      server.handler = (request) async => isRefresh(request)
+          ? jsonResponse(renewedSession())
+          : jsonResponse({'error': 'unauthorized'}, status: 401);
+      await expectLater(
+        repository.translate(milanesa),
+        _failure(TranslationFailureKind.unauthorized),
+      );
+      expect(server.requests.where(isRefresh), hasLength(1));
+      expect(server.requests.where(isTranslate), hasLength(2));
+    });
+
+    test(
+      'si la sesión no se puede renovar, unauthorized sin reintentar',
+      () async {
+        server.handler = (request) async => isRefresh(request)
+            ? jsonResponse({
+                'code': 400,
+                'error_code': 'refresh_token_not_found',
+                'msg': 'Invalid Refresh Token',
+              }, status: 400)
+            : jsonResponse({'error': 'unauthorized'}, status: 401);
+        await expectLater(
+          repository.translate(milanesa),
+          _failure(TranslationFailureKind.unauthorized),
+        );
+        expect(server.requests.where(isTranslate), hasLength(1));
+      },
+    );
   });
 
   test('si no responde en el tiempo de espera, timeout', () async {

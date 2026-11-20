@@ -2,11 +2,12 @@
 // docs/contracts/chef-api.md §12): POST chef/translate con el nombre y la
 // descripción en español devuelve el italiano y el inglés, enteros o nada.
 //
-// Como las reservas: el SDK manda la sesión de quien entró (Evelyn o un
-// colaborador suyo) en `Authorization: Bearer <token>` y la clave publicable
-// en `apikey`; la región va en la URL (`?forceFunctionRegion=eu-central-1`,
-// Frankfurt), nunca en la cabecera `x-region`, que el preflight de CORS no
-// permite (contrato §2).
+// Como pide el contrato §2: el SDK manda la sesión de quien entró (Evelyn o
+// un colaborador suyo) en `Authorization: Bearer <token>` y la clave
+// publicable en `apikey`; la región va en la URL
+// (`?forceFunctionRegion=eu-central-1`, Frankfurt), nunca en la cabecera
+// `x-region`, que el preflight de CORS no permite. Ante un 401 renueva la
+// sesión una vez y reintenta una vez (el SDK lee el token en cada pedido).
 //
 // A Anthropic solo va el nombre y la descripción del plato (SPEC §6). Nada se
 // loguea: ni el texto del plato ni el detalle de un error, que se traduce a
@@ -34,8 +35,8 @@ final translationRepositoryProvider = Provider<TranslationRepository>((ref) {
 
 enum TranslationFailureKind {
   /// 503 (Claude no respondió a tiempo, un error pasajero o la base que no
-  /// respondió), un 5xx de la plataforma, la función sin desplegar o una
-  /// respuesta con otra forma. Se puede reintentar.
+  /// respondió), un 5xx pasajero de la plataforma (502, 504) o la función
+  /// sin desplegar. Se puede reintentar.
   unavailable,
 
   /// Sin conexión: el pedido no salió. Se puede reintentar.
@@ -57,14 +58,16 @@ enum TranslationFailureKind {
   /// sola (el intento rechazado también cuenta).
   rateLimited,
 
-  /// 401: sin sesión válida (vencida o cerrada).
+  /// 401 también después de renovar la sesión (o la sesión no se pudo
+  /// renovar): hay que volver a entrar.
   unauthorized,
 
   /// 403: el usuario no es la cocinera ni un colaborador suyo.
   forbidden,
 
   /// 500: algo roto o mal configurado del lado del servidor (una clave de
-  /// Anthropic inválida, el SDK que no carga). Reintentar no lo arregla.
+  /// Anthropic inválida, el SDK que no carga); también un 200 con otra forma
+  /// o un error inesperado de la app. Reintentar no lo arregla.
   server,
 
   /// 400 y los otros 4xx: un cuerpo que la app no debería mandar.
@@ -109,6 +112,22 @@ class SupabaseTranslationRepository implements TranslationRepository {
 
   @override
   Future<RecipeTranslation> translate(SpanishText spanish) async {
+    try {
+      return await _translateOnce(spanish);
+    } on TranslationFailure catch (failure) {
+      if (failure.kind != TranslationFailureKind.unauthorized) rethrow;
+    }
+    // 401: el token venció o la sesión se renovó en otro lado. Una sola
+    // renovación y un solo reintento; si no alcanza, hay que volver a entrar.
+    try {
+      await _client.auth.refreshSession();
+    } on Object {
+      throw const TranslationFailure(TranslationFailureKind.unauthorized);
+    }
+    return _translateOnce(spanish);
+  }
+
+  Future<RecipeTranslation> _translateOnce(SpanishText spanish) async {
     final FunctionResponse response;
     try {
       response = await _client.functions
@@ -121,22 +140,34 @@ class SupabaseTranslationRepository implements TranslationRepository {
           .timeout(timeout);
     } on TimeoutException {
       throw const TranslationFailure(TranslationFailureKind.timeout);
-    } on FunctionsFetchException {
-      // El pedido no salió: sin red.
-      throw const TranslationFailure(TranslationFailureKind.offline);
+    } on FunctionsFetchException catch (error) {
+      // El pedido no salió. Un Error (de programación, no de la red) que el
+      // SDK envolvió no se esconde como falla de red.
+      throw TranslationFailure(
+        error.details is Error
+            ? TranslationFailureKind.server
+            : TranslationFailureKind.offline,
+      );
     } on FunctionsHttpException catch (error) {
       throw translationFailureFromResponse(error.status, error.details);
+    } on FunctionsRelayException catch (error) {
+      // El relay de la plataforma no llegó a la función: su estado dice si es
+      // pasajero (502, 503, 504) o no (500).
+      throw translationFailureFromResponse(error.status, null);
     } on Object {
-      // El relay de la plataforma o el token que no se pudo renovar.
-      throw const TranslationFailure(TranslationFailureKind.unavailable);
+      // Otra cosa (un error de la app, el SDK de Auth): no es la red, y
+      // reintentar no la arregla.
+      throw const TranslationFailure(TranslationFailureKind.server);
     }
     try {
       return translationFromResponse(
         response.data,
         withDescription: spanish.description != null,
       );
-    } on FormatException {
-      throw const TranslationFailure(TranslationFailureKind.unavailable);
+    } on Object {
+      // Un 200 con otra forma (FormatException) o un dato que rompe la
+      // lectura: la función no cumple el contrato, no es pasajero.
+      throw const TranslationFailure(TranslationFailureKind.server);
     }
   }
 }
