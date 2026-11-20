@@ -1,5 +1,6 @@
-// Lista de pedidos de la cocinera: carga, tiempo real, reconexión, "visto"
-// y rechazo, con repositorios falsos.
+// Lista de pedidos de la cocinera: carga, tiempo real (el aviso, solo para
+// los pedidos de la web sin abrir; uno de la app, como una reserva a mano, se
+// suma sin aviso), reconexión, "visto" y rechazo, con repositorios falsos.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock.dart';
@@ -27,6 +28,18 @@ void main() {
     createdAt: DateTime.utc(2026, 10, 18, 9),
   );
   final fresh = buildRequest(id: 'fresh', createdAt: DateTime.utc(2026, 10, 19, 9));
+
+  /// Una reserva cargada a mano, como la crea chef_create_booking: pedido de
+  /// la app, aceptado y visto, sin fecha preferida ni estimación.
+  ChefRequest manualBooking(String id, DateTime createdAt) => buildRequest(
+    id: id,
+    source: RequestSource.app,
+    status: RequestStatus.accepted,
+    seenAt: createdAt,
+    createdAt: createdAt,
+    noDate: true,
+    estimate: null,
+  );
 
   List<ChefRequest> requests() => container.read(chefInboxProvider).requireValue;
   ChefInboxController controller() => container.read(chefInboxProvider.notifier);
@@ -99,6 +112,57 @@ void main() {
       expect(alert()!.requests.single.client.displayName, 'Marco Bianchi');
     });
 
+    test('un INSERT de un pedido new de la app (sin abrir) se agrega y no avisa', () async {
+      await start();
+      repository.insertFromRealtime(
+        buildRequest(
+          id: 'from-app',
+          source: RequestSource.app,
+          createdAt: DateTime.utc(2026, 10, 19, 11),
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(requests().first.id, 'from-app');
+      // Cuenta como nuevo en la bandeja («Nuove» y el contador), pero el aviso
+      // emergente es solo para los pedidos de la web.
+      expect(inboxTabOf(requests().first), InboxTab.fresh);
+      expect(container.read(newRequestsCountProvider), 2);
+      expect(alert(), isNull);
+    });
+
+    test('una reserva a mano (accepted, source app) que llega por INSERT se agrega a la lista sin aviso', () async {
+      await start();
+      repository.insertFromRealtime(
+        manualBooking('manual', DateTime.utc(2026, 10, 19, 11)),
+      );
+      await pumpEventQueue();
+
+      expect(requests().first.id, 'manual');
+      expect(inboxTabOf(requests().first), InboxTab.bookings);
+      expect(container.read(newRequestsCountProvider), 1);
+      expect(alert(), isNull);
+    });
+
+    test('un pedido de la app no se suma al aviso de uno de la web', () async {
+      await start();
+      repository
+        ..insertFromRealtime(
+          buildRequest(id: 'web', createdAt: DateTime.utc(2026, 10, 19, 11)),
+        )
+        ..insertFromRealtime(
+          buildRequest(
+            id: 'app',
+            source: RequestSource.app,
+            createdAt: DateTime.utc(2026, 10, 19, 12),
+          ),
+        );
+      await pumpEventQueue();
+
+      expect(requests().map((r) => r.id), containsAll(['web', 'app']));
+      expect(alert()!.requests.map((r) => r.id), ['web']);
+    });
+
     test('un INSERT de un pedido que ya está en la lista no repite nada', () async {
       await start();
       repository.emitRealtime(const RequestInserted('fresh'));
@@ -134,6 +198,43 @@ void main() {
       expect(repository.fetchCalls, callsAfterFirstConnect + 1);
       expect(requests().first.id, 'missed');
       expect(alert()!.requests.single.id, 'missed');
+    });
+
+    /// Se corta la conexión, llegan [missed] sin aviso y vuelve.
+    Future<void> reconnectAfter(List<ChefRequest> missed) async {
+      repository.emitRealtime(const RealtimeConnected());
+      await pumpEventQueue();
+      repository.emitRealtime(const RealtimeDisconnected());
+      for (final request in missed) {
+        repository.insertSilently(request);
+      }
+      repository.emitRealtime(const RealtimeConnected());
+      await pumpEventQueue();
+    }
+
+    test('al reconectar, una reserva a mano que llegó mientras tanto no avisa', () async {
+      await start();
+      await reconnectAfter([
+        manualBooking('manual', DateTime.utc(2026, 10, 19, 13)),
+      ]);
+
+      expect(requests().first.id, 'manual');
+      expect(alert(), isNull);
+    });
+
+    test('al reconectar, de lo que llegó mientras tanto se avisa solo el pedido de la web', () async {
+      await start();
+      await reconnectAfter([
+        buildRequest(id: 'missed-web', createdAt: DateTime.utc(2026, 10, 19, 13)),
+        buildRequest(
+          id: 'missed-app',
+          source: RequestSource.app,
+          createdAt: DateTime.utc(2026, 10, 19, 14),
+        ),
+      ]);
+
+      expect(requests().map((r) => r.id), containsAll(['missed-web', 'missed-app']));
+      expect(alert()!.requests.map((r) => r.id), ['missed-web']);
     });
 
     test('la primera conexión no relee (la lista recién se cargó)', () async {
@@ -369,6 +470,120 @@ void main() {
     repository.failFetch = true;
     await expectLater(controller().refresh(), throwsA(isA<RequestsFailure>()));
     expect(requests(), hasLength(3));
+  });
+
+  group('reserva a mano confirmada en este dispositivo (applyManualBooking)', () {
+    // El pedido que arma la hoja con lo que ya sabe; el del servidor tiene
+    // el contacto como lo guardó la base.
+    final provisional = manualBooking('manual-1', testNow).copyWith(
+      clientId: 'c-anna',
+      client: const RequestClient(
+        displayName: 'Anna Verdi',
+        contactPhone: '+393471112222',
+        status: ClientStatus.trial,
+      ),
+    );
+    final saved = provisional.copyWith(
+      client: provisional.client.copyWith(contactEmail: 'anna@example.test'),
+    );
+    final annaProspect = buildRequest(
+      id: 'anna-web',
+      clientId: 'c-anna',
+      name: 'Anna Verdi',
+      clientStatus: ClientStatus.prospect,
+      createdAt: DateTime.utc(2026, 10, 17, 9),
+    );
+
+    test('la agrega enseguida, sin aviso, y la reemplaza al releerla', () async {
+      await start();
+      repository.failFetch = true;
+      controller().applyManualBooking(provisional);
+      expect(requests().first, provisional);
+      expect(inboxTabOf(requests().first), InboxTab.bookings);
+      expect(alert(), isNull);
+      await pumpEventQueue();
+      expect(requests().first, provisional, reason: 'la relectura falló');
+
+      repository
+        ..failFetch = false
+        ..insertSilently(saved);
+      controller().applyManualBooking(provisional);
+      await pumpEventQueue();
+      expect(requests().where((r) => r.id == 'manual-1').single, saved);
+    });
+
+    test('si llega el INSERT con el mismo id, no se duplica ni avisa', () async {
+      await start();
+      repository.failFetch = true;
+      controller().applyManualBooking(provisional);
+      await pumpEventQueue();
+      repository
+        ..failFetch = false
+        ..insertFromRealtime(saved);
+      await pumpEventQueue();
+      expect(requests().where((r) => r.id == 'manual-1'), hasLength(1));
+      expect(alert(), isNull);
+    });
+
+    test('si el INSERT llegó antes, queda el del servidor', () async {
+      await start();
+      repository.insertFromRealtime(saved);
+      await pumpEventQueue();
+      repository.failFetch = true;
+      controller().applyManualBooking(provisional);
+      await pumpEventQueue();
+      expect(requests().where((r) => r.id == 'manual-1').single, saved);
+    });
+
+    test('la ficha prospecto pasa a trial en todos sus pedidos; las demás no', () async {
+      repository.insertSilently(annaProspect);
+      await start();
+      repository.failFetch = true;
+      controller().applyManualBooking(provisional);
+      final byId = {for (final r in requests()) r.id: r};
+      expect(byId['anna-web']!.client.status, ClientStatus.trial);
+      expect(byId['anna-web']!.canMarkClient, isFalse);
+      expect(byId['fresh']!.client.status, ClientStatus.prospect);
+    });
+
+    // «Nuova prenotazione» se ofrece también con la bandeja en error. La lista
+    // de un AsyncError (la vacía de antes de que cargue la cocinera) no se
+    // toca: con un solo pedido taparía el error y escondería los demás.
+    test('con la bandeja en error, la relee entera: entran la reserva y el pedido nuevo de la web', () async {
+      repository.failFetch = true;
+      await start();
+      expect(container.read(chefInboxProvider).hasError, isTrue);
+
+      repository
+        ..failFetch = false
+        ..insertSilently(saved);
+      controller().applyManualBooking(provisional);
+      await pumpEventQueue();
+      expect(container.read(chefInboxProvider).hasError, isFalse);
+      expect(requests().map((r) => r.id), ['manual-1', 'fresh', 'older']);
+      expect(container.read(newRequestsCountProvider), 1);
+      expect(alert(), isNull);
+    });
+
+    test('con la bandeja en error y sin red, sigue en error (no queda una lista con la reserva sola)', () async {
+      repository.failFetch = true;
+      await start();
+      controller().applyManualBooking(provisional);
+      await pumpEventQueue();
+      expect(container.read(chefInboxProvider).hasError, isTrue);
+    });
+  });
+
+  test('applyBooking con la bandeja en error la relee entera (no queda el pedido solo)', () async {
+    repository.failFetch = true;
+    await start();
+    expect(container.read(chefInboxProvider).hasError, isTrue);
+
+    repository.failFetch = false;
+    controller().applyBooking('fresh', weeks: 4);
+    await pumpEventQueue();
+    expect(container.read(chefInboxProvider).hasError, isFalse);
+    expect(requests().map((r) => r.id), ['fresh', 'older']);
   });
 
   test('chefRequestProvider: si la lista no cargó, lo pide solo', () async {

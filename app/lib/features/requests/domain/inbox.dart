@@ -2,13 +2,17 @@
 // orden. Dart puro, sin Flutter.
 import 'package:radici/features/requests/domain/chef_request.dart';
 
-/// Pestañas de la bandeja (contrato §7).
+/// Pestañas de la bandeja (contrato §7), en el orden en que se muestran.
 enum InboxTab {
-  /// Sin abrir (`seen_at` null) y no rechazados.
+  /// Sin abrir (`seen_at` null), no rechazados y que no son reservas.
   fresh,
 
-  /// Ya abiertos y no rechazados.
+  /// Ya abiertos, no rechazados y que no son reservas.
   seen,
+
+  /// Reservas: pedidos `accepted` (una reserva es un pedido aceptado más sus
+  /// sesiones, SPEC §4).
+  bookings,
 
   /// Rechazados.
   rejected,
@@ -17,6 +21,7 @@ enum InboxTab {
 /// Pestaña a la que pertenece [request].
 InboxTab inboxTabOf(ChefRequest request) {
   if (request.isRejected) return InboxTab.rejected;
+  if (request.isBooking) return InboxTab.bookings;
   return request.seenAt == null ? InboxTab.fresh : InboxTab.seen;
 }
 

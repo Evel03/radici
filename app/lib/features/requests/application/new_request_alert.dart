@@ -1,5 +1,6 @@
-// Aviso emergente "Nueva solicitud de …" mientras la app está abierta.
-// Lo arma ChefInboxController cuando llega un pedido por tiempo real (o al
+// Aviso emergente "Nueva solicitud de …" mientras la app está abierta, solo
+// para los pedidos sin abrir que llegan de la web. Lo arma
+// ChefInboxController cuando llega un pedido por tiempo real (o al
 // reconectar) y lo muestra NewRequestAlertListener.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -41,9 +42,10 @@ class NewRequestAlertController extends Notifier<NewRequestAlert?> {
     return null;
   }
 
-  /// Suma [arrived] al aviso (sin repetir pedidos).
+  /// Suma al aviso los pedidos de [arrived] que avisan al llegar (sin abrir y
+  /// de la web: [ChefRequest.alertsOnArrival]), sin repetir pedidos.
   void show(Iterable<ChefRequest> arrived) {
-    final fresh = arrived.where((r) => r.isNew).toList();
+    final fresh = arrived.where((r) => r.alertsOnArrival).toList();
     if (fresh.isEmpty) return;
     var requests = state?.requests ?? const <ChefRequest>[];
     for (final request in fresh) {

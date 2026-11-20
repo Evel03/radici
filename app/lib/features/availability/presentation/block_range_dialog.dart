@@ -12,6 +12,7 @@ import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/availability/presentation/availability_actions.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 /// Lo que eligió la cocinera en el resumen del rango.
@@ -55,11 +56,19 @@ Future<void> pickAndBlockRange(BuildContext context) async {
   final first = CalendarDate.fromDateTime(range.start);
   final last = CalendarDate.fromDateTime(range.end);
   final summary = summarizeRange(first, last, snapshot);
+  // Los días del rango con sesiones: bloquearlos no las cancela. Si las
+  // sesiones no se pudieron leer (o todavía cargan), se dice que no se sabe:
+  // la agenda lo avisa arriba, pero el diálogo la tapa.
+  final sessionsKnown = container.read(sessionsControllerProvider).hasValue;
+  final sessions = container.read(agendaSessionsByDateProvider);
+  final sessionDays = summary.dates.where(sessions.containsKey).length;
   final choice = await showBlockRangeDialog(
     context,
     first: first,
     last: last,
     summary: summary,
+    sessionDays: sessionDays,
+    sessionsKnown: sessionsKnown,
   );
   switch (choice) {
     case BlockRangeBlock(:final note):
@@ -71,16 +80,25 @@ Future<void> pickAndBlockRange(BuildContext context) async {
   }
 }
 
-/// Muestra el resumen del rango de [first] a [last]. Devuelve lo que se eligió,
-/// o null si se canceló.
+/// Muestra el resumen del rango de [first] a [last] ([sessionDays]: cuántos
+/// de sus días tienen sesiones; [sessionsKnown] false si no se pudo saber).
+/// Devuelve lo que se eligió, o null si se canceló.
 Future<BlockRangeChoice?> showBlockRangeDialog(
   BuildContext context, {
   required CalendarDate first,
   required CalendarDate last,
   required RangeSummary summary,
+  int sessionDays = 0,
+  bool sessionsKnown = true,
 }) => showDialog<BlockRangeChoice>(
   context: context,
-  builder: (_) => BlockRangeDialog(first: first, last: last, summary: summary),
+  builder: (_) => BlockRangeDialog(
+    first: first,
+    last: last,
+    summary: summary,
+    sessionDays: sessionDays,
+    sessionsKnown: sessionsKnown,
+  ),
 );
 
 class BlockRangeDialog extends StatefulWidget {
@@ -89,11 +107,20 @@ class BlockRangeDialog extends StatefulWidget {
     required this.first,
     required this.last,
     required this.summary,
+    this.sessionDays = 0,
+    this.sessionsKnown = true,
   });
 
   final CalendarDate first;
   final CalendarDate last;
   final RangeSummary summary;
+
+  /// Días del rango con sesiones: bloquearlos no las cancela.
+  final int sessionDays;
+
+  /// false: las sesiones no se pudieron leer (o todavía cargan), así que no
+  /// se sabe si algún día del rango tiene.
+  final bool sessionsKnown;
 
   @override
   State<BlockRangeDialog> createState() => _BlockRangeDialogState();
@@ -172,6 +199,19 @@ class _BlockRangeDialogState extends State<BlockRangeDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(counts, key: const ValueKey('block-range-summary')),
+          if (!widget.sessionsKnown) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.blockRangeSessionsUnknown,
+              key: const ValueKey('block-range-sessions-unknown'),
+            ),
+          ] else if (widget.sessionDays > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.blockRangeSessionDays(widget.sessionDays),
+              key: const ValueKey('block-range-sessions'),
+            ),
+          ],
           if (toBlock > 0) ...[
             const SizedBox(height: 16),
             TextField(
