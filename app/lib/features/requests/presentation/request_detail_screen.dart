@@ -2,13 +2,16 @@
 // solo ve la cocinera, o lo que contestó el cliente a la pregunta de
 // alergias), la estimación guardada y las acciones: WhatsApp, llamar, email,
 // rechazar, deshacer el rechazo y marcar a la persona como clienta (así no se
-// borra a los 90 días). Al abrirlo se marca como visto.
+// borra a los 90 días). Un pedido nuevo, además, «Conferma prenotazione»
+// (abajo). Al abrirlo se marca como visto.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/money.dart';
+import 'package:radici/core/routes.dart';
 import 'package:radici/features/quote/domain/quote.dart' show defaultPricing;
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/application/contact_actions.dart';
@@ -71,6 +74,53 @@ class _RequestDetailScreenState extends ConsumerState<RequestDetailScreen> {
           onRetry: () => ref.invalidate(chefRequestProvider(widget.requestId)),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
+      ),
+      // Un pedido nuevo se confirma como reserva: la acción principal, abajo.
+      bottomNavigationBar: request != null && request.canConfirmBooking
+          ? _ConfirmBookingBar(requestId: request.id)
+          : null,
+    );
+  }
+}
+
+/// «Conferma prenotazione»: abre la hoja a pantalla completa.
+class _ConfirmBookingBar extends StatelessWidget {
+  const _ConfirmBookingBar({required this.requestId});
+
+  final String requestId;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surface,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: colors.outlineVariant)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Center(
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    key: const ValueKey('action-confirm-booking'),
+                    onPressed: () =>
+                        context.push(AppRoutes.requestBooking(requestId)),
+                    icon: const Icon(Icons.event_available),
+                    label: Text(l10n.actionConfirmBooking),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

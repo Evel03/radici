@@ -221,12 +221,12 @@ Solo evento, ruta, códigos, contadores e ids. Nunca nombres, teléfonos, emails
 | `booking_duplicate` | `requestId`, `userId` |
 | `session_moved` | `sessionId`, `userId` |
 | `sessions_cancelled` | `cancelled`, `alreadyCancelled`, `withPayments` (cantidades), `userId` |
-
-`userId` es el usuario del token: la cocinera o el colaborador que hizo el cambio (con colaboradores, la cocina son varias cuentas; SPEC §6).
 | `db_error` | `op`, `code` y, si lo hay, `message` (el código propio) |
 | `unexpected_result` | `op` (también `load_chef`, si `chef_id_for_user` responde algo que no es un uuid ni null) |
 | `unexpected_error` | `error` (el tipo, nunca el mensaje) |
 | `config_missing`, `config_incomplete` | `missing` (nombres de variables) |
+
+`userId` es el usuario del token: la cocinera o el colaborador que hizo el cambio (con colaboradores, la cocina son varias cuentas; SPEC §6).
 
 ## 11. Pruebas
 

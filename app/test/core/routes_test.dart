@@ -128,6 +128,17 @@ void main() {
     expect(AppRoutes.requestDetail('a/b'), '/richieste/a%2Fb');
   });
 
+  test('la hoja «Conferma prenotazione» cuelga del detalle y es del área de la cocinera', () {
+    expect(AppRoutes.requestBooking('abc'), '/richieste/abc/prenota');
+    expect(AppRoutes.requestBooking('a/b'), '/richieste/a%2Fb/prenota');
+    expect(isChefPath('/richieste/abc/prenota'), isTrue);
+    expect(_redirect(chef, '/richieste/abc/prenota'), isNull);
+    expect(
+      _redirect(signedOut, '/richieste/abc/prenota'),
+      '/accedi?from=%2Frichieste%2Fabc%2Fprenota',
+    );
+  });
+
   test('rutas del catálogo de platos', () {
     expect(AppRoutes.more, '/altro');
     expect(AppRoutes.recipes, '/altro/piatti');

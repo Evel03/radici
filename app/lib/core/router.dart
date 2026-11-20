@@ -12,6 +12,7 @@ import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/presentation/client_area_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
+import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/home/presentation/home_screen.dart';
 import 'package:radici/features/more/presentation/more_screen.dart';
 import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
@@ -96,6 +97,20 @@ final routerProvider = Provider<GoRouter>((ref) {
                         requestId: state.pathParameters['id']!,
                       ),
                     ),
+                    routes: [
+                      // «Conferma prenotazione», a pantalla completa (con X).
+                      GoRoute(
+                        path: AppRoutes.bookingSegment,
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) => MaterialPage<void>(
+                          key: state.pageKey,
+                          fullscreenDialog: true,
+                          child: ConfirmBookingScreen(
+                            requestId: state.pathParameters['id']!,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -174,6 +189,24 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 Page<void> _page(GoRouterState state, Widget child) =>
     MaterialPage<void>(key: state.pageKey, child: child);
+
+/// Hay una hoja «Conferma prenotazione» en la pila de [router], a la vista o
+/// tapada por otra pantalla (por ejemplo, un pedido abierto desde el aviso).
+/// Un go la sacaría sin pasar por su PopScope: con lo escrito o, mientras se
+/// manda, con la pantalla final y su WhatsApp.
+bool bookingSheetInStack(GoRouter router) {
+  bool inStack(List<RouteMatchBase> matches) => matches.any(
+    (match) => switch (match) {
+      ShellRouteMatch(:final matches) => inStack(matches),
+      ImperativeRouteMatch(:final matches) => inStack(matches.matches),
+      _ => switch (match.route) {
+        GoRoute(path: AppRoutes.bookingSegment) => true,
+        _ => false,
+      },
+    },
+  );
+  return inStack(router.routerDelegate.currentConfiguration.matches);
+}
 
 class _RouterRefresh extends ChangeNotifier {
   void notify() => notifyListeners();

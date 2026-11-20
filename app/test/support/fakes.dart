@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:mocktail/mocktail.dart';
 import 'package:radici/core/app_language.dart';
+import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
@@ -11,10 +12,14 @@ import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/availability/domain/availability.dart';
+import 'package:radici/features/bookings/data/bookings_repository.dart';
+import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+
+import 'request_fixtures.dart';
 
 class MockAuthRepository extends Mock implements AuthRepository {}
 
@@ -368,6 +373,148 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
       throw const AvailabilityFailure(AvailabilityFailureKind.notFound);
     }
     blocked[entry.key] = entry.value.copyWith(note: note);
+  }
+}
+
+/// La Edge Function `chef` en memoria (POST chef/bookings). El dryRun devuelve
+/// el estado de cada fecha ([statuses]; ok por defecto, closed en
+/// [closedDays]) con la llegada sugerida [suggestedStart] (ninguna en un día
+/// sin horario), evaluada con la hora pedida o, sin hora, con la sugerida. La
+/// confirmación devuelve las sesiones creadas y, si tiene [requests], pasa el
+/// pedido a `accepted` como la base. Como la base, con un pedido que ya no está
+/// `new` en [requests] el dryRun y la confirmación dan requestNotNew, salvo el
+/// reintento de una reserva guardada aquí con las mismas fechas y hora, que
+/// devuelve lo guardado con `duplicate` (contrato chef-api §4). Las fallas y
+/// las respuestas lentas se controlan por campo.
+class FakeBookingsRepository implements BookingsRepository {
+  FakeBookingsRepository({this.requests});
+
+  /// Los pedidos "en el servidor" que actualiza una confirmación.
+  final FakeChefRequestsRepository? requests;
+
+  /// Reservas guardadas, por pedido.
+  final Map<String, BookingResult> saved = {};
+
+  /// La próxima confirmación se guarda pero su respuesta se pierde
+  /// (unavailable): la base la tiene y la app no lo sabe.
+  bool loseNextConfirmResponse = false;
+
+  /// Con true, cada dryRun espera su propio Completer de [heldChecks], para
+  /// completar las respuestas en otro orden que los pedidos.
+  bool holdEachCheck = false;
+  final List<Completer<void>> heldChecks = [];
+
+  final List<BookingRequest> calls = [];
+
+  List<BookingRequest> get dryRuns => [
+    for (final call in calls)
+      if (call.dryRun) call,
+  ];
+
+  List<BookingRequest> get confirmations => [
+    for (final call in calls)
+      if (!call.dryRun) call,
+  ];
+
+  final Map<CalendarDate, BookingDayStatus> statuses = {};
+  final Set<CalendarDate> closedDays = {};
+  ClockTime suggestedStart = const ClockTime.hm(10, 0);
+
+  /// Si no son null, el dryRun o la confirmación fallan con esto.
+  BookingFailure? checksFailure;
+  BookingFailure? confirmFailure;
+
+  /// Si no son null, la respuesta espera a que se completen.
+  Completer<void>? pendingChecks;
+  Completer<void>? pendingConfirm;
+
+  /// La confirmación responde como un reintento de una ya guardada.
+  bool duplicate = false;
+
+  @override
+  Future<BookingResult> createBooking(BookingRequest request) async {
+    calls.add(request);
+    if (request.dryRun && holdEachCheck) {
+      final gate = Completer<void>();
+      heldChecks.add(gate);
+      await gate.future;
+    }
+    final pending = request.dryRun ? pendingChecks : pendingConfirm;
+    if (pending != null) await pending.future;
+    final failure = request.dryRun ? checksFailure : confirmFailure;
+    if (failure != null) throw failure;
+    final current = requests?.requests[request.requestId];
+    if (current != null && current.status != RequestStatus.newRequest) {
+      final booked = saved[request.requestId];
+      if (!request.dryRun &&
+          booked != null &&
+          _sameDatesAndStart(booked, request)) {
+        return booked.copyWith(duplicate: true);
+      }
+      // Los demás estados se escriben igual que en la base.
+      throw BookingFailure(
+        BookingFailureKind.requestNotNew,
+        requestStatus: current.status.name,
+      );
+    }
+    final result = BookingResult(
+      dryRun: request.dryRun,
+      duplicate: !request.dryRun && duplicate,
+      requestId: request.requestId,
+      clientId: testClientId,
+      weeks: [
+        for (final (i, date) in request.dates.indexed)
+          _week(request, i, date),
+      ],
+    );
+    if (!request.dryRun) {
+      _accept(request);
+      saved[request.requestId] = result.copyWith(duplicate: false);
+      if (loseNextConfirmResponse) {
+        loseNextConfirmResponse = false;
+        throw const BookingFailure(BookingFailureKind.unavailable);
+      }
+    }
+    return result;
+  }
+
+  static bool _sameDatesAndStart(BookingResult booked, BookingRequest request) =>
+      booked.weeks.length == request.dates.length &&
+      [
+        for (final (i, week) in booked.weeks.indexed)
+          week.date == request.dates[i] && week.start == request.start,
+      ].every((same) => same);
+
+  BookingWeek _week(BookingRequest request, int index, CalendarDate date) {
+    final closed = closedDays.contains(date);
+    final total = request.serviceTotalCents ?? 0;
+    final weeks = request.dates.length;
+    return BookingWeek(
+      date: date,
+      start: request.start ?? (closed ? null : suggestedStart),
+      cookMinutes: request.cookMinutes,
+      status:
+          statuses[date] ??
+          (closed ? BookingDayStatus.closed : BookingDayStatus.ok),
+      suggestedStart: closed ? null : suggestedStart,
+      // Como split_cents: los centavos que sobran, a las primeras.
+      serviceCents: total ~/ weeks + (index < total % weeks ? 1 : 0),
+      sessionId: request.dryRun ? null : 'session-${index + 1}',
+    );
+  }
+
+  void _accept(BookingRequest request) {
+    final server = requests;
+    final current = server?.requests[request.requestId];
+    if (server == null || current == null) return;
+    server.requests[request.requestId] = current.copyWith(
+      status: RequestStatus.accepted,
+      weeks: request.dates.length,
+      seenAt: current.seenAt ?? DateTime.utc(2026, 10, 19, 12),
+      client: current.client.status == ClientStatus.prospect
+          ? current.client.copyWith(status: ClientStatus.trial)
+          : current.client,
+    );
   }
 }
 

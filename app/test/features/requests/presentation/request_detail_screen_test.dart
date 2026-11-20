@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 
@@ -502,6 +503,37 @@ void main() {
         tester.widget<Text>(find.byKey(noneKey)).data,
         'Confirmó que nadie tiene alergias, intolerancias alimentarias ni celiaquía.',
       );
+    });
+  });
+
+  group('confirmar reserva', () {
+    const action = ValueKey('action-confirm-booking');
+
+    testWidgets('un pedido nuevo la ofrece abajo y abre la hoja', (tester) async {
+      await openDetail(tester, buildRequest());
+      expect(find.byKey(action), findsOneWidget);
+      expect(find.text('Conferma prenotazione'), findsOneWidget);
+
+      await tester.tap(find.byKey(action));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+    });
+
+    testWidgets('una sesión extra también', (tester) async {
+      await openDetail(tester, buildRequest(type: RequestType.extra));
+      expect(find.byKey(action), findsOneWidget);
+    });
+
+    for (final status in [RequestStatus.rejected, RequestStatus.accepted, RequestStatus.quoted]) {
+      testWidgets('un pedido ${status.name} no la ofrece', (tester) async {
+        await openDetail(tester, buildRequest(status: status, seenAt: testNow));
+        expect(find.byKey(action), findsNothing);
+      });
+    }
+
+    testWidgets('un cambio de una sesión no la ofrece', (tester) async {
+      await openDetail(tester, buildRequest(type: RequestType.change));
+      expect(find.byKey(action), findsNothing);
     });
   });
 

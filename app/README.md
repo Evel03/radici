@@ -101,7 +101,10 @@ repositorios falsos (`test/support/fakes.dart`).
   «Collaboratore di Evelyn» en lugar del nombre (`chefAccountTitle`). El WhatsApp que le prepara el
   detalle de un pedido sale de su propio teléfono, así que escribe de parte de ella («ti scrivo da
   parte di Evelyn di Radici», `contactWhatsAppMessageOnBehalf`) en lugar de «sono Evelyn».
-- **Richieste**: pestañas Nuove (sin `seen_at`), Viste y Rifiutate, con contador de nuevas.
+- **Richieste**: pestañas Nuove (sin `seen_at` y no aceptadas), Viste, Prenotazioni (los pedidos
+  `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
+  nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos
+  y no la tapa.
 - **Franja**: la bandeja, el detalle y la agenda muestran mañana o tarde si el pedido la trae. La web
   ya no la pregunta y manda `any`, que la app lee como sin franja y no muestra (como los emails).
 - **Agenda**: mes y semana por `preferred_date` con la franja, más la lista "Senza data". "Hoy"
@@ -123,6 +126,35 @@ repositorios falsos (`test/support/fakes.dart`).
   Si la persona es todavía un prospecto, avisa que sus datos se borran 90 días después de su último
   pedido y ofrece **Segna come cliente** (con confirmación): la ficha pasa a `trial` y se conserva
   (contrato §9).
+- **Conferma prenotazione** (`features/bookings/`): desde el detalle de un pedido `new`, una hoja a
+  pantalla completa que lo convierte en una reserva de 1 a 8 semanas (una sesión `confirmed` por
+  semana). Es la primera llamada de la app a una Edge Function: `BookingsRepository` hace
+  `functions.invoke('chef/bookings')` con la sesión de quien entró (Evelyn o un colaborador
+  suyo) y `?forceFunctionRegion=eu-central-1` (nunca la cabecera `x-region`, que CORS no
+  permite) y traduce los errores a `BookingFailure` sin loguear nada (contrato
+  `docs/contracts/chef-api.md`). Prellena las semanas con `requests.weeks`,
+  las fechas cada 7 días desde la preferida (cambiar la primera mueve todas), la llegada que sugiere
+  el `dryRun`, los minutos de la estimación (tope de 360: de 9:00 a 15:00, sin compra antes) y el precio de la estimación (con las
+  tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
+  se pasa a centavos sin `double` (`parseEuroCents`). Cada cambio de fechas, hora o minutos vuelve a
+  pedir el `dryRun`: cada semana dice si está libre, un aviso (bloqueado, sin horario, fuera de
+  horario, pasada) o si choca, y con un choque no deja confirmar. La barra de abajo queda a la vista
+  en un teléfono en vertical, también con el teclado abierto (en `/gestione/` los avisos de arriba
+  se esconden mientras tanto; probado hasta 375×548, un iPhone SE con las barras de Safari; en
+  horizontal puede no entrar), y muestra arriba del botón el precio que se va a confirmar, lo que
+  queda por semana y la llegada, con «Modifica», que lleva al campo del precio (en un teléfono el
+  campo queda fuera de la vista, y después ninguna ruta cambia el precio); si algo impide confirmar,
+  dice qué (la semana que choca, una fecha o el precio) con «Vedi», que lleva hasta ahí. Una
+  `requestKey` por hoja, la misma en los reintentos; mientras envía no se puede cambiar nada. Si la
+  confirmación se queda sin respuesta (pudo haberse guardado), la hoja queda igual hasta
+  «Riprova», que manda lo mismo: el servidor reconoce el reintento por las fechas y la hora, y con
+  otros datos diría que el pedido ya no está nuevo. Si lo guardado no coincide con lo que tenía la
+  hoja (otro dispositivo confirmó las mismas fechas con otro precio), lo avisa. Al confirmar, el
+  WhatsApp para la clienta en su idioma, con las fechas y la hora (sin dirección ni alergias). Si
+  confirma un colaborador, el mensaje sale de su teléfono y escribe de parte de la cocinera
+  (`bookingWhatsAppMessageOnBehalf`; el del detalle es `contactWhatsAppMessageOnBehalf`):
+  «ti scrivo da parte di Evelyn di Radici» en lugar de «sono Evelyn» y, con varias semanas,
+  «Evelyn arriva alle…» en lugar de «Arrivo alle…».
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
@@ -144,18 +176,24 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
   entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).
-- **Avisos de la web** (arriba de cualquier pantalla, también del login): versión nueva publicada y,
-  en Safari del iPhone, abrir Radici desde el ícono (ver [Web /gestione/](#web-gestione)).
+- **Avisos de la web** (arriba de cualquier pantalla, también del login, salvo con el teclado
+  abierto): versión nueva publicada y, en Safari del iPhone, abrir Radici desde el ícono (ver
+  [Web /gestione/](#web-gestione)).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
-  emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Al reconectar
-  (corte de red, app que vuelve del segundo plano) se relee la lista y se avisa lo que llegó.
+  emergente "Nuova richiesta da …" en cualquier pantalla, con botón para abrirla. Con varios
+  pedidos («N nuove richieste») el botón lleva a la bandeja, salvo con una hoja «Conferma
+  prenotazione» abierta (o tapada por otro pedido): ahí abre encima el más reciente, porque ir a la
+  bandeja sacaría la hoja sin preguntar, y mientras se manda se perdería la pantalla final con el
+  WhatsApp. Al reconectar (corte de red, app que vuelve del segundo plano) se relee la lista y se
+  avisa lo que llegó.
 - Los teléfonos se normalizan con `lib/core/phone.dart`, copia de `normalizePhone`
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
 
 Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace del email a Evelyn):
-`/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`, `/agenda`,
-`/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con `?copia=<id>`, la copia de un
-plato) y `/altro/piatti/:id`, más `/` y `/preventivo` (públicas). En la web `/` lleva al login.
+`/accedi`, `/caricamento`, `/area-clienti`, `/richieste`, `/richieste/:id`,
+`/richieste/:id/prenota`, `/agenda`, `/impostazioni`, `/altro`, `/altro/piatti`,
+`/altro/piatti/nuovo` (con `?copia=<id>`, la copia de un plato) y `/altro/piatti/:id`, más `/` y
+`/preventivo` (públicas). En la web `/` lleva al login.
 
 ### Requisitos en Supabase
 
@@ -234,7 +272,11 @@ hace falta: sin `BUILD_ID` la app no avisa nada.
   was not laid out»). La app de abajo va en su propio contenedor de semántica: la barrera de cada
   ruta (un `BlockSemantics`) descarta lo pintado antes en el mismo contenedor, y sin eso VoiceOver no
   vería los avisos. Sus botones quedan a 8 px o más de lo de abajo (las acciones de cada barra,
-  como «Salva» del calendario de rango).
+  como «Salva» del calendario de rango). Con el teclado abierto (Flutter web lo informa como
+  `viewInsets`) los avisos se esconden y vuelven al cerrarlo: le quitan su alto a todas las
+  pantallas, y en un iPhone SE en Safari la hoja «Conferma prenotazione» se quedaba sin lugar para
+  el campo que se escribe y, con los dos avisos, «Conferma» bajaba detrás del teclado. Esconder la
+  tarjeta de Safari no es cerrarla.
 - **iPhone** (`web/index.html`, `web/manifest.json`): `<meta name="viewport">` solo para la pantalla
   de carga (al arrancar, Flutter pone el suyo; por eso tampoco va `viewport-fit=cover`),
   `apple-mobile-web-app-capable` y la barra de estado `default`; en la carga, el ícono y la rueda, sin

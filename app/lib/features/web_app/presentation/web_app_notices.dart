@@ -3,7 +3,10 @@
 // - «C'è una nuova versione · Aggiorna» (AppUpdateController);
 // - en el iPhone o el iPad fuera de la app instalada, la tarjeta que le
 //   recuerda abrir Radici desde el ícono (InstallHintController).
-// Fuera de la web nunca aparecen (no hay id compilado ni página).
+// Fuera de la web nunca aparecen (no hay id compilado ni página). Con el
+// teclado abierto se esconden y vuelven al cerrarlo: le quitan su alto a
+// todas las pantallas, y en un iPhone en Safari no quedaba lugar para el campo
+// que se escribe y la acción de abajo (como «Conferma» de la hoja de reserva).
 //
 // Va en el builder de MaterialApp (app.dart), encima del Navigator: sigue ahí
 // aunque cambie la ruta, pero no tiene Overlay, así que los botones llevan
@@ -63,9 +66,13 @@ class _WebAppNoticesState extends ConsumerState<WebAppNotices> {
   Widget build(BuildContext context) {
     final updateAvailable = ref.watch(appUpdateControllerProvider);
     final showInstallHint = ref.watch(installHintControllerProvider);
+    // Flutter web informa el teclado del teléfono como viewInsets. Esconder
+    // un aviso no es cerrarlo: vuelve al cerrar el teclado.
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final visible = _firstFrameDone && !keyboardOpen;
     final notices = [
-      if (_firstFrameDone && updateAvailable) const _UpdateBanner(),
-      if (_firstFrameDone && showInstallHint) const _InstallHintCard(),
+      if (visible && updateAvailable) const _UpdateBanner(),
+      if (visible && showInstallHint) const _InstallHintCard(),
     ];
 
     // La misma estructura con o sin avisos: la app de abajo (el router y sus
