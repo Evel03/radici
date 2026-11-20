@@ -176,16 +176,21 @@ repositorios falsos (`test/support/fakes.dart`).
   clientes (ese texto va a Anthropic). La regla de qué se traduce es Dart puro
   (`planRecipeTranslation`, en `domain/recipe_translation.dart`): lo vacío y lo automático cuyo
   español cambió; lo escrito a mano nunca se pisa; si se borra la descripción en español, las
-  descripciones automáticas se vacían. El nombre en español es obligatorio en un plato nuevo o una
-  copia y en uno que ya lo tenía; un plato viejo sin español se guarda como está, salvo que tenga una
-  descripción en español que traducir (ahí lo pide, con el motivo). El nombre en español repetido se
-  avisa mientras se escribe. Lo que llenó el traductor lleva la marca «Tradotto automaticamente» y se
+  descripciones automáticas se vacían. El nombre en español es obligatorio. Un plato viejo (guardado
+  sin `name_es`: Evelyn cargó los platos en español en el campo italiano) abre con su `name_it` en el
+  nombre en español y su `description_it` en la descripción en español, si no tenía una
+  (`italianMovedToSpanish`); esos campos en italiano abren vacíos, sin la marca, y se traducen al
+  guardar; si no se traducen, vuelven al texto de antes (`untranslatedFallback`), así nunca hay que
+  escribir el italiano para guardar. La copia hace lo mismo con el nombre. El nombre en español
+  repetido se avisa mientras se escribe (el de un plato viejo es su `name_it`). Lo que llenó el
+  traductor lleva la marca «Tradotto automaticamente» y se
   guarda en `auto_translated`; escribir en el campo lo saca. Mientras traduce, «Traduzione in
   corso…» en el botón (región viva para el lector de pantalla), el formulario sin tocar, «Annulla»
   de un aviso sin efecto y volver deshabilitado; si igual cambió algo, no guarda y lo dice. Si falla,
   no se guarda nada y un aviso dice por qué y ofrece «Scrivo io» (enfoca el primer campo que había
   que traducir), «Salva senza tradurre» (lo automático viejo se vacía; avisa si el plato sale de la
-  web; no se puede si el nombre en italiano queda vacío) y «Riprova» solo si la falla puede ser
+  web; no se puede si el nombre en italiano queda vacío; en un plato viejo vuelve el italiano de
+  antes, y el aviso lo dice) y «Riprova» solo si la falla puede ser
   pasajera (`TranslationFailureKind.canRetry`: `503`, un 502 o 504 de la plataforma, un 429 de la
   plataforma sin el código de la función, la función sin desplegar, sin conexión o 60 s sin
   respuesta); nunca ante `422`, `429`, `501`, `500` (también un

@@ -830,19 +830,89 @@ void main() {
       expect(find.text('Traducido automáticamente'), findsNothing, reason: 'un plato nuevo no tiene nada traducido');
     });
 
-    testWidgets('un plato viejo sin nombre en español y con una descripción que traducir: lo pide y dice por qué', (
-      tester,
-    ) async {
-      repository.recipes[lasagneId] = lasagne().copyWith(nameEs: null);
-      await openEditor(tester, location: '/altro/piatti/$lasagneId', size: const Size(375, 667));
-      await tester.drag(byKey('recipe-editor'), const Offset(0, -2000));
-      await tester.pumpAndSettle();
-      await save(tester);
+    // Decisión del 20/11/2026: Evelyn cargó los platos en español en el campo
+    // italiano. Un plato guardado sin nombre en español abre con ese texto en
+    // el español y el italiano vacío, sin la marca: lo traduce el guardado, y
+    // si no se puede, vuelve el italiano de antes (nunca queda trabado).
+    group('un plato viejo (sin nombre en español)', () {
+      setUp(() => repository.recipes[pastelId] = pastel());
 
-      expect(find.text('Per tradurre la descrizione serve il nome in spagnolo.').hitTestable(), findsOneWidget);
-      expect(translator.calls, isEmpty);
-      expect(repository.saveCalls, isEmpty);
-      expect(tester.takeException(), isNull);
+      testWidgets('su nombre en el campo español y el italiano vacío, sin la marca; salir sin cambios no guarda y guardar lo traduce', (
+        tester,
+      ) async {
+        await openEditor(tester, location: '/altro/piatti/$pastelId');
+        expect(textOf(tester, 'recipe-name-es'), 'Pastel de papa');
+        expect(textOf(tester, 'recipe-description-es'), pastelDescription);
+        for (final key in ['recipe-name-it', 'recipe-description-it', 'recipe-name-en', 'recipe-description-en']) {
+          expect(textOf(tester, key), isEmpty, reason: key);
+        }
+        expect(find.text('Tradotto automaticamente'), findsNothing, reason: 'nada lo tradujo');
+
+        await tester.tap(byKey('recipe-back'));
+        await tester.pumpAndSettle();
+        expect(find.byType(RecipesScreen), findsOneWidget, reason: 'sin cambios sale directo');
+        expect(repository.saveCalls, isEmpty);
+
+        await tapVisible(tester, tile(pastelId));
+        await save(tester);
+        expect(translator.calls, [(name: 'Pastel de papa', description: pastelDescription)]);
+        final saved = repository.saveCalls.single;
+        expect([saved.nameEs, saved.nameIt, saved.nameEn], ['Pastel de papa', '[it] Pastel de papa', '[en] Pastel de papa']);
+        expect([saved.descriptionEs, saved.descriptionIt], [pastelDescription, '[it] $pastelDescription']);
+        expect(find.byType(RecipesScreen), findsOneWidget);
+        expect(find.text('«[it] Pastel de papa» salvato.'), findsOneWidget);
+      });
+
+      testWidgets('con la traducción apagada guarda sin pedir el italiano, con el de antes, y la lista lo dice', (
+        tester,
+      ) async {
+        translator.failure = TranslationFailureKind.notConfigured;
+        await openEditor(tester, location: '/altro/piatti/$pastelId');
+        await save(tester);
+
+        expect(byKey('recipe-translate-failed'), findsNothing);
+        expect(find.byType(RecipesScreen), findsOneWidget);
+        expect(
+          find.text('«Pastel de papa» salvato senza tradurre: la traduzione automatica è spenta.'),
+          findsOneWidget,
+        );
+        expect(repository.saveCalls.single, pastel().copyWith(nameEs: 'Pastel de papa', descriptionEs: pastelDescription));
+      });
+
+      testWidgets('si el traductor no responde, «Salva senza tradurre» dice que el italiano queda como estaba y lo guarda', (
+        tester,
+      ) async {
+        translator.failure = TranslationFailureKind.unavailable;
+        await openEditor(tester, location: '/altro/piatti/$pastelId');
+        await save(tester);
+
+        expect(byKey('recipe-translate-failed'), findsOneWidget);
+        expect(
+          find.text(
+            "Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: l'italiano da "
+            'tradurre resta com\'era e gli altri campi vuoti si traducono la prossima volta che salvi.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Senza la descrizione in italiano il piatto non è sul sito.'), findsNothing);
+        await tester.tap(byKey('recipe-translate-skip'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(RecipesScreen), findsOneWidget);
+        expect(repository.saveCalls.single, pastel().copyWith(nameEs: 'Pastel de papa', descriptionEs: pastelDescription));
+        expect(find.descendant(of: tile(pastelId), matching: find.text('Sul sito')), findsOneWidget);
+      });
+
+      testWidgets('escribir el italiano a mano lo respeta', (tester) async {
+        await openEditor(tester, location: '/altro/piatti/$pastelId');
+        await tapVisible(tester, byKey('recipe-name-it'));
+        await tester.enterText(byKey('recipe-name-it'), 'Pasticcio di patate');
+        await save(tester);
+
+        final saved = repository.saveCalls.single;
+        expect([saved.nameIt, saved.nameEs, saved.nameEn], ['Pasticcio di patate', 'Pastel de papa', '[en] Pastel de papa']);
+        expect(saved.autoTranslated, isNot(contains(TranslatedField.nameIt)));
+      });
     });
 
     testWidgets('la marca en los campos automáticos; escribir en uno a mano la saca', (tester) async {

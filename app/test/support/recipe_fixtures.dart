@@ -7,6 +7,7 @@ const String risottoId = 'a0000000-0000-4000-8000-000000000002';
 const String minestroneId = 'a0000000-0000-4000-8000-000000000003';
 const String frittataId = 'a0000000-0000-4000-8000-000000000010';
 const String milanesaId = 'a0000000-0000-4000-8000-000000000004';
+const String pastelId = 'a0000000-0000-4000-8000-000000000005';
 
 /// Fila de PostgREST como la devuelve `select(recipeColumns)`: los alérgenos
 /// y los ingredientes llegan embebidos, en cualquier orden, y las notas como
@@ -151,4 +152,18 @@ Recipe milanesa() => const Recipe(
   descriptionEn: 'With tomato sauce, ham and mozzarella.',
   autoTranslated: {TranslatedField.descriptionIt, TranslatedField.nameEn, TranslatedField.descriptionEn},
   allergens: [Allergen.gluten, Allergen.eggs, Allergen.milk],
+);
+
+/// La descripción de la web de [pastel]: en español, en el campo italiano.
+const String pastelDescription = 'Carne picada, puré de papas y queso gratinado.';
+
+/// Un plato viejo (anterior a la traducción, 20/11/2026): sin el nombre en
+/// español, porque Evelyn escribió en español en el campo italiano, también
+/// la descripción. Sin inglés. No está en [sampleRecipes].
+Recipe pastel() => const Recipe(
+  id: pastelId,
+  nameIt: 'Pastel de papa',
+  descriptionIt: pastelDescription,
+  allergens: [Allergen.milk],
+  freezable: true,
 );

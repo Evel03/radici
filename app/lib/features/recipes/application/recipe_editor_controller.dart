@@ -13,6 +13,11 @@
 // reintentar, escribir a mano lo que falta o guardar sin traducir (lo
 // automático viejo se vacía: nunca queda una traducción vieja como si fuera
 // la del español nuevo).
+//
+// Un plato viejo (guardado sin el nombre en español) abre con su italiano en
+// el español y el italiano vacío, para traducir (italianMovedToSpanish:
+// Evelyn cargó los platos en español en el campo italiano). Si no se
+// traduce, se guarda con el italiano que tenía: nunca queda trabado.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/uuid.dart';
@@ -57,6 +62,13 @@ abstract class RecipeEditorState with _$RecipeEditorState {
     /// guardado al abrir, o el de la última traducción.
     required SpanishText translatedFrom,
 
+    /// En un plato viejo, el italiano guardado de los campos que abrieron
+    /// vacíos porque su texto pasó al español (italianMovedToSpanish): si se
+    /// guardan sin traducir, vuelven a eso. Vacío en los demás y después de
+    /// guardar (el plato ya tiene el nombre en español).
+    @Default(<TranslatedField, String>{})
+    Map<TranslatedField, String> untranslatedFallback,
+
     /// Después del primer intento de guardar con errores: se muestran.
     @Default(false) bool showErrors,
     @Default(false) bool saving,
@@ -92,21 +104,22 @@ abstract class RecipeEditorState with _$RecipeEditorState {
   /// Traduciendo o guardando: no se puede volver a guardar ni salir.
   bool get busy => saving || translating;
 
-  /// El nombre en español es obligatorio: en un plato nuevo (o una copia) y
-  /// en uno que ya lo tenía. Un plato viejo sin español se guarda como está.
-  bool get spanishRequired => isNew || source?.nameEs != null;
-
-  /// El nombre en italiano vacío no falta si sale del español: lo traduce el
-  /// guardado.
+  /// El nombre en español es obligatorio siempre: uno nuevo (o una copia) lo
+  /// escribe, y uno guardado abre con él, el suyo o, en uno viejo, el que
+  /// estaba en el campo italiano. El nombre en italiano vacío no falta si
+  /// sale del español: lo traduce el guardado.
   RecipeDraftErrors get errors => validateRecipeDraft(
     draft,
-    requireSpanish: spanishRequired,
+    requireSpanish: true,
     willTranslate: true,
   );
 
   /// Qué se traduce (o se vacía) al guardar.
-  RecipeTranslationPlan get translationPlan =>
-      planRecipeTranslation(draft, translatedFrom: translatedFrom);
+  RecipeTranslationPlan get translationPlan => planRecipeTranslation(
+    draft,
+    translatedFrom: translatedFrom,
+    untranslatedFallback: untranslatedFallback,
+  );
 
   @override
   String toString() => 'RecipeEditorState(${draft.id})';
@@ -175,7 +188,9 @@ final recipeNameTakenProvider = Provider.autoDispose
 
 /// Ya hay otro plato con el nombre en español del editor: el aviso sale
 /// debajo del nombre en español mientras se escribe (un plato nuevo empieza
-/// por ahí). Es un aviso: no impide guardar.
+/// por ahí). El de un plato viejo es el que está en el campo italiano (el
+/// editor lo abre así: italianMovedToSpanish). Es un aviso: no impide
+/// guardar.
 final recipeSpanishNameTakenProvider = Provider.autoDispose
     .family<bool, RecipeEditorTarget>((ref, target) {
       final (id, name) = ref.watch(
@@ -188,7 +203,7 @@ final recipeSpanishNameTakenProvider = Provider.autoDispose
         catalog,
         name,
         exceptId: id,
-        nameOf: (recipe) => recipe.nameEs,
+        nameOf: (recipe) => recipe.nameEs ?? recipe.nameIt,
       );
     });
 
@@ -236,6 +251,9 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
       isNew: isNew,
       // Los campos automáticos de un plato guardado salen de su español.
       translatedFrom: spanishTextOf(draft),
+      untranslatedFallback: source == null
+          ? const {}
+          : italianMovedToSpanish(source, copy: target is CopyRecipe),
     );
   }
 
@@ -450,8 +468,10 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
   /// Guarda sin traducir, después de una traducción que falló: lo
   /// automático que había que traducir de nuevo queda vacío (nunca una
   /// traducción vieja como si fuera la del español nuevo), lo vacío queda
-  /// vacío y lo escrito a mano, como estaba. Sin el nombre en italiano no se
-  /// puede ([RecipeTranslationPlan.canSkip]): no manda nada.
+  /// vacío y lo escrito a mano, como estaba; en un plato viejo, el italiano
+  /// vuelve al de antes ([RecipeEditorState.untranslatedFallback]). Sin el
+  /// nombre en italiano no se puede ([RecipeTranslationPlan.canSkip]): no
+  /// manda nada.
   Future<RecipeSaveResult> saveWithoutTranslating() async {
     if (state.busy) return RecipeSaveResult.busy;
     if (!_validate()) return RecipeSaveResult.invalid;
@@ -500,6 +520,8 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
           source: saved,
           isNew: false,
           untranslatedBecause: untranslatedBecause,
+          // Ya tiene el nombre en español: lo de antes es lo guardado.
+          untranslatedFallback: const {},
         );
       }
       return RecipeSaveResult.saved;

@@ -90,32 +90,64 @@ void main() {
     });
   });
 
-  group('un plato viejo sin español', () {
-    final old = lasagne().copyWith(nameEs: null, descriptionEs: null);
+  // Decisión del 20/11/2026: un plato guardado sin nombre en español abre con
+  // su italiano en el español y el italiano vacío (recipeDraftFrom); si no se
+  // traduce, el italiano vuelve al texto de antes (italianMovedToSpanish).
+  group('un plato viejo (sin nombre en español)', () {
+    final old = pastel();
+    RecipeTranslationPlan planOf(RecipeDraft draft) => planRecipeTranslation(
+      draft,
+      translatedFrom: spanishTextOf(recipeDraftFrom(old)),
+      untranslatedFallback: italianMovedToSpanish(old),
+    );
 
-    test('se guarda como está: nada que traducir ni que vaciar', () {
-      final plan = _planFor(recipeDraftFrom(old), saved: old);
-      expect(plan.needsTranslation, isFalse);
-      expect(plan.clear, isEmpty);
-      expect(plan.skipped, recipeDraftFrom(old));
+    test('se traduce todo lo que quedó vacío, del texto que estaba en italiano', () {
+      final plan = planOf(recipeDraftFrom(old));
+      expect(plan.translate, allFields);
+      expect(plan.request, (name: 'Pastel de papa', description: pastelDescription));
+      expect(plan.fillsOnlyEmpty, isTrue);
+      final translated = plan.translated(_fake(plan.source));
+      expect(translated.nameIt, '[it] Pastel de papa');
+      expect(translated.descriptionIt, '[it] $pastelDescription');
+      expect(translated.autoTranslated, allFields);
     });
 
-    // Sin el nombre en español el traductor no se puede llamar (el nombre es
-    // obligatorio en el pedido).
-    test('con la descripción en español pero sin el nombre, tampoco se traduce', () {
-      final draft = recipeDraftFrom(old).copyWith(descriptionEs: 'Ragú cocido despacio.');
-      expect(_planFor(draft, saved: old).needsTranslation, isFalse);
+    test('guardar sin traducir vuelve al italiano de antes: se puede sin escribirlo', () {
+      final plan = planOf(recipeDraftFrom(old));
+      final skipped = plan.skipped;
+      expect([skipped.nameIt, skipped.descriptionIt], ['Pastel de papa', pastelDescription]);
+      expect([skipped.nameEs, skipped.descriptionEs], ['Pastel de papa', pastelDescription]);
+      expect([skipped.nameEn, skipped.descriptionEn], ['', '']);
+      expect(skipped.autoTranslated, isEmpty, reason: 'nada lo tradujo');
+      expect(plan.canSkip, isTrue);
+      expect(plan.skipKeepsItalian, isTrue);
+      expect(plan.skipEmptiesItalianDescription, isFalse, reason: 'la descripción italiana vuelve');
     });
 
-    test('al escribirle el nombre en español se llena solo lo vacío: lo escrito a mano queda', () {
-      final draft = recipeDraftFrom(old).copyWith(nameEs: 'Lasaña a la boloñesa');
-      final plan = _planFor(draft, saved: old);
-      // name_it y name_en, escritos a mano; la descripción italiana, también.
-      // Sin descripción en español, la inglesa (vacía) no se puede traducir.
-      expect(plan.translate, isEmpty);
+    test('lo escrito a mano en italiano queda, y entonces no vuelve nada', () {
+      final written = recipeDraftFrom(old).copyWith(nameIt: 'Pasticcio di patate', descriptionIt: 'Carne e purè.');
+      final plan = planOf(written);
+      expect(plan.translate, {TranslatedField.nameEn, TranslatedField.descriptionEn});
+      expect([plan.skipped.nameIt, plan.skipped.descriptionIt], ['Pasticcio di patate', 'Carne e purè.']);
+      expect(plan.skipKeepsItalian, isFalse);
+    });
 
-      final withDescription = draft.copyWith(descriptionEs: 'Ragú cocido despacio y bechamel casera.');
-      expect(_planFor(withDescription, saved: old).translate, {TranslatedField.descriptionEn});
+    test('una respuesta sin la descripción que se pidió deja la de antes, no vacía', () {
+      final plan = planOf(recipeDraftFrom(old));
+      final translated = plan.translated((
+        it: (name: 'Pasticcio di patate', description: null),
+        en: (name: 'Potato pie', description: null),
+      ));
+      expect(translated.descriptionIt, pastelDescription);
+      expect(translated.descriptionEn, isEmpty);
+      expect(translated.autoTranslated, {TranslatedField.nameIt, TranslatedField.nameEn});
+    });
+
+    test('sin italiano de antes (un plato que no es viejo), guardar sin traducir no inventa nada', () {
+      final plan = _planFor(emptyRecipeDraft(_newId).copyWith(nameEs: 'Locro'));
+      expect(plan.untranslatedFallback, isEmpty);
+      expect(plan.skipKeepsItalian, isFalse);
+      expect(plan.skipped.nameIt, isEmpty);
     });
   });
 

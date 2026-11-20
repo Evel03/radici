@@ -282,9 +282,14 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
       TranslationFailureKind.forbidden ||
       TranslationFailureKind.invalid => l10n.recipeTranslateBroken,
     };
+    // En un plato viejo, guardar sin traducir deja el italiano de antes: el
+    // aviso no dice que queda vacío.
     final next = plan.canSkip
         ? [
-            l10n.recipeTranslateSkipHint,
+            if (plan.skipKeepsItalian)
+              l10n.recipeTranslateSkipKeepsItalian
+            else
+              l10n.recipeTranslateSkipHint,
             if (plan.skipEmptiesItalianDescription)
               l10n.recipeTranslateSkipOffWeb,
           ].join(' ')
@@ -603,9 +608,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
                     l10n,
                     errors.nameEs,
                     maxRecipeNameLength,
-                    required: errors.spanishNameToTranslate
-                        ? l10n.recipeNameEsToTranslate
-                        : l10n.recipeNameEsRequired,
+                    required: l10n.recipeNameEsRequired,
                   )
                 : null,
             errorMaxLines: 2,

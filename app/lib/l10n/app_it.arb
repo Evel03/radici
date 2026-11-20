@@ -1281,11 +1281,7 @@
   },
   "recipeNameEsRequired": "Scrivi il nome in spagnolo.",
   "@recipeNameEsRequired": {
-    "description": "Error: falta el nombre en español (obligatorio en un plato nuevo y en uno que ya lo tenía)."
-  },
-  "recipeNameEsToTranslate": "Per tradurre la descrizione serve il nome in spagnolo.",
-  "@recipeNameEsToTranslate": {
-    "description": "Error en el nombre en español de un plato viejo que no lo tiene: hay una descripción en español que traducir y el traductor exige el nombre."
+    "description": "Error: falta el nombre en español (siempre obligatorio: un plato guardado abre con él; en uno viejo, con el que estaba en el campo italiano)."
   },
   "recipePrivacyHint": "Non scrivere dati dei clienti (nomi, indirizzi, salute): il nome e la descrizione vanno al servizio di traduzione automatica.",
   "@recipePrivacyHint": {
@@ -1350,6 +1346,10 @@
   "recipeTranslateSkipHint": "Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: i campi da tradurre restano vuoti e si traducono la prossima volta che salvi.",
   "@recipeTranslateSkipHint": {
     "description": "Qué hacer cuando la traducción falló y se puede guardar sin traducir: lo automático viejo se vacía (nunca queda una traducción del español anterior)."
+  },
+  "recipeTranslateSkipKeepsItalian": "Quello che hai scritto non si è perso. Puoi scrivere tu le traduzioni o salvare senza: l'italiano da tradurre resta com'era e gli altri campi vuoti si traducono la prossima volta che salvi.",
+  "@recipeTranslateSkipKeepsItalian": {
+    "description": "Como recipeTranslateSkipHint, en un plato viejo (guardado sin nombre en español, que se abrió con el italiano en el español): guardar sin traducir deja en el italiano el texto que tenía antes, no vacío."
   },
   "recipeTranslateSkipOffWeb": "Senza la descrizione in italiano il piatto non è sul sito.",
   "@recipeTranslateSkipOffWeb": {
