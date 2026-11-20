@@ -196,6 +196,10 @@ El orden completo del primer despliegue está en el contrato (§10.1).
 - Migración `supabase/migrations/20261119150000_menu_web.sql`: `recipes.description_*` (las lee el
   editor y las guarda `save_recipe`) y el uso de `requests.wishes` (los platos elegidos en la web, que
   la bandeja y el detalle leen; la columna existe desde la primera migración).
+- Migración `supabase/migrations/20261120090000_recipe_translations.sql`: `recipes.auto_translated`
+  (los campos que llenó la traducción automática, `POST …/chef/translate`; contrato chef-api.md §12).
+  Esta versión de la app todavía no traduce ni manda la clave: cada guardado con `save_recipe` la deja
+  vacía (todo cuenta como escrito a mano). La usa el editor del PR de la app de la traducción.
 - `clients.status`: la cocinera lo cambia (privilegio por columna y `clients_guard_update`); la app lo
   pasa de `prospect` a `trial` con "Segna come cliente".
 - `profiles.locale`: el usuario lo puede cambiar en su propio perfil (`grant update (full_name,

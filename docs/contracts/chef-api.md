@@ -1,8 +1,9 @@
 # Contrato: área de Evelyn, Edge Function `chef`
 
 Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2).
-Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, e `index.ts`). Si este documento y el código difieren, manda el código.
+Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, `index.ts` y, para la traducción, `translation.ts` con `translation.test.ts` y `claude_translator.ts`). Si este documento y el código difieren, manda el código.
 Actualizado el 19/11/2026: Evelyn no hace la compra (la hace el cliente, con la lista de ingredientes y cantidades que ella le manda). `POST /bookings` ya no tiene `groceriesEstCents`: si llega (la app de antes lo manda), se ignora como cualquier otra clave que el contrato no tiene, valga lo que valga, y la función le pasa siempre `p_groceries_est_cents: 0` a `chef_create_booking`, cuya firma no cambia (§4, §7). Sin compra, `chef_settings.shop_minutes` es 0 (migración `20261119090000_sin_compra.sql`): la llegada sugerida de un día de 9:00 a 15:00 es las 9:00.
+Actualizado el 20/11/2026: `POST /translate` traduce un plato del español al italiano y al inglés con Claude (§12), sobre la migración `20261120090000_recipe_translations.sql` (`recipes.auto_translated`, pgTAP `18_recipe_translations`).
 
 ## 1. Para qué
 
@@ -15,6 +16,7 @@ Actualizado el 19/11/2026: Evelyn no hace la compra (la hace el cliente, con la 
 | `/bookings` | `chef_create_booking` | confirmar una reserva, desde un pedido o a mano (§4) |
 | `/sessions/move` | `chef_move_session` | mover una semana (§5) |
 | `/sessions/cancel` | `chef_cancel_sessions` | cancelar una o varias semanas (§6) |
+| `/translate` | ninguna (`hit_public_request_rate` para el límite) | traducir el nombre y la descripción de un plato al italiano y al inglés (§12) |
 
   Con el plan crecen: `/sessions/cooked`, `/sessions/uncook`, `/payments`, `/payments/void` y `/payments/refund` (PR 10a, «Cociné» y cobros). Las de los tickets (`/sessions/receipts` y `/receipts/remove`, PR 9a) salieron el 19/11/2026: sin compra no hay tickets.
 
@@ -33,13 +35,13 @@ Actualizado el 19/11/2026: Evelyn no hace la compra (la hace el cliente, con la 
 ## 3. Formato común
 
 - `POST` con `Content-Type: application/json` y un cuerpo de hasta 8 KB (`CHEF_MAX_PAYLOAD_BYTES`).
-- Orden de los chequeos: CORS → ruta (`404`) → método (`405`) → configuración (`500`) → token (`401`) → usuario (`401` o `503`) → su cocina (`403`) → tipo (`415`) → tamaño (`413`) → JSON y validación (`400`) → función SQL. Sin un token válido de la cocinera o de un colaborador suyo no se lee ni el cuerpo.
+- Orden de los chequeos: CORS → ruta (`404`) → método (`405`) → configuración (`500`) → token (`401`) → usuario (`401` o `503`) → su cocina (`403`) → tipo (`415`) → tamaño (`413`) → JSON y validación (`400`) → función SQL (en `/translate`, el traductor: §12). Sin un token válido de la cocinera o de un colaborador suyo no se lee ni el cuerpo.
 - Fechas `"AAAA-MM-DD"` (fechas de negocio en Roma) y horas `"HH:MM"` (hora de Roma). Dinero en centavos enteros: `14050` es 140,50 €; un número con decimales es `invalid`.
 - Respuestas en JSON con `Cache-Control: no-store`.
 
 | Código | Cuerpo | Cuándo |
 |---|---|---|
-| 200 / 201 | según la ruta | §4, §5 y §6 |
+| 200 / 201 | según la ruta | §4, §5, §6 y §12 |
 | 400 | `{ "errors": { campo: código } }`, más `"date"` cuando el error es de una fecha concreta (de `dates`: fuera de rango, misma semana u orden) | validación de la función o, como defensa, de la base (§7) |
 | 401 | `{ "error": "unauthorized" }` y `WWW-Authenticate: Bearer` | sin token, token que no es un JWT o que Auth rechaza (vencido, sesión cerrada). Sin `Authorization`, o con un JWT que no valida, responde la plataforma con su propio cuerpo |
 | 403 | `{ "error": "forbidden" }` | usuario válido que no es la cocinera ni un colaborador suyo |
@@ -48,8 +50,9 @@ Actualizado el 19/11/2026: Evelyn no hace la compra (la hace el cliente, con la 
 | 405 | `{ "error": "method" }` y `Allow: POST, OPTIONS` | otro método |
 | 409 | ver abajo | choques y estados que no lo permiten; no se escribió nada |
 | 413 / 415 | `{ "error": "tooLarge" \| "contentType" }` | cuerpo de más de 8 KB o que no es JSON |
+| 429 | `{ "error": "rateLimited" }` y `Retry-After: 3600` | solo `/translate`: la cocina pasó su límite de traducciones (§12) |
 | 500 | `{ "error": "server" }` | configuración rota o error inesperado (el log lleva el código, §10) |
-| 503 | `{ "error": "unavailable" }` | Auth o la base no responden, o un error que se puede reintentar: reintentar con la misma `requestKey` |
+| 503 | `{ "error": "unavailable" }` | Auth o la base no responden, o un error que se puede reintentar: reintentar con la misma `requestKey`. En `/translate`, además, la traducción no está disponible (§12) |
 
 Los 409:
 
@@ -63,7 +66,7 @@ Los 409:
 | `{ "error": "hasPayments", "sessionIds": [uuid] }` | al cancelar sin `allowWithPayments`, esas semanas ya están cobradas; no se cancela ninguna (§6) |
 | `{ "error": "conflict" }` | otro choque (no debería pasar) |
 
-Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato; un número que no es entero), `range`, `tooLong`, `dateOutOfRange`, `sameWeek`, `order`, `weeksOnlyForWeek` y `conflict`. Los campos de un objeto van con punto (`newClient.name`, `household.meals`); `client`, `people` y `cents` agrupan varios.
+Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato; un número que no es entero), `range`, `tooLong`, `dateOutOfRange`, `sameWeek`, `order`, `weeksOnlyForWeek` y `conflict`. Los campos de un objeto van con punto (`newClient.name`, `household.meals`); `client`, `people` y `cents` agrupan varios. `payload` es el cuerpo entero (no es JSON, no es un objeto o, en `/translate`, trae una clave de más).
 
 ## 4. `POST /bookings`: confirmar una reserva
 
@@ -197,19 +200,21 @@ De un error de la base solo se usan el código, el mensaje si es un código prop
 |---|---|---|
 | `SUPABASE_URL`, `SUPABASE_SECRET_KEYS` (o las variables de compatibilidad) | las pone Supabase | sin ellas, `500` y `config_missing` |
 | `ALLOWED_ORIGINS` | secreto de las funciones, compartido con `public-request`; lo carga `deploy-supabase.yml` | CORS (§2). Sin ella, `/gestione/` no puede llamar a la función (la app nativa sí) y el arranque avisa `config_incomplete` |
+| `ANTHROPIC_API_KEY` | secreto de las funciones (opcional); lo carga `deploy-supabase.yml` desde el secreto de GitHub del mismo nombre | la clave de Claude para `/translate` (§12). Sin ella, `/translate` responde `503` y el arranque avisa `config_incomplete`. Nunca se loguea |
+| `TRANSLATE_TRANSPORT` | solo en local (`.env.example` trae `fake`) | `fake`: `/translate` devuelve una traducción de mentira (`"[it] <nombre>"`) sin llamar a Claude, aunque haya clave; el arranque avisa `translate_fake`. El despliegue no la carga y avisa si la encuentra en Supabase |
 
-No tiene secretos propios. En local, `npx supabase start` sirve la función con `verify_jwt` de `config.toml` y lee `ALLOWED_ORIGINS` de `supabase/functions/.env` (copiado de `.env.example`); para `/gestione/` con `flutter run -d web-server --web-port 8080` hay que sumar `http://localhost:8080` (desde el teléfono, `http://<IP de la PC>:8080`).
+En local, `npx supabase start` sirve la función con `verify_jwt` de `config.toml` y lee `ALLOWED_ORIGINS` y las de la traducción de `supabase/functions/.env` (copiado de `.env.example`); para `/gestione/` con `flutter run -d web-server --web-port 8080` hay que sumar `http://localhost:8080` (desde el teléfono, `http://<IP de la PC>:8080`).
 
 ## 9. Despliegue
 
-- `deploy-supabase.yml`, paso «Desplegar chef»: `supabase functions deploy chef --use-api`, después de `db push` (llama a las funciones de la migración de reservas) y de cargar los secretos (`ALLOWED_ORIGINS`). `verify_jwt = true` sale de `config.toml`. Avisa si `ALLOWED_ORIGINS` tiene orígenes además del de `PUBLIC_SITE_URL`.
+- `deploy-supabase.yml`, paso «Desplegar chef»: `supabase functions deploy chef --use-api`, después de `db push` (llama a las funciones de la migración de reservas) y de cargar los secretos (`ALLOWED_ORIGINS` y, si está, `ANTHROPIC_API_KEY`; sin ella el paso de los secretos avisa que la traducción queda apagada, sin cortar el despliegue). `verify_jwt = true` sale de `config.toml`. Avisa si `ALLOWED_ORIGINS` tiene orígenes además del de `PUBLIC_SITE_URL`.
 - Orden: la migración de reservas va en su propio PR (PR 3) y se despliega antes (contrato public-request §8). Sin ella, cada llamada da `500` y el log dice `PGRST202`.
 - Antes del primer despliegue: limpiar `ALLOWED_ORIGINS` (§2).
 - Se acepta cuando, desplegada, una reserva de 4 semanas hecha con el token de una sesión de prueba crea 4 sesiones, y un reintento con la misma clave no crea nada más.
 
 ## 10. Logs
 
-Solo evento, ruta, códigos, contadores e ids. Nunca nombres, teléfonos, emails, zonas, direcciones, notas, restricciones, fechas ni tokens. Los tests lo comprueban con un espía en todos los caminos del handler: cada evento de esta tabla (salvo `config_incomplete`, que escribe `index.ts` al arrancar, solo con nombres de variables), también con errores de la base que traen la fila, una respuesta de la base que lanza al leerla y un cuerpo que se corta mientras se lee.
+Solo evento, ruta, códigos, contadores, largos, duraciones e ids. Nunca nombres, teléfonos, emails, zonas, direcciones, notas, restricciones, fechas, tokens, el texto de un plato ni la clave de Anthropic. Los tests lo comprueban con un espía en todos los caminos del handler: cada evento de esta tabla (salvo `config_incomplete` y `translate_fake`, que escribe `index.ts` al arrancar, solo con nombres de variables), también con errores de la base que traen la fila, una respuesta de la base que lanza al leerla, un cuerpo que se corta mientras se lee y un traductor que explota o repite el plato en su salida.
 
 | Evento | Campos |
 |---|---|
@@ -221,15 +226,82 @@ Solo evento, ruta, códigos, contadores e ids. Nunca nombres, teléfonos, emails
 | `booking_duplicate` | `requestId`, `userId` |
 | `session_moved` | `sessionId`, `userId` |
 | `sessions_cancelled` | `cancelled`, `alreadyCancelled`, `withPayments` (cantidades), `userId` |
-
-`userId` es el usuario del token: la cocinera o el colaborador que hizo el cambio (con colaboradores, la cocina son varias cuentas; SPEC §6).
+| `translated` | `route`, `ms` (lo que tardó el traductor), `nameLength`, `descriptionLength` (o null), `userId` |
+| `translate_failed` | `route`, `reason` (§12), `category` (de una negativa) o `apiStatus` (el estado HTTP de Anthropic), `ms`, `nameLength`, `descriptionLength`. `warn` para una negativa o un corte por `max_tokens`; `error` para el resto |
+| `rate_limited` | `route`, `userId` |
 | `db_error` | `op`, `code` y, si lo hay, `message` (el código propio) |
 | `unexpected_result` | `op` (también `load_chef`, si `chef_id_for_user` responde algo que no es un uuid ni null) |
 | `unexpected_error` | `error` (el tipo, nunca el mensaje) |
 | `config_missing`, `config_incomplete` | `missing` (nombres de variables) |
+| `translate_fake` | ninguno: `TRANSLATE_TRANSPORT=fake` al arrancar |
+
+`userId` es el usuario del token: la cocinera o el colaborador que hizo el cambio (con colaboradores, la cocina son varias cuentas; SPEC §6).
 
 ## 11. Pruebas
 
-- `npm test`: `supabase/functions/_shared/chef_api.test.ts` (validación), `supabase/functions/chef/handler.test.ts` (401 antes de leer el cuerpo, 403, un colaborador que entra con la cocina de ella y queda en los logs con su propio `userId`, una cocina con otra forma → 500, 400 por campo, 409 con la fecha o las sesiones cobradas, `dryRun` que no escribe, reintento con la misma clave, la cocinera siempre del token, que `index.ts` use `chef_id_for_user` y le pase su respuesta tal cual al handler, errores de la base y el espía de logs) y el paso del workflow en `supabase/scripts/deploy-supabase.test.ts`.
-- pgTAP `13_bookings`: las funciones SQL (reparto, chequeos y su prioridad, choques, reintentos, transiciones, mover, cancelar con y sin cobros, y permisos, también que la app no borra fichas). `15_chef_members`: `chef_id_for_user` (quién es de qué cocina, solo `service_role`) y lo que ve y hace un colaborador.
-- En local, de punta a punta: `npx supabase start` (con `-x` se pueden dejar afuera los servicios que no hacen falta: alcanza con la base, Kong, Auth, PostgREST y el runtime de funciones), un token con `POST /auth/v1/token?grant_type=password` para `evelyn@example.test` (la contraseña del seed) y las llamadas a `/functions/v1/chef/…`. Con `marco@example.test`, su colaborador en el seed, las mismas llamadas actúan sobre la cocina de Evelyn.
+- `npm test`: `supabase/functions/_shared/chef_api.test.ts` (validación), `supabase/functions/chef/handler.test.ts` (401 antes de leer el cuerpo, 403, un colaborador que entra con la cocina de ella y queda en los logs con su propio `userId`, una cocina con otra forma → 500, 400 por campo, 409 con la fecha o las sesiones cobradas, `dryRun` que no escribe, reintento con la misma clave, la cocinera siempre del token, que `index.ts` use `chef_id_for_user` y le pase su respuesta tal cual al handler, errores de la base, `/translate` con un traductor simulado y el espía de logs), `supabase/functions/chef/translation.test.ts` (el pedido a Claude, el prompt, el esquema, la lectura de la respuesta, la validación de la salida, el límite y el traductor de mentira) y el paso del workflow en `supabase/scripts/deploy-supabase.test.ts`. `claude_translator.ts` no corre en Node (importa el SDK): `handler.test.ts` mira su texto (la versión fija del SDK, el pedido, el timeout, el reintento y el orden de los errores) y que `handler.ts` no lo importe.
+- pgTAP `13_bookings`: las funciones SQL (reparto, chequeos y su prioridad, choques, reintentos, transiciones, mover, cancelar con y sin cobros, y permisos, también que la app no borra fichas). `15_chef_members`: `chef_id_for_user` (quién es de qué cocina, solo `service_role`) y lo que ve y hace un colaborador. `18_recipe_translations`: `recipes.auto_translated` y la clave de `save_recipe`.
+- En local, de punta a punta: `npx supabase start` (con `-x` se pueden dejar afuera los servicios que no hacen falta: alcanza con la base, Kong, Auth, PostgREST y el runtime de funciones), un token con `POST /auth/v1/token?grant_type=password` para `evelyn@example.test` (la contraseña del seed) y las llamadas a `/functions/v1/chef/…`. Con `marco@example.test`, su colaborador en el seed, las mismas llamadas actúan sobre la cocina de Evelyn. `POST /functions/v1/chef/translate` con `TRANSLATE_TRANSPORT=fake` (lo que trae `.env.example`) devuelve la traducción de mentira sin llamar a Claude.
+
+## 12. `POST /translate`: traducir un plato
+
+Pedido de Evelyn del 20/11/2026: escribe el nombre y la descripción de cada plato en español; el italiano y el inglés los completa Claude y ella los puede corregir. La app (PR siguiente, traduccion-app) llama a esta ruta desde el editor y guarda con `save_recipe` qué campos llenó el traductor (`auto_translated`, abajo).
+
+### Cuerpo
+
+| Campo | Tipo | Regla |
+|---|---|---|
+| `name` | string | obligatorio: de 1 a 120 caracteres después de recortar los espacios del borde y sin caracteres de control (`required`, `tooLong`, `invalid`) |
+| `description` | string \| null | opcional: de 1 a 200 caracteres, con las mismas reglas; ausente, null, `""` o solo espacios cuentan como null (`tooLong`, `invalid`) |
+
+- Los caracteres se cuentan como la base y la app (`char_length`, `textLength`: por code points; un emoji es uno). Caracteres de control: los C0, DEL, los C1 y los separadores de línea y de párrafo (U+2028, U+2029), los que la base rechaza y la app normaliza.
+- Una clave que el contrato no tiene es `payload: "invalid"` (no se ignora, como en las otras rutas: el pedido es corto y lo arma solo la app).
+
+### Respuesta `200`
+
+```json
+{ "it": { "name": "Cotoletta alla napoletana", "description": "Con pomodoro, prosciutto cotto e mozzarella." },
+  "en": { "name": "Neapolitan-style milanese", "description": "With tomato sauce, ham and mozzarella." } }
+```
+
+- `description` es null en los dos idiomas si y solo si el pedido no la tenía.
+- Mismos límites que la base: de 1 a 120 y de 1 a 200 caracteres, una línea (los espacios de cualquier tipo, también los saltos de línea, quedan en uno), sin caracteres de control ni de dirección del texto. Lo que vuelve se puede guardar tal cual con `save_recipe`.
+- Todo o nada: nunca vuelve un idioma sin el otro, ni un nombre sin la descripción pedida.
+
+### Errores (además de los comunes, §3)
+
+| HTTP | Cuerpo | Cuándo |
+|---|---|---|
+| 400 | `{ "errors": { campo: código } }` | el cuerpo no cumple; no se gasta el cupo |
+| 429 | `{ "error": "rateLimited" }` y `Retry-After: 3600` | la cocina pasó su límite: más de 60 traducciones en la última hora o de 300 en el último día (la dueña y sus colaboradores comparten el cupo) |
+| 503 | `{ "error": "unavailable" }` | la traducción no está disponible: sin `ANTHROPIC_API_KEY` (`notConfigured`, sin gastar el cupo); Claude no respondió a tiempo, sin conexión o con un error (`timeout`, `connection`, `apiError`, `rateLimited`, `sdk`, `aborted`); declinó, también después del fallback del servidor (`refusal`); cortó por `max_tokens` (`maxTokens`); terminó por otro motivo (`stopReason`); la salida no pasó la validación (`invalidOutput`); o algo inesperado (`unexpected`). También si la base no respondió al contar el límite (`500` si el error no se puede reintentar) |
+
+Entre paréntesis, el `reason` del log `translate_failed` (§10). El timeout es de 25 s por intento, con un reintento: la app tiene que esperar hasta unos 50 s antes de dar el pedido por perdido. Ante un `429` o un `503`, la app deja los campos como estaban y Evelyn los completa a mano o prueba más tarde (traduccion-app).
+
+### Orden
+
+Después de la validación (§3): traductor configurado (`503`) → límite de la cocina (`429`; si la base no responde, `503` o `500`) → traductor (`200` o `503`). El intento cuenta para el límite antes de llamar a Claude: uno que después falla también se gasta.
+
+### Límite por cocina
+
+`public.hit_public_request_rate`, la función del límite del formulario, con su propio sujeto: `translate:<chef_id>` (la cocina del token), guardado como SHA-256 en hexadecimal (`translateRateKey`). Sin sal, a diferencia de la IP del formulario: el id de la cocina no es un dato personal ni secreto, y así la función no depende de `IP_HASH_SALT`. Es otra fila de la misma tabla: no gasta ningún cupo de la web. Los intentos se borran como los del formulario (a los 2 días como mucho).
+
+### La llamada a Claude
+
+- `claude_translator.ts`, que importa solo `index.ts` (`handler.ts` recibe un `Translator` y no conoce el SDK), con el SDK oficial `npm:@anthropic-ai/sdk@1.6.0`: `client.beta.messages.create` con `model: "claude-opus-5-5"`, `max_tokens: 8000`, `output_config: { effort: "low", format: { type: "json_schema", schema } }`, sin `thinking` (en Opus 5.5 es adaptativo y no se puede apagar) ni streaming, `betas: ["server-side-fallback-2026-07-01"]` y `fallbacks: "default"` (si el modelo declina por una política de seguridad, el servidor reintenta en el modelo que corresponde a esa categoría). El cliente, con `timeout` de 25 s y `maxRetries: 1`.
+- El prompt del sistema es fijo (`TRANSLATION_SYSTEM_PROMPT` en `translation.ts`): traducir del español rioplatense al italiano y al inglés el nombre y la descripción de un plato casero, para el menú de una cocinera a domicilio en Bergamo; los nombres de platos que se usan tal cual quedan (empanadas, chipá, provoleta) y los italianos quedan en italiano; tono de menú, natural; sin agregar información, comillas ni emojis; los largos máximos. El plato va como JSON en el mensaje del usuario: es un dato, nunca instrucciones.
+- El esquema de la salida (`translationSchema`) tiene `it` y `en`, cada uno con `name` y, solo si el pedido la tiene, `description`, con `additionalProperties: false`. Los largos no van en el esquema (la API no admite `maxLength`): los mira la validación.
+- La respuesta se lee por `stop_reason` primero (`refusal` y `max_tokens` nunca se leen; otro que no sea `end_turn`, `stopReason`); después de un bloque `fallback` vale el texto del último modelo; la salida se valida entera (`readTranslationOutput`).
+- Los errores tipados del SDK, del más específico al más general (`APIConnectionTimeoutError`, `APIUserAbortError`, `APIConnectionError`, `RateLimitError`, `APIError`, `AnthropicError`), pasan a un motivo y, si lo hay, el estado HTTP. Nunca el mensaje: puede traer el texto del plato.
+
+### Qué se manda a Anthropic
+
+Solo el nombre y la descripción del plato en español: nunca datos de clientes, pedidos, sesiones, restricciones ni direcciones. No son datos personales: la privacy no cambia (SPEC §6).
+
+### En la base: `recipes.auto_translated`
+
+Migración `20261120090000_recipe_translations.sql` (pgTAP `18_recipe_translations`): los campos de destino que llenó el traductor y Evelyn no tocó a mano, de `name_it`, `description_it`, `name_en` y `description_en` (el español es la fuente y nunca está), sin repetir. Un campo marcado siempre tiene texto en la fila (check). `save_recipe` acepta la clave opcional `auto_translated` (una lista, en cualquier orden; se guarda en ese) y la reemplaza entera en cada guardado: sin la clave queda `{}`, también al actualizar, así una app que no la conoce guarda todo como escrito a mano. Si no es una lista, `invalid_payload` con `auto_translated` en el DETAIL; un valor fuera de la lista, repetido, que no es texto, o un campo marcado que no viene en `p` con texto, `invalid_payload` con `auto_translated[i]`. Una copia de un plato (sin las descripciones, SPEC §4) no puede marcar una descripción.
+
+### En local
+
+`TRANSLATE_TRANSPORT=fake` (lo que trae `.env.example`): una traducción de mentira reconocible (`"[it] <nombre>"`, `"[en] <nombre>"`, cortada a los largos máximos) con la misma forma y la misma validación que la de Claude, sin llamar a la API. Para probar con Claude: `ANTHROPIC_API_KEY` en `supabase/functions/.env` y sin `TRANSLATE_TRANSPORT`.
