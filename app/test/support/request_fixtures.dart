@@ -31,8 +31,6 @@ const RequestEstimate fourWeeksEstimate = RequestEstimate(
   weeklyServiceCents: 14000,
   serviceCents: 56000,
   savingsCents: 4000,
-  groceriesEstCents: 6300,
-  totalCents: 81200,
   maxPeople: 5,
   weeklyRateCents: 15000,
   weeklyRateDiscountedCents: 14000,
@@ -63,7 +61,8 @@ Map<String, dynamic> requestRow({
   },
   // Respuesta a la pregunta de alergias (requests.no_allergies); null en los pedidos anteriores.
   Object? noAllergies,
-  // Por defecto, una estimación de antes del precio por semana (servicio por hora, sin autoPrice).
+  // Por defecto, una estimación de antes del precio por semana (servicio por
+  // hora, sin autoPrice), con las claves de compra que se guardaban entonces.
   Object? estimate = const {
     'adultPortions': 10,
     'kidPortions': 10,

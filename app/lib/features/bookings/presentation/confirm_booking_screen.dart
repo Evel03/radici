@@ -592,8 +592,6 @@ class _BookingForm extends StatelessWidget {
               onChanged: controller.setPriceText,
             ),
           ),
-          const SizedBox(height: 8),
-          _Help(l10n.bookingGroceriesNote),
         ],
       ),
     );
@@ -1145,8 +1143,6 @@ class _BookingDone extends ConsumerWidget {
             key: const ValueKey('booking-done-service'),
             style: theme.textTheme.titleMedium,
           ),
-          const SizedBox(height: 4),
-          _Help(l10n.bookingGroceriesNote),
           if (whatsApp == null) ...[
             const SizedBox(height: 16),
             Text(

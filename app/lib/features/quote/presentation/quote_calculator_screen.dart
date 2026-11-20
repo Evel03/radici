@@ -2,7 +2,8 @@
 // Solo muestra lo que dan los providers; el cálculo vive en el motor.
 // Precio por semana (SPEC §5.1): el servicio de todas las semanas, el de cada
 // semana y el ahorro desde el descuento; con más personas que el tope, que el
-// precio lo prepara Evelyn. La compra estimada, por semana y aparte.
+// precio lo prepara Evelyn. Sin compra: la hace el cliente, con la lista que
+// le manda Evelyn.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/money.dart';
@@ -209,11 +210,6 @@ class _QuoteBreakdown extends ConsumerWidget {
               label: l10n.quoteRecipes,
               value: '${quote.recipes}',
               valueKey: const ValueKey('quote-recipes'),
-            ),
-            _BreakdownRow(
-              label: l10n.quoteGroceriesWeekly,
-              value: money(quote.groceriesEstCents),
-              valueKey: const ValueKey('quote-groceries'),
             ),
             const Divider(height: 24),
             if (serviceCents == null)

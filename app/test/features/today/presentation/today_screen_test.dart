@@ -67,7 +67,7 @@ void main() {
     CalendarDate? date,
     int hour = 10,
     int minute = 0,
-    int shopMinutes = 45,
+    int shopMinutes = 0,
     int cookMinutes = 180,
     SessionStatus status = SessionStatus.confirmed,
     String? requestId = bookingRequestId,
@@ -234,7 +234,7 @@ void main() {
         expect(inCard(1, find.text('Giulia Rossi')), findsOneWidget);
         expect(
           textOf(tester, 'today-session-${sessionId(1)}-times'),
-          'Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
+          'Arrivo 10:00 · fino alle 13:00',
         );
         expect(textOf(tester, 'today-session-${sessionId(1)}-people'), '4 persone');
         expect(inCard(1, find.text('Glutine')), findsOneWidget);
@@ -252,18 +252,18 @@ void main() {
       },
     );
 
-    testWidgets('las horas salen de lo guardado en la sesión (nada fijo)', (
+    testWidgets('las horas salen de lo guardado en la sesión (nada fijo), sin la compra de una de antes del 19/11/2026', (
       tester,
     ) async {
       await openToday(
         tester,
         sessions: [
-          session(hour: 8, minute: 30, shopMinutes: 60, cookMinutes: 120),
+          session(hour: 9, minute: 30, shopMinutes: 45, cookMinutes: 120),
         ],
       );
       expect(
         textOf(tester, 'today-session-${sessionId(1)}-times'),
-        'Spesa dalle 07:30 · Arrivo 08:30 · fino alle 10:30',
+        'Arrivo 09:30 · fino alle 11:30',
       );
     });
 
@@ -380,6 +380,22 @@ void main() {
         textOf(tester, 'today-session-${sessionId(1)}-status'),
         'In attesa di conferma',
       );
+    });
+
+    testWidgets('una vieja en shopping_done, como confirmada: sin estado y, terminada, «Terminata»', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        // 14:00 en Roma: la de las 10:00 terminó a las 13:00.
+        clock: () => DateTime.utc(2026, 11, 17, 13),
+        sessions: [
+          session(status: SessionStatus.shoppingDone),
+          session(n: 2, hour: 16, status: SessionStatus.shoppingDone),
+        ],
+      );
+      expect(textOf(tester, 'today-session-${sessionId(1)}-status'), 'Terminata');
+      expect(byKey('today-session-${sessionId(2)}-status'), findsNothing);
     });
 
     testWidgets('«Come arrivare» abre Google Maps (Apple Maps en el iPhone) y WhatsApp, el chat', (
@@ -525,7 +541,7 @@ void main() {
       );
       expect(
         plainSpaces(tester.getSemantics(header).getSemanticsData().label),
-        'Giulia Rossi, Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00, 4 persone',
+        'Giulia Rossi, Arrivo 10:00 · fino alle 13:00, 4 persone',
       );
       expect(find.semantics.byLabel(RegExp('Celiachia, noci')), findsOneWidget);
 

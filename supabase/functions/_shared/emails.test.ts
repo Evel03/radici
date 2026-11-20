@@ -47,7 +47,6 @@ const SUMMARY: RequestSummary = {
     serviceCents: 56000,
     savingsCents: 4000,
     regularWeeklyCents: 15000,
-    groceriesEstCents: 6300,
   },
 };
 
@@ -55,7 +54,7 @@ const SUMMARY: RequestSummary = {
 const ONE_WEEK: RequestSummary = {
   ...SUMMARY,
   weeks: 1,
-  estimate: { autoPrice: true, weeklyServiceCents: 15000, serviceCents: 15000, savingsCents: 0, regularWeeklyCents: 15000, groceriesEstCents: 6300 },
+  estimate: { autoPrice: true, weeklyServiceCents: 15000, serviceCents: 15000, savingsCents: 0, regularWeeklyCents: 15000 },
 };
 
 /** 6 personas: sin precio automático (vector 7). */
@@ -64,7 +63,7 @@ const SIX_PEOPLE: RequestSummary = {
   adults: 3,
   kids: 3,
   weeks: 2,
-  estimate: { autoPrice: false, reason: "people", maxPeople: 5, groceriesEstCents: 9450 },
+  estimate: { autoPrice: false, reason: "people", maxPeople: 5 },
 };
 
 /** Sesión extra: sin precio automático ni semanas (vector 8). */
@@ -75,7 +74,7 @@ const EXTRA: RequestSummary = {
   kids: 6,
   days: 1,
   weeks: 1,
-  estimate: { autoPrice: false, reason: "extra", maxPeople: 5, groceriesEstCents: 5300 },
+  estimate: { autoPrice: false, reason: "extra", maxPeople: 5 },
 };
 
 function clientInput(overrides: Partial<ClientConfirmationInput> = {}): ClientConfirmationInput {
@@ -250,7 +249,7 @@ const EXPECTED_CLIENT = {
       "2 adulti e 2 bambini", "Giorni a settimana: 5", "Cena", "domenica 25 ottobre 2026", "Pomeriggio",
       "Settimane successive: 1 nov · 8 nov · 15 nov", "Servizio a settimana: 140,00 €",
       "Servizio, 4 settimane: 560,00 €", "Risparmio: 40,00 € rispetto a 150,00 € a settimana",
-      "Spesa stimata a settimana: 63,00 €", "La spesa si paga a parte, al costo reale dello scontrino"],
+      "Questa è una stima. La spesa la fai tu, con la lista che ti manda Evelyn."],
   },
   es: {
     subject: "Radici: hemos recibido tu solicitud",
@@ -258,7 +257,7 @@ const EXPECTED_CLIENT = {
       "2 adultos y 2 niños", "Días por semana: 5", "Cena", "domingo, 25 de octubre de 2026", "Tarde",
       "Semanas siguientes: 1 nov · 8 nov · 15 nov", "Servicio por semana: 140,00 €",
       "Servicio, 4 semanas: 560,00 €", "Ahorro: 40,00 € frente a 150,00 € por semana",
-      "Compra estimada por semana: 63,00 €", "La compra se paga aparte, al precio real del ticket"],
+      "Esto es una estimación. La compra la haces tú, con la lista que te manda Evelyn."],
   },
   en: {
     subject: "Radici: we've received your request",
@@ -266,7 +265,7 @@ const EXPECTED_CLIENT = {
       "2 adults and 2 children", "Days per week: 5", "Dinner", "Sunday 25 October 2026", "Afternoon",
       "Following weeks: 1 Nov · 8 Nov · 15 Nov", "Service per week: €140.00",
       "Service, 4 weeks: €560.00", "Saving: €40.00 compared with €150.00 a week",
-      "Estimated groceries per week: €63.00", "Groceries are paid separately, at the actual receipt cost"],
+      "This is an estimate. You do the shopping, with the list Evelyn sends you."],
   },
 } as const;
 
@@ -323,7 +322,7 @@ test("una semana: una sola fila de servicio, sin ahorro ni semanas siguientes", 
     assert.ok(email.text.includes("Settimane: 1\n"));
     assert.ok(email.text.includes("Servizio: 150,00 €\n"));
     assert.ok(email.html.includes("<strong>150,00 €</strong>"), "el servicio destacado");
-    assert.ok(email.text.includes("Spesa stimata a settimana: 63,00 €"));
+    assert.ok(email.text.includes("Questa è una stima."));
     for (const absent of ["Servizio a settimana", "Risparmio", "Settimane successive"]) assert.ok(!email.text.includes(absent), absent);
   }
 });
@@ -362,6 +361,14 @@ test("fechas de las semanas siguientes en el HTML: espacios duros dentro de cada
   assert.ok(renderChefNotification(chefInput({ summary: eight }), "es").text.includes("Semanas siguientes: 10 dic · 17 dic · 24 dic · 31 dic · 7 ene 2027 · 14 ene 2027 · 21 ene 2027\n"));
 });
 
+/** La nota de la estimación (con precio automático) y la frase de la compra (siempre, solo al cliente). */
+const ESTIMATE_NOTE = { it: "Questa è una stima.", es: "Esto es una estimación.", en: "This is an estimate." } as const;
+const SHOPPING = {
+  it: "La spesa la fai tu, con la lista che ti manda Evelyn.",
+  es: "La compra la haces tú, con la lista que te manda Evelyn.",
+  en: "You do the shopping, with the list Evelyn sends you.",
+} as const;
+
 const NO_PRICE = {
   people: {
     client: {
@@ -399,13 +406,36 @@ for (const locale of LOCALES) {
       assert.ok(chef.text.includes(NO_PRICE[reason].chef[locale]), `${reason}: Evelyn`);
       for (const email of [client, chef]) {
         assert.ok(!/<strong>/.test(email.html), `${reason}: ningún importe destacado`);
-        assert.ok(email.text.includes(formatCents(summary.estimate.groceriesEstCents, locale)), `${reason}: la compra estimada`);
+        // Sin importe no hay estimación que aclarar.
+        assert.ok(!email.text.includes(ESTIMATE_NOTE[locale]), `${reason}: sin «es una estimación»`);
       }
+      // Al cliente igual se le dice que la compra la hace él.
+      assert.ok(client.text.includes(SHOPPING[locale]), `${reason}: la compra, al cliente`);
     }
-    // La compra de una sesión extra no es «por semana»; la de un pedido semanal sí.
-    const perWeek = { it: "Spesa stimata a settimana", es: "Compra estimada por semana", en: "Estimated groceries per week" } as const;
-    assert.ok(renderClientConfirmation(clientInput({ summary: SIX_PEOPLE }), locale).text.includes(perWeek[locale]));
-    assert.ok(!renderClientConfirmation(clientInput({ summary: EXTRA }), locale).text.includes(perWeek[locale]));
+  });
+}
+
+/** Lo que decían los emails de la compra antes del 19/11/2026: el importe estimado y que se pagaba aparte, por el ticket. */
+const GROCERY_ESTIMATE = /spesa stimata|compra estimada|estimated groceries|si paga a parte|se paga aparte|paid separately|scontrino|ticket|receipt/i;
+/** Cualquier mención de la compra, en los tres idiomas. */
+const SHOPPING_WORDS = /spesa|compra|shopping|grocer/i;
+
+for (const locale of LOCALES) {
+  test(`compra (${locale}): ningún email la estima; el cliente lee que la hace él con la lista de Evelyn y a Evelyn no se le menciona`, () => {
+    for (const summary of [SUMMARY, ONE_WEEK, SIX_PEOPLE, EXTRA]) {
+      const client = renderClientConfirmation(clientInput({ summary }), locale);
+      const chef = renderChefNotification(chefInput({ summary }), locale);
+      assert.ok(client.text.includes(SHOPPING[locale]), "cliente: texto");
+      assert.ok(client.html.includes(escapeHtml(SHOPPING[locale])), "cliente: HTML");
+      for (const email of [client, chef]) {
+        assert.doesNotMatch(email.text, GROCERY_ESTIMATE);
+        assert.doesNotMatch(email.html, GROCERY_ESTIMATE);
+      }
+      assert.doesNotMatch(chef.text, SHOPPING_WORDS);
+      assert.doesNotMatch(chef.html, SHOPPING_WORDS);
+    }
+    // El nombre de la cocinera sale del que recibe la función.
+    assert.ok(renderClientConfirmation(clientInput({ chefName: "Eve" }), locale).text.includes(SHOPPING[locale].replace("Evelyn", "Eve")));
   });
 }
 

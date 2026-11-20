@@ -100,25 +100,24 @@ repositorios falsos (`test/support/fakes.dart`).
   "Area clienti in preparazione". La interfaz pasa al idioma del perfil (ver [Idioma](#idioma)). La
   barra de abajo tiene cuatro destinos: Oggi, Richieste, Agenda y Altro (desde 840 px, el mismo riel
   a la izquierda). Un colaborador de la cocinera (`chef_members`) entra igual, con su cuenta: ve y
-  hace lo mismo que ella, e Impostazioni y el menú de la cuenta dicen «Collaboratore di Evelyn» en
-  lugar del nombre (`chefAccountTitle`). El WhatsApp que le prepara el detalle de un pedido sale de
-  su propio teléfono, así que escribe de parte de ella («ti scrivo da parte di Evelyn di Radici»,
-  `contactWhatsAppMessageOnBehalf`) en lugar de «sono Evelyn».
+  hace lo mismo que ella, y «Altro», Impostazioni y el menú de la cuenta dicen «Collaboratore di
+  Evelyn» en lugar del nombre (`chefAccountTitle`). El WhatsApp que le prepara el detalle de un
+  pedido sale de su propio teléfono, así que escribe de parte de ella («ti scrivo da parte di Evelyn
+  di Radici», `contactWhatsAppMessageOnBehalf`) en lugar de «sono Evelyn».
 - **Hoy** (`features/today/`): la sesión de hoy o, si hoy no hay, la próxima (la más cercana que no
   está cancelada). Con varias hoy, todas: primero las que todavía no terminaron, por llegada, y
   después las terminadas (pasó la hora en que termina la cocina, en hora de Roma, o ya está cocinada
   o cobrada); se reordena sola al minuto. Cada tarjeta dice la clienta, las horas de la sesión
-  («Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00», como en la ficha), las personas, el estado
-  si no está confirmada (una de hoy que ya terminó dice «Terminata» si estaba confirmada o con la
-  compra hecha; si está cocinada o cobrada, «Cucinata» o «Pagata»), las alergias resaltadas como en
-  la ficha (con la nota de contaminación cruzada si hay gluten, SPEC §5.6; en una renovación, las
-  del último pedido semanal de la web que se reservó, con su fecha, y, sin ningún dato o con solo
-  una dieta, «Allergie: nessun dato nell'app, chiedile») y las notas de cocina, y abre la ficha.
-  Abajo, en el
-  tercio inferior del teléfono, «Come arrivare» (Apple Maps en el iPhone, Google Maps en el resto)
-  y WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi indirizzo», como la ficha (con
-  varias, una línea dice de quién son, con la hora primero: «Arrivo 16:00 · Marco Bianchi»; si no
-  entra, se corta el nombre). El WhatsApp es el de la ficha
+  («Arrivo 10:00 · fino alle 13:00», como en la ficha: sin compra), las personas, el estado si no
+  está confirmada (una vieja en `shopping_done` se ve como confirmada; una de hoy que ya terminó
+  dice «Terminata» si estaba confirmada; si está cocinada o cobrada, «Cucinata» o «Pagata»), las
+  alergias resaltadas como en la ficha (con la nota de contaminación cruzada si hay gluten, SPEC
+  §5.6; en una renovación, las del último pedido semanal de la web que se reservó, con su fecha, y,
+  sin ningún dato o con solo una dieta, «Allergie: nessun dato nell'app, chiedile») y las notas de
+  cocina, y abre la ficha. Abajo, en el tercio inferior del teléfono, «Come arrivare» (Apple Maps
+  en el iPhone, Google Maps en el resto) y WhatsApp de la primera; sin dirección, WhatsApp y
+  «Aggiungi indirizzo», como la ficha (con varias, una línea dice de quién son, con la hora primero:
+  «Arrivo 16:00 · Marco Bianchi»; si no entra, se corta el nombre). El WhatsApp es el de la ficha
   (`sessionLinksFor`, con el mismo día de Roma con que Hoy elige la sesión): lleva la hora de
   llegada salvo en una sesión cocinada o cobrada (en Hoy no hay canceladas ni de días pasados) y,
   si lo manda un colaborador, escribe de parte de la cocinera («ti scrivo da parte di Evelyn di
@@ -156,9 +155,12 @@ repositorios falsos (`test/support/fakes.dart`).
   ya no la pregunta y manda `any`, que la app lee como sin franja y no muestra (como los emails).
 - **Agenda**: mes y semana con las **sesiones** (`features/sessions/`): en el mes, un punto por
   sesión en la celda (el texto accesible las cuenta) y, al tocar el día, sus bloques junto a la
-  tarjeta del día; en la semana, bloques «Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00» con
-  las horas de cada sesión (`start_time`, `shop_minutes` y `cook_minutes` guardados en ella; nada
-  fijo). Cada bloque abre la ficha de la sesión. `SessionsRepository` las lee con la RLS («la
+  tarjeta del día; en la semana, bloques «Arrivo 10:00 · fino alle 13:00» con las horas de cada
+  sesión (`start_time` y `cook_minutes` guardados en ella; nada fijo). Sin compra (19/11/2026): la
+  de las sesiones de antes (`shop_minutes`, 45 min) no se muestra, y una en `shopping_done` (sin
+  uso desde entonces) se ve como confirmada, en el bloque y en la ficha («Confermata», sin
+  etiqueta); la app no ofrece pasar a ese estado. Cada bloque abre la ficha de la sesión.
+  `SessionsRepository` las lee con la RLS («la
   cocinera lee las suyas»), con la ficha (`clients`, y sus `client_restrictions`) y el pedido de la
   reserva embebidos por el nombre de la FK (`requests.target_session_id` también apunta a
   `sessions`), desde el lunes de la primera semana del mes de hoy, o desde 7 días antes de hoy si es
@@ -174,8 +176,7 @@ repositorios falsos (`test/support/fakes.dart`).
   leer, el error con «Riprova» (también en la primera lectura).
   Días bloqueados (`availability_exceptions`, sin migración: la RLS y los grants ya estaban): la
   tarjeta del día los bloquea o desbloquea con «Annulla» y una nota privada (los clientes no la
-  ven; la cocinera y sus colaboradores, sí), y el botón
-  «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
+  ven; la cocinera y sus colaboradores, sí), y el botón «Blocca giorni» bloquea un rango (una fila por día, upsert que nunca pisa un bloqueo que ya
   existía). La web deja de ofrecerlos en 1 o 2 minutos (`get_free_days` los descuenta; la
   disponibilidad se cachea 60 s). Marca los feriados nacionales (Pasquetta calculada; San Francesco
   desde 2026, legge n. 151/2025) y Sant'Alessandro (26/8) como festivo local de Bergamo. Un día con
@@ -185,8 +186,9 @@ repositorios falsos (`test/support/fakes.dart`).
   un nodo que la tiene.
 - **Ficha de la sesión** (`/sessioni/:id`, a pantalla completa; abierta con un enlace directo, sin
   nada debajo, su flecha de volver lleva a la Agenda): el día, «Settimana k di N» (sin
-  contar las canceladas), las horas (el renglón se parte solo después de un «·»: nunca «fino alle»
-  y la hora en dos renglones), «Come arrivare» (la dirección de la ficha en Apple Maps en el
+  contar las canceladas), las horas (la llegada y el fin de la cocina; el renglón se parte solo
+  después de un «·»: nunca «fino alle» y la hora en dos renglones), «Come arrivare» (la dirección
+  de la ficha en Apple Maps en el
   iPhone, también en `/gestione/` con Safari, y en Google Maps en el resto), WhatsApp en el idioma
   de la clienta (la fecha y, según la sesión, la hora de llegada; nunca la dirección ni las
   alergias) y llamar. Si la abre un colaborador, el WhatsApp sale de su propio teléfono y escribe
@@ -248,7 +250,9 @@ repositorios falsos (`test/support/fakes.dart`).
   canceladas en otro dispositivo, `alreadyCancelled`); los errores se traducen a
   `SessionFailure` sin loguear nada (contrato `docs/contracts/chef-api.md` §5 y §6). Los modelos
   no imprimen la dirección, las alergias ni las notas en `toString`.
-- **Detalle**: todos los datos (también las restricciones), la estimación guardada y las acciones:
+- **Detalle**: todos los datos (también las restricciones), la estimación guardada (el servicio, sin
+  compra ni total: la compra la hace el cliente; las claves de compra de los pedidos de antes se
+  ignoran) y las acciones:
   WhatsApp (`https://wa.me/<número sin +>?text=…` en el idioma del cliente), llamar (`tel:`),
   email (`mailto:`), rechazar (`new` → `rejected`) y deshacer el rechazo (`rejected` → `new`;
   como ya estaba visto, vuelve a Viste), las dos con confirmación. Al abrirlo se marca visto.
@@ -265,7 +269,7 @@ repositorios falsos (`test/support/fakes.dart`).
   permite) y traduce los errores a `BookingFailure` sin loguear nada (contrato
   `docs/contracts/chef-api.md`). Prellena las semanas con `requests.weeks`,
   las fechas cada 7 días desde la preferida (cambiar la primera mueve todas), la llegada que sugiere
-  el `dryRun`, los minutos de la estimación (tope de 300) y el precio de la estimación (con las
+  el `dryRun`, los minutos de la estimación (tope de 360: de 9:00 a 15:00, sin compra antes) y el precio de la estimación (con las
   tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
   se pasa a centavos sin `double` (`parseEuroCents`). Cada cambio de fechas, hora o minutos vuelve a
   pedir el `dryRun`: cada semana dice si está libre, un aviso (bloqueado, sin horario, fuera de
@@ -365,16 +369,17 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
-- **Altro** (Más): el cuarto destino de la barra (o del riel en pantallas anchas), con la cuenta,
-  Piatti, Impostazioni y salir. En el teléfono reemplaza al menú de la cuenta de la barra superior,
-  que queda solo en pantallas anchas.
+- **Altro** (Más): el cuarto destino de la barra (o del riel en pantallas anchas), con la cuenta (el
+  nombre de la cocinera, o «Collaboratore di …» si entró un colaborador), Piatti, Impostazioni y
+  salir. En el teléfono reemplaza al menú de la cuenta de la barra superior, que queda solo en
+  pantallas anchas.
 - **Piatti** (catálogo, migración `20261116170000_recipe_catalog.sql`): lista con búsqueda en los
   nombres en italiano, español e inglés (sin mayúsculas ni acentos), los activos primero y los
   desactivados al final, cada plato con sus alérgenos, dieta y temporada. El editor pone primero lo
   rápido (nombre en italiano, los 14 alérgenos, dieta y meses con «Tutto l'anno») y después lo
   opcional: nombres en español e inglés, conservación, ingredientes (cantidad entera para 4
-  porciones en g, ml o piezas, o «q.b.»; sección del súper; orden con botones) y notas (solo de la
-  cocinera: se leen de `recipe_notes`, que el cliente no lee). Guarda el plato entero con
+  porciones en g, ml o piezas, o «q.b.»; sección del súper; orden con botones) y notas (de la
+  cocinera y sus colaboradores: se leen de `recipe_notes`, que el cliente no lee). Guarda el plato entero con
   `save_recipe`, con un id generado en el teléfono: un reintento no lo duplica y, si falla, no se
   pierde lo cargado. No deja guardar un plato vegano con leche, huevos, pescado o mariscos, ni uno
   vegetariano con pescado o mariscos (`save_recipe` tampoco lo acepta). Duplicar abre la copia (otro
@@ -442,10 +447,9 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   Evelyn ya tenía la app abierta cuando se corrió, tiene que salir y volver a entrar con el código.
 - Colaboradores: sus cuentas también las crea el workflow, en cada despliegue (en su último paso), con
   el secreto `CHEF_MEMBER_EMAILS` (la lista manda; contrato §10.1). Cambiar el secreto no hace nada
-  hasta correr Deploy Supabase a mano. **Antes de cargar el primero en producción**, la decisión de
-  privacy de SPEC §14: un colaborador ve también las alergias y las direcciones, y la privacy vigente
-  nombra solo a Evelyn y, para la asistencia técnica, a quien gestiona el sistema. En local,
-  `marco@example.test` es colaborador de Evelyn en el seed.
+  hasta correr Deploy Supabase a mano. Solo quien gestiona el sistema por cuenta de Evelyn (SPEC §6):
+  un colaborador ve también las alergias y las direcciones, así que sumar a otra persona exige antes
+  una privacy nueva. En local, `marco@example.test` es colaborador de Evelyn en el seed.
 
 ## Web `/gestione/`
 
@@ -571,6 +575,8 @@ test/                  espejo de lib/ y tool/, más support/ con utilidades
 `lib/features/quote/domain/quote.dart` es una copia de `supabase/functions/_shared/quote.ts`, que es la fuente de verdad.
 `test/features/quote/quote_vectors_test.dart` lee `supabase/functions/_shared/quote_vectors.json` y verifica todos los vectores.
 Si cambia la fórmula, se cambian `quote.ts`, los vectores y esta copia en el mismo PR.
+Sin compra (19/11/2026): la hace el cliente, con la lista que le manda Evelyn. El motor no la estima
+y la calculadora (`/preventivo`) muestra porciones, recetas y el servicio.
 
 ## Textos
 

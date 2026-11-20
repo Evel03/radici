@@ -1,4 +1,4 @@
-// Las horas de una sesión («Compra desde 09:15 · Llega 10:00 · hasta 13:00»)
+// Las horas de una sesión («Llega 10:00 · hasta 13:00», sin compra)
 // en un teléfono, medidas con la letra de verdad (la Roboto empaquetada, la
 // que dibuja /gestione/ también en el iPhone): el renglón se parte solo
 // después de un «·», nunca entre «hasta» (o «fino alle», «until») y la hora.

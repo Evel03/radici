@@ -37,7 +37,6 @@ void main() {
     start: const ClockTime.hm(10, 0),
     cookMinutes: 240,
     portions: 20,
-    groceriesEstCents: 6300,
     serviceTotalCents: 30000,
     requestKey: key,
   );
@@ -99,7 +98,6 @@ void main() {
       'start': '10:00',
       'cookMinutes': 240,
       'portions': 20,
-      'groceriesEstCents': 6300,
       'serviceTotalCents': 30000,
       'requestKey': key,
       'dryRun': false,

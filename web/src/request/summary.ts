@@ -3,7 +3,7 @@
 // alergias (ninguna o indicadas, nunca cuáles): nada de contacto ni de salud.
 import type { I18n } from "../i18n/core.ts";
 import { formatCents, formatIsoDate, formatShortDate } from "../lib/format.ts";
-import { publicEstimate, weeklyDates, weeksOf, type PublicRequestEstimate, type RequestData, type RequestType } from "./model.ts";
+import { publicEstimate, weeklyDates, weeksOf, type PublicRequestEstimate, type RequestData } from "./model.ts";
 import { computeQuote } from "./quote.ts";
 
 /**
@@ -35,9 +35,10 @@ export function peopleText(adults: number, kids: number, t: I18n["t"]): string {
 
 /**
  * El precio: con precio automático, el servicio (por semana y de todas las semanas, y el ahorro si hay
- * descuento); sin él, que lo prepara Evelyn. La compra estimada siempre, aparte.
+ * descuento); sin él, que lo prepara Evelyn. La compra la hace el cliente con la lista de Evelyn (decisión del
+ * 19/11/2026): no tiene fila.
  */
-export function priceRows(estimate: PublicRequestEstimate, type: RequestType, i18n: I18n): SummaryRow[] {
+export function priceRows(estimate: PublicRequestEstimate, i18n: I18n): SummaryRow[] {
   const { t, locale } = i18n;
   const money = (cents: number): string => formatCents(cents, locale);
   const rows: SummaryRow[] = [];
@@ -52,10 +53,6 @@ export function priceRows(estimate: PublicRequestEstimate, type: RequestType, i1
   if (estimate.autoPrice && estimate.savingsCents > 0) {
     rows.push({ label: t("request.summary.savings"), value: money(estimate.savingsCents) });
   }
-  rows.push({
-    label: t(type === "week" ? "request.summary.groceriesWeekly" : "request.summary.groceries"),
-    value: money(estimate.groceriesEstCents),
-  });
   return rows;
 }
 
@@ -91,6 +88,6 @@ export function summaryRows(data: RequestData, estimate: PublicRequestEstimate |
     label: t("request.summary.allergies"),
     value: t(data.noAllergies ? "request.summary.allergiesNone" : "request.summary.allergiesListed"),
   });
-  if (estimate) rows.push(...priceRows(estimate, data.type, i18n));
+  if (estimate) rows.push(...priceRows(estimate, i18n));
   return rows;
 }

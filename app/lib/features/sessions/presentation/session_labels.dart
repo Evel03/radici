@@ -1,7 +1,6 @@
-// Textos de las sesiones: el estado, las horas («Spesa dalle 09:15 · Arrivo
-// 10:00 · fino alle 13:00»), las fechas dentro de una frase, los motivos de
-// cancelación y las fallas de mover y cancelar. Solo presentación: los textos
-// salen del ARB.
+// Textos de las sesiones: el estado, las horas («Arrivo 10:00 · fino alle
+// 13:00»), las fechas dentro de una frase, los motivos de cancelación y las
+// fallas de mover y cancelar. Solo presentación: los textos salen del ARB.
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 import 'package:radici/core/rome_time.dart';
@@ -16,7 +15,7 @@ enum SessionOperation { move, cancel }
 /// Espacio que no corta.
 const String _nbsp = '\u00a0';
 
-/// Separador de los tramos en el ARB («Spesa dalle {shop} · Arrivo …»).
+/// Separador de los tramos en el ARB («Arrivo {arrival} · fino alle …»).
 const String _timesSeparator = ' · ';
 
 /// El mismo separador en lo que se muestra: el renglón se parte solo en su
@@ -24,22 +23,24 @@ const String _timesSeparator = ' · ';
 const String _breakSeparator = '$_nbsp· ';
 
 extension SessionLabels on AppLocalizations {
+  /// El estado como se muestra ([SessionStatus.shown]): una sesión vieja en
+  /// shopping_done dice «Confermata», no que la cocinera hizo la compra.
   String sessionStatus(SessionStatus status) => switch (status) {
     SessionStatus.held => sessionStatusHeld,
-    SessionStatus.confirmed => sessionStatusConfirmed,
-    SessionStatus.shoppingDone => sessionStatusShoppingDone,
+    SessionStatus.confirmed ||
+    SessionStatus.shoppingDone => sessionStatusConfirmed,
     SessionStatus.cooked => sessionStatusCooked,
     SessionStatus.paid => sessionStatusPaid,
     SessionStatus.cancelled => sessionStatusCancelled,
   };
 
-  /// «Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00», de lo guardado en
-  /// la sesión. Cada tramo va con espacios que no cortan: en un teléfono el
-  /// renglón se parte después de un «·», nunca entre «fino alle» y la hora.
+  /// «Arrivo 10:00 · fino alle 13:00», de lo guardado en la sesión (la
+  /// compra de una sesión de antes del 19/11/2026 no se muestra). Cada tramo
+  /// va con espacios que no cortan: en un teléfono el renglón se parte
+  /// después de un «·», nunca entre «fino alle» y la hora.
   String sessionTimesLine(CookingSession session) {
     final times = session.times;
     final line = sessionTimes(
-      SessionTimes.hhmm(times.shopStart),
       SessionTimes.hhmm(times.arrival),
       SessionTimes.hhmm(times.end),
     );
@@ -76,9 +77,13 @@ extension SessionLabels on AppLocalizations {
       SessionFailureKind.weekTaken when date != null => sessionErrorWeekTaken(
         formatDate(date),
       ),
-      SessionFailureKind.notMovable => switch (failure.status) {
-        final status? => sessionErrorNotMovable(sessionStatus(status)),
-        null => sessionErrorNotMovableUnknown,
+      // Una sesión vieja en shopping_done tampoco se mueve, pero se muestra
+      // como confirmada: «è «Confermata»: non si può più spostare» no se
+      // entendería.
+      SessionFailureKind.notMovable => switch (failure.status?.shown) {
+        final status? when status != SessionStatus.confirmed =>
+          sessionErrorNotMovable(sessionStatus(status)),
+        _ => sessionErrorNotMovableUnknown,
       },
       SessionFailureKind.invalidTransition => sessionErrorInvalidTransition,
       // La ficha lo explica con un diálogo (cuáles y qué hacer); esto es para

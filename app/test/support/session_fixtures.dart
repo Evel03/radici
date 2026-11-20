@@ -30,7 +30,7 @@ Map<String, dynamic> sessionRow({
   String date = '2026-11-25',
   String startTime = '10:00:00',
   int cookMinutes = 180,
-  int shopMinutes = 45,
+  int shopMinutes = 0,
   int gapMinutes = 30,
   String status = 'confirmed',
   String? requestId = bookingRequestId,
@@ -53,8 +53,6 @@ Map<String, dynamic> sessionRow({
   'portions': 20,
   'status': status,
   'service_cents': 14000,
-  'groceries_est_cents': 6300,
-  'groceries_actual_cents': null,
   'cancelled_at': status == 'cancelled' ? '2026-11-20T10:00:00+00:00' : null,
   'cancel_reason': status == 'cancelled' ? 'client_cancelled' : null,
   'client': {
@@ -85,8 +83,9 @@ Map<String, dynamic> sessionRow({
 /// confirmada de la reserva [bookingRequestId] (un pedido semanal, [type],
 /// aceptado, [requestStatus], que llegó por la web, [requestSource]; una
 /// reserva a mano es de la app) de la ficha [testClientId], el miércoles
-/// 25/11/2026 a las 10:00, con 45 min de compra y 180 de cocina, 20
-/// porciones y 140 € de servicio. [estimate] es la del pedido embebido.
+/// 25/11/2026 a las 10:00, con 180 min de cocina y sin compra (`shop_minutes`
+/// 0, como las sesiones creadas desde el 19/11/2026; las de antes guardan 45),
+/// 20 porciones y 140 € de servicio. [estimate] es la del pedido embebido.
 /// [lastAllergyAnswer] es la respuesta de su último pedido semanal de la web
 /// que se reservó (la que toma una sesión semanal cuyo pedido no responde).
 CookingSession buildSession({
@@ -96,7 +95,7 @@ CookingSession buildSession({
   CalendarDate? date,
   ClockTime start = const ClockTime.hm(10, 0),
   int cookMinutes = 180,
-  int shopMinutes = 45,
+  int shopMinutes = 0,
   int gapMinutes = 30,
   int portions = 20,
   int serviceCents = 14000,
@@ -130,7 +129,6 @@ CookingSession buildSession({
   portions: portions,
   status: status,
   serviceCents: serviceCents,
-  groceriesEstCents: 6300,
   cancelledAt: status == SessionStatus.cancelled
       ? DateTime.utc(2026, 11, 20, 10)
       : null,

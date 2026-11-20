@@ -1,4 +1,5 @@
-// Textos de las sesiones: cada estado, las horas (dónde se puede partir el
+// Textos de las sesiones: cada estado (shopping_done, sin uso desde el
+// 19/11/2026, como confirmada), las horas sin compra (dónde se puede partir el
 // renglón), las fechas dentro de una frase, los motivos de cancelación y cada
 // falla de mover y cancelar. arb_keys_test vigila que las claves existan en
 // los tres idiomas; esto, qué texto sale en cada caso.
@@ -26,13 +27,14 @@ void main() {
 
   String date(CalendarDate day) => day.toIso();
 
-  test('cada estado tiene su texto', () {
+  test('cada estado tiene su texto; shopping_done, el de confirmada', () {
     expect(
       [for (final s in SessionStatus.values) it.sessionStatus(s)],
       [
         'In attesa di conferma',
         'Confermata',
-        'Spesa fatta',
+        // shopping_done: una sesión vieja no dice que la cocinera compró.
+        'Confermata',
         'Cucinata',
         'Pagata',
         'Annullata',
@@ -41,15 +43,20 @@ void main() {
     expect(es.sessionStatus(SessionStatus.paid), 'Cobrada');
   });
 
-  test('las horas de la sesión, en italiano y en español', () {
+  test('las horas de la sesión, en italiano y en español: la llegada y el fin, sin compra', () {
     final session = buildSession();
     expect(
       plainSpaces(it.sessionTimesLine(session)),
-      'Spesa dalle 09:15 · Arrivo 10:00 · fino alle 13:00',
+      'Arrivo 10:00 · fino alle 13:00',
     );
     expect(
       plainSpaces(es.sessionTimesLine(session)),
-      'Compra desde 09:15 · Llega 10:00 · hasta 13:00',
+      'Llega 10:00 · hasta 13:00',
+    );
+    // Una de antes del 19/11/2026 guarda 45 min de compra: no se muestran.
+    expect(
+      plainSpaces(it.sessionTimesLine(buildSession(shopMinutes: 45))),
+      'Arrivo 10:00 · fino alle 13:00',
     );
   });
 
@@ -57,15 +64,8 @@ void main() {
     final line = es.sessionTimesLine(buildSession());
     // Cada tramo con espacios que no cortan; el «·» pegado al tramo de antes
     // y un solo espacio común después (ahí se parte el renglón).
-    expect(
-      line,
-      [
-        'Compra${nbsp}desde${nbsp}09:15$nbsp·',
-        'Llega${nbsp}10:00$nbsp·',
-        'hasta${nbsp}13:00',
-      ].join(' '),
-    );
-    expect(' '.allMatches(line), hasLength(2));
+    expect(line, ['Llega${nbsp}10:00$nbsp·', 'hasta${nbsp}13:00'].join(' '));
+    expect(' '.allMatches(line), hasLength(1));
   });
 
   test('los motivos: los de la app tienen texto; los de otros caminos, no', () {
@@ -123,6 +123,17 @@ void main() {
       );
       expect(
         move(const SessionFailure(SessionFailureKind.notMovable)),
+        'Questa sessione non si può più spostare.',
+      );
+      // shopping_done se muestra como confirmada: sin el estado, que no se
+      // entendería («è «Confermata»: non si può più spostare»).
+      expect(
+        move(
+          const SessionFailure(
+            SessionFailureKind.notMovable,
+            status: SessionStatus.shoppingDone,
+          ),
+        ),
         'Questa sessione non si può più spostare.',
       );
       expect(

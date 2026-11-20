@@ -116,8 +116,6 @@ const quoteOut = {
   total: byId("q-total"),
   weeklyRow: byId("q-weekly-row"),
   weekly: byId("q-weekly"),
-  groceriesLabel: byId("q-groceries-label"),
-  groceries: byId("q-groceries"),
   portionsLabel: byId("q-portions-label"),
   portions: byId("q-portions"),
   savings: byId("q-savings"),
@@ -518,8 +516,6 @@ function startRequestPage(shell: Shell): void {
     quoteInvalid.hidden = quote !== null;
     if (!quote) return;
     const view = quoteBoxView(quote, data.type, shell.i18n);
-    setText(quoteOut.groceriesLabel, view.groceries.label);
-    setText(quoteOut.groceries, view.groceries.value);
     setText(quoteOut.portionsLabel, view.portions.label);
     setText(quoteOut.portions, view.portions.value);
     quoteOut.manual.hidden = view.manual === null;

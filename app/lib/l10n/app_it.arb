@@ -35,9 +35,9 @@
   "@homeHeadline": {
     "description": "Título de bienvenida de la pantalla de inicio."
   },
-  "homeBody": "Evelyn fa la spesa, cucina da te per più giorni e lascia tutto in porzioni etichettate con piatto e data.",
+  "homeBody": "Evelyn cucina da te per più giorni e lascia tutto in porzioni etichettate con piatto e data. La spesa la fai tu, con la lista che ti manda lei.",
   "@homeBody": {
-    "description": "Explicación breve del servicio en la pantalla de inicio."
+    "description": "Explicación breve del servicio en la pantalla de inicio (pública: le habla al cliente). La compra la hace el cliente, con la lista que le manda Evelyn."
   },
   "homeQuoteCta": "Calcola preventivo",
   "@homeQuoteCta": {
@@ -155,21 +155,9 @@
       "maxPeople": { "type": "int", "example": "5" }
     }
   },
-  "quoteGroceries": "Spesa stimata",
-  "@quoteGroceries": {
-    "description": "Fila del desglose: insumos estimados (de la sesión, en un pedido que no es semanal)."
-  },
-  "quoteGroceriesWeekly": "Spesa stimata a settimana",
-  "@quoteGroceriesWeekly": {
-    "description": "Fila del desglose: insumos estimados de una semana (se pagan aparte, según el ticket)."
-  },
-  "quoteTotal": "Totale stimato",
-  "@quoteTotal": {
-    "description": "Fila del detalle de un pedido anterior al precio por semana: servicio + insumos estimados."
-  },
-  "quoteFootnote": "Il servizio è a settimana per una famiglia fino a {maxPeople} persone, qualunque siano i giorni e i pasti: comprende fare la spesa, lo spostamento e il tempo in cucina. Da {discountWeeks} settimane costa {discountRate} a settimana. La spesa si paga a parte, in base allo scontrino. È una stima: il prezzo finale lo conferma Evelyn.",
+  "quoteFootnote": "Il servizio è a settimana per una famiglia fino a {maxPeople} persone, qualunque siano i giorni e i pasti: comprende lo spostamento e il tempo in cucina. Da {discountWeeks} settimane costa {discountRate} a settimana. La spesa la fai tu, con la lista che ti manda Evelyn. È una stima: il prezzo finale lo conferma lei.",
   "@quoteFootnote": {
-    "description": "Nota bajo el desglose de la calculadora. Los números salen de las tarifas (defaultPricing).",
+    "description": "Nota bajo el desglose de la calculadora (pública: le habla al cliente). Los números salen de las tarifas (defaultPricing). La compra la hace el cliente, con la lista que le manda Evelyn.",
     "placeholders": {
       "maxPeople": { "type": "int", "example": "5" },
       "discountWeeks": { "type": "int", "example": "4" },
@@ -726,9 +714,9 @@
   "@detailNoEstimate": {
     "description": "El pedido no trae estimación."
   },
-  "detailEstimateFootnote": "Calcolata con le tue tariffe al momento della richiesta. La spesa si paga in base allo scontrino.",
+  "detailEstimateFootnote": "Calcolata con le tue tariffe al momento della richiesta. La spesa la fa il cliente, con la lista che gli mandi tu.",
   "@detailEstimateFootnote": {
-    "description": "Nota bajo la estimación guardada."
+    "description": "Nota bajo la estimación guardada (solo el servicio: la compra la hace el cliente)."
   },
   "detailPhone": "Telefono",
   "@detailPhone": {
@@ -947,7 +935,7 @@
   },
   "bookingStatusOutside": "Fuori dal tuo orario",
   "@bookingStatusOutside": {
-    "description": "Aviso de una semana: la compra empieza antes de la apertura o la cocina termina después del cierre."
+    "description": "Aviso de una semana: la llegada es antes de la apertura o la cocina termina después del cierre."
   },
   "bookingStatusChecking": "Verifica in corso…",
   "@bookingStatusChecking": {
@@ -1181,9 +1169,9 @@
   "@bookingStartSection": {
     "description": "Hoja «Confirmar reserva»: encabezado de las horas de llegada (la misma todas las semanas)."
   },
-  "bookingStartSuggested": "Suggerita: {time} (apertura più il tempo della spesa).",
+  "bookingStartSuggested": "Suggerita: {time}, l'inizio del tuo orario.",
   "@bookingStartSuggested": {
-    "description": "Debajo de las horas de llegada: la que sugiere el servidor, la primera que ofrece el calendario de la web.",
+    "description": "Debajo de las horas de llegada, en «Confirmar reserva» y en la hoja «Sposta»: la que sugiere el servidor, el comienzo del horario de ese día (la apertura a la media hora siguiente; sin compra desde el 19/11/2026).",
     "placeholders": {
       "time": { "type": "String", "example": "10:00" }
     }
@@ -1196,12 +1184,12 @@
   "@bookingCookHelp": {
     "description": "Debajo del tiempo de cocina, solo en la hoja de un pedido: sale de la estimación y tiene un tope. A mano va bookingCookHelpManual; en «Rinnova», bookingCookHelpRenewal.",
     "placeholders": {
-      "max": { "type": "int", "example": "300" }
+      "max": { "type": "int", "example": "360" }
     }
   },
   "bookingPriceLabel": "{count, plural, =1{Prezzo del servizio} other{Prezzo del servizio, tutte le settimane}}",
   "@bookingPriceLabel": {
-    "description": "Etiqueta del campo del precio del servicio de toda la reserva (lo fija Evelyn; la compra va aparte). count: cuántas semanas.",
+    "description": "Etiqueta del campo del precio del servicio de toda la reserva (lo fija Evelyn). count: cuántas semanas.",
     "placeholders": {
       "count": { "type": "int", "example": "4" }
     }
@@ -1234,10 +1222,6 @@
     "placeholders": {
       "max": { "type": "String", "example": "100.000,00 €" }
     }
-  },
-  "bookingGroceriesNote": "La spesa si paga a parte, in base allo scontrino.",
-  "@bookingGroceriesNote": {
-    "description": "Nota debajo del precio: la compra no está incluida."
   },
   "bookingConfirmAction": "{count, plural, =1{Conferma prenotazione} other{Conferma {count} settimane}}",
   "@bookingConfirmAction": {
@@ -1440,11 +1424,7 @@
   },
   "sessionStatusConfirmed": "Confermata",
   "@sessionStatusConfirmed": {
-    "description": "Estado de una sesión confirmed."
-  },
-  "sessionStatusShoppingDone": "Spesa fatta",
-  "@sessionStatusShoppingDone": {
-    "description": "Estado de una sesión shopping_done (ya se cargó el ticket de la compra)."
+    "description": "Estado de una sesión confirmed. También el de una sesión vieja en shopping_done (la compra hecha, sin uso desde el 19/11/2026: la compra la hace el cliente), que todavía no se cocinó."
   },
   "sessionStatusCooked": "Cucinata",
   "@sessionStatusCooked": {
@@ -1452,17 +1432,16 @@
   },
   "sessionStatusPaid": "Pagata",
   "@sessionStatusPaid": {
-    "description": "Estado de una sesión paid (servicio y compra cobrados)."
+    "description": "Estado de una sesión paid (el servicio cobrado)."
   },
   "sessionStatusCancelled": "Annullata",
   "@sessionStatusCancelled": {
     "description": "Estado de una sesión cancelled."
   },
-  "sessionTimes": "Spesa dalle {shop} · Arrivo {arrival} · fino alle {end}",
+  "sessionTimes": "Arrivo {arrival} · fino alle {end}",
   "@sessionTimes": {
-    "description": "Horas de una sesión, salidas de lo guardado en ella: la compra empieza antes de llegar a la casa y la cocina termina a {end}.",
+    "description": "Horas de una sesión, salidas de lo guardado en ella: la llegada a la casa y el fin de la cocina. Sin compra (la hace el cliente desde el 19/11/2026): la de las sesiones de antes no se muestra.",
     "placeholders": {
-      "shop": { "type": "String", "example": "09:15" },
       "arrival": { "type": "String", "example": "10:00" },
       "end": { "type": "String", "example": "13:00" }
     }
@@ -2310,9 +2289,9 @@
       "portions": { "type": "int", "example": "4" }
     }
   },
-  "recipeIngredientsHelp": "Da qui nasce la lista della spesa: le quantità si adattano alle porzioni di ogni sessione.",
+  "recipeIngredientsHelp": "Da qui nasce la lista della spesa che mandi al cliente: le quantità si adattano alle porzioni di ogni sessione.",
   "@recipeIngredientsHelp": {
-    "description": "Ayuda de la sección de ingredientes."
+    "description": "Ayuda de la sección de ingredientes. La compra la hace el cliente, con la lista que le manda la cocinera."
   },
   "recipeIngredientName": "Ingrediente",
   "@recipeIngredientName": {
@@ -2391,7 +2370,7 @@
   },
   "recipeUnitPieces": "pz",
   "@recipeUnitPieces": {
-    "description": "Unidad: piezas (abreviatura)."
+    "description": "Unidad por cantidad, abreviada: la cantidad cuenta cosas enteras («2 cipolle», «1 limone»). En la base es «pcs». En español «unid.» y en inglés «ea» (each)."
   },
   "recipeUnitToTaste": "q.b.",
   "@recipeUnitToTaste": {
@@ -2425,9 +2404,9 @@
   "@shoppingSectionOther": {
     "description": "Sección del súper (other)."
   },
-  "recipeNotesLabel": "Note (le vedi solo tu)",
+  "recipeNotesLabel": "Note (i clienti non le vedono)",
   "@recipeNotesLabel": {
-    "description": "Campo opcional de notas del plato."
+    "description": "Campo opcional de notas del plato (recipe_notes). Las ven la cocinera y sus colaboradores, nunca los clientes; por eso no dice «solo tu»."
   },
   "recipeNotesHelper": "Non scrivere dati dei clienti.",
   "@recipeNotesHelper": {

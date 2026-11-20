@@ -69,8 +69,9 @@ insert into public.chefs (id, profile_id, display_name, service_area, whatsapp) 
 insert into public.chef_members (chef_id, profile_id) values
   ('cef00000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-0000000000c1');
 
--- Evelyn: todos los valores por defecto de la spec (2200, 1200, 380, 250, 15 %, 90, 45, 30, 30, 56, 24, 48, 90;
--- precio por semana: 15000, 14000 desde 4 semanas, hasta 5 personas)
+-- Evelyn: todos los valores por defecto de la spec (2200, 1200, 380, 250, 15 %, 90, 0, 30, 30, 56, 24, 48, 90;
+-- precio por semana: 15000, 14000 desde 4 semanas, hasta 5 personas). 0 minutos de compra: la hace el
+-- cliente (decisión del 19/11/2026, migración 20261119090000_sin_compra.sql)
 insert into public.chef_settings (chef_id) values ('cef00000-0000-4000-8000-000000000001');
 -- Giulia: tarifas distintas, para que se note si se mezclan datos entre chefs (también las del
 -- precio por semana: 160 €, 150 € desde 3 semanas, hasta 6 personas)

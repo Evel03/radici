@@ -33,7 +33,7 @@ enum BookingDayStatus {
   /// Ese día de la semana no tiene horario.
   closed,
 
-  /// La compra empieza antes de la apertura o la cocina termina después del
+  /// La sesión empieza antes de la apertura o la cocina termina después del
   /// cierre.
   outside,
 
@@ -219,9 +219,8 @@ abstract class BookingRequest with _$BookingRequest {
     /// Minutos de cocina de cada semana.
     required int cookMinutes,
 
-    /// Porciones y compra estimada de cada semana (de la estimación).
+    /// Porciones de cada semana (de la estimación).
     int? portions,
-    int? groceriesEstCents,
 
     /// Precio del servicio de toda la reserva, que fija Evelyn. Obligatorio
     /// salvo en el dryRun: después ninguna ruta lo cambia.
@@ -252,7 +251,6 @@ abstract class BookingRequest with _$BookingRequest {
     'start': ?start?.toHhMm(),
     'cookMinutes': cookMinutes,
     'portions': ?portions,
-    'groceriesEstCents': ?groceriesEstCents,
     'serviceTotalCents': ?serviceTotalCents,
     'requestKey': ?requestKey,
     'dryRun': dryRun,
@@ -277,8 +275,8 @@ abstract class BookingWeek with _$BookingWeek {
     required BookingDayStatus status,
 
     /// La primera llegada del día, la misma que ofrece el calendario de la
-    /// web (apertura más la compra, a la media hora siguiente); null si ese
-    /// día no tiene horario.
+    /// web (la apertura, a la media hora siguiente: sin compra desde el
+    /// 19/11/2026); null si ese día no tiene horario.
     ClockTime? suggestedStart,
 
     /// Parte del servicio de esa semana.

@@ -449,14 +449,16 @@ void main() {
     expect(tester.widget<IconButton>(byKey('recipe-ingredient-remove-1')).tooltip, 'Quitar el ingrediente 1');
   });
 
-  testWidgets('las ayudas en español: el nombre principal y las cantidades que se ajustan a las porciones', (
+  testWidgets('las ayudas en español: el nombre principal y la lista de la compra para el cliente, con las cantidades que se ajustan a las porciones', (
     tester,
   ) async {
     await openEditor(tester, locale: const Locale('es', 'ES'));
     expect(find.text('Es el nombre principal: los clientes lo ven si no hay traducción.'), findsOneWidget);
     expect(find.text('Ingredientes para 4 porciones'), findsOneWidget);
     expect(
-      find.text('De aquí sale la lista de compras: las cantidades se ajustan a las porciones de cada sesión.'),
+      find.text(
+        'De aquí sale la lista de la compra que le mandas al cliente: las cantidades se ajustan a las porciones de cada sesión.',
+      ),
       findsOneWidget,
     );
   });

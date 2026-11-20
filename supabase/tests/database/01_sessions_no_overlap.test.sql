@@ -97,8 +97,8 @@ values ('7e574000-0000-4000-8000-0000000000d1', '7e571000-0000-4000-8000-0000000
 
 select is(
   (select array[shop_minutes, gap_minutes] from public.sessions where id = '7e574000-0000-4000-8000-0000000000d1'),
-  array[45, 30],
-  'sin compra/margen explícitos se copian de chef_settings (45 y 30)'
+  array[0, 30],
+  'sin compra/margen explícitos se copian de chef_settings (0 y 30: sin compra desde el 19/11/2026)'
 );
 
 update public.chef_settings set shop_minutes = 60, gap_minutes = 45
@@ -106,8 +106,8 @@ where chef_id = '7e571000-0000-4000-8000-000000000002';
 
 select is(
   (select busy from public.sessions where id = '7e574000-0000-4000-8000-0000000000d1'),
-  tstzrange('2027-05-03 07:15:00+00', '2027-05-03 11:00:00+00', '[)'),
-  'cambiar chef_settings no mueve sesiones existentes'
+  tstzrange('2027-05-03 08:00:00+00', '2027-05-03 11:00:00+00', '[)'),
+  'cambiar chef_settings no mueve sesiones existentes (sigue empezando en la llegada, 10:00 en Roma)'
 );
 
 -- ---------------------------------------------------------------------
