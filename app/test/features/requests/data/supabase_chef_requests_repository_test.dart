@@ -118,15 +118,17 @@ void main() {
   group('fetchMenuDishes', () {
     const lasagneId = 'a0000000-0000-4000-8000-000000000001';
     const minestroneId = 'a0000000-0000-4000-8000-000000000003';
+    const photoId = 'f0000000-0000-4000-8000-000000000001';
 
-    test('GET de recipes con solo los nombres, filtrado por los ids', () async {
+    test('GET de recipes con solo los nombres y la foto, filtrado por los ids', () async {
       server.handler = (_) async => jsonResponse([
-        {'id': minestroneId, 'name_it': 'Minestrone di verdure', 'name_es': null, 'name_en': null},
+        {'id': minestroneId, 'name_it': 'Minestrone di verdure', 'name_es': null, 'name_en': null, 'photo_id': null},
         {
           'id': lasagneId,
           'name_it': 'Lasagne alla bolognese',
           'name_es': 'Lasaña a la boloñesa',
           'name_en': 'Lasagne Bolognese',
+          'photo_id': photoId,
         },
       ]);
 
@@ -139,14 +141,16 @@ void main() {
           nameIt: 'Lasagne alla bolognese',
           nameEs: 'Lasaña a la boloñesa',
           nameEn: 'Lasagne Bolognese',
+          photoId: photoId,
         ),
       ]);
       final request = server.last;
       expect(request.method, 'GET');
       expect(request.url.path, '/rest/v1/recipes');
       final query = request.url.queryParameters;
-      // Nunca ingredientes, alérgenos ni notas: solo para mostrar los nombres.
-      expect(query['select'], 'id,name_it,name_es,name_en');
+      // Nunca ingredientes, alérgenos ni notas: solo para mostrar los nombres
+      // y la miniatura.
+      expect(query['select'], 'id,name_it,name_es,name_en,photo_id');
       expect(query['id'], 'in.("$lasagneId","$minestroneId")');
       expect(query.keys.toSet(), {'select', 'id'});
     });

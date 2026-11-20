@@ -6,15 +6,17 @@
 // Los nombres se leen de `recipes` (los de hoy): `wishes` es un uuid[] sin FK,
 // así que no se puede embeber en la fila del pedido. Un plato que después se
 // borró del catálogo queda en su lugar, sin nombre. Los nombres de los platos
-// no son datos de salud ni de contacto. Dart puro.
+// no son datos de salud ni de contacto. Con el nombre llega la foto (photoId),
+// para la miniatura. Dart puro.
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'chosen_menu.freezed.dart';
 
-/// Columnas de `recipes` que se leen para el menú elegido: solo los nombres.
-const String menuDishColumns = 'id, name_it, name_es, name_en';
+/// Columnas de `recipes` que se leen para el menú elegido: solo los nombres y
+/// la foto.
+const String menuDishColumns = 'id, name_it, name_es, name_en, photo_id';
 
-/// Los nombres de un plato del catálogo.
+/// Los nombres y la foto de un plato del catálogo.
 @Freezed(fromJson: false, toJson: false)
 abstract class MenuDish with _$MenuDish {
   const factory MenuDish({
@@ -22,6 +24,9 @@ abstract class MenuDish with _$MenuDish {
     required String nameIt,
     String? nameEs,
     String? nameEn,
+
+    /// La foto del plato (null = sin foto), como en Recipe.photoId.
+    String? photoId,
   }) = _MenuDish;
 
   const MenuDish._();
@@ -39,6 +44,7 @@ abstract class MenuDish with _$MenuDish {
       nameIt: nameIt,
       nameEs: _optionalText(json['name_es']),
       nameEn: _optionalText(json['name_en']),
+      photoId: _photoIdFromJson(json['photo_id']),
     );
   }
 
@@ -65,4 +71,17 @@ String? _optionalText(Object? value) {
   if (value == null) return null;
   if (value is! String) throw const FormatException('Texto inválido');
   return value.isEmpty ? null : value;
+}
+
+final RegExp _uuid = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+);
+
+/// recipes.photo_id: un uuid (arma las rutas de los archivos) o null.
+String? _photoIdFromJson(Object? value) {
+  if (value == null) return null;
+  if (value is! String || !_uuid.hasMatch(value)) {
+    throw const FormatException('Foto inválida');
+  }
+  return value;
 }
