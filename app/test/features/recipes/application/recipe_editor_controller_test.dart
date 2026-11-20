@@ -622,6 +622,23 @@ void main() {
       expect(repository.saveCalls.last.autoTranslated, {TranslatedField.nameIt, TranslatedField.nameEn});
     });
 
+    test('«Annulla» de un ingrediente quitado no hace nada mientras traduce', () async {
+      await start();
+      translator.pending = Completer<void>();
+      final editor = open(editLasagne);
+      final removed = editor.removeIngredient(stateOf(editLasagne).draft.ingredients.first.key)!;
+      final saving = editor.save();
+      await pumpEventQueue();
+      expect(stateOf(editLasagne).translating, isTrue);
+
+      editor.restoreIngredient(removed);
+      expect(stateOf(editLasagne).draft.ingredients, hasLength(2), reason: 'quedaría fuera del guardado');
+
+      translator.pending!.complete();
+      expect(await saving, RecipeSaveResult.saved);
+      expect(repository.saveCalls.single.ingredients, hasLength(2));
+    });
+
     test('si el formulario cambió mientras traducía, la traducción no pisa nada ni se guarda', () async {
       await start();
       translator.pending = Completer<void>();
@@ -702,6 +719,74 @@ void main() {
       });
     });
 
+    // Revisión del 20/11/2026: un 422 o un 429 no se arregla reintentando lo
+    // mismo (y el 429 rechazado gasta cupo); con el mismo pedido no se vuelve
+    // a llamar. El 422 con solo campos vacíos guarda sin traducir, como el
+    // 501.
+    group('las negativas que no se arreglan reintentando', () {
+      for (final kind in const [TranslationFailureKind.untranslatable, TranslationFailureKind.rateLimited]) {
+        test('${kind.name}: con el mismo español va directo al aviso, sin llamar; con otro, llama', () async {
+          await start();
+          translator.failure = kind;
+          final editor = open(editMilanesa)..setDescriptionEs('Con tomate y queso.');
+          expect(await editor.save(), RecipeSaveResult.translationFailed);
+          expect(stateOf(editMilanesa).refusal, (
+            kind: kind,
+            request: (name: 'Milanesa a la napolitana', description: 'Con tomate y queso.'),
+          ));
+
+          expect(await editor.save(), RecipeSaveResult.translationFailed);
+          expect(stateOf(editMilanesa).translateError, kind);
+          expect(translator.calls, hasLength(1), reason: 'el mismo pedido no vuelve a la red');
+
+          translator.failure = null;
+          editor.setDescriptionEs('Con tomate, jamón y queso.');
+          expect(await editor.save(), RecipeSaveResult.saved);
+          expect(translator.calls, hasLength(2));
+          expect(stateOf(editMilanesa).refusal, isNull);
+        });
+      }
+
+      test('un 503 no queda guardado: el reintento vuelve a llamar', () async {
+        await start();
+        translator.failure = TranslationFailureKind.unavailable;
+        final editor = open(editMilanesa)..setDescriptionEs('Con tomate y queso.');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(stateOf(editMilanesa).refusal, isNull);
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(translator.calls, hasLength(2));
+      });
+
+      test('un 422 con solo campos vacíos guarda sin traducir y dice por qué', () async {
+        await start();
+        translator.failure = TranslationFailureKind.untranslatable;
+        // La lasaña no tiene la descripción en inglés.
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+        expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+        expect(stateOf(editLasagne).untranslatedBecause, TranslationFailureKind.untranslatable);
+        expect(repository.saveCalls.single.descriptionEn, isNull);
+      });
+
+      test('un 429 con solo campos vacíos no guarda: sigue el aviso', () async {
+        await start();
+        translator.failure = TranslationFailureKind.rateLimited;
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(repository.saveCalls, isEmpty);
+      });
+
+      test('después de un guardado normal, el motivo de guardar sin traducir no queda', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+        expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+        expect(stateOf(editLasagne).untranslatedBecause, TranslationFailureKind.notConfigured);
+        translator.failure = null;
+        expect(await editor.save(), RecipeSaveResult.saved);
+        expect(stateOf(editLasagne).untranslatedBecause, isNull);
+      });
+    });
+
     group('guardar sin traducir', () {
       test('lo automático viejo se vacía, lo escrito a mano queda y el español se guarda', () async {
         await start();
@@ -741,7 +826,7 @@ void main() {
 
       test('después de guardar sin traducir, lo vacío se traduce la próxima vez', () async {
         await start();
-        translator.failure = TranslationFailureKind.rateLimited;
+        translator.failure = TranslationFailureKind.timeout;
         final editor = open(create)
           ..setNameEs('Locro')
           ..setNameIt('Locro');

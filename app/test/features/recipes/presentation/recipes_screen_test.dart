@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/features/more/presentation/more_screen.dart';
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
+import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
 import 'package:radici/features/recipes/presentation/recipes_screen.dart';
@@ -202,6 +203,23 @@ void main() {
     expect(inTile(lasagneId, 'Lasagne verdi'), findsOneWidget);
   });
 
+  // Con VoiceOver o TalkBack el aviso de guardar sin traducir no se va solo:
+  // se cierra con la X (como los avisos de error del editor).
+  testWidgets('con lector de pantalla, el aviso de guardar sin traducir queda hasta cerrarlo', (tester) async {
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      accessibleNavigation: true,
+    );
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final app = await openList(tester, size: const Size(375, 667));
+    app.container
+        .read(recipeSavedNoticeProvider.notifier)
+        .post(lasagne(), untranslatedBecause: TranslationFailureKind.notConfigured);
+    await tester.pumpAndSettle();
+    final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
+    expect(snackBar.persist, isTrue);
+    expect(snackBar.showCloseIcon, isTrue);
+  });
+
   testWidgets('el aviso de guardado sale en la lista y no tapa «Nuovo piatto»', (tester) async {
     final app = await openList(tester, size: const Size(375, 667));
     app.container.read(recipeSavedNoticeProvider.notifier).post(lasagne());
@@ -215,18 +233,46 @@ void main() {
     expect(app.container.read(recipeSavedNoticeProvider), isNull);
   });
 
-  for (final (locale, text) in const [
-    (Locale('it', 'IT'), '«Lasagne alla bolognese» salvato senza tradurre: la traduzione automatica è spenta.'),
-    (Locale('es', 'ES'), '«Lasagne alla bolognese» guardado sin traducir: la traducción automática está apagada.'),
-    (Locale('en'), '“Lasagne alla bolognese” saved without translating: automatic translation is turned off.'),
+  for (final (locale, kind, text) in const [
+    (
+      Locale('it', 'IT'),
+      TranslationFailureKind.notConfigured,
+      '«Lasagne alla bolognese» salvato senza tradurre: la traduzione automatica è spenta.',
+    ),
+    (
+      Locale('es', 'ES'),
+      TranslationFailureKind.notConfigured,
+      '«Lasagne alla bolognese» guardado sin traducir: la traducción automática está apagada.',
+    ),
+    (
+      Locale('en'),
+      TranslationFailureKind.notConfigured,
+      '“Lasagne alla bolognese” saved without translating: automatic translation is turned off.',
+    ),
+    (
+      Locale('it', 'IT'),
+      TranslationFailureKind.untranslatable,
+      '«Lasagne alla bolognese» salvato senza tradurre: la traduzione automatica non è riuscita a tradurlo.',
+    ),
+    (
+      Locale('es', 'ES'),
+      TranslationFailureKind.untranslatable,
+      '«Lasagne alla bolognese» guardado sin traducir: la traducción automática no pudo traducirlo.',
+    ),
+    (
+      Locale('en'),
+      TranslationFailureKind.untranslatable,
+      '“Lasagne alla bolognese” saved without translating: automatic translation couldn\'t translate it.',
+    ),
   ]) {
-    testWidgets('guardado sin traducir porque la traducción está apagada: la lista lo dice (${locale.languageCode})', (
+    testWidgets('guardado sin traducir (${kind.name}): la lista lo dice y dura como un error (${locale.languageCode})', (
       tester,
     ) async {
       final app = await openList(tester, size: const Size(375, 667), locale: locale);
-      app.container.read(recipeSavedNoticeProvider.notifier).post(lasagne(), untranslated: true);
+      app.container.read(recipeSavedNoticeProvider.notifier).post(lasagne(), untranslatedBecause: kind);
       await tester.pumpAndSettle();
       expect(find.text(text), findsOneWidget);
+      expect(tester.widget<SnackBar>(find.byType(SnackBar)).duration, const Duration(seconds: 10));
       expect(
         tester.getRect(byKey('recipes-new')).bottom,
         lessThanOrEqualTo(tester.getRect(find.byType(SnackBar)).top),

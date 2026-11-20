@@ -247,6 +247,8 @@
   "recipeAllergensA11y": "Allergens: {allergens}",
   "recipeSeasonA11y": "Season: {season}",
   "recipeSavedDone": "“{name}” saved.",
+  "recipeSavedUntranslatable": "“{name}” saved without translating: automatic translation couldn't translate it.",
+  "recipeSaveInterrupted": "The dish changed while it was being translated and wasn't saved. Tap “Save” again.",
   "recipeSavedUntranslated": "“{name}” saved without translating: automatic translation is turned off.",
   "recipeEditTitle": "Edit dish",
   "recipeCopyTitle": "Copy of the dish",

@@ -1156,6 +1156,17 @@
       "name": { "type": "String", "example": "Lasagne alla bolognese" }
     }
   },
+  "recipeSavedUntranslatable": "«{name}» salvato senza tradurre: la traduzione automatica non è riuscita a tradurlo.",
+  "@recipeSavedUntranslatable": {
+    "description": "Aviso en la lista después de guardar un plato sin traducir porque la traducción automática no pudo con ese texto (422) y solo había campos vacíos para traducir.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "recipeSaveInterrupted": "Il piatto è cambiato mentre si traduceva e non è stato salvato. Tocca «Salva» di nuovo.",
+  "@recipeSaveInterrupted": {
+    "description": "Aviso del editor: el formulario cambió mientras se traducía, así que no se aplicó la traducción ni se guardó nada."
+  },
   "recipeEditTitle": "Modifica piatto",
   "@recipeEditTitle": {
     "description": "Título del editor de un plato guardado."

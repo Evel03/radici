@@ -247,6 +247,8 @@
   "recipeAllergensA11y": "Alérgenos: {allergens}",
   "recipeSeasonA11y": "Temporada: {season}",
   "recipeSavedDone": "«{name}» guardado.",
+  "recipeSavedUntranslatable": "«{name}» guardado sin traducir: la traducción automática no pudo traducirlo.",
+  "recipeSaveInterrupted": "El plato cambió mientras se traducía y no se guardó. Toca «Guardar» de nuevo.",
   "recipeSavedUntranslated": "«{name}» guardado sin traducir: la traducción automática está apagada.",
   "recipeEditTitle": "Editar plato",
   "recipeCopyTitle": "Copia del plato",

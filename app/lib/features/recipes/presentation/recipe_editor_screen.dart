@@ -192,6 +192,8 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
   /// guarda sin traducir.
   Future<void> _save({bool translate = true}) async {
     FocusScope.of(context).unfocus();
+    // El aviso de antes (un «Annulla») no sigue a mano mientras guarda.
+    _messenger.currentState?.removeCurrentSnackBar();
     final l10n = AppLocalizations.of(context);
     final result = translate
         ? await _editor.save()
@@ -201,14 +203,16 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     switch (result) {
       case RecipeSaveResult.saved || RecipeSaveResult.savedUntranslated:
         // La lista lo avisa (este editor se cierra), y si se guardó sin
-        // traducir porque la traducción está apagada, también lo dice.
+        // traducir sin preguntar, también dice por qué.
         final saved = state.source;
         if (saved != null) {
           ref
               .read(recipeSavedNoticeProvider.notifier)
               .post(
                 saved,
-                untranslated: result == RecipeSaveResult.savedUntranslated,
+                untranslatedBecause: result == RecipeSaveResult.savedUntranslated
+                    ? state.untranslatedBecause
+                    : null,
               );
         }
         Navigator.of(context).pop();
@@ -237,7 +241,17 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
         );
       case RecipeSaveResult.translationFailed:
         await _translationFailed(state);
-      case RecipeSaveResult.stale || RecipeSaveResult.busy:
+      case RecipeSaveResult.stale:
+        // Nunca se descarta un guardado en silencio.
+        _show(
+          SnackBar(
+            content: Text(l10n.recipeSaveInterrupted),
+            duration: errorSnackBarDuration,
+            persist: _persist,
+            showCloseIcon: _persist,
+          ),
+        );
+      case RecipeSaveResult.busy:
         break;
     }
   }

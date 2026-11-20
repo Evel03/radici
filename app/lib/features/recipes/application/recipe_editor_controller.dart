@@ -71,6 +71,15 @@ abstract class RecipeEditorState with _$RecipeEditorState {
     /// nada.
     TranslationFailureKind? translateError,
 
+    /// La última negativa que no se arregla reintentando (422 o 429) y el
+    /// pedido que la tuvo: con el mismo pedido, guardar no vuelve a llamar
+    /// al traductor (un 429 rechazado también cuenta en el cupo).
+    TranslationRefusal? refusal,
+
+    /// Por qué el último guardado fue sin traducir sin preguntar (501 o 422
+    /// con solo campos vacíos), para el aviso de la lista; null si no.
+    TranslationFailureKind? untranslatedBecause,
+
     /// Se está desactivando o reactivando.
     @Default(false) bool changingActive,
   }) = _RecipeEditorState;
@@ -103,12 +112,16 @@ abstract class RecipeEditorState with _$RecipeEditorState {
   String toString() => 'RecipeEditorState(${draft.id})';
 }
 
+/// Una negativa del traductor (422 o 429) y el pedido que la tuvo.
+typedef TranslationRefusal = ({TranslationFailureKind kind, SpanishText request});
+
 /// Resultado de [RecipeEditorController.save].
 enum RecipeSaveResult {
   saved,
 
-  /// Guardado sin traducir: la traducción automática está apagada (501) y
-  /// lo único que había para traducir eran campos vacíos.
+  /// Guardado sin traducir: la traducción automática está apagada (501) o
+  /// no pudo con este texto (422), y lo único que había para traducir eran
+  /// campos vacíos ([RecipeEditorState.untranslatedBecause] dice cuál).
   savedUntranslated,
 
   /// El formulario tiene errores: no se mandó nada.
@@ -328,8 +341,11 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
     return (row: row, index: index);
   }
 
-  /// «Deshacer» de [removeIngredient]: la fila vuelve a su lugar.
+  /// «Deshacer» de [removeIngredient]: la fila vuelve a su lugar. Mientras
+  /// traduce o guarda no hace nada (el aviso puede seguir a la vista): el
+  /// cambio quedaría fuera del guardado.
   void restoreIngredient(RemovedIngredient removed) {
+    if (state.busy) return;
     final rows = [...state.draft.ingredients];
     if (rows.any((row) => row.key == removed.row.key)) return;
     rows.insert(removed.index.clamp(0, rows.length), removed.row);
@@ -339,9 +355,10 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
   /// Valida, traduce lo que diga el plan y guarda el plato entero. Con
   /// errores no manda nada y los muestra. Si el traductor falla, no guarda
   /// nada y el formulario queda como estaba ([RecipeSaveResult.translationFailed]),
-  /// salvo con la traducción apagada y solo campos vacíos para traducir: ahí
-  /// guarda sin traducir, porque no queda nada viejo
-  /// ([RecipeSaveResult.savedUntranslated]).
+  /// salvo con la traducción apagada (501) o un texto que no se puede traducir
+  /// (422) y solo campos vacíos para traducir: ahí guarda sin traducir, porque
+  /// no queda nada viejo ([RecipeSaveResult.savedUntranslated]). Después de
+  /// un 422 o un 429, con el mismo pedido no vuelve a llamar al traductor.
   /// Si el servidor falla al guardar, el formulario queda (con la traducción,
   /// que no se vuelve a pedir) y el próximo intento manda el mismo id.
   Future<RecipeSaveResult> save() async {
@@ -351,6 +368,13 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
     // Sin nada que traducir puede haber descripciones automáticas que vaciar
     // (se borró la española).
     if (!plan.needsTranslation) return _persist(plan.skipped);
+    final request = plan.request;
+    final refusal = state.refusal;
+    // El mismo pedido ya tuvo un 422 o un 429: reintentar no sirve (y un 429
+    // gasta cupo).
+    if (refusal != null && refusal.request == request) {
+      return _translationFailed(plan, refusal.kind);
+    }
     state = state.copyWith(
       translating: true,
       saveError: null,
@@ -360,28 +384,48 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
     try {
       translation = await ref
           .read(translationRepositoryProvider)
-          .translate(plan.request);
+          .translate(request);
     } on TranslationFailure catch (failure) {
       if (!ref.mounted) return RecipeSaveResult.translationFailed;
-      if (failure.kind == TranslationFailureKind.notConfigured &&
-          plan.fillsOnlyEmpty &&
-          plan.canSkip &&
-          state.draft == plan.draft) {
-        state = state.copyWith(translating: false);
-        final result = await _persist(plan.skipped);
-        return result == RecipeSaveResult.saved
-            ? RecipeSaveResult.savedUntranslated
-            : result;
-      }
-      state = state.copyWith(translating: false, translateError: failure.kind);
-      return RecipeSaveResult.translationFailed;
+      final kind = failure.kind;
+      state = state.copyWith(
+        translating: false,
+        refusal:
+            kind == TranslationFailureKind.untranslatable ||
+                kind == TranslationFailureKind.rateLimited
+            ? (kind: kind, request: request)
+            : state.refusal,
+      );
+      return _translationFailed(plan, kind);
     }
     if (!ref.mounted) return RecipeSaveResult.stale;
-    state = state.copyWith(translating: false);
+    state = state.copyWith(translating: false, refusal: null);
     // La pantalla no deja escribir mientras traduce; si igual cambió algo, la
     // traducción no lo pisa.
     if (state.draft != plan.draft) return RecipeSaveResult.stale;
     return _persist(plan.translated(translation));
+  }
+
+  /// La traducción falló con [kind]. Apagada (501) o un texto que no se
+  /// puede traducir (422) con solo campos vacíos: no queda nada viejo, así
+  /// que guarda sin traducir y la lista lo dice. Si no, no guarda y
+  /// [RecipeEditorState.translateError] dice por qué.
+  Future<RecipeSaveResult> _translationFailed(
+    RecipeTranslationPlan plan,
+    TranslationFailureKind kind,
+  ) async {
+    if ((kind == TranslationFailureKind.notConfigured ||
+            kind == TranslationFailureKind.untranslatable) &&
+        plan.fillsOnlyEmpty &&
+        plan.canSkip &&
+        state.draft == plan.draft) {
+      final result = await _persist(plan.skipped, untranslatedBecause: kind);
+      return result == RecipeSaveResult.saved
+          ? RecipeSaveResult.savedUntranslated
+          : result;
+    }
+    state = state.copyWith(translateError: kind);
+    return RecipeSaveResult.translationFailed;
   }
 
   /// Guarda sin traducir, después de una traducción que falló: lo
@@ -410,8 +454,12 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
 
   /// Guarda [draft] (ya traducido o sin traducir) con save_recipe. El
   /// formulario pasa a [draft]: sus campos automáticos salen del español de
-  /// [draft], se guarde o no.
-  Future<RecipeSaveResult> _persist(RecipeDraft draft) async {
+  /// [draft], se guarde o no. [untranslatedBecause]: se guarda sin traducir
+  /// sin preguntar, por eso.
+  Future<RecipeSaveResult> _persist(
+    RecipeDraft draft, {
+    TranslationFailureKind? untranslatedBecause,
+  }) async {
     final recipe = recipeFromDraft(
       draft,
       saved: state.isNew ? null : state.source,
@@ -422,6 +470,7 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
       saving: true,
       saveError: null,
       translateError: null,
+      untranslatedBecause: null,
     );
     try {
       final saved = await ref.read(recipeCatalogProvider.notifier).save(recipe);
@@ -431,6 +480,7 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
           initial: draft,
           source: saved,
           isNew: false,
+          untranslatedBecause: untranslatedBecause,
         );
       }
       return RecipeSaveResult.saved;

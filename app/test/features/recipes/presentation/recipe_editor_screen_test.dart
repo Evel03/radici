@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/uuid.dart';
+import 'package:radici/features/recipes/application/recipe_editor_controller.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
@@ -982,6 +983,51 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('Claude no tradujo y solo había campos vacíos: guarda sin el aviso y la lista dice por qué', (
+      tester,
+    ) async {
+      translator.failure = TranslationFailureKind.untranslatable;
+      await openEditor(tester, location: '/altro/piatti/$lasagneId', locale: const Locale('es', 'ES'));
+      await tapVisible(tester, byKey('recipe-allergen-sesame'));
+      await save(tester);
+
+      expect(byKey('recipe-translate-failed'), findsNothing);
+      expect(find.byType(RecipesScreen), findsOneWidget);
+      expect(
+        find.text('«Lasagne alla bolognese» guardado sin traducir: la traducción automática no pudo traducirlo.'),
+        findsOneWidget,
+      );
+      expect(repository.saveCalls.single.descriptionEn, isNull);
+    });
+
+    testWidgets('guardar saca el aviso de «Annulla», y si el plato cambió mientras traducía lo dice y no guarda', (
+      tester,
+    ) async {
+      translator.pending = Completer<void>();
+      final app = await openEditor(tester, location: '/altro/piatti/$lasagneId');
+      await tapVisible(tester, byKey('recipe-ingredient-remove-1'));
+      expect(find.text('Ingrediente rimosso.'), findsOneWidget);
+
+      await tester.tap(byKey('recipe-save'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Ingrediente rimosso.'), findsNothing, reason: 'su «Annulla» no sigue a mano');
+      expect(find.widgetWithText(SnackBarAction, 'Annulla'), findsNothing);
+
+      // Un cambio que llega igual mientras traduce (la pantalla no lo deja
+      // escribir): la traducción no lo pisa y nada se guarda en silencio.
+      app.container.read(recipeEditorProvider(const RecipeEditorTarget.edit(lasagneId)).notifier).setNotes('Più sugo.');
+      translator.pending!.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RecipeEditorScreen), findsOneWidget);
+      expect(
+        find.text('Il piatto è cambiato mentre si traduceva e non è stato salvato. Tocca «Salva» di nuovo.'),
+        findsOneWidget,
+      );
+      expect(repository.saveCalls, isEmpty);
+    });
+
     testWidgets('traducción apagada pero con algo automático que quedaría viejo: sigue el aviso, sin «Riprova»', (
       tester,
     ) async {
@@ -1046,6 +1092,11 @@ void main() {
       expect(repository.saveCalls, isEmpty);
       expect(textOf(tester, 'recipe-name-es'), 'Milanesa napolitana');
       expect(byKey('recipe-auto-name_en'), findsOneWidget, reason: 'nada cambió: sigue siendo automático');
+
+      // Con el mismo español, guardar va directo al aviso: no vuelve a pedir.
+      await save(tester);
+      expect(byKey('recipe-translate-failed'), findsOneWidget);
+      expect(translator.calls, hasLength(1));
     });
 
     // Texto grande: en el iPhone, los tamaños de accesibilidad empiezan en
