@@ -9,8 +9,8 @@ import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
-import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/features/today/presentation/today_screen.dart';
 
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';
@@ -50,7 +50,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('email → código → entra a Richieste', (tester) async {
+  testWidgets('email → código → entra a Hoy, el inicio de la cocinera', (tester) async {
     await pumpLogin(tester);
     expect(find.byType(LoginScreen), findsOneWidget);
     // El logotipo arriba: en la web es la primera pantalla.
@@ -78,7 +78,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(LoginScreen), findsNothing);
-    expect(find.byType(InboxScreen), findsOneWidget);
+    expect(find.byType(TodayScreen), findsOneWidget);
   });
 
   testWidgets('email inválido: mensaje y no se pide código', (tester) async {

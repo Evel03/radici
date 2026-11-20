@@ -1,5 +1,8 @@
-// Aviso emergente "Nuova richiesta da …" (MaterialBanner) en cualquier
-// pantalla de la app, con botón para abrir el pedido.
+// Aviso emergente "Nuova richiesta da …" (MaterialBanner), con botón para
+// abrir el pedido, en el ScaffoldMessenger de la app: sale en cualquier
+// pantalla salvo la ficha de una sesión y el formulario del editor de platos
+// (y sus diálogos), que tienen el suyo y, en el navegador raíz, tapan el
+// Scaffold de la barra, que es donde sale; aparece al volver de ahí.
 //
 // Va en el `builder` de MaterialApp, por encima de todas las rutas: así sigue
 // escuchando aunque la cocinera esté en el detalle de otro pedido (las rutas
@@ -9,7 +12,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/router.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/application/inbox_tab_request.dart';
 import 'package:radici/features/requests/application/new_request_alert.dart';
+import 'package:radici/features/requests/domain/inbox.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 class NewRequestAlertListener extends ConsumerWidget {
@@ -49,10 +54,15 @@ class NewRequestAlertListener extends ConsumerWidget {
     void open() {
       final router = ref.read(routerProvider);
       ref.read(newRequestAlertProvider.notifier).dismiss();
-      if (single) {
-        // push: al volver, la cocinera sigue donde estaba.
+      // push: al volver, la cocinera sigue donde estaba. Con varios, la
+      // bandeja en «Nuove», donde están, aunque se haya dejado en otra
+      // pestaña (go reemplaza toda la pila), salvo con una hoja de reserva o
+      // la ficha de una sesión en la pila: ahí se abre encima el más
+      // reciente, para no perder lo que tienen a medias.
+      if (single || bookingOrSessionInStack(router)) {
         router.push(AppRoutes.requestDetail(alert.latest.id));
       } else {
+        ref.read(inboxTabRequestProvider.notifier).show(InboxTab.fresh);
         router.go(AppRoutes.requests);
       }
     }

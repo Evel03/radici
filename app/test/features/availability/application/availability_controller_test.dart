@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock.dart';
+import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
@@ -15,15 +16,19 @@ import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/availability/domain/italian_holidays.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/sessions/data/sessions_repository.dart';
+import 'package:radici/features/sessions/domain/cooking_session.dart';
 
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';
 import '../../../support/request_fixtures.dart';
+import '../../../support/session_fixtures.dart';
 
 void main() {
   late FakeAuthRepository auth;
   late FakeAvailabilityRepository repository;
   late FakeChefRequestsRepository requests;
+  late FakeSessionsRepository sessions;
   late ProviderContainer container;
 
   final wednesday = CalendarDate(2026, 10, 21);
@@ -47,6 +52,7 @@ void main() {
         ),
         availabilityRepositoryProvider.overrideWithValue(repository),
         chefRequestsRepositoryProvider.overrideWithValue(requests),
+        sessionsRepositoryProvider.overrideWithValue(sessions),
         clockProvider.overrideWithValue(() => testNow),
       ],
     );
@@ -62,6 +68,16 @@ void main() {
       buildRequest(id: 'a', preferredDate: wednesday),
       buildRequest(id: 'b', preferredDate: wednesday),
       buildRequest(id: 'c', preferredDate: wednesday, status: RequestStatus.rejected),
+    ]);
+    // El miércoles, una sesión confirmada y otra cancelada.
+    sessions = FakeSessionsRepository([
+      buildSession(n: 1, date: wednesday),
+      buildSession(
+        n: 2,
+        date: wednesday,
+        start: const ClockTime.hm(14, 0),
+        status: SessionStatus.cancelled,
+      ),
     ]);
   });
 
@@ -497,7 +513,7 @@ void main() {
       expect(container.read(agendaDayAvailabilityProvider(wednesday)), isNotNull);
     });
 
-    test('combina la foto, hoy, el feriado y los pedidos activos de ese día', () async {
+    test('combina la foto, hoy, el feriado, los pedidos activos y las sesiones vivas de ese día', () async {
       await start();
       container.listen(agendaDayAvailabilityProvider(wednesday), (_, _) {});
       await pumpEventQueue();
@@ -505,18 +521,21 @@ void main() {
       final day = container.read(agendaDayAvailabilityProvider(wednesday))!;
       expect(day.status, DayStatus.open);
       expect(day.requestCount, 2, reason: 'el rechazado no cuenta');
+      expect(day.sessionCount, 1, reason: 'la cancelada no cuenta');
       expect(day.hours.single.weekday, DateTime.wednesday);
+      expect(sessions.fetchCalls, 1);
 
       final immaculate = container.read(
         agendaDayAvailabilityProvider(CalendarDate(2026, 12, 8)),
       )!;
       expect(immaculate.holiday, ItalianHoliday.immaculate);
+      expect(immaculate.sessionCount, 0);
 
+      // Bloquear el día no cancela sus sesiones.
       await controller().block([wednesday]);
-      expect(
-        container.read(agendaDayAvailabilityProvider(wednesday))!.status,
-        DayStatus.blocked,
-      );
+      final blocked = container.read(agendaDayAvailabilityProvider(wednesday))!;
+      expect(blocked.status, DayStatus.blocked);
+      expect(blocked.sessionCount, 1);
     });
   });
 }
