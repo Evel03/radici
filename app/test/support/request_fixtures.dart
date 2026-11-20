@@ -61,6 +61,8 @@ Map<String, dynamic> requestRow({
   },
   // Respuesta a la pregunta de alergias (requests.no_allergies); null en los pedidos anteriores.
   Object? noAllergies,
+  // Platos que eligió en la pestaña «Menù» de la web (requests.wishes), en orden.
+  Object? wishes = const <Object>[],
   // Por defecto, una estimación de antes del precio por semana (servicio por
   // hora, sin autoPrice), con las claves de compra que se guardaban entonces.
   Object? estimate = const {
@@ -90,6 +92,7 @@ Map<String, dynamic> requestRow({
   'restrictions': restrictions,
   'no_allergies': noAllergies,
   'notes': 'Citofono: Rossi',
+  'wishes': wishes,
   'preferred_date': preferredDate,
   'preferred_slot': preferredSlot,
   'locale': locale,
@@ -141,6 +144,9 @@ ChefRequest buildRequest({
   ClientStatus? clientStatus = ClientStatus.prospect,
   RequestType type = RequestType.week,
   int weeks = 1,
+  int? days = 5,
+  // Platos que eligió en la web (ids de recipes), en orden.
+  List<String> wishes = const [],
   // Origen (requests.source): por defecto, la web; una reserva a mano es de la app.
   RequestSource source = RequestSource.web,
 }) => ChefRequest(
@@ -151,12 +157,13 @@ ChefRequest buildRequest({
   status: status,
   adults: 2,
   kids: 2,
-  days: 5,
+  days: days,
   meals: const [Meal.dinner],
   weeks: weeks,
   restrictions: restrictions,
   noAllergies: noAllergies,
   notes: 'Citofono: Rossi',
+  wishes: wishes,
   preferredDate: noDate ? null : (preferredDate ?? CalendarDate(2026, 10, 21)),
   preferredSlot: preferredSlot,
   locale: locale,

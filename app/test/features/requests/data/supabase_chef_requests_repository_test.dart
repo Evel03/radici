@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/chosen_menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../support/request_fixtures.dart';
@@ -53,8 +54,9 @@ void main() {
       expect(
         query['select'],
         // weeks: requests.weeks (20261116120000_weekly_pricing.sql).
+        // wishes: los platos elegidos en la web (20261119150000_menu_web.sql).
         'id,chef_id,client_id,type,status,adults,kids,days,meals,weeks,'
-        'restrictions,no_allergies,notes,preferred_date,preferred_slot,locale,'
+        'restrictions,no_allergies,notes,wishes,preferred_date,preferred_slot,locale,'
         'whatsapp_opt_in,estimate,source,seen_at,created_at,contact,'
         'client:clients(display_name,contact_email,contact_phone,zone,status)',
       );
@@ -108,6 +110,63 @@ void main() {
 
       server.handler = (_) async => jsonResponse(<Object>[]);
       expect(await repository.fetchRequest('missing'), isNull);
+    });
+  });
+
+  // requests.wishes es un uuid[] sin FK: no se puede embeber, se piden los
+  // platos por id (la RLS deja leer a la cocinera todos los suyos).
+  group('fetchMenuDishes', () {
+    const lasagneId = 'a0000000-0000-4000-8000-000000000001';
+    const minestroneId = 'a0000000-0000-4000-8000-000000000003';
+
+    test('GET de recipes con solo los nombres, filtrado por los ids', () async {
+      server.handler = (_) async => jsonResponse([
+        {'id': minestroneId, 'name_it': 'Minestrone di verdure', 'name_es': null, 'name_en': null},
+        {
+          'id': lasagneId,
+          'name_it': 'Lasagne alla bolognese',
+          'name_es': 'Lasaña a la boloñesa',
+          'name_en': 'Lasagne Bolognese',
+        },
+      ]);
+
+      final dishes = await repository.fetchMenuDishes(const [lasagneId, minestroneId]);
+
+      expect(dishes, const [
+        MenuDish(id: minestroneId, nameIt: 'Minestrone di verdure'),
+        MenuDish(
+          id: lasagneId,
+          nameIt: 'Lasagne alla bolognese',
+          nameEs: 'Lasaña a la boloñesa',
+          nameEn: 'Lasagne Bolognese',
+        ),
+      ]);
+      final request = server.last;
+      expect(request.method, 'GET');
+      expect(request.url.path, '/rest/v1/recipes');
+      final query = request.url.queryParameters;
+      // Nunca ingredientes, alérgenos ni notas: solo para mostrar los nombres.
+      expect(query['select'], 'id,name_it,name_es,name_en');
+      expect(query['id'], 'in.("$lasagneId","$minestroneId")');
+      expect(query.keys.toSet(), {'select', 'id'});
+    });
+
+    test('sin ids no consulta nada', () async {
+      expect(await repository.fetchMenuDishes(const []), isEmpty);
+      expect(server.requests, isEmpty);
+    });
+
+    test('error del servidor o fila rota → RequestsFailure.unavailable', () async {
+      final unavailable = throwsA(
+        isA<RequestsFailure>().having((f) => f.kind, 'kind', RequestsFailureKind.unavailable),
+      );
+      server.handler = (_) async => jsonResponse({'message': 'boom', 'code': 'XX000'}, status: 500);
+      await expectLater(repository.fetchMenuDishes(const [lasagneId]), unavailable);
+
+      server.handler = (_) async => jsonResponse([
+        {'id': lasagneId, 'name_it': null},
+      ]);
+      await expectLater(repository.fetchMenuDishes(const [lasagneId]), unavailable);
     });
   });
 

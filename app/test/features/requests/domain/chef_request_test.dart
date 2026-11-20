@@ -38,6 +38,26 @@ void main() {
     expect(ChefRequest.fromJson(requestRow()..remove('no_allergies')).noAllergies, isNull);
   });
 
+  // requests.wishes: los platos de la pestaña «Menù» de la web, en el orden en
+  // que los tildó el cliente (20261119150000_menu_web.sql).
+  test('platos elegidos en la web (wishes): en el orden en que los tildó', () {
+    final request = ChefRequest.fromJson(requestRow(wishes: const ['dish-b', 'dish-a', 'dish-c']));
+    expect(request.wishes, ['dish-b', 'dish-a', 'dish-c']);
+    expect(request.hasMenu, isTrue);
+
+    final none = ChefRequest.fromJson(requestRow());
+    expect(none.wishes, isEmpty);
+    expect(none.hasMenu, isFalse);
+    expect(ChefRequest.fromJson(requestRow(wishes: null)).wishes, isEmpty);
+    expect(ChefRequest.fromJson(requestRow()..remove('wishes')).wishes, isEmpty);
+  });
+
+  test('wishes raros no rompen: sin repetidos, sin vacíos ni lo que no es texto', () {
+    final request = ChefRequest.fromJson(requestRow(wishes: const ['dish-a', 3, '', 'dish-b', 'dish-a', null]));
+    expect(request.wishes, ['dish-a', 'dish-b']);
+    expect(ChefRequest.fromJson(requestRow(wishes: 'dish-a')).wishes, isEmpty);
+  });
+
   test('restricciones: alérgenos en el orden del enum, dietas y nota', () {
     final restrictions = ChefRequest.fromJson(requestRow()).restrictions!;
     expect(restrictions.allergens, [Allergen.gluten, Allergen.milk]);

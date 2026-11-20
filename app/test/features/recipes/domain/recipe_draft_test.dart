@@ -42,6 +42,9 @@ void main() {
       expect(draft.nameIt, 'Lasagne alla bolognese');
       expect(draft.nameEs, 'Lasaña a la boloñesa');
       expect(draft.nameEn, 'Lasagne Bolognese');
+      expect(draft.descriptionIt, 'Ragù cotto piano e besciamella fatta in casa.');
+      expect(draft.descriptionEs, 'Ragú cocido despacio y bechamel casera.');
+      expect(draft.descriptionEn, '', reason: 'sin descripción, el campo vacío');
       expect(draft.allergens, {Allergen.gluten, Allergen.eggs, Allergen.milk, Allergen.celery});
       expect(draft.freezable, isTrue);
       expect(draft.ingredients, [
@@ -68,10 +71,16 @@ void main() {
       expect(risottoDraft.notes, 'Si può fare senza burro e parmigiano.');
     });
 
-    test('una copia: todo igual menos el id', () {
-      final copy = recipeDraftFrom(risotto(), id: _newId);
+    // La copia es otro plato: no sale en la web con la descripción del
+    // original hasta que Evelyn le escriba la suya.
+    test('una copia: todo igual menos el id, y sin las descripciones de la web', () {
+      final copy = recipeDraftFrom(lasagne(), id: _newId);
       expect(copy.id, _newId);
-      expect(copy.copyWith(id: risottoId), recipeDraftFrom(risotto()));
+      expect([copy.descriptionIt, copy.descriptionEs, copy.descriptionEn], ['', '', '']);
+      expect(
+        copy.copyWith(id: lasagneId, descriptionIt: lasagneDescriptionIt, descriptionEs: lasagneDescriptionEs),
+        recipeDraftFrom(lasagne()),
+      );
     });
 
     test('toString no muestra las notas (son de la cocinera)', () {
@@ -101,6 +110,20 @@ void main() {
       expect(errors.nameEn, TextError.tooLong);
       expect(validateRecipeDraft(_valid().copyWith(nameEs: 'b' * 121)).nameEs, TextError.tooLong);
       expect(validateRecipeDraft(_valid().copyWith(nameEs: 'b' * 120)).isEmpty, isTrue);
+    });
+
+    // Como los nombres: se cuentan sin los espacios de los bordes y por
+    // caracteres, como Postgres (recipes_description_*_valida).
+    test('las descripciones son opcionales y tienen hasta 200 caracteres', () {
+      final draft = _valid().copyWith(descriptionIt: '   ', descriptionEs: 'd' * 201, descriptionEn: ' ${'d' * 200} ');
+      final errors = validateRecipeDraft(draft);
+      expect(errors.descriptionIt, isNull);
+      expect(errors.descriptionEs, TextError.tooLong);
+      expect(errors.descriptionEn, isNull);
+      expect(errors.isEmpty, isFalse);
+      expect(validateRecipeDraft(_valid().copyWith(descriptionIt: 'd' * 201)).descriptionIt, TextError.tooLong);
+      expect(validateRecipeDraft(_valid().copyWith(descriptionEn: 'd' * 201)).descriptionEn, TextError.tooLong);
+      expect(validateRecipeDraft(_valid().copyWith(descriptionIt: '🍝' * 200)).isEmpty, isTrue);
     });
 
     test('las notas tienen hasta 500 caracteres', () {
@@ -226,6 +249,18 @@ void main() {
           ],
         ),
       );
+    });
+
+    test('las descripciones sin espacios de más; vacías, en null', () {
+      final draft = _valid().copyWith(
+        descriptionIt: '  Basilico   fresco,\tpinoli e\nparmigiano.  ',
+        descriptionEs: '   ',
+        descriptionEn: ' Fresh basil. ',
+      );
+      final recipe = recipeFromDraft(draft);
+      expect(recipe.descriptionIt, 'Basilico fresco, pinoli e parmigiano.');
+      expect(recipe.descriptionEs, isNull);
+      expect(recipe.descriptionEn, 'Fresh basil.');
     });
 
     test('ida y vuelta: un plato guardado sale igual', () {

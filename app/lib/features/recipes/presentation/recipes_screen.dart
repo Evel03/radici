@@ -1,8 +1,8 @@
 // Catálogo de platos de la cocinera: la lista con búsqueda (en los nombres en
 // italiano, español e inglés), los activos primero y por nombre, cada uno con
-// sus alérgenos, su dieta y su temporada a la vista, y los desactivados al
-// final. «Nuovo piatto» abre el editor. Solo muestra providers: la lógica está
-// en RecipeCatalogController y en recipe.dart.
+// sus alérgenos, su dieta, su temporada y si sale en la web a la vista, y los
+// desactivados al final. «Nuovo piatto» abre el editor. Solo muestra
+// providers: la lógica está en RecipeCatalogController y en recipe.dart.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -230,7 +230,8 @@ class _RecipesScreenState extends ConsumerState<RecipesScreen> {
 }
 
 /// Un plato de la lista: el nombre en italiano (el principal), el del idioma
-/// de la interfaz si es otro, los alérgenos, la dieta y la temporada.
+/// de la interfaz si es otro, los alérgenos, la dieta, la temporada y, si
+/// está activo, si sale en la web o le falta la descripción para salir.
 class _RecipeTile extends StatelessWidget {
   const _RecipeTile({required this.recipe});
 
@@ -255,6 +256,18 @@ class _RecipeTile extends StatelessWidget {
     final seasonLong = months == null
         ? l10n.recipeAllYear
         : formats.season(months, long: true);
+    final web = switch (recipe.webStatus) {
+      RecipeWebStatus.published => (
+        icon: Icons.public,
+        text: l10n.recipeOnWebsite,
+      ),
+      RecipeWebStatus.missingDescription => (
+        icon: Icons.public_off,
+        text: l10n.recipeNotOnWebsite,
+      ),
+      // Desactivado: ya lo dice la etiqueta de la derecha.
+      RecipeWebStatus.inactive => null,
+    };
 
     return ListTile(
       key: ValueKey('recipe-${recipe.id}'),
@@ -289,6 +302,16 @@ class _RecipeTile extends StatelessWidget {
               l10n.recipeSeasonA11y(seasonLong),
             ].join(', '),
           ),
+          if (web != null)
+            KeyedSubtree(
+              key: ValueKey('recipe-web-${recipe.id}'),
+              child: _DetailLine(
+                icon: web.icon,
+                iconColor: muted,
+                text: web.text,
+                semanticsLabel: web.text,
+              ),
+            ),
         ],
       ),
       trailing: recipe.active

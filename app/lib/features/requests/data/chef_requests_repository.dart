@@ -1,6 +1,7 @@
 // Pedidos de la cocinera en Supabase: lectura, "visto", rechazo (y deshacerlo),
-// marcar a la persona como clienta y aviso en tiempo real de pedidos nuevos
-// (contrato docs/contracts/public-request.md §7).
+// marcar a la persona como clienta, los nombres de los platos que eligió el
+// cliente en la web y aviso en tiempo real de pedidos nuevos (contrato
+// docs/contracts/public-request.md §7).
 // RLS (M1) ya limita las filas a las de su chef_id; el filtro explícito por
 // chef_id es para el índice y para cuando haya más de una cocinera.
 import 'dart:async';
@@ -8,6 +9,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/supabase_client.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/chosen_menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Cuántos pedidos se cargan (los más recientes). Sobra para la bandeja y la
@@ -43,6 +45,11 @@ abstract interface class ChefRequestsRepository {
   /// [RequestsFailure] ([RequestsFailureKind.conflict] si ya no era un
   /// prospecto o la ficha no existe).
   Future<void> markClientAsCustomer(String clientId);
+
+  /// Los nombres de los platos [ids] (los de `requests.wishes`), en cualquier
+  /// orden. Un plato que ya no existe no viene. Sin ids no consulta nada.
+  /// Lanza [RequestsFailure].
+  Future<List<MenuDish>> fetchMenuDishes(List<String> ids);
 
   /// Eventos en tiempo real: pedidos insertados para [chefId] y estado de la
   /// conexión. Al cancelar la suscripción se cierra el canal.
@@ -192,6 +199,21 @@ class SupabaseChefRequestsRepository implements ChefRequestsRepository {
     }
   });
 
+  /// `wishes` es un uuid[] sin FK: no se puede embeber en el pedido, así que
+  /// se piden los platos por id. La RLS deja leer a la cocinera todos los
+  /// suyos (también los desactivados).
+  @override
+  Future<List<MenuDish>> fetchMenuDishes(List<String> ids) async {
+    if (ids.isEmpty) return const [];
+    return _guard(() async {
+      final rows = await _client
+          .from('recipes')
+          .select(menuDishColumns)
+          .inFilter('id', ids);
+      return rows.map(MenuDish.fromJson).toList();
+    });
+  }
+
   /// Cambia el estado solo si todavía es [from]; si no, conflicto.
   Future<void> _changeStatus(
     String id, {
@@ -284,6 +306,10 @@ class _NoBackendRequestsRepository implements ChefRequestsRepository {
 
   @override
   Future<void> markClientAsCustomer(String clientId) => Future.error(_failure);
+
+  @override
+  Future<List<MenuDish>> fetchMenuDishes(List<String> ids) =>
+      Future.error(_failure);
 
   @override
   Stream<RequestsRealtimeEvent> watchNewRequests({required String chefId}) =>

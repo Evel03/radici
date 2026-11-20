@@ -148,7 +148,12 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Richieste**: pestañas Nuove (sin `seen_at` y no aceptadas), Viste, Prenotazioni (los pedidos
   `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
   nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos
-  y no la tapa; una reserva sin fecha preferida (cargada a mano) no dice «Senza data». Abajo de
+  y no la tapa; una reserva sin fecha preferida (cargada a mano) no dice «Senza data». La fila de un
+  pedido en el que el cliente eligió platos en la pestaña «Menù» de la web (`requests.wishes`) lleva
+  la marca **menù** debajo del resumen y la fecha preferida (ícono y texto; el lector de pantalla
+  dice «Menù scelto dal cliente»), en cualquier pestaña: es el aviso que pidió Evelyn. No va al lado
+  de la fecha del pedido, a la derecha, porque `ListTile` le da a esa columna hasta 56 px de alto y,
+  con el texto grande, no entraba. También en la agenda, que usa la misma fila. Abajo de
   «Prenotazioni», «Nuova prenotazione» (ver más abajo), también mientras la bandeja carga o si no se
   pudo leer: es también la acción de la pestaña vacía.
 - **Franja**: la bandeja, el detalle y la agenda muestran mañana o tarde si el pedido la trae. La web
@@ -252,7 +257,15 @@ repositorios falsos (`test/support/fakes.dart`).
   no imprimen la dirección, las alergias ni las notas en `toString`.
 - **Detalle**: todos los datos (también las restricciones), la estimación guardada (el servicio, sin
   compra ni total: la compra la hace el cliente; las claves de compra de los pedidos de antes se
-  ignoran) y las acciones:
+  ignoran) y las acciones. Si el cliente eligió platos en la web, arriba va un recuadro destacado
+  «Menù scelto dal cliente (2 di 5 giorni)» (si el pedido no dice los días, «(2 piatti)») con los
+  nombres en el orden en que los tildó (en el idioma de la app, con el italiano si falta la
+  traducción); un plato que después se borró dice «Piatto eliminato». Los nombres se piden por id a
+  `recipes` (`wishes` es un `uuid[]` sin FK: no se puede embeber), solo si hay platos elegidos; ni
+  marcar visto ni releer la bandeja (reconexión, deslizar para actualizar) los vuelve a pedir, porque
+  depende del contenido de los ids. Si no se pueden leer, el recuadro lo avisa enseguida, con
+  «Riprova» (sin los reintentos automáticos de Riverpod). Sin platos elegidos, nada (el menú lo
+  propone Evelyn, que tiene la última palabra). Las acciones:
   WhatsApp (`https://wa.me/<número sin +>?text=…` en el idioma del cliente), llamar (`tel:`),
   email (`mailto:`), rechazar (`new` → `rejected`) y deshacer el rechazo (`rejected` → `new`;
   como ya estaba visto, vuelve a Viste), las dos con confirmación. Al abrirlo se marca visto.
@@ -375,15 +388,27 @@ repositorios falsos (`test/support/fakes.dart`).
   pantallas anchas.
 - **Piatti** (catálogo, migración `20261116170000_recipe_catalog.sql`): lista con búsqueda en los
   nombres en italiano, español e inglés (sin mayúsculas ni acentos), los activos primero y los
-  desactivados al final, cada plato con sus alérgenos, dieta y temporada. El editor pone primero lo
-  rápido (nombre en italiano, los 14 alérgenos, dieta y meses con «Tutto l'anno») y después lo
-  opcional: nombres en español e inglés, conservación, ingredientes (cantidad entera para 4
+  desactivados al final, cada plato con sus alérgenos, dieta, temporada y, si está activo, si sale en
+  la web («Sul sito») o le falta la descripción para salir («Senza descrizione: non è sul sito»). El
+  editor pone primero lo rápido (nombre en italiano, los 14 alérgenos, dieta, meses con «Tutto
+  l'anno» y la descripción de la web) y después lo opcional: nombres en español e inglés, conservación, ingredientes (cantidad entera para 4
   porciones en g, ml o piezas, o «q.b.»; sección del súper; orden con botones) y notas (de la
   cocinera y sus colaboradores: se leen de `recipe_notes`, que el cliente no lee). Guarda el plato entero con
   `save_recipe`, con un id generado en el teléfono: un reintento no lo duplica y, si falla, no se
   pierde lo cargado. No deja guardar un plato vegano con leche, huevos, pescado o mariscos, ni uno
   vegetariano con pescado o mariscos (`save_recipe` tampoco lo acepta). Duplicar abre la copia (otro
-  id) para cambiarle el nombre; desactivar y reactivar tienen «Annulla». Un plato nunca se borra.
+  id) para cambiarle el nombre, sin las descripciones de la web: la copia queda «Senza descrizione: non
+  è sul sito» hasta que tenga la suya, así no sale en la web con la del original. Desactivar y
+  reactivar tienen «Annulla». Un plato nunca se borra.
+- **Descripción de la web** (migración `20261119150000_menu_web.sql`): una frase corta en italiano y,
+  si quiere, en español e inglés (`recipes.description_it/_es/_en`), que la web muestra al lado del
+  nombre en la pestaña «Menù» del formulario de pedido. Un plato sale en la web si está activo, en el
+  catálogo y con la descripción en italiano (`get_public_menu`); sin la española o la inglesa, la web
+  muestra la italiana. Hasta 200 caracteres, una sola línea, sin espacios de más (como los nombres,
+  `normalizeRecipeText`); el contador avisa sin cortar lo escrito y al guardar lo dice el error. El
+  contador cuenta como la validación y la base (`recipeTextLength`: sin los espacios de más, por
+  caracteres como `char_length`; una bandera cuenta dos). Se guardan con `save_recipe`, que recibe
+  siempre las tres (null borra la que se vació).
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
   entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).
@@ -392,8 +417,9 @@ repositorios falsos (`test/support/fakes.dart`).
   (ver [Web /gestione/](#web-gestione)).
 - **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`: cada
   pedido que llega se suma a la lista. Aviso emergente "Nuova richiesta da …", con botón para abrirla,
-  solo para los pedidos sin abrir que llegan de la web (`ChefRequest.alertsOnArrival`). Uno de la
-  app se suma sin aviso: una reserva cargada a mano (nace aceptada y va a «Prenotazioni») o un
+  solo para los pedidos sin abrir que llegan de la web (`ChefRequest.alertsOnArrival`); si el
+  cliente eligió platos en la web lo dice ("…, con 2 piatti scelti dal menù"; con varios pedidos,
+  "3 nuove richieste (1 con menù)"). Uno de la app se suma sin aviso: una reserva cargada a mano (nace aceptada y va a «Prenotazioni») o un
   pedido nuevo (que igual cuenta en el contador y va a «Nuove»). El aviso sale en cualquier
   pantalla salvo la ficha de una sesión y el formulario del editor de platos (y sus diálogos):
   tienen su propio `ScaffoldMessenger` y, en el navegador raíz, tapan el Scaffold de la barra, que
@@ -429,6 +455,9 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   Su guarda `requests_guard_update` deja a la app pasar `new` → `rejected` y `rejected` → `new`, y
   desde `20261019160000_public_request_hardening.sql` también vale en el alta (un pedido nace en `new`).
   Esa migración agrega `requests.contact` (el contacto con que llegó cada pedido).
+- Migración `supabase/migrations/20261119150000_menu_web.sql`: `recipes.description_*` (las lee el
+  editor y las guarda `save_recipe`) y el uso de `requests.wishes` (los platos elegidos en la web, que
+  la bandeja y el detalle leen; la columna existe desde la primera migración).
 - `clients.status`: la cocinera lo cambia (privilegio por columna y `clients_guard_update`); la app lo
   pasa de `prospect` a `trial` con "Segna come cliente".
 - `profiles.locale`: el usuario lo puede cambiar en su propio perfil (`grant update (full_name,

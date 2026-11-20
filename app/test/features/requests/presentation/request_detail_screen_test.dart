@@ -1,14 +1,19 @@
 // Detalle del pedido: datos completos y acciones (WhatsApp, llamada, email,
-// rechazo). Verifica los links exactos que se abren.
+// rechazo). Verifica los links exactos que se abren. También el menú que
+// eligió el cliente en la web.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/chosen_menu.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
+import '../../../support/recipe_fixtures.dart';
 import '../../../support/request_fixtures.dart';
 
 void main() {
@@ -606,5 +611,154 @@ void main() {
     await openDetail(tester, buildRequest(), deviceLocale: const Locale('en', 'GB'));
     expect(find.text('Dietary restrictions'), findsOneWidget);
     expect(find.text('Call'), findsOneWidget);
+  });
+
+  // Pestaña «Menù» de la web (19/11/2026): hasta un plato por día, opcional.
+  // Es el aviso que pidió Evelyn; ella tiene la última palabra.
+  group('menú elegido por el cliente', () {
+    const lasagne = MenuDish(
+      id: lasagneId,
+      nameIt: 'Lasagne alla bolognese',
+      nameEs: 'Lasaña a la boloñesa',
+      nameEn: 'Lasagne Bolognese',
+    );
+    const minestrone = MenuDish(id: minestroneId, nameIt: 'Minestrone di verdure', nameEs: 'Minestrone de verduras');
+    const menuKey = ValueKey('detail-menu');
+
+    Future<ChefApp> openMenu(
+      WidgetTester tester, {
+      List<String> wishes = const [minestroneId, lasagneId],
+      int? days = 5,
+      Locale deviceLocale = const Locale('it', 'IT'),
+      Size size = const Size(400, 1800),
+      bool failDishes = false,
+    }) => pumpChefApp(
+      tester,
+      requests: FakeChefRequestsRepository([buildRequest(wishes: wishes, days: days)])
+        ..dishes.addAll({lasagneId: lasagne, minestroneId: minestrone})
+        ..failDishes = failDishes,
+      location: '/richieste/req-1',
+      size: size,
+      deviceLocales: [deviceLocale],
+    );
+
+    String textOf(WidgetTester tester, String key) => tester.widget<Text>(find.byKey(ValueKey(key))).data!;
+
+    testWidgets('un recuadro destacado arriba, con los platos en el orden elegido', (tester) async {
+      final app = await openMenu(tester);
+
+      expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (2 di 5 giorni)');
+      expect(textOf(tester, 'detail-menu-dish-0'), 'Minestrone di verdure');
+      expect(textOf(tester, 'detail-menu-dish-1'), 'Lasagne alla bolognese');
+      expect(
+        tester.getTopLeft(find.byKey(menuKey)).dy,
+        lessThan(tester.getTopLeft(find.text('Richiesta')).dy),
+        reason: 'antes de los datos del pedido',
+      );
+      expect(app.requests.dishCalls, [
+        [minestroneId, lasagneId],
+      ]);
+    });
+
+    testWidgets('un plato que después se borró dice «Piatto eliminato», en su lugar', (tester) async {
+      await openMenu(tester, wishes: const [risottoId, minestroneId]);
+      expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (2 di 5 giorni)');
+      expect(textOf(tester, 'detail-menu-dish-0'), 'Piatto eliminato');
+      expect(textOf(tester, 'detail-menu-dish-1'), 'Minestrone di verdure');
+    });
+
+    testWidgets('un solo día: «1 di 1 giorno»', (tester) async {
+      await openMenu(tester, wishes: const [lasagneId], days: 1);
+      expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (1 di 1 giorno)');
+    });
+
+    // requests.days puede venir vacío: no se inventan los días.
+    testWidgets('un pedido sin días: «(2 piatti)», sin días inventados', (tester) async {
+      await openMenu(tester, days: null);
+      expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (2 piatti)');
+      expect(textOf(tester, 'detail-menu-dish-1'), 'Lasagne alla bolognese');
+    });
+
+    testWidgets('sin días y un solo plato: «(1 piatto)»', (tester) async {
+      await openMenu(tester, wishes: const [lasagneId], days: null);
+      expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (1 piatto)');
+    });
+
+    testWidgets('en español, el nombre traducido', (tester) async {
+      await openMenu(tester, deviceLocale: const Locale('es', 'ES'));
+      expect(textOf(tester, 'detail-menu-title'), 'Menú elegido por el cliente (2 de 5 días)');
+      expect(textOf(tester, 'detail-menu-dish-0'), 'Minestrone de verduras');
+      expect(textOf(tester, 'detail-menu-dish-1'), 'Lasaña a la boloñesa');
+    });
+
+    testWidgets('en inglés, el italiano si no hay traducción', (tester) async {
+      await openMenu(tester, wishes: const [minestroneId, risottoId], deviceLocale: const Locale('en', 'GB'));
+      expect(textOf(tester, 'detail-menu-title'), 'Menu chosen by the client (2 of 5 days)');
+      expect(textOf(tester, 'detail-menu-dish-0'), 'Minestrone di verdure');
+      expect(textOf(tester, 'detail-menu-dish-1'), 'Dish deleted');
+    });
+
+    testWidgets('sin platos elegidos no hay recuadro ni consulta', (tester) async {
+      final app = await openMenu(tester, wishes: const []);
+      expect(find.byKey(menuKey), findsNothing);
+      expect(find.textContaining('Menù scelto'), findsNothing);
+      expect(app.requests.dishCalls, isEmpty);
+    });
+
+    testWidgets('si no se pueden leer los nombres, el recuadro igual avisa y «Riprova» los trae', (tester) async {
+      final app = await openMenu(tester, failDishes: true);
+      expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (2 di 5 giorni)');
+      expect(
+        find.text('Impossibile caricare i piatti scelti. Controlla la connessione e riprova.'),
+        findsOneWidget,
+      );
+
+      app.requests.failDishes = false;
+      await tester.tap(find.byKey(const ValueKey('detail-menu-retry')));
+      await tester.pumpAndSettle();
+      expect(textOf(tester, 'detail-menu-dish-0'), 'Minestrone di verdure');
+      expect(find.byKey(const ValueKey('detail-menu-retry')), findsNothing);
+    });
+
+    testWidgets('mientras carga los nombres, el título ya se ve', (tester) async {
+      final requests = FakeChefRequestsRepository([buildRequest(wishes: const [lasagneId])])
+        ..dishes[lasagneId] = lasagne
+        ..pendingDishes = Completer<void>();
+      final app = await pumpChefApp(tester, requests: requests, size: const Size(400, 1800));
+      app.go('/richieste/req-1');
+      // La barra de carga no termina nunca: sin pumpAndSettle.
+      for (var frame = 0; frame < 10; frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(textOf(tester, 'detail-menu-title'), 'Menù scelto dal cliente (1 di 5 giorni)');
+      expect(find.byKey(const ValueKey('detail-menu-loading')), findsOneWidget);
+      // El lector de pantalla dice qué carga.
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('detail-menu-loading'))),
+        matchesSemantics(label: 'Caricamento dei piatti scelti'),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('detail-menu-title'))),
+        matchesSemantics(label: 'Menù scelto dal cliente (1 di 5 giorni)', isHeader: true),
+        reason: 'el encabezado es solo el título',
+      );
+
+      requests.pendingDishes!.complete();
+      await tester.pumpAndSettle();
+      expect(textOf(tester, 'detail-menu-dish-0'), 'Lasagne alla bolognese');
+    });
+
+    for (final locale in const [Locale('it'), Locale('es'), Locale('en')]) {
+      testWidgets('sin desbordes a 375×667 (${locale.languageCode})', (tester) async {
+        await openMenu(
+          tester,
+          wishes: const [minestroneId, risottoId, lasagneId],
+          size: const Size(375, 667),
+          deviceLocale: locale,
+        );
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(menuKey), findsOneWidget);
+      });
+    }
   });
 }

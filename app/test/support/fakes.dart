@@ -20,6 +20,7 @@ import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/chosen_menu.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_api.dart';
@@ -159,6 +160,25 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
   /// Fichas (client_id) marcadas como clientes.
   final List<String> markedClients = [];
 
+  /// Nombres de los platos (recipes) "en el servidor", por id: los que lee
+  /// [fetchMenuDishes]. Un id que no está es un plato borrado.
+  final Map<String, MenuDish> dishes = {};
+  bool failDishes = false;
+
+  /// Si no es null, [fetchMenuDishes] espera a que se complete.
+  Completer<void>? pendingDishes;
+
+  /// Los ids de cada [fetchMenuDishes], en orden.
+  final List<List<String>> dishCalls = [];
+
+  /// Como Supabase: cada lectura ([fetchRequests], [fetchRequest]) devuelve
+  /// pedidos nuevos, con listas nuevas (iguales en contenido, no las mismas).
+  bool freshCopies = false;
+
+  ChefRequest _read(ChefRequest request) => freshCopies
+      ? request.copyWith(wishes: List.of(request.wishes))
+      : request;
+
   final _realtime = StreamController<RequestsRealtimeEvent>.broadcast();
   int realtimeListeners = 0;
 
@@ -179,15 +199,18 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
     final pending = pendingFetch;
     if (pending != null) await pending.future;
     if (failFetch) throw const RequestsFailure(RequestsFailureKind.unavailable);
-    final list = requests.values.where((r) => r.chefId == chefId).toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final list = [
+      for (final r in requests.values)
+        if (r.chefId == chefId) _read(r),
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return list;
   }
 
   @override
   Future<ChefRequest?> fetchRequest(String id) async {
     if (failFetch) throw const RequestsFailure(RequestsFailureKind.unavailable);
-    return requests[id];
+    final request = requests[id];
+    return request == null ? null : _read(request);
   }
 
   @override
@@ -242,6 +265,17 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
         client: request.client.copyWith(status: ClientStatus.trial),
       );
     }
+  }
+
+  @override
+  Future<List<MenuDish>> fetchMenuDishes(List<String> ids) async {
+    dishCalls.add(List.of(ids));
+    final fail = failDishes;
+    final found = [for (final id in ids) ?dishes[id]];
+    final pending = pendingDishes;
+    if (pending != null) await pending.future;
+    if (fail) throw const RequestsFailure(RequestsFailureKind.unavailable);
+    return found;
   }
 
   @override

@@ -12,11 +12,19 @@ import 'package:radici/features/requests/presentation/request_detail_screen.dart
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
+import '../../../support/recipe_fixtures.dart';
 import '../../../support/request_fixtures.dart';
 
 void main() {
   FakeChefRequestsRepository sample() => FakeChefRequestsRepository([
-    buildRequest(id: 'new-1', name: 'Giulia Rossi', createdAt: DateTime.utc(2026, 10, 19, 9)),
+    // Con platos elegidos en la web y restricciones: las dos marcas en la fila.
+    buildRequest(
+      id: 'new-1',
+      name: 'Giulia Rossi',
+      createdAt: DateTime.utc(2026, 10, 19, 9),
+      wishes: const [lasagneId, minestroneId],
+      restrictions: const RequestRestrictions(allergens: [Allergen.milk]),
+    ),
     buildRequest(
       id: 'new-2',
       name: 'Marco Bianchi',
@@ -103,6 +111,71 @@ void main() {
       find.descendant(of: tile('new-1'), matching: find.textContaining('settimane')),
       findsNothing,
     );
+  });
+
+  // El aviso que pidió Evelyn: se ve en la lista, sin abrir el pedido.
+  testWidgets('la fila de un pedido con platos elegidos en la web lleva la marca «menù»', (tester) async {
+    await pumpChefApp(tester, requests: sample(), location: '/richieste');
+
+    final mark = find.byKey(const ValueKey('request-menu-new-1'));
+    expect(find.descendant(of: tile('new-1'), matching: mark), findsOneWidget);
+    expect(find.descendant(of: mark, matching: find.text('menù')), findsOneWidget);
+    expect(find.descendant(of: mark, matching: find.byIcon(Icons.restaurant_menu)), findsOneWidget);
+    expect(find.byKey(const ValueKey('request-menu-new-2')), findsNothing);
+    expect(find.descendant(of: tile('new-2'), matching: find.text('menù')), findsNothing);
+
+    // Lo que lee el lector de pantalla (el árbol semántico): la fila es un solo
+    // botón y la marca dice la frase entera, debajo del resumen, no «menù».
+    expect(
+      tester.getSemantics(tile('new-1')),
+      isSemantics(
+        label:
+            'GR\nGiulia Rossi\nSettimana di pasti · 4 persone · 5 giorni · Cena\n'
+            'mer 21 ott · Mattina\nMenù scelto dal cliente\n19/10/2026\nRestrizioni alimentari',
+        isButton: true,
+      ),
+    );
+    expect(tester.getSemantics(tile('new-2')).label, isNot(contains('Menù scelto dal cliente')));
+  });
+
+  // Texto grande: en el iPhone, los tamaños de accesibilidad empiezan en
+  // ≈1.65. ListTile le da al trailing hasta 56 px de alto: la marca no entraba.
+  testWidgets('con el texto al doble, a 375 px, la marca entra con y sin restricciones', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pumpChefApp(
+      tester,
+      size: const Size(375, 812),
+      requests: FakeChefRequestsRepository([
+        buildRequest(
+          id: 'menu-restr',
+          createdAt: DateTime.utc(2026, 10, 19, 9),
+          wishes: const [lasagneId],
+          restrictions: const RequestRestrictions(allergens: [Allergen.milk]),
+        ),
+        buildRequest(
+          id: 'menu-only',
+          name: 'Marco Bianchi',
+          createdAt: DateTime.utc(2026, 10, 19, 8),
+          wishes: const [lasagneId],
+        ),
+      ]),
+      location: '/richieste',
+    );
+
+    expect(tester.takeException(), isNull);
+    for (final id in ['menu-restr', 'menu-only']) {
+      expect(find.descendant(of: tile(id), matching: find.byKey(ValueKey('request-menu-$id'))), findsOneWidget);
+    }
+  });
+
+  testWidgets('la marca en español', (tester) async {
+    await pumpChefApp(tester, requests: sample(), deviceLocales: const [Locale('es', 'ES')], location: '/richieste');
+    final mark = find.byKey(const ValueKey('request-menu-new-1'));
+    expect(find.descendant(of: mark, matching: find.text('menú')), findsOneWidget);
+    final row = tester.getSemantics(tile('new-1')).label.split('\n');
+    expect(row, contains('Menú elegido por el cliente'));
+    expect(row, isNot(contains('menú')));
   });
 
   testWidgets('pestañas Viste, Prenotazioni y Rifiutate', (tester) async {

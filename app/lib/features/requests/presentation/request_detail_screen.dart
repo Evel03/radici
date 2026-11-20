@@ -1,9 +1,10 @@
 // Detalle de un pedido: todos los datos (incluidas las restricciones, que
 // solo ve la cocinera, o lo que contestó el cliente a la pregunta de
-// alergias), la estimación guardada y las acciones: WhatsApp, llamar, email,
-// rechazar, deshacer el rechazo y marcar a la persona como clienta (así no se
-// borra a los 90 días). Un pedido nuevo, además, «Conferma prenotazione»
-// (abajo). Al abrirlo se marca como visto.
+// alergias), los platos que eligió el cliente en la web (arriba y destacados),
+// la estimación guardada y las acciones: WhatsApp, llamar, email, rechazar,
+// deshacer el rechazo y marcar a la persona como clienta (así no se borra a
+// los 90 días). Un pedido nuevo, además, «Conferma prenotazione» (abajo). Al
+// abrirlo se marca como visto.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'package:radici/core/money.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/quote/domain/quote.dart' show defaultPricing;
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/application/chosen_menu_provider.dart';
 import 'package:radici/features/requests/application/contact_actions.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
@@ -361,6 +363,10 @@ class _RequestDetail extends ConsumerWidget {
               ],
             ),
 
+            // Los platos que eligió en la web: el aviso que pidió Evelyn, por
+            // eso va arriba y destacado. Sin platos elegidos, nada.
+            if (request.hasMenu) _ChosenMenu(request: request),
+
             _Section(title: l10n.detailSectionRequest),
             _InfoRow(label: l10n.detailType, value: l10n.requestType(request.type)),
             // Un pedido semanal: cuántas semanas (una sesión por semana).
@@ -557,6 +563,122 @@ class _RequestDetail extends ConsumerWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Los platos que eligió el cliente en la pestaña «Menù» de la web: cuántos de
+/// cuántos días (o cuántos, si el pedido no dice los días) y sus nombres en el
+/// orden en que los tildó, en el idioma de la app (con el italiano si falta la
+/// traducción). El título sale del pedido: se ve aunque los nombres no hayan
+/// llegado o no se puedan leer.
+class _ChosenMenu extends ConsumerWidget {
+  const _ChosenMenu({required this.request});
+
+  final ChefRequest request;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final ink = theme.colorScheme.onPrimaryContainer;
+    final language = Localizations.localeOf(context).languageCode;
+    final menu = ref.watch(chosenMenuProvider(request.id));
+
+    return Container(
+      key: const ValueKey('detail-menu'),
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.restaurant_menu, size: 20, color: ink),
+              const SizedBox(width: 8),
+              Expanded(
+                // Un nodo propio: el encabezado es el título, no los platos.
+                child: Semantics(
+                  header: true,
+                  container: true,
+                  child: Text(
+                    l10n.menuTitle(request),
+                    key: const ValueKey('detail-menu-title'),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ...menu.when(
+            data: (dishes) => [
+              for (final (index, chosenDish) in dishes.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 9, left: 7),
+                        child: Icon(Icons.circle, size: 6, color: ink),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: Text(
+                          chosenDish.dish?.name(language) ??
+                              l10n.detailMenuDeleted,
+                          key: ValueKey('detail-menu-dish-$index'),
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: ink,
+                            fontStyle: chosenDish.dish == null
+                                ? FontStyle.italic
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+            loading: () => [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: LinearProgressIndicator(
+                  key: const ValueKey('detail-menu-loading'),
+                  semanticsLabel: l10n.detailMenuLoading,
+                ),
+              ),
+            ],
+            error: (_, _) => [
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  l10n.detailMenuLoadFailed,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: ink),
+                ),
+              ),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton(
+                  key: const ValueKey('detail-menu-retry'),
+                  onPressed: () =>
+                      ref.invalidate(chosenMenuProvider(request.id)),
+                  child: Text(l10n.actionRetry),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

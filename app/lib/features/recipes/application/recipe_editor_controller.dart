@@ -156,6 +156,15 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
 
   void setNameEn(String value) => _edit((d) => d.copyWith(nameEn: value));
 
+  void setDescriptionIt(String value) =>
+      _edit((d) => d.copyWith(descriptionIt: value));
+
+  void setDescriptionEs(String value) =>
+      _edit((d) => d.copyWith(descriptionEs: value));
+
+  void setDescriptionEn(String value) =>
+      _edit((d) => d.copyWith(descriptionEn: value));
+
   void setNotes(String value) => _edit((d) => d.copyWith(notes: value));
 
   void toggleAllergen(Allergen allergen) => _edit(

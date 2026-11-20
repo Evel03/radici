@@ -2,7 +2,8 @@
 // abrir el pedido, en el ScaffoldMessenger de la app: sale en cualquier
 // pantalla salvo la ficha de una sesión y el formulario del editor de platos
 // (y sus diálogos), que tienen el suyo y, en el navegador raíz, tapan el
-// Scaffold de la barra, que es donde sale; aparece al volver de ahí.
+// Scaffold de la barra, que es donde sale; aparece al volver de ahí. Si el
+// cliente eligió platos en la web, lo dice.
 //
 // Va en el `builder` de MaterialApp, por encima de todas las rutas: así sigue
 // escuchando aunque la cocinera esté en el detalle de otro pedido (las rutas
@@ -47,9 +48,19 @@ class NewRequestAlertListener extends ConsumerWidget {
   ) {
     final l10n = AppLocalizations.of(context);
     final single = alert.requests.length == 1;
-    final text = single
-        ? l10n.newRequestBanner(alert.latest.client.displayName)
-        : l10n.newRequestsBanner(alert.requests.length);
+    final name = alert.latest.client.displayName;
+    final dishes = alert.latest.wishes.length;
+    final count = alert.requests.length;
+    final withMenu = alert.withMenu;
+    final text = switch (single) {
+      true when dishes > 0 => l10n.newRequestBannerWithMenu(dishes, name),
+      true => l10n.newRequestBanner(name),
+      false when withMenu > 0 => l10n.newRequestsBannerWithMenu(
+        count,
+        withMenu,
+      ),
+      false => l10n.newRequestsBanner(count),
+    };
 
     void open() {
       final router = ref.read(routerProvider);

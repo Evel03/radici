@@ -82,6 +82,25 @@ void main() {
     expect(top(find.text('Disattivati (1)')), lessThan(top(tile(frittataId))));
   });
 
+  testWidgets('cada plato activo dice si está en la web o si le falta la descripción', (tester) async {
+    await openList(tester);
+
+    expect(inTile(lasagneId, 'Sul sito'), findsOneWidget);
+    expect(inTile(risottoId, 'Sul sito'), findsOneWidget);
+    expect(inTile(minestroneId, 'Senza descrizione: non è sul sito'), findsOneWidget);
+    expect(inTile(minestroneId, 'Sul sito'), findsNothing);
+    // Desactivado: ya dice «Disattivato» (no sale en la web aunque tenga
+    // descripción).
+    expect(byKey('recipe-web-$frittataId'), findsNothing);
+    expect(inTile(frittataId, 'Sul sito'), findsNothing);
+  });
+
+  testWidgets('en la web, en español', (tester) async {
+    await openList(tester, locale: const Locale('es', 'ES'));
+    expect(inTile(lasagneId, 'En la web'), findsOneWidget);
+    expect(inTile(minestroneId, 'Sin descripción: no está en la web'), findsOneWidget);
+  });
+
   testWidgets('un plato sin alérgenos lo dice', (tester) async {
     await openList(tester, recipes: [lasagne().copyWith(allergens: const [])]);
     expect(inTile(lasagneId, 'Senza allergeni'), findsOneWidget);

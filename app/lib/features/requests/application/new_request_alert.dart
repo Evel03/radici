@@ -22,6 +22,9 @@ abstract class NewRequestAlert with _$NewRequestAlert {
 
   ChefRequest get latest => requests.first;
 
+  /// Cuántos traen platos elegidos en la web (el aviso lo menciona).
+  int get withMenu => requests.where((r) => r.hasMenu).length;
+
   @override
   String toString() => 'NewRequestAlert(${requests.length})';
 }

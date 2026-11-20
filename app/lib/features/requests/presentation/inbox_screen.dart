@@ -200,8 +200,9 @@ class _RequestList extends ConsumerWidget {
   }
 }
 
-/// Fila de un pedido: nombre, resumen y fecha preferida. Se usa en la
-/// bandeja y en la agenda.
+/// Fila de un pedido: nombre, resumen y fecha preferida, con las marcas de
+/// platos elegidos en la web («menù», debajo del resumen) y de restricciones
+/// (al lado de la fecha). Se usa en la bandeja y en la agenda.
 class RequestTile extends StatelessWidget {
   const RequestTile({
     super.key,
@@ -263,6 +264,7 @@ class RequestTile extends StatelessWidget {
       // La fecha va en su propia línea: un resumen largo («… · 4 settimane ·
       // 4 persone · 5 giorni · Cena») se corta en dos líneas y no la tapa.
       subtitle: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -277,9 +279,16 @@ class RequestTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+          // La marca va acá y no al lado de la fecha: ListTile le da al
+          // trailing hasta 56 px de alto y, con el texto grande, no entraba.
+          if (request.hasMenu)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: _MenuMark(requestId: request.id),
+            ),
         ],
       ),
-      isThreeLine: when.isNotEmpty,
+      isThreeLine: when.isNotEmpty || request.hasMenu,
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -298,6 +307,53 @@ class RequestTile extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Marca «menù»: el cliente eligió platos en la pestaña «Menù» de la web. Es
+/// el aviso que pidió Evelyn: se ve en la lista sin abrir el pedido. El
+/// lector de pantalla lee la frase entera.
+class _MenuMark extends StatelessWidget {
+  const _MenuMark({required this.requestId});
+
+  final String requestId;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final ink = theme.colorScheme.onPrimaryContainer;
+    return Semantics(
+      key: ValueKey('request-menu-$requestId'),
+      label: l10n.requestMenuTagA11y,
+      excludeSemantics: true,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.restaurant_menu, size: 14, color: ink),
+              const SizedBox(width: 3),
+              // Con el texto muy grande en un teléfono angosto, se corta
+              // antes que desbordar (el ícono y el lector de pantalla quedan).
+              Flexible(
+                child: Text(
+                  l10n.requestMenuTag,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(color: ink),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

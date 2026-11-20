@@ -796,4 +796,59 @@ void main() {
     expect(bannerText(tester), 'Nueva solicitud de Marco Bianchi');
     expect(find.text('Abrir'), findsOneWidget);
   });
+
+  // Pestaña «Menù» de la web: el aviso dice cuántos platos eligió.
+  group('con platos elegidos en la web', () {
+    final withMenu = buildRequest(
+      id: 'arrived',
+      name: 'Marco Bianchi',
+      createdAt: DateTime.utc(2026, 10, 19, 12),
+      wishes: const ['dish-1', 'dish-2'],
+    );
+
+    testWidgets('el aviso lo menciona, con cuántos platos', (tester) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+      );
+      app.requests.insertFromRealtime(withMenu);
+      await tester.pumpAndSettle();
+      expect(bannerText(tester), 'Nuova richiesta da Marco Bianchi, con 2 piatti scelti dal menù');
+    });
+
+    testWidgets('un solo plato', (tester) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+      );
+      app.requests.insertFromRealtime(withMenu.copyWith(wishes: const ['dish-1']));
+      await tester.pumpAndSettle();
+      expect(bannerText(tester), 'Nuova richiesta da Marco Bianchi, con 1 piatto scelto dal menù');
+    });
+
+    testWidgets('varios pedidos: cuántos traen menú', (tester) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+      );
+      app.requests
+        ..insertFromRealtime(withMenu)
+        ..insertFromRealtime(
+          buildRequest(id: 'second', name: 'Anna Verdi', createdAt: DateTime.utc(2026, 10, 19, 13)),
+        );
+      await tester.pumpAndSettle();
+      expect(bannerText(tester), '2 nuove richieste (1 con menù)');
+    });
+
+    testWidgets('en español', (tester) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([buildRequest()]),
+        deviceLocales: const [Locale('es', 'ES')],
+      );
+      app.requests.insertFromRealtime(withMenu);
+      await tester.pumpAndSettle();
+      expect(bannerText(tester), 'Nueva solicitud de Marco Bianchi, con 2 platos elegidos del menú');
+    });
+  });
 }

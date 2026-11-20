@@ -261,7 +261,7 @@ void main() {
     repository.pendingSave!.complete();
     await tester.pumpAndSettle();
     expect(find.byType(RecipesScreen), findsOneWidget);
-    expect(repository.recipes[_newId], lasagne().copyWith(id: _newId));
+    expect(repository.recipes[_newId], lasagne().copyWith(id: _newId, descriptionIt: null, descriptionEs: null));
   });
 
   testWidgets('sin nombre no guarda: marca el campo y avisa', (tester) async {
@@ -484,6 +484,95 @@ void main() {
     );
   });
 
+  testWidgets('la descripción de la web: la ayuda, los tres campos con lo guardado y se guarda recortada', (
+    tester,
+  ) async {
+    await openEditor(tester, location: '/altro/piatti/$lasagneId');
+    expect(find.text('Descrizione sul sito'), findsOneWidget);
+    expect(
+      find.text(
+        'Una frase breve: compare sul sito, nel modulo di richiesta, accanto al nome. '
+        'Senza la descrizione in italiano il piatto non si vede sul sito. '
+        'In spagnolo e in inglese, se manca, si vede quella in italiano.',
+      ),
+      findsOneWidget,
+    );
+    String text(String key) => tester.widget<TextField>(byKey(key)).controller!.text;
+    expect(text('recipe-description-it'), 'Ragù cotto piano e besciamella fatta in casa.');
+    expect(text('recipe-description-es'), 'Ragú cocido despacio y bechamel casera.');
+    expect(text('recipe-description-en'), isEmpty);
+    expect(find.widgetWithText(TextField, 'Descrizione in italiano'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Descrizione in spagnolo'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Descrizione in inglese'), findsOneWidget);
+    // Una línea: el teclado no ofrece salto de línea (la base no lo acepta).
+    final field = tester.widget<TextField>(byKey('recipe-description-it'));
+    expect(field.keyboardType, TextInputType.text);
+    // El contador, sin cortar lo escrito (no hay maxLength).
+    expect(field.maxLength, isNull);
+    expect(find.descendant(of: byKey('recipe-description-it'), matching: find.text('45/200')), findsOneWidget);
+    expect(find.descendant(of: byKey('recipe-description-en'), matching: find.text('0/200')), findsOneWidget);
+
+    await tapVisible(tester, byKey('recipe-description-en'));
+    await tester.enterText(byKey('recipe-description-en'), '  Slow-cooked   ragù. ');
+    await tester.enterText(byKey('recipe-description-es'), '   ');
+    await save(tester);
+
+    final saved = repository.saveCalls.single;
+    expect(saved.descriptionIt, 'Ragù cotto piano e besciamella fatta in casa.');
+    expect(saved.descriptionEs, isNull);
+    expect(saved.descriptionEn, 'Slow-cooked ragù.');
+  });
+
+  testWidgets('a 375×667, una descripción de más de 200 caracteres no se guarda y lleva al error', (tester) async {
+    await openEditor(tester, size: const Size(375, 667));
+    await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
+    await tapVisible(tester, byKey('recipe-description-it'));
+    await tester.enterText(byKey('recipe-description-it'), 'd' * 201);
+    await tester.drag(byKey('recipe-editor'), const Offset(0, 3000));
+    await tester.pumpAndSettle();
+    await save(tester);
+
+    expect(repository.saveCalls, isEmpty);
+    expect(find.text('Al massimo 200 caratteri.').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // El contador cuenta como la validación (y como char_length en la base): el
+  // texto sin espacios de más, por caracteres. El de TextField contaba lo
+  // escrito, por letras.
+  group('el contador de la descripción cuenta como la validación', () {
+    Finder counter(String text) => find.descendant(of: byKey('recipe-description-it'), matching: find.text(text));
+
+    testWidgets('los espacios de más no cuentan: «200/200» y se guarda', (tester) async {
+      await openEditor(tester);
+      await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
+      await tapVisible(tester, byKey('recipe-description-it'));
+      // 205 escritos: la base guarda un solo espacio entre las dos partes.
+      await tester.enterText(byKey('recipe-description-it'), '${'d' * 100}${' ' * 6}${'d' * 99}');
+      await tester.pump();
+
+      expect(counter('200/200'), findsOneWidget);
+      expect(tester.widget<TextField>(byKey('recipe-description-it')).decoration!.errorText, isNull);
+      await save(tester);
+      expect(textLength(repository.saveCalls.single.descriptionIt!), 200);
+    });
+
+    testWidgets('una bandera cuenta dos: «201/200» en rojo y no se guarda', (tester) async {
+      await openEditor(tester);
+      await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
+      await tapVisible(tester, byKey('recipe-description-it'));
+      // 101 letras a la vista, 201 caracteres para la base.
+      await tester.enterText(byKey('recipe-description-it'), '${'🇮🇹' * 100}d');
+      await tester.pump();
+
+      expect(counter('201/200'), findsOneWidget);
+      expect(tester.widget<TextField>(byKey('recipe-description-it')).decoration!.errorText, isNotNull);
+      await save(tester);
+      expect(repository.saveCalls, isEmpty);
+      expect(find.text('Al massimo 200 caratteri.'), findsOneWidget);
+    });
+  });
+
   testWidgets('«Tutto l\'anno» o meses sueltos', (tester) async {
     await openEditor(tester, location: '/altro/piatti/$risottoId');
     FilterChip chip(String key) => tester.widget<FilterChip>(byKey(key));
@@ -522,17 +611,27 @@ void main() {
     expect(find.widgetWithText(TextField, 'Lasagne alla bolognese'), findsOneWidget);
     expect(find.text('Hai già un piatto con questo nome.'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Passata di pomodoro'), findsOneWidget);
+    // Las descripciones de la web no se copian: la copia no sale en la web
+    // con las del original.
+    for (final language in ['it', 'es', 'en']) {
+      expect(tester.widget<TextField>(byKey('recipe-description-$language')).controller!.text, isEmpty);
+    }
 
     await tester.enterText(byKey('recipe-name-it'), 'Lasagne vegetariane');
     await tester.pump();
     expect(find.text('Hai già un piatto con questo nome.'), findsNothing);
     await save(tester);
 
-    expect(repository.recipes[_newId], lasagne().copyWith(id: _newId, nameIt: 'Lasagne vegetariane'));
+    expect(
+      repository.recipes[_newId],
+      lasagne().copyWith(id: _newId, nameIt: 'Lasagne vegetariane', descriptionIt: null, descriptionEs: null),
+    );
     expect(repository.recipes[lasagneId], lasagne());
     expect(find.byType(RecipesScreen), findsOneWidget);
     expect(tile(_newId), findsOneWidget);
     expect(tile(lasagneId), findsOneWidget);
+    expect(find.descendant(of: tile(_newId), matching: find.text('Senza descrizione: non è sul sito')), findsOneWidget);
+    expect(find.descendant(of: tile(lasagneId), matching: find.text('Sul sito')), findsOneWidget);
   });
 
   testWidgets('desactivar se ve enseguida y se deshace con «Annulla»', (tester) async {

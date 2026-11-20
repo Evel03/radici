@@ -145,6 +145,20 @@ void main() {
       );
       expect(draft.freezable, isTrue);
     });
+
+    test('las descripciones de la web en los tres idiomas', () async {
+      await start();
+      open(create)
+        ..setDescriptionIt('Basilico fresco e pinoli.')
+        ..setDescriptionEs('Albahaca fresca y piñones.')
+        ..setDescriptionEn('Fresh basil and pine nuts.');
+      final draft = stateOf(create).draft;
+      expect(
+        [draft.descriptionIt, draft.descriptionEs, draft.descriptionEn],
+        ['Basilico fresco e pinoli.', 'Albahaca fresca y piñones.', 'Fresh basil and pine nuts.'],
+      );
+      expect(stateOf(create).dirty, isTrue);
+    });
   });
 
   group('ingredientes', () {
@@ -292,6 +306,29 @@ void main() {
       expect(stateOf(editLasagne).dirty, isFalse);
     });
 
+    test('la descripción: se manda recortada y la que se vació va en null', () async {
+      await start();
+      final editor = open(editLasagne)
+        ..setDescriptionIt('  Ragù di manzo e maiale,   besciamella. ')
+        ..setDescriptionEs('   ')
+        ..setDescriptionEn('Beef and pork ragù.');
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      final saved = repository.saveCalls.single;
+      expect(saved.descriptionIt, 'Ragù di manzo e maiale, besciamella.');
+      expect(saved.descriptionEs, isNull);
+      expect(saved.descriptionEn, 'Beef and pork ragù.');
+      expect(inCatalog(lasagneId)!.descriptionIt, 'Ragù di manzo e maiale, besciamella.');
+    });
+
+    test('una descripción de más de 200 caracteres no deja guardar', () async {
+      await start();
+      final editor = open(editLasagne)..setDescriptionIt('d' * 201);
+      expect(await editor.save(), RecipeSaveResult.invalid);
+      expect(stateOf(editLasagne).errors.descriptionIt, TextError.tooLong);
+      expect(repository.saveCalls, isEmpty);
+    });
+
     test('guardar uno desactivado no lo reactiva', () async {
       await start();
       final editor = open(editFrittata)..setNameIt('Frittata di zucchine e menta');
@@ -300,12 +337,16 @@ void main() {
       expect(repository.recipes[frittataId]!.active, isFalse);
     });
 
-    test('la copia se guarda como un plato nuevo y el original no cambia', () async {
+    test('la copia se guarda como un plato nuevo, sin las descripciones de la web, y el original no cambia', () async {
       await start();
       final editor = open(copyLasagne)..setNameIt('Lasagne vegetariane');
       expect(await editor.save(), RecipeSaveResult.saved);
 
-      expect(inCatalog(_id1), lasagne().copyWith(id: _id1, nameIt: 'Lasagne vegetariane'));
+      expect(
+        inCatalog(_id1),
+        lasagne().copyWith(id: _id1, nameIt: 'Lasagne vegetariane', descriptionIt: null, descriptionEs: null),
+      );
+      expect(inCatalog(_id1)!.webStatus, RecipeWebStatus.missingDescription);
       expect(inCatalog(lasagneId), lasagne());
     });
 

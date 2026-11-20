@@ -570,6 +570,14 @@
       "count": { "type": "int", "example": "4" }
     }
   },
+  "requestMenuTag": "menù",
+  "@requestMenuTag": {
+    "description": "Marca corta en la fila de la bandeja (y de la agenda): el cliente eligió platos en la pestaña «Menù» de la web. Es el aviso que pidió Evelyn."
+  },
+  "requestMenuTagA11y": "Menù scelto dal cliente",
+  "@requestMenuTagA11y": {
+    "description": "Lectura de pantalla de la marca «menù» de la fila."
+  },
   "requestTypeWeek": "Settimana di pasti",
   "@requestTypeWeek": {
     "description": "Tipo de pedido week (igual que en la web)."
@@ -658,6 +666,33 @@
   "detailSectionContact": "Contatto",
   "@detailSectionContact": {
     "description": "Sección de datos de contacto."
+  },
+  "detailMenuTitle": "{days, plural, =1{Menù scelto dal cliente ({chosen} di 1 giorno)} other{Menù scelto dal cliente ({chosen} di {days} giorni)}}",
+  "@detailMenuTitle": {
+    "description": "Título del recuadro destacado del detalle con los platos que eligió el cliente en la web (requests.wishes): cuántos eligió y de cuántos días del pedido. Puede elegir hasta uno por día; el resto lo propone Evelyn.",
+    "placeholders": {
+      "days": { "type": "int", "example": "5" },
+      "chosen": { "type": "int", "example": "2" }
+    }
+  },
+  "detailMenuTitleNoDays": "{chosen, plural, =1{Menù scelto dal cliente (1 piatto)} other{Menù scelto dal cliente ({chosen} piatti)}}",
+  "@detailMenuTitleNoDays": {
+    "description": "Como detailMenuTitle, para un pedido que no dice cuántos días (requests.days vacío): solo cuántos platos eligió, sin inventar los días.",
+    "placeholders": {
+      "chosen": { "type": "int", "example": "2" }
+    }
+  },
+  "detailMenuLoading": "Caricamento dei piatti scelti",
+  "@detailMenuLoading": {
+    "description": "Lectura de pantalla de la barra de carga del recuadro del menú elegido, mientras llegan los nombres de los platos."
+  },
+  "detailMenuDeleted": "Piatto eliminato",
+  "@detailMenuDeleted": {
+    "description": "En el menú elegido del detalle: un plato que el cliente eligió y que después se borró del catálogo."
+  },
+  "detailMenuLoadFailed": "Impossibile caricare i piatti scelti. Controlla la connessione e riprova.",
+  "@detailMenuLoadFailed": {
+    "description": "Error al leer los nombres de los platos elegidos, con el botón para reintentar."
   },
   "detailType": "Tipo",
   "@detailType": {
@@ -1856,6 +1891,22 @@
       "count": { "type": "int", "example": "3" }
     }
   },
+  "newRequestBannerWithMenu": "{count, plural, =1{Nuova richiesta da {name}, con 1 piatto scelto dal menù} other{Nuova richiesta da {name}, con {count} piatti scelti dal menù}}",
+  "@newRequestBannerWithMenu": {
+    "description": "Aviso emergente de un pedido nuevo en el que el cliente eligió platos en la pestaña «Menù» de la web: cuántos.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" },
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "newRequestsBannerWithMenu": "{count} nuove richieste ({withMenu} con menù)",
+  "@newRequestsBannerWithMenu": {
+    "description": "Aviso emergente de varios pedidos nuevos (2 o más): {withMenu} de ellos traen platos elegidos en la web (1 o más).",
+    "placeholders": {
+      "count": { "type": "int", "example": "3" },
+      "withMenu": { "type": "int", "example": "1" }
+    }
+  },
 
   "agendaViewMonth": "Mese",
   "@agendaViewMonth": {
@@ -2149,6 +2200,14 @@
   "@recipeInactive": {
     "description": "Etiqueta de un plato desactivado en la lista."
   },
+  "recipeOnWebsite": "Sul sito",
+  "@recipeOnWebsite": {
+    "description": "En la lista: el plato está publicado en la pestaña «Menù» del formulario de la web (activo, en el catálogo y con descripción en italiano)."
+  },
+  "recipeNotOnWebsite": "Senza descrizione: non è sul sito",
+  "@recipeNotOnWebsite": {
+    "description": "En la lista: un plato activo sin descripción en italiano, que por eso no sale en la web."
+  },
   "recipeAllergensA11y": "Allergeni: {allergens}",
   "@recipeAllergensA11y": {
     "description": "Lectura de pantalla de los alérgenos de un plato en la lista.",
@@ -2245,6 +2304,26 @@
   "recipeSeasonHelp": "I mesi in cui lo offri.",
   "@recipeSeasonHelp": {
     "description": "Ayuda de la temporada."
+  },
+  "recipeDescriptionSection": "Descrizione sul sito",
+  "@recipeDescriptionSection": {
+    "description": "Sección del editor con la descripción corta del plato en italiano, español e inglés (recipes.description_*), la que muestra la web."
+  },
+  "recipeDescriptionHelp": "Una frase breve: compare sul sito, nel modulo di richiesta, accanto al nome. Senza la descrizione in italiano il piatto non si vede sul sito. In spagnolo e in inglese, se manca, si vede quella in italiano.",
+  "@recipeDescriptionHelp": {
+    "description": "Ayuda de la descripción: dónde aparece y que sin la italiana el plato no sale en la web (get_public_menu)."
+  },
+  "recipeDescriptionItLabel": "Descrizione in italiano",
+  "@recipeDescriptionItLabel": {
+    "description": "Campo de la descripción en italiano (hasta 200 caracteres)."
+  },
+  "recipeDescriptionEsLabel": "Descrizione in spagnolo",
+  "@recipeDescriptionEsLabel": {
+    "description": "Campo de la descripción en español (opcional)."
+  },
+  "recipeDescriptionEnLabel": "Descrizione in inglese",
+  "@recipeDescriptionEnLabel": {
+    "description": "Campo de la descripción en inglés (opcional)."
   },
   "recipeOptionalSection": "Facoltativo",
   "@recipeOptionalSection": {

@@ -1,7 +1,8 @@
 // Editor de un plato del catálogo, a pantalla completa. Primero lo rápido:
-// el nombre en italiano (el principal), los alérgenos, la dieta y
-// la temporada; después lo opcional: nombres en español e inglés,
-// conservación, ingredientes con su cantidad para 4 porciones y notas.
+// el nombre en italiano (el principal), los alérgenos, la dieta,
+// la temporada y la descripción de la web (sin la italiana el plato no sale
+// en el formulario de pedido); después lo opcional: nombres en español e
+// inglés, conservación, ingredientes con su cantidad para 4 porciones y notas.
 // «Salva» queda abajo, siempre a mano (con el teclado abierto, justo arriba de
 // él). Un plato guardado se puede duplicar y desactivar (nunca se borra). Solo
 // muestra providers: la lógica está en RecipeEditorController.
@@ -82,6 +83,9 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
   late final TextEditingController _nameIt;
   late final TextEditingController _nameEs;
   late final TextEditingController _nameEn;
+  late final TextEditingController _descriptionIt;
+  late final TextEditingController _descriptionEs;
+  late final TextEditingController _descriptionEn;
   late final TextEditingController _fridgeDays;
   late final TextEditingController _freezerDays;
   late final TextEditingController _notes;
@@ -92,6 +96,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
   /// Para llevar a la vista el primer campo con error.
   final GlobalKey _nameKey = GlobalKey();
   final GlobalKey _dietKey = GlobalKey();
+  final GlobalKey _descriptionKey = GlobalKey();
   final GlobalKey _translationsKey = GlobalKey();
   final GlobalKey _storageKey = GlobalKey();
   final GlobalKey _notesKey = GlobalKey();
@@ -110,6 +115,9 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     _nameIt = TextEditingController(text: opened.nameIt);
     _nameEs = TextEditingController(text: opened.nameEs);
     _nameEn = TextEditingController(text: opened.nameEn);
+    _descriptionIt = TextEditingController(text: opened.descriptionIt);
+    _descriptionEs = TextEditingController(text: opened.descriptionEs);
+    _descriptionEn = TextEditingController(text: opened.descriptionEn);
     _fridgeDays = TextEditingController(text: opened.fridgeDays);
     _freezerDays = TextEditingController(text: opened.freezerDays);
     _notes = TextEditingController(text: opened.notes);
@@ -121,6 +129,9 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
       _nameIt,
       _nameEs,
       _nameEn,
+      _descriptionIt,
+      _descriptionEs,
+      _descriptionEn,
       _fridgeDays,
       _freezerDays,
       _notes,
@@ -198,6 +209,11 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     final key = switch (errors) {
       _ when errors.nameIt != null => _nameKey,
       _ when errors.dietConflicts.isNotEmpty => _dietKey,
+      _
+          when errors.descriptionIt != null ||
+              errors.descriptionEs != null ||
+              errors.descriptionEn != null =>
+        _descriptionKey,
       _ when errors.nameEs != null || errors.nameEn != null => _translationsKey,
       _ when errors.fridgeDays || errors.freezerDays => _storageKey,
       _ when firstRow != null => _rows[firstRow.key]?.anchor,
@@ -491,6 +507,41 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
             ),
         ],
       ),
+      KeyedSubtree(
+        key: _descriptionKey,
+        child: _SectionTitle(l10n.recipeDescriptionSection),
+      ),
+      _Hint(l10n.recipeDescriptionHelp),
+      _DescriptionField(
+        fieldKey: const ValueKey('recipe-description-it'),
+        controller: _descriptionIt,
+        label: l10n.recipeDescriptionItLabel,
+        error: show
+            ? _textError(l10n, errors.descriptionIt, maxRecipeDescriptionLength)
+            : null,
+        textInputAction: TextInputAction.next,
+        onChanged: _editor.setDescriptionIt,
+      ),
+      _DescriptionField(
+        fieldKey: const ValueKey('recipe-description-es'),
+        controller: _descriptionEs,
+        label: l10n.recipeDescriptionEsLabel,
+        error: show
+            ? _textError(l10n, errors.descriptionEs, maxRecipeDescriptionLength)
+            : null,
+        textInputAction: TextInputAction.next,
+        onChanged: _editor.setDescriptionEs,
+      ),
+      _DescriptionField(
+        fieldKey: const ValueKey('recipe-description-en'),
+        controller: _descriptionEn,
+        label: l10n.recipeDescriptionEnLabel,
+        error: show
+            ? _textError(l10n, errors.descriptionEn, maxRecipeDescriptionLength)
+            : null,
+        textInputAction: TextInputAction.done,
+        onChanged: _editor.setDescriptionEn,
+      ),
       const Divider(height: 48),
       Semantics(
         header: true,
@@ -717,6 +768,77 @@ class _SaveBar extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Una descripción de la web. Una sola línea (la base no acepta saltos: el
+/// teclado ofrece «Siguiente» o «Listo», no un salto de línea), que se ve en
+/// hasta tres. El contador avisa los 200 caracteres sin cortar lo escrito: si
+/// se pasa, lo dice el error al guardar, como en los nombres.
+///
+/// El contador cuenta como la validación ([recipeTextLength]: el texto sin
+/// espacios de más, por caracteres como la base), no como el de TextField
+/// (lo escrito, por letras): con espacios dobles decía «205/200» en rojo y se
+/// guardaba, y con una bandera, «200/200» y daba error. Por eso no hay
+/// maxLength: el contador y el rojo de pasarse salen de acá.
+class _DescriptionField extends StatelessWidget {
+  const _DescriptionField({
+    required this.fieldKey,
+    required this.controller,
+    required this.label,
+    required this.error,
+    required this.textInputAction,
+    required this.onChanged,
+  });
+
+  final Key fieldKey;
+  final TextEditingController controller;
+  final String label;
+  final String? error;
+  final TextInputAction textInputAction;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final material = MaterialLocalizations.of(context);
+    const max = maxRecipeDescriptionLength;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) {
+          final length = recipeTextLength(value.text);
+          final tooLong = length > max;
+          return TextField(
+            key: fieldKey,
+            controller: controller,
+            minLines: 1,
+            maxLines: 3,
+            keyboardType: TextInputType.text,
+            textCapitalization: TextCapitalization.sentences,
+            textInputAction: textInputAction,
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              labelText: label,
+              // Pasada, en rojo como el contador de TextField, aunque todavía
+              // no se haya intentado guardar.
+              errorText: error ?? (tooLong ? '' : null),
+              errorMaxLines: 2,
+              counterText: '$length/$max',
+              semanticCounterText: material.remainingTextFieldCharacterCount(
+                (max - length).clamp(0, max),
+              ),
+              counterStyle: tooLong
+                  ? theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    )
+                  : null,
+            ),
+          );
+        },
       ),
     );
   }
