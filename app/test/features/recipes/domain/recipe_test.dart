@@ -86,11 +86,10 @@ void main() {
       expect(old.descriptionIt, isNull);
     });
 
-    test('la foto: photo_id o null (sin foto); una fila de antes de las fotos, sin foto', () {
+    test('la foto: photo_id o null (sin foto)', () {
       const photoId = 'f0000000-0000-4000-8000-000000000001';
       expect(Recipe.fromJson(recipeRow(photoId: photoId)).photoId, photoId);
       expect(Recipe.fromJson(recipeRow()).photoId, isNull);
-      expect(Recipe.fromJson(recipeRow()..remove('photo_id')).photoId, isNull);
     });
 
     test('las cuatro secciones compuestas y las tres unidades se leen bien', () {

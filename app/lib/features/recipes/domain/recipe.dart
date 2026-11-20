@@ -248,9 +248,10 @@ final RegExp _uuid = RegExp(
   r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
 );
 
-/// recipes.photo_id (un uuid, en minúsculas como lo da Postgres): con él se
-/// arman las rutas de los archivos, así que otra cosa es una fila rota. Sin la
-/// columna (una base de antes), sin foto.
+/// recipes.photo_id (un uuid, en minúsculas como lo da Postgres; null = sin
+/// foto): con él se arman las rutas de los archivos, así que otra cosa es una
+/// fila rota. Una base sin la columna no llega acá: PostgREST rechaza la
+/// consulta entera (400) y el catálogo no carga.
 String? _photoIdFromJson(Object? value) {
   if (value == null) return null;
   if (value is! String || !_uuid.hasMatch(value)) {

@@ -2,8 +2,8 @@
 // italiano, español e inglés), los activos primero y por nombre, cada uno con
 // sus alérgenos, su dieta, su temporada y si sale en la web a la vista (y su
 // foto, si tiene), y los desactivados al final. «Nuovo piatto» abre el editor.
-// Solo muestra
-// providers: la lógica está en RecipeCatalogController y en recipe.dart.
+// Solo muestra providers: la lógica está en RecipeCatalogController y en
+// recipe.dart.
 import 'dart:async';
 
 import 'package:flutter/material.dart';

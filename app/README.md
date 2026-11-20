@@ -168,26 +168,35 @@ repositorios falsos (`test/support/fakes.dart`).
   siempre las tres (null borra la que se vació).
 - **Foto del plato** (migración `20261120100000_recipe_photos.sql`; una por plato): la sección «Foto»
   del editor, después de la descripción de la web, **también en «Nuovo piatto»**, antes de guardar el
-  plato. «Aggiungi foto» pregunta cámara o galería en el teléfono; en `/gestione/` abre el selector de
-  archivos (el iPhone ofrece ahí mismo sacar una foto). La foto se prepara en el dispositivo
+  plato. «Aggiungi foto» pregunta cámara o galería en el teléfono; en `/gestione/` la app le pide a
+  image_picker la galería (`ImageSource.gallery`, un `<input type="file">` sin `capture`), y la cámara la
+  ofrece la hoja de archivos del iPhone. La foto se prepara en el dispositivo
   (`processRecipePhoto`, `domain/recipe_photo.dart`): se pide al selector ya achicada a 1200 px (en el
   iPhone convierte HEIC a JPEG; en la web la achica el navegador), se endereza con su orientación
   EXIF, se achica a 1200 px de lado mayor y la miniatura a 320 de lado menor (se ve recortada en un
   cuadrado) y se vuelve a codificar en JPEG **sin metadatos** (EXIF, GPS, XMP, IPTC, comentarios ni
   ningún otro segmento), siempre debajo de 2 MiB. Solo queda el perfil de color (ICC): no es un dato
   personal y sin él una foto Display P3 del iPhone se ve apagada. En el teléfono corre en otro
-  isolate; en la web, en el hilo principal (la foto ya llega achicada por el navegador). Queda en el
-  editor como un cambio sin guardar y se sube al tocar «Salva»: primero el plato (`save_recipe`),
-  después los dos archivos al bucket público `recipe-photos` (`{chef_id}/{plato}/{foto}.jpg` y
-  `…-thumb.jpg`, con un uuid nuevo en cada foto, `image/jpeg`, caché de una semana, sin pisar nada) y
-  `set_recipe_photo`; al final se borran, sin esperar ni avisar si falla, los archivos de la foto que
-  dejó de usarse. Si la foto falla, el plato queda guardado, el editor no se cierra y la sección lo
-  dice con «Riprova» (sube solo la foto, con el mismo uuid; un archivo que ya estaba cuenta como
-  subido). En un plato guardado, «Cambia foto» y «Togli foto» se aplican al guardar; si solo cambió la
-  foto, el plato no se vuelve a mandar. Duplicar un plato no copia la foto. La miniatura se ve en la
+  isolate; en la web, en el hilo principal (la foto ya llega achicada por el navegador), y la URL `blob:`
+  de la foto elegida se suelta al leerla. Mientras se elige o se prepara («Preparo la foto…»), «Salva»
+  espera: en el teléfono desde que se abre el selector, porque la foto puede seguir cargando (de
+  iCloud) con el selector ya cerrado; en la web desde que llega, porque si se cancela, un navegador sin
+  el evento `cancel` no avisa nunca. Queda en el editor como un cambio sin guardar y se sube al tocar
+  «Salva»: primero el plato (`save_recipe`), después los dos archivos al bucket público
+  `recipe-photos` (`{chef_id}/{plato}/{foto}.jpg` y `…-thumb.jpg`, con un uuid nuevo en cada foto,
+  `image/jpeg`, caché de una semana, sin pisar nada) y `set_recipe_photo` («Carico la foto…» o, al
+  sacarla, «Tolgo la foto…»); la subida espera como mucho 60 s y lo demás 30 s. Al final se limpia la
+  carpeta del plato, sin esperar ni avisar si falla: se borra todo lo que no sea la foto nueva (la que
+  dejó de usarse y las subidas abandonadas); el próximo cambio de foto del mismo plato espera esa
+  limpieza. El guardado sigue aunque el editor se cierre (lo hace el catálogo). Si la foto falla, el
+  plato queda guardado (sin foto si era nuevo, con la anterior si se cambiaba), el editor no se cierra
+  y la sección lo dice con «Riprova» (sube solo la foto, con el mismo uuid; un archivo que ya estaba
+  cuenta como subido). Una foto elegida mientras se guardaba (en la web) queda para el próximo
+  guardado: el editor no se cierra. En un plato guardado, «Cambia foto» y «Togli foto» se aplican al
+  guardar; si solo cambió la foto, el plato no se vuelve a mandar. Duplicar un plato no copia la foto. La miniatura se ve en la
   lista de platos (a la izquierda) y en el menù elegido del detalle del pedido (a la derecha del
-  nombre); la vista previa del editor usa la foto grande; sin foto, como siempre, y si no carga, un cuadrado neutro. La URL pública la
-  arma el repositorio (`getPublicUrl`); los widgets la leen de `recipePhotoUrlProvider`. En iOS, los
+  nombre); la vista previa del editor usa la foto grande; sin foto, como siempre, y si no carga, un
+  cuadrado neutro. La URL pública la arma el repositorio (`getPublicUrl`); los widgets la leen de `recipePhotoUrlProvider`. En iOS, los
   textos de permiso de la cámara y de las fotos (`NSCameraUsageDescription`,
   `NSPhotoLibraryUsageDescription` en `ios/Runner/Info.plist`) están en italiano: no hay
   `InfoPlist.strings` por idioma (sumarlos toca el proyecto de Xcode). Con `requestFullMetadata: false`
@@ -341,9 +350,9 @@ base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-re
   blob:`); image_picker_for_web achica la foto elegida en un `<img>` con su URL `blob:` y cross_file
   la lee con XMLHttpRequest (`connect-src blob:`). El origen de Supabase en `img-src` es por si una
   imagen se carga con un `<img>`. Sin probar todavía en Safari del iPhone.
-- La cámara en `/gestione/`: image_picker_for_web usa `<input type="file" capture>`, que abre la
-  cámara del sistema; la `Permissions-Policy: camera=()` de `/*` es para `getUserMedia` y no la
-  bloquea (también sin probar en el iPhone).
+- La cámara en `/gestione/`: la app pide la galería (un `<input type="file">` sin `capture`) y la
+  cámara la ofrece la hoja de archivos del iPhone. La `Permissions-Policy: camera=()` de `/*` es para
+  `getUserMedia`: no toca ese `<input>` (sin probar en el iPhone).
 - Caché: los nombres de archivo de Flutter **no** llevan hash. Nada de `immutable` ni `max-age` largo
   en `/gestione/*`: `_headers` pone `Cache-Control: no-cache` y cada carga revalida (304 si no
   cambió). En Cloudflare, Browser Cache TTL tiene que quedar en «Respect Existing Headers» (contrato
