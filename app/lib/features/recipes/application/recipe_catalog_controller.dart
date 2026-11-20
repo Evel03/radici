@@ -127,12 +127,16 @@ class RecipeCatalogController extends AsyncNotifier<List<Recipe>> {
     });
   }
 
+  /// La limpieza en curso de la carpeta de cada plato: el próximo cambio de
+  /// foto del mismo plato la espera, así no borra lo que se está subiendo.
+  final Map<String, Future<void>> _cleanups = {};
+
   /// Pone en el plato [recipeId] (ya guardado) la foto [photo], o se la saca
   /// con null: sube los dos archivos, llama a set_recipe_photo y deja el plato
-  /// de la lista con la foto nueva. Después borra, sin esperar ni avisar si
-  /// falla, los archivos de la foto que dejó de usarse: la que devuelve la
-  /// base y la que tenía la lista (si la respuesta de un intento anterior se
-  /// perdió, la base ya no la devuelve). Si falla, la lista no cambia y se
+  /// de la lista con la foto nueva. Después limpia la carpeta del plato, sin
+  /// esperar ni avisar si falla: borra todo lo que no sea la foto nueva (la
+  /// que dejó de usarse, también si la respuesta de un intento anterior se
+  /// perdió, y las subidas abandonadas). Si falla, la lista no cambia y se
   /// relanza [RecipePhotoFailure].
   Future<void> setPhoto(String recipeId, NewRecipePhoto? photo) async {
     final chefId = _chefId;
@@ -142,38 +146,41 @@ class RecipeCatalogController extends AsyncNotifier<List<Recipe>> {
     final photos = ref.read(recipePhotosRepositoryProvider);
     final photoId = photo?.photoId;
     await _change(() async {
+      await _cleanups[recipeId];
       if (photo != null) {
         await photos.upload(chefId: chefId, recipeId: recipeId, photo: photo);
       }
-      final known = _find(recipeId)?.photoId;
-      final previous = await photos.setPhoto(
-        recipeId: recipeId,
-        photoId: photoId,
-      );
+      await photos.setPhoto(recipeId: recipeId, photoId: photoId);
       if (ref.mounted) {
         final current = _find(recipeId);
         if (current != null) _put(current.copyWith(photoId: photoId));
       }
-      final unused = {?previous, ?known}..remove(photoId);
-      if (unused.isNotEmpty) {
-        unawaited(_deleteQuietly(photos, chefId, recipeId, unused));
-      }
+      final cleanup = _cleanQuietly(photos, chefId, recipeId, photoId);
+      _cleanups[recipeId] = cleanup;
+      unawaited(
+        cleanup.whenComplete(() {
+          if (identical(_cleanups[recipeId], cleanup)) {
+            _cleanups.remove(recipeId);
+          }
+        }),
+      );
     });
   }
 
-  /// Si no se pueden borrar, quedan en el bucket: no se le avisa a la
-  /// cocinera (la foto del plato ya cambió).
-  Future<void> _deleteQuietly(
+  /// Si no se puede limpiar, lo que sobra queda en el bucket hasta el próximo
+  /// cambio de foto de ese plato: no se le avisa a la cocinera (la foto del
+  /// plato ya cambió).
+  Future<void> _cleanQuietly(
     RecipePhotosRepository photos,
     String chefId,
     String recipeId,
-    Set<String> photoIds,
+    String? photoId,
   ) async {
     try {
-      await photos.delete(
+      await photos.deleteAllExcept(
         chefId: chefId,
         recipeId: recipeId,
-        photoIds: photoIds,
+        keepPhotoId: photoId,
       );
     } on Object {
       // Mejor esfuerzo.

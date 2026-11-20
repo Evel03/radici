@@ -410,7 +410,7 @@ void main() {
 
       expect(repository.saveCalls, isEmpty, reason: 'solo cambió la foto');
       expect(photos.setCalls, [(recipeId: lasagneId, photoId: null)]);
-      expect(photos.deleteCalls.single.photoIds, {_savedPhoto});
+      expect(photos.uploaded, isNot(contains('$lasagneId/$_savedPhoto')));
       expect(find.byType(RecipesScreen), findsOneWidget);
       expect(byKey('recipe-photo-$lasagneId'), findsNothing);
     },
@@ -434,7 +434,7 @@ void main() {
       await save(tester);
 
       expect(photos.setCalls, [(recipeId: lasagneId, photoId: _newId)]);
-      expect(photos.deleteCalls.single.photoIds, {_savedPhoto});
+      expect(photos.uploaded, isNot(contains('$lasagneId/$_savedPhoto')));
       expect(find.byType(RecipesScreen), findsOneWidget);
       expect(
         urls.last,

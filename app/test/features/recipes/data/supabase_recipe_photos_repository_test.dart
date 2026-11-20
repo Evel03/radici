@@ -1,6 +1,8 @@
 // Fotos de los platos contra un servidor HTTP simulado, con las consultas
 // reales del SDK: las URL públicas, la subida de los dos archivos (JPEG, una
-// semana de caché, sin pisar), set_recipe_photo, el borrado y los errores.
+// semana de caché, sin pisar), set_recipe_photo, la limpieza de la carpeta del
+// plato, los errores y los plazos.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -215,46 +217,118 @@ void main() {
     });
   });
 
-  group('delete', () {
-    test('borra los dos archivos de cada foto, en un solo pedido', () async {
-      server.handler = (_) async => jsonResponse(<Object>[]);
+  group('deleteAllExcept', () {
+    const abandoned = 'f0000000-0000-4000-8000-000000000003';
+    final folderFiles = [
+      {'name': '$_photoId.jpg', 'id': 'o1'},
+      {'name': '$_photoId-thumb.jpg', 'id': 'o2'},
+      {'name': '$_oldPhotoId.jpg', 'id': 'o3'},
+      {'name': '$_oldPhotoId-thumb.jpg', 'id': 'o4'},
+      // Un intento abandonado (subió solo la grande).
+      {'name': '$abandoned.jpg', 'id': 'o5'},
+      // Sin id es una carpeta: no se toca.
+      {'name': 'carpeta', 'id': null},
+    ];
 
-      await repository.delete(
+    test('lista la carpeta del plato y borra, en un pedido, todo lo que no sea la foto que queda', () async {
+      server.handler = (request) async => request.method == 'POST'
+          ? jsonResponse(folderFiles)
+          : jsonResponse(<Object>[]);
+
+      await repository.deleteAllExcept(
         chefId: testChefId,
         recipeId: lasagneId,
-        photoIds: const [_oldPhotoId, _photoId],
+        keepPhotoId: _photoId,
       );
 
-      final request = server.last;
-      expect(request.method, 'DELETE');
-      expect(request.url.path, '/storage/v1/object/recipe-photos');
-      expect(jsonBodyOf(request), {
+      final [list, remove] = server.requests;
+      expect(list.method, 'POST');
+      expect(list.url.path, '/storage/v1/object/list/recipe-photos');
+      expect(
+        jsonBodyOf(list),
+        containsPair('prefix', '$testChefId/$lasagneId'),
+      );
+      expect(jsonBodyOf(list), containsPair('limit', 1000));
+      expect(remove.method, 'DELETE');
+      expect(remove.url.path, '/storage/v1/object/recipe-photos');
+      expect(jsonBodyOf(remove), {
         'prefixes': [
           '$testChefId/$lasagneId/$_oldPhotoId.jpg',
           '$testChefId/$lasagneId/$_oldPhotoId-thumb.jpg',
-          '$testChefId/$lasagneId/$_photoId.jpg',
-          '$testChefId/$lasagneId/$_photoId-thumb.jpg',
+          '$testChefId/$lasagneId/$abandoned.jpg',
         ],
       });
     });
 
-    test('sin fotos no pide nada; si falla → unavailable', () async {
-      await repository.delete(
+    test('sin foto que quede (la sacó), borra todo', () async {
+      server.handler = (request) async => request.method == 'POST'
+          ? jsonResponse(folderFiles)
+          : jsonResponse(<Object>[]);
+
+      await repository.deleteAllExcept(chefId: testChefId, recipeId: lasagneId);
+
+      expect(jsonBodyOf(server.last)['prefixes'], hasLength(5));
+    });
+
+    test('si no sobra nada no borra; si falla el listado o el borrado → unavailable', () async {
+      server.handler = (_) async => jsonResponse(folderFiles.sublist(0, 2));
+      await repository.deleteAllExcept(
         chefId: testChefId,
         recipeId: lasagneId,
-        photoIds: const [],
+        keepPhotoId: _photoId,
       );
-      expect(server.requests, isEmpty);
+      expect(server.requests.map((r) => r.method), ['POST']);
 
       server.handler = (_) async => _storageError(500, '500', 'internal');
       await expectLater(
-        repository.delete(
-          chefId: testChefId,
-          recipeId: lasagneId,
-          photoIds: const [_oldPhotoId],
-        ),
+        repository.deleteAllExcept(chefId: testChefId, recipeId: lasagneId),
         _failure(RecipePhotoFailureKind.unavailable),
       );
+
+      server.handler = (request) async => request.method == 'POST'
+          ? jsonResponse(folderFiles)
+          : _storageError(500, '500', 'internal');
+      await expectLater(
+        repository.deleteAllExcept(chefId: testChefId, recipeId: lasagneId),
+        _failure(RecipePhotoFailureKind.unavailable),
+      );
+    });
+  });
+
+  // Un pedido que no responde (una red móvil mala) no deja guardando para
+  // siempre: reintentar es seguro.
+  group('sin respuesta', () {
+    late SupabaseRecipePhotosRepository quick;
+
+    setUp(() {
+      server.handler = (_) => Completer<http.Response>().future;
+      quick = SupabaseRecipePhotosRepository(
+        server.client,
+        uploadTimeout: const Duration(milliseconds: 20),
+        requestTimeout: const Duration(milliseconds: 20),
+      );
+    });
+
+    test('la subida, set_recipe_photo y la limpieza se dan por fallidas (unavailable)', () async {
+      final unavailable = _failure(RecipePhotoFailureKind.unavailable);
+      await expectLater(
+        quick.upload(chefId: testChefId, recipeId: lasagneId, photo: _photo),
+        unavailable,
+      );
+      await expectLater(
+        quick.setPhoto(recipeId: lasagneId, photoId: _photoId),
+        unavailable,
+      );
+      await expectLater(
+        quick.deleteAllExcept(chefId: testChefId, recipeId: lasagneId),
+        unavailable,
+      );
+    });
+
+    test('los plazos de verdad: un minuto para subir, 30 s para lo demás', () {
+      final repository = SupabaseRecipePhotosRepository(server.client);
+      expect(repository.uploadTimeout, const Duration(seconds: 60));
+      expect(repository.requestTimeout, const Duration(seconds: 30));
     });
   });
 }

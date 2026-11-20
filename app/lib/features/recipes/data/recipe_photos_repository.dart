@@ -25,6 +25,10 @@ const String recipePhotoCacheControl = '604800';
 /// mala). El reintento sube los mismos archivos.
 const Duration recipePhotoUploadTimeout = Duration(seconds: 60);
 
+/// Cuánto se espera set_recipe_photo, el listado de la carpeta o el borrado.
+/// Reintentar cualquiera de los tres es seguro.
+const Duration recipePhotoRequestTimeout = Duration(seconds: 30);
+
 abstract interface class RecipePhotosRepository {
   /// La URL pública de la foto [photoId] del plato [recipeId] de la cocina
   /// [chefId] (la miniatura con [thumb]); null sin backend.
@@ -51,12 +55,13 @@ abstract interface class RecipePhotosRepository {
   /// [RecipePhotoFailure].
   Future<String?> setPhoto({required String recipeId, String? photoId});
 
-  /// Borra los archivos de las fotos [photoIds] del plato [recipeId]. Lanza
-  /// [RecipePhotoFailure].
-  Future<void> delete({
+  /// Borra de la carpeta del plato [recipeId] todo lo que no sea la foto
+  /// [keepPhotoId] (con null, todo): la foto que dejó de usarse y las subidas
+  /// abandonadas. Lanza [RecipePhotoFailure].
+  Future<void> deleteAllExcept({
     required String chefId,
     required String recipeId,
-    required Iterable<String> photoIds,
+    String? keepPhotoId,
   });
 }
 
@@ -89,9 +94,18 @@ class RecipePhotoFailure implements Exception {
 }
 
 class SupabaseRecipePhotosRepository implements RecipePhotosRepository {
-  SupabaseRecipePhotosRepository(this._client);
+  SupabaseRecipePhotosRepository(
+    this._client, {
+    this.uploadTimeout = recipePhotoUploadTimeout,
+    this.requestTimeout = recipePhotoRequestTimeout,
+  });
 
   final SupabaseClient _client;
+
+  /// [recipePhotoUploadTimeout] y [recipePhotoRequestTimeout]; los tests los
+  /// achican.
+  final Duration uploadTimeout;
+  final Duration requestTimeout;
 
   StorageFileApi get _bucket => _client.storage.from(recipePhotosBucket);
 
@@ -140,7 +154,7 @@ class SupabaseRecipePhotosRepository implements RecipePhotosRepository {
               cacheControl: recipePhotoCacheControl,
             ),
           )
-          .timeout(recipePhotoUploadTimeout);
+          .timeout(uploadTimeout);
     } on StorageException catch (error) {
       if (_isDuplicate(error)) return;
       throw RecipePhotoFailure(_storageFailure(error));
@@ -153,10 +167,12 @@ class SupabaseRecipePhotosRepository implements RecipePhotosRepository {
   Future<String?> setPhoto({required String recipeId, String? photoId}) async {
     final Object? previous;
     try {
-      previous = await _client.rpc<dynamic>(
-        'set_recipe_photo',
-        params: {'p_recipe_id': recipeId, 'p_photo_id': photoId},
-      );
+      previous = await _client
+          .rpc<dynamic>(
+            'set_recipe_photo',
+            params: {'p_recipe_id': recipeId, 'p_photo_id': photoId},
+          )
+          .timeout(requestTimeout);
     } on PostgrestException catch (error) {
       // 22023 photo_not_found, 42501 not_a_chef, P0002 recipe_not_found. No
       // se loguea el detalle (trae las rutas).
@@ -173,24 +189,36 @@ class SupabaseRecipePhotosRepository implements RecipePhotosRepository {
   }
 
   @override
-  Future<void> delete({
+  Future<void> deleteAllExcept({
     required String chefId,
     required String recipeId,
-    required Iterable<String> photoIds,
+    String? keepPhotoId,
   }) async {
-    final paths = [
-      for (final photoId in photoIds)
+    final folder = '${chefId.toLowerCase()}/${recipeId.toLowerCase()}';
+    final keep = {
+      if (keepPhotoId != null)
         for (final thumb in const [false, true])
           recipePhotoPath(
             chefId: chefId,
             recipeId: recipeId,
-            photoId: photoId,
+            photoId: keepPhotoId,
             thumb: thumb,
           ),
-    ];
-    if (paths.isEmpty) return;
+    };
     try {
-      await _bucket.remove(paths);
+      // Una carpeta tiene pocos archivos (los dos de la foto y, a lo sumo,
+      // los de un intento abandonado): 1000 alcanza.
+      final files = await _bucket
+          .list(path: folder, searchOptions: const SearchOptions(limit: 1000))
+          .timeout(requestTimeout);
+      final paths = [
+        for (final file in files)
+          // Sin id es una carpeta (no debería haber).
+          if (file.id != null && !keep.contains('$folder/${file.name}'))
+            '$folder/${file.name}',
+      ];
+      if (paths.isEmpty) return;
+      await _bucket.remove(paths).timeout(requestTimeout);
     } on Object {
       throw const RecipePhotoFailure(RecipePhotoFailureKind.unavailable);
     }
@@ -242,9 +270,9 @@ class _NoBackendRecipePhotosRepository implements RecipePhotosRepository {
       Future.error(_failure);
 
   @override
-  Future<void> delete({
+  Future<void> deleteAllExcept({
     required String chefId,
     required String recipeId,
-    required Iterable<String> photoIds,
+    String? keepPhotoId,
   }) => Future.error(_failure);
 }

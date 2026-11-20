@@ -589,7 +589,7 @@ void main() {
 
       expect(repository.saveCalls, isEmpty);
       expect(photos.setCalls, [(recipeId: lasagneId, photoId: _id1)]);
-      expect(photos.deleteCalls.single.photoIds, {savedPhoto});
+      expect(photos.uploaded, isNot(contains('$lasagneId/$savedPhoto')));
       expect(stateOf(editLasagne).savedPhotoId, _id1);
     });
 
@@ -619,7 +619,7 @@ void main() {
 
       state = stateOf(editLasagne);
       expect(photos.setCalls, [(recipeId: lasagneId, photoId: null)]);
-      expect(photos.deleteCalls.single.photoIds, {savedPhoto});
+      expect(photos.uploaded, isNot(contains('$lasagneId/$savedPhoto')));
       expect(state.savedPhotoId, isNull);
       expect(state.dirty, isFalse);
       expect(inCatalog(lasagneId)!.photoId, isNull);

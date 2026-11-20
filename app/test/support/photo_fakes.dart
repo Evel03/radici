@@ -72,15 +72,21 @@ class FakeRecipePhotosRepository implements RecipePhotosRepository {
 
   /// Si no es null, [setPhoto] falla con esto (y no cambia nada).
   RecipePhotoFailureKind? setFailure;
-  bool failDelete = false;
+  bool failClean = false;
 
   Completer<void>? pendingUpload;
   Completer<void>? pendingSet;
 
+  /// Si no es null, [deleteAllExcept] espera a que se complete (después de
+  /// borrar, como los demás).
+  Completer<void>? pendingClean;
+
   /// La foto de cada [upload], en orden (también las que fallaron).
   final List<String> uploadCalls = [];
   final List<({String recipeId, String? photoId})> setCalls = [];
-  final List<({String recipeId, Set<String> photoIds})> deleteCalls = [];
+
+  /// Cada [deleteAllExcept]: el plato y la foto que deja.
+  final List<({String recipeId, String? keep})> cleanCalls = [];
 
   @override
   String publicUrl({
@@ -125,17 +131,24 @@ class FakeRecipePhotosRepository implements RecipePhotosRepository {
   }
 
   @override
-  Future<void> delete({
+  Future<void> deleteAllExcept({
     required String chefId,
     required String recipeId,
-    required Iterable<String> photoIds,
+    String? keepPhotoId,
   }) async {
-    final ids = photoIds.toSet();
-    deleteCalls.add((recipeId: recipeId, photoIds: ids));
-    if (failDelete) {
+    cleanCalls.add((recipeId: recipeId, keep: keepPhotoId));
+    final fail = failClean;
+    if (!fail) {
+      uploaded.removeWhere(
+        (key) =>
+            key.startsWith('$recipeId/') && key != '$recipeId/$keepPhotoId',
+      );
+    }
+    final wait = pendingClean;
+    if (wait != null) await wait.future;
+    if (fail) {
       throw const RecipePhotoFailure(RecipePhotoFailureKind.unavailable);
     }
-    uploaded.removeAll([for (final id in ids) '$recipeId/$id']);
   }
 }
 

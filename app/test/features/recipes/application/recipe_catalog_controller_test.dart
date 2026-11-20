@@ -1,6 +1,7 @@
 // Catálogo de platos de la cocinera: carga, búsqueda, guardar (el plato queda
 // en la lista sin volver a leer), desactivar o reactivar (se ve enseguida y
-// vuelve atrás si falla) y la foto (subir, set_recipe_photo y borrar la vieja).
+// vuelve atrás si falla) y la foto (subir, set_recipe_photo y limpiar la
+// carpeta del plato).
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -229,7 +230,7 @@ void main() {
       expect(repository.recipes[lasagneId]!.photoId, oldPhoto);
     });
 
-    test('poner la primera foto: sube, la guarda y queda en la lista; nada que borrar', () async {
+    test('poner la primera foto: sube, la guarda, queda en la lista y limpia la carpeta dejándola', () async {
       await start();
 
       await controller().setPhoto(risottoId, newPhoto);
@@ -237,10 +238,11 @@ void main() {
       expect(photos.uploadCalls, [newPhotoId]);
       expect(photos.setCalls, [(recipeId: risottoId, photoId: newPhotoId)]);
       expect(byId(risottoId).photoId, newPhotoId);
-      expect(photos.deleteCalls, isEmpty);
+      expect(photos.cleanCalls, [(recipeId: risottoId, keep: newPhotoId)]);
+      expect(photos.uploaded, {'$risottoId/$newPhotoId'});
     });
 
-    test('cambiarla: después de guardar la nueva borra los archivos de la vieja', () async {
+    test('cambiarla: después de guardar la nueva, la carpeta queda solo con ella', () async {
       lasagneWithPhoto();
       await start();
 
@@ -248,24 +250,25 @@ void main() {
 
       expect(byId(lasagneId).photoId, newPhotoId);
       expect(photos.photoOf[lasagneId], newPhotoId);
-      expect(photos.deleteCalls.single.recipeId, lasagneId);
-      expect(photos.deleteCalls.single.photoIds, {oldPhoto});
+      expect(photos.cleanCalls, [(recipeId: lasagneId, keep: newPhotoId)]);
       expect(photos.uploaded, {'$lasagneId/$newPhotoId'});
     });
 
-    // Un intento anterior la guardó pero la respuesta se perdió: la base ya
-    // no devuelve la vieja, pero la lista la conoce.
-    test('si la base ya no devuelve la vieja, borra igual la que tenía la lista', () async {
+    // Una subida abandonada (falló y Evelyn eligió otra o salió) y una vieja
+    // cuya respuesta se perdió: la limpieza de la carpeta las borra.
+    test('la limpieza borra también las subidas abandonadas y una vieja que la base ya no devuelve', () async {
       repository.recipes[lasagneId] = lasagne().copyWith(photoId: oldPhoto);
-      photos.photoOf[lasagneId] = newPhotoId;
+      photos
+        ..uploaded.addAll({'$lasagneId/$oldPhoto', '$lasagneId/abandonada', '$risottoId/otra'})
+        ..photoOf[lasagneId] = newPhotoId;
       await start();
 
       await controller().setPhoto(lasagneId, newPhoto);
 
-      expect(photos.deleteCalls.single.photoIds, {oldPhoto});
+      expect(photos.uploaded, {'$lasagneId/$newPhotoId', '$risottoId/otra'});
     });
 
-    test('sacarla: set_recipe_photo con null, la lista sin foto y los archivos borrados', () async {
+    test('sacarla: set_recipe_photo con null, la lista sin foto y la carpeta vacía', () async {
       lasagneWithPhoto();
       await start();
 
@@ -274,7 +277,26 @@ void main() {
       expect(photos.uploadCalls, isEmpty);
       expect(photos.setCalls, [(recipeId: lasagneId, photoId: null)]);
       expect(byId(lasagneId).photoId, isNull);
-      expect(photos.deleteCalls.single.photoIds, {oldPhoto});
+      expect(photos.cleanCalls, [(recipeId: lasagneId, keep: null)]);
+      expect(photos.uploaded.where((f) => f.startsWith('$lasagneId/')), isEmpty);
+    });
+
+    test('el próximo cambio de foto del mismo plato espera a que termine la limpieza', () async {
+      const secondId = 'f0000000-0000-4000-8000-0000000000cc';
+      await start();
+      photos.pendingClean = Completer<void>();
+      await controller().setPhoto(risottoId, newPhoto);
+      final cleaning = photos.pendingClean!;
+      photos.pendingClean = null;
+
+      final second = controller().setPhoto(risottoId, NewRecipePhoto(photoId: secondId, photo: samplePhoto));
+      await pumpEventQueue();
+      expect(photos.uploadCalls, [newPhotoId], reason: 'la segunda espera');
+
+      cleaning.complete();
+      await second;
+      expect(photos.uploadCalls, [newPhotoId, secondId]);
+      expect(photos.uploaded, {'$risottoId/$secondId'});
     });
 
     test('si falla la subida o set_recipe_photo, la lista no cambia, no borra nada y relanza', () async {
@@ -293,19 +315,19 @@ void main() {
       await expectLater(controller().setPhoto(lasagneId, newPhoto), failure(RecipePhotoFailureKind.notFound));
 
       expect(byId(lasagneId).photoId, oldPhoto);
-      expect(photos.deleteCalls, isEmpty);
+      expect(photos.cleanCalls, isEmpty);
     });
 
-    test('si no puede borrar la vieja, no avisa: la foto nueva ya quedó', () async {
+    test('si no puede limpiar la carpeta, no avisa: la foto nueva ya quedó', () async {
       lasagneWithPhoto();
-      photos.failDelete = true;
+      photos.failClean = true;
       await start();
 
       await controller().setPhoto(lasagneId, newPhoto);
       await pumpEventQueue();
 
       expect(byId(lasagneId).photoId, newPhotoId);
-      expect(photos.deleteCalls, hasLength(1));
+      expect(photos.cleanCalls, hasLength(1));
     });
 
     test('una lectura que se cruza con el cambio de foto no lo pisa', () async {
