@@ -106,7 +106,7 @@ void main() {
     expect(inTile(minestroneId, 'Sin descripción: no está en la web'), findsOneWidget);
   });
 
-  // La miniatura (360 px) de los platos con foto; sin foto, como siempre.
+  // La miniatura (320 px de lado menor) de los platos con foto; sin foto, como siempre.
   group('fotos', () {
     const photoId = 'f0000000-0000-4000-8000-0000000000aa';
     List<Recipe> withPhoto() => [risotto(), frittata(), lasagne().copyWith(photoId: photoId), minestrone()];

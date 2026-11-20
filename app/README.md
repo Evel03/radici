@@ -172,8 +172,10 @@ repositorios falsos (`test/support/fakes.dart`).
   archivos (el iPhone ofrece ahí mismo sacar una foto). La foto se prepara en el dispositivo
   (`processRecipePhoto`, `domain/recipe_photo.dart`): se pide al selector ya achicada a 1200 px (en el
   iPhone convierte HEIC a JPEG; en la web la achica el navegador), se endereza con su orientación
-  EXIF, se achica a 1200 y a 360 px de lado mayor y se vuelve a codificar en JPEG **sin ningún
-  metadato** (EXIF, GPS, perfil de color), siempre debajo de 2 MiB. En el teléfono corre en otro
+  EXIF, se achica a 1200 px de lado mayor y la miniatura a 320 de lado menor (se ve recortada en un
+  cuadrado) y se vuelve a codificar en JPEG **sin metadatos** (EXIF, GPS, XMP, IPTC, comentarios ni
+  ningún otro segmento), siempre debajo de 2 MiB. Solo queda el perfil de color (ICC): no es un dato
+  personal y sin él una foto Display P3 del iPhone se ve apagada. En el teléfono corre en otro
   isolate; en la web, en el hilo principal (la foto ya llega achicada por el navegador). Queda en el
   editor como un cambio sin guardar y se sube al tocar «Salva»: primero el plato (`save_recipe`),
   después los dos archivos al bucket público `recipe-photos` (`{chef_id}/{plato}/{foto}.jpg` y
@@ -183,8 +185,8 @@ repositorios falsos (`test/support/fakes.dart`).
   dice con «Riprova» (sube solo la foto, con el mismo uuid; un archivo que ya estaba cuenta como
   subido). En un plato guardado, «Cambia foto» y «Togli foto» se aplican al guardar; si solo cambió la
   foto, el plato no se vuelve a mandar. Duplicar un plato no copia la foto. La miniatura se ve en la
-  lista de platos (a la izquierda), en el editor y en el menù elegido del detalle del pedido (a la
-  derecha del nombre); sin foto, como siempre, y si no carga, un cuadrado neutro. La URL pública la
+  lista de platos (a la izquierda) y en el menù elegido del detalle del pedido (a la derecha del
+  nombre); la vista previa del editor usa la foto grande; sin foto, como siempre, y si no carga, un cuadrado neutro. La URL pública la
   arma el repositorio (`getPublicUrl`); los widgets la leen de `recipePhotoUrlProvider`. En iOS, los
   textos de permiso de la cámara y de las fotos (`NSCameraUsageDescription`,
   `NSPhotoLibraryUsageDescription` en `ios/Runner/Info.plist`) están en italiano: no hay

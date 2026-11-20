@@ -132,6 +132,14 @@ void main() {
       expect(picker.calls, [RecipePhotoSource.gallery]);
       await tester.ensureVisible(byKey('recipe-photo-preview'));
       await tester.pumpAndSettle();
+      // La vista previa, con la foto grande (la miniatura es para la lista).
+      final preview = tester.widget<Image>(
+        find.descendant(
+          of: byKey('recipe-photo-preview'),
+          matching: find.byType(Image),
+        ),
+      );
+      expect((preview.image as MemoryImage).bytes, same(samplePhoto.full));
       expect(
         tester.getSemantics(byKey('recipe-photo-preview')),
         matchesSemantics(label: 'Foto del piatto', isImage: true),
@@ -310,7 +318,7 @@ void main() {
   );
 
   testWidgets(
-    'un plato con foto: la muestra (la miniatura) con «Cambia foto» y «Togli foto»; sacarla se aplica al guardar',
+    'un plato con foto: la muestra (la grande) con «Cambia foto» y «Togli foto»; sacarla se aplica al guardar',
     (tester) async {
       lasagneWithPhoto();
       final urls = <String>[];
@@ -326,9 +334,8 @@ void main() {
       expect(byKey('recipe-photo-preview'), findsOneWidget);
       expect(
         urls,
-        contains(
-          'https://fotos.test/$testChefId/$lasagneId/$_savedPhoto-thumb.jpg',
-        ),
+        contains('https://fotos.test/$testChefId/$lasagneId/$_savedPhoto.jpg'),
+        reason: 'la vista previa usa la foto grande',
       );
       expect(
         find.widgetWithText(OutlinedButton, 'Cambia foto'),

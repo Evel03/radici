@@ -272,7 +272,7 @@ describe("foto del plato", () => {
     return img;
   }
 
-  it("con foto, la tarjeta trae la miniatura (la de 360 px); sin foto, null y se ve como antes", () => {
+  it("con foto, la tarjeta trae la miniatura (la de 320 px de lado menor); sin foto, null y se ve como antes", () => {
     const cards = view().cards;
     expect(cards.map((card) => [card.name, card.photo])).toEqual([
       ["Lasagne", LASAGNE_PHOTO.thumb],

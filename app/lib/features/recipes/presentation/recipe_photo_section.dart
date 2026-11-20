@@ -17,7 +17,7 @@ import 'package:radici/features/recipes/domain/recipe_photo.dart';
 import 'package:radici/features/recipes/presentation/recipe_photo_thumbnail.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
-/// Lado de la vista previa: con la miniatura (360 px) se ve nítida hasta 3x.
+/// Lado de la vista previa, con la foto grande (1200 px de lado mayor).
 const double recipePhotoPreviewSize = 120;
 
 /// El mensaje de una foto que no se pudo guardar (el plato sí).
@@ -122,7 +122,7 @@ class RecipePhotoSection extends ConsumerWidget {
     final Widget? preview = switch ((newPhoto, savedPhotoId)) {
       (final NewRecipePhoto photo, _) => RecipePhotoSquare(
         key: const ValueKey('recipe-photo-preview'),
-        image: MemoryImage(photo.photo.thumb),
+        image: MemoryImage(photo.photo.full),
         size: recipePhotoPreviewSize,
         semanticLabel: l10n.recipePhotoPreview,
       ),
@@ -130,6 +130,7 @@ class RecipePhotoSection extends ConsumerWidget {
         key: const ValueKey('recipe-photo-preview'),
         recipeId: state.draft.id,
         photoId: photoId,
+        thumb: false,
         size: recipePhotoPreviewSize,
         semanticLabel: l10n.recipePhotoPreview,
       ),

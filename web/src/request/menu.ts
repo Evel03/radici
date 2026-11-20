@@ -121,7 +121,7 @@ export interface DishCard {
   allergens: string;
   /** «Vegetariano», «Vegano» o null. */
   diet: string | null;
-  /** URL de la miniatura (la de 360 px); null = sin foto. */
+  /** URL de la miniatura (la de 320 px de lado menor); null = sin foto. */
   photo: string | null;
   checked: boolean;
   /** Al tope, las que no están marcadas. */
@@ -199,7 +199,8 @@ export function menuPanelView(input: MenuPanelInput, i18n: I18n): MenuPanelView 
 
 /**
  * Lado de la miniatura en px CSS (el mismo de .dish__photo en request.css). Fijo, no crece con la letra: con
- * letra grande la foto pasa arriba del texto. El archivo tiene 360 px de lado mayor: alcanza para pantallas 3x.
+ * letra grande la foto pasa arriba del texto. El archivo tiene 320 px de lado menor (se recorta en un cuadrado):
+ * alcanza para 80 px en pantallas 3x.
  */
 export const DISH_PHOTO_SIZE = 80;
 

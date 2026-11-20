@@ -13,10 +13,13 @@ import 'package:radici/features/recipes/domain/recipe_photo.dart';
 /// Un JPEG de verdad, chiquito (4×3).
 final Uint8List tinyJpeg = img.encodeJpg(img.Image(width: 4, height: 3));
 
-/// Lo que devuelve [fakeProcessRecipePhoto]: los mismos bytes en los dos.
+/// Otro JPEG chiquito (2×2), para distinguir la miniatura de la grande.
+final Uint8List tinyThumbJpeg = img.encodeJpg(img.Image(width: 2, height: 2));
+
+/// Lo que devuelve [fakeProcessRecipePhoto].
 final ProcessedRecipePhoto samplePhoto = ProcessedRecipePhoto(
   full: tinyJpeg,
-  thumb: tinyJpeg,
+  thumb: tinyThumbJpeg,
 );
 
 /// Bytes que [fakeProcessRecipePhoto] no puede abrir.
