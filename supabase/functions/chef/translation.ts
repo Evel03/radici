@@ -49,10 +49,35 @@ export interface Translator {
 /** De dónde sale la traducción: Claude (con ANTHROPIC_API_KEY), la de mentira (TRANSLATE_TRANSPORT=fake) o ninguna. */
 export type TranslationMode = "claude" | "fake" | "off";
 
-/** TRANSLATE_TRANSPORT=fake manda aunque haya clave (desarrollo, sin gastar). Sin clave, apagada. */
-export function translationModeFrom(get: (name: string) => string | undefined): TranslationMode {
-  if (get("TRANSLATE_TRANSPORT")?.trim().toLowerCase() === "fake") return "fake";
-  return get("ANTHROPIC_API_KEY")?.trim() ? "claude" : "off";
+/** Los hosts de un Supabase local: kong (supabase start y functions serve), localhost y 127.0.0.1. */
+const LOCAL_SUPABASE_HOSTS: readonly string[] = ["kong", "localhost", "127.0.0.1"];
+
+/** SUPABASE_URL apunta a un Supabase local (nunca el de producción, https://<ref>.supabase.co). */
+export function isLocalSupabaseUrl(url: string | undefined): boolean {
+  if (!url?.trim()) return false;
+  try {
+    return LOCAL_SUPABASE_HOSTS.includes(new URL(url.trim()).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+export interface TranslationConfig {
+  mode: TranslationMode;
+  /** Pidieron TRANSLATE_TRANSPORT=fake fuera de un Supabase local: se ignora y la traducción queda apagada. */
+  fakeIgnored: boolean;
+}
+
+/**
+ * De dónde sale la traducción. TRANSLATE_TRANSPORT=fake manda aunque haya clave (desarrollo, sin
+ * gastar), pero solo con SUPABASE_URL local: en cualquier otro lado se ignora y la traducción queda
+ * apagada, como sin configurar (nunca traducciones de mentira en producción). Sin clave, apagada.
+ */
+export function readTranslationConfig(get: (name: string) => string | undefined): TranslationConfig {
+  if (get("TRANSLATE_TRANSPORT")?.trim().toLowerCase() === "fake") {
+    return isLocalSupabaseUrl(get("SUPABASE_URL")) ? { mode: "fake", fakeIgnored: false } : { mode: "off", fakeIgnored: true };
+  }
+  return { mode: get("ANTHROPIC_API_KEY")?.trim() ? "claude" : "off", fakeIgnored: false };
 }
 
 // ---------------------------------------------------------------------------

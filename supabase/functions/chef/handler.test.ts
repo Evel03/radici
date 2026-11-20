@@ -1124,6 +1124,21 @@ test("traducir con la traducción apagada (sin ANTHROPIC_API_KEY): 501 notConfig
   assert.equal((await handle(post("/translate", {}))).status, 400);
 });
 
+test("traducir con TRANSLATE_TRANSPORT=fake fuera de un Supabase local: 501 notConfigured y un error en el log", async () => {
+  // index.ts no arma ningún traductor (la configuración dice off): el handler recibe null.
+  const { handle, store, logs } = harness({
+    env: { SUPABASE_URL: "https://abcdefghijklmnop.supabase.co", TRANSLATE_TRANSPORT: "fake" },
+    translator: null,
+  });
+  const response = await handle(post("/translate", DISH));
+  assert.equal(response.status, 501);
+  assert.deepEqual(await json(response), { error: "notConfigured" });
+  assert.equal(store.rateHits.length, 0);
+  const entry = logs.find((log) => log.event === "translate_failed");
+  assert.equal(entry?.fields["reason"], "fakeIgnored");
+  assert.equal(entry?.level, "error");
+});
+
 test("traducir pasado el límite de la cocina: 429 rateLimited con Retry-After, sin llamar al traductor", async () => {
   const { handle, store, translator, logs } = harness();
   store.rateAllowed = false;
@@ -1372,6 +1387,7 @@ test("index.ts: el traductor real solo con ANTHROPIC_API_KEY; el de mentira con 
   const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   assert.match(index, /import \{ createClaudeTranslator \} from "\.\/claude_translator\.ts";/);
   assert.match(index, /if \(config\.translation === "fake"\) return fakeTranslator;/);
+  assert.match(index, /if \(config\.translationFakeIgnored\) consoleLogger\("error", "translate_fake_ignored"\);/, "error al arrancar, sin datos");
   assert.match(index, /if \(config\.translation === "off"\) return null;/);
   assert.match(index, /return createClaudeTranslator\(apiKey\);/);
   assert.match(index, /translator: createTranslator\(\),/);
@@ -1552,8 +1568,15 @@ test("readChefConfig: orígenes de ALLOWED_ORIGINS, lo que falta de Supabase y d
   assert.deepEqual(chefConfigWarnings(withKey), []);
   assert.ok(!JSON.stringify(withKey).includes("sk-ant-prueba"), "la clave no queda en la configuración (la lee solo index.ts)");
   const fake = readChefConfig((name) => ({ ...ENV, TRANSLATE_TRANSPORT: "fake" })[name]);
-  assert.equal(fake.translation, "fake");
+  assert.equal(fake.translation, "fake", "con el Supabase local de los tests (127.0.0.1)");
+  assert.equal(fake.translationFakeIgnored, false);
   assert.deepEqual(chefConfigWarnings(fake), []);
+  const fakeInProduction = readChefConfig(
+    (name) => ({ ...ENV, SUPABASE_URL: "https://abcdefghijklmnop.supabase.co", TRANSLATE_TRANSPORT: "fake", ANTHROPIC_API_KEY: "sk-ant-prueba" })[name],
+  );
+  assert.equal(fakeInProduction.translation, "off", "nunca traducciones de mentira en producción, aunque haya clave");
+  assert.equal(fakeInProduction.translationFakeIgnored, true);
+  assert.deepEqual(chefConfigWarnings(fakeInProduction), ["ANTHROPIC_API_KEY"]);
 
   const empty = readChefConfig(() => undefined);
   assert.deepEqual(empty.missing, ["SUPABASE_URL", "SUPABASE_SECRET_KEYS"]);

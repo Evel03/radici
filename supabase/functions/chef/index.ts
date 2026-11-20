@@ -30,6 +30,8 @@ if (config.missing.length > 0) consoleLogger("error", "config_missing", { missin
 const incomplete = chefConfigWarnings(config);
 if (incomplete.length > 0) consoleLogger("warn", "config_incomplete", { missing: incomplete });
 if (config.translation === "fake") consoleLogger("warn", "translate_fake");
+// TRANSLATE_TRANSPORT=fake fuera de un Supabase local: se ignora (la traducción queda apagada).
+if (config.translationFakeIgnored) consoleLogger("error", "translate_fake_ignored");
 
 function createStore(): ChefStore {
   const supabaseUrl = env("SUPABASE_URL")?.trim();

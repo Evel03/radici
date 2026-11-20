@@ -55,7 +55,7 @@ import {
   TRANSLATE_RETRY_AFTER_SECONDS,
   readTranslationOutput,
   translateRateKey,
-  translationModeFrom,
+  readTranslationConfig,
   type TranslationMode,
   type Translator,
   type TranslatorReply,
@@ -79,17 +79,25 @@ export interface ChefConfig {
   missing: string[];
   /**
    * De dónde sale la traducción de los platos: Claude (ANTHROPIC_API_KEY), la de mentira
-   * (TRANSLATE_TRANSPORT=fake) u off (POST /translate responde 503). La clave no queda acá: la lee
-   * solo index.ts para armar el cliente.
+   * (TRANSLATE_TRANSPORT=fake, solo con un Supabase local) u off (POST /translate responde 501). La
+   * clave no queda acá: la lee solo index.ts para armar el cliente.
    */
   translation: TranslationMode;
+  /** TRANSLATE_TRANSPORT=fake fuera de un Supabase local: ignorado (error al arrancar y en cada pedido). */
+  translationFakeIgnored: boolean;
 }
 
 export function readChefConfig(get: (name: string) => string | undefined): ChefConfig {
   const missing: string[] = [];
   if (!get("SUPABASE_URL")?.trim()) missing.push("SUPABASE_URL");
   if (!resolveServiceKey(get)) missing.push("SUPABASE_SECRET_KEYS");
-  return { allowedOrigins: parseAllowedOrigins(get("ALLOWED_ORIGINS")), missing, translation: translationModeFrom(get) };
+  const translation = readTranslationConfig(get);
+  return {
+    allowedOrigins: parseAllowedOrigins(get("ALLOWED_ORIGINS")),
+    missing,
+    translation: translation.mode,
+    translationFakeIgnored: translation.fakeIgnored,
+  };
 }
 
 /**
@@ -717,7 +725,10 @@ async function translateRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller,
 
   const translator = deps.translator;
   if (!translator) {
-    return fail({ status: 501, body: { error: "notConfigured" }, level: "warn", fields: { reason: "notConfigured" } });
+    // TRANSLATE_TRANSPORT=fake fuera de local es un error de configuración; sin clave, una decisión.
+    return deps.config.translationFakeIgnored
+      ? fail({ status: 501, body: { error: "notConfigured" }, level: "error", fields: { reason: "fakeIgnored" } })
+      : fail({ status: 501, body: { error: "notConfigured" }, level: "warn", fields: { reason: "notConfigured" } });
   }
 
   let allowed: boolean;

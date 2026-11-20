@@ -22,7 +22,8 @@ import {
   replyFromMessage,
   translateRateKey,
   translateRateSubject,
-  translationModeFrom,
+  isLocalSupabaseUrl,
+  readTranslationConfig,
   translationSchema,
   translationUserMessage,
 } from "./translation.ts";
@@ -45,15 +46,38 @@ const GOOD = {
 // Modo y límite
 // ---------------------------------------------------------------------------
 
-test("translationModeFrom: Claude con ANTHROPIC_API_KEY, apagada sin ella; TRANSLATE_TRANSPORT=fake manda siempre", () => {
-  const mode = (env: Record<string, string>) => translationModeFrom((name) => env[name]);
-  assert.equal(mode({}), "off");
-  assert.equal(mode({ ANTHROPIC_API_KEY: "   " }), "off", "una clave en blanco no cuenta");
-  assert.equal(mode({ ANTHROPIC_API_KEY: "sk-ant-prueba" }), "claude");
-  assert.equal(mode({ TRANSLATE_TRANSPORT: "fake" }), "fake");
-  assert.equal(mode({ TRANSLATE_TRANSPORT: " FAKE ", ANTHROPIC_API_KEY: "sk-ant-prueba" }), "fake", "en desarrollo no gasta aunque haya clave");
-  assert.equal(mode({ TRANSLATE_TRANSPORT: "log" }), "off", "otro valor no es el de mentira");
-  assert.equal(mode({ TRANSLATE_TRANSPORT: "claude", ANTHROPIC_API_KEY: "sk-ant-prueba" }), "claude");
+const LOCAL = "http://kong:8000";
+const PRODUCTION = "https://abcdefghijklmnop.supabase.co";
+
+test("readTranslationConfig: Claude con ANTHROPIC_API_KEY, apagada sin ella; TRANSLATE_TRANSPORT=fake manda, solo en local", () => {
+  const config = (env: Record<string, string>) => readTranslationConfig((name) => ({ SUPABASE_URL: LOCAL, ...env })[name]);
+  assert.deepEqual(config({}), { mode: "off", fakeIgnored: false });
+  assert.deepEqual(config({ ANTHROPIC_API_KEY: "   " }), { mode: "off", fakeIgnored: false }, "una clave en blanco no cuenta");
+  assert.deepEqual(config({ ANTHROPIC_API_KEY: "sk-ant-prueba" }), { mode: "claude", fakeIgnored: false });
+  assert.deepEqual(config({ TRANSLATE_TRANSPORT: "fake" }), { mode: "fake", fakeIgnored: false });
+  assert.deepEqual(
+    config({ TRANSLATE_TRANSPORT: " FAKE ", ANTHROPIC_API_KEY: "sk-ant-prueba" }),
+    { mode: "fake", fakeIgnored: false },
+    "en desarrollo no gasta aunque haya clave",
+  );
+  assert.deepEqual(config({ TRANSLATE_TRANSPORT: "log" }), { mode: "off", fakeIgnored: false }, "otro valor no es el de mentira");
+  assert.deepEqual(config({ TRANSLATE_TRANSPORT: "claude", ANTHROPIC_API_KEY: "sk-ant-prueba" }), { mode: "claude", fakeIgnored: false });
+});
+
+test("readTranslationConfig: TRANSLATE_TRANSPORT=fake fuera de un Supabase local se ignora y la traducción queda apagada, aunque haya clave", () => {
+  for (const url of [PRODUCTION, undefined, "", "no es una URL", "https://kong.example.com", "http://localhost.example.com"]) {
+    const env: Record<string, string | undefined> = { SUPABASE_URL: url, TRANSLATE_TRANSPORT: "fake", ANTHROPIC_API_KEY: "sk-ant-prueba" };
+    assert.deepEqual(readTranslationConfig((name) => env[name]), { mode: "off", fakeIgnored: true }, String(url));
+  }
+});
+
+test("isLocalSupabaseUrl: kong, localhost y 127.0.0.1, con cualquier puerto; nada más", () => {
+  for (const url of ["http://kong:8000", "http://localhost:54321", "http://127.0.0.1:55321", " http://LOCALHOST:54321/ ", "https://localhost"]) {
+    assert.equal(isLocalSupabaseUrl(url), true, url);
+  }
+  for (const url of [PRODUCTION, "https://radicicucina.app", "http://kong.evil.test", "http://127.0.0.2:54321", "http://10.0.0.5:8000", "kong", "", undefined]) {
+    assert.equal(isLocalSupabaseUrl(url), false, String(url));
+  }
 });
 
 test("límite por cocina: 60 por hora y 150 por día, con el prefijo translate: y un SHA-256 de 64 caracteres", async () => {

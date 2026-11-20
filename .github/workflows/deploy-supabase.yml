@@ -338,29 +338,37 @@ jobs:
             supabase secrets set --project-ref "${SUPABASE_PROJECT_REF}" "${pairs[@]}"
           fi
 
-          # Las obligatorias tienen que estar en Supabase (cargadas acá o antes, a mano): sin ellas la
-          # función responde 500 a todos los pedidos. Solo se leen los nombres, nunca los valores.
-          names=$(supabase secrets list --project-ref "${SUPABASE_PROJECT_REF}" -o json \
-            | jq -r '.. | objects | select(has("name")) | .name' 2>/dev/null || true)
-          # Opcional: sin la clave de Claude la función chef no traduce los platos (responde 503).
-          if [ -z "${ANTHROPIC_API_KEY:-}" ] && ! grep -qx "ANTHROPIC_API_KEY" <<< "${names}"; then
-            echo "::warning::Sin ANTHROPIC_API_KEY la traducción automática de los platos queda apagada: POST /chef/translate responde 503 y Evelyn escribe el italiano y el inglés a mano. Cargar el secreto en GitHub y volver a desplegar."
+          # Lo que tiene que estar en Supabase (cargado acá o antes, a mano) y lo que no puede estar. Solo
+          # se leen los nombres, nunca los valores. Si no se puede leer la lista, el despliegue corta: sin
+          # ella no se puede comprobar ni lo uno ni lo otro.
+          if ! listing=$(supabase secrets list --project-ref "${SUPABASE_PROJECT_REF}" -o json); then
+            echo "::error::No se pudo leer la lista de secretos de la función (supabase secrets list falló): no se puede comprobar que estén TURNSTILE_SECRET_KEY e IP_HASH_SALT ni que falte TRANSLATE_TRANSPORT. Volver a correr el despliegue."
+            exit 1
           fi
-          # TRANSLATE_TRANSPORT=fake es de desarrollo (traducciones de mentira): este workflow nunca lo carga.
-          if grep -qx "TRANSLATE_TRANSPORT" <<< "${names}"; then
-            echo "::warning::TRANSLATE_TRANSPORT está en los secretos de Supabase: con fake la función chef devuelve traducciones de mentira. Borrarlo con supabase secrets unset TRANSLATE_TRANSPORT."
-          fi
+          names=$(jq -r '.. | objects | select(has("name")) | .name' <<< "${listing}" 2>/dev/null || true)
           if [ -z "${names}" ]; then
-            echo "::warning::No se pudo leer la lista de secretos de la función: comprobar a mano que estén TURNSTILE_SECRET_KEY e IP_HASH_SALT."
-          else
-            absent=()
-            for name in TURNSTILE_SECRET_KEY IP_HASH_SALT; do
-              grep -qx "${name}" <<< "${names}" || absent+=("${name}")
-            done
-            if [ "${#absent[@]}" -gt 0 ]; then
-              echo "::error::Faltan en Supabase los secretos ${absent[*]}: la función respondería 500 a todos los pedidos."
-              exit 1
-            fi
+            echo "::error::La lista de secretos de la función vino vacía o con otro formato: no se puede comprobar que estén TURNSTILE_SECRET_KEY e IP_HASH_SALT ni que falte TRANSLATE_TRANSPORT."
+            exit 1
+          fi
+          # Sin las obligatorias la función responde 500 a todos los pedidos.
+          absent=()
+          for name in TURNSTILE_SECRET_KEY IP_HASH_SALT; do
+            grep -qx "${name}" <<< "${names}" || absent+=("${name}")
+          done
+          if [ "${#absent[@]}" -gt 0 ]; then
+            echo "::error::Faltan en Supabase los secretos ${absent[*]}: la función respondería 500 a todos los pedidos."
+            exit 1
+          fi
+          # TRANSLATE_TRANSPORT=fake es solo de desarrollo (traducciones de mentira): este workflow nunca
+          # lo carga, y si alguien lo cargó a mano el despliegue corta. (La función, además, lo ignora
+          # fuera de un Supabase local.)
+          if grep -qx "TRANSLATE_TRANSPORT" <<< "${names}"; then
+            echo "::error::TRANSLATE_TRANSPORT está en los secretos de Supabase: es solo de desarrollo (traducciones de mentira). Borrarlo con supabase secrets unset TRANSLATE_TRANSPORT --project-ref <ref> y volver a desplegar."
+            exit 1
+          fi
+          # Opcional: sin la clave de Claude la función chef no traduce los platos.
+          if [ -z "${ANTHROPIC_API_KEY:-}" ] && ! grep -qx "ANTHROPIC_API_KEY" <<< "${names}"; then
+            echo "::warning::Sin ANTHROPIC_API_KEY la traducción automática de los platos queda apagada: POST /chef/translate responde 501 y Evelyn escribe el italiano y el inglés a mano. Cargar el secreto en GitHub y volver a desplegar."
           fi
 
       - name: Desplegar public-request
