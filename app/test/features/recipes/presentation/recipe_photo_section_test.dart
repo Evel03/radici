@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/uuid.dart';
 import 'package:radici/features/recipes/data/recipe_photo_picker.dart';
 import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
+import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
 import 'package:radici/features/recipes/presentation/recipes_screen.dart';
 
@@ -40,7 +41,12 @@ void main() {
 
   /// La lasaña con [_savedPhoto], en el catálogo y en el bucket.
   void lasagneWithPhoto() {
-    repository.recipes[lasagneId] = lasagne().copyWith(photoId: _savedPhoto);
+    // Con la descripción en inglés: sin nada que traducir, guardar solo la foto
+    // no vuelve a mandar el plato.
+    repository.recipes[lasagneId] = lasagne().copyWith(
+      photoId: _savedPhoto,
+      descriptionEn: 'Slow-cooked ragù and homemade béchamel.',
+    );
     photos
       ..uploaded.add('$lasagneId/$_savedPhoto')
       ..photoOf[lasagneId] = _savedPhoto;
@@ -67,7 +73,14 @@ void main() {
       location: '/altro/piatti',
       size: size,
       deviceLocales: [locale],
-      overrides: [newIdProvider.overrideWithValue(() => ids.removeAt(0))],
+      overrides: [
+        newIdProvider.overrideWithValue(() => ids.removeAt(0)),
+        // El español es la fuente: al guardar, el plato se traduce (aquí, con
+        // el traductor de mentira) antes de save_recipe y de la foto.
+        translationRepositoryProvider.overrideWithValue(
+          FakeTranslationRepository(),
+        ),
+      ],
     );
     app.go(location);
     await tester.pumpAndSettle();
@@ -114,6 +127,7 @@ void main() {
         findsNothing,
         reason: 'sin foto no hay qué sacar',
       );
+      await tester.enterText(byKey('recipe-name-es'), 'Pasta al pesto');
       await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
 
       await tapVisible(tester, byKey('recipe-photo-choose'));
@@ -194,6 +208,7 @@ void main() {
     tester,
   ) async {
     await openEditor(tester);
+    await tester.enterText(byKey('recipe-name-es'), 'Pasta al pesto');
     await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
     picker.pending = Completer<void>();
     await tapVisible(tester, byKey('recipe-photo-choose'));
@@ -247,6 +262,7 @@ void main() {
     tester,
   ) async {
     await openEditor(tester);
+    await tester.enterText(byKey('recipe-name-es'), 'Pasta al pesto');
     await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
     await choosePhoto(tester);
     photos.pendingUpload = Completer<void>();
@@ -271,6 +287,7 @@ void main() {
     (tester) async {
       photos.uploadFailure = RecipePhotoFailureKind.unavailable;
       await openEditor(tester);
+      await tester.enterText(byKey('recipe-name-es'), 'Pasta al pesto');
       await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
       await choosePhoto(tester);
       await save(tester);
@@ -337,6 +354,7 @@ void main() {
     (tester) async {
       photos.uploadFailure = RecipePhotoFailureKind.rejected;
       await openEditor(tester);
+      await tester.enterText(byKey('recipe-name-es'), 'Pasta al pesto');
       await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
       await choosePhoto(tester);
       await save(tester);
@@ -355,7 +373,7 @@ void main() {
       // Sacarla deja el plato como quedó: nada más que guardar.
       await tapVisible(tester, byKey('recipe-photo-remove'));
       expect(byKey('recipe-photo-error'), findsNothing);
-      await tester.tap(find.byType(BackButton));
+      await tester.tap(byKey('recipe-back'));
       await tester.pumpAndSettle();
       expect(
         find.byType(RecipesScreen),
@@ -497,7 +515,7 @@ void main() {
   ) async {
     await openEditor(tester, location: '/altro/piatti/$risottoId');
     await choosePhoto(tester);
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(byKey('recipe-back'));
     await tester.pumpAndSettle();
     expect(find.text('Scartare le modifiche?'), findsOneWidget);
   });
@@ -534,6 +552,7 @@ void main() {
         addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
         photos.uploadFailure = RecipePhotoFailureKind.unavailable;
         await openEditor(tester, size: const Size(375, 667), locale: locale);
+        await tester.enterText(byKey('recipe-name-es'), 'Pasta al pesto');
         await tester.enterText(byKey('recipe-name-it'), 'Pasta al pesto');
         await choosePhoto(tester);
         await save(tester);

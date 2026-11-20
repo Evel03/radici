@@ -784,7 +784,8 @@ void main() {
         size: const Size(375, 667),
         locale: locale,
       );
-      await tester.drag(byKey('recipe-editor'), const Offset(0, -3000));
+      // Hasta el final: con la sección «Foto», 3000 px ya no alcanzan.
+      await tester.drag(byKey('recipe-editor'), const Offset(0, -6000));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(byKey('recipe-duplicate').hitTestable(), findsOneWidget);
