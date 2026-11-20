@@ -52,8 +52,8 @@ final recipePhotoProcessorProvider = Provider<RecipePhotoProcessor>(
 
 /// [processRecipePhoto] sin trabar la pantalla: en el teléfono, en otro
 /// isolate. La web no tiene isolates: ahí corre en el hilo principal, después
-/// de pintar el cuadro que dice que se está preparando (con la foto ya
-/// achicada por el navegador tarda menos de un segundo).
+/// de pintar el cuadro que dice que se está preparando (la foto ya llega
+/// achicada por el navegador).
 Future<ProcessedRecipePhoto> processRecipePhotoInBackground(
   Uint8List bytes,
 ) async {

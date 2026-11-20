@@ -32,6 +32,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Radici usa la fotocamera per scattare la foto di un piatto del menù.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Radici apre le tue foto per scegliere la foto di un piatto del menù.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

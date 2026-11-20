@@ -166,6 +166,31 @@ repositorios falsos (`test/support/fakes.dart`).
   contador cuenta como la validación y la base (`recipeTextLength`: sin los espacios de más, por
   caracteres como `char_length`; una bandera cuenta dos). Se guardan con `save_recipe`, que recibe
   siempre las tres (null borra la que se vació).
+- **Foto del plato** (migración `20261120100000_recipe_photos.sql`; una por plato): la sección «Foto»
+  del editor, después de la descripción de la web, **también en «Nuovo piatto»**, antes de guardar el
+  plato. «Aggiungi foto» pregunta cámara o galería en el teléfono; en `/gestione/` abre el selector de
+  archivos (el iPhone ofrece ahí mismo sacar una foto). La foto se prepara en el dispositivo
+  (`processRecipePhoto`, `domain/recipe_photo.dart`): se pide al selector ya achicada a 1200 px (en el
+  iPhone convierte HEIC a JPEG; en la web la achica el navegador), se endereza con su orientación
+  EXIF, se achica a 1200 y a 360 px de lado mayor y se vuelve a codificar en JPEG **sin ningún
+  metadato** (EXIF, GPS, perfil de color), siempre debajo de 2 MiB. En el teléfono corre en otro
+  isolate; en la web, en el hilo principal (la foto ya llega achicada por el navegador). Queda en el
+  editor como un cambio sin guardar y se sube al tocar «Salva»: primero el plato (`save_recipe`),
+  después los dos archivos al bucket público `recipe-photos` (`{chef_id}/{plato}/{foto}.jpg` y
+  `…-thumb.jpg`, con un uuid nuevo en cada foto, `image/jpeg`, caché de una semana, sin pisar nada) y
+  `set_recipe_photo`; al final se borran, sin esperar ni avisar si falla, los archivos de la foto que
+  dejó de usarse. Si la foto falla, el plato queda guardado, el editor no se cierra y la sección lo
+  dice con «Riprova» (sube solo la foto, con el mismo uuid; un archivo que ya estaba cuenta como
+  subido). En un plato guardado, «Cambia foto» y «Togli foto» se aplican al guardar; si solo cambió la
+  foto, el plato no se vuelve a mandar. Duplicar un plato no copia la foto. La miniatura se ve en la
+  lista de platos (a la izquierda), en el editor y en el menù elegido del detalle del pedido (a la
+  derecha del nombre); sin foto, como siempre, y si no carga, un cuadrado neutro. La URL pública la
+  arma el repositorio (`getPublicUrl`); los widgets la leen de `recipePhotoUrlProvider`. En iOS, los
+  textos de permiso de la cámara y de las fotos (`NSCameraUsageDescription`,
+  `NSPhotoLibraryUsageDescription` en `ios/Runner/Info.plist`) están en italiano: no hay
+  `InfoPlist.strings` por idioma (sumarlos toca el proyecto de Xcode). Con `requestFullMetadata: false`
+  elegir de la galería no pide permiso; la cámara, sí. En Android no hace falta nada (el selector de
+  fotos del sistema y la cámara por intent).
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
   entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).
@@ -193,6 +218,9 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   Su guarda `requests_guard_update` deja a la app pasar `new` → `rejected` y `rejected` → `new`, y
   desde `20261019160000_public_request_hardening.sql` también vale en el alta (un pedido nace en `new`).
   Esa migración agrega `requests.contact` (el contacto con que llegó cada pedido).
+- Migración `supabase/migrations/20261120100000_recipe_photos.sql` antes de esta versión: la app lee
+  `recipes.photo_id` con el catálogo y con el menù elegido (sin la columna, el catálogo no carga),
+  sube al bucket `recipe-photos` y llama a `set_recipe_photo`.
 - Migración `supabase/migrations/20261119150000_menu_web.sql`: `recipes.description_*` (las lee el
   editor y las guarda `save_recipe`) y el uso de `requests.wishes` (los platos elegidos en la web, que
   la bandeja y el detalle leen; la columna existe desde la primera migración).
