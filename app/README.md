@@ -147,8 +147,9 @@ repositorios falsos (`test/support/fakes.dart`).
   nombres en italiano, español e inglés (sin mayúsculas ni acentos), los activos primero y los
   desactivados al final, cada plato con sus alérgenos, dieta, temporada y, si está activo, si sale en
   la web («Sul sito») o le falta la descripción para salir («Senza descrizione: non è sul sito»). El
-  editor pone primero lo rápido (nombre en italiano, los 14 alérgenos, dieta, meses con «Tutto
-  l'anno» y la descripción de la web) y después lo opcional: nombres en español e inglés, conservación, ingredientes (cantidad entera para 4
+  editor pone primero lo rápido (el nombre y la descripción de la web en español, los 14 alérgenos,
+  dieta y meses con «Tutto l'anno»), después el italiano y el inglés (nombre y descripción, que llena
+  la traducción automática al guardar) y al final lo opcional: conservación, ingredientes (cantidad entera para 4
   porciones en g, ml o piezas, o «q.b.»; sección del súper; orden con botones) y notas (de la
   cocinera y sus colaboradores: se leen de `recipe_notes`, que el cliente no lee). Guarda el plato entero con
   `save_recipe`, con un id generado en el teléfono: un reintento no lo duplica y, si falla, no se
@@ -166,6 +167,21 @@ repositorios falsos (`test/support/fakes.dart`).
   contador cuenta como la validación y la base (`recipeTextLength`: sin los espacios de más, por
   caracteres como `char_length`; una bandera cuenta dos). Se guardan con `save_recipe`, que recibe
   siempre las tres (null borra la que se vació).
+- **Traducción automática** (SPEC §4, contrato chef-api.md §12): Evelyn escribe en español y al
+  guardar el editor manda el nombre y la descripción a `POST …/chef/translate`
+  (`TranslationRepository`: `functions.invoke('chef/translate')` con la sesión de quien entró,
+  `?forceFunctionRegion=eu-central-1` y sin la cabecera `x-region`; espera hasta 60 s, porque la
+  función corta a los 40). Debajo de los campos en español, el aviso de no escribir datos de clientes
+  (ese texto va a Anthropic). La regla de qué se traduce es Dart puro (`planRecipeTranslation`, en
+  `domain/recipe_translation.dart`): lo vacío y lo automático cuyo español cambió; lo escrito a mano
+  nunca se pisa; si se borra la descripción en español, las descripciones automáticas se vacían. El
+  nombre en español es obligatorio en un plato nuevo o una copia y en uno que ya lo tenía; un plato
+  viejo sin español se guarda como está. Lo que llenó el traductor lleva la marca «Tradotto
+  automaticamente» y se guarda en `auto_translated`; escribir en el campo lo saca. Mientras traduce,
+  «Traduzione in corso…» en el botón y el formulario sin tocar. Si falla, no se guarda nada y un aviso
+  dice por qué y ofrece «Riprova» (503, sin red o el tiempo agotado; nunca ante 429, 422, 501 ni 500),
+  «Salva senza tradurre» (lo automático viejo se vacía; no se puede si el nombre en italiano queda
+  vacío) y «Scrivo io». Duplicar copia las marcas de los nombres, no las de las descripciones.
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
   entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).
@@ -197,9 +213,11 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   editor y las guarda `save_recipe`) y el uso de `requests.wishes` (los platos elegidos en la web, que
   la bandeja y el detalle leen; la columna existe desde la primera migración).
 - Migración `supabase/migrations/20261120090000_recipe_translations.sql`: `recipes.auto_translated`
-  (los campos que llenó la traducción automática, `POST …/chef/translate`; contrato chef-api.md §12).
-  Esta versión de la app todavía no traduce ni manda la clave: cada guardado con `save_recipe` la deja
-  vacía (todo cuenta como escrito a mano). La usa el editor del PR de la app de la traducción.
+  (los campos que llenó la traducción automática; la lee el editor y la guarda `save_recipe`, que
+  exige el texto y su fuente en español en cada campo marcado) y la función `chef` con
+  `POST …/chef/translate` desplegada (contrato chef-api.md §12). Sin `ANTHROPIC_API_KEY` la
+  traducción queda apagada (`501`): el editor lo dice al guardar y deja escribir a mano o guardar
+  sin traducir.
 - `clients.status`: la cocinera lo cambia (privilegio por columna y `clients_guard_update`); la app lo
   pasa de `prospect` a `trial` con "Segna come cliente".
 - `profiles.locale`: el usuario lo puede cambiar en su propio perfil (`grant update (full_name,
