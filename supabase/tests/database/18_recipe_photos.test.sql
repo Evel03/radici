@@ -1,11 +1,13 @@
 -- =====================================================================
 -- Fotos de los platos, la base (migración 20261120100000_recipe_photos.sql):
 --   * Bucket público recipe-photos (JPEG, 2 MiB) y sus políticas: la cocinera y sus colaboradores
---     leen, suben, reemplazan y borran solo en la carpeta de su cocina, y suben solo con la forma
---     {chef_id}/{recipe_id}/{photo_id}[-thumb].jpg; el cliente y anon, nada por la API.
---   * recipes.photo_id (null = sin foto), que save_recipe no toca.
---   * public.set_recipe_photo(p_recipe_id, p_photo_id): exige los dos archivos y devuelve la foto que
---     deja de usarse.
+--     leen, suben y borran solo en la carpeta de su cocina, y suben solo con la forma
+--     {chef_id}/{recipe_id}/{photo_id}[-thumb].jpg; nadie reemplaza ni renombra (sin política de
+--     UPDATE); el cliente y anon, nada por la API.
+--   * recipes.photo_id (null = sin foto), que save_recipe no toca, y el trigger recipes_check_photo, que
+--     exige los dos archivos también en un update o insert directo.
+--   * public.set_recipe_photo(p_recipe_id, p_photo_id): guarda la foto (con el trigger) y devuelve la
+--     que deja de usarse.
 --   * get_public_menu: photoId en cada plato.
 --
 -- C1 tiene un colaborador (M) y una clienta con cuenta (A); C2 es otra cocina. Las rutas y los ids se
@@ -14,7 +16,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(42);
+select plan(50);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
@@ -169,9 +171,9 @@ select is(
      and concat_ws(' ', p.qual, p.with_check) like '%recipe-photos%'),
   array['recipe-photos: la cocinera borra en su carpeta | DELETE | {authenticated}',
         'recipe-photos: la cocinera lee su carpeta | SELECT | {authenticated}',
-        'recipe-photos: la cocinera reemplaza en su carpeta | UPDATE | {authenticated}',
         'recipe-photos: la cocinera sube a su carpeta | INSERT | {authenticated}'],
-  'storage.objects: cuatro políticas del bucket, solo de la cocinera (authenticated); ninguna para el cliente ni anon'
+  'storage.objects: tres políticas del bucket, solo de la cocinera (authenticated): sin UPDATE (no reemplaza ni '
+  'renombra) y ninguna para el cliente ni anon'
 );
 select is(
   (select format('%s %s', c.data_type, c.is_nullable) from information_schema.columns c
@@ -214,18 +216,28 @@ select is(
   'ni en su carpeta sube un archivo con otra forma: un nombre que no es un uuid, sin la carpeta del plato, '
   'otra extensión (o en mayúsculas), otro sufijo, una carpeta de más o los uuids en mayúsculas'
 );
+-- Sin política de UPDATE un update no falla: la RLS no le deja ninguna fila.
 select is(
-  pg_temp.affected($$ update storage.objects set metadata = '{"cacheControl": "max-age=31536000"}'
-                      where bucket_id = 'recipe-photos' and name in (pg_temp.photo('C1', 'R2', 'P4'), pg_temp.photo('C2', 'R9', 'P9')) $$),
-  1,
-  'C1 reemplaza un archivo de su carpeta; el de C2 no lo toca (la RLS lo filtra)'
+  array[
+    pg_temp.affected($$ update storage.objects set metadata = '{"cacheControl": "max-age=604800"}'
+                        where bucket_id = 'recipe-photos' and name = pg_temp.photo('C1', 'R2', 'P4') $$),
+    pg_temp.affected($$ update storage.objects set name = pg_temp.id('C1') || '/viejo2.png'
+                        where bucket_id = 'recipe-photos' and name = pg_temp.photo('C1', 'R2', 'P4') $$),
+    pg_temp.affected($$ update storage.objects set name = pg_temp.photo('C2', 'R9', 'P4')
+                        where bucket_id = 'recipe-photos' and name = pg_temp.photo('C1', 'R2', 'P4', true) $$)],
+  array[0, 0, 0],
+  'C1 no actualiza un archivo suyo, no lo renombra dentro de su carpeta ni lo mueve a la de C2 (0 filas)'
 );
-select throws_ok(
-  $$ update storage.objects set name = pg_temp.photo('C2', 'R9', 'P4')
-     where bucket_id = 'recipe-photos' and name = pg_temp.photo('C1', 'R2', 'P4') $$,
-  '42501', null,
-  'C1 no mueve un archivo suyo a la carpeta de C2'
+reset role;
+select is(
+  (select string_agg(format('%s · %s', pg_temp.short(o.name), coalesce(o.metadata::text, 'sin metadata')), '; '
+                     order by o.name collate "C")
+   from storage.objects o where o.bucket_id = 'recipe-photos' and o.name like pg_temp.id('C1') || '/' || pg_temp.id('R2') || '/%'),
+  'C1/R2/P4-thumb.jpg · sin metadata; C1/R2/P4.jpg · sin metadata',
+  'y los dos archivos de P4 siguen con su nombre y sin cambios'
 );
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"7e660000-0000-4000-8000-00000000c001","role":"authenticated"}';
 -- El servicio de Storage habilita el borrado con storage.allow_delete_query (storage.protect_delete).
 set local storage.allow_delete_query = 'true';
 select is(
@@ -252,6 +264,14 @@ select throws_ok(
   '42501', null,
   'M no sube a la carpeta de otra cocina'
 );
+set local storage.allow_delete_query = 'true';
+select is(
+  array[pg_temp.affected($$ delete from storage.objects where bucket_id = 'recipe-photos' and name = pg_temp.photo('C2', 'R9', 'P9', true) $$),
+        pg_temp.affected($$ delete from storage.objects where bucket_id = 'recipe-photos' and name = pg_temp.photo('C1', 'R2', 'P4', true) $$)],
+  array[0, 1],
+  'M borra en la carpeta de la cocina (la miniatura de P4) y no en la de otra'
+);
+set local storage.allow_delete_query = 'false';
 
 -- La clienta A: nada por la API (ve las fotos por su URL pública, como cualquiera).
 set local request.jwt.claims = '{"sub":"7e660000-0000-4000-8000-00000000a001","role":"authenticated"}';
@@ -383,7 +403,68 @@ reset role;
 select is(pg_temp.photo_of('R1'), 'P1', 'R1 sigue con P1');
 
 -- =====================================================================
--- 4. save_recipe no toca photo_id
+-- 4. El trigger recipes_check_photo: también para un update o insert directo
+-- =====================================================================
+select is(
+  (select format('%s | %s', t.tgname, pg_get_triggerdef(t.oid))
+   from pg_trigger t where t.tgrelid = 'public.recipes'::regclass and t.tgname = 'recipes_check_photo'),
+  'recipes_check_photo | CREATE TRIGGER recipes_check_photo BEFORE INSERT OR UPDATE OF photo_id, id, chef_id ON public.recipes '
+  'FOR EACH ROW EXECUTE FUNCTION recipes_check_photo()',
+  'recipes: trigger antes de cada insert y de cada update de photo_id, id o chef_id'
+);
+select ok(
+  (select not p.prosecdef and p.proconfig = array['search_path=""']
+          and not has_function_privilege('anon', p.oid, 'EXECUTE')
+          and not has_function_privilege('authenticated', p.oid, 'EXECUTE')
+   from pg_proc p where p.oid = 'public.recipes_check_photo()'::regprocedure),
+  'recipes_check_photo: security invoker (busca los archivos con la RLS de quien escribe), search_path vacío y sin EXECUTE para la API'
+);
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"7e660000-0000-4000-8000-00000000c001","role":"authenticated"}';
+select is(
+  array[
+    pg_temp.error_of($$ update public.recipes set photo_id = pg_temp.id('P7') where id = pg_temp.id('R1') $$),
+    pg_temp.error_of($$ update public.recipes set photo_id = pg_temp.id('P2') where id = pg_temp.id('R1') $$),
+    pg_temp.error_of($$ insert into public.recipes (id, chef_id, name_it, photo_id)
+                        values (pg_temp.id('R7'), pg_temp.id('C1'), 'Risotto', pg_temp.id('P1')) $$)
+  ],
+  array[
+    '22023: photo_not_found (C1/R1/P7.jpg, C1/R1/P7-thumb.jpg)',
+    '22023: photo_not_found (C1/R1/P2-thumb.jpg)',
+    '22023: photo_not_found (C1/R7/P1.jpg, C1/R7/P1-thumb.jpg)'
+  ],
+  'C1 por la API (sin set_recipe_photo): un update a una foto sin archivos, o sin la miniatura, y un insert con '
+  'una foto de otro plato dan photo_not_found con las rutas que faltan'
+);
+select is(pg_temp.photo_of('R1'), 'P1', 'R1 sigue con P1');
+select is(
+  array[pg_temp.affected($$ update public.recipes set photo_id = null where id = pg_temp.id('R1') $$),
+        pg_temp.affected($$ update public.recipes set photo_id = pg_temp.id('P3') where id = pg_temp.id('R1') $$),
+        pg_temp.affected($$ update public.recipes set photo_id = pg_temp.id('P3'), active = true where id = pg_temp.id('R1') $$)],
+  array[1, 1, 1],
+  'un update directo a null pasa, uno a una foto con sus dos archivos también, y uno que deja la misma foto también'
+);
+reset role;
+set local role service_role;
+select is(
+  pg_temp.error_of($$ update public.recipes set photo_id = pg_temp.id('P7') where id = pg_temp.id('R9') $$),
+  '22023: photo_not_found (C2/R9/P7.jpg, C2/R9/P7-thumb.jpg)',
+  'la service role tampoco guarda una foto sin archivos'
+);
+reset role;
+
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"7e660000-0000-4000-8000-00000000c001","role":"authenticated"}';
+select is(
+  pg_temp.short(public.set_recipe_photo(pg_temp.id('R1'), pg_temp.id('P1'))::text),
+  'P3',
+  'C1 vuelve a poner P1 con set_recipe_photo: devuelve P3, la que puso el update directo'
+);
+reset role;
+
+-- =====================================================================
+-- 5. save_recipe no toca photo_id
 -- =====================================================================
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"7e660000-0000-4000-8000-00000000c001","role":"authenticated"}';
@@ -411,7 +492,7 @@ select is(
 reset role;
 
 -- =====================================================================
--- 5. get_public_menu con photoId
+-- 6. get_public_menu con photoId
 -- =====================================================================
 set local role service_role;
 select is(

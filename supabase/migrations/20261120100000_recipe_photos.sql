@@ -10,22 +10,27 @@
 --   1. Bucket público 'recipe-photos' (la web muestra las fotos sin login): JPEG de hasta 2 MiB. La
 --      app sube dos archivos por foto, ya achicados y sin metadatos:
 --        {chef_id}/{recipe_id}/{photo_id}.jpg        (lado mayor 1200 px)
---        {chef_id}/{recipe_id}/{photo_id}-thumb.jpg  (lado mayor 480 px)
---      Cada foto nueva lleva un uuid nuevo: un archivo nunca se pisa, así la caché puede ser larga.
+--        {chef_id}/{recipe_id}/{photo_id}-thumb.jpg  (lado mayor 360 px)
+--      Que cada foto nueva lleve un uuid nuevo (nunca pisa ni mueve un archivo) es una convención de
+--      la app, que los sube con una caché de una semana; la base no la garantiza: sin política de
+--      UPDATE la cocina no reemplaza ni renombra por la API, pero puede borrar un archivo y volver a
+--      subir otro con el mismo nombre. Los tamaños en píxeles tampoco los controla la base.
 --      Las URL públicas (/storage/v1/object/public/…) no pasan por las políticas: cualquiera que tenga
 --      la URL ve la foto, aunque el plato no esté publicado. Por la API (listar, subir, borrar):
---        * Cocinera (y sus colaboradores, current_chef_id()): lee, sube, reemplaza y borra solo en la
---          carpeta de su cocina; lo que sube tiene que tener la forma de arriba.
+--        * Cocinera (y sus colaboradores, current_chef_id()): lee, sube y borra solo en la carpeta de
+--          su cocina; lo que sube tiene que tener la forma de arriba. No reemplaza ni renombra.
 --        * Cliente y anónimo: nada.
---   2. recipes.photo_id: la foto del plato (null = sin foto). save_recipe no lo toca: duplicar un
---      plato (guardar con un id nuevo) no copia la foto.
+--   2. recipes.photo_id: la foto del plato (null = sin foto). Un trigger exige los dos archivos antes de
+--      guardar una foto, también en un insert o update directo por la API (authenticated tiene esos
+--      privilegios sobre toda la tabla). save_recipe no lo toca: duplicar un plato (guardar con un id
+--      nuevo) no copia la foto.
 --   3. public.set_recipe_photo(p_recipe_id, p_photo_id): pone, cambia o saca la foto de un plato,
 --      después de subir los dos archivos. Devuelve la foto que deja de usarse, para que la app borre
 --      sus archivos.
 --   4. get_public_menu suma photoId: la Edge Function public-request arma las URL públicas.
 --
--- Despliegue: ningún plato tiene foto al desplegar; la web y la app de hoy no leen photoId (la web
--- arma cada plato campo por campo y la app no usa get_public_menu).
+-- Despliegue: ningún plato tiene foto al desplegar. La Edge Function de hoy arma cada plato de
+-- get_public_menu campo por campo, así que no pasa photoId a la web; la app no usa get_public_menu.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -48,8 +53,10 @@ on conflict (id) do update
       allowed_mime_types = excluded.allowed_mime_types;
 
 -- Lectura y borrado: cualquier archivo de la carpeta de la cocina (también uno con otra forma, para
--- poder limpiarlo). Subida y reemplazo: solo con la forma {chef_id}/{recipe_id}/{photo_id}[-thumb].jpg,
--- uuids en minúsculas (como los escribe set_recipe_photo), en la carpeta de la cocina.
+-- poder limpiarlo). Subida: solo con la forma {chef_id}/{recipe_id}/{photo_id}[-thumb].jpg, uuids en
+-- minúsculas (como las rutas que exige el trigger de recipes.photo_id), en la carpeta de la cocina.
+-- Sin política de UPDATE: la app nunca pisa ni mueve un archivo (sube uno nuevo y borra el viejo), así
+-- que la cocina no reemplaza ni renombra (tampoco con upsert).
 create policy "recipe-photos: la cocinera lee su carpeta"
   on storage.objects for select to authenticated
   using (
@@ -65,18 +72,6 @@ create policy "recipe-photos: la cocinera sube a su carpeta"
     and name ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}(-thumb)?\.jpg$'
   );
 
-create policy "recipe-photos: la cocinera reemplaza en su carpeta"
-  on storage.objects for update to authenticated
-  using (
-    bucket_id = 'recipe-photos'
-    and (storage.foldername(name))[1] = (select public.current_chef_id())::text
-  )
-  with check (
-    bucket_id = 'recipe-photos'
-    and (storage.foldername(name))[1] = (select public.current_chef_id())::text
-    and name ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}/[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}(-thumb)?\.jpg$'
-  );
-
 create policy "recipe-photos: la cocinera borra en su carpeta"
   on storage.objects for delete to authenticated
   using (
@@ -86,24 +81,70 @@ create policy "recipe-photos: la cocinera borra en su carpeta"
 
 -- ---------------------------------------------------------------------
 -- 2. recipes.photo_id
+--
+-- authenticated escribe recipes por la API (privilegios de toda la tabla, 20261019130000, y la política
+-- de la cocinera): sin el trigger, un update directo dejaría el plato apuntando a una foto que no se
+-- subió. El trigger corre en cada insert con foto y en cada update que toca photo_id, id o chef_id, y
+-- exige los dos archivos {chef_id}/{id}/{photo_id}.jpg y {photo_id}-thumb.jpg en el bucket. Un update
+-- que deja la misma foto en el mismo plato no se revisa (sus archivos pudieron borrarse después, por la
+-- API; eso no traba otro cambio). Security invoker: busca los archivos con la RLS de quien escribe (la
+-- cocina ve su carpeta; la service role y postgres, todo).
 -- ---------------------------------------------------------------------
 alter table public.recipes
   add column photo_id uuid;
 
 comment on column public.recipes.photo_id is
-  'La foto del plato: los archivos {chef_id}/{id}/{photo_id}.jpg y {photo_id}-thumb.jpg del bucket público recipe-photos. null = sin foto. La escribe set_recipe_photo; save_recipe no la toca (duplicar un plato no copia la foto).';
+  'La foto del plato: los archivos {chef_id}/{id}/{photo_id}.jpg y {photo_id}-thumb.jpg del bucket público recipe-photos. null = sin foto. Al guardar una foto, el trigger recipes_check_photo exige los dos archivos (22023 photo_not_found), también en un update directo. La app la cambia con set_recipe_photo; save_recipe no la toca (duplicar un plato no copia la foto).';
+
+create function public.recipes_check_photo()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_base    text;
+  v_missing text;
+begin
+  if new.photo_id is null then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and new.photo_id = old.photo_id and new.id = old.id and new.chef_id = old.chef_id then
+    return new;
+  end if;
+
+  v_base := format('%s/%s/%s', new.chef_id, new.id, new.photo_id);
+  select string_agg(f.name, ', ' order by f.n) into v_missing
+  from unnest(array[v_base || '.jpg', v_base || '-thumb.jpg']) with ordinality as f(name, n)
+  where not exists (select 1 from storage.objects o
+                    where o.bucket_id = 'recipe-photos' and o.name = f.name);
+  if v_missing is not null then
+    raise exception 'photo_not_found' using errcode = '22023', detail = v_missing;
+  end if;
+  return new;
+end
+$$;
+
+comment on function public.recipes_check_photo() is
+  'Trigger de recipes: una foto (photo_id) solo se guarda si están sus dos archivos {chef_id}/{id}/{photo_id}.jpg y {photo_id}-thumb.jpg en el bucket recipe-photos. Si falta alguno, 22023 photo_not_found con las rutas que faltan en el DETAIL. Security invoker: con la RLS de quien escribe.';
+
+create trigger recipes_check_photo
+  before insert or update of photo_id, id, chef_id on public.recipes
+  for each row execute function public.recipes_check_photo();
+
+revoke all on function public.recipes_check_photo() from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------
 -- 3. public.set_recipe_photo(p_recipe_id uuid, p_photo_id uuid)
 --
--- La app sube los dos archivos (con un photo_id nuevo) y después llama a esta función, que los exige
--- (en la carpeta de este plato) antes de guardar: el plato nunca apunta a una foto a medio subir. Con
+-- La app sube los dos archivos (con un photo_id nuevo) y después llama a esta función. Que estén los dos
+-- lo exige el trigger recipes_check_photo al guardar: el plato nunca apunta a una foto a medio subir. Con
 -- p_photo_id null saca la foto. Devuelve la foto que deja de usarse (la anterior; null si no había o si
 -- es la misma), para que la app borre sus archivos. Security invoker: corre con la RLS de quien llama
 -- (recipes y storage.objects). Errores:
 --   42501 not_a_chef         quien llama no es la cocinera ni un colaborador suyo.
 --   P0002 recipe_not_found   el plato no existe o es de otra cocina (el mismo de save_recipe).
---   22023 photo_not_found    falta alguno de los dos archivos (DETAIL: las rutas que faltan).
+--   22023 photo_not_found    falta alguno de los dos archivos (DETAIL: las rutas que faltan; el trigger).
 -- ---------------------------------------------------------------------
 create function public.set_recipe_photo(p_recipe_id uuid, p_photo_id uuid)
 returns uuid
@@ -115,8 +156,6 @@ as $$
 declare
   v_chef_id  uuid := public.current_chef_id();
   v_previous uuid;
-  v_base     text;
-  v_missing  text;
 begin
   if v_chef_id is null then
     raise exception 'not_a_chef' using errcode = '42501';
@@ -131,17 +170,7 @@ begin
     raise exception 'recipe_not_found' using errcode = 'P0002';
   end if;
 
-  if p_photo_id is not null then
-    v_base := format('%s/%s/%s', v_chef_id, p_recipe_id, p_photo_id);
-    select string_agg(f.name, ', ' order by f.n) into v_missing
-    from unnest(array[v_base || '.jpg', v_base || '-thumb.jpg']) with ordinality as f(name, n)
-    where not exists (select 1 from storage.objects o
-                      where o.bucket_id = 'recipe-photos' and o.name = f.name);
-    if v_missing is not null then
-      raise exception 'photo_not_found' using errcode = '22023', detail = v_missing;
-    end if;
-  end if;
-
+  -- El trigger recipes_check_photo exige los dos archivos.
   update public.recipes r
   set photo_id = p_photo_id
   where r.id = p_recipe_id;
@@ -151,7 +180,7 @@ end
 $$;
 
 comment on function public.set_recipe_photo(uuid, uuid) is
-  'Pone, cambia o (con p_photo_id null) saca la foto de un plato. Exige los dos archivos {chef_id}/{recipe_id}/{photo_id}.jpg y {photo_id}-thumb.jpg en el bucket recipe-photos. Devuelve la foto que deja de usarse (null si no había o si es la misma), para que la app borre sus archivos. Security invoker: corre con la RLS de quien llama. Errores: 42501 not_a_chef; P0002 recipe_not_found (no existe o es de otra cocina); 22023 photo_not_found (DETAIL: las rutas que faltan).';
+  'Pone, cambia o (con p_photo_id null) saca la foto de un plato. Los dos archivos {chef_id}/{recipe_id}/{photo_id}.jpg y {photo_id}-thumb.jpg del bucket recipe-photos los exige el trigger recipes_check_photo. Devuelve la foto que deja de usarse (null si no había o si es la misma), para que la app borre sus archivos. Security invoker: corre con la RLS de quien llama. Errores: 42501 not_a_chef; P0002 recipe_not_found (no existe o es de otra cocina); 22023 photo_not_found (DETAIL: las rutas que faltan).';
 
 -- Como save_recipe: la app (authenticated); anon y service_role no la ejecutan.
 revoke all on function public.set_recipe_photo(uuid, uuid) from public, anon, authenticated, service_role;
