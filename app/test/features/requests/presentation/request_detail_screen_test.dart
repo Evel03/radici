@@ -444,6 +444,46 @@ void main() {
     });
   });
 
+  group('una reserva cargada a mano (pedido de la app, aceptado)', () {
+    ChefRequest manual({RequestSource source = RequestSource.app}) =>
+        buildRequest(
+          id: 'manual-1',
+          source: source,
+          status: RequestStatus.accepted,
+          seenAt: testNow,
+          noDate: true,
+          preferredSlot: null,
+          estimate: null,
+        );
+
+    testWidgets('no dice «Data preferita», «Conferma su WhatsApp» ni «Nessuna stima salvata.»; las alergias, que no hay datos', (tester) async {
+      await openDetail(tester, manual());
+      expect(find.text('Data preferita'), findsNothing);
+      expect(find.text('Senza data'), findsNothing);
+      expect(find.text('Conferma su WhatsApp'), findsNothing);
+      expect(find.byKey(const ValueKey('detail-no-estimate')), findsNothing);
+      expect(find.text('Stima'), findsNothing);
+      // Una reserva a mano no guarda alergias: el detalle lo sigue diciendo.
+      expect(find.byKey(const ValueKey('detail-allergies-unknown')), findsOneWidget);
+      // Lo demás sigue: el tipo y el idioma.
+      expect(find.text('Settimana di pasti'), findsOneWidget);
+      expect(find.text('Italiano'), findsOneWidget);
+    });
+
+    testWidgets('una reserva de la web sí los muestra (también sin estimación)', (tester) async {
+      await openDetail(
+        tester,
+        manual(source: RequestSource.web).copyWith(
+          preferredDate: CalendarDate(2026, 11, 23),
+        ),
+      );
+      expect(find.text('Data preferita'), findsOneWidget);
+      expect(find.text('lunedì 23 novembre 2026'), findsOneWidget);
+      expect(find.text('Conferma su WhatsApp'), findsOneWidget);
+      expect(find.byKey(const ValueKey('detail-no-estimate')), findsOneWidget);
+    });
+  });
+
   testWidgets('sin notas, sin estimación y sin fecha', (tester) async {
     await openDetail(
       tester,
@@ -488,6 +528,22 @@ void main() {
       );
       expect(find.byKey(noneKey), findsNothing);
     });
+
+    testWidgets(
+      'solo una dieta no responde sobre alergias: el aviso, y la dieta',
+      (tester) async {
+        await openDetail(
+          tester,
+          buildRequest(
+            restrictions: const RequestRestrictions(diets: [Diet.vegetarian]),
+          ),
+        );
+        expect(find.byKey(unknownKey), findsOneWidget);
+        expect(find.text('Diete'), findsOneWidget);
+        expect(find.text('Vegetariana'), findsOneWidget);
+        expect(find.byKey(noneKey), findsNothing);
+      },
+    );
 
     testWidgets('en español: los dos textos nuevos', (tester) async {
       await openDetail(tester, buildRequest(), deviceLocale: const Locale('es', 'ES'));

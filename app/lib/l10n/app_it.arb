@@ -350,9 +350,9 @@
   "@todayEmptyTitle": {
     "description": "Hoy: no hay ninguna sesión desde hoy."
   },
-  "todayEmptyBody": "Quando confermi una prenotazione da una richiesta, la trovi qui.",
+  "todayEmptyBody": "Quando confermi una prenotazione, da una richiesta o con «Nuova prenotazione», la trovi qui.",
   "@todayEmptyBody": {
-    "description": "Hoy, sin sesiones: de dónde salen (se confirma una reserva desde un pedido)."
+    "description": "Hoy, sin sesiones: de dónde salen (se confirma una reserva desde un pedido o se carga a mano con «Nuova prenotazione», que está en la barra de abajo)."
   },
   "todayEmptyAction": "Vedi le richieste",
   "@todayEmptyAction": {
@@ -391,7 +391,14 @@
   },
   "todayBookingEnding": "Finisce la prenotazione di {name}",
   "@todayBookingEnding": {
-    "description": "Hoy: pendiente de una reserva cuya última sesión cae en los próximos 7 días; abre la ficha de esa sesión.",
+    "description": "Hoy: pendiente de una reserva semanal cuya última sesión viva es hoy o cae en los próximos 7 días (el pendiente va de 7 días antes a 7 días después de esa sesión; si ya pasó, todayBookingEnded); abre la ficha de esa sesión y tiene «Rinnova».",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "todayBookingEnded": "È finita la prenotazione di {name}",
+  "@todayBookingEnded": {
+    "description": "Hoy: pendiente de una reserva semanal cuya última sesión viva ya pasó (hasta 7 días); abre la ficha de esa sesión y tiene «Rinnova».",
     "placeholders": {
       "name": { "type": "String", "example": "Giulia Rossi" }
     }
@@ -401,6 +408,17 @@
     "description": "Hoy: debajo de la reserva que termina, el día de su última sesión.",
     "placeholders": {
       "date": { "type": "String", "example": "mer 18 nov" }
+    }
+  },
+  "actionRenew": "Rinnova",
+  "@actionRenew": {
+    "description": "Botón de la reserva que termina, en Hoy y al final de la ficha de su última sesión: abre la hoja «Rinnova prenotazione», prellenada con la reserva."
+  },
+  "todayRenewA11y": "Rinnova la prenotazione di {name}",
+  "@todayRenewA11y": {
+    "description": "Hoy, lector de pantalla: etiqueta del botón «Rinnova» de una reserva que termina (dice de quién es; reemplaza el texto del botón).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
     }
   },
   "todayStripTitle": "Prossimi 7 giorni",
@@ -506,9 +524,9 @@
   "@inboxEmptyRejected": {
     "description": "Pestaña Rifiutate vacía."
   },
-  "inboxEmptyBookings": "Nessuna prenotazione. Le confermi dal dettaglio di una richiesta nuova.",
+  "inboxEmptyBookings": "Nessuna prenotazione. Confermane una da una richiesta nuova o creala qui sotto con «Nuova prenotazione».",
   "@inboxEmptyBookings": {
-    "description": "Pestaña de reservas vacía: dice dónde se confirman."
+    "description": "Pestaña de reservas vacía: dice de dónde salen (se confirman desde un pedido nuevo o se cargan a mano) y propone el botón «Nuova prenotazione» de abajo, que es la acción de este estado."
   },
   "inboxLoadError": "Impossibile caricare le richieste. Controlla la connessione e riprova.",
   "@inboxLoadError": {
@@ -674,7 +692,7 @@
   },
   "detailAllergiesUnknown": "Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.",
   "@detailAllergiesUnknown": {
-    "description": "Sección de alergias, destacada: el pedido no trae respuesta (anterior a la pregunta de la web, de la app o con el consentimiento de salud retirado). Pide preguntarle al cliente antes del menú."
+    "description": "Detalle del pedido, sección de alergias, destacada: el pedido no trae respuesta (anterior a la pregunta de la web, de la app, con el consentimiento de salud retirado o con solo una dieta, que se muestra debajo). Pide preguntarle al cliente antes del menú. Solo en el detalle del pedido: la ficha de la sesión y Hoy dicen sessionAllergiesNoData."
   },
   "detailAllergens": "Allergeni da evitare",
   "@detailAllergens": {
@@ -923,6 +941,214 @@
   "@bookingStatusChecking": {
     "description": "Estado de una semana mientras se pregunta al servidor."
   },
+  "bookingChecking": "Controllo le date…",
+  "@bookingChecking": {
+    "description": "Hoja de reserva, barra de abajo, con una rueda chica y anunciado por el lector de pantalla: mientras el servidor revisa las fechas que hay en la hoja (el dryRun), en lugar del resumen del precio. Así el botón gris dice por qué espera."
+  },
+  "bookingTodayArrivalPassed": "È oggi e l'ora di arrivo è già passata.",
+  "@bookingTodayArrivalPassed": {
+    "description": "Hoja de reserva, estado de una semana: la fecha es hoy y la hora de llegada ya pasó en Roma (el servidor no lo marca como pasado). No impide confirmar."
+  },
+  "newBookingAction": "Nuova prenotazione",
+  "@newBookingAction": {
+    "description": "Richieste, pestaña Prenotazioni: botón de abajo para cargar una reserva a mano (también es la acción de la pestaña vacía). Título del elegir la clienta y de la hoja de una reserva a mano. También el botón de Hoy sin sesiones, debajo de «Vedi le richieste»."
+  },
+  "clientSearchHint": "Nome o telefono",
+  "@clientSearchHint": {
+    "description": "«Nuova prenotazione», etiqueta del buscador de fichas de clientes (por nombre o por teléfono): adentro del campo vacío y arriba con texto, así el lector de pantalla siempre dice qué campo es."
+  },
+  "clientSearchClear": "Cancella la ricerca",
+  "@clientSearchClear": {
+    "description": "«Nuova prenotazione»: botón que borra el buscador (también su texto para el lector de pantalla) y el que ofrece la lista sin resultados."
+  },
+  "clientsLoadFailed": "Impossibile caricare le schede delle clienti. Controlla la connessione e riprova.",
+  "@clientsLoadFailed": {
+    "description": "«Nuova prenotazione» (y la hoja de una ficha existente): no se pudieron leer las fichas de clientes; debajo va «Riprova»."
+  },
+  "clientPickerEmpty": "Non hai ancora schede di clienti: crea la prima con «Nuova cliente».",
+  "@clientPickerEmpty": {
+    "description": "«Nuova prenotazione», lista vacía: todavía no hay ninguna ficha. La acción es el botón «Nuova cliente» de abajo."
+  },
+  "clientPickerNoMatches": "Nessuna scheda con «{query}». Se è una cliente nuova, creala con «Nuova cliente».",
+  "@clientPickerNoMatches": {
+    "description": "«Nuova prenotazione»: ninguna ficha coincide con lo que se buscó. query: lo que se escribió en el buscador.",
+    "placeholders": {
+      "query": { "type": "String", "example": "Giulia" }
+    }
+  },
+  "clientPickerProspect": "Non ancora cliente",
+  "@clientPickerProspect": {
+    "description": "Elegir la clienta, debajo del teléfono y la zona: la ficha es un prospecto (pidió por la web y todavía no tuvo una reserva) y no tiene un pedido semanal. Separa dos fichas de la misma persona."
+  },
+  "clientPickerProspectSince": "Non ancora cliente · richiesta: {date}",
+  "@clientPickerProspectSince": {
+    "description": "Elegir la clienta, debajo del teléfono y la zona: la ficha es un prospecto (pidió por la web y todavía no tuvo una reserva). Separa dos fichas de la misma persona. date: el día de su último pedido semanal. En italiano sin artículo delante de la fecha: «del 8/11» tendría que ser «dell'8/11».",
+    "placeholders": {
+      "date": { "type": "String", "example": "15/11" }
+    }
+  },
+  "newClientAction": "Nuova cliente",
+  "@newClientAction": {
+    "description": "«Nuova prenotazione»: botón de abajo para cargar una ficha nueva, y título de ese formulario."
+  },
+  "newClientNameLabel": "Nome e cognome",
+  "@newClientNameLabel": {
+    "description": "Formulario «Nuova cliente»: el nombre de la clienta (obligatorio)."
+  },
+  "newClientPhoneLabel": "Telefono (per WhatsApp)",
+  "@newClientPhoneLabel": {
+    "description": "Formulario «Nuova cliente»: el teléfono de la clienta, al que va el WhatsApp de la reserva."
+  },
+  "newClientPhoneHelper": "Facoltativo. Se non è italiano, con il prefisso: +34…",
+  "@newClientPhoneHelper": {
+    "description": "Formulario «Nuova cliente», ayuda debajo del teléfono: es opcional y un número que no es italiano va con su prefijo (las mismas reglas que el formulario de la web)."
+  },
+  "newClientPhoneInvalid": "Numero non valido: scrivilo con il prefisso, es. +34 612 345 678.",
+  "@newClientPhoneInvalid": {
+    "description": "Formulario «Nuova cliente», error debajo del teléfono después de «Continua»: el número no se puede normalizar (anunciado por el lector de pantalla)."
+  },
+  "newClientPhoneTaken": "Questo numero è già nella scheda di {name}. Se è lei, usa la sua scheda con il pulsante qui sotto: quello che scrivi qui non la cambia.",
+  "@newClientPhoneTaken": {
+    "description": "Formulario «Nuova cliente», tarjeta debajo del teléfono: el teléfono escrito (normalizado como en el formulario web) ya es de esta ficha; el botón para usarla está en la barra de abajo, y usarla no la modifica. name: el nombre de la ficha.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Chiara Rossi" }
+    }
+  },
+  "newClientUseExisting": "Usa la scheda di {name}",
+  "@newClientUseExisting": {
+    "description": "Formulario «Nuova cliente», barra de abajo, acción principal cuando el teléfono ya es de una ficha: abre la hoja de reserva de esa ficha, sin cambiarla. name: el nombre de la ficha.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Chiara Rossi" }
+    }
+  },
+  "newClientCreateAnyway": "Crea una scheda nuova",
+  "@newClientCreateAnyway": {
+    "description": "Formulario «Nuova cliente», barra de abajo, debajo de «Usa la scheda di…»: crea otra ficha aunque el teléfono ya sea de una."
+  },
+  "newClientNameMissing": "Scrivi il nome per continuare.",
+  "@newClientNameMissing": {
+    "description": "Formulario «Nuova cliente», barra de abajo, arriba de «Continua» (deshabilitado): falta el nombre. Al lado, «Vedi» lleva al campo."
+  },
+  "newClientCreateNeedsName": "Per creare una scheda nuova, scrivi il nome.",
+  "@newClientCreateNeedsName": {
+    "description": "Formulario «Nuova cliente», barra de abajo, debajo de «Crea una scheda nuova» (deshabilitado) cuando el teléfono ya es de una ficha y falta el nombre: crear otra ficha lo necesita y «Usa la scheda di…», la acción principal, no. Al lado, «Vedi» lleva al campo."
+  },
+  "newClientPhoneInvalidShort": "Il numero di telefono non è valido.",
+  "@newClientPhoneInvalidShort": {
+    "description": "Formulario «Nuova cliente», barra de abajo, después de «Continua»: el teléfono no es válido. Al lado, «Vedi» lleva al campo."
+  },
+  "newClientTooLong": "Testo troppo lungo: accorcialo.",
+  "@newClientTooLong": {
+    "description": "Formulario «Nuova cliente», después de «Continua»: error del campo (nombre, zona o dirección) que pasa el largo que acepta el servidor, y la línea de la barra que lo repite."
+  },
+  "newClientPhoneChecking": "Sto controllando se il numero è già di una cliente…",
+  "@newClientPhoneChecking": {
+    "description": "Formulario «Nuova cliente», debajo del teléfono, con una rueda chica: las fichas todavía se están leyendo. No impide continuar."
+  },
+  "newClientPhoneUnchecked": "Non è stato possibile controllare se il numero è già di una cliente.",
+  "@newClientPhoneUnchecked": {
+    "description": "Formulario «Nuova cliente», debajo del teléfono: las fichas no se pudieron leer; al lado va «Riprova». No impide continuar."
+  },
+  "newClientZoneLabel": "Zona (facoltativa)",
+  "@newClientZoneLabel": {
+    "description": "Formulario «Nuova cliente»: la zona o el barrio de la clienta."
+  },
+  "newClientZoneHint": "Es.: Città Alta",
+  "@newClientZoneHint": {
+    "description": "Formulario «Nuova cliente», pista dentro del campo de la zona."
+  },
+  "newClientAddressLabel": "Indirizzo (facoltativo)",
+  "@newClientAddressLabel": {
+    "description": "Formulario «Nuova cliente»: la dirección de la clienta (se guarda en su ficha nueva)."
+  },
+  "clientMessagesLanguage": "Lingua dei messaggi WhatsApp",
+  "@clientMessagesLanguage": {
+    "description": "Formulario «Nuova cliente» y hoja de una reserva a mano: el idioma de la clienta para sus mensajes (italiano, español o inglés)."
+  },
+  "newClientContinue": "Continua",
+  "@newClientContinue": {
+    "description": "Formulario «Nuova cliente», botón de la barra de abajo: abre la hoja de reserva de la ficha nueva."
+  },
+  "bookingNewClientSubtitle": "Scheda nuova: si crea quando confermi.",
+  "@bookingNewClientSubtitle": {
+    "description": "Hoja de una reserva a mano para una clienta nueva, debajo del nombre: la ficha todavía no existe."
+  },
+  "bookingHouseholdSection": "Persone e pasti",
+  "@bookingHouseholdSection": {
+    "description": "Hoja de una reserva a mano o «Rinnova», título de la sección: adultos, niños, días a la semana y comidas."
+  },
+  "bookingCookHelpManual": "Calcolato da persone e pasti, al massimo {max} min.",
+  "@bookingCookHelpManual": {
+    "description": "Hoja de una reserva a mano, debajo del tiempo de cocina: sale de las personas y las comidas (sigue a ese cambio hasta que se toca) y tiene un tope.",
+    "placeholders": {
+      "max": { "type": "int", "example": "360" }
+    }
+  },
+  "bookingRetryKeepsOpen": "Questa pagina resta aperta finché non arriva una risposta: così la prenotazione non si duplica.",
+  "@bookingRetryKeepsOpen": {
+    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo: se mandó la confirmación y no hubo respuesta. La hoja no se cierra hasta reintentar, porque otra hoja usaría otra clave y podría duplicar la reserva. Si el reintento tampoco tiene respuesta, la reemplaza bookingRetryLeaveWarning."
+  },
+  "bookingRetryLeaveWarning": "Ancora nessuna risposta. Puoi chiudere, ma la prenotazione potrebbe essere già salvata: prima di rifarla, controlla in «Prenotazioni» o in «Agenda».",
+  "@bookingRetryLeaveWarning": {
+    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo, en lugar de bookingRetryKeepsOpen y anunciado por el lector de pantalla: el reintento de una confirmación sin respuesta tampoco tuvo respuesta (un corte largo o la función caída). Debajo de «Riprova» aparece «Chiudi comunque»; si la reserva ya quedó guardada, rehacerla la duplicaría, por eso pide mirar antes. «Prenotazioni» es la pestaña de las reservas en Richieste y «Agenda», la de la barra de abajo."
+  },
+  "bookingLeaveAnyway": "Chiudi comunque",
+  "@bookingLeaveAnyway": {
+    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo, debajo de «Riprova»: cierra la hoja aunque la confirmación siga sin respuesta. Aparece solo después de un reintento que tampoco tuvo respuesta, con bookingRetryLeaveWarning arriba."
+  },
+  "bookingErrorNewClientInvalid": "Il server non accetta i dati della cliente nuova: torna indietro e controllali.",
+  "@bookingErrorNewClientInvalid": {
+    "description": "Hoja de reserva de una clienta nueva, barra de abajo: el servidor rechazó sus datos (nombre, teléfono, zona o dirección), que se corrigen en el formulario. Al lado, «Correggi» vuelve ahí."
+  },
+  "bookingNewClientFix": "Correggi",
+  "@bookingNewClientFix": {
+    "description": "Hoja de reserva de una clienta nueva, barra de abajo, al lado de bookingErrorNewClientInvalid: vuelve al formulario «Nuova cliente»."
+  },
+  "bookingErrorClientNotFound": "Questa scheda cliente non esiste più.",
+  "@bookingErrorClientNotFound": {
+    "description": "Hoja de una reserva a mano o «Rinnova»: la ficha ya no existe (antes de abrirla o al confirmar). Si pasa antes de abrir la hoja a mano, abajo va el botón «Nuova prenotazione»."
+  },
+  "bookingNewClientMissing": "I dati della cliente nuova non ci sono più: ricomincia da «Nuova prenotazione».",
+  "@bookingNewClientMissing": {
+    "description": "Hoja de reserva de una clienta nueva abierta sin el formulario (por ejemplo, al recargar la página en /gestione/): sus datos no viajan en la URL. Abajo, en la barra, el botón «Nuova prenotazione»."
+  },
+  "renewBookingTitle": "Rinnova prenotazione",
+  "@renewBookingTitle": {
+    "description": "Título de la hoja «Rinnova» (desde Hoy o la ficha de la última sesión de una reserva semanal): una reserva para la misma clienta, prellenada con la que termina."
+  },
+  "bookingRenewalSubtitle": "Rinnovo · ultima sessione {date}",
+  "@bookingRenewalSubtitle": {
+    "description": "Hoja «Rinnova prenotazione»: debajo del nombre, la fecha de la última sesión viva de la reserva que se renueva.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 16 dic" }
+    }
+  },
+  "bookingRenewalLastDiffers": "Non tutte le settimane avevano lo stesso giorno e la stessa ora: giorno e ora vengono dall'ultima.",
+  "@bookingRenewalLastDiffers": {
+    "description": "Hoja «Rinnova prenotazione», encabezado: el día de la semana y la hora de la última sesión viva no son los de más de la mitad de las semanas vivas de la reserva (alguna se movió, o se reservó así), y la renovación copia los de la última. Las sesiones no guardan cuál se movió: por eso no dice que fue la última."
+  },
+  "bookingRenewalOtherPhone": "Nella richiesta precedente il numero era {phone}: il WhatsApp va a quello della scheda.",
+  "@bookingRenewalOtherPhone": {
+    "description": "Hoja «Rinnova prenotazione», encabezado: el pedido que se renueva llegó con otro teléfono que el de la ficha (la web no cambia una ficha que ya existe); el WhatsApp y las sesiones nuevas usan el de la ficha. phone: como lo escribió la clienta.",
+    "placeholders": {
+      "phone": { "type": "String", "example": "+34 612 345 678" }
+    }
+  },
+  "bookingRenewalRequestPhone": "La scheda non ha un numero valido per WhatsApp; nella richiesta precedente il numero era {phone}.",
+  "@bookingRenewalRequestPhone": {
+    "description": "Hoja «Rinnova prenotazione», encabezado, en lugar de bookingRenewalOtherPhone: el pedido que se renueva llegó con un teléfono y la ficha no tiene uno válido, así que al confirmar no hay WhatsApp (la renovación no cambia la ficha). phone: como lo escribió la clienta.",
+    "placeholders": {
+      "phone": { "type": "String", "example": "+34 612 345 678" }
+    }
+  },
+  "bookingRenewalUnavailable": "Questa prenotazione non si può rinnovare.",
+  "@bookingRenewalUnavailable": {
+    "description": "Hoja «Rinnova prenotazione» abierta para una sesión cuya reserva no se puede renovar: una sesión extra, sin pedido, un presupuesto o una reserva sin sesiones vivas."
+  },
+  "bookingCookHelpRenewal": "Come nella prenotazione precedente.",
+  "@bookingCookHelpRenewal": {
+    "description": "Hoja «Rinnova prenotazione», debajo del tiempo de cocina: son los minutos de la última sesión de la reserva, tal cual (no siguen a las personas y pueden pasar de 360)."
+  },
   "bookingChecksFailed": "Non è stato possibile verificare le date. Puoi confermare lo stesso: il server le ricontrolla.",
   "@bookingChecksFailed": {
     "description": "No se pudo preguntar al servidor el estado de las fechas. Va con el botón Riprova."
@@ -956,7 +1182,7 @@
   },
   "bookingCookHelp": "Dalla stima, al massimo {max} min.",
   "@bookingCookHelp": {
-    "description": "Debajo del tiempo de cocina: sale de la estimación y tiene un tope.",
+    "description": "Debajo del tiempo de cocina, solo en la hoja de un pedido: sale de la estimación y tiene un tope. A mano va bookingCookHelpManual; en «Rinnova», bookingCookHelpRenewal.",
     "placeholders": {
       "max": { "type": "int", "example": "360" }
     }
@@ -1262,15 +1488,26 @@
   },
   "sessionSectionAllergies": "Allergie e diete",
   "@sessionSectionAllergies": {
-    "description": "Sección de la ficha de la sesión: alérgenos y dietas de la ficha y de la solicitud, y la nota de alergias de la solicitud."
+    "description": "Sección de la ficha de la sesión: alérgenos y dietas de la ficha y de la solicitud (o, en una sesión semanal cuya solicitud no responde, de su última solicitud semanal de la web que se reservó), y la nota de alergias de esa solicitud."
   },
   "sessionAllergyNote": "Nota della richiesta",
   "@sessionAllergyNote": {
-    "description": "Etiqueta de la nota de alergias que escribió la clienta en la solicitud (texto libre, se muestra resaltada)."
+    "description": "Etiqueta de la nota de alergias que escribió la clienta en la solicitud (texto libre, se muestra resaltada). Si sale de otra solicitud suya, arriba de la sección va su fecha (sessionAllergiesEarlierRequest)."
   },
   "sessionCrossContamination": "Glutine (celiachia): evita la contaminazione crociata. Utensili, pentole e superfici puliti o separati, niente farina in giro.",
   "@sessionCrossContamination": {
     "description": "Nota de contaminación cruzada (SPEC §5.6) en una sesión con gluten en la ficha o en la solicitud. Empieza por el alérgeno: gluten no siempre es celiaquía."
+  },
+  "sessionAllergiesNoData": "Allergie: nessun dato nell'app, chiedile",
+  "@sessionAllergiesNoData": {
+    "description": "Ficha de la sesión y Hoy, sección de alergias, resaltado como advertencia: la sesión no tiene ningún dato de alergias (ni alérgenos de la ficha, ni nota o alérgenos del pedido o, en una sesión semanal, de su último pedido semanal de la web que se reservó, ni la confirmación «nadie tiene»), por ejemplo una reserva cargada a mano de una clienta sin ese pedido o cuyo pedido no responde, o una sesión extra a mano (sin consentimiento de salud no se guardan, M2). Una dieta sola no es un dato de alergias: sale igual, con la dieta debajo. Nunca quiere decir «sin alergias»."
+  },
+  "sessionAllergiesEarlierRequest": "Secondo la sua richiesta ({date})",
+  "@sessionAllergiesEarlierRequest": {
+    "description": "Ficha de la sesión y Hoy, sección de alergias, debajo del título y en letra chica: lo que sigue (la nota, los alérgenos o «nadie tiene») sale de otra solicitud de la clienta, su última solicitud semanal de la web que se reservó, porque la de esta reserva semanal no responde (una renovación o una reserva a mano no guardan alergias). La fecha es la de esa solicitud, en Roma. En italiano va entre paréntesis y sin artículo: «del 8 ott» tendría que ser «dell'8 ott».",
+    "placeholders": {
+      "date": { "type": "String", "example": "19 ott 2026" }
+    }
   },
   "sessionSectionClient": "Cliente",
   "@sessionSectionClient": {
@@ -1287,6 +1524,17 @@
   "sessionSectionWeeks": "Settimane della prenotazione",
   "@sessionSectionWeeks": {
     "description": "Sección de la ficha de la sesión con todas las semanas de su reserva (también las canceladas)."
+  },
+  "sessionLastOfBooking": "È l'ultima sessione della prenotazione.",
+  "@sessionLastOfBooking": {
+    "description": "Ficha de la sesión, al final: es la última sesión viva de una reserva semanal. Debajo, el botón «Rinnova»."
+  },
+  "sessionLaterSession": "Ha già un'altra sessione: {date}.",
+  "@sessionLaterSession": {
+    "description": "Ficha de la sesión, fila «Rinnova»: la clienta ya tiene otra sesión después de esta (una renovación u otra reserva). date: como en «Ultima sessione».",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 23 dic" }
+    }
   },
   "sessionMoveAction": "Sposta",
   "@sessionMoveAction": {

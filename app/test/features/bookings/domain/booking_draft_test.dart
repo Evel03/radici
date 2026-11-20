@@ -4,9 +4,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
+import '../../../support/client_fixtures.dart';
 import '../../../support/request_fixtures.dart';
 
 void main() {
@@ -248,6 +250,195 @@ void main() {
         arrivalOptions(suggested: const ClockTime.hm(23, 0))
             .map((t) => t.toHhMm()),
         ['23:00', '23:30'],
+      );
+    });
+  });
+
+  group('reserva a mano', () {
+    test('empieza con 4 semanas y el hogar de la calculadora (2 + 2, 5 días, cena)', () {
+      expect(defaultManualBookingWeeks, 4);
+      expect(
+        defaultManualHousehold,
+        const BookingHousehold(adults: 2, kids: 2, days: 5, meals: [Meal.dinner]),
+      );
+    });
+
+    test('la estimación del hogar: 2 + 2, 5 días y cena dan 180 min y 20 porciones (sin compra)', () {
+      expect(
+        manualBookingEstimate(defaultManualHousehold),
+        (cookMinutes: 180, portions: 20),
+      );
+      // Con almuerzo y cena, el doble de porciones; los minutos, con tope de 360.
+      final both = manualBookingEstimate(
+        defaultManualHousehold.withMeal(Meal.lunch, true),
+      );
+      expect(both.portions, 40);
+      expect(both.cookMinutes, lessThanOrEqualTo(maxBookingCookMinutes));
+      final big = manualBookingEstimate(
+        const BookingHousehold(adults: 30, kids: 30, days: 7, meals: [Meal.lunch, Meal.dinner]),
+      );
+      expect(big.cookMinutes, maxBookingCookMinutes);
+    });
+  });
+
+  group('hogar de la reserva (BookingHousehold)', () {
+    const household = BookingHousehold(adults: 1, kids: 0, days: 1, meals: [Meal.dinner]);
+
+    test('no baja de 1 persona ni de 1 día, no pasa de 30 ni de 7', () {
+      expect(household.canDecrement(HouseholdCounter.adults), isFalse);
+      expect(household.canDecrement(HouseholdCounter.kids), isFalse);
+      expect(household.canDecrement(HouseholdCounter.days), isFalse);
+      expect(household.stepped(HouseholdCounter.adults, -1), household);
+      expect(household.stepped(HouseholdCounter.kids, 1).kids, 1);
+      final withKid = household.stepped(HouseholdCounter.kids, 1);
+      expect(withKid.canDecrement(HouseholdCounter.adults), isTrue);
+      expect(withKid.stepped(HouseholdCounter.adults, -1).adults, 0);
+
+      const full = BookingHousehold(adults: 30, kids: 30, days: 7, meals: [Meal.lunch]);
+      expect(full.canIncrement(HouseholdCounter.adults), isFalse);
+      expect(full.canIncrement(HouseholdCounter.kids), isFalse);
+      expect(full.canIncrement(HouseholdCounter.days), isFalse);
+      expect(full.stepped(HouseholdCounter.days, 1), full);
+      expect(household.valueOf(HouseholdCounter.days), 1);
+    });
+
+    test('nunca queda sin comidas; las comidas, en orden canónico', () {
+      expect(household.withMeal(Meal.dinner, false), household);
+      final both = household.withMeal(Meal.lunch, true);
+      expect(both.canonicalMeals, [Meal.lunch, Meal.dinner]);
+      expect(both.withMeal(Meal.dinner, false).canonicalMeals, [Meal.lunch]);
+      expect(both.withMeal(Meal.lunch, true), both);
+    });
+
+    test('clamped lleva cualquier valor leído a los límites del contrato', () {
+      expect(
+        BookingHousehold.clamped(adults: 40, kids: -2, days: 9, meals: const []),
+        const BookingHousehold(adults: 30, kids: 0, days: 7, meals: [Meal.dinner]),
+      );
+      expect(
+        BookingHousehold.clamped(adults: 0, kids: 0, days: 0, meals: const [Meal.lunch]),
+        const BookingHousehold(adults: 1, kids: 0, days: 1, meals: [Meal.lunch]),
+      );
+    });
+
+    test('toQuoteInput: una semana de comidas', () {
+      final input = defaultManualHousehold.toQuoteInput(weeks: 3);
+      expect(input.adults, 2);
+      expect(input.kids, 2);
+      expect(input.days, 5);
+      expect(input.meals, 1);
+      expect(input.weeks, 3);
+    });
+  });
+
+  group('hogar de una ficha (householdFor)', () {
+    test('el del último pedido semanal, ajustado a los límites', () {
+      expect(
+        householdFor(
+          latestWeekly: buildLatestWeekly(
+            adults: 3,
+            kids: 1,
+            days: 4,
+            meals: const [Meal.lunch, Meal.dinner],
+          ),
+          fichaAdults: 1,
+          fichaKids: 0,
+        ),
+        const BookingHousehold(adults: 3, kids: 1, days: 4, meals: [Meal.lunch, Meal.dinner]),
+      );
+      expect(
+        householdFor(
+          latestWeekly: buildLatestWeekly(adults: 45, kids: 0, days: 5),
+          fichaAdults: 1,
+          fichaKids: 0,
+        ).adults,
+        30,
+      );
+    });
+
+    test('sin pedido semanal: adultos y niños de la ficha, 5 días y cena', () {
+      expect(
+        householdFor(fichaAdults: 2, fichaKids: 1),
+        const BookingHousehold(adults: 2, kids: 1, days: 5, meals: [Meal.dinner]),
+      );
+      // Una ficha con 0 y 0 (clients solo exige >= 0): 1 adulto.
+      expect(householdFor(fichaAdults: 0, fichaKids: 0).adults, 1);
+    });
+
+    test('nunca el de un evento (el caso Bonetti) ni el de un cambio sin hogar (el caso Chiara)', () {
+      final bonettiEvent = buildLatestWeekly(
+        type: RequestType.extra,
+        adults: 10,
+        kids: 6,
+        days: 1,
+      );
+      expect(
+        householdFor(latestWeekly: bonettiEvent, fichaAdults: 2, fichaKids: 1),
+        const BookingHousehold(adults: 2, kids: 1, days: 5, meals: [Meal.dinner]),
+      );
+      final chiaraChange = buildLatestWeekly(
+        type: RequestType.change,
+        adults: null,
+        kids: null,
+        days: null,
+        meals: const [],
+      );
+      expect(
+        householdFor(latestWeekly: chiaraChange, fichaAdults: 1, fichaKids: 0),
+        const BookingHousehold(adults: 1, kids: 0, days: 5, meals: [Meal.dinner]),
+      );
+      // Un pedido semanal sin días ni comidas tampoco describe la casa.
+      expect(
+        householdFor(
+          latestWeekly: buildLatestWeekly(days: null),
+          fichaAdults: 2,
+          fichaKids: 2,
+        ),
+        const BookingHousehold(adults: 2, kids: 2, days: 5, meals: [Meal.dinner]),
+      );
+    });
+  });
+
+  group('llegada de hoy que ya pasó (arrivalPassedToday)', () {
+    final day = CalendarDate(2026, 11, 17);
+
+    test('hoy a las 10:00 con las 18:00, sí; con las 9:00, no; mañana, no', () {
+      expect(
+        arrivalPassedToday(
+          date: day,
+          start: const ClockTime.hm(10, 0),
+          today: day,
+          now: const ClockTime.hm(18, 0),
+        ),
+        isTrue,
+      );
+      expect(
+        arrivalPassedToday(
+          date: day,
+          start: const ClockTime.hm(10, 0),
+          today: day,
+          now: const ClockTime.hm(9, 0),
+        ),
+        isFalse,
+      );
+      expect(
+        arrivalPassedToday(
+          date: day.addDays(1),
+          start: const ClockTime.hm(10, 0),
+          today: day,
+          now: const ClockTime.hm(18, 0),
+        ),
+        isFalse,
+      );
+      // Una fecha pasada ya la marca el servidor («Data passata»).
+      expect(
+        arrivalPassedToday(
+          date: day.addDays(-1),
+          start: const ClockTime.hm(10, 0),
+          today: day,
+          now: const ClockTime.hm(18, 0),
+        ),
+        isFalse,
       );
     });
   });

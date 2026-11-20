@@ -1,8 +1,11 @@
 // Bandeja: pestañas, contador, lista y navegación al detalle. Ya no es el
 // inicio de la cocinera (es Hoy): los tests la abren en /richieste.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/bookings/presentation/new_booking_client_screen.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
@@ -144,12 +147,126 @@ void main() {
     );
     expect(badge.isLabelVisible, isFalse);
 
-    // La de reservas dice dónde se confirman.
+    // La de reservas dice dónde se confirman y propone la de abajo.
     await openTab(tester, 'inbox-tab-bookings');
     expect(
-      find.text('Nessuna prenotazione. Le confermi dal dettaglio di una richiesta nuova.'),
+      find.text(
+        'Nessuna prenotazione. Confermane una da una richiesta nuova o creala '
+        'qui sotto con «Nuova prenotazione».',
+      ),
       findsOneWidget,
     );
+  });
+
+  group('«Nuova prenotazione» en Prenotazioni', () {
+    final newBooking = find.byKey(const ValueKey('inbox-new-booking'));
+
+    testWidgets('solo la pestaña Prenotazioni tiene la barra, y abre el elegir', (tester) async {
+      await pumpChefApp(tester, requests: sample(), location: '/richieste');
+      expect(newBooking, findsNothing, reason: 'en «Nuove» no');
+      await openTab(tester, 'inbox-tab-seen');
+      expect(newBooking, findsNothing);
+      await openTab(tester, 'inbox-tab-rejected');
+      expect(newBooking, findsNothing);
+      await openTab(tester, 'inbox-tab-bookings');
+      expect(newBooking.hitTestable(), findsOneWidget);
+      expect(find.text('Nuova prenotazione'), findsOneWidget);
+
+      await tester.tap(newBooking);
+      await tester.pumpAndSettle();
+      expect(find.byType(NewBookingClientScreen), findsOneWidget);
+    });
+
+    testWidgets('con la bandeja cargando o con error, la barra está igual', (tester) async {
+      final requests = sample()..pendingFetch = Completer<void>();
+      await pumpChefApp(
+        tester,
+        requests: requests,
+        location: '/richieste',
+        settle: false,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.byKey(const ValueKey('inbox-tab-bookings')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+      expect(newBooking.hitTestable(), findsOneWidget);
+      await tester.tap(newBooking);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(NewBookingClientScreen), findsOneWidget);
+      requests.pendingFetch!.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('con la bandeja en error, la barra está debajo del error y abre el elegir', (tester) async {
+      final requests = sample()..failFetch = true;
+      await pumpChefApp(tester, requests: requests, location: '/richieste');
+      await openTab(tester, 'inbox-tab-bookings');
+      expect(find.byKey(const ValueKey('load-error')), findsOneWidget);
+      expect(newBooking.hitTestable(), findsOneWidget);
+      await tester.tap(newBooking);
+      await tester.pumpAndSettle();
+      expect(find.byType(NewBookingClientScreen), findsOneWidget);
+    });
+
+    testWidgets('una reserva a mano en la lista no dice «Senza data»; una de la web sí dice su fecha', (tester) async {
+      await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([
+          buildRequest(
+            id: 'manual-1',
+            name: 'Chiara Rossi',
+            source: RequestSource.app,
+            status: RequestStatus.accepted,
+            noDate: true,
+            preferredSlot: null,
+            estimate: null,
+            seenAt: testNow,
+          ),
+          buildRequest(
+            id: 'web-1',
+            status: RequestStatus.accepted,
+            preferredDate: CalendarDate(2026, 11, 23),
+            seenAt: testNow,
+            createdAt: DateTime.utc(2026, 10, 18, 9),
+          ),
+        ]),
+        location: '/richieste',
+      );
+      await openTab(tester, 'inbox-tab-bookings');
+      expect(tile('manual-1'), findsOneWidget);
+      expect(
+        find.descendant(of: tile('manual-1'), matching: find.textContaining('Senza data')),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('request-manual-1-when')), findsNothing);
+      expect(tester.widget<ListTile>(tile('manual-1')).isThreeLine, isFalse);
+      expect(find.byKey(const ValueKey('request-web-1-when')), findsOneWidget);
+    });
+
+    for (final empty in [true, false]) {
+      testWidgets('a 375×667 el botón queda en el tercio inferior (${empty ? 'lista vacía' : 'con reservas'})', (tester) async {
+        await pumpChefApp(
+          tester,
+          requests: empty ? FakeChefRequestsRepository(const []) : sample(),
+          location: '/richieste',
+          size: const Size(375, 667),
+        );
+        await openTab(tester, 'inbox-tab-bookings');
+        expect(newBooking.hitTestable(), findsOneWidget);
+        expect(tester.getCenter(newBooking).dy, greaterThan(667 * 2 / 3));
+        expect(tester.getSize(newBooking).height, greaterThanOrEqualTo(48));
+        expect(
+          tester.getRect(newBooking).bottom,
+          lessThanOrEqualTo(
+            tester.getRect(find.byKey(const ValueKey('chef-nav-bar'))).top,
+          ),
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   testWidgets('confirmar una reserva la pasa de Viste a Prenotazioni; la hoja y la pantalla final tapan la '

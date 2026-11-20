@@ -22,6 +22,8 @@ import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/supabase_client.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart'
     show SupabaseBookingsRepository;
+import 'package:radici/features/requests/domain/chef_request.dart'
+    show RequestSource, RequestStatus, RequestType;
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_api.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -29,6 +31,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Cuántas sesiones lee la agenda como mucho: unas pocas por semana, desde el
 /// mes elegido (las reservas son de 8 semanas como mucho).
 const int sessionsPageSize = 1000;
+
+/// Ruta de los pedidos de la clienta embebidos en la ficha de cada sesión
+/// (`answers` en [cookingSessionColumns]).
+const String clientAnswersPath = 'client.answers';
+
+/// Cuántos pedidos semanales de la web aceptados de la clienta trae cada
+/// sesión: solo el más nuevo. Si no responde, la app no busca uno anterior
+/// (su respuesta pudo haberse borrado; ver SessionClient.lastAllergyAnswer).
+const int clientAnswersLimit = 1;
 
 abstract interface class SessionsRepository {
   /// Las sesiones de la cocinera desde [from] (incluido), de todos los
@@ -158,14 +169,18 @@ class SupabaseSessionsRepository implements SessionsRepository {
     required String chefId,
     required CalendarDate from,
   }) => _read(() async {
-    final rows = await _client
-        .from('sessions')
-        .select(cookingSessionColumns)
+    final rows = await _selectSessions()
         .eq('chef_id', chefId)
         .gte('date', from.toIso())
         .order('date', ascending: true)
         .order('start_time', ascending: true)
-        .limit(sessionsPageSize);
+        .limit(sessionsPageSize)
+        .order(
+          'created_at',
+          ascending: false,
+          referencedTable: clientAnswersPath,
+        )
+        .limit(clientAnswersLimit, referencedTable: clientAnswersPath);
     return rows.map(CookingSession.fromJson).toList();
   });
 
@@ -174,11 +189,15 @@ class SupabaseSessionsRepository implements SessionsRepository {
     required String chefId,
     required String id,
   }) => _read(() async {
-    final row = await _client
-        .from('sessions')
-        .select(cookingSessionColumns)
+    final row = await _selectSessions()
         .eq('chef_id', chefId)
         .eq('id', id)
+        .order(
+          'created_at',
+          ascending: false,
+          referencedTable: clientAnswersPath,
+        )
+        .limit(clientAnswersLimit, referencedTable: clientAnswersPath)
         .maybeSingle();
     return row == null ? null : CookingSession.fromJson(row);
   });
@@ -188,15 +207,34 @@ class SupabaseSessionsRepository implements SessionsRepository {
     required String chefId,
     required String requestId,
   }) => _read(() async {
-    final rows = await _client
-        .from('sessions')
-        .select(cookingSessionColumns)
+    final rows = await _selectSessions()
         .eq('chef_id', chefId)
         .eq('request_id', requestId)
         .order('date', ascending: true)
-        .order('start_time', ascending: true);
+        .order('start_time', ascending: true)
+        .order(
+          'created_at',
+          ascending: false,
+          referencedTable: clientAnswersPath,
+        )
+        .limit(clientAnswersLimit, referencedTable: clientAnswersPath);
     return rows.map(CookingSession.fromJson).toList();
   });
+
+  /// `sessions` con [cookingSessionColumns] y, de los pedidos de la clienta
+  /// (`client.answers`), solo los semanales (lo de su casa: en uno extra los
+  /// que comen pueden ser otros, SPEC §5.6), de la web (una reserva a mano no
+  /// guarda alergias) y aceptados (un pedido rechazado, vencido o pendiente
+  /// pudo mandarlo otra persona con su email). El orden y el tope de esos
+  /// pedidos van después de los filtros de cada lectura (son
+  /// transformaciones). Cuando las clientas con cuenta pidan desde la app
+  /// (M3c), con su respuesta de alergias, revisar el filtro por la web.
+  PostgrestFilterBuilder<PostgrestList> _selectSessions() => _client
+      .from('sessions')
+      .select(cookingSessionColumns)
+      .eq('$clientAnswersPath.type', RequestType.week.name)
+      .eq('$clientAnswersPath.source', RequestSource.web.name)
+      .eq('$clientAnswersPath.status', RequestStatus.accepted.name);
 
   @override
   Future<MoveSessionResult> moveSession(MoveSessionRequest request) =>

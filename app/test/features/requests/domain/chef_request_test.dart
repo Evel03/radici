@@ -297,6 +297,33 @@ void main() {
       expect(buildRequest(status: RequestStatus.accepted).isNew, isFalse);
     });
 
+    test('el aviso en tiempo real, solo para un pedido sin abrir que llega de la web', () {
+      expect(buildRequest().alertsOnArrival, isTrue);
+      // Un pedido nuevo de la app no avisa, aunque cuente como nuevo en la bandeja.
+      final fromApp = buildRequest(source: RequestSource.app);
+      expect(fromApp.alertsOnArrival, isFalse);
+      expect(fromApp.isNew, isTrue);
+      // Una reserva no avisa: la de la app (una reserva a mano nace aceptada y
+      // vista) ni la de la web, aunque no tenga seen_at.
+      expect(
+        buildRequest(
+          source: RequestSource.app,
+          status: RequestStatus.accepted,
+          seenAt: testNow,
+        ).alertsOnArrival,
+        isFalse,
+      );
+      for (final source in RequestSource.values) {
+        expect(
+          buildRequest(source: source, status: RequestStatus.accepted).alertsOnArrival,
+          isFalse,
+          reason: '$source',
+        );
+      }
+      expect(buildRequest(seenAt: testNow).alertsOnArrival, isFalse);
+      expect(buildRequest(status: RequestStatus.rejected).alertsOnArrival, isFalse);
+    });
+
     test('solo un pedido en estado new se puede rechazar', () {
       expect(buildRequest().canReject, isTrue);
       expect(buildRequest(seenAt: testNow).canReject, isTrue);
@@ -349,6 +376,45 @@ void main() {
       expect(buildRequest(noAllergies: false).allergyAnswer, AllergyAnswer.unknown);
       // Si llegaran las dos cosas (la base no lo deja), se muestran las restricciones.
       expect(buildRequest(restrictions: note, noAllergies: true).allergyAnswer, AllergyAnswer.listed);
+    });
+
+    test('una dieta sola no responde sobre alergias: sin datos (la dieta igual se muestra)', () {
+      const note = RequestRestrictions(note: 'Celiachia');
+      const vegetarian = RequestRestrictions(diets: [Diet.vegetarian]);
+      final dietOnly = buildRequest(restrictions: vegetarian);
+      expect(dietOnly.allergyAnswer, AllergyAnswer.unknown);
+      expect(dietOnly.answersAllergies, isFalse);
+      // La lista de la bandeja igual marca que trae restricciones.
+      expect(dietOnly.hasRestrictions, isTrue);
+      // Con alérgenos o la nota, sí.
+      expect(
+        buildRequest(
+          restrictions: const RequestRestrictions(
+            diets: [Diet.vegan],
+            note: 'Noci',
+          ),
+        ).allergyAnswer,
+        AllergyAnswer.listed,
+      );
+      expect(
+        buildRequest(
+          restrictions: const RequestRestrictions(
+            diets: [Diet.vegan],
+            allergens: [Allergen.nuts],
+          ),
+        ).allergyAnswer,
+        AllergyAnswer.listed,
+      );
+      // Una nota en blanco tampoco responde.
+      expect(
+        buildRequest(restrictions: const RequestRestrictions(note: '   '))
+            .allergyAnswer,
+        AllergyAnswer.unknown,
+      );
+      // «Nadie tiene» responde.
+      expect(buildRequest(noAllergies: true).answersAllergies, isTrue);
+      expect(buildRequest(restrictions: note).answersAllergies, isTrue);
+      expect(buildRequest().answersAllergies, isFalse);
     });
 
     test('personas, teléfono normalizado y primer nombre', () {

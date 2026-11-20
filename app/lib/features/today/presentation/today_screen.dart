@@ -1,7 +1,8 @@
 // Hoy (/oggi), el inicio de la cocinera: la sesión de hoy (varias, con la
 // próxima primero) o, si hoy no hay, la próxima; los pendientes de uno o dos
 // toques (pedidos nuevos, que llevan a «Nuove», y reservas que terminan, que
-// abren la ficha de su última semana) y la tira de 7 días (cada día abre la
+// abren la ficha de su última semana o, con «Rinnova», la hoja de la
+// renovación: renovar son dos toques) y la tira de 7 días (cada día abre la
 // Agenda en ese día). Abajo, en el tercio inferior del teléfono, «Come
 // arrivare» y WhatsApp de la sesión principal (sin dirección, WhatsApp y
 // «Aggiungi indirizzo», como la ficha); sin ninguna sesión, «Vedi le
@@ -209,8 +210,9 @@ class _NoSessions extends StatelessWidget {
   }
 }
 
-/// Sin ninguna sesión, la acción del estado vacío, «Vedi le richieste»:
-/// abajo, en el tercio inferior del teléfono, como los botones de una sesión.
+/// Sin ninguna sesión, las acciones del estado vacío, «Vedi le richieste» y
+/// «Nuova prenotazione» (cargar una a mano, como en «Prenotazioni»): abajo,
+/// en el tercio inferior del teléfono, como los botones de una sesión.
 class _NoSessionsActions extends StatelessWidget {
   const _NoSessionsActions();
 
@@ -226,13 +228,21 @@ class _NoSessionsActions extends StatelessWidget {
           icon: const Icon(Icons.inbox_outlined),
           label: Text(l10n.todayEmptyAction),
         ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          key: const ValueKey('today-empty-new-booking'),
+          onPressed: () => context.push(AppRoutes.newBooking),
+          icon: const Icon(Icons.add),
+          label: Text(l10n.newBookingAction),
+        ),
       ],
     );
   }
 }
 
 /// Los pendientes: pedidos nuevos (llevan a «Nuove») y reservas que terminan
-/// (abren la ficha de su última semana). «Renovar» llega con el PR 8.
+/// o que terminaron hace hasta 7 días (abren la ficha de su última semana y
+/// tienen «Rinnova», que abre la hoja prellenada).
 class _Pending extends ConsumerWidget {
   const _Pending({required this.sessionsRead});
 
@@ -253,6 +263,7 @@ class _Pending extends ConsumerWidget {
     final inbox = ref.watch(chefInboxProvider);
     final newCount = ref.watch(newRequestsCountProvider);
     final ending = ref.watch(todayEndingBookingsProvider);
+    final today = ref.watch(romeTodayProvider);
     // La carga y el error pueden llegar con un valor de antes (la lista vacía
     // de cuando todavía no había cocinera: el aviso de pedidos nuevos arma la
     // bandeja desde el arranque), así que se miran sin él. Mientras se vuelve
@@ -275,10 +286,20 @@ class _Pending extends ConsumerWidget {
         _PendingTile(
           key: ValueKey('today-ending-${last.requestId}'),
           icon: Icons.event_repeat_outlined,
-          title: l10n.todayBookingEnding(last.displayName),
+          // Si su última sesión ya pasó (hasta 7 días), dice que terminó.
+          title: last.date.isBefore(today)
+              ? l10n.todayBookingEnded(last.displayName)
+              : l10n.todayBookingEnding(last.displayName),
           subtitle: l10n.todayBookingLastSession(formats.inText(last.date)),
           onTap: () =>
               unawaited(context.push(AppRoutes.sessionDetail(last.id))),
+          // «Rinnova»: la hoja prellenada encima de Hoy (al cerrarla, Hoy).
+          action: _RenewButton(
+            key: ValueKey('today-renew-${last.requestId}'),
+            semanticsLabel: l10n.todayRenewA11y(last.displayName),
+            onPressed: () =>
+                unawaited(context.push(AppRoutes.sessionRenew(last.id))),
+          ),
         ),
     ];
 
@@ -335,6 +356,9 @@ class _Pending extends ConsumerWidget {
   }
 }
 
+/// Un pendiente: tocarlo lo abre. Con [action] (el «Rinnova» de una reserva
+/// que termina), el botón va debajo, a la derecha, y el resto de la tarjeta
+/// sigue abriendo lo suyo.
 class _PendingTile extends StatelessWidget {
   const _PendingTile({
     super.key,
@@ -342,25 +366,74 @@ class _PendingTile extends StatelessWidget {
     required this.title,
     required this.onTap,
     this.subtitle,
+    this.action,
   });
 
   final IconData icon;
   final String title;
   final String? subtitle;
   final VoidCallback onTap;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
     final subtitle = this.subtitle;
+    final action = this.action;
+    final tile = ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: subtitle == null ? null : Text(subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+    );
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        leading: Icon(icon),
-        title: Text(title),
-        subtitle: subtitle == null ? null : Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
+      child: action == null
+          ? tile
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                tile,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: action,
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+/// «Rinnova» de una reserva que termina. Para el lector de pantalla es un
+/// solo nodo con la etiqueta que dice de quién es, el botón y la acción de
+/// tocar (en /gestione/ el toque de VoiceOver solo llega a un nodo que tiene
+/// la acción, como la cabecera de TodaySessionCard), sin repetir «Rinnova».
+class _RenewButton extends StatelessWidget {
+  const _RenewButton({
+    super.key,
+    required this.semanticsLabel,
+    required this.onPressed,
+  });
+
+  final String semanticsLabel;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Semantics(
+      container: true,
+      button: true,
+      label: semanticsLabel,
+      excludeSemantics: true,
+      onTap: onPressed,
+      child: FilledButton.tonal(
+        onPressed: onPressed,
+        child: Text(l10n.actionRenew),
       ),
     );
   }

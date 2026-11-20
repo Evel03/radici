@@ -11,8 +11,8 @@ import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_booking.dart';
 
-/// Días de la tira de Hoy y de la ventana de las reservas que terminan: hoy y
-/// los 6 siguientes.
+/// Días de la tira de Hoy: hoy y los 6 siguientes. Las reservas que terminan
+/// usan su propia ventana (endingBookingNoticeDays).
 const int todayWindowDays = 7;
 
 /// Lo que Hoy muestra de las sesiones.
@@ -128,16 +128,21 @@ TodayFocus todayFocus(
 
 /// Las reservas que terminan: las reservas semanales (un pedido semanal
 /// aceptado más sus sesiones, SPEC §4; no un presupuesto enviado ni una sesión
-/// extra) cuya última sesión viva cae entre [today] y los 6 días siguientes
-/// (la ventana de la tira). Una que ya terminó (su última sesión es de un día
-/// pasado) no cuenta, y tampoco una sesión sin su pedido embebido (no se sabe
-/// qué es). Devuelve esa última sesión de cada una, por fecha.
+/// extra) cuya última sesión viva cae entre [endingBookingNoticeDays] días
+/// antes y [endingBookingNoticeDays] días después de [today] (fechas de
+/// calendario de Roma; las de antes de hoy ya terminaron), salvo que la misma
+/// ficha ya tenga otra sesión viva después de esa (una renovación, otra
+/// reserva o una sesión suelta: de dos reservas en paralelo queda la que
+/// termina última). Una sesión sin su pedido embebido no cuenta (no se sabe
+/// qué es). Devuelve esa última sesión de cada una, por fecha: primero las
+/// que ya terminaron.
 List<CookingSession> endingBookings(
   Iterable<CookingSession> sessions, {
   required CalendarDate today,
 }) {
+  final all = sessions.toList();
   final last = <String, CookingSession>{};
-  for (final session in sessions) {
+  for (final session in all) {
     final requestId = session.requestId;
     if (requestId == null || !session.isLive || !_isWeeklyBooking(session)) {
       continue;
@@ -147,10 +152,13 @@ List<CookingSession> endingBookings(
       last[requestId] = session;
     }
   }
-  final until = today.addDays(todayWindowDays - 1);
+  final from = today.addDays(-endingBookingNoticeDays);
+  final until = today.addDays(endingBookingNoticeDays);
   return [
     for (final session in last.values)
-      if (!session.date.isBefore(today) && !session.date.isAfter(until))
+      if (!session.date.isBefore(from) &&
+          !session.date.isAfter(until) &&
+          !hasLaterLiveSession(session, all))
         session,
   ]..sort(compareSessions);
 }

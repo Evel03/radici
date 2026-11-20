@@ -14,6 +14,8 @@ import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
+import 'package:radici/features/clients/data/clients_repository.dart';
+import 'package:radici/features/clients/domain/chef_client.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
@@ -261,6 +263,35 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
   }
 }
 
+/// Fichas de la cocinera "en el servidor", en memoria (el directorio de
+/// «Nuova prenotazione»). La lectura toma su foto en cuanto llega:
+/// [pendingFetch] demora solo la respuesta.
+class FakeClientsRepository implements ClientsRepository {
+  FakeClientsRepository([Iterable<ChefClient> clients = const []])
+    : clients = [...clients];
+
+  final List<ChefClient> clients;
+
+  /// Si no es null, la lectura falla con esto.
+  ClientsFailure? fetchFailure;
+
+  /// Si no es null, la respuesta espera a que se complete.
+  Completer<void>? pendingFetch;
+
+  int fetchCalls = 0;
+
+  @override
+  Future<List<ChefClient>> fetchClients({required String chefId}) async {
+    fetchCalls++;
+    final snapshot = List.of(clients);
+    final pending = pendingFetch;
+    if (pending != null) await pending.future;
+    final failure = fetchFailure;
+    if (failure != null) throw failure;
+    return snapshot;
+  }
+}
+
 /// Lunes a viernes de 9 a 15: el horario de Evelyn (decisión del 15/11/2026).
 List<AvailabilityRule> weekdayRules() => [
   for (var weekday = 1; weekday <= 5; weekday++)
@@ -394,16 +425,37 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
 /// pedido a `accepted` como la base. Como la base, con un pedido que ya no está
 /// `new` en [requests] el dryRun y la confirmación dan requestNotNew, salvo el
 /// reintento de una reserva guardada aquí con las mismas fechas y hora, que
-/// devuelve lo guardado con `duplicate` (contrato chef-api §4). Las fallas y
-/// las respuestas lentas se controlan por campo.
+/// devuelve lo guardado con `duplicate` (contrato chef-api §4). A mano
+/// (clientId o newClient), la confirmación crea el pedido `manual-request-<n>`
+/// (y, con newClient, la ficha `new-client-1`) y la guarda por su requestKey:
+/// la misma clave devuelve lo guardado con `duplicate`. Con [requests] agrega
+/// el pedido `accepted`, de la app y visto, con los datos de la ficha (de
+/// [clients] o de newClient), y una ficha prospecto pasa a trial. Con
+/// [sessions], una confirmación a mano agrega sus sesiones `confirmed` (con
+/// la ficha de otra sesión suya, si hay). Las fallas y las respuestas lentas
+/// se controlan por campo.
 class FakeBookingsRepository implements BookingsRepository {
-  FakeBookingsRepository({this.requests});
+  FakeBookingsRepository({this.requests, this.clients, this.sessions});
 
   /// Los pedidos "en el servidor" que actualiza una confirmación.
   final FakeChefRequestsRepository? requests;
 
+  /// Las fichas "en el servidor" de una reserva a mano.
+  final FakeClientsRepository? clients;
+
+  /// Las sesiones "en el servidor" que crea una reserva a mano.
+  final FakeSessionsRepository? sessions;
+
   /// Reservas guardadas, por pedido.
   final Map<String, BookingResult> saved = {};
+
+  /// Reservas a mano guardadas, por requestKey.
+  final Map<String, BookingResult> savedByKey = {};
+
+  /// El id de la ficha que crea una reserva con newClient.
+  static const String newClientId = 'new-client-1';
+
+  int _manualRequests = 0;
 
   /// La próxima confirmación se guarda pero su respuesta se pierde
   /// (unavailable): la base la tiene y la app no lo sabe.
@@ -453,6 +505,7 @@ class FakeBookingsRepository implements BookingsRepository {
     if (pending != null) await pending.future;
     final failure = request.dryRun ? checksFailure : confirmFailure;
     if (failure != null) throw failure;
+    if (request.requestId == null) return _manual(request);
     final current = requests?.requests[request.requestId];
     if (current != null && current.status != RequestStatus.newRequest) {
       final booked = saved[request.requestId];
@@ -479,13 +532,167 @@ class FakeBookingsRepository implements BookingsRepository {
     );
     if (!request.dryRun) {
       _accept(request);
-      saved[request.requestId] = result.copyWith(duplicate: false);
+      if (request.requestId case final requestId?) {
+        saved[requestId] = result.copyWith(duplicate: false);
+      }
       if (loseNextConfirmResponse) {
         loseNextConfirmResponse = false;
         throw const BookingFailure(BookingFailureKind.unavailable);
       }
     }
     return result;
+  }
+
+  /// Una reserva a mano: el dryRun sin pedido (y, con newClient, sin ficha);
+  /// la confirmación crea el pedido y se guarda por su clave.
+  BookingResult _manual(BookingRequest request) {
+    final key = request.requestKey;
+    if (!request.dryRun && key != null) {
+      final booked = savedByKey[key];
+      if (booked != null) return booked.copyWith(duplicate: true);
+    }
+    final result = BookingResult(
+      dryRun: request.dryRun,
+      duplicate: !request.dryRun && duplicate,
+      requestId: request.dryRun ? null : 'manual-request-${++_manualRequests}',
+      clientId: request.clientId ?? (request.dryRun ? null : newClientId),
+      weeks: [
+        for (final (i, date) in request.dates.indexed)
+          _week(request, i, date),
+      ],
+    );
+    if (request.dryRun) return result;
+    if (key != null) savedByKey[key] = result.copyWith(duplicate: false);
+    _createManual(request, result);
+    _createSessions(request, result);
+    if (loseNextConfirmResponse) {
+      loseNextConfirmResponse = false;
+      throw const BookingFailure(BookingFailureKind.unavailable);
+    }
+    return result;
+  }
+
+  void _createManual(BookingRequest request, BookingResult result) {
+    final clientId = result.clientId!;
+    final directory = clients;
+    final existing = directory?.clients
+        .where((client) => client.id == clientId)
+        .firstOrNull;
+    final newClient = request.newClient;
+    if (directory != null && existing != null && existing.isProspect) {
+      directory.clients[directory.clients.indexOf(existing)] = existing
+          .copyWith(status: ClientStatus.trial);
+    }
+    if (directory != null && newClient != null) {
+      directory.clients.add(
+        ChefClient(
+          id: clientId,
+          displayName: newClient.name,
+          contactPhone: newClient.phone,
+          zone: newClient.zone,
+          adults: request.household!.adults,
+          kids: request.household!.kids,
+          status: ClientStatus.trial,
+        ),
+      );
+    }
+    final server = requests;
+    if (server == null) return;
+    for (final other in server.requests.values.toList()) {
+      if (other.clientId == clientId &&
+          other.client.status == ClientStatus.prospect) {
+        server.requests[other.id] = other.copyWith(
+          client: other.client.copyWith(status: ClientStatus.trial),
+        );
+      }
+    }
+    final household = request.household!;
+    server.requests[result.requestId!] = ChefRequest(
+      id: result.requestId!,
+      chefId: testChefId,
+      clientId: clientId,
+      type: RequestType.week,
+      status: RequestStatus.accepted,
+      adults: household.adults,
+      kids: household.kids,
+      days: household.days,
+      meals: household.canonicalMeals,
+      weeks: request.dates.length,
+      locale: request.locale!,
+      source: RequestSource.app,
+      seenAt: DateTime.utc(2026, 10, 19, 12),
+      createdAt: DateTime.utc(2026, 10, 19, 12, 0, 1),
+      client: RequestClient(
+        displayName: newClient?.name ?? existing?.displayName ?? '',
+        contactPhone: newClient?.phone ?? existing?.contactPhone,
+        zone: newClient?.zone ?? existing?.zone,
+        // Como la base: una ficha nueva nace trial y un prospecto pasa a
+        // trial; las demás no cambian.
+        status: newClient != null || existing == null || existing.isProspect
+            ? ClientStatus.trial
+            : existing.status,
+      ),
+    );
+  }
+
+  /// Con [sessions], las sesiones `confirmed` de una reserva a mano, una por
+  /// semana, con el pedido creado y la ficha de otra sesión de la misma
+  /// clienta (si no hay, una con su nombre).
+  void _createSessions(BookingRequest request, BookingResult result) {
+    final repository = sessions;
+    if (repository == null) return;
+    final requestId = result.requestId!;
+    final clientId = result.clientId!;
+    final household = request.household!;
+    final created =
+        requests?.requests[requestId] ??
+        ChefRequest(
+          id: requestId,
+          chefId: testChefId,
+          clientId: clientId,
+          type: RequestType.week,
+          status: RequestStatus.accepted,
+          adults: household.adults,
+          kids: household.kids,
+          days: household.days,
+          meals: household.canonicalMeals,
+          weeks: request.dates.length,
+          locale: request.locale!,
+          source: RequestSource.app,
+          seenAt: DateTime.utc(2026, 10, 19, 12),
+          createdAt: DateTime.utc(2026, 10, 19, 12, 0, 1),
+        );
+    final client =
+        repository.sessions.values
+            .where((s) => s.clientId == clientId)
+            .firstOrNull
+            ?.client ??
+        SessionClient(
+          displayName: request.newClient?.name ?? created.client.displayName,
+          contactPhone: request.newClient?.phone,
+          zone: request.newClient?.zone,
+          status: ClientStatus.trial,
+        );
+    for (final (i, week) in result.weeks.indexed) {
+      final id = '$requestId-${i + 1}';
+      repository.sessions[id] = CookingSession(
+        id: id,
+        chefId: testChefId,
+        clientId: clientId,
+        requestId: requestId,
+        date: week.date,
+        start: week.start ?? request.start ?? const ClockTime.hm(9, 0),
+        cookMinutes: request.cookMinutes,
+        // Sin compra: shop_minutes es 0 desde el 19/11/2026.
+        shopMinutes: 0,
+        gapMinutes: 30,
+        portions: request.portions ?? 0,
+        status: SessionStatus.confirmed,
+        serviceCents: week.serviceCents,
+        client: client,
+        request: created,
+      );
+    }
   }
 
   static bool _sameDatesAndStart(BookingResult booked, BookingRequest request) =>
@@ -515,9 +722,10 @@ class FakeBookingsRepository implements BookingsRepository {
 
   void _accept(BookingRequest request) {
     final server = requests;
-    final current = server?.requests[request.requestId];
-    if (server == null || current == null) return;
-    server.requests[request.requestId] = current.copyWith(
+    final requestId = request.requestId;
+    final current = server?.requests[requestId];
+    if (server == null || requestId == null || current == null) return;
+    server.requests[requestId] = current.copyWith(
       status: RequestStatus.accepted,
       weeks: request.dates.length,
       seenAt: current.seenAt ?? DateTime.utc(2026, 10, 19, 12),
@@ -568,6 +776,10 @@ class FakeSessionsRepository implements SessionsRepository {
   Completer<void>? pendingCancel;
   Completer<void>? pendingAddress;
 
+  /// Solo la lectura de la agenda (fetchSessions) espera a que se complete:
+  /// la ficha de una sesión se lee igual.
+  Completer<void>? pendingAgendaFetch;
+
   int fetchCalls = 0;
   final List<CalendarDate> fetchedFrom = [];
   final List<String> bookingFetches = [];
@@ -602,6 +814,8 @@ class FakeSessionsRepository implements SessionsRepository {
   }) async {
     fetchCalls++;
     fetchedFrom.add(from);
+    final agenda = pendingAgendaFetch;
+    if (agenda != null) await agenda.future;
     final found = _sorted(
       sessions.values.where(
         (s) => s.chefId == chefId && !s.date.isBefore(from),

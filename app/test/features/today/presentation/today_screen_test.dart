@@ -2,14 +2,21 @@
 // directo, como el del email, sigue abriendo su pedido) y la barra tiene 4
 // destinos (el riel también). Muestra la sesión de hoy (varias, con la
 // próxima primero) o la próxima: la clienta, las horas que salen de la
-// sesión, las personas, las alergias resaltadas, la contaminación cruzada con
-// gluten y las notas de cocina; abajo, en el tercio inferior, «Come arrivare»
-// (sin dirección, «Aggiungi indirizzo») y WhatsApp (el mensaje de la ficha:
-// lo firma la cocinera o, con la cuenta de un colaborador, escribe de parte
-// de ella). Tocar la tarjeta abre la ficha. Los pendientes (pedidos nuevos, que
-// llevan a «Nuove», y reservas que terminan, que abren su última semana), la
-// tira de 7 días (que abre la Agenda en ese día), carga, error, vacío, deslizar
-// para actualizar y el cambio de día a la medianoche de Roma sin reabrir.
+// sesión, las personas, las alergias resaltadas (en una renovación, las del
+// último pedido semanal de la web que se reservó, con su fecha; sin ningún
+// dato o con solo una
+// dieta, la advertencia «Allergie: nessun dato nell'app, chiedile», como en
+// la ficha),
+// la contaminación cruzada con gluten y las notas de cocina; abajo, en el
+// tercio inferior, «Come arrivare» (sin dirección, «Aggiungi indirizzo») y
+// WhatsApp (el mensaje de la ficha: lo firma la cocinera o, con la cuenta de
+// un colaborador, escribe de parte de ella). Tocar la tarjeta abre la ficha.
+// Los pendientes (pedidos nuevos, que llevan a «Nuove», y reservas que
+// terminan o terminaron hace hasta 7 días, que abren su última semana y
+// tienen «Rinnova»; no están si la ficha ya tiene una sesión posterior), la
+// tira de 7 días (que abre la Agenda en ese día), carga, error, vacío,
+// deslizar para actualizar y el cambio de día a la medianoche de Roma sin
+// reabrir.
 // "Hoy": martes 17/11/2026 a las 8:00 en Roma, salvo donde se dice otra cosa.
 import 'dart:async';
 
@@ -20,6 +27,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/availability/domain/availability.dart';
+import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
+import 'package:radici/features/bookings/presentation/new_booking_client_screen.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
@@ -66,8 +75,10 @@ void main() {
     String? phone = '+39 333 123 4567',
     String? address = 'Via Gombito 12, 24129 Bergamo',
     List<Allergen> clientAllergens = const [],
+    PastAllergyAnswer? lastAllergyAnswer,
     RequestRestrictions? restrictions,
     bool? noAllergies,
+    RequestSource requestSource = RequestSource.web,
   }) => buildSession(
     n: n,
     date: date ?? today,
@@ -80,8 +91,10 @@ void main() {
     phone: phone,
     address: address,
     clientAllergens: clientAllergens,
+    lastAllergyAnswer: lastAllergyAnswer,
     restrictions: restrictions,
     noAllergies: noAllergies,
+    requestSource: requestSource,
   );
 
   /// [accounts]: la cuenta con que se entra (por defecto, la de la cocinera).
@@ -259,7 +272,103 @@ void main() {
     ) async {
       await openToday(tester, sessions: [session()]);
       expect(inCard(1, byKey('session-allergies-unknown')), findsOneWidget);
+      expect(
+        textOf(tester, 'session-allergies-unknown'),
+        "Allergie: nessun dato nell'app, chiedile",
+      );
       expect(inCard(1, byKey('session-cross-contamination')), findsNothing);
+    });
+
+    /// Sin ningún dato de alergias, en la tarjeta: [text] en el `Text` de
+    /// siempre, dentro de la caja de advertencia (el ícono de aviso y el fondo
+    /// de error), como en la ficha, y nunca «nadie tiene».
+    void expectNoDataWarning(WidgetTester tester, String text) {
+      final box = inCard(1, byKey('session-allergies-unknown-box'));
+      expect(
+        find.descendant(of: box, matching: byKey('session-allergies-unknown')),
+        findsOneWidget,
+      );
+      expect(textOf(tester, 'session-allergies-unknown'), text);
+      expect(
+        find.descendant(
+          of: box,
+          matching: find.byIcon(Icons.warning_amber_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        (tester.widget<DecoratedBox>(box).decoration as BoxDecoration).color,
+        Theme.of(tester.element(box)).colorScheme.errorContainer,
+      );
+      expect(inCard(1, byKey('session-no-allergies')), findsNothing);
+    }
+
+    testWidgets(
+      "una reserva a mano (ningún dato de alergias): «Allergie: nessun dato nell'app, chiedile» resaltado como advertencia",
+      (tester) async {
+        await openToday(
+          tester,
+          sessions: [session(requestSource: RequestSource.app)],
+        );
+        expectNoDataWarning(tester, "Allergie: nessun dato nell'app, chiedile");
+      },
+    );
+
+    testWidgets(
+      'una reserva a mano, en español: «Alergias: sin datos en la app, pregúntale»',
+      (tester) async {
+        await openToday(
+          tester,
+          sessions: [session(requestSource: RequestSource.app)],
+          locale: const Locale('es'),
+        );
+        expectNoDataWarning(tester, 'Alergias: sin datos en la app, pregúntale');
+      },
+    );
+
+    testWidgets(
+      'una renovación (pedido de la app, sin respuesta): la nota de su último pedido semanal de la web que se reservó, con la fecha, como en la ficha',
+      (tester) async {
+        await openToday(
+          tester,
+          sessions: [
+            session(
+              requestSource: RequestSource.app,
+              lastAllergyAnswer: PastAllergyAnswer(
+                requestedAt: DateTime.utc(2026, 10, 19, 9, 15),
+                restrictions: const RequestRestrictions(
+                  note: 'Celiachia, noci',
+                ),
+                noAllergies: false,
+              ),
+            ),
+          ],
+        );
+        expect(
+          tester
+              .widget<Text>(inCard(1, byKey('session-allergies-earlier')))
+              .data,
+          'Secondo la sua richiesta (19 ott 2026)',
+        );
+        expect(
+          tester.widget<Text>(inCard(1, byKey('session-allergy-note'))).data,
+          'Celiachia, noci',
+        );
+        expect(inCard(1, byKey('session-allergies-unknown')), findsNothing);
+      },
+    );
+
+    testWidgets('solo una dieta: la advertencia de preguntar, y la dieta', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        sessions: [
+          session(restrictions: const RequestRestrictions(diets: [Diet.vegan])),
+        ],
+      );
+      expectNoDataWarning(tester, "Allergie: nessun dato nell'app, chiedile");
+      expect(inCard(1, byKey('session-diets')), findsOneWidget);
     });
 
     testWidgets('el estado, si no está confirmada', (tester) async {
@@ -583,6 +692,40 @@ void main() {
       expect(find.byType(InboxScreen), findsOneWidget);
       expect(navBar(tester).selectedIndex, 1);
     });
+
+    testWidgets('sin ninguna sesión: la barra tiene también «Nuova prenotazione», que abre el elegir la clienta', (
+      tester,
+    ) async {
+      await openToday(tester, size: const Size(375, 667));
+      expect(
+        find.text(
+          'Quando confermi una prenotazione, da una richiesta o con «Nuova '
+          'prenotazione», la trovi qui.',
+        ),
+        findsOneWidget,
+      );
+      final newBooking = byKey('today-empty-new-booking');
+      expect(
+        find.descendant(of: byKey('today-empty-actions'), matching: newBooking),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(OutlinedButton, 'Nuova prenotazione'), findsOneWidget);
+      final rect = tester.getRect(newBooking);
+      expect(rect.height, greaterThanOrEqualTo(48));
+      expect(
+        rect.top,
+        greaterThanOrEqualTo(tester.getRect(byKey('today-empty-action')).bottom),
+        reason: 'debajo de «Vedi le richieste»',
+      );
+      expect(
+        rect.bottom,
+        lessThanOrEqualTo(tester.getRect(byKey('chef-nav-bar')).top),
+      );
+      await tester.tap(newBooking);
+      await tester.pumpAndSettle();
+      expect(find.byType(NewBookingClientScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('pendientes', () {
@@ -724,6 +867,133 @@ void main() {
         'mercoledì 18 novembre 2026',
       );
       expect(tester.widget<Text>(byKey('session-week')).data, 'Settimana 4 di 4');
+    });
+
+    testWidgets('«Rinnova» en la reserva que termina: 48 dp y abre la hoja de la renovación; el resto de la tarjeta sigue abriendo la ficha', (
+      tester,
+    ) async {
+      // 28/10, 4/11, 11/11 y 18/11: la última es mañana.
+      await openToday(
+        tester,
+        sessions: buildBooking(first: CalendarDate(2026, 10, 28)),
+      );
+      final item = byKey('today-ending-$bookingRequestId');
+      final renew = byKey('today-renew-$bookingRequestId');
+      await reveal(tester, renew);
+      expect(find.descendant(of: item, matching: renew), findsOneWidget);
+      expect(
+        find.descendant(of: renew, matching: find.text('Rinnova')),
+        findsOneWidget,
+      );
+      expect(tester.getSize(renew).height, greaterThanOrEqualTo(48));
+
+      await tester.tap(renew);
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'Rinnova prenotazione'), findsOneWidget);
+      await tester.tap(byKey('booking-close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: item,
+          matching: find.text('Finisce la prenotazione di Giulia Rossi'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+    });
+
+    testWidgets('a 375×667, «Rinnova» mide 48 dp y se puede tocar después de llevarlo a la vista; abajo sigue «Come arrivare»', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        size: const Size(375, 667),
+        sessions: buildBooking(first: CalendarDate(2026, 10, 28)),
+      );
+      final renew = byKey('today-renew-$bookingRequestId');
+      await reveal(tester, renew);
+      expect(renew.hitTestable(), findsOneWidget);
+      expect(tester.getSize(renew).height, greaterThanOrEqualTo(48));
+      expect(byKey('today-directions').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('con el lector de pantalla, «Rinnova» es un solo nodo «Rinnova la prenotazione di…», botón y con la acción de tocar, sin otro «Rinnova» adentro', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await openToday(
+        tester,
+        sessions: buildBooking(first: CalendarDate(2026, 10, 28)),
+      );
+      await reveal(tester, byKey('today-renew-$bookingRequestId'));
+      final label = find.semantics.byLabel(
+        'Rinnova la prenotazione di Giulia Rossi',
+      );
+      expect(label, findsOneWidget);
+      expect(
+        tester.getSemantics(byKey('today-renew-$bookingRequestId')),
+        isSemantics(
+          label: 'Rinnova la prenotazione di Giulia Rossi',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(find.semantics.byLabel('Rinnova'), findsNothing);
+
+      tester.semantics.tap(label);
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+      semantics.dispose();
+    });
+
+    testWidgets('una reserva que terminó hace 3 días: «È finita la prenotazione di…» con su última sesión', (
+      tester,
+    ) async {
+      // Sábados 24/10 a 14/11: terminó hace 3 días.
+      await openToday(
+        tester,
+        sessions: buildBooking(first: CalendarDate(2026, 10, 24)),
+      );
+      final item = byKey('today-ending-$bookingRequestId');
+      await reveal(tester, item);
+      expect(
+        find.descendant(
+          of: item,
+          matching: find.text('È finita la prenotazione di Giulia Rossi'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: item,
+          matching: findPlainText('Ultima sessione: sab 14 nov'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('con una sesión posterior de la misma ficha (otra reserva), la que termina no está en los pendientes', (
+      tester,
+    ) async {
+      await openToday(
+        tester,
+        sessions: [
+          // 28/10 a 18/11, y otra reserva de la misma ficha del 25/11 al 16/12.
+          ...buildBooking(first: CalendarDate(2026, 10, 28)),
+          ...buildBooking(
+            first: CalendarDate(2026, 11, 25),
+            firstN: 10,
+            requestId: 'renovacion',
+          ),
+        ],
+      );
+      await reveal(tester, byKey('today-pending-empty'));
+      expect(byKey('today-ending-$bookingRequestId'), findsNothing);
+      expect(byKey('today-ending-renovacion'), findsNothing);
     });
 
     testWidgets('si la bandeja no se pudo leer, lo dice con «Riprova»; mientras la vuelve a leer, la barra de carga', (

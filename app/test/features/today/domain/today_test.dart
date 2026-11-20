@@ -1,10 +1,11 @@
 // Reglas de Hoy, el inicio de la cocinera: qué sesión se muestra (la de hoy,
 // varias con la próxima primero, o la próxima de otro día; las canceladas
 // nunca), cuándo terminó una sesión (en hora de Roma), qué reservas terminan
-// (reservas semanales, no presupuestos: su última semana viva cae entre hoy y
-// los 6 días siguientes) y la tira de 7 días con sus sesiones, bloqueos y
-// feriados. "Hoy": martes 17/11/2026 (hora de invierno, UTC+1), salvo donde
-// se dice otra cosa.
+// (reservas semanales, no presupuestos: su última semana viva cae entre 7
+// días antes y 7 días después de hoy, y la misma ficha no tiene una sesión
+// viva posterior) y la tira de 7 días con sus sesiones, bloqueos y feriados.
+// "Hoy": martes 17/11/2026 (hora de invierno, UTC+1), salvo donde se dice
+// otra cosa.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
@@ -16,6 +17,7 @@ import 'package:radici/features/sessions/domain/session_booking.dart';
 import 'package:radici/features/today/domain/today.dart';
 
 import '../../../support/fakes.dart';
+import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
 
 void main() {
@@ -31,6 +33,7 @@ void main() {
     int hour = 10,
     SessionStatus status = SessionStatus.confirmed,
     String? requestId = bookingRequestId,
+    String clientId = testClientId,
     RequestType type = RequestType.week,
     RequestStatus requestStatus = RequestStatus.accepted,
     int weeks = 4,
@@ -40,6 +43,7 @@ void main() {
     start: ClockTime.hm(hour, 0),
     status: status,
     requestId: requestId,
+    clientId: clientId,
     type: type,
     requestStatus: requestStatus,
     weeks: weeks,
@@ -232,25 +236,29 @@ void main() {
   });
 
   group('reservas que terminan', () {
-    /// Las semanas de la reserva [requestId], una por fecha.
+    /// Las semanas de la reserva [requestId], una por fecha. Cada reserva es
+    /// de su propia ficha (`client-<requestId>`), salvo que se pase
+    /// [clientId]: una sesión viva posterior de la misma ficha la saca.
     List<CookingSession> booking(
       String requestId,
       List<CalendarDate> dates, {
       int firstN = 1,
       Map<int, SessionStatus> statuses = const {},
       RequestType type = RequestType.week,
+      String? clientId,
     }) => [
       for (final (i, date) in dates.indexed)
         session(
           firstN + i,
           date,
           requestId: requestId,
+          clientId: clientId ?? 'client-$requestId',
           status: statuses[i] ?? SessionStatus.confirmed,
           type: type,
         ),
     ];
 
-    test('la última semana viva cae entre hoy y dentro de 6 días', () {
+    test('la última semana viva cae entre hace 7 días y dentro de 7', () {
       final ending = endingBookings([
         // Miércoles 28/10 a 18/11: termina mañana.
         ...booking('a', [
@@ -259,7 +267,7 @@ void main() {
           CalendarDate(2026, 11, 11),
           CalendarDate(2026, 11, 18),
         ]),
-        // Sigue hasta el 2/12: no termina esta semana.
+        // Sigue hasta el 2/12: todavía no termina.
         ...booking('b', [
           CalendarDate(2026, 11, 18),
           CalendarDate(2026, 11, 25),
@@ -270,14 +278,79 @@ void main() {
       expect(ending.single.requestId, 'a');
     });
 
-    test('los bordes: hoy y dentro de 6 días sí; dentro de 7 o ayer, no', () {
+    test('los bordes: hace 7 días y dentro de 7, sí; hace 8 y dentro de 8, no', () {
       final ending = endingBookings([
-        ...booking('ayer', [today.addDays(-1)], firstN: 1),
-        ...booking('hoy', [today], firstN: 2),
-        ...booking('seis', [today.addDays(6)], firstN: 3),
-        ...booking('siete', [today.addDays(7)], firstN: 4),
+        ...booking('menos-ocho', [today.addDays(-8)], firstN: 1),
+        ...booking('menos-siete', [today.addDays(-7)], firstN: 2),
+        ...booking('mas-siete', [today.addDays(7)], firstN: 3),
+        ...booking('mas-ocho', [today.addDays(8)], firstN: 4),
       ], today: today);
-      expect([for (final s in ending) s.requestId], ['hoy', 'seis']);
+      expect(
+        [for (final s in ending) s.requestId],
+        ['menos-siete', 'mas-siete'],
+      );
+    });
+
+    test('una que terminó hace 3 días aparece, antes que las que todavía no terminaron', () {
+      final ending = endingBookings([
+        ...booking('pronto', [today.addDays(2)], firstN: 1),
+        ...booking(
+          'terminada',
+          [today.addDays(-10), today.addDays(-3)],
+          firstN: 2,
+        ),
+      ], today: today);
+      expect([for (final s in ending) s.requestId], ['terminada', 'pronto']);
+      expect(ending.first.date, today.addDays(-3));
+    });
+
+    test('con la misma ficha, desaparece si tiene una sesión viva posterior de otro pedido: de dos reservas en paralelo queda la que termina última', () {
+      final ending = endingBookings([
+        // Los miércoles hasta el 18/11 y los viernes hasta el 20/11, de la
+        // misma ficha.
+        ...booking(
+          'miercoles',
+          [CalendarDate(2026, 11, 11), CalendarDate(2026, 11, 18)],
+          clientId: 'giulia',
+        ),
+        ...booking(
+          'viernes',
+          [CalendarDate(2026, 11, 13), CalendarDate(2026, 11, 20)],
+          firstN: 10,
+          clientId: 'giulia',
+        ),
+      ], today: today);
+      expect([for (final s in ending) s.requestId], ['viernes']);
+    });
+
+    test('una renovación de la misma ficha la saca, aunque empiece fuera de la ventana', () {
+      final ending = endingBookings([
+        ...booking('vieja', [today.addDays(1)], clientId: 'giulia'),
+        ...booking(
+          'renovacion',
+          [today.addDays(8), today.addDays(15)],
+          firstN: 2,
+          clientId: 'giulia',
+        ),
+      ], today: today);
+      expect(ending, isEmpty);
+    });
+
+    test('no desaparece por una posterior cancelada ni por la sesión de otra ficha', () {
+      final ending = endingBookings([
+        ...booking('termina', [today.addDays(1)], clientId: 'giulia'),
+        // Una renovación de la misma ficha, cancelada entera.
+        ...booking(
+          'cancelada',
+          [today.addDays(8)],
+          firstN: 2,
+          clientId: 'giulia',
+          statuses: {0: SessionStatus.cancelled},
+        ),
+        // Otra ficha con una sesión después.
+        ...booking('otra', [today.addDays(2)], firstN: 3, clientId: 'anna'),
+      ], today: today);
+      expect([for (final s in ending) s.requestId], ['termina', 'otra']);
     });
 
     test('una semana cancelada al final no cuenta; una viva después, sí', () {

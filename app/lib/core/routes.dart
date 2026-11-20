@@ -47,6 +47,32 @@ abstract final class AppRoutes {
   static String requestBooking(String id) =>
       '${requestDetail(id)}/$bookingSegment';
 
+  /// «Nuova prenotazione»: elegir la clienta de una reserva a mano (a
+  /// pantalla completa, con X). Va antes que el detalle de un pedido.
+  static const String newBookingSegment = 'nuova';
+  static const String newBooking = '$requests/$newBookingSegment';
+
+  /// El formulario «Nuova cliente», sobre el elegir.
+  static const String newClientSegment = 'cliente';
+  static const String newBookingNewClient = '$newBooking/$newClientSegment';
+
+  /// Parámetros de la hoja a mano: la ficha elegida y si se eligió desde
+  /// «Nuova cliente» (el teléfono ya era de esa ficha).
+  static const String clientParam = 'cliente';
+  static const String fromFormParam = 'modulo';
+
+  /// La hoja «Conferma prenotazione» a mano: para la ficha [clientId] o, sin
+  /// ella, para la ficha nueva del formulario. En la URL van solo ids, nunca
+  /// el nombre, el teléfono ni la dirección: en /gestione/ la ruta queda en
+  /// el historial del navegador.
+  static String newBookingSheet({String? clientId, bool fromForm = false}) =>
+      Uri(
+        path: '$newBooking/$bookingSegment',
+        queryParameters: clientId == null
+            ? null
+            : {clientParam: clientId, if (fromForm) fromFormParam: '1'},
+      ).toString();
+
   static String recipeEdit(String id) => '$recipes/${Uri.encodeComponent(id)}';
 
   static String recipeCopy(String id) =>
@@ -67,6 +93,13 @@ abstract final class AppRoutes {
   static String sessionMove(String id, {CalendarDate? date}) =>
       '${sessionDetail(id)}/$sessionMoveSegment'
       '${date == null ? '' : '?$dateParam=${date.toIso()}'}';
+
+  /// Hoja «Rinnova prenotazione» de la reserva de una sesión (a pantalla
+  /// completa, sobre la ficha o, con push, sobre Hoy).
+  static const String sessionRenewSegment = 'rinnova';
+
+  static String sessionRenew(String id) =>
+      '${sessionDetail(id)}/$sessionRenewSegment';
 
   /// Parámetro con la ruta a la que volver después de entrar.
   static const String fromParam = 'from';

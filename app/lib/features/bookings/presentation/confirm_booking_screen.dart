@@ -1,80 +1,175 @@
-// Hoja «Conferma prenotazione», a pantalla completa desde el detalle de un
-// pedido nuevo: semanas (1 a 8), una fecha por semana con lo que dice el
-// servidor de cada una (libre, un aviso o un choque), la hora de llegada en
-// chips, los minutos de cocina y el precio del servicio de toda la reserva.
-// Abajo, a mano también con el teclado abierto en un teléfono en vertical
-// (en /gestione/, WebAppNotices esconde sus avisos mientras tanto), «Conferma N
+// Hoja «Conferma prenotazione», a pantalla completa: desde el detalle de un
+// pedido nuevo, a mano desde «Nuova prenotazione» (una ficha existente o una
+// nueva) o «Rinnova prenotazione» desde Hoy o la ficha de la última sesión de
+// una reserva (ver BookingSource). Semanas (1 a 8), una fecha por semana con
+// lo que dice el servidor de cada una (libre, un aviso o un choque) y los
+// avisos de la app (feriado, llegada de hoy que ya pasó), la hora de llegada
+// en chips; a mano o al renovar, las personas y comidas y el idioma de la
+// clienta; los minutos de cocina y el precio del servicio de toda la reserva
+// (al renovar, ya puestos los de la reserva). Abajo, a
+// mano también con el teclado abierto en un teléfono en vertical (en
+// /gestione/, WebAppNotices esconde sus avisos mientras tanto), «Conferma N
 // settimane» y, arriba del botón, el precio que se va a confirmar (después
-// ninguna ruta lo cambia) o lo primero que impide confirmar, con un botón que
-// lleva hasta ahí: en un teléfono, el precio y las últimas semanas quedan
-// fuera de la vista. Al confirmar, el WhatsApp para la clienta, en su idioma.
+// ninguna ruta lo cambia), «Controllo le date…» mientras corre el dryRun o lo
+// primero que impide confirmar, con un botón que lleva hasta ahí: en un
+// teléfono, el precio y las últimas semanas quedan fuera de la vista. Al
+// confirmar, el WhatsApp para la clienta, en su idioma.
+//
+// Antes de la hoja, según su seed: la rueda, el error con «Riprova» o «no
+// está» (a mano, con «Nuova prenotazione» abajo). Una reserva a mano o una renovación no se cierra mientras espera el
+// reintento de una confirmación sin respuesta; si el reintento tampoco tiene
+// respuesta, «Chiudi comunque» la cierra igual. Después de confirmar a mano,
+// «Fatto», la X y el atrás llevan a «Prenotazioni»; una renovación vuelve a
+// donde estaba.
 //
 // Solo lee providers: la lógica está en ConfirmBookingController y el
-// mensaje, en booking_message.dart. El campo del precio tiene letra de 16 px
-// (con menos, iOS agranda la página al enfocarlo).
+// mensaje, en booking_message.dart. Los campos tienen letra de 16 px (con
+// menos, iOS agranda la página al enfocarlos).
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/money.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/core/routes.dart';
+import 'package:radici/features/availability/presentation/availability_labels.dart';
 import 'package:radici/features/bookings/application/booking_message.dart';
+import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/bookings/presentation/booking_labels.dart';
+import 'package:radici/features/bookings/presentation/booking_widgets.dart';
+import 'package:radici/features/bookings/presentation/counter_row.dart';
+import 'package:radici/features/clients/application/client_directory_controller.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
+import 'package:radici/features/requests/application/inbox_tab_request.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/domain/inbox.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart'
     show LoadErrorView;
 import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart'
+    show sessionDetailProvider;
 import 'package:radici/l10n/app_localizations.dart';
 
-/// Ancho máximo del contenido en pantallas anchas (como el detalle).
-const double _maxContentWidth = 720;
+/// El título de la hoja antes de confirmar.
+String _sheetTitle(AppLocalizations l10n, BookingSourceKind kind) =>
+    switch (kind) {
+      BookingSourceKind.request => l10n.actionConfirmBooking,
+      BookingSourceKind.manual => l10n.newBookingAction,
+      BookingSourceKind.renewal => l10n.renewBookingTitle,
+    };
+
+/// Después de confirmar una reserva a mano: a «Prenotazioni», donde está la
+/// reserva nueva. Se cierran juntos la hoja, el formulario y el elegir.
+void _finishManualBooking(BuildContext context, WidgetRef ref) {
+  ref.read(inboxTabRequestProvider.notifier).show(InboxTab.bookings);
+  context.go(AppRoutes.requests);
+}
 
 class ConfirmBookingScreen extends ConsumerWidget {
-  const ConfirmBookingScreen({super.key, required this.requestId});
+  const ConfirmBookingScreen({super.key, required this.source});
 
-  final String requestId;
+  final BookingSource source;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final detail = ref.watch(chefRequestProvider(requestId));
-    final request = detail.value;
-    if (request != null) return _ConfirmBookingView(request: request);
+    final status = ref.watch(
+      confirmBookingProvider(source).select((state) => state.seedStatus),
+    );
+    if (status == BookingSeedStatus.ready) {
+      return _ConfirmBookingView(source: source);
+    }
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.actionConfirmBooking)),
-      body: detail.when(
-        data: (_) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              l10n.requestNotFound,
-              key: const ValueKey('booking-request-not-found'),
-              textAlign: TextAlign.center,
-            ),
+      appBar: AppBar(title: Text(_sheetTitle(l10n, source.kind))),
+      body: switch (status) {
+        BookingSeedStatus.error => switch (source) {
+          RequestBookingSource(:final requestId) => LoadErrorView(
+            message: l10n.inboxLoadError,
+            onRetry: () => ref.invalidate(chefRequestProvider(requestId)),
           ),
+          RenewalBookingSource(:final sessionId) => LoadErrorView(
+            message: l10n.sessionLoadError,
+            onRetry: () => ref.invalidate(sessionDetailProvider(sessionId)),
+          ),
+          _ => LoadErrorView(
+            message: l10n.clientsLoadFailed,
+            onRetry: () => ref.invalidate(clientDirectoryProvider),
+          ),
+        },
+        BookingSeedStatus.missing => _SourceMissing(source: source),
+        BookingSeedStatus.loading || BookingSeedStatus.ready => const Center(
+          child: CircularProgressIndicator(key: ValueKey('booking-loading')),
         ),
-        error: (_, _) => LoadErrorView(
-          message: l10n.inboxLoadError,
-          onRetry: () => ref.invalidate(chefRequestProvider(requestId)),
-        ),
-        loading: () => const Center(child: CircularProgressIndicator()),
+      },
+    );
+  }
+}
+
+/// El pedido, la ficha o la sesión no están, el borrador de la ficha nueva ya
+/// no sirve (sus datos no viajan en la URL) o la reserva de la sesión no se
+/// puede renovar. A mano (la ficha o el borrador), abajo «Nuova prenotazione»
+/// vuelve a empezar.
+class _SourceMissing extends ConsumerWidget {
+  const _SourceMissing({required this.source});
+
+  final BookingSource source;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final (key, text) = switch (source) {
+      RequestBookingSource() => ('booking-request-not-found', l10n.requestNotFound),
+      ClientBookingSource() => (
+        'booking-client-not-found',
+        l10n.bookingErrorClientNotFound,
       ),
+      NewClientBookingSource() => (
+        'booking-new-client-missing',
+        l10n.bookingNewClientMissing,
+      ),
+      // Con la sesión leída, su reserva no se puede renovar; sin ella, la
+      // sesión no está.
+      RenewalBookingSource(:final sessionId) =>
+        ref.watch(sessionDetailProvider(sessionId)).value == null
+            ? ('booking-session-not-found', l10n.sessionNotFound)
+            : ('booking-renewal-unavailable', l10n.bookingRenewalUnavailable),
+    };
+    final message = Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Text(text, key: ValueKey(key), textAlign: TextAlign.center),
+      ),
+    );
+    if (source.kind != BookingSourceKind.manual) return message;
+    return Column(
+      children: [
+        Expanded(child: message),
+        BookingBottomBar(
+          children: [
+            FilledButton.icon(
+              key: const ValueKey('booking-restart'),
+              onPressed: () => context.go(AppRoutes.newBooking),
+              icon: const Icon(Icons.add),
+              label: Text(l10n.newBookingAction),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
 
 class _ConfirmBookingView extends ConsumerStatefulWidget {
-  const _ConfirmBookingView({required this.request});
+  const _ConfirmBookingView({required this.source});
 
-  final ChefRequest request;
+  final BookingSource source;
 
   @override
   ConsumerState<_ConfirmBookingView> createState() =>
@@ -128,10 +223,20 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
 
   void _showWeek(int index) => unawaited(_reveal(_weekKeys[index]));
 
+  /// «Chiudi comunque»: la hoja deja de retenerse y se cierra. pop no pasa
+  /// por PopScope (que se arma con el estado anterior) y el onExit de la ruta
+  /// ya la deja salir.
+  void _leaveAnyway() {
+    ref.read(confirmBookingProvider(_source).notifier).leaveAnyway();
+    Navigator.of(context).pop();
+  }
+
+  BookingSource get _source => widget.source;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final provider = confirmBookingProvider(widget.request.id);
+    final provider = confirmBookingProvider(_source);
     final state = ref.watch(provider);
     final controller = ref.read(provider.notifier);
     final locale = Localizations.localeOf(context).toString();
@@ -148,21 +253,39 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
     });
 
     final result = state.result;
+    final manual = state.isManual;
+    // A mano o al renovar, mientras espera el reintento de una confirmación
+    // sin respuesta, la hoja no se cierra: otra hoja tendría otra clave y
+    // podría duplicar la reserva (y, con una ficha nueva, la ficha). El atrás
+    // del navegador no pasa por PopScope: lo frena el onExit de la ruta
+    // (router.dart). Desde un pedido se puede cerrar: el servidor reconoce el
+    // reintento por el estado del pedido.
+    final keepOpen = state.holdsOpen;
     return PopScope(
-      // Mientras se manda, la hoja no se cierra.
-      canPop: !state.sending,
+      // Mientras se manda, la hoja no se cierra. A mano, después de
+      // confirmar, volver hace lo mismo que «Fatto».
+      canPop: !state.sending && !keepOpen && !(manual && result != null),
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        final current = ref.read(provider);
+        if (current.isManual && current.result != null) {
+          _finishManualBooking(context, ref);
+        }
+      },
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
             key: const ValueKey('booking-close'),
             icon: const Icon(Icons.close),
             tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-            onPressed: state.sending
+            onPressed: state.sending || keepOpen
                 ? null
                 : () => Navigator.of(context).maybePop(),
           ),
           title: Text(
-            result == null ? l10n.actionConfirmBooking : l10n.bookingDoneTitle,
+            result == null
+                ? _sheetTitle(l10n, state.kind)
+                : l10n.bookingDoneTitle,
           ),
         ),
         // La barra va en el cuerpo y no en bottomNavigationBar: así queda
@@ -173,10 +296,10 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
               child: Align(
                 alignment: Alignment.topCenter,
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: _maxContentWidth),
+                  constraints: const BoxConstraints(maxWidth: bookingMaxContentWidth),
                   child: result == null
                       ? _BookingForm(
-                          request: widget.request,
+                          source: _source,
                           state: state,
                           controller: controller,
                           price: _price,
@@ -184,7 +307,7 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
                           priceKey: _priceKey,
                           weekKeys: _weekKeys,
                         )
-                      : _BookingDone(request: widget.request, state: state),
+                      : _BookingDone(source: _source, state: state),
                 ),
               ),
             ),
@@ -194,9 +317,10 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
                 controller: controller,
                 onShowPrice: _showPrice,
                 onShowWeek: _showWeek,
+                onLeaveAnyway: _leaveAnyway,
               )
             else
-              _DoneBar(requestId: widget.request.id),
+              _DoneBar(source: _source, manual: manual),
           ],
         ),
       ),
@@ -206,7 +330,7 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
 
 class _BookingForm extends StatelessWidget {
   const _BookingForm({
-    required this.request,
+    required this.source,
     required this.state,
     required this.controller,
     required this.price,
@@ -215,7 +339,7 @@ class _BookingForm extends StatelessWidget {
     required this.weekKeys,
   });
 
-  final ChefRequest request;
+  final BookingSource source;
   final ConfirmBookingState state;
   final ConfirmBookingController controller;
   final TextEditingController price;
@@ -300,20 +424,10 @@ class _BookingForm extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // De quién es la reserva.
-          Text(
-            request.client.displayName,
-            style: theme.textTheme.titleLarge,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            l10n.requestSummary(request),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          _Header(source: source, state: state),
 
           if (state.maxWeeks > 1)
-            _CounterRow(
+            CounterRow(
               keyPrefix: 'booking-weeks',
               label: l10n.quoteWeeks,
               value: '$weeks',
@@ -325,7 +439,7 @@ class _BookingForm extends StatelessWidget {
                   : null,
             ),
 
-          _SectionTitle(
+          BookingSectionTitle(
             weeks > 1 ? l10n.bookingDatesSection : l10n.bookingDateSection,
           ),
           for (var i = 0; i < weeks; i++)
@@ -367,7 +481,7 @@ class _BookingForm extends StatelessWidget {
           if (weeks > 1) _Help(l10n.bookingDatesMoveHelp),
           _Help(l10n.bookingWarningsHelp),
 
-          _SectionTitle(l10n.bookingStartSection),
+          BookingSectionTitle(l10n.bookingStartSection),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -395,9 +509,35 @@ class _BookingForm extends StatelessWidget {
             _Help(l10n.bookingStartSuggested(suggested.toHhMm())),
           ],
 
+          // A mano o al renovar: para quién se cocina y en qué idioma van sus
+          // mensajes (desde un pedido valen los del pedido).
+          if (state.household case final household?) ...[
+            _HouseholdSection(
+              household: household,
+              frozen: frozen,
+              controller: controller,
+            ),
+            BookingSectionTitle(l10n.clientMessagesLanguage),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final language in ClientLocale.values)
+                  ChoiceChip(
+                    key: ValueKey('booking-locale-${language.name}'),
+                    label: Text(l10n.language(language)),
+                    selected: state.locale == language,
+                    onSelected: frozen
+                        ? null
+                        : (_) => controller.setLocale(language),
+                  ),
+              ],
+            ),
+          ],
+
           // La fila ya dice «Tempo in cucina»: sin otro título igual arriba.
           const SizedBox(height: 16),
-          _CounterRow(
+          CounterRow(
             keyPrefix: 'booking-cook',
             label: l10n.quoteCookTime,
             value: l10n.quoteMinutes(state.cookMinutes),
@@ -408,7 +548,16 @@ class _BookingForm extends StatelessWidget {
                 ? () => controller.stepCookMinutes(1)
                 : null,
           ),
-          _Help(l10n.bookingCookHelp(maxBookingCookMinutes)),
+          _Help(switch (state.kind) {
+            BookingSourceKind.request => l10n.bookingCookHelp(
+              maxBookingCookMinutes,
+            ),
+            BookingSourceKind.manual => l10n.bookingCookHelpManual(
+              maxBookingCookMinutes,
+            ),
+            // Copiados tal cual (pueden pasar de 360): sin nombrar un máximo.
+            BookingSourceKind.renewal => l10n.bookingCookHelpRenewal,
+          }),
 
           const SizedBox(height: 24),
           KeyedSubtree(
@@ -448,8 +597,10 @@ class _BookingForm extends StatelessWidget {
     );
   }
 
-  /// Ícono, color y texto de la semana [index]: lo que impide mandar la
-  /// fecha, lo que dijo el servidor o «verifica in corso».
+  /// Ícono, color y texto de la semana [index], en este orden: lo que impide
+  /// mandar la fecha; un choque o un aviso del servidor; los avisos de la app
+  /// (la llegada de hoy que ya pasó y el feriado, que el servidor no marca);
+  /// «libre» o «verifica in corso».
   _WeekStatus? _weekStatus(
     BuildContext context,
     int index,
@@ -466,24 +617,39 @@ class _BookingForm extends StatelessWidget {
     }
     if (state.blocked) return null;
     final check = state.checkFor(index);
+    if (check != null && check.status != BookingDayStatus.ok) {
+      return check.status == BookingDayStatus.busy
+          ? (
+              icon: Icons.block,
+              color: colors.error,
+              text: l10n.bookingDayStatus(check.status),
+            )
+          : (
+              icon: Icons.warning_amber_outlined,
+              color: colors.tertiary,
+              text: l10n.bookingDayStatus(check.status),
+            );
+    }
+    if (state.arrivalPassed(index)) {
+      return (
+        icon: Icons.warning_amber_outlined,
+        color: colors.tertiary,
+        text: l10n.bookingTodayArrivalPassed,
+      );
+    }
+    if (state.holidayFor(index) case final holiday?) {
+      return (
+        icon: Icons.warning_amber_outlined,
+        color: colors.tertiary,
+        text: l10n.holidayLine(holiday),
+      );
+    }
     if (check != null) {
-      return switch (check.status) {
-        BookingDayStatus.ok => (
-          icon: Icons.check_circle_outline,
-          color: colors.primary,
-          text: l10n.bookingDayStatus(check.status),
-        ),
-        BookingDayStatus.busy => (
-          icon: Icons.block,
-          color: colors.error,
-          text: l10n.bookingDayStatus(check.status),
-        ),
-        _ => (
-          icon: Icons.warning_amber_outlined,
-          color: colors.tertiary,
-          text: l10n.bookingDayStatus(check.status),
-        ),
-      };
+      return (
+        icon: Icons.check_circle_outline,
+        color: colors.primary,
+        text: l10n.bookingDayStatus(check.status),
+      );
     }
     if (state.checksStatus == BookingChecksStatus.loading) {
       return (
@@ -549,84 +715,155 @@ class _WeekTile extends StatelessWidget {
   }
 }
 
-/// Etiqueta, − valor + (botones de 48 dp).
-class _CounterRow extends StatelessWidget {
-  const _CounterRow({
-    required this.keyPrefix,
-    required this.label,
-    required this.value,
-    required this.onDecrement,
-    required this.onIncrement,
-  });
+/// De quién es la reserva: el nombre y, debajo, el resumen del pedido; a
+/// mano, el teléfono y la zona (y si la ficha se crea al confirmar); al
+/// renovar, el día de la última sesión y, si corresponde, que no todas las
+/// semanas tenían su día y su hora o que el pedido renovado traía otro
+/// teléfono.
+class _Header extends StatelessWidget {
+  const _Header({required this.source, required this.state});
 
-  final String keyPrefix;
-  final String label;
-  final String value;
-  final VoidCallback? onDecrement;
-  final VoidCallback? onIncrement;
+  final BookingSource source;
+  final ConfirmBookingState state;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        children: [
-          Expanded(
-            // El lector de pantalla lee "Settimane, 4" en un solo nodo.
-            child: Semantics(
-              value: value,
-              child: Text(label, style: textTheme.titleMedium),
+    final theme = Theme.of(context);
+    final formats = RequestFormats(context);
+    final secondary = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final party = state.party;
+    final request = state.request;
+    final renewedFrom = state.renewedFrom;
+    final contact = [
+      ?party?.phoneText,
+      ?party?.zone,
+    ].where((part) => part.trim().isNotEmpty).join(' · ');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          party?.displayName ?? '',
+          style: theme.textTheme.titleLarge,
+          overflow: TextOverflow.ellipsis,
+        ),
+        if (request != null)
+          Text(
+            l10n.requestSummary(request),
+            key: const ValueKey('booking-subtitle'),
+            style: secondary,
+          )
+        else if (renewedFrom != null) ...[
+          Text(
+            l10n.bookingRenewalSubtitle(formats.shortDate(renewedFrom)),
+            key: const ValueKey('booking-subtitle'),
+            style: secondary,
+          ),
+          if (state.lastDiffers)
+            Text(
+              l10n.bookingRenewalLastDiffers,
+              key: const ValueKey('booking-renewal-differs'),
+              style: secondary,
             ),
+          if (state.otherRequestPhone case final phone?)
+            state.otherPhoneWithoutWhatsApp
+                ? Text(
+                    l10n.bookingRenewalRequestPhone(phone),
+                    key: const ValueKey('booking-renewal-request-phone'),
+                    style: secondary,
+                  )
+                : Text(
+                    l10n.bookingRenewalOtherPhone(phone),
+                    key: const ValueKey('booking-renewal-other-phone'),
+                    style: secondary,
+                  ),
+        ] else if (contact.isNotEmpty)
+          Text(
+            contact,
+            key: const ValueKey('booking-subtitle'),
+            style: secondary,
           ),
-          IconButton.filledTonal(
-            key: ValueKey('$keyPrefix-decrement'),
-            tooltip: l10n.counterDecrease(label),
-            onPressed: onDecrement,
-            icon: const Icon(Icons.remove),
+        if (source is NewClientBookingSource)
+          Text(
+            l10n.bookingNewClientSubtitle,
+            key: const ValueKey('booking-new-client-note'),
+            style: secondary,
           ),
-          ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 72),
-            child: ExcludeSemantics(
-              child: Text(
-                value,
-                key: ValueKey('$keyPrefix-value'),
-                textAlign: TextAlign.center,
-                style: textTheme.titleMedium,
-              ),
-            ),
-          ),
-          IconButton.filledTonal(
-            key: ValueKey('$keyPrefix-increment'),
-            tooltip: l10n.counterIncrease(label),
-            onPressed: onIncrement,
-            icon: const Icon(Icons.add),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.title);
+/// «Persone e pasti» de una reserva a mano: adultos, niños, días a la semana
+/// y comidas (la última no se saca). Cambiarlos recalcula las porciones y,
+/// mientras no se toquen, los minutos.
+class _HouseholdSection extends StatelessWidget {
+  const _HouseholdSection({
+    required this.household,
+    required this.frozen,
+    required this.controller,
+  });
 
-  final String title;
+  final BookingHousehold household;
+  final bool frozen;
+  final ConfirmBookingController controller;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: 24, bottom: 4),
-      child: Semantics(
-        header: true,
-        child: Text(
-          title,
-          style: theme.textTheme.titleSmall?.copyWith(
-            color: theme.colorScheme.primary,
+    CounterRow counter(String keyPrefix, String label, HouseholdCounter what) =>
+        CounterRow(
+          keyPrefix: keyPrefix,
+          label: label,
+          value: '${household.valueOf(what)}',
+          onDecrement: !frozen && household.canDecrement(what)
+              ? () => controller.stepHousehold(what, -1)
+              : null,
+          onIncrement: !frozen && household.canIncrement(what)
+              ? () => controller.stepHousehold(what, 1)
+              : null,
+        );
+    return KeyedSubtree(
+      key: const ValueKey('booking-household'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          BookingSectionTitle(l10n.bookingHouseholdSection),
+          counter('booking-adults', l10n.quoteAdults, HouseholdCounter.adults),
+          counter('booking-kids', l10n.quoteKids, HouseholdCounter.kids),
+          counter(
+            'booking-days',
+            l10n.quoteDaysPerWeek,
+            HouseholdCounter.days,
           ),
-        ),
+          const SizedBox(height: 12),
+          Text(l10n.quoteMealsSection, style: theme.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final meal in Meal.values)
+                FilterChip(
+                  key: ValueKey('booking-meal-${meal.name}'),
+                  label: Text(
+                    meal == Meal.lunch ? l10n.mealLunch : l10n.mealDinner,
+                  ),
+                  selected: household.meals.contains(meal),
+                  // La única elegida no se saca: queda deshabilitada.
+                  onSelected:
+                      frozen ||
+                          (household.meals.length == 1 &&
+                              household.meals.contains(meal))
+                      ? null
+                      : (_) => controller.toggleMeal(meal),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -649,99 +886,20 @@ class _Help extends StatelessWidget {
   }
 }
 
-/// Barra de abajo, a mano también con el teclado abierto en un teléfono en
-/// vertical (en horizontal puede no entrar): la acción principal queda en el
-/// tercio inferior.
-class _BottomBar extends StatelessWidget {
-  const _BottomBar({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final width = MediaQuery.sizeOf(context).width;
-    final side = math.max(16.0, (width - _maxContentWidth) / 2);
-    return Material(
-      color: colors.surface,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: colors.outlineVariant)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(side, 12, side, 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: children,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Una línea de la barra de abajo, arriba del botón, con un botón a la
-/// derecha que lleva hasta lo que dice (deshabilitado mientras nada se puede
-/// cambiar).
-class _BarLine extends StatelessWidget {
-  const _BarLine({
-    required this.textKey,
-    required this.text,
-    required this.actionKey,
-    required this.actionLabel,
-    required this.onAction,
-    this.color,
-  });
-
-  final String textKey;
-  final String text;
-  final Color? color;
-  final String actionKey;
-  final String actionLabel;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              text,
-              key: ValueKey(textKey),
-              style: theme.textTheme.bodyMedium?.copyWith(color: color),
-            ),
-          ),
-          const SizedBox(width: 8),
-          TextButton(
-            key: ValueKey(actionKey),
-            onPressed: onAction,
-            child: Text(actionLabel),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ConfirmBar extends StatelessWidget {
   const _ConfirmBar({
     required this.state,
     required this.controller,
     required this.onShowPrice,
     required this.onShowWeek,
+    required this.onLeaveAnyway,
   });
 
   final ConfirmBookingState state;
   final ConfirmBookingController controller;
   final VoidCallback onShowPrice;
   final void Function(int week) onShowWeek;
+  final VoidCallback onLeaveAnyway;
 
   @override
   Widget build(BuildContext context) {
@@ -750,33 +908,82 @@ class _ConfirmBar extends StatelessWidget {
     final formats = RequestFormats(context);
     final locale = Localizations.localeOf(context).toString();
     final failure = state.failure;
-    // Arriba del botón: la falla, si la hay; si no, lo que impide confirmar
-    // o, si nada lo impide, el precio que se va a confirmar. Sin respuesta (se
-    // reintenta lo mismo), la falla y el precio que se reintenta.
+    // Arriba del botón: la falla, si la hay; si no, lo que impide confirmar;
+    // si nada lo impide, «Controllo le date…» mientras corre el dryRun (si
+    // no, el botón gris no diría por qué) o el precio que se va a confirmar.
+    // Sin respuesta (se reintenta lo mismo), la falla y el precio que se
+    // reintenta.
     final blocker = failure == null ? state.blocker : null;
+    final checking = failure == null && blocker == null && state.checking;
     final showSummary =
-        state.retryPending || (failure == null && blocker == null);
-    return _BottomBar(
+        state.retryPending || (failure == null && blocker == null && !checking);
+    final leave = state.canLeaveAnyway;
+    return BookingBottomBar(
       children: [
-        if (failure != null) ...[
-          // liveRegion: el lector de pantalla la anuncia al aparecer.
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              l10n.bookingFailure(failure, formatDate: formats.shortDate),
-              key: const ValueKey('booking-failure'),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.error,
+        // A mano o al renovar, una confirmación sin respuesta no deja cerrar
+        // la hoja: lo dice arriba de la falla. Si el reintento tampoco tuvo
+        // respuesta, que se puede cerrar igual y qué mirar antes de rehacerla
+        // (anunciado: aparece un botón nuevo).
+        if (state.createsRequest && state.retryPending) ...[
+          if (leave)
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                l10n.bookingRetryLeaveWarning,
+                key: const ValueKey('booking-retry-leave-warning'),
+                style: theme.textTheme.bodyMedium,
               ),
+            )
+          else
+            Text(
+              l10n.bookingRetryKeepsOpen,
+              key: const ValueKey('booking-retry-keeps-open'),
+              style: theme.textTheme.bodyMedium,
             ),
+          const SizedBox(height: 8),
+        ],
+        if (failure != null) ...[
+          Row(
+            children: [
+              Expanded(
+                // liveRegion: el lector de pantalla la anuncia al aparecer.
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    l10n.bookingFailureText(
+                      state,
+                      failure,
+                      formatDate: formats.shortDate,
+                    ),
+                    key: const ValueKey('booking-failure'),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
+              ),
+              // Los datos de la ficha nueva se corrigen en el formulario.
+              if (state.newClientRejected) ...[
+                const SizedBox(width: 8),
+                TextButton(
+                  key: const ValueKey('booking-new-client-fix'),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  child: Text(l10n.bookingNewClientFix),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: 8),
         ],
         if (blocker != null)
-          _BarLine(
+          BookingBarLine(
             textKey: 'booking-blocker',
             text: l10n.bookingBlockerText(state, blocker, locale: locale),
             color: theme.colorScheme.error,
+            // El choque llega cuando vuelve el dryRun: el lector de pantalla
+            // lo anuncia (el comienzo, «Controllo le date…», también). El
+            // precio no, que cambia con cada tecla.
+            liveRegion: blocker.kind == BookingBlockKind.clash,
             actionKey: 'booking-blocker-show',
             actionLabel: l10n.bookingShowProblem,
             onAction: switch (blocker) {
@@ -785,8 +992,34 @@ class _ConfirmBar extends StatelessWidget {
               _ => null,
             },
           )
+        else if (checking)
+          // liveRegion: el lector de pantalla dice por qué el botón espera.
+          // Con el alto de las otras líneas: el botón no salta.
+          Container(
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      l10n.bookingChecking,
+                      key: const ValueKey('booking-checking'),
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
         else if (showSummary)
-          _BarLine(
+          BookingBarLine(
             textKey: 'booking-summary',
             text: l10n.bookingSummary(state, locale: locale),
             actionKey: 'booking-edit-price',
@@ -816,6 +1049,14 @@ class _ConfirmBar extends StatelessWidget {
                       : l10n.bookingConfirmAction(state.weeks),
                 ),
         ),
+        if (leave) ...[
+          const SizedBox(height: 8),
+          TextButton(
+            key: const ValueKey('booking-leave-anyway'),
+            onPressed: onLeaveAnyway,
+            child: Text(l10n.bookingLeaveAnyway),
+          ),
+        ],
       ],
     );
   }
@@ -823,9 +1064,9 @@ class _ConfirmBar extends StatelessWidget {
 
 /// Después de confirmar: las semanas guardadas con su hora y el precio.
 class _BookingDone extends ConsumerWidget {
-  const _BookingDone({required this.request, required this.state});
+  const _BookingDone({required this.source, required this.state});
 
-  final ChefRequest request;
+  final BookingSource source;
 
   /// Con la reserva ([ConfirmBookingState.result]).
   final ConfirmBookingState state;
@@ -836,7 +1077,7 @@ class _BookingDone extends ConsumerWidget {
     final theme = Theme.of(context);
     final formats = RequestFormats(context);
     final locale = Localizations.localeOf(context).toString();
-    final whatsApp = ref.watch(bookingWhatsAppProvider(request.id));
+    final whatsApp = ref.watch(bookingWhatsAppProvider(source));
     final result = state.result!;
     final weeks = result.weeks;
     final service = weeks.fold<int>(0, (sum, week) => sum + week.serviceCents);
@@ -919,9 +1160,13 @@ class _BookingDone extends ConsumerWidget {
 }
 
 class _DoneBar extends ConsumerWidget {
-  const _DoneBar({required this.requestId});
+  const _DoneBar({required this.source, required this.manual});
 
-  final String requestId;
+  final BookingSource source;
+
+  /// Una reserva a mano: «Fatto» lleva a «Prenotazioni». Desde un pedido,
+  /// vuelve al detalle; una renovación, a donde estaba (Hoy o la ficha).
+  final bool manual;
 
   Future<void> _launch(BuildContext context, WidgetRef ref, Uri uri) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -935,8 +1180,8 @@ class _DoneBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final whatsApp = ref.watch(bookingWhatsAppProvider(requestId));
-    return _BottomBar(
+    final whatsApp = ref.watch(bookingWhatsAppProvider(source));
+    return BookingBottomBar(
       children: [
         FilledButton.icon(
           key: const ValueKey('booking-whatsapp'),
@@ -949,7 +1194,9 @@ class _DoneBar extends ConsumerWidget {
         const SizedBox(height: 8),
         OutlinedButton(
           key: const ValueKey('booking-done-close'),
-          onPressed: () => Navigator.of(context).maybePop(),
+          onPressed: manual
+              ? () => _finishManualBooking(context, ref)
+              : () => Navigator.of(context).maybePop(),
           child: Text(l10n.bookingDoneClose),
         ),
       ],

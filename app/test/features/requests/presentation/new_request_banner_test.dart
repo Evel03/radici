@@ -2,18 +2,21 @@
 // abrirla, en las pantallas de la cocinera salvo la ficha de una sesión y el
 // formulario del editor de platos (tienen su propio ScaffoldMessenger y, en el
 // navegador raíz, tapan el Scaffold de la barra): ahí aparece al volver.
-// Con una hoja de reserva o la ficha de una sesión (con su hoja «Sposta»)
-// abierta o tapada por otro pedido, «Apri» nunca la saca, y la hoja «Sposta»
-// que termina de mover con un pedido encima no lo cierra. Con varios pedidos,
-// «Apri» abre la bandeja en «Nuove» (también desde Hoy, con la bandeja dejada
-// en otra pestaña).
+// Con una hoja de reserva (también «Rinnova») o la ficha de una sesión (con
+// su hoja «Sposta») abierta o tapada por otro pedido, «Apri» nunca la saca, y
+// la hoja «Sposta» que termina de mover con un pedido encima no lo cierra.
+// Con varios pedidos, «Apri» abre la bandeja en «Nuove» (también desde Hoy,
+// con la bandeja dejada en otra pestaña).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/router.dart';
+import 'package:radici/core/routes.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
+import 'package:radici/features/bookings/presentation/new_booking_client_screen.dart';
+import 'package:radici/features/bookings/presentation/new_client_screen.dart';
 import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
 import 'package:radici/features/recipes/presentation/recipes_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
@@ -26,6 +29,7 @@ import 'package:radici/features/sessions/presentation/move_session_screen.dart';
 import 'package:radici/features/today/presentation/today_screen.dart';
 
 import '../../../support/chef_app.dart';
+import '../../../support/client_fixtures.dart';
 import '../../../support/fakes.dart';
 import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
@@ -343,6 +347,128 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ConfirmBookingScreen), findsOneWidget);
       expect(tester.widget<TextField>(byKey('booking-price')).controller!.text, '600');
+    });
+  });
+
+  // «Apri» con varios pedidos haría go a la bandeja y se llevaría lo escrito:
+  // con «Nuova prenotazione» en la pila (el elegir, el formulario o la hoja a
+  // mano), abre el más reciente encima.
+  group('con «Nuova prenotazione» abierta', () {
+    final chiara = buildClient(id: 'c-chiara', name: 'Chiara Rossi', phone: '340 111 2233');
+    ChefRequest incoming(String id, String name, int hour) =>
+        buildRequest(id: id, name: name, createdAt: DateTime.utc(2026, 10, 19, hour));
+    Finder byKey(String key) => find.byKey(ValueKey(key));
+
+    Future<ChefApp> openPicker(WidgetTester tester) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        clients: FakeClientsRepository([chiara]),
+        location: '/richieste',
+      );
+      await tester.tap(byKey('inbox-tab-bookings'));
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('inbox-new-booking'));
+      await tester.pumpAndSettle();
+      return app;
+    }
+
+    Future<void> openNewestFromBanner(WidgetTester tester, ChefApp app) async {
+      app.requests
+        ..insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13))
+        ..insertFromRealtime(incoming('req-9', 'Anna Verdi', 14));
+      await tester.pumpAndSettle();
+      expect(bannerText(tester), '2 nuove richieste');
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('el elegir con una búsqueda escrita', (tester) async {
+      final app = await openPicker(tester);
+      await tester.enterText(byKey('client-search'), 'chiara');
+      await tester.pumpAndSettle();
+      await openNewestFromBanner(tester, app);
+      expect(find.byType(NewBookingClientScreen), findsOneWidget);
+      expect(
+        tester.widget<TextField>(byKey('client-search')).controller!.text,
+        'chiara',
+      );
+    });
+
+    testWidgets('el formulario con un nombre escrito', (tester) async {
+      final app = await openPicker(tester);
+      await tester.tap(byKey('new-booking-new-client'));
+      await tester.pumpAndSettle();
+      await tester.enterText(byKey('new-client-name'), 'Giulia Rossi');
+      await tester.pumpAndSettle();
+      await openNewestFromBanner(tester, app);
+      expect(find.byType(NewClientScreen), findsOneWidget);
+      expect(
+        tester.widget<TextField>(byKey('new-client-name')).controller!.text,
+        'Giulia Rossi',
+      );
+    });
+
+    testWidgets('la hoja a mano con el precio escrito', (tester) async {
+      final app = await openPicker(tester);
+      await tester.tap(byKey('client-c-chiara'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(byKey('booking-price'));
+      await tester.enterText(byKey('booking-price'), '560');
+      await tester.pumpAndSettle();
+      await openNewestFromBanner(tester, app);
+      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+      expect(tester.widget<TextField>(byKey('booking-price')).controller!.text, '560');
+    });
+  });
+
+  // La hoja «Rinnova» (cuelga de la ficha de la sesión) abierta desde Hoy:
+  // «Apri» con varios pedidos tampoco la saca.
+  group('con la hoja «Rinnova» abierta', () {
+    Finder byKey(String key) => find.byKey(ValueKey(key));
+    ChefRequest incoming(String id, String name, int hour) =>
+        buildRequest(id: id, name: name, createdAt: DateTime.utc(2026, 10, 19, hour));
+
+    testWidgets('con el precio cambiado: «Apri» con varios abre el más reciente encima y, al volver, sigue lo escrito; al cerrarla, Hoy', (
+      tester,
+    ) async {
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        sessions: FakeSessionsRepository(buildBooking()),
+      );
+      expect(find.byType(TodayScreen), findsOneWidget);
+      final router = app.container.read(routerProvider);
+      unawaited(router.push(AppRoutes.sessionRenew(sessionId(4))));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+      expect(bookingOrSessionInStack(router), isTrue);
+      await tester.ensureVisible(byKey('booking-price'));
+      await tester.enterText(byKey('booking-price'), '600');
+      await tester.pumpAndSettle();
+
+      app.requests
+        ..insertFromRealtime(incoming('req-8', 'Marco Bianchi', 13))
+        ..insertFromRealtime(incoming('req-9', 'Anna Verdi', 14));
+      await tester.pumpAndSettle();
+      expect(bannerText(tester), '2 nuove richieste');
+      await tester.tap(byKey('new-request-banner-open'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Anna Verdi'), findsOneWidget);
+      expect(find.byType(InboxScreen), findsNothing);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+      expect(tester.widget<TextField>(byKey('booking-price')).controller!.text, '600');
+
+      await tester.tap(byKey('booking-close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ConfirmBookingScreen), findsNothing);
+      expect(find.byType(TodayScreen), findsOneWidget);
     });
   });
 

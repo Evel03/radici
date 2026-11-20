@@ -1,11 +1,12 @@
 // Reglas de las sesiones de una reserva y de la agenda: «Semana k de N», las
 // semanas siguientes, el final de la reserva, qué ofrecer si una semana que se
-// quiso cancelar ya está cobrada, las sesiones de cada día y desde qué día las
-// lee la agenda. Dart puro.
+// quiso cancelar ya está cobrada, la próxima sesión viva de la misma ficha,
+// las sesiones de cada día y desde qué día las lee la agenda. Dart puro.
 //
 // Una reserva es un pedido aceptado más sus sesiones, como mucho una viva por
 // semana (`sessions_una_por_semana`). Las canceladas no cuentan.
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 
 /// La semana [week] de [weeks] (desde 1) de una reserva.
@@ -122,6 +123,52 @@ HasPaymentsPlan hasPaymentsPlan({
   );
 }
 
+/// [session] es la última sesión viva de una reserva semanal (donde va
+/// «Rinnova», decisión 3): está viva (también cocinada o cobrada), su pedido
+/// embebido está aceptado y es semanal, y ninguna otra viva de [booking] va
+/// después. No un presupuesto enviado, una sesión extra ni una sin pedido.
+bool isLastLiveOfWeeklyBooking(
+  CookingSession session,
+  Iterable<CookingSession> booking,
+) {
+  final request = session.request;
+  if (!session.isLive ||
+      request == null ||
+      !request.isBooking ||
+      request.type != RequestType.week) {
+    return false;
+  }
+  return liveBookingSessions(session, booking).last.id == session.id;
+}
+
+/// La primera (por [compareSessions]) de las otras sesiones vivas de la misma
+/// ficha que [last] que van después de ella, de cualquier pedido (una
+/// renovación, otra reserva o una sesión suelta); null si no hay. Compara por
+/// ficha: dos fichas de la misma persona no se ven como una.
+CookingSession? nextLiveSessionOfClient(
+  CookingSession last,
+  Iterable<CookingSession> sessions,
+) {
+  CookingSession? next;
+  for (final other in sessions) {
+    if (other.id == last.id ||
+        !other.isLive ||
+        other.clientId != last.clientId ||
+        compareSessions(other, last) <= 0) {
+      continue;
+    }
+    if (next == null || compareSessions(other, next) < 0) next = other;
+  }
+  return next;
+}
+
+/// La ficha de [last] tiene otra sesión viva después de ella (ver
+/// [nextLiveSessionOfClient]).
+bool hasLaterLiveSession(
+  CookingSession last,
+  Iterable<CookingSession> sessions,
+) => nextLiveSessionOfClient(last, sessions) != null;
+
 /// Por fecha, después por llegada y por id (un orden estable).
 int compareSessions(CookingSession a, CookingSession b) {
   final byDate = a.date.compareTo(b.date);
@@ -145,14 +192,24 @@ Map<CalendarDate, List<CookingSession>> sessionsByDate(
   return byDate;
 }
 
+/// Días antes y después de la última sesión viva de una reserva en que Hoy la
+/// muestra entre las que terminan. Va acá porque también decide desde qué día
+/// lee la agenda ([sessionsWindowFrom]).
+const int endingBookingNoticeDays = 7;
+
 /// Desde qué día lee la agenda las sesiones: el lunes de la primera semana
-/// del mes de [today] o del de [selected] (el día elegido), el que sea antes.
+/// del mes de [today], [endingBookingNoticeDays] días antes de [today] (así
+/// Hoy tiene las reservas que terminaron hace hasta 7 días) o el lunes de la
+/// primera semana del mes de [selected] (el día elegido), el que sea antes.
 /// Hacia adelante no hay tope: las reservas son de 8 semanas como mucho.
 CalendarDate sessionsWindowFrom({
   required CalendarDate today,
   required CalendarDate selected,
 }) {
-  final current = today.firstOfMonth.startOfWeek;
-  final shown = selected.firstOfMonth.startOfWeek;
-  return shown.isBefore(current) ? shown : current;
+  final candidates = [
+    today.firstOfMonth.startOfWeek,
+    today.addDays(-endingBookingNoticeDays),
+    selected.firstOfMonth.startOfWeek,
+  ];
+  return candidates.reduce((a, b) => b.isBefore(a) ? b : a);
 }

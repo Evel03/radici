@@ -6,19 +6,26 @@
 // alle…», también en una sesión de hoy cuya llegada ya pasó; sin la hora de
 // llegada en una sesión de un día que ya pasó en Roma o cancelada), las
 // alergias resaltadas (la nota del pedido, también sola como llega de la web,
-// y, con gluten, la de contaminación cruzada) en el orden en que las lee el
-// lector de pantalla, las semanas de la reserva, y cancelar con confirmación,
-// motivo y «anche le successive», con cada falla explicada (un 409
-// hasPayments dice cuáles están cobradas y qué se puede hacer, también si
-// llega al tocar «Riprova»). Mientras espera al servidor, Sposta y Annulla
-// quedan deshabilitados. Mover y cancelar quedan abajo: en el tercio inferior
-// a 375×667. Abierta con un enlace directo (sola en la pila), la flecha de
-// volver lleva a la Agenda.
+// y, con gluten, la de contaminación cruzada; si el pedido semanal de la
+// reserva no responde, como en una renovación, las del último pedido semanal
+// de la web que se reservó, con la fecha de ese pedido, nunca en una sesión
+// extra; sin ningún dato, como en una reserva a mano, o con solo una
+// dieta, la advertencia «Allergie: nessun dato nell'app, chiedile») en el
+// orden en que las lee el lector de pantalla, las semanas de la
+// reserva, «Rinnova» al final de la última sesión viva de una reserva
+// semanal (con «Ha già un'altra sessione…» si la ficha ya tiene otra
+// después), y cancelar con confirmación, motivo y «anche le successive», con
+// cada falla explicada (un 409 hasPayments dice cuáles están cobradas y qué
+// se puede hacer, también si llega al tocar «Riprova»). Mientras espera al
+// servidor, Sposta y Annulla quedan deshabilitados. Mover y cancelar quedan
+// abajo: en el tercio inferior a 375×667. Abierta con un enlace directo (sola
+// en la pila), la flecha de volver lleva a la Agenda.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/core/router.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/sessions/application/session_links.dart';
@@ -435,6 +442,13 @@ void main() {
         expect(byKey('client-address-dialog'), findsOneWidget);
         // Letra de 16 px o más: con menos, iOS agranda la página.
         expectReadableInputs(tester);
+        // Con el foco ya puesto: no le pide autocompletar al navegador
+        // (Safari ofrecería la dirección de Evelyn).
+        await expectNoBrowserAutofill(
+          tester,
+          byKey('client-address-field'),
+          tap: false,
+        );
         // Vacío no se guarda.
         expect(onPressedOf(tester, 'client-address-save'), isNull);
         await tester.enterText(
@@ -616,10 +630,206 @@ void main() {
       await openSession(tester);
       expect(
         textOf(tester, 'session-allergies-unknown'),
-        'Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.',
+        "Allergie: nessun dato nell'app, chiedile",
       );
       expect(byKey('session-no-allergies'), findsNothing);
       expect(byKey('session-cross-contamination'), findsNothing);
+    });
+
+    /// Sin ningún dato de alergias: [text] en el `Text` de siempre, dentro de
+    /// la caja de advertencia (el ícono de aviso y el fondo de error), y nunca
+    /// «nadie tiene».
+    void expectNoDataWarning(WidgetTester tester, String text) {
+      final box = byKey('session-allergies-unknown-box');
+      expect(
+        find.descendant(of: box, matching: byKey('session-allergies-unknown')),
+        findsOneWidget,
+      );
+      expect(textOf(tester, 'session-allergies-unknown'), text);
+      expect(
+        find.descendant(
+          of: box,
+          matching: find.byIcon(Icons.warning_amber_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        (tester.widget<DecoratedBox>(box).decoration as BoxDecoration).color,
+        Theme.of(tester.element(box)).colorScheme.errorContainer,
+      );
+      expect(byKey('session-no-allergies'), findsNothing);
+    }
+
+    testWidgets(
+      "una reserva a mano (ningún dato de alergias): «Allergie: nessun dato nell'app, chiedile» resaltado como advertencia",
+      (tester) async {
+        // Pedido de la app, sin restricciones ni respuesta a la pregunta, y la
+        // ficha sin client_restrictions.
+        await openSession(
+          tester,
+          sessions: FakeSessionsRepository(
+            buildBooking(requestSource: RequestSource.app),
+          ),
+        );
+        expectNoDataWarning(tester, "Allergie: nessun dato nell'app, chiedile");
+        expect(byKey('session-allergens'), findsNothing);
+        expect(byKey('session-allergy-note'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'una reserva a mano, en español: «Alergias: sin datos en la app, pregúntale»',
+      (tester) async {
+        await openSession(
+          tester,
+          locale: const Locale('es'),
+          sessions: FakeSessionsRepository(
+            buildBooking(requestSource: RequestSource.app),
+          ),
+        );
+        expectNoDataWarning(tester, 'Alergias: sin datos en la app, pregúntale');
+      },
+    );
+
+    testWidgets(
+      'una renovación (pedido de la app, sin respuesta): la nota de su último pedido semanal de la web que se reservó, con la fecha de ese pedido, y no la advertencia',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await openSession(
+          tester,
+          sessions: FakeSessionsRepository(
+            buildBooking(
+              requestSource: RequestSource.app,
+              lastAllergyAnswer: PastAllergyAnswer(
+                requestedAt: DateTime.utc(2026, 10, 19, 9, 15),
+                restrictions: webRestrictions,
+                noAllergies: false,
+              ),
+            ),
+          ),
+        );
+        expect(
+          textOf(tester, 'session-allergies-earlier'),
+          'Secondo la sua richiesta (19 ott 2026)',
+        );
+        expect(textOf(tester, 'session-allergy-note'), 'Celiachia, noci');
+        expect(byKey('session-allergies-unknown'), findsNothing);
+        expect(byKey('session-no-allergies'), findsNothing);
+
+        // La fecha es un nodo propio, entre el título y la nota.
+        final labels = [
+          for (final node in tester.semantics.simulatedAccessibilityTraversal())
+            node.getSemanticsData().label,
+        ];
+        final title = labels.indexOf('Allergie e diete');
+        final earlier = labels.indexOf(
+          'Secondo la sua richiesta (19 ott 2026)',
+        );
+        final note = labels.indexWhere(
+          (l) => l.startsWith('Nota della richiesta') && l.contains('noci'),
+        );
+        expect(
+          title >= 0 && title < earlier && earlier < note,
+          isTrue,
+          reason: labels.join(' | '),
+        );
+        semantics.dispose();
+      },
+    );
+
+    testWidgets(
+      '«nadie tiene» de su último pedido, con la fecha (el día de Roma), en español',
+      (tester) async {
+        await openSession(
+          tester,
+          locale: const Locale('es'),
+          sessions: FakeSessionsRepository(
+            buildBooking(
+              requestSource: RequestSource.app,
+              // 23:30 UTC del 18/11: en Roma ya es el 19.
+              lastAllergyAnswer: PastAllergyAnswer(
+                requestedAt: DateTime.utc(2026, 11, 18, 23, 30),
+                noAllergies: true,
+              ),
+            ),
+          ),
+        );
+        expect(
+          textOf(tester, 'session-allergies-earlier'),
+          'Según su solicitud del 19 nov 2026',
+        );
+        expect(
+          textOf(tester, 'session-no-allergies'),
+          'Confirmó que nadie tiene alergias, intolerancias alimentarias ni celiaquía.',
+        );
+        expect(byKey('session-allergies-unknown'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'una sesión extra a mano: la advertencia, aunque la clienta haya respondido en un pedido semanal (los que comen pueden ser otros)',
+      (tester) async {
+        await openSession(
+          tester,
+          n: 1,
+          sessions: FakeSessionsRepository([
+            buildSession(
+              type: RequestType.extra,
+              requestSource: RequestSource.app,
+              weeks: 1,
+              lastAllergyAnswer: PastAllergyAnswer(
+                requestedAt: DateTime.utc(2026, 10, 19, 9, 15),
+                noAllergies: true,
+              ),
+            ),
+          ]),
+        );
+        expectNoDataWarning(tester, "Allergie: nessun dato nell'app, chiedile");
+        expect(byKey('session-allergies-earlier'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'si el pedido de la reserva responde, vale el suyo, sin fecha',
+      (tester) async {
+        await openSession(
+          tester,
+          sessions: FakeSessionsRepository(
+            buildBooking(
+              noAllergies: true,
+              lastAllergyAnswer: PastAllergyAnswer(
+                requestedAt: DateTime.utc(2026, 10, 19, 9, 15),
+                restrictions: webRestrictions,
+              ),
+            ),
+          ),
+        );
+        expect(byKey('session-no-allergies'), findsOneWidget);
+        expect(byKey('session-allergies-earlier'), findsNothing);
+        expect(byKey('session-allergy-note'), findsNothing);
+      },
+    );
+
+    testWidgets('solo una dieta: la advertencia de preguntar, y la dieta', (
+      tester,
+    ) async {
+      await openSession(
+        tester,
+        sessions: FakeSessionsRepository(
+          buildBooking(
+            restrictions: const RequestRestrictions(diets: [Diet.vegetarian]),
+          ),
+        ),
+      );
+      expectNoDataWarning(tester, "Allergie: nessun dato nell'app, chiedile");
+      expect(
+        find.descendant(
+          of: byKey('session-diets'),
+          matching: find.text('Vegetariana'),
+        ),
+        findsOneWidget,
+      );
+      expect(byKey('session-allergies-earlier'), findsNothing);
     });
 
     testWidgets(
@@ -704,9 +914,9 @@ void main() {
           tester.semantics.simulatedAccessibilityTraversal(),
           containsAllInOrder(<Matcher>[
             isSemantics(label: 'Alergias y dietas', isHeader: true),
+            // Un solo nodo con el texto: el ícono de aviso no se lee.
             isSemantics(
-              label:
-                  'Sin datos de alergias: pregúntale al cliente antes de preparar el menú.',
+              label: 'Alergias: sin datos en la app, pregúntale',
               isHeader: false,
             ),
           ]),
@@ -795,6 +1005,161 @@ void main() {
     );
     expect(byKey('session-not-found'), findsOneWidget);
     expect(byKey('session-move'), findsNothing);
+  });
+
+  // Decisión 3: en la última sesión viva de una reserva semanal, al final de
+  // la ficha (el día de cocinar, «Come arrivare» y las alergias van primero).
+  group('«Rinnova»', () {
+    /// Otra reserva de la misma ficha, del 23/12 al 13/1.
+    List<CookingSession> renewal() => buildBooking(
+      first: CalendarDate(2026, 12, 23),
+      firstN: 10,
+      requestId: 'renovacion',
+    );
+
+    String location(ChefApp app) =>
+        app.container.read(routerProvider).state.uri.toString();
+
+    testWidgets('en la última semana, al final (después de «Settimane», no antes de «Come arrivare»); abre la hoja de la renovación', (
+      tester,
+    ) async {
+      // Alto: toda la ficha construida y a la vista.
+      final app = await openSession(tester, n: 4, size: const Size(400, 2400));
+      final row = byKey('session-last-of-booking');
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text("È l'ultima sessione della prenotazione."),
+        ),
+        findsOneWidget,
+      );
+      expect(byKey('session-later-session'), findsNothing);
+      final top = tester.getTopLeft(row).dy;
+      expect(
+        top,
+        greaterThanOrEqualTo(
+          tester.getBottomLeft(byKey('session-week-${sessionId(4)}')).dy,
+        ),
+      );
+      expect(top, greaterThan(tester.getBottomLeft(byKey('session-directions')).dy));
+      final renew = byKey('session-renew');
+      expect(find.descendant(of: renew, matching: find.text('Rinnova')), findsOneWidget);
+      expect(tester.getSize(renew).height, greaterThanOrEqualTo(48));
+
+      await tester.tap(renew);
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Rinnova prenotazione'), findsOneWidget);
+      expect(location(app), '/sessioni/${sessionId(4)}/rinnova');
+      // Al cerrarla, la ficha.
+      await tester.tap(byKey('booking-close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CookingSessionScreen), findsOneWidget);
+    });
+
+    testWidgets('con una sola semana, después de los datos de la clienta', (
+      tester,
+    ) async {
+      await openSession(
+        tester,
+        n: 1,
+        sessions: FakeSessionsRepository(buildBooking(weeks: 1)),
+        size: const Size(400, 2400),
+      );
+      expect(byKey('session-week-${sessionId(1)}'), findsNothing);
+      expect(
+        tester.getTopLeft(byKey('session-last-of-booking')).dy,
+        greaterThanOrEqualTo(
+          tester.getBottomLeft(byKey('session-request-notes')).dy,
+        ),
+      );
+      expect(byKey('session-renew'), findsOneWidget);
+    });
+
+    testWidgets('también en la última ya cocinada, que no tiene la barra de abajo', (
+      tester,
+    ) async {
+      await openSession(
+        tester,
+        n: 4,
+        sessions: FakeSessionsRepository(
+          buildBooking(statuses: {4: SessionStatus.cooked}),
+        ),
+      );
+      expect(byKey('session-move'), findsNothing);
+      await reveal(tester, byKey('session-renew'));
+      expect(byKey('session-renew'), findsOneWidget);
+    });
+
+    testWidgets('con una sesión posterior de la misma ficha en la agenda, el botón sigue y dice «Ha già un\'altra sessione: …»', (
+      tester,
+    ) async {
+      await openSession(
+        tester,
+        n: 4,
+        sessions: FakeSessionsRepository([...buildBooking(), ...renewal()]),
+      );
+      await reveal(tester, byKey('session-renew'));
+      expect(
+        plainSpaces(textOf(tester, 'session-later-session')),
+        "Ha già un'altra sessione: mer 23 dic.",
+      );
+      expect(byKey('session-renew'), findsOneWidget);
+    });
+
+    testWidgets('con la agenda cargando, el botón está y la línea no; cuando llega, la línea', (
+      tester,
+    ) async {
+      final sessions = FakeSessionsRepository([...buildBooking(), ...renewal()])
+        ..pendingAgendaFetch = Completer<void>();
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        sessions: sessions,
+        settle: false,
+      );
+      // Hoy se abre con la agenda cargando (su rueda no se asienta).
+      for (var i = 0; i < 10; i++) {
+        await tester.pump();
+      }
+      app.go('/sessioni/${sessionId(4)}');
+      await tester.pumpAndSettle();
+      await reveal(tester, byKey('session-renew'));
+      expect(byKey('session-renew'), findsOneWidget);
+      expect(byKey('session-later-session'), findsNothing);
+
+      sessions.pendingAgendaFetch!.complete();
+      await tester.pumpAndSettle();
+      await reveal(tester, byKey('session-later-session'));
+      expect(byKey('session-later-session'), findsOneWidget);
+    });
+
+    testWidgets('no está en otra semana, en una semana cancelada ni en una sesión extra', (
+      tester,
+    ) async {
+      final sessions = FakeSessionsRepository([
+        ...buildBooking(statuses: {4: SessionStatus.cancelled}),
+        buildSession(
+          n: 7,
+          requestId: 'extra',
+          type: RequestType.extra,
+          weeks: 1,
+          date: CalendarDate(2026, 12, 30),
+        ),
+      ]);
+      final app = await openSession(tester, n: 2, sessions: sessions, size: const Size(400, 2400));
+      expect(byKey('session-last-of-booking'), findsNothing);
+      for (final n in [4, 7]) {
+        app.go('/sessioni/${sessionId(n)}');
+        await tester.pumpAndSettle();
+        expect(find.byType(CookingSessionScreen), findsOneWidget);
+        expect(byKey('session-last-of-booking'), findsNothing, reason: 'sesión $n');
+      }
+      // Con la última cancelada, la última viva es la del 9/12.
+      app.go('/sessioni/${sessionId(3)}');
+      await tester.pumpAndSettle();
+      expect(byKey('session-last-of-booking'), findsOneWidget);
+    });
   });
 
   group('cancelar', () {

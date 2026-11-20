@@ -1,9 +1,14 @@
 // Reglas de la hoja «Confirmar reserva»: las semanas y sus fechas, lo que
 // impide mandar una fecha, los minutos de cocina, el precio que se propone y
-// las horas de llegada. Dart puro. Los límites son los de chef_create_booking
+// las horas de llegada; para una reserva a mano, además, el hogar y su
+// estimación. Dart puro. Los límites son los de chef_create_booking
 // (contrato docs/contracts/chef-api.md §4).
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/bookings/domain/booking.dart';
+import 'package:radici/features/clients/domain/chef_client.dart';
+import 'package:radici/features/quote/domain/quote.dart'
+    show calcQuote, defaultPricing;
 import 'package:radici/features/requests/domain/chef_request.dart';
 
 /// Una reserva es de 1 a 8 semanas, con una sesión por semana.
@@ -158,6 +163,73 @@ int? suggestedServiceCents(RequestEstimate? estimate, {required int weeks}) {
   firstWeekCents: (totalCents + weeks - 1) ~/ weeks,
   even: totalCents % weeks == 0,
 );
+
+/// Semanas con que empieza una reserva a mano: un mes.
+const int defaultManualBookingWeeks = 4;
+
+/// El hogar con que empieza una ficha nueva: el de la calculadora
+/// (QuoteDraft.initial).
+const BookingHousehold defaultManualHousehold = BookingHousehold(
+  adults: 2,
+  kids: 2,
+  days: 5,
+  meals: [Meal.dinner],
+);
+
+/// Minutos de cocina (con el tope de la hoja) y porciones de cada semana de
+/// una reserva a mano, de la copia Dart de calcQuote con las tarifas por
+/// defecto. Es una vista previa: el precio lo escribe Evelyn (sin compra: la
+/// hace el cliente).
+({int cookMinutes, int portions}) manualBookingEstimate(
+  BookingHousehold household,
+) {
+  final quote = calcQuote(household.toQuoteInput(), defaultPricing);
+  return (
+    cookMinutes: suggestedCookMinutes(quote.cookMinutes),
+    portions: quote.portions,
+  );
+}
+
+/// El hogar de una reserva a mano para una ficha: el de su último pedido
+/// semanal si trae adultos, niños, días y comidas (nunca el de un evento, que
+/// no describe la casa, ni el de un cambio sin hogar); si no, los adultos y
+/// niños de la ficha con 5 días y cena. Siempre dentro de los límites del
+/// contrato: `clients` solo exige >= 0, y más de 30 daría un 400.
+BookingHousehold householdFor({
+  ClientLatestRequest? latestWeekly,
+  required int fichaAdults,
+  required int fichaKids,
+}) {
+  final latest = latestWeekly;
+  if (latest != null &&
+      latest.type == RequestType.week &&
+      latest.adults != null &&
+      latest.kids != null &&
+      latest.days != null &&
+      latest.meals.isNotEmpty) {
+    return BookingHousehold.clamped(
+      adults: latest.adults!,
+      kids: latest.kids!,
+      days: latest.days!,
+      meals: latest.meals,
+    );
+  }
+  return BookingHousehold.clamped(
+    adults: fichaAdults,
+    kids: fichaKids,
+    days: defaultManualHousehold.days,
+    meals: defaultManualHousehold.meals,
+  );
+}
+
+/// La fecha es hoy y la llegada [start] ya pasó en Roma ([now]). El servidor
+/// marca `past` solo una fecha anterior a hoy; la hoja lo avisa.
+bool arrivalPassedToday({
+  required CalendarDate date,
+  required ClockTime start,
+  required CalendarDate today,
+  required ClockTime now,
+}) => date == today && start.compareTo(now) < 0;
 
 /// Horas de llegada que ofrece la hoja: la sugerida por el servidor (o la de
 /// por defecto) y las siguientes de media hora en media hora, sin pasar la

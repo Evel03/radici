@@ -8,6 +8,7 @@ import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 
 import '../../../support/supabase_http_fake.dart';
 
@@ -171,6 +172,154 @@ void main() {
     expect(retry.duplicate, isTrue);
     expect(server.requests, hasLength(2));
     expect(server.requests.map((r) => jsonBodyOf(r)['requestKey']), [key, key]);
+  });
+
+  group('a mano (contrato §4: clientId o newClient, con type, household y locale)', () {
+    const clientId = 'c1000000-0000-4000-8000-000000000003';
+    const household = BookingHousehold(
+      adults: 2,
+      kids: 2,
+      days: 5,
+      meals: [Meal.dinner],
+    );
+
+    test('ficha existente: el cuerpo exacto que llega a la función', () async {
+      await repository.createBooking(
+        BookingRequest(
+          clientId: clientId,
+          type: RequestType.week,
+          household: household,
+          locale: ClientLocale.es,
+          dates: [monday, monday.addDays(7)],
+          start: const ClockTime.hm(10, 0),
+          cookMinutes: 180,
+          portions: 20,
+          serviceTotalCents: 28000,
+          requestKey: key,
+        ),
+      );
+      expect(server.last.url.path, '/functions/v1/chef/bookings');
+      expect(jsonBodyOf(server.last), {
+        'clientId': clientId,
+        'type': 'week',
+        'household': {
+          'adults': 2,
+          'kids': 2,
+          'days': 5,
+          'meals': ['dinner'],
+        },
+        'locale': 'es',
+        'dates': ['2026-11-23', '2026-11-30'],
+        'start': '10:00',
+        'cookMinutes': 180,
+        'portions': 20,
+        'serviceTotalCents': 28000,
+        'requestKey': key,
+        'dryRun': false,
+      });
+    });
+
+    test('ficha nueva: el dryRun lleva newClient completo; la respuesta, sin pedido ni ficha', () async {
+      server.handler = (_) async => jsonResponse({
+        'dryRun': true,
+        'duplicate': false,
+        'requestId': null,
+        'clientId': null,
+        'weeks': [
+          {
+            'date': '2026-11-23',
+            'start': '10:00',
+            'cookMinutes': 180,
+            'status': 'ok',
+            'suggestedStart': '10:00',
+            'serviceCents': 0,
+            'sessionId': null,
+          },
+        ],
+      });
+      final result = await repository.createBooking(
+        BookingRequest(
+          newClient: const NewClientData(
+            name: 'Giulia Rossi',
+            phone: '+393331234567',
+            zone: 'Città Alta',
+            address: 'Via Gombito 12, Bergamo',
+          ),
+          type: RequestType.week,
+          household: household,
+          locale: ClientLocale.it,
+          dates: [monday],
+          cookMinutes: 180,
+          portions: 20,
+          dryRun: true,
+        ),
+      );
+      expect(result.requestId, isNull);
+      expect(result.clientId, isNull);
+      expect(jsonBodyOf(server.last), {
+        'newClient': {
+          'name': 'Giulia Rossi',
+          'phone': '+393331234567',
+          'zone': 'Città Alta',
+          'address': 'Via Gombito 12, Bergamo',
+        },
+        'type': 'week',
+        'household': {
+          'adults': 2,
+          'kids': 2,
+          'days': 5,
+          'meals': ['dinner'],
+        },
+        'locale': 'it',
+        'dates': ['2026-11-23'],
+        'cookMinutes': 180,
+        'portions': 20,
+        'dryRun': true,
+      });
+    });
+
+    test('un 400 de la ficha nueva deja los nombres de los campos (newClient.phone)', () async {
+      server.handler = (_) async => jsonResponse({
+        'errors': {'newClient.phone': 'invalid'},
+      }, status: 400);
+      await expectLater(
+        repository.createBooking(
+          BookingRequest(
+            newClient: const NewClientData(name: 'Giulia', phone: '+39'),
+            type: RequestType.week,
+            household: household,
+            locale: ClientLocale.it,
+            dates: [monday],
+            cookMinutes: 180,
+            dryRun: true,
+          ),
+        ),
+        throwsA(
+          isA<BookingFailure>()
+              .having((f) => f.kind, 'kind', BookingFailureKind.invalid)
+              .having((f) => f.fields, 'fields', {'newClient.phone'}),
+        ),
+      );
+    });
+
+    test('un 404 clientNotFound es notFound', () async {
+      server.handler = (_) async =>
+          jsonResponse({'error': 'clientNotFound'}, status: 404);
+      await expectLater(
+        repository.createBooking(
+          BookingRequest(
+            clientId: clientId,
+            type: RequestType.week,
+            household: household,
+            locale: ClientLocale.it,
+            dates: [monday],
+            cookMinutes: 180,
+            dryRun: true,
+          ),
+        ),
+        _failure(BookingFailureKind.notFound),
+      );
+    });
   });
 
   group('cada error, a su tipo', () {

@@ -3,8 +3,11 @@
 // guardado (llegada y fin, sin la compra de las sesiones de antes del
 // 19/11/2026) y shopping_done, que se ve como confirmada; de dónde salen el
 // nombre, el teléfono, la zona y el idioma; las alergias de la ficha y del
-// pedido (también como llegan de la web: solo la nota); la dirección como se
-// guarda, y que nada de eso se imprime.
+// pedido (también como llegan de la web: solo la nota), las de su último
+// pedido semanal de la web que se reservó cuando el de una sesión semanal no
+// responde (una extra no las toma; si ese pedido tampoco responde, ninguna), y
+// que una dieta sola no responde sobre alergias; la dirección como se guarda,
+// y que nada de eso se imprime.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
@@ -89,6 +92,109 @@ void main() {
       expect(session.client.diets, [Diet.vegan]);
     });
 
+    /// Un pedido embebido en `client.answers`: por defecto, semanal, de la web
+    /// y aceptado (el que se reservó).
+    Map<String, Object?> answerRow(
+      String? createdAt, {
+      String type = 'week',
+      String source = 'web',
+      String status = 'accepted',
+      Map<String, Object?>? restrictions,
+      bool? noAllergies,
+    }) => {
+      'type': type,
+      'source': source,
+      'status': status,
+      'created_at': createdAt,
+      'restrictions': restrictions,
+      'no_allergies': noAllergies,
+    };
+
+    const celiacNote = {
+      'allergens': <String>[],
+      'diets': <String>[],
+      'note': ' Celiachia, noci ',
+    };
+
+    test('de los pedidos de la clienta (client.answers) toma el último semanal de la web que se reservó, llegue en el orden que llegue', () {
+      final answers = [
+        answerRow('2026-10-01T10:00:00+00:00', noAllergies: true),
+        answerRow(
+          '2026-10-19T09:15:30.123456+00:00',
+          restrictions: celiacNote,
+          noAllergies: false,
+        ),
+        // Más nuevos, pero no cuentan: rechazado (pudo mandarlo otra persona
+        // con su email), pendiente, extra (los que comen pueden ser otros) o
+        // de la app (una reserva a mano, sin alergias).
+        answerRow('2026-11-02T08:00:00+00:00', status: 'rejected', noAllergies: true),
+        answerRow('2026-11-03T08:00:00+00:00', status: 'new', noAllergies: true),
+        answerRow('2026-11-04T08:00:00+00:00', type: 'extra', noAllergies: true),
+        answerRow('2026-11-05T08:00:00+00:00', source: 'app'),
+        // Rotos: sin fecha o con una que no es una fecha.
+        answerRow(null, noAllergies: true),
+        answerRow('ayer', noAllergies: true),
+      ];
+      for (final order in [answers, answers.reversed.toList()]) {
+        final answer = CookingSession.fromJson(sessionRow(clientAnswers: order))
+            .client
+            .lastAllergyAnswer;
+        expect(
+          answer?.requestedAt,
+          DateTime.utc(2026, 10, 19, 9, 15, 30, 123, 456),
+        );
+        expect(answer?.restrictions?.note, 'Celiachia, noci');
+        expect(answer?.noAllergies, isFalse);
+      }
+    });
+
+    test('si ese pedido no responde (consentimiento retirado, copia borrada o anterior a la pregunta), ninguna: no vuelve un «nadie tiene» viejo', () {
+      // Como queda después de private.revoke_health_consent: la nota y el
+      // «hay alergias» del más nuevo se borran, y el «nadie tiene» del viejo
+      // no se toca.
+      final answers = [
+        answerRow('2026-10-01T10:00:00+00:00', noAllergies: true),
+        answerRow('2026-10-19T09:15:30+00:00'),
+      ];
+      for (final order in [answers, answers.reversed.toList()]) {
+        expect(
+          CookingSession.fromJson(
+            sessionRow(clientAnswers: order),
+          ).client.lastAllergyAnswer,
+          isNull,
+        );
+      }
+      // Solo una dieta tampoco responde.
+      expect(
+        CookingSession.fromJson(
+          sessionRow(
+            clientAnswers: [
+              answerRow('2026-10-01T10:00:00+00:00', noAllergies: true),
+              answerRow(
+                '2026-10-19T09:15:30+00:00',
+                restrictions: const {
+                  'allergens': <String>[],
+                  'diets': ['vegetarian'],
+                  'note': '  ',
+                },
+              ),
+            ],
+          ),
+        ).client.lastAllergyAnswer,
+        isNull,
+      );
+    });
+
+    test('sin pedidos (o sin la clave), ninguna respuesta', () {
+      expect(
+        CookingSession.fromJson(sessionRow()).client.lastAllergyAnswer,
+        isNull,
+      );
+      final row = sessionRow();
+      (row['client'] as Map).remove('answers');
+      expect(CookingSession.fromJson(row).client.lastAllergyAnswer, isNull);
+    });
+
     test('una fila rota da FormatException', () {
       for (final broken in <Map<String, dynamic>>[
         {...sessionRow(), 'status': 'boiling'},
@@ -117,6 +223,15 @@ void main() {
       expect(
         cookingSessionColumns,
         contains('restrictions:client_restrictions(allergen, diet)'),
+      );
+      // Los pedidos de la clienta, desde la ficha: sessions también une
+      // clients con requests, así que va el nombre de la FK directa.
+      expect(
+        cookingSessionColumns,
+        contains(
+          'answers:requests!requests_client_id_chef_id_fkey(type, source, '
+          'status, created_at, restrictions, no_allergies)',
+        ),
       );
       expect(cookingSessionColumns, contains('address'));
       expect(cookingSessionColumns, contains(chefRequestColumns));
@@ -303,6 +418,170 @@ void main() {
         buildSession(requestId: null).allergyAnswer,
         AllergyAnswer.unknown,
       );
+    });
+
+    test('una reserva a mano (pedido de la app, que no guarda alergias): sin datos, salvo que la ficha tenga restricciones', () {
+      expect(
+        buildSession(requestSource: RequestSource.app).allergyAnswer,
+        AllergyAnswer.unknown,
+      );
+      expect(
+        buildSession(
+          requestSource: RequestSource.app,
+          clientAllergens: const [Allergen.milk],
+        ).allergyAnswer,
+        AllergyAnswer.listed,
+      );
+    });
+
+    test('una dieta sola (de la ficha o del pedido) no responde sobre alergias: sin datos, y la dieta igual está', () {
+      final fromClient = buildSession(clientDiets: const [Diet.vegetarian]);
+      expect(fromClient.diets, [Diet.vegetarian]);
+      expect(fromClient.allergyAnswer, AllergyAnswer.unknown);
+
+      final fromRequest = buildSession(
+        restrictions: const RequestRestrictions(diets: [Diet.vegan]),
+      );
+      expect(fromRequest.diets, [Diet.vegan]);
+      expect(fromRequest.allergyAnswer, AllergyAnswer.unknown);
+
+      // Con «nadie tiene», nadie tiene; la dieta sigue estando.
+      final none = buildSession(
+        noAllergies: true,
+        clientDiets: const [Diet.vegan],
+      );
+      expect(none.allergyAnswer, AllergyAnswer.none);
+      expect(none.diets, [Diet.vegan]);
+    });
+  });
+
+  group('alergias de otro pedido de la clienta', () {
+    final earlierNote = PastAllergyAnswer(
+      requestedAt: DateTime.utc(2026, 10, 19, 9, 15),
+      restrictions: webRestrictions,
+      noAllergies: false,
+    );
+    final earlierNone = PastAllergyAnswer(
+      requestedAt: DateTime.utc(2026, 10, 12, 18),
+      noAllergies: true,
+    );
+
+    test('una renovación (pedido de la app, sin respuesta): la nota de su último pedido semanal de la web que se reservó, con su fecha', () {
+      final session = buildSession(
+        requestSource: RequestSource.app,
+        lastAllergyAnswer: earlierNote,
+      );
+      expect(session.earlierAllergyAnswer, earlierNote);
+      expect(session.allergyNote, 'Celiachia, noci');
+      expect(session.allergyAnswer, AllergyAnswer.listed);
+      expect(session.earlierAnswerAt, DateTime.utc(2026, 10, 19, 9, 15));
+    });
+
+    test('«nadie tiene» de su último pedido, con su fecha', () {
+      final session = buildSession(
+        requestSource: RequestSource.app,
+        lastAllergyAnswer: earlierNone,
+      );
+      expect(session.allergyAnswer, AllergyAnswer.none);
+      expect(session.earlierAnswerAt, DateTime.utc(2026, 10, 12, 18));
+    });
+
+    test('una sesión sin pedido, también', () {
+      final session = buildSession(
+        requestId: null,
+        lastAllergyAnswer: earlierNote,
+      );
+      expect(session.allergyNote, 'Celiachia, noci');
+      expect(session.earlierAnswerAt, DateTime.utc(2026, 10, 19, 9, 15));
+    });
+
+    test(
+      'si el pedido de la reserva responde, vale el suyo y no hay fecha',
+      () {
+        final ownNone = buildSession(
+          noAllergies: true,
+          lastAllergyAnswer: earlierNote,
+        );
+        expect(ownNone.earlierAllergyAnswer, isNull);
+        expect(ownNone.allergyAnswer, AllergyAnswer.none);
+        expect(ownNone.allergyNote, isEmpty);
+        expect(ownNone.earlierAnswerAt, isNull);
+
+        final ownNote = buildSession(
+          restrictions: const RequestRestrictions(note: 'Lattosio'),
+          lastAllergyAnswer: earlierNone,
+        );
+        expect(ownNote.allergyNote, 'Lattosio');
+        expect(ownNote.allergyAnswer, AllergyAnswer.listed);
+        expect(ownNote.earlierAnswerAt, isNull);
+      },
+    );
+
+    test('un pedido con solo una dieta no responde: vale la del último pedido semanal de la web que se reservó (otro, más nuevo), y la dieta se suma', () {
+      final session = buildSession(
+        restrictions: const RequestRestrictions(diets: [Diet.vegetarian]),
+        lastAllergyAnswer: earlierNone,
+      );
+      expect(session.allergyAnswer, AllergyAnswer.none);
+      expect(session.diets, [Diet.vegetarian]);
+      expect(session.earlierAnswerAt, DateTime.utc(2026, 10, 12, 18));
+    });
+
+    test('los alérgenos y dietas del otro pedido (formularios viejos) se suman a los de la ficha; con gluten, la contaminación cruzada', () {
+      final session = buildSession(
+        requestSource: RequestSource.app,
+        clientAllergens: const [Allergen.milk],
+        lastAllergyAnswer: PastAllergyAnswer(
+          requestedAt: DateTime.utc(2026, 10),
+          restrictions: const RequestRestrictions(
+            allergens: [Allergen.gluten],
+            diets: [Diet.vegan],
+          ),
+        ),
+      );
+      expect(session.allergens, [Allergen.gluten, Allergen.milk]);
+      expect(session.diets, [Diet.vegan]);
+      expect(session.allergyAnswer, AllergyAnswer.listed);
+      expect(session.needsCrossContaminationNote, isTrue);
+      expect(session.earlierAnswerAt, DateTime.utc(2026, 10));
+    });
+
+    test('con alérgenos en la ficha, el «nadie tiene» de otro pedido no se muestra (valen los alérgenos), ni su fecha', () {
+      final session = buildSession(
+        requestSource: RequestSource.app,
+        clientAllergens: const [Allergen.milk],
+        lastAllergyAnswer: earlierNone,
+      );
+      expect(session.allergyAnswer, AllergyAnswer.listed);
+      expect(session.allergens, [Allergen.milk]);
+      expect(session.earlierAnswerAt, isNull);
+    });
+
+    test('ningún pedido de la clienta responde: sin datos, sin fecha', () {
+      final session = buildSession(requestSource: RequestSource.app);
+      expect(session.earlierAllergyAnswer, isNull);
+      expect(session.allergyAnswer, AllergyAnswer.unknown);
+      expect(session.earlierAnswerAt, isNull);
+    });
+
+    test('una sesión extra (a mano, sin respuesta) no la toma: los que comen pueden ser otros (SPEC §5.6)', () {
+      for (final earlier in [earlierNone, earlierNote]) {
+        final session = buildSession(
+          type: RequestType.extra,
+          requestSource: RequestSource.app,
+          lastAllergyAnswer: earlier,
+        );
+        expect(session.earlierAllergyAnswer, isNull);
+        expect(session.allergyAnswer, AllergyAnswer.unknown);
+        expect(session.allergyNote, isEmpty);
+        expect(session.earlierAnswerAt, isNull);
+      }
+    });
+
+    test('toString no imprime la respuesta', () {
+      expect(earlierNote.toString(), 'PastAllergyAnswer(<oculto>)');
+      final session = buildSession(lastAllergyAnswer: earlierNote);
+      expect(session.client.toString(), isNot(contains('Celiachia')));
     });
   });
 

@@ -108,6 +108,17 @@ Map<String, dynamic> requestRow({
   },
 };
 
+/// La estimación de un pedido de antes del precio por semana (servicio por
+/// hora, sin autoPrice ni tarifas por semana): no propone el precio de otra
+/// cantidad de semanas. La compra que traía se ignora (sin compra desde el
+/// 19/11/2026).
+const RequestEstimate legacyEstimate = RequestEstimate(
+  portions: 20,
+  recipes: 3,
+  cookMinutes: 180,
+  serviceCents: 7800,
+);
+
 /// Pedido armado a mano (sin pasar por JSON).
 ChefRequest buildRequest({
   String id = 'req-1',
@@ -124,17 +135,14 @@ ChefRequest buildRequest({
   RequestRestrictions? restrictions,
   bool? noAllergies,
   // Por defecto, una estimación de antes del precio por semana (sin autoPrice).
-  RequestEstimate? estimate = const RequestEstimate(
-    portions: 20,
-    recipes: 3,
-    cookMinutes: 180,
-    serviceCents: 7800,
-  ),
+  RequestEstimate? estimate = legacyEstimate,
   String chefId = testChefId,
   String clientId = testClientId,
   ClientStatus? clientStatus = ClientStatus.prospect,
   RequestType type = RequestType.week,
   int weeks = 1,
+  // Origen (requests.source): por defecto, la web; una reserva a mano es de la app.
+  RequestSource source = RequestSource.web,
 }) => ChefRequest(
   id: id,
   chefId: chefId,
@@ -154,7 +162,7 @@ ChefRequest buildRequest({
   locale: locale,
   whatsappOptIn: true,
   estimate: estimate,
-  source: RequestSource.web,
+  source: source,
   seenAt: seenAt,
   createdAt: createdAt ?? DateTime.utc(2026, 10, 19, 9, 15),
   client: RequestClient(

@@ -77,11 +77,12 @@ enum AllergyAnswer {
   /// ni celiaquía.
   none,
 
-  /// Las escribió (o el pedido trae restricciones): se muestran.
+  /// Las escribió (o el pedido trae alérgenos): se muestran.
   listed,
 
-  /// Sin respuesta: un pedido anterior a la pregunta, uno de la app o uno
-  /// cuyo consentimiento de salud se retiró. Hay que preguntarle al cliente.
+  /// Sin respuesta: un pedido anterior a la pregunta, uno de la app, uno
+  /// cuyo consentimiento de salud se retiró o uno con solo una dieta (una
+  /// dieta no dice nada de alergias). Hay que preguntarle al cliente.
   unknown,
 }
 
@@ -130,6 +131,10 @@ abstract class RequestRestrictions with _$RequestRestrictions {
   }
 
   bool get isEmpty => allergens.isEmpty && diets.isEmpty && note.isEmpty;
+
+  /// Dice algo de alergias: alérgenos o la nota. Una dieta sola no (ser
+  /// vegetariano no dice si alguien es celíaco).
+  bool get answersAllergies => allergens.isNotEmpty || note.trim().isNotEmpty;
 
   @override
   String toString() => 'RequestRestrictions(<oculto>)';
@@ -359,6 +364,13 @@ abstract class ChefRequest with _$ChefRequest {
       status != RequestStatus.rejected &&
       status != RequestStatus.accepted;
 
+  /// Al llegar (por tiempo real o al reconectar) salta el aviso «Nuova
+  /// richiesta da …»: solo si es nuevo ([isNew]) y llegó de la web. Uno de la
+  /// app se suma a la lista sin aviso: una reserva cargada a mano (nace
+  /// aceptada y vista) o un pedido nuevo, que igual cuenta como nuevo en la
+  /// bandeja. Cuando los clientes con cuenta pidan desde la app (M2), revisar.
+  bool get alertsOnArrival => source == RequestSource.web && isNew;
+
   bool get isRejected => status == RequestStatus.rejected;
 
   /// Solo un pedido nuevo se puede rechazar desde la app (contrato §3).
@@ -393,14 +405,22 @@ abstract class ChefRequest with _$ChefRequest {
     RequestStatus.resolved => false,
   };
 
+  /// Trae alguna restricción (también solo una dieta): la lista de la bandeja
+  /// lo marca.
   bool get hasRestrictions => !(restrictions?.isEmpty ?? true);
 
-  /// Qué mostrar de alergias. Con restricciones, siempre
+  /// Responde a la pregunta de alergias: las indica (alérgenos o la nota) o
+  /// confirma que nadie tiene. Una dieta sola no responde.
+  bool get answersAllergies =>
+      noAllergies == true || (restrictions?.answersAllergies ?? false);
+
+  /// Qué mostrar de alergias. Con alérgenos o la nota, siempre
   /// [AllergyAnswer.listed] (más vale mostrarlas, aunque diga lo contrario);
   /// sin ellas, [AllergyAnswer.none] solo si lo confirmó y si no,
-  /// [AllergyAnswer.unknown].
+  /// [AllergyAnswer.unknown], también con solo una dieta (que se muestra
+  /// igual).
   AllergyAnswer get allergyAnswer {
-    if (hasRestrictions) return AllergyAnswer.listed;
+    if (restrictions?.answersAllergies ?? false) return AllergyAnswer.listed;
     return noAllergies == true ? AllergyAnswer.none : AllergyAnswer.unknown;
   }
 

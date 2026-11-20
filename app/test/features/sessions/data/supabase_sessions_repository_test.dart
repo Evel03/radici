@@ -1,6 +1,7 @@
 // Sesiones con el SDK real contra un servidor HTTP simulado: la lectura con la
-// RLS (GET /rest/v1/sessions con la ficha, sus restricciones y el pedido
-// embebidos, filtrada por la cocinera), la dirección de la ficha (PATCH
+// RLS (GET /rest/v1/sessions con la ficha, sus restricciones, su último pedido
+// semanal de la web que se reservó y el pedido embebidos, filtrada por la
+// cocinera), la dirección de la ficha (PATCH
 // /rest/v1/clients, solo esa columna), y mover y cancelar con la Edge
 // Function chef (POST /functions/v1/chef/sessions/move y …/cancel, con la
 // sesión de quien entró, Evelyn o un colaborador suyo, y la región en la URL),
@@ -45,6 +46,21 @@ void main() {
   /// La lista de columnas como la manda el SDK (sin espacios).
   final select = cookingSessionColumns.replaceAll(RegExp(r'\s'), '');
 
+  /// En la ficha embebida, el último pedido semanal de la web que se reservó
+  /// (uno extra no cuenta, SPEC §5.6; uno de la app es una reserva a mano, sin
+  /// alergias; uno rechazado, vencido o pendiente pudo mandarlo otra persona),
+  /// responda o no: si no responde, la app no busca uno anterior. Por eso no
+  /// se filtra por respuesta.
+  void expectClientAnswers(Map<String, String> query) {
+    expect(query['client.answers.type'], 'eq.week');
+    expect(query['client.answers.source'], 'eq.web');
+    expect(query['client.answers.status'], 'eq.accepted');
+    expect(query.containsKey('client.answers.or'), isFalse);
+    expect(query['client.answers.order'], 'created_at.desc.nullslast');
+    expect(query['client.answers.limit'], '1');
+    expect(clientAnswersLimit, 1);
+  }
+
   group('lectura con la RLS', () {
     test('las de la cocinera desde una fecha, con todo embebido, por fecha y llegada', () async {
       server.handler = (_) async => jsonResponse([
@@ -68,6 +84,7 @@ void main() {
       expect(query['date'], 'gte.2026-10-26');
       expect(query['order'], 'date.asc.nullslast,start_time.asc.nullslast');
       expect(query['limit'], '$sessionsPageSize');
+      expectClientAnswers(query);
       // Con la sesión de quien entró (Evelyn o un colaborador suyo): la RLS
       // decide qué filas ve.
       expect(request.headers['Authorization'], 'Bearer ${fakeJwt('user-1')}');
@@ -87,6 +104,7 @@ void main() {
       // También por la cocinera: si además fuera clienta con cuenta, la RLS
       // («el cliente lee las suyas») le dejaría ver una que no es suya.
       expect(query['chef_id'], 'eq.$testChefId');
+      expectClientAnswers(query);
 
       // Sin filas (no existe, o es de otra cocinera): null.
       server.handler = (_) async => jsonResponse(<Object>[]);
@@ -113,6 +131,7 @@ void main() {
       expect(query['chef_id'], 'eq.$testChefId');
       expect(query['request_id'], 'eq.$bookingRequestId');
       expect(query.containsKey('status'), isFalse);
+      expectClientAnswers(query);
     });
 
     // Sin red no: el SDK reintenta los GET con esperas de segundos (PostgREST

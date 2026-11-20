@@ -9,6 +9,7 @@ import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
+import 'package:radici/features/clients/data/clients_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
@@ -28,6 +29,7 @@ class ChefApp {
     this.bookings,
     this.sessions,
     this.recipes,
+    this.clients,
   );
 
   final ProviderContainer container;
@@ -39,6 +41,7 @@ class ChefApp {
   final FakeBookingsRepository bookings;
   final FakeSessionsRepository sessions;
   final FakeRecipesRepository recipes;
+  final FakeClientsRepository clients;
 
   /// Navega como si se abriera un enlace a [location].
   void go(String location) => container.read(routerProvider).go(location);
@@ -50,9 +53,12 @@ class ChefApp {
 /// horario y sus días bloqueados (por defecto, lunes a viernes de 9 a 15 y
 /// sin bloqueos). [bookings] es la Edge Function de las reservas (por
 /// defecto, todo libre y la llegada sugerida a las 10:00; al confirmar, el
-/// pedido pasa a `accepted` en [requests]). [sessions] son sus sesiones y la
-/// Edge Function para moverlas y cancelarlas (por defecto, ninguna).
-/// [recipes] es su catálogo de platos (por defecto, vacío). Con [settle] en
+/// pedido pasa a `accepted` en [requests] y una reserva a mano o una
+/// renovación agrega sus sesiones a [sessions]). [sessions] son sus sesiones
+/// y la Edge Function para moverlas y cancelarlas (por defecto, ninguna).
+/// [recipes] es su catálogo de platos (por defecto, vacío). [clients] son sus
+/// fichas, las del directorio de «Nuova prenotazione» (por defecto, ninguna;
+/// una reserva a mano las actualiza como la base). Con [settle] en
 /// false no espera a que la pantalla se asiente (una rueda que gira no se
 /// asienta nunca). [retry]: los reintentos automáticos de Riverpod (por
 /// defecto, ninguno; ver retryOnce).
@@ -64,6 +70,7 @@ Future<ChefApp> pumpChefApp(
   FakeBookingsRepository? bookings,
   FakeSessionsRepository? sessions,
   FakeRecipesRepository? recipes,
+  FakeClientsRepository? clients,
   String? location,
   Size size = const Size(400, 900),
   List<Locale> deviceLocales = const [Locale('it', 'IT')],
@@ -76,8 +83,15 @@ Future<ChefApp> pumpChefApp(
   final auth = FakeAuthRepository(user: chefUser);
   final account = accounts ?? FakeAccountRepository(chefAccountData);
   final days = availability ?? FakeAvailabilityRepository();
-  final booking = bookings ?? FakeBookingsRepository(requests: requests);
+  final directory = clients ?? FakeClientsRepository();
   final sessionsRepository = sessions ?? FakeSessionsRepository();
+  final booking =
+      bookings ??
+      FakeBookingsRepository(
+        requests: requests,
+        clients: directory,
+        sessions: sessionsRepository,
+      );
   final catalog = recipes ?? FakeRecipesRepository();
   final launcher = FakeLinkLauncher();
   final container = await pumpRadiciApp(
@@ -94,6 +108,7 @@ Future<ChefApp> pumpChefApp(
       bookingsRepositoryProvider.overrideWithValue(booking),
       sessionsRepositoryProvider.overrideWithValue(sessionsRepository),
       recipesRepositoryProvider.overrideWithValue(catalog),
+      clientsRepositoryProvider.overrideWithValue(directory),
       linkLauncherProvider.overrideWithValue(launcher),
       ...overrides,
     ],
@@ -108,6 +123,7 @@ Future<ChefApp> pumpChefApp(
     booking,
     sessionsRepository,
     catalog,
+    directory,
   );
   if (location != null) {
     app.go(location);

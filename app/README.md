@@ -112,18 +112,25 @@ repositorios falsos (`test/support/fakes.dart`).
   está confirmada (una vieja en `shopping_done` se ve como confirmada; una de hoy que ya terminó
   dice «Terminata» si estaba confirmada; si está cocinada o cobrada, «Cucinata» o «Pagata»), las
   alergias resaltadas como en la ficha (con la nota de contaminación cruzada si hay gluten, SPEC
-  §5.6) y las notas de cocina, y abre la ficha. Abajo, en el tercio inferior del teléfono, «Come
-  arrivare» (Apple Maps en
-  el iPhone, Google Maps en el resto) y WhatsApp de la primera; sin dirección, WhatsApp y «Aggiungi
-  indirizzo», como la ficha (con varias, una línea dice de quién son, con la hora primero: «Arrivo
-  16:00 · Marco Bianchi»; si no entra, se corta el nombre). El WhatsApp es el de la ficha
+  §5.6; en una renovación, las del último pedido semanal de la web que se reservó, con su fecha, y,
+  sin ningún dato o con solo una dieta, «Allergie: nessun dato nell'app, chiedile») y las notas de
+  cocina, y abre la ficha. Abajo, en el tercio inferior del teléfono, «Come arrivare» (Apple Maps
+  en el iPhone, Google Maps en el resto) y WhatsApp de la primera; sin dirección, WhatsApp y
+  «Aggiungi indirizzo», como la ficha (con varias, una línea dice de quién son, con la hora primero:
+  «Arrivo 16:00 · Marco Bianchi»; si no entra, se corta el nombre). El WhatsApp es el de la ficha
   (`sessionLinksFor`, con el mismo día de Roma con que Hoy elige la sesión): lleva la hora de
   llegada salvo en una sesión cocinada o cobrada (en Hoy no hay canceladas ni de días pasados) y,
   si lo manda un colaborador, escribe de parte de la cocinera («ti scrivo da parte di Evelyn di
-  Radici…»). Pendientes de un toque: «N nuove richieste» (lleva a Richieste en «Nuove», aunque se
-  haya dejado en otra pestaña) y las reservas que terminan: las reservas semanales (un pedido
-  semanal aceptado; no un presupuesto enviado ni una sesión extra) cuya última sesión viva cae entre
-  hoy y los 6 días siguientes (abre la ficha de esa sesión; renovar desde Hoy llega después). La
+  Radici…»). Pendientes de uno o dos toques: «N nuove richieste» (lleva a Richieste en «Nuove»,
+  aunque se haya dejado en otra pestaña) y las reservas que terminan: las reservas semanales (un
+  pedido semanal aceptado; no un presupuesto enviado ni una sesión extra) desde 7 días antes hasta 7
+  días después de su última sesión viva (día de Roma; si ya pasó, «È finita la prenotazione di…»),
+  salvo que la misma ficha ya tenga una sesión viva posterior (una renovación, otra reserva o una
+  suelta: de dos reservas en paralelo queda la que termina última). Tocarla abre la ficha de esa
+  sesión; «Rinnova», debajo, abre la hoja de la renovación (ver «Rinnova» más abajo): renovar 4
+  semanas son dos toques, «Rinnova» y «Conferma 4 settimane», y al volver el pendiente ya no está,
+  aunque la agenda no se haya podido volver a leer. Para el lector de pantalla, «Rinnova» es un
+  solo nodo, «Rinnova la prenotazione di …», con la acción de tocar. La
   tira de 7 días (hoy y los 6 siguientes) usa lo de la Agenda: un punto por sesión, el número
   tachado si el día está bloqueado y un punto si es feriado en un día de trabajo; el lector de
   pantalla dice cuál es hoy; si los 7 no entran con 48 dp cada uno (menos de 368 dp de ancho, como
@@ -136,12 +143,14 @@ repositorios falsos (`test/support/fakes.dart`).
   Riverpod reintenta una lectura que falló), una rueda en el lugar de la tarjeta; si no se pudieron
   leer, el aviso con «Riprova» en su lugar; en los dos casos, los pendientes y la tira siguen.
   Mientras se lee la bandeja, los pendientes muestran una barra, y «Niente in sospeso» sale solo con
-  la bandeja y las sesiones leídas. Sin ninguna sesión, lo dice y ofrece ir a las solicitudes con un
-  botón abajo.
+  la bandeja y las sesiones leídas. Sin ninguna sesión, lo dice y ofrece, con dos botones abajo, ir a
+  las solicitudes o cargar una reserva a mano («Nuova prenotazione»).
 - **Richieste**: pestañas Nuove (sin `seen_at` y no aceptadas), Viste, Prenotazioni (los pedidos
   `accepted`: una reserva es un pedido aceptado más sus sesiones) y Rifiutate, con contador de
   nuevas. En cada fila, la fecha preferida va en su propia línea: un resumen largo se corta en dos
-  y no la tapa.
+  y no la tapa; una reserva sin fecha preferida (cargada a mano) no dice «Senza data». Abajo de
+  «Prenotazioni», «Nuova prenotazione» (ver más abajo), también mientras la bandeja carga o si no se
+  pudo leer: es también la acción de la pestaña vacía.
 - **Franja**: la bandeja, el detalle y la agenda muestran mañana o tarde si el pedido la trae. La web
   ya no la pregunta y manda `any`, que la app lee como sin franja y no muestra (como los emails).
 - **Agenda**: mes y semana con las **sesiones** (`features/sessions/`): en el mes, un punto por
@@ -154,8 +163,10 @@ repositorios falsos (`test/support/fakes.dart`).
   `SessionsRepository` las lee con la RLS («la
   cocinera lee las suyas»), con la ficha (`clients`, y sus `client_restrictions`) y el pedido de la
   reserva embebidos por el nombre de la FK (`requests.target_session_id` también apunta a
-  `sessions`), desde el lunes de la primera semana del mes de hoy (o del mes elegido, si es
-  anterior). Los pedidos que todavía no son una reserva siguen por `preferred_date` con la franja,
+  `sessions`), desde el lunes de la primera semana del mes de hoy, o desde 7 días antes de hoy si es
+  antes (así Hoy tiene las reservas que terminaron hace hasta 7 días), o desde el lunes de la
+  primera semana del mes elegido, si es anterior. Los pedidos que todavía no son una reserva siguen
+  por `preferred_date` con la franja,
   más la lista "Senza data"; los `accepted` ya no (se ven por sus sesiones). "Hoy"
   (Europe/Rome) cambia a la medianoche sin reabrir la app: se vuelve a mirar la fecha a la
   medianoche y, como mucho, cada minuto (un Timer largo llega tarde si el teléfono se suspende).
@@ -197,9 +208,29 @@ repositorios falsos (`test/support/fakes.dart`).
   cocinera gestiona los suyos» y el grant por columna; vale para todas sus sesiones y se corrige
   desde la fila de la dirección). Después, las alergias de la ficha y del pedido, con la nota del
   pedido resaltada (también sola, como llega de la web) y, con gluten, la de contaminación cruzada
-  (SPEC §5.6), cada una un nodo propio en el orden en que se ven (el lector de pantalla no las
-  mezcla con el título); los datos de la clienta y las semanas de la reserva (cada una abre su
-  ficha). Abajo, **Mover**:
+  (SPEC §5.6). En una sesión semanal cuyo pedido no responde (ni alérgenos, ni nota, ni «nadie
+  tiene»; por ejemplo, una renovación, que no guarda alergias), las del último pedido semanal de la
+  web que se reservó (aceptado) de la misma ficha, con una línea chica arriba: «Secondo la sua
+  richiesta (19 ott 2026)» (`sessionAllergiesEarlierRequest`; la fecha de ese pedido, en Roma). Si
+  ese pedido tampoco responde (anterior a la pregunta, o con la respuesta borrada al retirar el
+  consentimiento de salud o a pedido de otra persona), no se busca uno anterior: un «nadie tiene»
+  viejo ya no vale. Una sesión extra no las toma: los que comen pueden ser otros (SPEC §5.6), y un
+  pedido rechazado, vencido o pendiente no cuenta (pudo mandarlo otra persona con su email). Ese
+  pedido llega embebido en la ficha de cada sesión (`client.answers`: el más nuevo de los semanales,
+  de la web y aceptados, `clientAnswersLimit` = 1): en la misma lectura que la sesión (en Hoy, la
+  de la agenda), sin una consulta aparte que pueda fallar sola. Sin ningún dato (ni alérgenos de la
+  ficha, ni nota o alérgenos del pedido o de ese otro, ni la confirmación «nadie tiene»), la
+  advertencia «Allergie: nessun dato nell'app,
+  chiedile» (`sessionAllergiesNoData`, con el ícono de aviso y el fondo de la de contaminación
+  cruzada), nunca «sin alergias». Una dieta sola no responde sobre alergias: se muestra, debajo de
+  la advertencia (en el detalle de un pedido, igual). Cada una es un nodo
+  propio en el orden en que se ven (el lector de pantalla no las mezcla con el título); después,
+  los datos de la clienta y las semanas de la reserva (cada una abre su ficha). En la última sesión
+  viva de una reserva semanal (también cocinada o cobrada), al final: «È l'ultima sessione della
+  prenotazione.» y «Rinnova» (`/sessioni/:id/rinnova`); si la ficha ya tiene otra sesión viva
+  después (con la agenda leída, o una renovación hecha desde este dispositivo), «Ha già un'altra
+  sessione: …», sin esconder el botón (con dos reservas en paralelo, cada una conserva el suyo). Va
+  al final porque ese día la ficha es la de cocinar. Abajo, **Mover**:
   el calendario y una hoja (`/sessioni/:id/sposta`) que pide el `dryRun` de
   `POST chef/sessions/move` antes de confirmar (libre, un aviso, un choque o la semana con otra
   sesión de la reserva, que ofrece «Passa alla fine della prenotazione»: una por semana; no deja
@@ -227,10 +258,12 @@ repositorios falsos (`test/support/fakes.dart`).
   como ya estaba visto, vuelve a Viste), las dos con confirmación. Al abrirlo se marca visto.
   Si la persona es todavía un prospecto, avisa que sus datos se borran 90 días después de su último
   pedido y ofrece **Segna come cliente** (con confirmación): la ficha pasa a `trial` y se conserva
-  (contrato §9).
-- **Conferma prenotazione** (`features/bookings/`): desde el detalle de un pedido `new`, una hoja a
-  pantalla completa que lo convierte en una reserva de 1 a 8 semanas (una sesión `confirmed` por
-  semana). Es la primera llamada de la app a una Edge Function: `BookingsRepository` hace
+  (contrato §9). Una reserva cargada a mano no muestra la fecha preferida, «Conferma su WhatsApp» ni
+  la estimación: no los tiene (lo que sí dice es que no hay datos de alergias).
+- **Conferma prenotazione** (`features/bookings/`): desde el detalle de un pedido `new` (o a mano,
+  desde «Nuova prenotazione» o «Rinnova»: `BookingSource`), una hoja a pantalla completa que lo
+  convierte en una
+  reserva de 1 a 8 semanas (una sesión `confirmed` por semana). Es la primera llamada de la app a una Edge Function: `BookingsRepository` hace
   `functions.invoke('chef/bookings')` con la sesión de quien entró (Evelyn o un colaborador
   suyo) y `?forceFunctionRegion=eu-central-1` (nunca la cabecera `x-region`, que CORS no
   permite) y traduce los errores a `BookingFailure` sin loguear nada (contrato
@@ -240,7 +273,10 @@ repositorios falsos (`test/support/fakes.dart`).
   tarifas guardadas en `estimate.pricing` si cambian las semanas; vacío sin precio automático), que
   se pasa a centavos sin `double` (`parseEuroCents`). Cada cambio de fechas, hora o minutos vuelve a
   pedir el `dryRun`: cada semana dice si está libre, un aviso (bloqueado, sin horario, fuera de
-  horario, pasada) o si choca, y con un choque no deja confirmar. La barra de abajo queda a la vista
+  horario, pasada) o si choca, y con un choque no deja confirmar. La hoja avisa además lo que el
+  servidor no marca: el feriado de Bergamo de una semana (cuenta solo si Evelyn lo bloqueó) y una
+  llegada de hoy que ya pasó; tampoco impiden confirmar. Mientras corre el `dryRun`, la barra dice
+  «Controllo le date…» (también al lector de pantalla). La barra de abajo queda a la vista
   en un teléfono en vertical, también con el teclado abierto (en `/gestione/` los avisos de arriba
   se esconden mientras tanto; probado hasta 375×548, un iPhone SE con las barras de Safari; en
   horizontal puede no entrar), y muestra arriba del botón el precio que se va a confirmar, lo que
@@ -257,6 +293,79 @@ repositorios falsos (`test/support/fakes.dart`).
   (`bookingWhatsAppMessageOnBehalf`; el del detalle es `contactWhatsAppMessageOnBehalf`):
   «ti scrivo da parte di Evelyn di Radici» en lugar de «sono Evelyn» y, con varias semanas,
   «Evelyn arriva alle…» en lugar de «Arrivo alle…».
+- **Nuova prenotazione** (`features/bookings/` y `features/clients/`): una reserva a mano, desde
+  «Prenotazioni» o desde Hoy sin sesiones. Primero se elige la clienta (a pantalla completa, con X):
+  las fichas se leen con la RLS de la cocinera, sin dirección, email ni restricciones
+  (`ClientsRepository`, con el último pedido semanal de cada una), y se buscan por nombre (sin
+  mayúsculas, acentos ni apóstrofos: el ’ del iPhone) o por teléfono (desde 3 cifras). Van primero
+  las fichas que no son prospecto y después las del pedido semanal más reciente; un prospecto dice
+  «Non ancora cliente» (con la fecha de su pedido): así se distinguen dos fichas de la misma persona
+  (la web crea un prospecto nuevo cuando una clienta vuelve a pedir, contrato public-request §3).
+  «Nuova cliente» abre el formulario (nombre obligatorio; teléfono, zona, dirección, adultos y niños,
+  y el idioma de sus WhatsApp), prellenado con lo que se buscó: lo que parece un teléfono va al
+  teléfono. Lo escrito vive en un borrador mientras el elegir esté abierto: volver (con la flecha o
+  el gesto) no lo borra. Si el teléfono (normalizado como en la web) ya es de una ficha, lo dice una
+  tarjeta (anunciada por el lector de pantalla) y la barra de abajo ofrece «Usa la scheda di…» como
+  acción principal (abre la hoja de esa ficha sin modificarla: lo que se tocó en adultos, niños o
+  idioma va al pedido) y «Crea una scheda nuova»; lo que impide crearla (sin nombre: «Per creare una
+  scheda nuova, scrivi il nome.») va debajo de ese botón, no arriba de «Usa la scheda di…», que no
+  lo necesita. Un número copiado de Contactos trae marcas invisibles de dirección (U+202A…U+202C,
+  U+200E) que `normalizePhone` no saca: `phoneFromInput` las limpia. Los campos de la clienta (el
+  buscador, «Nuova cliente» y el diálogo de la dirección de la ficha) pasan `autofillHints: null`:
+  sin pasarlo, `TextField` usa una lista vacía y Flutter web arma igual un `<input
+  autocomplete="on">` dentro de un `<form>`, y en `/gestione/` Safari podría ofrecer el teléfono o
+  la dirección de la tarjeta propia del iPhone (el WhatsApp iría a Evelyn). Con `null` sale
+  `autocomplete="off"`; cuánto sugiere Safari igual solo se ve en el iPhone. El nombre, la zona y
+  el buscador van además sin autocorrección (`autocorrect: false`): con el teclado en español de
+  Evelyn, iOS cambiaría un apellido italiano al tocar espacio. Después, la misma hoja «Conferma
+  prenotazione»: 4 semanas desde mañana, «Persone e pasti» y el idioma (los de su último pedido
+  semanal: un evento no describe la casa; sin pedido semanal, el italiano, aunque haya pedido un
+  evento en otro idioma, y se cambia con el chip), los minutos que siguen a las personas hasta
+  tocarlos y el precio vacío y obligatorio. El POST lleva `clientId` o `newClient` (completo
+  también en el `dryRun`), `type: "week"`, `household` y `locale` (contrato chef-api §4); en una
+  ficha nueva, el hogar y el idioma tienen una sola fuente con el formulario. Si el servidor no
+  acepta los datos de la ficha nueva, «Correggi» vuelve al formulario. Mientras se manda y con una
+  respuesta perdida, la hoja no se cierra hasta reintentar: otra hoja tendría otra clave y podría
+  duplicar la reserva (y la ficha). Tampoco con el atrás del navegador en `/gestione/`, que no pasa
+  por `PopScope`: lo frena el `onExit` de la ruta (sin la sesión de la cocinera, la redirección al
+  login la saca igual). Si el reintento tampoco tiene respuesta (un corte largo o la función caída),
+  aparece «Chiudi comunque», con el aviso de que la reserva pudo haber quedado guardada y conviene
+  mirar «Prenotazioni» o la Agenda antes de rehacerla: sin esa salida, la hoja quedaría abierta hasta
+  que vuelva la red. Al confirmar, la reserva está en «Prenotazioni» aunque la relectura falle, y
+  «Fatto», la X y el atrás llevan ahí; si la bandeja estaba en error, se relee entera (la reserva
+  sola taparía el error y escondería los demás pedidos). No guarda alergias (falta el consentimiento
+  de salud, M2). En la URL van solo ids, nunca el nombre, el teléfono ni la dirección.
+- **Rinnova** (`features/bookings/domain/renewal.dart`, `/sessioni/:id/rinnova`): desde el
+  pendiente de Hoy o la ficha de la última sesión viva de una reserva semanal, la hoja «Rinnova
+  prenotazione», una reserva a mano para la misma ficha (`clientId`), prellenada y editable:
+  - se renueva si el pedido está aceptado, es semanal y tiene alguna sesión viva; si no, «Questa
+    prenotazione non si può rinnovare.»;
+  - la primera fecha es la última sesión viva + 7 días (el mismo día de la semana) y las demás, cada
+    7 días; la hora es la de esa sesión. Si su día y su hora no son los de más de la mitad de las
+    semanas vivas (alguna se movió), salen igual de ella y el encabezado avisa «Non tutte le
+    settimane avevano lo stesso giorno e la stessa ora…», sin decir que se movió la última: las
+    sesiones no guardan cuál se movió y, con dos semanas distintas, no se puede saber (duda D7);
+  - las semanas y el precio son los de la reserva, contando las sesiones canceladas (lo que se
+    reservó y se acordó);
+  - la llegada (el primer `dryRun` ya la lleva), los minutos (tal cual, también más de 360: «+» no
+    sube y «−» lleva a 360) y las porciones son los de la última sesión viva (sin compra: la hace el
+    cliente); los minutos no siguen a las personas;
+  - las personas, los días y las comidas (dentro de los límites del contrato) y el idioma son los
+    del pedido renovado;
+  - con otra cantidad de semanas, el precio sale de las tarifas de su estimación solo si el total
+    era el de esas tarifas (560 € en 4 semanas pasa a 300 € en 2); si no, queda vacío y obligatorio;
+  - el encabezado y el WhatsApp van a la ficha, que es lo que muestran las sesiones nuevas; si el
+    pedido renovado traía otro teléfono, el encabezado lo dice (y, si la ficha no tiene uno válido,
+    que no hay WhatsApp, en lugar de decir que va al de la ficha);
+  - los feriados de Bergamo y una llegada de hoy que ya pasó se avisan como en cualquier hoja (el día
+    +7 del pendiente, la primera fecha es hoy: duda D1);
+  - con una respuesta perdida no se cierra hasta reintentar, tampoco con el atrás del navegador, y
+    si el reintento tampoco tiene respuesta ofrece «Chiudi comunque» (como la hoja a mano); al
+    confirmar, la reserva está en «Prenotazioni», la renovada queda marcada en el dispositivo
+    (`renewedBookingsProvider`, en memoria) y «Fatto» vuelve a donde estaba;
+  - no guarda alergias, como toda reserva a mano: sus sesiones muestran las del último pedido
+    semanal de la web que se reservó (en general, el de la reserva que vino de la web), con su
+    fecha; si no hay o no responde, «Allergie: nessun dato nell'app, chiedile».
 - **Contacto de cada pedido**: el que llegó con ese pedido (`requests.contact`), y lo que falte (o
   todo, en un pedido de la app), de la ficha. Un envío de la web nunca cambia la ficha de una persona
   que ya existe, así que cada pedido muestra (y llama o escribe a) los datos con que llegó.
@@ -281,25 +390,33 @@ repositorios falsos (`test/support/fakes.dart`).
 - **Avisos de la web** (arriba de cualquier pantalla, también del login, salvo con el teclado o un
   diálogo abiertos): versión nueva publicada y, en Safari del iPhone, abrir Radici desde el ícono
   (ver [Web /gestione/](#web-gestione)).
-- **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`. Aviso
-  emergente "Nuova richiesta da …", con botón para abrirla, en cualquier pantalla salvo la ficha de
-  una sesión y el formulario del editor de platos (y sus diálogos): tienen su propio
-  `ScaffoldMessenger` y, en el navegador raíz, tapan el Scaffold de la barra, que es donde sale el
-  aviso. Ahí no se ve, y aparece al volver de esas pantallas. Con varios pedidos («N nuove
-  richieste») el botón lleva a la bandeja, en «Nuove» aunque se haya dejado en otra pestaña, salvo
-  con una hoja «Conferma prenotazione» o la ficha de una sesión (con su hoja «Sposta») abierta o
-  tapada por otro pedido: ahí abre encima el más reciente, porque ir a la bandeja las sacaría sin
-  preguntar, y se perdería lo que tienen a medias (mientras se manda la reserva, la pantalla final
-  con el WhatsApp; mientras se mueve una sesión, el «Annulla» de la ficha). Al reconectar (corte de
-  red, app que vuelve del segundo plano) se relee la lista y se avisa lo que llegó.
+- **Tiempo real**: canal de Supabase Realtime con los `INSERT` en `requests` de su `chef_id`: cada
+  pedido que llega se suma a la lista. Aviso emergente "Nuova richiesta da …", con botón para abrirla,
+  solo para los pedidos sin abrir que llegan de la web (`ChefRequest.alertsOnArrival`). Uno de la
+  app se suma sin aviso: una reserva cargada a mano (nace aceptada y va a «Prenotazioni») o un
+  pedido nuevo (que igual cuenta en el contador y va a «Nuove»). El aviso sale en cualquier
+  pantalla salvo la ficha de una sesión y el formulario del editor de platos (y sus diálogos):
+  tienen su propio `ScaffoldMessenger` y, en el navegador raíz, tapan el Scaffold de la barra, que
+  es donde sale el aviso. Ahí no se ve, y aparece al volver de esas pantallas. Con varios pedidos
+  («N nuove richieste») el botón lleva a la bandeja, en «Nuove» aunque se haya dejado en otra
+  pestaña, salvo con una hoja «Conferma prenotazione», «Nuova prenotazione» (el elegir, el
+  formulario «Nuova cliente» o la hoja a mano), la hoja «Rinnova» o la ficha de una sesión (con su
+  hoja «Sposta») abierta o tapada por otro pedido: ahí abre encima el más reciente, porque ir a la
+  bandeja las sacaría sin preguntar, y se perdería lo que tienen a medias (lo escrito; mientras se
+  manda la reserva, la pantalla final con el WhatsApp; mientras se mueve una sesión, el «Annulla»
+  de la ficha). Al reconectar (corte de red, app que vuelve del segundo plano) se relee la lista y
+  se avisa lo que llegó, con la misma regla.
 - Los teléfonos se normalizan con `lib/core/phone.dart`, copia de `normalizePhone`
   (`supabase/functions/_shared/public_request.ts`); `test/core/phone_test.dart` corre los mismos casos.
+  Lo que se escribe o se pega en la app pasa antes por `phoneFromInput` (`cleanOneLine`, la copia de
+  la de TS, y sin los caracteres invisibles de formato), con su propio test (`phone_input_test.dart`).
 
 Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace del email a Evelyn):
 `/accedi`, `/caricamento`, `/area-clienti`, `/oggi` (el inicio de la cocinera), `/richieste`,
 `/richieste/:id`,
-`/richieste/:id/prenota`, `/agenda`, `/sessioni/:id`, `/sessioni/:id/sposta` (con `?data=AAAA-MM-DD`
-si la fecha ya se eligió), `/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con
+`/richieste/:id/prenota`, `/richieste/nuova`, `/richieste/nuova/cliente`, `/richieste/nuova/prenota`
+(con `?cliente=<id>` y, desde el formulario, `&modulo=1`), `/agenda`, `/sessioni/:id`, `/sessioni/:id/sposta` (con `?data=AAAA-MM-DD`
+si la fecha ya se eligió), `/sessioni/:id/rinnova`, `/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con
 `?copia=<id>`, la copia de un plato) y `/altro/piatti/:id`, más `/` y `/preventivo` (públicas). En la
 web `/` lleva al login.
 

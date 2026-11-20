@@ -3,7 +3,8 @@
 // canceladas, «Come arrivare» (la dirección en Mapas), WhatsApp y llamar (sin
 // dirección, el botón para agregarla: el formulario web no la pide); las
 // alergias resaltadas (la nota del pedido y, con gluten, la de contaminación
-// cruzada, SPEC §5.6); los datos de la clienta y las semanas de su reserva.
+// cruzada, SPEC §5.6); los datos de la clienta y las semanas de su reserva;
+// en la última sesión viva de una reserva semanal, «Rinnova» al final.
 // Abajo, Mover (con «Annulla» después) y Cancelar (con confirmación y
 // «también las siguientes»; si alguna ya está cobrada, el aviso dice cuál y
 // qué se puede hacer). Abierta con un enlace directo, la flecha de volver
@@ -22,6 +23,7 @@ import 'package:radici/features/requests/presentation/inbox_screen.dart'
     show LoadErrorView;
 import 'package:radici/features/requests/presentation/request_labels.dart';
 import 'package:radici/features/sessions/application/session_links.dart';
+import 'package:radici/features/sessions/application/session_renewal.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
@@ -141,6 +143,9 @@ class _SessionView extends ConsumerWidget {
               SessionAllergies(session: session),
               _Client(session: session),
               if (detail.weeks.length > 1) _Weeks(detail: detail),
+              // Al final: el día de la última sesión es el de cocinar, y
+              // «Come arrivare», WhatsApp y las alergias van primero.
+              _LastOfBooking(session: session),
             ],
           ),
         ),
@@ -443,6 +448,63 @@ class _Weeks extends StatelessWidget {
             },
           ),
       ],
+    );
+  }
+}
+
+/// «Rinnova» en la última sesión viva de una reserva semanal (decisión 3):
+/// «È l'ultima sessione…», «Ha già un'altra sessione: …» si la clienta ya
+/// tiene otra sesión viva después (una renovación u otra reserva: el botón
+/// sigue) y el botón, que abre la hoja prellenada. También en una cocinada o
+/// cobrada, que no tienen la barra de abajo.
+class _LastOfBooking extends ConsumerWidget {
+  const _LastOfBooking({required this.session});
+
+  final CookingSession session;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!ref.watch(sessionRenewalOfferProvider(session.id))) {
+      return const SizedBox.shrink();
+    }
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final formats = SessionFormats(context);
+    final later = ref.watch(sessionLaterSessionProvider(session.id));
+    return Padding(
+      key: const ValueKey('session-last-of-booking'),
+      padding: const EdgeInsets.only(top: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Nodos propios: el lector de pantalla los lee en orden.
+          MergeSemantics(
+            child: Text(
+              l10n.sessionLastOfBooking,
+              style: theme.textTheme.bodyLarge,
+            ),
+          ),
+          if (later != null) ...[
+            const SizedBox(height: 4),
+            MergeSemantics(
+              child: Text(
+                l10n.sessionLaterSession(formats.inText(later)),
+                key: const ValueKey('session-later-session'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          FilledButton.tonal(
+            key: const ValueKey('session-renew'),
+            onPressed: () =>
+                unawaited(context.push(AppRoutes.sessionRenew(session.id))),
+            child: Text(l10n.actionRenew),
+          ),
+        ],
+      ),
     );
   }
 }
