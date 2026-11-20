@@ -749,7 +749,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(banner), findsNothing);
 
-    await tester.tap(find.byType(BackButton));
+    // El editor tiene su propio botón de volver (no un BackButton): se
+    // deshabilita mientras traduce o guarda.
+    await tester.tap(find.byKey(const ValueKey('recipe-back')));
     await tester.pumpAndSettle();
     expect(find.byType(RecipesScreen), findsOneWidget);
     expect(bannerText(tester), 'Nuova richiesta da Marco Bianchi');
