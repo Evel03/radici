@@ -9,8 +9,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:radici/core/routes.dart';
+import 'package:radici/features/availability/presentation/availability_actions.dart';
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
+import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/presentation/recipe_labels.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
@@ -86,9 +88,26 @@ class _RecipesScreenState extends ConsumerState<RecipesScreen> {
     final l10n = AppLocalizations.of(context);
     final view = ref.watch(recipeCatalogViewProvider);
     // El plato que se acaba de guardar en el editor (que ya se cerró).
-    ref.listen<Recipe?>(recipeSavedNoticeProvider, (_, saved) {
-      if (saved == null) return;
-      _show(SnackBar(content: Text(l10n.recipeSavedDone(saved.nameIt))));
+    ref.listen<SavedRecipeNotice?>(recipeSavedNoticeProvider, (_, notice) {
+      if (notice == null) return;
+      final name = notice.recipe.nameIt;
+      final because = notice.untranslatedBecause;
+      // Guardado sin traducir: hay algo que hacer después (escribirlo o
+      // volver a guardar), así que dura como los avisos de error del editor
+      // y, con VoiceOver o TalkBack, se cierra con la X.
+      final persist = because != null && MediaQuery.accessibleNavigationOf(context);
+      _show(
+        SnackBar(
+          content: Text(switch (because) {
+            null => l10n.recipeSavedDone(name),
+            TranslationFailureKind.notConfigured => l10n.recipeSavedUntranslated(name),
+            _ => l10n.recipeSavedUntranslatable(name),
+          }),
+          duration: because == null ? const Duration(seconds: 4) : errorSnackBarDuration,
+          persist: persist,
+          showCloseIcon: persist,
+        ),
+      );
       ref.read(recipeSavedNoticeProvider.notifier).clear();
     });
     final ready = view.hasValue && !view.hasError;

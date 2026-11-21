@@ -83,6 +83,45 @@ void main() {
       );
     });
 
+    test('desde un plato guardado, con los campos de la traducción automática', () {
+      expect(recipeDraftFrom(milanesa()).autoTranslated, milanesa().autoTranslated);
+      expect(recipeDraftFrom(lasagne()).autoTranslated, isEmpty);
+    });
+
+    // SPEC §4: la copia no lleva las descripciones de la web, así que tampoco
+    // sus marcas; los nombres copiados quedan como estaban.
+    test('una copia lleva las marcas de los nombres, no las de las descripciones', () {
+      final copy = recipeDraftFrom(milanesa(), id: _newId);
+      expect(copy.autoTranslated, {TranslatedField.nameEn});
+      expect([copy.nameIt, copy.nameEs, copy.nameEn], [milanesa().nameIt, milanesa().nameEs, milanesa().nameEn]);
+    });
+
+    // Decisión del 20/11/2026: Evelyn cargó los platos en español en el campo
+    // italiano. Un plato guardado sin nombre en español se abre como si lo
+    // escrito en italiano estuviera en español, y el italiano queda vacío
+    // para traducir.
+    test('un plato viejo (sin nombre en español): el italiano pasa al español', () {
+      final draft = recipeDraftFrom(pastel());
+      expect([draft.nameEs, draft.nameIt], ['Pastel de papa', '']);
+      expect([draft.descriptionEs, draft.descriptionIt], [pastelDescription, '']);
+      expect(italianMovedToSpanish(pastel()), {TranslatedField.nameIt, TranslatedField.descriptionIt});
+
+      // Con la descripción en español, queda la suya y la italiana no se toca.
+      final withSpanish = pastel().copyWith(descriptionEs: 'Pastel de carne y papa.');
+      final kept = recipeDraftFrom(withSpanish);
+      expect([kept.descriptionEs, kept.descriptionIt], ['Pastel de carne y papa.', pastelDescription]);
+      expect(italianMovedToSpanish(withSpanish), {TranslatedField.nameIt});
+
+      // La copia: el nombre, igual; las descripciones no se copian.
+      final copy = recipeDraftFrom(pastel(), id: _newId);
+      expect([copy.nameEs, copy.nameIt], ['Pastel de papa', '']);
+      expect([copy.descriptionIt, copy.descriptionEs, copy.descriptionEn], ['', '', '']);
+      expect(italianMovedToSpanish(pastel(), copy: true), {TranslatedField.nameIt});
+
+      // Uno que ya tiene el nombre en español abre como está.
+      expect(italianMovedToSpanish(lasagne()), isEmpty);
+    });
+
     test('toString no muestra las notas (son de la cocinera)', () {
       final draft = recipeDraftFrom(risotto());
       expect(draft.toString(), 'RecipeDraft($risottoId)');
@@ -101,6 +140,34 @@ void main() {
       expect(validateRecipeDraft(_valid(nameIt: ' ${'a' * 120} ')).nameIt, isNull);
       // Postgres cuenta caracteres: 120 emojis entran aunque en Dart midan 240.
       expect(validateRecipeDraft(_valid(nameIt: '🍝' * 120)).nameIt, isNull);
+    });
+
+    // Desde el 20/11/2026 el español es la fuente: el editor lo pide siempre
+    // (un plato guardado abre con él); el italiano vacío se traduce de él.
+    test('el nombre en español, obligatorio si el editor lo pide', () {
+      final withoutSpanish = _valid();
+      expect(validateRecipeDraft(withoutSpanish).nameEs, isNull, reason: 'las reglas de la base no lo piden');
+      expect(validateRecipeDraft(withoutSpanish, requireSpanish: true).nameEs, TextError.required);
+      expect(validateRecipeDraft(withoutSpanish.copyWith(nameEs: '  '), requireSpanish: true).nameEs, TextError.required);
+      expect(validateRecipeDraft(withoutSpanish.copyWith(nameEs: 'Pasta'), requireSpanish: true).isEmpty, isTrue);
+      expect(validateRecipeDraft(withoutSpanish.copyWith(nameEs: 'b' * 121), requireSpanish: true).nameEs, TextError.tooLong);
+    });
+
+    test('el nombre en italiano vacío no falta si se va a traducir del español', () {
+      final onlySpanish = emptyRecipeDraft(_newId).copyWith(nameEs: 'Locro');
+      expect(validateRecipeDraft(onlySpanish).nameIt, TextError.required, reason: 'la regla de la base');
+      expect(validateRecipeDraft(onlySpanish, requireSpanish: true, willTranslate: true).isEmpty, isTrue);
+      // Sin español no hay de dónde traducirlo.
+      final nothing = emptyRecipeDraft(_newId);
+      final errors = validateRecipeDraft(nothing, requireSpanish: true, willTranslate: true);
+      expect(errors.nameEs, TextError.required);
+      expect(errors.nameIt, isNull, reason: 'falta el español: el italiano sale de ahí');
+      expect(
+        validateRecipeDraft(nothing, willTranslate: true).nameIt,
+        TextError.required,
+        reason: 'sin español, si no es obligatorio, falta el italiano',
+      );
+      expect(validateRecipeDraft(onlySpanish.copyWith(nameIt: 'a' * 121), willTranslate: true).nameIt, TextError.tooLong);
     });
 
     test('las traducciones son opcionales, con el mismo largo', () {
@@ -267,6 +334,15 @@ void main() {
       for (final recipe in sampleRecipes()) {
         expect(recipeFromDraft(recipeDraftFrom(recipe), saved: recipe), recipe);
       }
+    });
+
+    test('los campos de la traducción automática pasan, salvo los que quedaron vacíos', () {
+      expect(recipeFromDraft(recipeDraftFrom(milanesa())).autoTranslated, milanesa().autoTranslated);
+      final cleared = recipeDraftFrom(milanesa()).copyWith(descriptionEn: '   ');
+      expect(recipeFromDraft(cleared).autoTranslated, {TranslatedField.descriptionIt, TranslatedField.nameEn});
+      // Ni una marca sin el español del que sale (save_recipe la rechaza).
+      final withoutSpanish = recipeDraftFrom(milanesa()).copyWith(descriptionEs: ' ');
+      expect(recipeFromDraft(withoutSpanish).autoTranslated, {TranslatedField.nameEn});
     });
 
     test('los 12 meses son todo el año', () {

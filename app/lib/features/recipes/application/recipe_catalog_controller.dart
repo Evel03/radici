@@ -5,6 +5,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
+import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 
 final recipeCatalogProvider =
@@ -35,17 +36,28 @@ final recipeCatalogViewProvider =
           .whenData((recipes) => recipeCatalogView(recipes, query: query));
     });
 
+/// Un plato recién guardado en el editor. `untranslatedBecause`: se guardó
+/// sin traducir porque la traducción automática está apagada (501) o no pudo
+/// con el texto (422); null si se guardó como siempre.
+typedef SavedRecipeNotice = ({
+  Recipe recipe,
+  TranslationFailureKind? untranslatedBecause,
+});
+
 /// El plato recién guardado en el editor, para que la lista lo avise con su
 /// botón flotante a la vista (el editor tapa la lista y se cierra al
 /// guardar). La lista lo muestra y lo limpia.
 final recipeSavedNoticeProvider =
-    NotifierProvider<RecipeSavedNotice, Recipe?>(RecipeSavedNotice.new);
+    NotifierProvider<RecipeSavedNotice, SavedRecipeNotice?>(
+      RecipeSavedNotice.new,
+    );
 
-class RecipeSavedNotice extends Notifier<Recipe?> {
+class RecipeSavedNotice extends Notifier<SavedRecipeNotice?> {
   @override
-  Recipe? build() => null;
+  SavedRecipeNotice? build() => null;
 
-  void post(Recipe recipe) => state = recipe;
+  void post(Recipe recipe, {TranslationFailureKind? untranslatedBecause}) =>
+      state = (recipe: recipe, untranslatedBecause: untranslatedBecause);
 
   void clear() => state = null;
 }
