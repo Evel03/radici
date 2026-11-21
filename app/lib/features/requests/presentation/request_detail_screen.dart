@@ -3,13 +3,16 @@
 // alergias), los platos que eligió el cliente en la web (arriba y destacados),
 // la estimación guardada y las acciones: WhatsApp, llamar, email, rechazar,
 // deshacer el rechazo y marcar a la persona como clienta (así no se borra a
-// los 90 días). Al abrirlo se marca como visto.
+// los 90 días). Un pedido nuevo, además, «Conferma prenotazione» (abajo). Al
+// abrirlo se marca como visto.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/money.dart';
+import 'package:radici/core/routes.dart';
 import 'package:radici/features/quote/domain/quote.dart' show defaultPricing;
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/application/chosen_menu_provider.dart';
@@ -73,6 +76,53 @@ class _RequestDetailScreenState extends ConsumerState<RequestDetailScreen> {
           onRetry: () => ref.invalidate(chefRequestProvider(widget.requestId)),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
+      ),
+      // Un pedido nuevo se confirma como reserva: la acción principal, abajo.
+      bottomNavigationBar: request != null && request.canConfirmBooking
+          ? _ConfirmBookingBar(requestId: request.id)
+          : null,
+    );
+  }
+}
+
+/// «Conferma prenotazione»: abre la hoja a pantalla completa.
+class _ConfirmBookingBar extends StatelessWidget {
+  const _ConfirmBookingBar({required this.requestId});
+
+  final String requestId;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surface,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: colors.outlineVariant)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Center(
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    key: const ValueKey('action-confirm-booking'),
+                    onPressed: () =>
+                        context.push(AppRoutes.requestBooking(requestId)),
+                    icon: const Icon(Icons.event_available),
+                    label: Text(l10n.actionConfirmBooking),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -234,6 +284,8 @@ class _RequestDetail extends ConsumerWidget {
     final date = request.preferredDate;
     final slot = request.preferredSlot;
     final weekly = request.type == RequestType.week;
+    // Un pedido del formulario de la web (no una reserva cargada a mano).
+    final fromWeb = request.source == RequestSource.web;
     final restrictions = request.restrictions ?? const RequestRestrictions();
     final notes = request.notes?.trim() ?? '';
     final client = request.client;
@@ -338,10 +390,16 @@ class _RequestDetail extends ConsumerWidget {
                 label: l10n.quoteMealsSection,
                 value: l10n.meals(request.meals),
               ),
-            _InfoRow(
-              label: l10n.detailPreferredDate,
-              value: date == null ? l10n.requestNoDate : formats.longDate(date),
-            ),
+            // Una reserva sin fecha preferida (cargada a mano) no dice «Senza
+            // data», como la fila de la lista: sus fechas son las de sus
+            // sesiones.
+            if (date != null || !request.isBooking)
+              _InfoRow(
+                label: l10n.detailPreferredDate,
+                value: date == null
+                    ? l10n.requestNoDate
+                    : formats.longDate(date),
+              ),
             // El mismo día de cada semana siguiente. Espacios duros dentro de
             // cada fecha: la línea se corta entre dos fechas, no en medio.
             if (date != null && request.weeks > 1)
@@ -385,18 +443,20 @@ class _RequestDetail extends ConsumerWidget {
                       for (final a in restrictions.allergens) l10n.allergen(a),
                     ],
                   ),
-                if (restrictions.diets.isNotEmpty)
-                  _ChipsRow(
-                    label: l10n.detailDiets,
-                    values: [for (final d in restrictions.diets) l10n.diet(d)],
-                  ),
-                if (restrictions.note.isNotEmpty)
-                  _InfoRow(
-                    label: l10n.detailRestrictionsNote,
-                    value: restrictions.note,
-                  ),
               ],
             },
+            // Las dietas, con cualquier respuesta: una dieta sola no dice nada
+            // de alergias (sale el aviso de arriba), pero se muestra.
+            if (restrictions.diets.isNotEmpty)
+              _ChipsRow(
+                label: l10n.detailDiets,
+                values: [for (final d in restrictions.diets) l10n.diet(d)],
+              ),
+            if (restrictions.note.trim().isNotEmpty)
+              _InfoRow(
+                label: l10n.detailRestrictionsNote,
+                value: restrictions.note,
+              ),
 
             _Section(title: l10n.detailSectionNotes),
             SelectableText(
@@ -404,8 +464,12 @@ class _RequestDetail extends ConsumerWidget {
               key: const ValueKey('detail-notes'),
             ),
 
-            _Section(title: l10n.detailSectionEstimate),
-            _Estimate(estimate: request.estimate),
+            // Un pedido de la app sin estimación (una reserva a mano) no dice
+            // «Nessuna stima salvata.»: nunca la tuvo.
+            if (request.estimate != null || fromWeb) ...[
+              _Section(title: l10n.detailSectionEstimate),
+              _Estimate(estimate: request.estimate),
+            ],
 
             _Section(title: l10n.detailSectionContact),
             if (client.contactPhone case final phone?) ...[
@@ -425,12 +489,14 @@ class _RequestDetail extends ConsumerWidget {
               _InfoRow(label: l10n.detailEmail, value: address, selectable: true),
             if (client.zone case final zone? when zone.isNotEmpty)
               _InfoRow(label: l10n.detailZone, value: zone),
-            _InfoRow(
-              label: l10n.detailWhatsAppOptIn,
-              value: request.whatsappOptIn
-                  ? l10n.detailWhatsAppOptInYes
-                  : l10n.detailWhatsAppOptInNo,
-            ),
+            // Lo que pidió la clienta en el formulario de la web.
+            if (fromWeb)
+              _InfoRow(
+                label: l10n.detailWhatsAppOptIn,
+                value: request.whatsappOptIn
+                    ? l10n.detailWhatsAppOptInYes
+                    : l10n.detailWhatsAppOptInNo,
+              ),
             _InfoRow(
               label: l10n.detailLanguage,
               value: l10n.language(request.locale),

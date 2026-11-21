@@ -157,7 +157,12 @@ void main() {
           'serviceCents': 56000,
           'savingsCents': 4000,
           'totalCents': 81200,
-          'pricing': {'weeklyRateCents': 15000, 'weeklyRateMaxPeople': 5},
+          'pricing': {
+            'weeklyRateCents': 15000,
+            'weeklyRateDiscountedCents': 14000,
+            'weeklyDiscountMinWeeks': 4,
+            'weeklyRateMaxPeople': 5,
+          },
         },
       ),
     ).estimate!;
@@ -169,6 +174,10 @@ void main() {
     expect(estimate.savingsCents, 4000);
     expect(estimate.maxPeople, 5);
     expect(estimate.reason, isNull);
+    // Las tarifas por semana con que se calculó (para otra cantidad de semanas).
+    expect(estimate.weeklyRateCents, 15000);
+    expect(estimate.weeklyRateDiscountedCents, 14000);
+    expect(estimate.weeklyDiscountMinWeeks, 4);
     // groceriesEstCents, preauthCents y totalCents no dejan rastro.
     expect(
       estimate,
@@ -182,8 +191,18 @@ void main() {
         serviceCents: 56000,
         savingsCents: 4000,
         maxPeople: 5,
+        weeklyRateCents: 15000,
+        weeklyRateDiscountedCents: 14000,
+        weeklyDiscountMinWeeks: 4,
       ),
     );
+  });
+
+  test('una estimación de antes no trae tarifas por semana', () {
+    final legacy = ChefRequest.fromJson(requestRow()).estimate!;
+    expect(legacy.weeklyRateCents, isNull);
+    expect(legacy.weeklyRateDiscountedCents, isNull);
+    expect(legacy.weeklyDiscountMinWeeks, isNull);
   });
 
   test('sin precio automático: el motivo, sin servicio', () {
@@ -290,10 +309,39 @@ void main() {
   });
 
   group('reglas', () {
-    test('nuevo = sin abrir y no rechazado', () {
+    test('nuevo = sin abrir, no rechazado y que no es una reserva', () {
       expect(buildRequest().isNew, isTrue);
       expect(buildRequest(seenAt: testNow).isNew, isFalse);
       expect(buildRequest(status: RequestStatus.rejected).isNew, isFalse);
+      // Una reserva sin seen_at (como las del seed) no cuenta como nueva.
+      expect(buildRequest(status: RequestStatus.accepted).isNew, isFalse);
+    });
+
+    test('el aviso en tiempo real, solo para un pedido sin abrir que llega de la web', () {
+      expect(buildRequest().alertsOnArrival, isTrue);
+      // Un pedido nuevo de la app no avisa, aunque cuente como nuevo en la bandeja.
+      final fromApp = buildRequest(source: RequestSource.app);
+      expect(fromApp.alertsOnArrival, isFalse);
+      expect(fromApp.isNew, isTrue);
+      // Una reserva no avisa: la de la app (una reserva a mano nace aceptada y
+      // vista) ni la de la web, aunque no tenga seen_at.
+      expect(
+        buildRequest(
+          source: RequestSource.app,
+          status: RequestStatus.accepted,
+          seenAt: testNow,
+        ).alertsOnArrival,
+        isFalse,
+      );
+      for (final source in RequestSource.values) {
+        expect(
+          buildRequest(source: source, status: RequestStatus.accepted).alertsOnArrival,
+          isFalse,
+          reason: '$source',
+        );
+      }
+      expect(buildRequest(seenAt: testNow).alertsOnArrival, isFalse);
+      expect(buildRequest(status: RequestStatus.rejected).alertsOnArrival, isFalse);
     });
 
     test('solo un pedido en estado new se puede rechazar', () {
@@ -304,6 +352,23 @@ void main() {
       }
     });
 
+    test('«Confirmar reserva» solo desde un pedido nuevo que no es un cambio', () {
+      expect(buildRequest().canConfirmBooking, isTrue);
+      expect(buildRequest(seenAt: testNow).canConfirmBooking, isTrue);
+      expect(buildRequest(type: RequestType.extra).canConfirmBooking, isTrue);
+      expect(buildRequest(type: RequestType.change).canConfirmBooking, isFalse);
+      for (final status in RequestStatus.values.skip(1)) {
+        expect(buildRequest(status: status).canConfirmBooking, isFalse, reason: '$status');
+      }
+    });
+
+    test('una reserva es un pedido aceptado', () {
+      expect(buildRequest(status: RequestStatus.accepted).isBooking, isTrue);
+      for (final status in RequestStatus.values.where((s) => s != RequestStatus.accepted)) {
+        expect(buildRequest(status: status).isBooking, isFalse, reason: '$status');
+      }
+    });
+
     test('solo un prospecto se puede marcar como cliente', () {
       expect(buildRequest().canMarkClient, isTrue);
       for (final status in [...ClientStatus.values.skip(1), null]) {
@@ -311,16 +376,12 @@ void main() {
       }
     });
 
-    test('activos para la agenda: new, quoted y accepted', () {
+    test('activos para la agenda: new y quoted (una reserva ya tiene sus sesiones)', () {
       final active = {
         for (final status in RequestStatus.values)
           if (buildRequest(status: status).isActive) status,
       };
-      expect(active, {
-        RequestStatus.newRequest,
-        RequestStatus.quoted,
-        RequestStatus.accepted,
-      });
+      expect(active, {RequestStatus.newRequest, RequestStatus.quoted});
     });
 
     test('alergias: indicadas si hay restricciones; nadie solo si lo confirmó; si no, sin datos', () {
@@ -335,6 +396,45 @@ void main() {
       expect(buildRequest(noAllergies: false).allergyAnswer, AllergyAnswer.unknown);
       // Si llegaran las dos cosas (la base no lo deja), se muestran las restricciones.
       expect(buildRequest(restrictions: note, noAllergies: true).allergyAnswer, AllergyAnswer.listed);
+    });
+
+    test('una dieta sola no responde sobre alergias: sin datos (la dieta igual se muestra)', () {
+      const note = RequestRestrictions(note: 'Celiachia');
+      const vegetarian = RequestRestrictions(diets: [Diet.vegetarian]);
+      final dietOnly = buildRequest(restrictions: vegetarian);
+      expect(dietOnly.allergyAnswer, AllergyAnswer.unknown);
+      expect(dietOnly.answersAllergies, isFalse);
+      // La lista de la bandeja igual marca que trae restricciones.
+      expect(dietOnly.hasRestrictions, isTrue);
+      // Con alérgenos o la nota, sí.
+      expect(
+        buildRequest(
+          restrictions: const RequestRestrictions(
+            diets: [Diet.vegan],
+            note: 'Noci',
+          ),
+        ).allergyAnswer,
+        AllergyAnswer.listed,
+      );
+      expect(
+        buildRequest(
+          restrictions: const RequestRestrictions(
+            diets: [Diet.vegan],
+            allergens: [Allergen.nuts],
+          ),
+        ).allergyAnswer,
+        AllergyAnswer.listed,
+      );
+      // Una nota en blanco tampoco responde.
+      expect(
+        buildRequest(restrictions: const RequestRestrictions(note: '   '))
+            .allergyAnswer,
+        AllergyAnswer.unknown,
+      );
+      // «Nadie tiene» responde.
+      expect(buildRequest(noAllergies: true).answersAllergies, isTrue);
+      expect(buildRequest(restrictions: note).answersAllergies, isTrue);
+      expect(buildRequest().answersAllergies, isFalse);
     });
 
     test('personas, teléfono normalizado y primer nombre', () {

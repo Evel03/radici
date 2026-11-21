@@ -30,12 +30,12 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.settingsTitle),
-        // Abierta desde un enlace, sin nada debajo: vuelve a la bandeja.
+        // Abierta desde un enlace, sin nada debajo: vuelve al inicio (Hoy).
         leading: context.canPop()
             ? null
             : CloseButton(
                 key: const ValueKey('settings-close'),
-                onPressed: () => context.go(AppRoutes.requests),
+                onPressed: () => context.go(AppRoutes.today),
               ),
       ),
       body: Align(

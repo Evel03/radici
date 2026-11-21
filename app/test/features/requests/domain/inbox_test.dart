@@ -23,7 +23,23 @@ void main() {
     seenAt: testNow,
     createdAt: DateTime.utc(2026, 10, 17),
   );
-  final all = [fresh, seen, rejected, quoted];
+  final booked = buildRequest(
+    id: 'f',
+    status: RequestStatus.accepted,
+    weeks: 4,
+    seenAt: testNow,
+    createdAt: DateTime.utc(2026, 10, 16),
+  );
+  final all = [fresh, seen, rejected, quoted, booked];
+
+  test('las pestañas, en orden: Nuove, Viste, Prenotazioni y Rifiutate', () {
+    expect(InboxTab.values, [
+      InboxTab.fresh,
+      InboxTab.seen,
+      InboxTab.bookings,
+      InboxTab.rejected,
+    ]);
+  });
 
   test('cada pedido va a una pestaña', () {
     expect(inboxTabOf(fresh), InboxTab.fresh);
@@ -32,30 +48,36 @@ void main() {
     expect(inboxTabOf(quoted), InboxTab.seen);
     // Rechazado sin abrir (otro dispositivo): igual va a rechazadas.
     expect(inboxTabOf(buildRequest(status: RequestStatus.rejected)), InboxTab.rejected);
+    // Una reserva (pedido aceptado) sale de Viste y va a Prenotazioni, también
+    // sin seen_at (las del seed).
+    expect(inboxTabOf(booked), InboxTab.bookings);
+    expect(inboxTabOf(buildRequest(status: RequestStatus.accepted)), InboxTab.bookings);
   });
 
   test('las pestañas ordenan del más reciente al más viejo', () {
     expect(requestsInTab(all, InboxTab.fresh).map((r) => r.id), ['a']);
     expect(requestsInTab(all, InboxTab.seen).map((r) => r.id), ['b', 'd']);
+    expect(requestsInTab(all, InboxTab.bookings).map((r) => r.id), ['f']);
     expect(requestsInTab(all, InboxTab.rejected).map((r) => r.id), ['c']);
   });
 
   test('el contador cuenta solo los nuevos', () {
     expect(countNew(all), 1);
     expect(countNew([fresh, buildRequest(id: 'e')]), 2);
+    expect(countNew([buildRequest(id: 'g', status: RequestStatus.accepted)]), 0);
     expect(countNew(const []), 0);
   });
 
   test('upsert reemplaza por id y mantiene el orden', () {
     final updated = upsertRequest(all, seen.copyWith(seenAt: null));
-    expect(updated.map((r) => r.id), ['b', 'a', 'c', 'd']);
+    expect(updated.map((r) => r.id), ['b', 'a', 'c', 'd', 'f']);
     expect(updated.first.seenAt, isNull);
     final added = upsertRequest(
       all,
       buildRequest(id: 'z', createdAt: DateTime.utc(2026, 10, 20)),
     );
     expect(added.first.id, 'z');
-    expect(added, hasLength(5));
+    expect(added, hasLength(6));
   });
 
   test('a igual fecha, el orden es estable por id', () {

@@ -1,6 +1,7 @@
 // Disponibilidad de un día en la agenda: si la web lo ofrece, el feriado,
-// cuántos pedidos lo preferían y los botones para bloquearlo o desbloquearlo,
-// con su nota privada. En la vista de semana va compacta.
+// cuántos pedidos lo preferían, si tiene sesiones (bloquearlo no las cancela)
+// y los botones para bloquearlo o desbloquearlo, con su nota privada. En la
+// vista de semana va compacta.
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -143,6 +144,11 @@ class DayAvailabilityCard extends ConsumerWidget {
         !compact &&
         info.requestCount > 0 &&
         (info.status == DayStatus.open || info.status == DayStatus.blocked);
+    // Bloquear un día con sesiones no las cancela (se cancelan desde su
+    // ficha): se avisa también en la semana, junto al botón.
+    final showSessions =
+        info.sessionCount > 0 &&
+        (info.status == DayStatus.open || info.status == DayStatus.blocked);
     // En la semana hay un botón igual en cada día: VoiceOver dice también la
     // fecha (en la tarjeta del mes, el título de arriba ya la dice).
     String? spokenWithDate(String label) =>
@@ -186,9 +192,14 @@ class DayAvailabilityCard extends ConsumerWidget {
         ),
     ];
 
+    // Cada línea es un nodo propio para el lector de pantalla (MergeSemantics,
+    // también en _IconLine): en la agenda van en la columna del título del día
+    // y, si no, se fundían con él o entre ellas.
     final children = <Widget>[
       if (status != null)
-        Text(status, key: ValueKey('availability-status-$iso')),
+        MergeSemantics(
+          child: Text(status, key: ValueKey('availability-status-$iso')),
+        ),
       if (holiday != null)
         _IconLine(
           icon: Icons.celebration_outlined,
@@ -203,6 +214,13 @@ class DayAvailabilityCard extends ConsumerWidget {
           style: theme.textTheme.bodyMedium?.copyWith(
             fontStyle: FontStyle.italic,
           ),
+        ),
+      if (showSessions)
+        _IconLine(
+          key: ValueKey('availability-sessions-$iso'),
+          icon: Icons.restaurant_outlined,
+          text: l10n.availabilitySessionsThatDay(info.sessionCount),
+          style: secondary,
         ),
       if (showRequests)
         _IconLine(
@@ -295,9 +313,11 @@ class AvailabilityLoadState extends ConsumerWidget {
   }
 }
 
-/// Una línea con ícono. El ícono es decorativo salvo que traiga [iconLabel].
+/// Una línea con ícono, un nodo propio para el lector de pantalla. El ícono es
+/// decorativo salvo que traiga [iconLabel].
 class _IconLine extends StatelessWidget {
   const _IconLine({
+    super.key,
     required this.icon,
     required this.text,
     this.iconLabel,
@@ -313,13 +333,15 @@ class _IconLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.onSurfaceVariant;
     final glyph = Icon(icon, size: 18, color: color, semanticLabel: iconLabel);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (iconLabel == null) ExcludeSemantics(child: glyph) else glyph,
-        const SizedBox(width: 8),
-        Expanded(child: Text(text, style: style)),
-      ],
+    return MergeSemantics(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (iconLabel == null) ExcludeSemantics(child: glyph) else glyph,
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: style)),
+        ],
+      ),
     );
   }
 }

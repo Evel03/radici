@@ -58,7 +58,7 @@ void main() {
   testWidgets('bandeja: el nuevo sin «Indifferente»; el de antes, con «Mattina»', (
     tester,
   ) async {
-    await pumpChefApp(tester, requests: sample());
+    await pumpChefApp(tester, requests: sample(), location: '/richieste');
 
     expect(tile('nuovo'), findsOneWidget);
     expect(inTile('nuovo', 'mer 21 ott'), findsOneWidget);

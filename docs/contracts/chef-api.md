@@ -1,6 +1,6 @@
 # Contrato: área de Evelyn, Edge Function `chef`
 
-Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2).
+Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2). Con el PR 8 del plan (18/11/2026), la app manda también `clientId` («Nuova prenotazione» con una ficha existente y «Rinnova», la renovación de una reserva para la misma ficha) y `newClient` («Nuova cliente»): ver «Uso desde la app» en §4.
 Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, `index.ts` y, para la traducción, `translation.ts` con `translation.test.ts` y `claude_translator.ts`). Si este documento y el código difieren, manda el código.
 Actualizado el 19/11/2026: Evelyn no hace la compra (la hace el cliente, con la lista de ingredientes y cantidades que ella le manda). `POST /bookings` ya no tiene `groceriesEstCents`: si llega (la app de antes lo manda), se ignora como cualquier otra clave que el contrato no tiene, valga lo que valga, y la función le pasa siempre `p_groceries_est_cents: 0` a `chef_create_booking`, cuya firma no cambia (§4, §7). Sin compra, `chef_settings.shop_minutes` es 0 (migración `20261119090000_sin_compra.sql`): la llegada sugerida de un día de 9:00 a 15:00 es las 9:00.
 Actualizado el 20/11/2026: `POST /translate` traduce un plato del español al italiano y al inglés con Claude (§12), sobre la migración `20261120090000_recipe_translations.sql` (`recipes.auto_translated`, pgTAP `18_recipe_translations`).
@@ -119,7 +119,7 @@ Las claves que el contrato no tiene se ignoran. Entre ellas `groceriesEstCents`,
 | `past` | la fecha ya pasó (hoy no cuenta como pasado) |
 | `blocked` | día bloqueado (puede ser justo el que Evelyn bloqueó por la sesión acordada) |
 | `closed` | ese día de la semana no tiene horario |
-| `outside` | la compra empieza antes de la apertura o la cocina termina después del cierre |
+| `outside` | la llegada (menos los minutos de compra de `chef_settings`: 0 desde el 19/11/2026) es antes de la apertura, o la cocina termina después del cierre |
 | `ok` | todo bien |
 
 ### Reglas
@@ -127,8 +127,15 @@ Las claves que el contrato no tiene se ignoran. Entre ellas `groceriesEstCents`,
 - **Desde un pedido** (`requestId`): el pedido tiene que estar `new` (si no, `409 requestNotNew`, también en el `dryRun`). Pasa a `accepted`, con `weeks` = las semanas creadas y `seen_at`; la ficha, de `prospect` a `trial`.
 - **A mano** (`clientId` o `newClient`): crea el pedido (`source = 'app'`, `accepted`) y, si es nueva, la ficha (`trial`, `pay_mode manual`). Una ficha existente no se modifica, salvo el paso de `prospect` a `trial`.
 - **Todo o nada**: si una semana choca no se crea ninguna, tampoco el pedido ni la ficha (`409` con la fecha).
-- **Idempotencia**: la app genera una `requestKey` nueva por cada confirmación y la repite en sus reintentos (botón deshabilitado mientras envía). A mano, la misma clave devuelve la reserva guardada con `duplicate: true` sin crear nada; es única por cocinera y compartida con las de la web (una clave ya usada por un pedido de la web da `400 requestKey: "conflict"`). Desde un pedido, el reintento se reconoce por el estado: el pedido ya `accepted` con esas mismas fechas y hora devuelve lo mismo con `duplicate: true`.
+- **Idempotencia**: la app genera una `requestKey` por hoja «Confirmar reserva» (al abrirla) y la repite en cada envío de esa hoja (botón deshabilitado mientras envía); otra hoja, otra clave (ver «Uso desde la app»). A mano, la misma clave devuelve la reserva guardada con `duplicate: true` sin crear nada; es única por cocinera y compartida con las de la web (una clave ya usada por un pedido de la web da `400 requestKey: "conflict"`). Desde un pedido, el reintento se reconoce por el estado: el pedido ya `accepted` con esas mismas fechas y hora devuelve lo mismo con `duplicate: true`.
 - **`dryRun`**: valida todo igual (también el estado del pedido) y no escribe nada.
+
+### Uso desde la app
+
+- A mano, `type` es siempre `"week"` y van siempre `household` y `locale` (el idioma de los WhatsApp de la clienta).
+- `newClient` va completo también en el `dryRun`: el primer chequeo ya dice si algún dato no pasa (un `400` con campos `newClient.*`, que la app manda a corregir en el formulario).
+- «Rinnova» es una reserva a mano con el `clientId` de la reserva que se renueva: las fechas desde su última sesión viva + 7 días; `start`, `cookMinutes` y `portions` de esa sesión (sin `groceriesEstCents`: la compra la hace el cliente); `household` y `locale` de su pedido; y `serviceTotalCents`, la suma del servicio de todas sus sesiones, también las canceladas. Como la hora ya está elegida, el primer `dryRun` lleva `start`. El servidor no distingue una renovación de otra reserva a mano.
+- Una `requestKey` por hoja: se genera al abrirla y se repite en cada envío de esa hoja. Los 4xx no guardan nada; después de una respuesta perdida, el reintento manda lo mismo. Otra hoja, otra clave. A mano (también «Rinnova»), mientras envía y mientras espera ese reintento la hoja no se cierra, tampoco con el atrás del navegador en `/gestione/`: otra hoja usaría otra clave y podría duplicar la reserva (y, con `newClient`, la ficha). Si el reintento tampoco tiene respuesta, la app ofrece cerrarla igual, con el aviso de mirar las reservas antes de rehacerla.
 
 ## 5. `POST /sessions/move`: mover una semana
 

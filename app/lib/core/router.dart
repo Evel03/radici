@@ -6,12 +6,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:radici/core/open_dialogs.dart';
 import 'package:radici/core/platform.dart';
+import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/presentation/client_area_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
+import 'package:radici/features/bookings/application/booking_seed.dart';
+import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
+import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
+import 'package:radici/features/bookings/presentation/new_booking_client_screen.dart';
+import 'package:radici/features/bookings/presentation/new_client_screen.dart';
 import 'package:radici/features/home/presentation/home_screen.dart';
 import 'package:radici/features/more/presentation/more_screen.dart';
 import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
@@ -22,7 +29,10 @@ import 'package:radici/features/requests/presentation/agenda_screen.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
+import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
+import 'package:radici/features/sessions/presentation/move_session_screen.dart';
 import 'package:radici/features/settings/presentation/settings_screen.dart';
+import 'package:radici/features/today/presentation/today_screen.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -34,6 +44,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   final router = GoRouter(
     navigatorKey: rootNavigatorKey,
+    // Los del navegador raíz, adonde van los diálogos: mientras haya uno
+    // abierto, los avisos de /gestione/ se esconden.
+    observers: [OpenDialogsObserver(ref.watch(openDialogsProvider.notifier))],
     initialLocation: AppRoutes.home,
     refreshListenable: refresh,
     redirect: (context, state) => resolveRedirect(
@@ -75,10 +88,57 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.settings,
         pageBuilder: (context, state) => _page(state, const SettingsScreen()),
       ),
+      // La ficha de una sesión, también fuera de las pestañas (tapa la barra;
+      // se abre con push desde la agenda).
+      GoRoute(
+        path: _sessionPath,
+        pageBuilder: (context, state) => _page(
+          state,
+          CookingSessionScreen(sessionId: state.pathParameters['id']!),
+        ),
+        routes: [
+          // «Sposta la sessione», a pantalla completa (con X).
+          GoRoute(
+            path: AppRoutes.sessionMoveSegment,
+            pageBuilder: (context, state) => MaterialPage<void>(
+              key: state.pageKey,
+              fullscreenDialog: true,
+              child: MoveSessionScreen(
+                sessionId: state.pathParameters['id']!,
+                date: _dateOrNull(
+                  state.uri.queryParameters[AppRoutes.dateParam],
+                ),
+              ),
+            ),
+          ),
+          // «Rinnova prenotazione», a pantalla completa (con X). Con push
+          // desde Hoy se apila solo la hoja: al cerrarla, vuelve a Hoy.
+          GoRoute(
+            path: AppRoutes.sessionRenewSegment,
+            pageBuilder: (context, state) => MaterialPage<void>(
+              key: state.pageKey,
+              fullscreenDialog: true,
+              child: ConfirmBookingScreen(source: _renewalSource(state)),
+            ),
+            onExit: (context, state) =>
+                _canLeaveBooking(ref, _renewalSource(state)),
+          ),
+        ],
+      ),
       StatefulShellRoute.indexedStack(
         pageBuilder: (context, state, navigationShell) =>
             _page(state, ChefShell(navigationShell: navigationShell)),
+        // En el orden de la barra: Oggi, Richieste, Agenda y Altro.
         branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.today,
+                pageBuilder: (context, state) =>
+                    _page(state, const TodayScreen()),
+              ),
+            ],
+          ),
           StatefulShellBranch(
             routes: [
               GoRoute(
@@ -86,6 +146,41 @@ final routerProvider = Provider<GoRouter>((ref) {
                 pageBuilder: (context, state) =>
                     _page(state, const InboxScreen()),
                 routes: [
+                  // «Nuova prenotazione»: elegir la clienta, a pantalla
+                  // completa (con X). Va antes que «:id».
+                  GoRoute(
+                    path: AppRoutes.newBookingSegment,
+                    parentNavigatorKey: rootNavigatorKey,
+                    pageBuilder: (context, state) => MaterialPage<void>(
+                      key: state.pageKey,
+                      fullscreenDialog: true,
+                      child: const NewBookingClientScreen(),
+                    ),
+                    routes: [
+                      // «Nuova cliente», con la flecha de volver al elegir.
+                      GoRoute(
+                        path: AppRoutes.newClientSegment,
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) =>
+                            _page(state, const NewClientScreen()),
+                      ),
+                      // La hoja a mano: la ficha de la URL o, sin ella, la
+                      // ficha nueva del formulario.
+                      GoRoute(
+                        path: AppRoutes.bookingSegment,
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) => MaterialPage<void>(
+                          key: state.pageKey,
+                          fullscreenDialog: true,
+                          child: ConfirmBookingScreen(
+                            source: _manualSource(state),
+                          ),
+                        ),
+                        onExit: (context, state) =>
+                            _canLeaveBooking(ref, _manualSource(state)),
+                      ),
+                    ],
+                  ),
                   // El detalle tapa la barra de navegación.
                   GoRoute(
                     path: ':id',
@@ -96,6 +191,22 @@ final routerProvider = Provider<GoRouter>((ref) {
                         requestId: state.pathParameters['id']!,
                       ),
                     ),
+                    routes: [
+                      // «Conferma prenotazione», a pantalla completa (con X).
+                      GoRoute(
+                        path: AppRoutes.bookingSegment,
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) => MaterialPage<void>(
+                          key: state.pageKey,
+                          fullscreenDialog: true,
+                          child: ConfirmBookingScreen(
+                            source: BookingSource.request(
+                              state.pathParameters['id']!,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -174,6 +285,94 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 Page<void> _page(GoRouterState state, Widget child) =>
     MaterialPage<void>(key: state.pageKey, child: child);
+
+/// La fuente de la hoja a mano: la ficha de la URL o, sin ella, la ficha
+/// nueva del formulario.
+BookingSource _manualSource(GoRouterState state) {
+  final query = state.uri.queryParameters;
+  final clientId = query[AppRoutes.clientParam];
+  return clientId == null
+      ? const BookingSource.newClient()
+      : BookingSource.client(
+          clientId,
+          fromForm: query[AppRoutes.fromFormParam] == '1',
+        );
+}
+
+/// La fuente de la hoja «Rinnova»: la sesión de la URL.
+BookingSource _renewalSource(GoRouterState state) =>
+    BookingSource.renewal(state.pathParameters['id']!);
+
+/// El onExit de las hojas que crean el pedido (a mano y «Rinnova»): go_router
+/// lo consulta por todos los caminos, también el atrás del navegador en
+/// /gestione/ (el botón, el gesto de Safari o el atrás de Android en la PWA),
+/// que entra por setNewRoutePath y no pasa por PopScope. La hoja no sale
+/// mientras se manda o espera el reintento de una confirmación sin respuesta
+/// (ConfirmBookingState.holdsOpen). Sin la sesión de la cocinera, sí: la
+/// redirección al login la saca (la hoja ya no podría confirmar nada).
+bool _canLeaveBooking(Ref ref, BookingSource source) {
+  if (ref.read(sessionControllerProvider) is! ChefSession) return true;
+  final provider = confirmBookingProvider(source);
+  return !ref.exists(provider) || !ref.read(provider).holdsOpen;
+}
+
+/// Una fecha "AAAA-MM-DD" de la URL, o null si falta o no es una fecha.
+CalendarDate? _dateOrNull(String? value) {
+  if (value == null) return null;
+  try {
+    return CalendarDate.parse(value);
+  } on FormatException {
+    return null;
+  }
+}
+
+/// La ruta de la ficha de una sesión (sus hojas «Sposta» y «Rinnova» cuelgan
+/// de ella).
+const String _sessionPath = '${AppRoutes.sessions}/:id';
+
+/// Hay en la pila de [router], a la vista o tapada por otra pantalla (por
+/// ejemplo, un pedido abierto desde el aviso), una hoja «Conferma
+/// prenotazione» (desde un pedido, a mano o «Rinnova»), el elegir de «Nuova
+/// prenotazione», su formulario «Nuova cliente» o la ficha de una sesión
+/// (sola o con su hoja «Sposta»). Un go las sacaría sin pasar por ningún
+/// PopScope, con lo que tengan a medias: la hoja de reserva, con lo escrito
+/// o, mientras se manda, con la pantalla final y su WhatsApp; el elegir y el
+/// formulario, con la búsqueda y el borrador de la ficha nueva; la ficha, con
+/// la hoja «Sposta» a medio mover (y el resultado del que sale «Annulla») o
+/// el aviso con «Annulla» después de mover.
+///
+/// Con la ficha en la pila, hoy a «Apri» solo se llega desde la hoja
+/// «Sposta» o desde un pedido o una hoja de reserva abiertos encima: sobre la
+/// ficha y sus diálogos el aviso no se ve (la ficha tiene su propio
+/// ScaffoldMessenger y, en el navegador raíz, tapa el Scaffold de la barra,
+/// que es donde sale). Así también queda una cancelación de otras semanas que
+/// espera la respuesta: con la semana de la ficha cobrada, el aviso de semanas
+/// cobradas cancela solo las no cobradas y «Sposta» sigue habilitado. El
+/// diálogo de la dirección con lo escrito y una cancelación que incluye la
+/// semana de la ficha quedan cubiertos por si el aviso algún día sale sobre la
+/// ficha: eso sí es preventivo.
+bool bookingOrSessionInStack(GoRouter router) {
+  bool inStack(List<RouteMatchBase> matches) => matches.any(
+    (match) => switch (match) {
+      ShellRouteMatch(:final matches) => inStack(matches),
+      ImperativeRouteMatch(:final matches) => inStack(matches.matches),
+      _ => switch (match.route) {
+        GoRoute(
+          path:
+              AppRoutes.bookingSegment ||
+              AppRoutes.newBookingSegment ||
+              AppRoutes.newClientSegment ||
+              _sessionPath ||
+              AppRoutes.sessionMoveSegment ||
+              AppRoutes.sessionRenewSegment,
+        ) =>
+          true,
+        _ => false,
+      },
+    },
+  );
+  return inStack(router.routerDelegate.currentConfiguration.matches);
+}
 
 class _RouterRefresh extends ChangeNotifier {
   void notify() => notifyListeners();

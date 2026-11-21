@@ -311,6 +311,10 @@
     "description": "Explicación del área de clientes en preparación."
   },
 
+  "navToday": "Oggi",
+  "@navToday": {
+    "description": "Pestaña Hoy, el inicio de la cocinera: la sesión de hoy (o la próxima), los pendientes y los próximos 7 días."
+  },
   "navRequests": "Richieste",
   "@navRequests": {
     "description": "Pestaña de la bandeja de pedidos."
@@ -330,6 +334,105 @@
   "@navMore": {
     "description": "Pestaña «Más» de la cocinera: platos, impostazioni y salir. En el teléfono reemplaza al menú de la cuenta."
   },
+
+  "todayNoSessionToday": "Oggi non hai sessioni.",
+  "@todayNoSessionToday": {
+    "description": "Hoy: hoy no hay ninguna sesión (abajo va la próxima)."
+  },
+  "todayNextSession": "Prossima sessione · {date}",
+  "@todayNextSession": {
+    "description": "Hoy: título de la próxima sesión cuando hoy no hay ninguna.",
+    "placeholders": {
+      "date": { "type": "String", "example": "giovedì 19 novembre" }
+    }
+  },
+  "todayEmptyTitle": "Nessuna sessione in programma",
+  "@todayEmptyTitle": {
+    "description": "Hoy: no hay ninguna sesión desde hoy."
+  },
+  "todayEmptyBody": "Quando confermi una prenotazione, da una richiesta o con «Nuova prenotazione», la trovi qui.",
+  "@todayEmptyBody": {
+    "description": "Hoy, sin sesiones: de dónde salen (se confirma una reserva desde un pedido o se carga a mano con «Nuova prenotazione», que está en la barra de abajo)."
+  },
+  "todayEmptyAction": "Vedi le richieste",
+  "@todayEmptyAction": {
+    "description": "Hoy, sin sesiones: botón que lleva a la bandeja de pedidos."
+  },
+  "todayActionsFor": "Arrivo {time} · {name}",
+  "@todayActionsFor": {
+    "description": "Hoy, con varias sesiones: de quién son los botones de abajo («Come arrivare» y WhatsApp). La hora va primero, con la palabra de la línea de horas de la tarjeta («Arrivo 10:00»): en un renglón, si el nombre es largo se corta el nombre y no la hora.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" },
+      "time": { "type": "String", "example": "16:00" }
+    }
+  },
+  "todaySessionFinished": "Terminata",
+  "@todaySessionFinished": {
+    "description": "Hoy: en la tarjeta de una sesión de hoy que ya terminó (pasó la hora en que termina la cocina); con varias hoy, pasa al final. Femenino: la sessione."
+  },
+  "todayPendingTitle": "Da fare",
+  "@todayPendingTitle": {
+    "description": "Hoy: título de los pendientes (pedidos nuevos, reservas que terminan)."
+  },
+  "todayPendingNone": "Niente in sospeso.",
+  "@todayPendingNone": {
+    "description": "Hoy: no hay pendientes."
+  },
+  "todayNewRequests": "{count, plural, =1{1 nuova richiesta} other{{count} nuove richieste}}",
+  "@todayNewRequests": {
+    "description": "Hoy: pendiente con los pedidos nuevos (sin abrir); lleva a la bandeja, pestaña «Nuove».",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "todayRequestsError": "Impossibile caricare le richieste.",
+  "@todayRequestsError": {
+    "description": "Hoy: no se pudieron leer los pedidos (con el botón «Riprova»)."
+  },
+  "todayBookingEnding": "Finisce la prenotazione di {name}",
+  "@todayBookingEnding": {
+    "description": "Hoy: pendiente de una reserva semanal cuya última sesión viva es hoy o cae en los próximos 7 días (el pendiente va de 7 días antes a 7 días después de esa sesión; si ya pasó, todayBookingEnded); abre la ficha de esa sesión y tiene «Rinnova».",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "todayBookingEnded": "È finita la prenotazione di {name}",
+  "@todayBookingEnded": {
+    "description": "Hoy: pendiente de una reserva semanal cuya última sesión viva ya pasó (hasta 7 días); abre la ficha de esa sesión y tiene «Rinnova».",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "todayBookingLastSession": "Ultima sessione: {date}",
+  "@todayBookingLastSession": {
+    "description": "Hoy: debajo de la reserva que termina, el día de su última sesión.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 18 nov" }
+    }
+  },
+  "actionRenew": "Rinnova",
+  "@actionRenew": {
+    "description": "Botón de la reserva que termina, en Hoy y al final de la ficha de su última sesión: abre la hoja «Rinnova prenotazione», prellenada con la reserva."
+  },
+  "todayRenewA11y": "Rinnova la prenotazione di {name}",
+  "@todayRenewA11y": {
+    "description": "Hoy, lector de pantalla: etiqueta del botón «Rinnova» de una reserva que termina (dice de quién es; reemplaza el texto del botón).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia Rossi" }
+    }
+  },
+  "todayStripTitle": "Prossimi 7 giorni",
+  "@todayStripTitle": {
+    "description": "Hoy: título de la tira con hoy y los 6 días siguientes."
+  },
+  "todayStripHint": "Tocca un giorno per aprirlo in agenda.",
+  "@todayStripHint": {
+    "description": "Hoy: ayuda debajo del título de la tira de 7 días."
+  },
+  "todayStripToday": "Oggi",
+  "@todayStripToday": {
+    "description": "Tira de 7 días, solo para el lector de pantalla: va antes de la fecha de la celda de hoy («Oggi, martedì 17 novembre 2026»), que en pantalla se marca con un aro."
+  },
   "moreRecipesSubtitle": "Allergeni, stagione e ingredienti",
   "@moreRecipesSubtitle": {
     "description": "Debajo de «Piatti» en la pestaña Más: qué se carga en el catálogo."
@@ -337,6 +440,10 @@
   "accountMenu": "Account",
   "@accountMenu": {
     "description": "Tooltip del menú de la cuenta (impostazioni y salir)."
+  },
+  "chefReload": "Ricarica",
+  "@chefReload": {
+    "description": "Botón con ícono de la barra de arriba de Hoy y de la Agenda (es su tooltip y lo que dice el lector de pantalla): vuelve a leer las solicitudes, la disponibilidad y las sesiones, como deslizar para actualizar. Distinto de «Aggiorna» (updateReload), el del aviso de versión nueva."
   },
 
   "settingsTitle": "Impostazioni",
@@ -401,6 +508,10 @@
   "@inboxTabRejected": {
     "description": "Pestaña de pedidos rechazados."
   },
+  "inboxTabBookings": "Prenotazioni",
+  "@inboxTabBookings": {
+    "description": "Pestaña de las reservas: los pedidos aceptados (una reserva confirmada desde el pedido). Dejan de estar en Viste."
+  },
   "inboxEmptyNew": "Nessuna richiesta nuova.",
   "@inboxEmptyNew": {
     "description": "Pestaña Nuove vacía."
@@ -412,6 +523,10 @@
   "inboxEmptyRejected": "Nessuna richiesta rifiutata.",
   "@inboxEmptyRejected": {
     "description": "Pestaña Rifiutate vacía."
+  },
+  "inboxEmptyBookings": "Nessuna prenotazione. Confermane una da una richiesta nuova o creala qui sotto con «Nuova prenotazione».",
+  "@inboxEmptyBookings": {
+    "description": "Pestaña de reservas vacía: dice de dónde salen (se confirman desde un pedido nuevo o se cargan a mano) y propone el botón «Nuova prenotazione» de abajo, que es la acción de este estado."
   },
   "inboxLoadError": "Impossibile caricare le richieste. Controlla la connessione e riprova.",
   "@inboxLoadError": {
@@ -612,7 +727,7 @@
   },
   "detailAllergiesUnknown": "Nessun dato sulle allergie: chiedi al cliente prima di preparare il menù.",
   "@detailAllergiesUnknown": {
-    "description": "Sección de alergias, destacada: el pedido no trae respuesta (anterior a la pregunta de la web, de la app o con el consentimiento de salud retirado). Pide preguntarle al cliente antes del menú."
+    "description": "Detalle del pedido, sección de alergias, destacada: el pedido no trae respuesta (anterior a la pregunta de la web, de la app, con el consentimiento de salud retirado o con solo una dieta, que se muestra debajo). Pide preguntarle al cliente antes del menú. Solo en el detalle del pedido: la ficha de la sesión y Hoy dicen sessionAllergiesNoData."
   },
   "detailAllergens": "Allergeni da evitare",
   "@detailAllergens": {
@@ -797,6 +912,971 @@
     "description": "La ficha ya no era un prospecto (por ejemplo, se marcó desde otro dispositivo)."
   },
 
+  "actionConfirmBooking": "Conferma prenotazione",
+  "@actionConfirmBooking": {
+    "description": "Botón del detalle de un pedido nuevo y título de la hoja que lo convierte en una reserva (de 1 a 8 semanas, una sesión por semana)."
+  },
+  "bookingDatesSection": "Date",
+  "@bookingDatesSection": {
+    "description": "Hoja «Confirmar reserva»: encabezado de la lista de fechas, una por semana (reserva de varias semanas)."
+  },
+  "bookingDateSection": "Data",
+  "@bookingDateSection": {
+    "description": "Hoja «Confirmar reserva»: encabezado de la fecha cuando la reserva es de una sola (una semana o un evento)."
+  },
+  "bookingWeekTitle": "Settimana {week} · {date}",
+  "@bookingWeekTitle": {
+    "description": "Hoja «Confirmar reserva»: una semana de la reserva y su fecha (con una sola fecha va la fecha sola).",
+    "placeholders": {
+      "week": { "type": "int", "example": "1" },
+      "date": { "type": "String", "example": "lun 23 nov" }
+    }
+  },
+  "bookingChangeDate": "{count, plural, =1{Cambia la data} other{Cambia la data della settimana {week}}}",
+  "@bookingChangeDate": {
+    "description": "Pista para el lector de pantalla de la fila de una fecha y título del calendario que la cambia. count: cuántas fechas tiene la reserva (con una sola no se nombra la semana).",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" },
+      "week": { "type": "int", "example": "2" }
+    }
+  },
+  "bookingDatesMoveHelp": "Se cambi la prima data si spostano tutte; le altre si cambiano una alla volta.",
+  "@bookingDatesMoveHelp": {
+    "description": "Debajo de las fechas, solo con más de una: cómo se cambian."
+  },
+  "bookingWarningsHelp": "Gli avvisi non impediscono di confermare, una sovrapposizione sì.",
+  "@bookingWarningsHelp": {
+    "description": "Debajo de las fechas: qué impide confirmar (solo un choque con otra sesión; los avisos no)."
+  },
+  "bookingStatusOk": "Libero",
+  "@bookingStatusOk": {
+    "description": "Estado de una semana según el servidor: todo bien."
+  },
+  "bookingStatusBusy": "Si sovrappone a un'altra sessione",
+  "@bookingStatusBusy": {
+    "description": "Estado de una semana: choca con otra sesión. Impide confirmar."
+  },
+  "bookingStatusPast": "Data passata",
+  "@bookingStatusPast": {
+    "description": "Aviso de una semana: la fecha ya pasó (sirve para cargar lo ya hecho)."
+  },
+  "bookingStatusBlocked": "Giorno bloccato",
+  "@bookingStatusBlocked": {
+    "description": "Aviso de una semana: el día está bloqueado en la agenda (puede ser el que se bloqueó por esta sesión)."
+  },
+  "bookingStatusClosed": "Non lavori quel giorno",
+  "@bookingStatusClosed": {
+    "description": "Aviso de una semana: ese día de la semana no tiene horario."
+  },
+  "bookingStatusOutside": "Fuori dal tuo orario",
+  "@bookingStatusOutside": {
+    "description": "Aviso de una semana: la llegada es antes de la apertura o la cocina termina después del cierre."
+  },
+  "bookingStatusChecking": "Verifica in corso…",
+  "@bookingStatusChecking": {
+    "description": "Estado de una semana mientras se pregunta al servidor."
+  },
+  "bookingChecking": "Controllo le date…",
+  "@bookingChecking": {
+    "description": "Hoja de reserva, barra de abajo, con una rueda chica y anunciado por el lector de pantalla: mientras el servidor revisa las fechas que hay en la hoja (el dryRun), en lugar del resumen del precio. Así el botón gris dice por qué espera."
+  },
+  "bookingTodayArrivalPassed": "È oggi e l'ora di arrivo è già passata.",
+  "@bookingTodayArrivalPassed": {
+    "description": "Hoja de reserva, estado de una semana: la fecha es hoy y la hora de llegada ya pasó en Roma (el servidor no lo marca como pasado). No impide confirmar."
+  },
+  "newBookingAction": "Nuova prenotazione",
+  "@newBookingAction": {
+    "description": "Richieste, pestaña Prenotazioni: botón de abajo para cargar una reserva a mano (también es la acción de la pestaña vacía). Título del elegir la clienta y de la hoja de una reserva a mano. También el botón de Hoy sin sesiones, debajo de «Vedi le richieste»."
+  },
+  "clientSearchHint": "Nome o telefono",
+  "@clientSearchHint": {
+    "description": "«Nuova prenotazione», etiqueta del buscador de fichas de clientes (por nombre o por teléfono): adentro del campo vacío y arriba con texto, así el lector de pantalla siempre dice qué campo es."
+  },
+  "clientSearchClear": "Cancella la ricerca",
+  "@clientSearchClear": {
+    "description": "«Nuova prenotazione»: botón que borra el buscador (también su texto para el lector de pantalla) y el que ofrece la lista sin resultados."
+  },
+  "clientsLoadFailed": "Impossibile caricare le schede delle clienti. Controlla la connessione e riprova.",
+  "@clientsLoadFailed": {
+    "description": "«Nuova prenotazione» (y la hoja de una ficha existente): no se pudieron leer las fichas de clientes; debajo va «Riprova»."
+  },
+  "clientPickerEmpty": "Non hai ancora schede di clienti: crea la prima con «Nuova cliente».",
+  "@clientPickerEmpty": {
+    "description": "«Nuova prenotazione», lista vacía: todavía no hay ninguna ficha. La acción es el botón «Nuova cliente» de abajo."
+  },
+  "clientPickerNoMatches": "Nessuna scheda con «{query}». Se è una cliente nuova, creala con «Nuova cliente».",
+  "@clientPickerNoMatches": {
+    "description": "«Nuova prenotazione»: ninguna ficha coincide con lo que se buscó. query: lo que se escribió en el buscador.",
+    "placeholders": {
+      "query": { "type": "String", "example": "Giulia" }
+    }
+  },
+  "clientPickerProspect": "Non ancora cliente",
+  "@clientPickerProspect": {
+    "description": "Elegir la clienta, debajo del teléfono y la zona: la ficha es un prospecto (pidió por la web y todavía no tuvo una reserva) y no tiene un pedido semanal. Separa dos fichas de la misma persona."
+  },
+  "clientPickerProspectSince": "Non ancora cliente · richiesta: {date}",
+  "@clientPickerProspectSince": {
+    "description": "Elegir la clienta, debajo del teléfono y la zona: la ficha es un prospecto (pidió por la web y todavía no tuvo una reserva). Separa dos fichas de la misma persona. date: el día de su último pedido semanal. En italiano sin artículo delante de la fecha: «del 8/11» tendría que ser «dell'8/11».",
+    "placeholders": {
+      "date": { "type": "String", "example": "15/11" }
+    }
+  },
+  "newClientAction": "Nuova cliente",
+  "@newClientAction": {
+    "description": "«Nuova prenotazione»: botón de abajo para cargar una ficha nueva, y título de ese formulario."
+  },
+  "newClientNameLabel": "Nome e cognome",
+  "@newClientNameLabel": {
+    "description": "Formulario «Nuova cliente»: el nombre de la clienta (obligatorio)."
+  },
+  "newClientPhoneLabel": "Telefono (per WhatsApp)",
+  "@newClientPhoneLabel": {
+    "description": "Formulario «Nuova cliente»: el teléfono de la clienta, al que va el WhatsApp de la reserva."
+  },
+  "newClientPhoneHelper": "Facoltativo. Se non è italiano, con il prefisso: +34…",
+  "@newClientPhoneHelper": {
+    "description": "Formulario «Nuova cliente», ayuda debajo del teléfono: es opcional y un número que no es italiano va con su prefijo (las mismas reglas que el formulario de la web)."
+  },
+  "newClientPhoneInvalid": "Numero non valido: scrivilo con il prefisso, es. +34 612 345 678.",
+  "@newClientPhoneInvalid": {
+    "description": "Formulario «Nuova cliente», error debajo del teléfono después de «Continua»: el número no se puede normalizar (anunciado por el lector de pantalla)."
+  },
+  "newClientPhoneTaken": "Questo numero è già nella scheda di {name}. Se è lei, usa la sua scheda con il pulsante qui sotto: quello che scrivi qui non la cambia.",
+  "@newClientPhoneTaken": {
+    "description": "Formulario «Nuova cliente», tarjeta debajo del teléfono: el teléfono escrito (normalizado como en el formulario web) ya es de esta ficha; el botón para usarla está en la barra de abajo, y usarla no la modifica. name: el nombre de la ficha.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Chiara Rossi" }
+    }
+  },
+  "newClientUseExisting": "Usa la scheda di {name}",
+  "@newClientUseExisting": {
+    "description": "Formulario «Nuova cliente», barra de abajo, acción principal cuando el teléfono ya es de una ficha: abre la hoja de reserva de esa ficha, sin cambiarla. name: el nombre de la ficha.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Chiara Rossi" }
+    }
+  },
+  "newClientCreateAnyway": "Crea una scheda nuova",
+  "@newClientCreateAnyway": {
+    "description": "Formulario «Nuova cliente», barra de abajo, debajo de «Usa la scheda di…»: crea otra ficha aunque el teléfono ya sea de una."
+  },
+  "newClientNameMissing": "Scrivi il nome per continuare.",
+  "@newClientNameMissing": {
+    "description": "Formulario «Nuova cliente», barra de abajo, arriba de «Continua» (deshabilitado): falta el nombre. Al lado, «Vedi» lleva al campo."
+  },
+  "newClientCreateNeedsName": "Per creare una scheda nuova, scrivi il nome.",
+  "@newClientCreateNeedsName": {
+    "description": "Formulario «Nuova cliente», barra de abajo, debajo de «Crea una scheda nuova» (deshabilitado) cuando el teléfono ya es de una ficha y falta el nombre: crear otra ficha lo necesita y «Usa la scheda di…», la acción principal, no. Al lado, «Vedi» lleva al campo."
+  },
+  "newClientPhoneInvalidShort": "Il numero di telefono non è valido.",
+  "@newClientPhoneInvalidShort": {
+    "description": "Formulario «Nuova cliente», barra de abajo, después de «Continua»: el teléfono no es válido. Al lado, «Vedi» lleva al campo."
+  },
+  "newClientTooLong": "Testo troppo lungo: accorcialo.",
+  "@newClientTooLong": {
+    "description": "Formulario «Nuova cliente», después de «Continua»: error del campo (nombre, zona o dirección) que pasa el largo que acepta el servidor, y la línea de la barra que lo repite."
+  },
+  "newClientPhoneChecking": "Sto controllando se il numero è già di una cliente…",
+  "@newClientPhoneChecking": {
+    "description": "Formulario «Nuova cliente», debajo del teléfono, con una rueda chica: las fichas todavía se están leyendo. No impide continuar."
+  },
+  "newClientPhoneUnchecked": "Non è stato possibile controllare se il numero è già di una cliente.",
+  "@newClientPhoneUnchecked": {
+    "description": "Formulario «Nuova cliente», debajo del teléfono: las fichas no se pudieron leer; al lado va «Riprova». No impide continuar."
+  },
+  "newClientZoneLabel": "Zona (facoltativa)",
+  "@newClientZoneLabel": {
+    "description": "Formulario «Nuova cliente»: la zona o el barrio de la clienta."
+  },
+  "newClientZoneHint": "Es.: Città Alta",
+  "@newClientZoneHint": {
+    "description": "Formulario «Nuova cliente», pista dentro del campo de la zona."
+  },
+  "newClientAddressLabel": "Indirizzo (facoltativo)",
+  "@newClientAddressLabel": {
+    "description": "Formulario «Nuova cliente»: la dirección de la clienta (se guarda en su ficha nueva)."
+  },
+  "clientMessagesLanguage": "Lingua dei messaggi WhatsApp",
+  "@clientMessagesLanguage": {
+    "description": "Formulario «Nuova cliente» y hoja de una reserva a mano: el idioma de la clienta para sus mensajes (italiano, español o inglés)."
+  },
+  "newClientContinue": "Continua",
+  "@newClientContinue": {
+    "description": "Formulario «Nuova cliente», botón de la barra de abajo: abre la hoja de reserva de la ficha nueva."
+  },
+  "bookingNewClientSubtitle": "Scheda nuova: si crea quando confermi.",
+  "@bookingNewClientSubtitle": {
+    "description": "Hoja de una reserva a mano para una clienta nueva, debajo del nombre: la ficha todavía no existe."
+  },
+  "bookingHouseholdSection": "Persone e pasti",
+  "@bookingHouseholdSection": {
+    "description": "Hoja de una reserva a mano o «Rinnova», título de la sección: adultos, niños, días a la semana y comidas."
+  },
+  "bookingCookHelpManual": "Calcolato da persone e pasti, al massimo {max} min.",
+  "@bookingCookHelpManual": {
+    "description": "Hoja de una reserva a mano, debajo del tiempo de cocina: sale de las personas y las comidas (sigue a ese cambio hasta que se toca) y tiene un tope.",
+    "placeholders": {
+      "max": { "type": "int", "example": "360" }
+    }
+  },
+  "bookingRetryKeepsOpen": "Questa pagina resta aperta finché non arriva una risposta: così la prenotazione non si duplica.",
+  "@bookingRetryKeepsOpen": {
+    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo: se mandó la confirmación y no hubo respuesta. La hoja no se cierra hasta reintentar, porque otra hoja usaría otra clave y podría duplicar la reserva. Si el reintento tampoco tiene respuesta, la reemplaza bookingRetryLeaveWarning."
+  },
+  "bookingRetryLeaveWarning": "Ancora nessuna risposta. Puoi chiudere, ma la prenotazione potrebbe essere già salvata: prima di rifarla, controlla in «Prenotazioni» o in «Agenda».",
+  "@bookingRetryLeaveWarning": {
+    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo, en lugar de bookingRetryKeepsOpen y anunciado por el lector de pantalla: el reintento de una confirmación sin respuesta tampoco tuvo respuesta (un corte largo o la función caída). Debajo de «Riprova» aparece «Chiudi comunque»; si la reserva ya quedó guardada, rehacerla la duplicaría, por eso pide mirar antes. «Prenotazioni» es la pestaña de las reservas en Richieste y «Agenda», la de la barra de abajo."
+  },
+  "bookingLeaveAnyway": "Chiudi comunque",
+  "@bookingLeaveAnyway": {
+    "description": "Hoja de reserva a mano o «Rinnova», barra de abajo, debajo de «Riprova»: cierra la hoja aunque la confirmación siga sin respuesta. Aparece solo después de un reintento que tampoco tuvo respuesta, con bookingRetryLeaveWarning arriba."
+  },
+  "bookingErrorNewClientInvalid": "Il server non accetta i dati della cliente nuova: torna indietro e controllali.",
+  "@bookingErrorNewClientInvalid": {
+    "description": "Hoja de reserva de una clienta nueva, barra de abajo: el servidor rechazó sus datos (nombre, teléfono, zona o dirección), que se corrigen en el formulario. Al lado, «Correggi» vuelve ahí."
+  },
+  "bookingNewClientFix": "Correggi",
+  "@bookingNewClientFix": {
+    "description": "Hoja de reserva de una clienta nueva, barra de abajo, al lado de bookingErrorNewClientInvalid: vuelve al formulario «Nuova cliente»."
+  },
+  "bookingErrorClientNotFound": "Questa scheda cliente non esiste più.",
+  "@bookingErrorClientNotFound": {
+    "description": "Hoja de una reserva a mano o «Rinnova»: la ficha ya no existe (antes de abrirla o al confirmar). Si pasa antes de abrir la hoja a mano, abajo va el botón «Nuova prenotazione»."
+  },
+  "bookingNewClientMissing": "I dati della cliente nuova non ci sono più: ricomincia da «Nuova prenotazione».",
+  "@bookingNewClientMissing": {
+    "description": "Hoja de reserva de una clienta nueva abierta sin el formulario (por ejemplo, al recargar la página en /gestione/): sus datos no viajan en la URL. Abajo, en la barra, el botón «Nuova prenotazione»."
+  },
+  "renewBookingTitle": "Rinnova prenotazione",
+  "@renewBookingTitle": {
+    "description": "Título de la hoja «Rinnova» (desde Hoy o la ficha de la última sesión de una reserva semanal): una reserva para la misma clienta, prellenada con la que termina."
+  },
+  "bookingRenewalSubtitle": "Rinnovo · ultima sessione {date}",
+  "@bookingRenewalSubtitle": {
+    "description": "Hoja «Rinnova prenotazione»: debajo del nombre, la fecha de la última sesión viva de la reserva que se renueva.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 16 dic" }
+    }
+  },
+  "bookingRenewalLastDiffers": "Non tutte le settimane avevano lo stesso giorno e la stessa ora: giorno e ora vengono dall'ultima.",
+  "@bookingRenewalLastDiffers": {
+    "description": "Hoja «Rinnova prenotazione», encabezado: el día de la semana y la hora de la última sesión viva no son los de más de la mitad de las semanas vivas de la reserva (alguna se movió, o se reservó así), y la renovación copia los de la última. Las sesiones no guardan cuál se movió: por eso no dice que fue la última."
+  },
+  "bookingRenewalOtherPhone": "Nella richiesta precedente il numero era {phone}: il WhatsApp va a quello della scheda.",
+  "@bookingRenewalOtherPhone": {
+    "description": "Hoja «Rinnova prenotazione», encabezado: el pedido que se renueva llegó con otro teléfono que el de la ficha (la web no cambia una ficha que ya existe); el WhatsApp y las sesiones nuevas usan el de la ficha. phone: como lo escribió la clienta.",
+    "placeholders": {
+      "phone": { "type": "String", "example": "+34 612 345 678" }
+    }
+  },
+  "bookingRenewalRequestPhone": "La scheda non ha un numero valido per WhatsApp; nella richiesta precedente il numero era {phone}.",
+  "@bookingRenewalRequestPhone": {
+    "description": "Hoja «Rinnova prenotazione», encabezado, en lugar de bookingRenewalOtherPhone: el pedido que se renueva llegó con un teléfono y la ficha no tiene uno válido, así que al confirmar no hay WhatsApp (la renovación no cambia la ficha). phone: como lo escribió la clienta.",
+    "placeholders": {
+      "phone": { "type": "String", "example": "+34 612 345 678" }
+    }
+  },
+  "bookingRenewalUnavailable": "Questa prenotazione non si può rinnovare.",
+  "@bookingRenewalUnavailable": {
+    "description": "Hoja «Rinnova prenotazione» abierta para una sesión cuya reserva no se puede renovar: una sesión extra, sin pedido, un presupuesto o una reserva sin sesiones vivas."
+  },
+  "bookingCookHelpRenewal": "Come nella prenotazione precedente.",
+  "@bookingCookHelpRenewal": {
+    "description": "Hoja «Rinnova prenotazione», debajo del tiempo de cocina: son los minutos de la última sesión de la reserva, tal cual (no siguen a las personas y pueden pasar de 360)."
+  },
+  "bookingChecksFailed": "Non è stato possibile verificare le date. Puoi confermare lo stesso: il server le ricontrolla.",
+  "@bookingChecksFailed": {
+    "description": "No se pudo preguntar al servidor el estado de las fechas. Va con el botón Riprova."
+  },
+  "bookingDateSameWeek": "Stessa settimana della data precedente: una sessione a settimana.",
+  "@bookingDateSameWeek": {
+    "description": "Error de una fecha: cae en la misma semana (lunes a domingo) que la anterior."
+  },
+  "bookingDateOrder": "Deve venire dopo la data precedente.",
+  "@bookingDateOrder": {
+    "description": "Error de una fecha: es anterior a la de la semana anterior."
+  },
+  "bookingDateOutOfRange": "Troppo lontana: al massimo un anno da oggi.",
+  "@bookingDateOutOfRange": {
+    "description": "Error de una fecha: a más de un año de hoy (hacia adelante o hacia atrás)."
+  },
+  "bookingStartSection": "Ora di arrivo",
+  "@bookingStartSection": {
+    "description": "Hoja «Confirmar reserva»: encabezado de las horas de llegada (la misma todas las semanas)."
+  },
+  "bookingStartSuggested": "Suggerita: {time}, l'inizio del tuo orario.",
+  "@bookingStartSuggested": {
+    "description": "Debajo de las horas de llegada, en «Confirmar reserva» y en la hoja «Sposta»: la que sugiere el servidor, el comienzo del horario de ese día (la apertura a la media hora siguiente; sin compra desde el 19/11/2026).",
+    "placeholders": {
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "bookingStartOther": "Altra ora",
+  "@bookingStartOther": {
+    "description": "Chip que abre el reloj para elegir otra hora de llegada."
+  },
+  "bookingCookHelp": "Dalla stima, al massimo {max} min.",
+  "@bookingCookHelp": {
+    "description": "Debajo del tiempo de cocina, solo en la hoja de un pedido: sale de la estimación y tiene un tope. A mano va bookingCookHelpManual; en «Rinnova», bookingCookHelpRenewal.",
+    "placeholders": {
+      "max": { "type": "int", "example": "360" }
+    }
+  },
+  "bookingPriceLabel": "{count, plural, =1{Prezzo del servizio} other{Prezzo del servizio, tutte le settimane}}",
+  "@bookingPriceLabel": {
+    "description": "Etiqueta del campo del precio del servicio de toda la reserva (lo fija Evelyn). count: cuántas semanas.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" }
+    }
+  },
+  "bookingPricePerWeek": "= {amount} a settimana",
+  "@bookingPricePerWeek": {
+    "description": "Debajo del precio de una reserva de varias semanas: lo que queda por semana (división exacta).",
+    "placeholders": {
+      "amount": { "type": "String", "example": "140,00 €" }
+    }
+  },
+  "bookingPricePerWeekApprox": "≈ {amount} a settimana",
+  "@bookingPricePerWeekApprox": {
+    "description": "Como bookingPricePerWeek cuando la división no es exacta (los centavos que sobran van a las primeras semanas).",
+    "placeholders": {
+      "amount": { "type": "String", "example": "166,67 €" }
+    }
+  },
+  "bookingPriceRequired": "Scrivi il prezzo che hai concordato.",
+  "@bookingPriceRequired": {
+    "description": "Debajo del precio vacío (sin precio automático, o lo borró): hay que escribirlo para confirmar."
+  },
+  "bookingPriceInvalid": "Scrivi un importo valido, per esempio 560 o 560,50.",
+  "@bookingPriceInvalid": {
+    "description": "Error del precio: no es un importe."
+  },
+  "bookingPriceTooHigh": "Al massimo {max}.",
+  "@bookingPriceTooHigh": {
+    "description": "Error del precio: pasa el tope.",
+    "placeholders": {
+      "max": { "type": "String", "example": "100.000,00 €" }
+    }
+  },
+  "bookingConfirmAction": "{count, plural, =1{Conferma prenotazione} other{Conferma {count} settimane}}",
+  "@bookingConfirmAction": {
+    "description": "Botón principal de la hoja: crea la reserva con sus semanas.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" }
+    }
+  },
+  "bookingSending": "Conferma in corso…",
+  "@bookingSending": {
+    "description": "El botón principal mientras se manda la reserva."
+  },
+  "bookingSummaryService": "Servizio {total}",
+  "@bookingSummaryService": {
+    "description": "Barra de abajo de la hoja, arriba del botón: el precio del servicio que se va a confirmar (después ninguna ruta lo cambia). Va con bookingSummaryPerWeek y bookingSummaryArrival, separados por « · ».",
+    "placeholders": {
+      "total": { "type": "String", "example": "560,00 €" }
+    }
+  },
+  "bookingSummaryPerWeek": "{amount} a settimana",
+  "@bookingSummaryPerWeek": {
+    "description": "Barra de abajo: lo que queda por semana (división exacta).",
+    "placeholders": {
+      "amount": { "type": "String", "example": "140,00 €" }
+    }
+  },
+  "bookingSummaryPerWeekApprox": "≈ {amount} a settimana",
+  "@bookingSummaryPerWeekApprox": {
+    "description": "Como bookingSummaryPerWeek cuando la división no es exacta.",
+    "placeholders": {
+      "amount": { "type": "String", "example": "166,67 €" }
+    }
+  },
+  "bookingSummaryArrival": "arrivo {time}",
+  "@bookingSummaryArrival": {
+    "description": "Barra de abajo: la hora de llegada de todas las semanas.",
+    "placeholders": {
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "bookingEditPrice": "Modifica",
+  "@bookingEditPrice": {
+    "description": "Botón de la barra de abajo, junto al precio: lleva al campo del precio."
+  },
+  "bookingShowProblem": "Vedi",
+  "@bookingShowProblem": {
+    "description": "Botón de la barra de abajo, junto a lo que impide confirmar: lleva a esa fecha o al precio."
+  },
+  "bookingWeekProblem": "Settimana {week} · {problem}",
+  "@bookingWeekProblem": {
+    "description": "Barra de abajo: lo que impide confirmar en una semana (con una sola fecha va el problema solo).",
+    "placeholders": {
+      "week": { "type": "int", "example": "6" },
+      "problem": { "type": "String", "example": "Si sovrappone a un'altra sessione: cambia quella data o l'ora." }
+    }
+  },
+  "bookingBlockClash": "Si sovrappone a un'altra sessione: cambia quella data o l'ora.",
+  "@bookingBlockClash": {
+    "description": "Barra de abajo: una fecha choca con otra sesión y no deja confirmar."
+  },
+  "bookingBlockPriceMissing": "Manca il prezzo del servizio.",
+  "@bookingBlockPriceMissing": {
+    "description": "Barra de abajo: falta el precio (sin precio automático, o lo borró) y no deja confirmar."
+  },
+  "bookingBlockPriceInvalid": "Il prezzo non è un importo valido.",
+  "@bookingBlockPriceInvalid": {
+    "description": "Barra de abajo: lo escrito en el precio no es un importe."
+  },
+  "bookingBlockPriceTooHigh": "Il prezzo supera il massimo di {max}.",
+  "@bookingBlockPriceTooHigh": {
+    "description": "Barra de abajo: el precio pasa el tope.",
+    "placeholders": {
+      "max": { "type": "String", "example": "100.000,00 €" }
+    }
+  },
+  "bookingErrorSlotTaken": "La settimana del {date} si sovrappone a un'altra sessione: non è stato creato nulla. Cambia quella data o l'ora.",
+  "@bookingErrorSlotTaken": {
+    "description": "Error al confirmar: una semana choca con otra sesión; no se creó ninguna.",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 30 nov" }
+    }
+  },
+  "bookingErrorWeekTaken": "La settimana del {date} ha già una sessione di questa prenotazione: non è stato creato nulla.",
+  "@bookingErrorWeekTaken": {
+    "description": "Error al confirmar: esa semana ya tiene una sesión de la misma reserva.",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 30 nov" }
+    }
+  },
+  "bookingErrorNotNew": "Questa richiesta è già «{status}»: non è stato creato nulla.",
+  "@bookingErrorNotNew": {
+    "description": "El pedido ya no está nuevo (por ejemplo, se rechazó en otro dispositivo). status es su estado, con el texto de la bandeja. Si ya es una reserva va bookingErrorAlreadyBooked.",
+    "placeholders": {
+      "status": { "type": "String", "example": "Rifiutata" }
+    }
+  },
+  "bookingErrorAlreadyBooked": "Questa richiesta è già una prenotazione (in Prenotazioni): non è stato creato nient'altro.",
+  "@bookingErrorAlreadyBooked": {
+    "description": "El pedido ya es una reserva (accepted): se confirmó en otro dispositivo o en un intento anterior cuya respuesta no llegó. Esta hoja no creó nada más."
+  },
+  "bookingErrorNotFound": "Questa richiesta non esiste più.",
+  "@bookingErrorNotFound": {
+    "description": "El pedido ya no existe en el servidor."
+  },
+  "bookingErrorForbidden": "Il tuo account non può confermare prenotazioni.",
+  "@bookingErrorForbidden": {
+    "description": "El usuario no es la cocinera ni un colaborador suyo (403)."
+  },
+  "bookingErrorUnauthorized": "L'accesso è scaduto: esci e rientra.",
+  "@bookingErrorUnauthorized": {
+    "description": "La sesión de la cuenta venció o se cerró (401). Sin la palabra «sesión»: en esta hoja es una sesión de cocina."
+  },
+  "bookingErrorInvalid": "Alcuni dati non sono validi: controllali e riprova.",
+  "@bookingErrorInvalid": {
+    "description": "El servidor rechazó algún campo (400)."
+  },
+  "bookingErrorConflict": "Non è stato possibile confermare per una sovrapposizione: controlla le date e riprova.",
+  "@bookingErrorConflict": {
+    "description": "Otro choque al confirmar (409)."
+  },
+  "bookingErrorUnavailable": "Non è stato possibile confermare. Controlla la connessione e riprova con gli stessi dati: se era già confermata, non si duplica.",
+  "@bookingErrorUnavailable": {
+    "description": "Sin conexión o el servidor no respondió: la reserva pudo haber quedado guardada. Hasta reintentar no se puede cambiar nada; el reintento manda lo mismo y no duplica la reserva."
+  },
+  "bookingDoneTitle": "Prenotazione confermata",
+  "@bookingDoneTitle": {
+    "description": "Hoja después de confirmar: título."
+  },
+  "bookingDoneBody": "{count, plural, =1{Sessione creata. Tra 1 o 2 minuti il sito non offre più quel giorno.} other{{count} sessioni create. Tra 1 o 2 minuti il sito non offre più quei giorni.}}",
+  "@bookingDoneBody": {
+    "description": "Hoja después de confirmar: se crearon las sesiones y el calendario de la web deja de ofrecer esos días (ofrece días, no horas; la disponibilidad se cachea 60 s).",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" }
+    }
+  },
+  "bookingDoneDuplicate": "Era già confermata: non si è duplicato nulla.",
+  "@bookingDoneDuplicate": {
+    "description": "Después de confirmar, si el servidor dice que era un reintento de una reserva ya guardada, con lo mismo que tenía la hoja."
+  },
+  "bookingDoneDuplicateDiffers": "Era già confermata con altri dati: qui sotto c'è quello che è stato salvato, non quello inserito qui.",
+  "@bookingDoneDuplicateDiffers": {
+    "description": "Después de confirmar, si era un reintento pero lo guardado tiene otro precio, otras fechas, otra hora u otros minutos (por ejemplo, se confirmó desde otro dispositivo): vale lo guardado."
+  },
+  "bookingSendWhatsApp": "Manda la conferma su WhatsApp",
+  "@bookingSendWhatsApp": {
+    "description": "Botón después de confirmar: abre WhatsApp con el mensaje a la clienta, en su idioma, con las fechas y la hora."
+  },
+  "bookingNoPhone": "Senza un numero valido non si può mandare su WhatsApp.",
+  "@bookingNoPhone": {
+    "description": "Después de confirmar, si el pedido no tiene un teléfono que se pueda usar."
+  },
+  "bookingDoneClose": "Fatto",
+  "@bookingDoneClose": {
+    "description": "Botón que cierra la hoja después de confirmar."
+  },
+  "bookingWhatsAppMessage": "{count, plural, =1{Ciao {name}, sono {chef} di {brand}. Ti confermo la sessione di cucina di {dates}, con arrivo alle {time}. A presto!} other{Ciao {name}, sono {chef} di {brand}. Ti confermo le {count} sessioni di cucina:\n{dates}\nArrivo alle {time}. A presto!}}",
+  "@bookingWhatsAppMessage": {
+    "description": "Mensaje de WhatsApp a la clienta al confirmar la reserva, en SU idioma (requests.locale). Lo firma la cocinera; si confirma un colaborador suyo va bookingWhatsAppMessageOnBehalf. Solo fechas y hora: nunca dirección ni alergias. dates: una fecha, o una por línea con viñeta.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" },
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "time": { "type": "String", "example": "10:00" },
+      "dates": { "type": "String", "example": "• lunedì 23 novembre\n• lunedì 30 novembre" }
+    }
+  },
+  "bookingWhatsAppMessageOnBehalf": "{count, plural, =1{Ciao {name}, ti scrivo da parte di {chef} di {brand}. Ti confermiamo la sessione di cucina di {dates}, con arrivo alle {time}. A presto!} other{Ciao {name}, ti scrivo da parte di {chef} di {brand}. Ti confermiamo le {count} sessioni di cucina:\n{dates}\n{chef} arriva alle {time}. A presto!}}",
+  "@bookingWhatsAppMessageOnBehalf": {
+    "description": "El mismo mensaje de WhatsApp a la clienta cuando confirma la reserva un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella ni ser quien llega (la que llega es ella: «{chef} arriva»). En SU idioma (requests.locale). Solo fechas y hora: nunca dirección ni alergias. dates: una fecha, o una por línea con viñeta.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" },
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "time": { "type": "String", "example": "10:00" },
+      "dates": { "type": "String", "example": "• lunedì 23 novembre\n• lunedì 30 novembre" }
+    }
+  },
+
+  "sessionTitle": "Sessione",
+  "@sessionTitle": {
+    "description": "Título de la ficha de una sesión de cocina mientras carga (después va el nombre de la clienta)."
+  },
+  "sessionNotFound": "Questa sessione non esiste o non è più disponibile.",
+  "@sessionNotFound": {
+    "description": "Ficha de una sesión que no existe (o no es de esta cocinera)."
+  },
+  "sessionLoadError": "Impossibile caricare la sessione. Controlla la connessione e riprova.",
+  "@sessionLoadError": {
+    "description": "La ficha de la sesión no se pudo leer. Va con el botón Riprova."
+  },
+  "sessionsLoadFailed": "Impossibile caricare le sessioni.",
+  "@sessionsLoadFailed": {
+    "description": "Agenda: no se pudieron leer las sesiones de la cocinera. Va con el botón Riprova."
+  },
+  "sessionStatusHeld": "In attesa di conferma",
+  "@sessionStatusHeld": {
+    "description": "Estado de una sesión held: preventivo enviado, el horario queda retenido hasta que la clienta acepte."
+  },
+  "sessionStatusConfirmed": "Confermata",
+  "@sessionStatusConfirmed": {
+    "description": "Estado de una sesión confirmed. También el de una sesión vieja en shopping_done (la compra hecha, sin uso desde el 19/11/2026: la compra la hace el cliente), que todavía no se cocinó."
+  },
+  "sessionStatusCooked": "Cucinata",
+  "@sessionStatusCooked": {
+    "description": "Estado de una sesión cooked."
+  },
+  "sessionStatusPaid": "Pagata",
+  "@sessionStatusPaid": {
+    "description": "Estado de una sesión paid (el servicio cobrado)."
+  },
+  "sessionStatusCancelled": "Annullata",
+  "@sessionStatusCancelled": {
+    "description": "Estado de una sesión cancelled."
+  },
+  "sessionTimes": "Arrivo {arrival} · fino alle {end}",
+  "@sessionTimes": {
+    "description": "Horas de una sesión, salidas de lo guardado en ella: la llegada a la casa y el fin de la cocina. Sin compra (la hace el cliente desde el 19/11/2026): la de las sesiones de antes no se muestra.",
+    "placeholders": {
+      "arrival": { "type": "String", "example": "10:00" },
+      "end": { "type": "String", "example": "13:00" }
+    }
+  },
+  "sessionWeekOf": "Settimana {week} di {weeks}",
+  "@sessionWeekOf": {
+    "description": "Posición de la sesión en su reserva, sin contar las semanas canceladas.",
+    "placeholders": {
+      "week": { "type": "int", "example": "2" },
+      "weeks": { "type": "int", "example": "4" }
+    }
+  },
+  "sessionDirections": "Come arrivare",
+  "@sessionDirections": {
+    "description": "Botón de la ficha de la sesión: abre la dirección de la clienta en Mapas, con el camino."
+  },
+  "sessionNoAddress": "Nessun indirizzo nella scheda: chiedilo alla cliente e aggiungilo.",
+  "@sessionNoAddress": {
+    "description": "La ficha de la clienta no tiene dirección (el formulario web no la pide): en lugar de «Come arrivare» va el botón para agregarla."
+  },
+  "sessionAddAddress": "Aggiungi indirizzo",
+  "@sessionAddAddress": {
+    "description": "Botón de la ficha de la sesión sin dirección, y título de su diálogo: guardar la dirección en la ficha de la clienta (clients.address), para «Come arrivare»."
+  },
+  "sessionEditAddress": "Modifica indirizzo",
+  "@sessionEditAddress": {
+    "description": "Botón junto a la dirección de la ficha de la sesión, y título de su diálogo: corregir la dirección de la clienta."
+  },
+  "sessionAddressHint": "Es.: Via Gombito 12, Bergamo",
+  "@sessionAddressHint": {
+    "description": "Ejemplo dentro del campo de la dirección (calle, número y ciudad)."
+  },
+  "sessionAddressHelper": "Via, numero e città: «Come arrivare» la mostra in Mappe.",
+  "@sessionAddressHelper": {
+    "description": "Debajo del campo de la dirección: qué escribir y para qué sirve."
+  },
+  "sessionAddressSaved": "Indirizzo salvato.",
+  "@sessionAddressSaved": {
+    "description": "Aviso después de guardar la dirección de la clienta."
+  },
+  "sessionAddressFailed": "Non è stato possibile salvare l'indirizzo. Controlla la connessione e riprova.",
+  "@sessionAddressFailed": {
+    "description": "No se pudo guardar la dirección: el diálogo queda abierto con lo escrito."
+  },
+  "sessionSectionAllergies": "Allergie e diete",
+  "@sessionSectionAllergies": {
+    "description": "Sección de la ficha de la sesión: alérgenos y dietas de la ficha y de la solicitud (o, en una sesión semanal cuya solicitud no responde, de su última solicitud semanal de la web que se reservó), y la nota de alergias de esa solicitud."
+  },
+  "sessionAllergyNote": "Nota della richiesta",
+  "@sessionAllergyNote": {
+    "description": "Etiqueta de la nota de alergias que escribió la clienta en la solicitud (texto libre, se muestra resaltada). Si sale de otra solicitud suya, arriba de la sección va su fecha (sessionAllergiesEarlierRequest)."
+  },
+  "sessionCrossContamination": "Glutine (celiachia): evita la contaminazione crociata. Utensili, pentole e superfici puliti o separati, niente farina in giro.",
+  "@sessionCrossContamination": {
+    "description": "Nota de contaminación cruzada (SPEC §5.6) en una sesión con gluten en la ficha o en la solicitud. Empieza por el alérgeno: gluten no siempre es celiaquía."
+  },
+  "sessionAllergiesNoData": "Allergie: nessun dato nell'app, chiedile",
+  "@sessionAllergiesNoData": {
+    "description": "Ficha de la sesión y Hoy, sección de alergias, resaltado como advertencia: la sesión no tiene ningún dato de alergias (ni alérgenos de la ficha, ni nota o alérgenos del pedido o, en una sesión semanal, de su último pedido semanal de la web que se reservó, ni la confirmación «nadie tiene»), por ejemplo una reserva cargada a mano de una clienta sin ese pedido o cuyo pedido no responde, o una sesión extra a mano (sin consentimiento de salud no se guardan, M2). Una dieta sola no es un dato de alergias: sale igual, con la dieta debajo. Nunca quiere decir «sin alergias»."
+  },
+  "sessionAllergiesEarlierRequest": "Secondo la sua richiesta ({date})",
+  "@sessionAllergiesEarlierRequest": {
+    "description": "Ficha de la sesión y Hoy, sección de alergias, debajo del título y en letra chica: lo que sigue (la nota, los alérgenos o «nadie tiene») sale de otra solicitud de la clienta, su última solicitud semanal de la web que se reservó, porque la de esta reserva semanal no responde (una renovación o una reserva a mano no guardan alergias). La fecha es la de esa solicitud, en Roma. En italiano va entre paréntesis y sin artículo: «del 8 ott» tendría que ser «dell'8 ott».",
+    "placeholders": {
+      "date": { "type": "String", "example": "19 ott 2026" }
+    }
+  },
+  "sessionSectionClient": "Cliente",
+  "@sessionSectionClient": {
+    "description": "Sección de la ficha de la sesión con los datos de la clienta."
+  },
+  "sessionAddress": "Indirizzo",
+  "@sessionAddress": {
+    "description": "Etiqueta de la dirección de la clienta."
+  },
+  "sessionKitchenNotes": "Note sulla cucina",
+  "@sessionKitchenNotes": {
+    "description": "Etiqueta de las notas de la ficha sobre la cocina de la casa (horno, dónde están las cosas…)."
+  },
+  "sessionSectionWeeks": "Settimane della prenotazione",
+  "@sessionSectionWeeks": {
+    "description": "Sección de la ficha de la sesión con todas las semanas de su reserva (también las canceladas)."
+  },
+  "sessionLastOfBooking": "È l'ultima sessione della prenotazione.",
+  "@sessionLastOfBooking": {
+    "description": "Ficha de la sesión, al final: es la última sesión viva de una reserva semanal. Debajo, el botón «Rinnova»."
+  },
+  "sessionLaterSession": "Ha già un'altra sessione: {date}.",
+  "@sessionLaterSession": {
+    "description": "Ficha de la sesión, fila «Rinnova»: la clienta ya tiene otra sesión después de esta (una renovación u otra reserva). date: como en «Ultima sessione».",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 23 dic" }
+    }
+  },
+  "sessionMoveAction": "Sposta",
+  "@sessionMoveAction": {
+    "description": "Botón de la ficha de la sesión: elegir otra fecha (y hora)."
+  },
+  "sessionCancelAction": "Annulla sessione",
+  "@sessionCancelAction": {
+    "description": "Botón de la ficha de la sesión: cancelarla (con confirmación)."
+  },
+  "sessionWhatsAppMessage": "Ciao {name}, sono {chef} di {brand}. Ti scrivo per la sessione di {date}, con arrivo alle {time}.",
+  "@sessionWhatsAppMessage": {
+    "description": "WhatsApp a la clienta desde la ficha de la sesión (también en los botones de Hoy), en SU idioma (requests.locale), solo si la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, sin mirar la hora); si no (de un día anterior, cocinada, cobrada o cancelada), va sessionWhatsAppMessageNoArrival. Describe el horario de la sesión sin afirmar que la llegada es futura: vale también en una sesión de hoy después de la hora de llegada. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageOnBehalf. Solo fecha y hora: nunca dirección ni alergias.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "date": { "type": "String", "example": "mercoledì 25 novembre" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "sessionWhatsAppMessageOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand} per la sessione di {date}, con arrivo di {chef} alle {time}.",
+  "@sessionWhatsAppMessageOnBehalf": {
+    "description": "El mismo WhatsApp a la clienta desde la ficha de la sesión (también en los botones de Hoy) cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella. Quien llega es ella, no quien escribe: «con arrivo di {chef} alle {time}». Como sessionWhatsAppMessage, describe el horario de la sesión sin afirmar que la llegada es futura, así que vale también en una sesión de hoy después de la hora de llegada. Va en los mismos casos que sessionWhatsAppMessage: la sesión no está cancelada, cocinada ni cobrada y es de hoy en adelante (el día de Roma, sin mirar la hora); si no, va sessionWhatsAppMessageNoArrivalOnBehalf. En SU idioma (requests.locale). Solo fecha y hora: nunca dirección ni alergias.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "date": { "type": "String", "example": "mercoledì 25 novembre" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "sessionWhatsAppMessageNoArrival": "Ciao {name}, sono {chef} di {brand}. Ti scrivo per la sessione di {date}.",
+  "@sessionWhatsAppMessageNoArrival": {
+    "description": "WhatsApp a la clienta desde la ficha (también en los botones de Hoy) de una sesión de un día anterior a hoy (el día de Roma), cocinada, cobrada o cancelada (una de hoy que no está cocinada, cobrada ni cancelada sigue con sessionWhatsAppMessage aunque su llegada ya haya pasado). En SU idioma (requests.locale). Nombra la sesión por su fecha, sin la hora de llegada que lleva sessionWhatsAppMessage. Lo firma la cocinera; si lo manda un colaborador suyo va sessionWhatsAppMessageNoArrivalOnBehalf. Solo la fecha: nunca dirección ni alergias.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "date": { "type": "String", "example": "mercoledì 25 novembre" }
+    }
+  },
+  "sessionWhatsAppMessageNoArrivalOnBehalf": "Ciao {name}, ti scrivo da parte di {chef} di {brand} per la sessione di {date}.",
+  "@sessionWhatsAppMessageNoArrivalOnBehalf": {
+    "description": "El mismo WhatsApp sin la hora de llegada (sessionWhatsAppMessageNoArrival, también en los botones de Hoy) cuando lo manda un colaborador de la cocinera (chef_members): sale de su propio teléfono, así que escribe de parte de ella y no dice ser ella. En SU idioma (requests.locale). Solo la fecha: nunca dirección ni alergias.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Giulia" },
+      "chef": { "type": "String", "example": "Evelyn" },
+      "brand": { "type": "String", "example": "Radici" },
+      "date": { "type": "String", "example": "mercoledì 25 novembre" }
+    }
+  },
+  "cancelReasonClient": "L'ha chiesto la cliente",
+  "@cancelReasonClient": {
+    "description": "Motivo de cancelación client_cancelled (lista cerrada: la clienta con cuenta puede leerlo)."
+  },
+  "cancelReasonUnavailable": "Non posso andare",
+  "@cancelReasonUnavailable": {
+    "description": "Motivo de cancelación chef_unavailable: la cocinera no puede ir."
+  },
+  "cancelReasonOther": "Altro motivo",
+  "@cancelReasonOther": {
+    "description": "Motivo de cancelación chef_cancelled (el de por defecto)."
+  },
+  "moveSessionTitle": "Sposta la sessione",
+  "@moveSessionTitle": {
+    "description": "Título de la hoja para mover una sesión a otra fecha u hora."
+  },
+  "moveSessionNow": "Adesso: {date}, arrivo alle {time}",
+  "@moveSessionNow": {
+    "description": "Hoja «Sposta»: la fecha y la hora actuales de la sesión.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 25 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "moveSessionNewDate": "Nuova data",
+  "@moveSessionNewDate": {
+    "description": "Hoja «Sposta»: título de la fecha nueva."
+  },
+  "moveSessionPickerHelp": "Nuova data della sessione",
+  "@moveSessionPickerHelp": {
+    "description": "Encabezado del calendario para elegir la fecha nueva de la sesión."
+  },
+  "moveChecksFailed": "Non è stato possibile verificare la data. Puoi spostarla comunque: il server la ricontrolla.",
+  "@moveChecksFailed": {
+    "description": "Hoja «Sposta»: no se pudo pedir el chequeo de la fecha. Va con Riprova."
+  },
+  "moveToEnd": "Passa alla fine della prenotazione",
+  "@moveToEnd": {
+    "description": "Botón: mover la sesión a la semana después de la última de su reserva (cuando la semana elegida ya tiene otra sesión de la reserva)."
+  },
+  "moveToEndDate": "Una sessione per settimana: diventerebbe {date}, la settimana dopo l'ultima.",
+  "@moveToEndDate": {
+    "description": "Debajo del botón «Passa alla fine…»: la regla (una sesión por semana) y a qué fecha pasaría.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 23 dic" }
+    }
+  },
+  "moveSameAsNow": "Scegli un'altra data o un'altra ora.",
+  "@moveSameAsNow": {
+    "description": "Barra de la hoja «Sposta»: la fecha y la hora elegidas son las de ahora."
+  },
+  "moveBlockClash": "Si sovrappone a un'altra sessione: scegli un'altra data o un'altra ora.",
+  "@moveBlockClash": {
+    "description": "Barra de la hoja «Sposta»: la fecha choca con otra sesión y no se puede mover ahí."
+  },
+  "moveBlockWeekTaken": "Quella settimana ha già una sessione di questa prenotazione.",
+  "@moveBlockWeekTaken": {
+    "description": "Barra de la hoja «Sposta»: la semana ya tiene otra sesión de la reserva."
+  },
+  "moveSummary": "{date}, arrivo alle {time}",
+  "@moveSummary": {
+    "description": "Barra de la hoja «Sposta»: a dónde se va a mover.",
+    "placeholders": {
+      "date": { "type": "String", "example": "gio 3 dic" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "moveConfirm": "Sposta a {date}",
+  "@moveConfirm": {
+    "description": "Botón principal de la hoja «Sposta».",
+    "placeholders": {
+      "date": { "type": "String", "example": "gio 3 dic" }
+    }
+  },
+  "moveSending": "Spostamento…",
+  "@moveSending": {
+    "description": "El botón mientras se mueve la sesión."
+  },
+  "sessionErrorSlotTaken": "{date} si sovrappone a un'altra sessione: non è stato spostato niente.",
+  "@sessionErrorSlotTaken": {
+    "description": "Al mover: la fecha choca con otra sesión (409 slotTaken).",
+    "placeholders": {
+      "date": { "type": "String", "example": "gio 3 dic" }
+    }
+  },
+  "sessionErrorWeekTaken": "La settimana di {date} ha già una sessione di questa prenotazione: non è stato spostato niente.",
+  "@sessionErrorWeekTaken": {
+    "description": "Al mover: esa semana ya tiene otra sesión de la reserva (409 weekTaken).",
+    "placeholders": {
+      "date": { "type": "String", "example": "gio 3 dic" }
+    }
+  },
+  "sessionErrorNotMovable": "Questa sessione è «{status}»: non si può più spostare.",
+  "@sessionErrorNotMovable": {
+    "description": "Al mover: la sesión ya no está held ni confirmed (409 sessionNotMovable). status: su estado.",
+    "placeholders": {
+      "status": { "type": "String", "example": "Cucinata" }
+    }
+  },
+  "sessionErrorNotMovableUnknown": "Questa sessione non si può più spostare.",
+  "@sessionErrorNotMovableUnknown": {
+    "description": "Como sessionErrorNotMovable, sin un estado conocido."
+  },
+  "sessionErrorInvalidTransition": "Una delle sessioni è già cucinata o pagata: non ne è stata annullata nessuna.",
+  "@sessionErrorInvalidTransition": {
+    "description": "Al cancelar: alguna está cooked o paid (409 invalidTransition); es todo o nada."
+  },
+  "sessionErrorHasPayments": "Una delle settimane è già pagata: non ne è stata annullata nessuna.",
+  "@sessionErrorHasPayments": {
+    "description": "Al cancelar: alguna semana ya está cobrada (409 hasPayments) y no se puede mostrar el diálogo que lo explica; es todo o nada."
+  },
+  "sessionErrorNotFound": "La sessione non esiste più.",
+  "@sessionErrorNotFound": {
+    "description": "Al mover o cancelar: la sesión ya no existe (404)."
+  },
+  "sessionErrorForbidden": "Il tuo account non può modificare le sessioni.",
+  "@sessionErrorForbidden": {
+    "description": "Al mover o cancelar: el usuario no es la cocinera ni un colaborador suyo (403)."
+  },
+  "sessionErrorConflict": "Non è stato possibile per un conflitto: aggiorna e riprova.",
+  "@sessionErrorConflict": {
+    "description": "Al mover o cancelar: otro 409."
+  },
+  "sessionErrorMoveUnavailable": "Non è stato possibile spostarla. Controlla la connessione e riprova.",
+  "@sessionErrorMoveUnavailable": {
+    "description": "Al mover: sin conexión o el servidor no responde. Reintentar no duplica nada."
+  },
+  "sessionErrorCancelUnavailable": "Non è stato possibile annullarla. Controlla la connessione e riprova: se era già annullata, non cambia niente.",
+  "@sessionErrorCancelUnavailable": {
+    "description": "Al cancelar: sin conexión o el servidor no responde. Va con Riprova."
+  },
+  "sessionMovedDone": "Sessione spostata a {date}, arrivo alle {time}.",
+  "@sessionMovedDone": {
+    "description": "Aviso después de mover la sesión, con el botón para deshacer.",
+    "placeholders": {
+      "date": { "type": "String", "example": "gio 3 dic" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "sessionMoveUndone": "Spostamento annullato.",
+  "@sessionMoveUndone": {
+    "description": "Aviso después de deshacer el movimiento: la sesión volvió a su fecha y hora."
+  },
+  "sessionMoveUndoFailed": "Non è stato possibile annullare lo spostamento.",
+  "@sessionMoveUndoFailed": {
+    "description": "No se pudo deshacer el movimiento. Va con Riprova."
+  },
+  "cancelSessionTitle": "Annullare la sessione di {date}?",
+  "@cancelSessionTitle": {
+    "description": "Título de la confirmación de cancelar una sesión.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 25 nov" }
+    }
+  },
+  "cancelSessionBody": "{count, plural, =1{Una sessione annullata non si può riattivare. Se c'è posto nel tuo orario e il giorno non è bloccato, il sito torna a offrirlo in 1 o 2 minuti.} other{Una sessione annullata non si può riattivare. Se c'è posto nel tuo orario e i giorni non sono bloccati, il sito torna a offrirli in 1 o 2 minuti.}}",
+  "@cancelSessionBody": {
+    "description": "Confirmación de cancelar [count] sesiones: que no se deshace y cuándo la web vuelve a ofrecer el día (no siempre: un día bloqueado, pasado o sin lugar no vuelve).",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "cancelSessionReason": "Motivo",
+  "@cancelSessionReason": {
+    "description": "Título de los motivos de cancelación (lista cerrada, nunca texto libre)."
+  },
+  "cancelSessionFollowing": "{count, plural, =1{Annulla anche la successiva} other{Annulla anche le {count} successive}}",
+  "@cancelSessionFollowing": {
+    "description": "Casilla de la confirmación: cancelar también las semanas siguientes de la reserva.",
+    "placeholders": {
+      "count": { "type": "int", "example": "3" }
+    }
+  },
+  "cancelSessionConfirm": "{count, plural, =1{Annulla la sessione} other{Annulla {count} sessioni}}",
+  "@cancelSessionConfirm": {
+    "description": "Botón que confirma la cancelación.",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "cancelSessionKeep": "Indietro",
+  "@cancelSessionKeep": {
+    "description": "Botón para cerrar la confirmación sin cancelar nada (no se usa «Annulla» para no confundirlo con cancelar la sesión)."
+  },
+  "cancelSessionDone": "{count, plural, =1{Sessione annullata.} other{{count} sessioni annullate.}}",
+  "@cancelSessionDone": {
+    "description": "Aviso después de cancelar.",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "cancelHasPaymentsTitle": "{count, plural, =1{Settimana già pagata} other{Settimane già pagate}}",
+  "@cancelHasPaymentsTitle": {
+    "description": "Título del aviso cuando [count] semanas que se quisieron cancelar ya están cobradas (409 hasPayments).",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "cancelHasPaymentsPaid": "{count, plural, =1{La settimana di {dates} è già pagata: non è stato annullato niente.} other{{count} settimane sono già pagate ({dates}): non è stato annullato niente.}}",
+  "@cancelHasPaymentsPaid": {
+    "description": "Aviso de hasPayments: cuáles semanas ya están cobradas (sus fechas, separadas por ·); no se canceló ninguna (todo o nada).",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" },
+      "dates": { "type": "String", "example": "mer 9 dic" }
+    }
+  },
+  "cancelHasPaymentsMoveToEnd": "Per ora una settimana pagata non si può annullare dall'app: puoi passarla alla fine della prenotazione ({date}) e l'incasso resta su quella settimana.",
+  "@cancelHasPaymentsMoveToEnd": {
+    "description": "Aviso de hasPayments cuando se cancelaba solo la semana de la ficha y está cobrada: se puede pasar al final de la reserva (decisión 5 del plan). La devolución llega con los cobros manuales.",
+    "placeholders": {
+      "date": { "type": "String", "example": "mer 23 dic" }
+    }
+  },
+  "cancelHasPaymentsCancelUnpaid": "{count, plural, =1{Per ora una settimana pagata non si può annullare dall'app: puoi annullare solo quella non pagata.} other{Per ora una settimana pagata non si può annullare dall'app: puoi annullare solo le {count} non pagate.}}",
+  "@cancelHasPaymentsCancelUnpaid": {
+    "description": "Aviso de hasPayments cuando se cancelaban varias semanas («anche le successive»): se pueden cancelar las [count] que no están cobradas.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "cancelHasPaymentsNoAction": "Per ora una settimana pagata non si può annullare dall'app.",
+  "@cancelHasPaymentsNoAction": {
+    "description": "Aviso de hasPayments cuando no hay nada que ofrecer (la cobrada es la última, no se puede mover o todas las pedidas están cobradas)."
+  },
+  "cancelHasPaymentsCancelUnpaidAction": "{count, plural, =1{Annulla quella non pagata} other{Annulla le {count} non pagate}}",
+  "@cancelHasPaymentsCancelUnpaidAction": {
+    "description": "Botón del aviso de hasPayments: cancelar solo las [count] semanas que no están cobradas.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "agendaSessionCount": "{count, plural, =0{nessuna sessione} =1{1 sessione} other{{count} sessioni}}",
+  "@agendaSessionCount": {
+    "description": "Texto accesible de un día del calendario con sesiones.",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "availabilitySessionsThatDay": "{count, plural, =1{1 sessione in questo giorno: bloccarlo non la annulla.} other{{count} sessioni in questo giorno: bloccarlo non le annulla.}}",
+  "@availabilitySessionsThatDay": {
+    "description": "Tarjeta del día en la agenda: el día tiene sesiones; bloquearlo no las cancela (se cancelan desde su ficha).",
+    "placeholders": {
+      "count": { "type": "int", "example": "1" }
+    }
+  },
+  "blockRangeSessionDays": "{count, plural, =1{1 di questi giorni ha sessioni: bloccarlo non le annulla.} other{{count} di questi giorni hanno sessioni: bloccarli non le annulla.}}",
+  "@blockRangeSessionDays": {
+    "description": "Diálogo del rango a bloquear: cuántos días del rango tienen sesiones.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "blockRangeSessionsUnknown": "Non è stato possibile verificare se questi giorni hanno sessioni.",
+  "@blockRangeSessionsUnknown": {
+    "description": "Diálogo del rango a bloquear: las sesiones no se pudieron leer, así que no se sabe si algún día del rango tiene (bloquearlo no las cancelaría)."
+  },
+
   "newRequestBanner": "Nuova richiesta da {name}",
   "@newRequestBanner": {
     "description": "Aviso emergente de un pedido nuevo.",
@@ -856,9 +1936,9 @@
       "end": { "type": "String", "example": "25 ott 2026" }
     }
   },
-  "agendaNoRequestsDay": "Nessuna richiesta per questo giorno.",
+  "agendaNoRequestsDay": "Niente per questo giorno: né sessioni né richieste.",
   "@agendaNoRequestsDay": {
-    "description": "Día sin pedidos."
+    "description": "Día de la agenda sin sesiones ni pedidos."
   },
   "agendaWithoutDateEmpty": "Nessuna richiesta senza data.",
   "@agendaWithoutDateEmpty": {
@@ -1479,7 +2559,7 @@
   },
   "recipeUnitPieces": "pz",
   "@recipeUnitPieces": {
-    "description": "Unidad: piezas (abreviatura)."
+    "description": "Unidad por cantidad, abreviada: la cantidad cuenta cosas enteras («2 cipolle», «1 limone»). En la base es «pcs». En español «unid.» y en inglés «ea» (each)."
   },
   "recipeUnitToTaste": "q.b.",
   "@recipeUnitToTaste": {
