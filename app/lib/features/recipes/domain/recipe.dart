@@ -19,6 +19,12 @@
 // formulario de pedido (migración 20261119150000_menu_web.sql). Sin la
 // italiana, el plato no sale en la web.
 //
+// Desde el 20/11/2026 Evelyn escribe el nombre y la descripción en español y
+// el italiano y el inglés los completa la traducción automática (POST
+// chef/translate, contrato chef-api.md §12). recipes.auto_translated guarda
+// qué campos llenó el traductor y ella no tocó a mano (migración
+// 20261120090000_recipe_translations.sql): [Recipe.autoTranslated].
+//
 // La foto (photoId, migración 20261120100000_recipe_photos.sql) también es
 // pública: dos archivos del bucket recipe-photos (recipe_photo.dart). La pone
 // set_recipe_photo, nunca save_recipe: duplicar un plato no la copia.
@@ -85,6 +91,24 @@ abstract class RecipeIngredient with _$RecipeIngredient {
   bool get toTaste => amount == null;
 }
 
+/// Un campo que llena la traducción automática (del español): los valores de
+/// `recipes.auto_translated`, en el orden en que los guarda save_recipe. El
+/// español es la fuente y nunca está.
+enum TranslatedField {
+  nameIt('name_it'),
+  descriptionIt('description_it'),
+  nameEn('name_en'),
+  descriptionEn('description_en');
+
+  const TranslatedField(this.dbValue);
+
+  /// El valor en la base.
+  final String dbValue;
+
+  /// Un nombre (sale del nombre en español); si no, una descripción.
+  bool get isName => this == nameIt || this == nameEn;
+}
+
 /// Si un plato sale en el menú de la web (get_public_menu): tiene que estar
 /// activo, en el catálogo y con la descripción en italiano. La lista solo trae
 /// platos del catálogo (`catalog_visible`).
@@ -115,6 +139,11 @@ abstract class Recipe with _$Recipe {
     String? descriptionIt,
     String? descriptionEs,
     String? descriptionEn,
+
+    /// Los campos que llenó la traducción automática y la cocinera no tocó a
+    /// mano: si cambia el español, se vuelven a traducir. Siempre con texto, y
+    /// con el español del que salen ([sourceOf]).
+    @Default(<TranslatedField>{}) Set<TranslatedField> autoTranslated,
     Diet? diet,
     @Default(<Allergen>[]) List<Allergen> allergens,
     List<int>? seasonMonths,
@@ -170,6 +199,7 @@ abstract class Recipe with _$Recipe {
       descriptionIt: _optionalText(json['description_it']),
       descriptionEs: _optionalText(json['description_es']),
       descriptionEn: _optionalText(json['description_en']),
+      autoTranslated: _autoTranslatedFromJson(json['auto_translated']),
       diet: _dietFromJson(json['diet']),
       allergens: _allergensFromJson(allergens),
       seasonMonths: _monthsFromJson(json['season_months']),
@@ -182,6 +212,19 @@ abstract class Recipe with _$Recipe {
       ingredients: _ingredientsFromJson(ingredients),
     );
   }
+
+  /// El texto de [field] (null = vacío).
+  String? textOf(TranslatedField field) => switch (field) {
+    TranslatedField.nameIt => nameIt,
+    TranslatedField.descriptionIt => descriptionIt,
+    TranslatedField.nameEn => nameEn,
+    TranslatedField.descriptionEn => descriptionEn,
+  };
+
+  /// El español del que sale [field]: el nombre o la descripción (null =
+  /// vacío).
+  String? sourceOf(TranslatedField field) =>
+      field.isName ? nameEs : descriptionEs;
 
   /// Si sale en el menú de la web.
   RecipeWebStatus get webStatus {
@@ -200,7 +243,7 @@ abstract class Recipe with _$Recipe {
 /// chef_id)`). Las notas llegan como una lista de cero o una fila.
 const String recipeColumns =
     'id, name_it, name_es, name_en, description_it, description_es, '
-    'description_en, diet, season_months, fridge_days, '
+    'description_en, auto_translated, diet, season_months, fridge_days, '
     'freezable, freezer_days, active, photo_id, '
     'allergens:recipe_allergens(allergen), '
     'ingredients:recipe_ingredients(position, name, section, quantity, unit), '
@@ -211,7 +254,11 @@ const String recipeColumns =
 /// `catalog_visible`: save_recipe no toca una clave que no viene, así guardar
 /// no reactiva un plato ni pasa una receta de evento al catálogo. Tampoco la
 /// foto (la pone set_recipe_photo). Las descripciones van siempre (null = sin
-/// descripción: borra la que había).
+/// descripción: borra la que había), y también `auto_translated`, que
+/// save_recipe reemplaza en cada guardado: solo los campos con texto y con el
+/// español del que salen (save_recipe rechaza un campo marcado sin texto, un
+/// nombre marcado sin `name_es` y una descripción marcada sin
+/// `description_es`).
 Map<String, Object?> recipeSavePayload(Recipe recipe) => {
   'id': recipe.id,
   'name_it': recipe.nameIt,
@@ -220,6 +267,13 @@ Map<String, Object?> recipeSavePayload(Recipe recipe) => {
   'description_it': recipe.descriptionIt,
   'description_es': recipe.descriptionEs,
   'description_en': recipe.descriptionEn,
+  'auto_translated': [
+    for (final field in TranslatedField.values)
+      if (recipe.autoTranslated.contains(field) &&
+          recipe.textOf(field) != null &&
+          recipe.sourceOf(field) != null)
+        field.dbValue,
+  ],
   'diet': recipe.diet?.name,
   'season_months': recipe.seasonMonths,
   'fridge_days': recipe.fridgeDays,
@@ -242,6 +296,20 @@ String? _optionalText(Object? value) {
   if (value == null) return null;
   if (value is! String) throw const FormatException('Texto inválido');
   return value.isEmpty ? null : value;
+}
+
+/// `auto_translated`: una lista de textos (sin la columna, ninguno). Un
+/// campo que esta versión no conoce se descarta: queda como escrito a mano,
+/// así nunca se traduce encima de él.
+Set<TranslatedField> _autoTranslatedFromJson(Object? value) {
+  if (value == null) return const {};
+  if (value is! List || value.any((field) => field is! String)) {
+    throw const FormatException('auto_translated inválido');
+  }
+  return {
+    for (final field in TranslatedField.values)
+      if (value.contains(field.dbValue)) field,
+  };
 }
 
 final RegExp _uuid = RegExp(
@@ -504,14 +572,21 @@ int _byItalianName(Recipe a, Recipe b) {
   return byName != 0 ? byName : a.id.compareTo(b.id);
 }
 
-/// Ya hay un plato (que no sea [exceptId]) con el nombre en italiano
-/// [nameIt], sin importar mayúsculas, acentos ni espacios.
+/// Ya hay un plato (que no sea [exceptId]) con el nombre [name], sin importar
+/// mayúsculas, acentos ni espacios. [nameOf] dice qué nombre de cada plato se
+/// compara: por defecto, el italiano.
 bool hasRecipeNamed(
   Iterable<Recipe> recipes,
-  String nameIt, {
+  String name, {
   String? exceptId,
+  String? Function(Recipe recipe) nameOf = _italianName,
 }) {
-  final wanted = foldForSearch(nameIt);
+  final wanted = foldForSearch(name);
   if (wanted.isEmpty) return false;
-  return recipes.any((r) => r.id != exceptId && foldForSearch(r.nameIt) == wanted);
+  return recipes.any((r) {
+    final other = nameOf(r);
+    return r.id != exceptId && other != null && foldForSearch(other) == wanted;
+  });
 }
+
+String? _italianName(Recipe recipe) => recipe.nameIt;

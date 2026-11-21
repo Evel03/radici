@@ -8,11 +8,14 @@ import 'package:radici/core/router.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/availability/data/availability_repository.dart';
+import 'package:radici/features/bookings/data/bookings_repository.dart';
+import 'package:radici/features/clients/data/clients_repository.dart';
 import 'package:radici/features/recipes/application/recipe_photo_providers.dart';
 import 'package:radici/features/recipes/data/recipe_photo_picker.dart';
 import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
+import 'package:radici/features/sessions/data/sessions_repository.dart';
 
 import 'fakes.dart';
 import 'photo_fakes.dart';
@@ -27,7 +30,10 @@ class ChefApp {
     this.requests,
     this.launcher,
     this.availability,
+    this.bookings,
+    this.sessions,
     this.recipes,
+    this.clients,
     this.photos,
     this.photoPicker,
   );
@@ -38,7 +44,10 @@ class ChefApp {
   final FakeChefRequestsRepository requests;
   final FakeLinkLauncher launcher;
   final FakeAvailabilityRepository availability;
+  final FakeBookingsRepository bookings;
+  final FakeSessionsRepository sessions;
   final FakeRecipesRepository recipes;
+  final FakeClientsRepository clients;
   final FakeRecipePhotosRepository photos;
   final FakeRecipePhotoPicker photoPicker;
 
@@ -50,17 +59,29 @@ class ChefApp {
 /// el botón del email: `INBOX_URL#/richieste/<id>`). [accounts] es su perfil
 /// (por defecto, sin idioma: manda el dispositivo). [availability] es su
 /// horario y sus días bloqueados (por defecto, lunes a viernes de 9 a 15 y
-/// sin bloqueos). [recipes] es su catálogo de platos (por defecto, vacío).
-/// [photos] es el bucket de las fotos de los platos y [photoPicker] el
-/// selector; las fotos se preparan al instante ([fakeProcessRecipePhoto]) y
-/// [photoImage] es la imagen de cada URL (por defecto, un JPEG chiquito en
-/// memoria: sin red). [isWeb] simula la versión web (/gestione/).
+/// sin bloqueos). [bookings] es la Edge Function de las reservas (por
+/// defecto, todo libre y la llegada sugerida a las 10:00; al confirmar, el
+/// pedido pasa a `accepted` en [requests] y una reserva a mano o una
+/// renovación agrega sus sesiones a [sessions]). [sessions] son sus sesiones
+/// y la Edge Function para moverlas y cancelarlas (por defecto, ninguna).
+/// [recipes] es su catálogo de platos (por defecto, vacío). [clients] son sus
+/// fichas, las del directorio de «Nuova prenotazione» (por defecto, ninguna;
+/// una reserva a mano las actualiza como la base). [photos] es el bucket de
+/// las fotos de los platos y [photoPicker] el selector; las fotos se preparan
+/// al instante ([fakeProcessRecipePhoto]) y [photoImage] es la imagen de cada
+/// URL (por defecto, un JPEG chiquito en memoria: sin red). [isWeb] simula la
+/// versión web (/gestione/). Con [settle] en false no espera a que la
+/// pantalla se asiente (una rueda que gira no se asienta nunca). [retry]: los
+/// reintentos automáticos de Riverpod (por defecto, ninguno; ver retryOnce).
 Future<ChefApp> pumpChefApp(
   WidgetTester tester, {
   required FakeChefRequestsRepository requests,
   FakeAccountRepository? accounts,
   FakeAvailabilityRepository? availability,
+  FakeBookingsRepository? bookings,
+  FakeSessionsRepository? sessions,
   FakeRecipesRepository? recipes,
+  FakeClientsRepository? clients,
   FakeRecipePhotosRepository? photos,
   FakeRecipePhotoPicker? photoPicker,
   ImageProvider<Object> Function(String url)? photoImage,
@@ -70,11 +91,22 @@ Future<ChefApp> pumpChefApp(
   List<Locale> deviceLocales = const [Locale('it', 'IT')],
   DateTime Function()? clock,
   List<Override> overrides = const [],
+  bool settle = true,
+  RetryDelay retry = noRetry,
 }) async {
   setSurfaceSize(tester, size);
   final auth = FakeAuthRepository(user: chefUser);
   final account = accounts ?? FakeAccountRepository(chefAccountData);
   final days = availability ?? FakeAvailabilityRepository();
+  final directory = clients ?? FakeClientsRepository();
+  final sessionsRepository = sessions ?? FakeSessionsRepository();
+  final booking =
+      bookings ??
+      FakeBookingsRepository(
+        requests: requests,
+        clients: directory,
+        sessions: sessionsRepository,
+      );
   final catalog = recipes ?? FakeRecipesRepository();
   final bucket = photos ?? FakeRecipePhotosRepository();
   final picker = photoPicker ?? FakeRecipePhotoPicker();
@@ -84,12 +116,17 @@ Future<ChefApp> pumpChefApp(
     deviceLocales: deviceLocales,
     clock: clock,
     isWeb: isWeb,
+    settle: settle,
+    retry: retry,
     overrides: [
       authRepositoryProvider.overrideWithValue(auth),
       accountRepositoryProvider.overrideWithValue(account),
       chefRequestsRepositoryProvider.overrideWithValue(requests),
       availabilityRepositoryProvider.overrideWithValue(days),
+      bookingsRepositoryProvider.overrideWithValue(booking),
+      sessionsRepositoryProvider.overrideWithValue(sessionsRepository),
       recipesRepositoryProvider.overrideWithValue(catalog),
+      clientsRepositoryProvider.overrideWithValue(directory),
       recipePhotosRepositoryProvider.overrideWithValue(bucket),
       recipePhotoPickerProvider.overrideWithValue(picker),
       recipePhotoProcessorProvider.overrideWithValue(fakeProcessRecipePhoto),
@@ -107,13 +144,16 @@ Future<ChefApp> pumpChefApp(
     requests,
     launcher,
     days,
+    booking,
+    sessionsRepository,
     catalog,
+    directory,
     bucket,
     picker,
   );
   if (location != null) {
     app.go(location);
-    await tester.pumpAndSettle();
+    if (settle) await tester.pumpAndSettle();
   }
   return app;
 }

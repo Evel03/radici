@@ -1,7 +1,8 @@
-// Contrato de la Edge Function chef: la app de Evelyn → reservas, mover y cancelar sesiones
-// (docs/contracts/chef-api.md). Tipos de los cuerpos y de las respuestas, y la validación del
-// servidor con los mismos límites que las funciones SQL (chef_create_booking, chef_move_session y
-// chef_cancel_sessions, migración 20261116150100_bookings.sql), que vuelven a validar todo.
+// Contrato de la Edge Function chef: la app de Evelyn → reservas, mover y cancelar sesiones, y la
+// traducción de los platos (docs/contracts/chef-api.md). Tipos de los cuerpos y de las respuestas, y
+// la validación del servidor con los mismos límites que las funciones SQL (chef_create_booking,
+// chef_move_session y chef_cancel_sessions, migración 20261116150100_bookings.sql), que vuelven a
+// validar todo, y que los checks de recipes (los textos de un plato).
 // La app (Dart) arma los cuerpos con estos nombres: si el contrato cambia, cambian los dos.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import {
@@ -27,6 +28,7 @@ export const CHEF_ROUTES = {
   bookings: "/bookings",
   moveSession: "/sessions/move",
   cancelSessions: "/sessions/cancel",
+  translate: "/translate",
 } as const;
 export type ChefRoute = (typeof CHEF_ROUTES)[keyof typeof CHEF_ROUTES];
 
@@ -44,6 +46,19 @@ export const MAX_CANCEL_SESSIONS = 100;
 export const DATE_RANGE_DAYS = 366;
 /** El servidor rechaza cuerpos más grandes (413). */
 export const CHEF_MAX_PAYLOAD_BYTES = 8192;
+/**
+ * Largos de un plato, en caracteres (code points, como char_length en Postgres y textLength en la
+ * app): los checks recipes_name_*_valido y recipes_description_*_valida.
+ */
+export const RECIPE_NAME_MAX = 120;
+export const RECIPE_DESCRIPTION_MAX = 200;
+/**
+ * Caracteres de control que la base no acepta en un nombre ni en una descripción ([[:cntrl:]]): los
+ * C0, DEL, los C1 y los separadores de línea y de párrafo (la app los normaliza igual, recipe.dart).
+ */
+export const RECIPE_TEXT_CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+/** Las claves del cuerpo de POST /translate: cualquier otra es un 400. */
+const TRANSLATE_KEYS: readonly string[] = ["name", "description"];
 /** Largo máximo de la dirección de una ficha nueva. */
 export const ADDRESS_MAX = 200;
 /**
@@ -141,6 +156,17 @@ export interface CancelSessionsPayload {
   allowWithPayments?: boolean;
 }
 
+/**
+ * POST /translate: el nombre y la descripción de un plato, en español (la fuente), para traducirlos
+ * al italiano y al inglés. Los mismos límites que la base; se recortan los espacios del borde.
+ */
+export interface TranslatePayload {
+  /** De 1 a 120 caracteres, sin caracteres de control. */
+  name: string;
+  /** De 1 a 200 caracteres, o null (ausente, "" o solo espacios cuentan como null). */
+  description?: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Valores validados
 // ---------------------------------------------------------------------------
@@ -199,6 +225,12 @@ export interface NormalizedCancelSessions {
   allowWithPayments: boolean;
 }
 
+/** El plato en español, recortado y dentro de los límites: lo que se traduce. */
+export interface TranslationSource {
+  name: string;
+  description: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Errores
 // ---------------------------------------------------------------------------
@@ -246,7 +278,9 @@ export type ChefApiField =
   | "date"
   | "sessionIds"
   | "reason"
-  | "allowWithPayments";
+  | "allowWithPayments"
+  | "name"
+  | "description";
 
 export type ChefApiErrors = Partial<Record<ChefApiField, ChefApiErrorCode>>;
 
@@ -306,6 +340,19 @@ export interface CancelSessionsResponse {
   hadPayments: boolean;
 }
 
+/** Un plato traducido a un idioma, con los mismos límites que la base. */
+export interface TranslatedDish {
+  name: string;
+  /** null si y solo si el pedido no tenía descripción. */
+  description: string | null;
+}
+
+/** 200 de POST /translate: el plato en italiano y en inglés, siempre los dos (nunca a medias). */
+export interface TranslateResponse {
+  it: TranslatedDish;
+  en: TranslatedDish;
+}
+
 export type ChefErrorCode =
   | "unauthorized"
   | "forbidden"
@@ -323,6 +370,9 @@ export type ChefErrorCode =
   | "invalidTransition"
   | "hasPayments"
   | "conflict"
+  | "rateLimited"
+  | "untranslatable"
+  | "notConfigured"
   | "server"
   | "unavailable";
 
@@ -664,4 +714,52 @@ export function parseCancelSessionsRequest(input: unknown): ChefParseResult<Norm
 
   if (Object.keys(errors).length > 0 || sessionIds === null) return failure(errors);
   return { ok: true, value: { sessionIds, reason, allowWithPayments } };
+}
+
+/** Largo como lo cuenta Postgres (char_length) y la app (textLength): por code points, no por unidades UTF-16. */
+export function textLength(text: string): number {
+  return Array.from(text).length;
+}
+
+/**
+ * Nombre o descripción de un plato, como lo acepta la base: recortado, sin caracteres de control y
+ * de 1 a `max` caracteres. Ausente, null, "" o solo espacios: required si es obligatorio; si no, null.
+ */
+function readRecipeText(errors: ChefApiErrors, field: "name" | "description", value: unknown, max: number, required: boolean): string | null {
+  if (absent(value)) {
+    if (required) errors[field] = "required";
+    return null;
+  }
+  if (typeof value !== "string") {
+    errors[field] = "invalid";
+    return null;
+  }
+  const text = value.trim();
+  if (text === "") {
+    if (required) errors[field] = "required";
+    return null;
+  }
+  if (RECIPE_TEXT_CONTROL.test(text)) {
+    errors[field] = "invalid";
+    return null;
+  }
+  if (textLength(text) > max) {
+    errors[field] = "tooLong";
+    return null;
+  }
+  return text;
+}
+
+/**
+ * Valida y normaliza el cuerpo de POST /translate: el plato en español. Una clave que el contrato no
+ * tiene es payload invalid (no se ignora: el pedido es corto y lo arma solo la app).
+ */
+export function parseTranslateRequest(input: unknown): ChefParseResult<TranslationSource> {
+  if (!isRecord(input)) return failure({ payload: "invalid" });
+  const errors: ChefApiErrors = {};
+  if (Object.keys(input).some((key) => !TRANSLATE_KEYS.includes(key))) errors.payload = "invalid";
+  const name = readRecipeText(errors, "name", input["name"], RECIPE_NAME_MAX, true);
+  const description = readRecipeText(errors, "description", input["description"], RECIPE_DESCRIPTION_MAX, false);
+  if (Object.keys(errors).length > 0 || name === null) return failure(errors);
+  return { ok: true, value: { name, description } };
 }

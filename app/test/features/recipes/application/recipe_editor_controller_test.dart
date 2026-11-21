@@ -1,8 +1,9 @@
 // Editor de un plato: nuevo, guardado o copia; los chips de alérgenos, dieta
 // y meses; las filas de ingredientes (agregar, mover, quitar y deshacer); el
-// guardado con el mismo id en cada reintento; la foto (elegirla también en un
-// plato nuevo, sacarla, subirla después del plato y reintentar), y desactivar
-// o reactivar.
+// guardado con el mismo id en cada reintento; la traducción automática al
+// guardar (qué se traduce, la falla del traductor, el reintento y guardar
+// sin traducir); la foto (elegirla también en un plato nuevo, sacarla,
+// subirla después del plato y reintentar), y desactivar o reactivar.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,9 +18,11 @@ import 'package:radici/features/recipes/application/recipe_photo_providers.dart'
 import 'package:radici/features/recipes/data/recipe_photo_picker.dart';
 import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
+import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/domain/recipe_draft.dart';
 import 'package:radici/features/recipes/domain/recipe_photo.dart';
+import 'package:radici/features/recipes/domain/recipe_translation.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
 import '../../../support/fakes.dart';
@@ -36,6 +39,7 @@ void main() {
   late FakeRecipePhotosRepository photos;
   late FakeRecipePhotoPicker picker;
   late RecipePhotoProcessor processor;
+  late FakeTranslationRepository translator;
   late ProviderContainer container;
   late List<String> nextIds;
 
@@ -57,6 +61,7 @@ void main() {
         recipePhotosRepositoryProvider.overrideWithValue(photos),
         recipePhotoPickerProvider.overrideWithValue(picker),
         recipePhotoProcessorProvider.overrideWithValue((bytes) => processor(bytes)),
+        translationRepositoryProvider.overrideWithValue(translator),
         newIdProvider.overrideWithValue(() => nextIds.removeAt(0)),
       ],
     );
@@ -75,10 +80,11 @@ void main() {
       container.read(recipeCatalogProvider).requireValue.where((r) => r.id == id).firstOrNull;
 
   setUp(() {
-    repository = FakeRecipesRepository(sampleRecipes());
+    repository = FakeRecipesRepository([...sampleRecipes(), milanesa()]);
     photos = FakeRecipePhotosRepository();
     picker = FakeRecipePhotoPicker();
     processor = fakeProcessRecipePhoto;
+    translator = FakeTranslationRepository();
     nextIds = [_id1, _id2];
   });
 
@@ -259,14 +265,14 @@ void main() {
       final editor = open(create);
       expect(await editor.save(), RecipeSaveResult.invalid);
       expect(stateOf(create).showErrors, isTrue);
-      expect(stateOf(create).errors.nameIt, TextError.required);
+      expect(stateOf(create).errors.nameEs, TextError.required);
       expect(repository.saveCalls, isEmpty);
     });
 
-    test('alta rápida: nombre y tres alérgenos; queda en el catálogo y sin cambios pendientes', () async {
+    test('alta rápida: nombre en español y tres alérgenos; queda en el catálogo y sin cambios pendientes', () async {
       await start();
       final editor = open(create)
-        ..setNameIt('  Polpette al sugo ')
+        ..setNameEs('  Albóndigas con salsa ')
         ..toggleAllergen(Allergen.milk)
         ..toggleAllergen(Allergen.gluten)
         ..toggleAllergen(Allergen.eggs);
@@ -275,7 +281,10 @@ void main() {
 
       const expected = Recipe(
         id: _id1,
-        nameIt: 'Polpette al sugo',
+        nameIt: '[it] Albóndigas con salsa',
+        nameEs: 'Albóndigas con salsa',
+        nameEn: '[en] Albóndigas con salsa',
+        autoTranslated: {TranslatedField.nameIt, TranslatedField.nameEn},
         allergens: [Allergen.gluten, Allergen.eggs, Allergen.milk],
       );
       expect(repository.saveCalls, [expected]);
@@ -287,7 +296,9 @@ void main() {
     test('si falla: avisa, no pierde nada y el reintento manda el mismo id', () async {
       await start();
       repository.saveFailure = RecipesFailureKind.unavailable;
-      final editor = open(create)..setNameIt('Polpette al sugo');
+      final editor = open(create)
+        ..setNameEs('Albóndigas con salsa')
+        ..setNameIt('Polpette al sugo');
 
       expect(await editor.save(), RecipeSaveResult.failed);
       expect(stateOf(create).saveError, RecipesFailureKind.unavailable);
@@ -304,7 +315,7 @@ void main() {
     test('mientras guarda, otro toque no manda nada', () async {
       await start();
       repository.pendingSave = Completer<void>();
-      final editor = open(create)..setNameIt('Polpette al sugo');
+      final editor = open(create)..setNameEs('Albóndigas con salsa');
 
       final first = editor.save();
       await pumpEventQueue();
@@ -318,11 +329,17 @@ void main() {
 
     test('editar: manda el plato cambiado', () async {
       await start();
-      final editor = open(editLasagne)..setNameIt('Lasagne verdi');
+      final editor = open(editLasagne)
+        ..setNameIt('Lasagne verdi')
+        ..setDescriptionEn('Slow-cooked ragù.');
       expect(stateOf(editLasagne).dirty, isTrue);
 
       expect(await editor.save(), RecipeSaveResult.saved);
-      expect(repository.saveCalls.single, lasagne().copyWith(nameIt: 'Lasagne verdi'));
+      expect(
+        repository.saveCalls.single,
+        lasagne().copyWith(nameIt: 'Lasagne verdi', descriptionEn: 'Slow-cooked ragù.'),
+      );
+      expect(translator.calls, isEmpty, reason: 'todo escrito a mano y sin campos vacíos');
       expect(stateOf(editLasagne).dirty, isFalse);
     });
 
@@ -382,6 +399,758 @@ void main() {
       expect(repository.recipes[_id1]!.active, isTrue);
       expect(stateOf(copyFrittata).source!.active, isTrue);
       expect(inCatalog(frittataId)!.active, isFalse, reason: 'el original sigue desactivado');
+    });
+  });
+
+  // El español es la fuente (SPEC §4): al guardar se traduce lo vacío y lo
+  // automático cuyo español cambió; lo escrito a mano nunca se pisa.
+  group('la traducción al guardar', () {
+    const editMilanesa = RecipeEditorTarget.edit(milanesaId);
+    const SpanishText milanesaSpanish = (
+      name: 'Milanesa a la napolitana',
+      description: 'Con salsa de tomate, jamón y mozzarella.',
+    );
+
+    test('uno nuevo: traduce el nombre y la descripción y guarda los cuatro como automáticos', () async {
+      await start();
+      final editor = open(create)
+        ..setNameEs('  Milanesa a la napolitana ')
+        ..setDescriptionEs('Con salsa de tomate, jamón y mozzarella.')
+        ..toggleAllergen(Allergen.gluten);
+      expect(stateOf(create).errors.isEmpty, isTrue, reason: 'el italiano sale del español');
+
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      expect(translator.calls, [milanesaSpanish]);
+      const expected = Recipe(
+        id: _id1,
+        nameIt: '[it] Milanesa a la napolitana',
+        nameEs: 'Milanesa a la napolitana',
+        nameEn: '[en] Milanesa a la napolitana',
+        descriptionIt: '[it] Con salsa de tomate, jamón y mozzarella.',
+        descriptionEs: 'Con salsa de tomate, jamón y mozzarella.',
+        descriptionEn: '[en] Con salsa de tomate, jamón y mozzarella.',
+        autoTranslated: {
+          TranslatedField.nameIt,
+          TranslatedField.descriptionIt,
+          TranslatedField.nameEn,
+          TranslatedField.descriptionEn,
+        },
+        allergens: [Allergen.gluten],
+      );
+      expect(repository.saveCalls, [expected]);
+      expect(inCatalog(_id1), expected);
+      // Con la descripción en español alcanza para salir en la web.
+      expect(inCatalog(_id1)!.webStatus, RecipeWebStatus.published);
+      expect(stateOf(create).draft.nameIt, '[it] Milanesa a la napolitana', reason: 'el formulario muestra lo traducido');
+      expect(stateOf(create).translating, isFalse);
+      expect(stateOf(create).dirty, isFalse);
+    });
+
+    test('uno nuevo sin el nombre en español: no traduce ni guarda y lo marca', () async {
+      await start();
+      final editor = open(create)..setDescriptionEs('Con salsa de tomate.');
+      expect(await editor.save(), RecipeSaveResult.invalid);
+      expect(stateOf(create).errors.nameEs, TextError.required);
+      expect(stateOf(create).errors.nameIt, isNull, reason: 'falta el español, no el italiano');
+      expect(translator.calls, isEmpty);
+      expect(repository.saveCalls, isEmpty);
+    });
+
+    // Decisión de Nicolas del 20/11/2026: Evelyn cargó los platos en español
+    // en el campo italiano. Un plato guardado sin name_es se abre como si lo
+    // escrito en italiano estuviera en español: el italiano queda vacío, para
+    // traducir. Si se guarda sin traducir sigue siendo viejo (el español vuelve
+    // al italiano y name_es queda null): nunca queda trabado y la próxima vez
+    // se traduce.
+    group('un plato viejo (sin nombre en español)', () {
+      const editPastel = RecipeEditorTarget.edit(pastelId);
+      const copyPastel = RecipeEditorTarget.copy(pastelId);
+      const SpanishText pastelSpanish = (name: 'Pastel de papa', description: pastelDescription);
+
+      setUp(() => repository.recipes[pastelId] = pastel());
+
+      test('abre con el nombre y la descripción en español y el italiano vacío, sin la marca; sin guardar no cambia nada', () async {
+        await start();
+        open(editPastel);
+        final state = stateOf(editPastel);
+        expect([state.draft.nameEs, state.draft.descriptionEs], ['Pastel de papa', pastelDescription]);
+        expect([state.draft.nameIt, state.draft.descriptionIt], ['', '']);
+        expect(state.draft.autoTranslated, isEmpty, reason: 'nada lo tradujo');
+        expect(state.translationPlan.translate, {
+          TranslatedField.nameIt,
+          TranslatedField.descriptionIt,
+          TranslatedField.nameEn,
+          TranslatedField.descriptionEn,
+        });
+        expect(state.errors.isEmpty, isTrue);
+        expect(state.dirty, isFalse);
+        expect(translator.calls, isEmpty);
+        expect(repository.saveCalls, isEmpty);
+        expect(inCatalog(pastelId), pastel());
+      });
+
+      test('guardar sin tocar nada traduce y guarda el nombre en español, con el italiano y el inglés traducidos', () async {
+        await start();
+        final editor = open(editPastel);
+        expect(await editor.save(), RecipeSaveResult.saved);
+
+        expect(translator.calls, [pastelSpanish]);
+        final expected = pastel().copyWith(
+          nameIt: '[it] Pastel de papa',
+          nameEs: 'Pastel de papa',
+          nameEn: '[en] Pastel de papa',
+          descriptionIt: '[it] $pastelDescription',
+          descriptionEs: pastelDescription,
+          descriptionEn: '[en] $pastelDescription',
+          autoTranslated: {
+            TranslatedField.nameIt,
+            TranslatedField.descriptionIt,
+            TranslatedField.nameEn,
+            TranslatedField.descriptionEn,
+          },
+        );
+        expect(repository.saveCalls, [expected]);
+        expect(inCatalog(pastelId), expected);
+        expect(stateOf(editPastel).dirty, isFalse);
+        expect(stateOf(editPastel).movedToSpanish, isEmpty, reason: 'ya tiene name_es: no es viejo');
+      });
+
+      test('con su descripción en español: queda la suya, la italiana no se toca y el inglés escrito a mano tampoco', () async {
+        final old = lasagne().copyWith(id: _id2, nameEs: null);
+        repository.recipes[_id2] = old;
+        await start();
+        const editOld = RecipeEditorTarget.edit(_id2);
+        final editor = open(editOld);
+        final draft = stateOf(editOld).draft;
+        expect([draft.nameEs, draft.nameIt], ['Lasagne alla bolognese', '']);
+        expect([draft.descriptionEs, draft.descriptionIt], [lasagneDescriptionEs, lasagneDescriptionIt]);
+
+        expect(await editor.save(), RecipeSaveResult.saved);
+        expect(translator.calls, [(name: 'Lasagne alla bolognese', description: lasagneDescriptionEs)]);
+        expect(
+          repository.saveCalls.single,
+          old.copyWith(
+            nameIt: '[it] Lasagne alla bolognese',
+            nameEs: 'Lasagne alla bolognese',
+            descriptionEn: '[en] $lasagneDescriptionEs',
+            autoTranslated: {TranslatedField.nameIt, TranslatedField.descriptionEn},
+          ),
+        );
+      });
+
+      test('«Salva senza tradurre»: sigue viejo, con el español como quedó (corregido) en el italiano y name_es en null', () async {
+        await start();
+        translator.failure = TranslationFailureKind.unavailable;
+        final editor = open(editPastel)
+          ..setNameEs('Pastel de papas')
+          ..setDescriptionEs('Carne picada, puré y queso.');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        final plan = stateOf(editPastel).translationPlan;
+        expect(plan.canSkip, isTrue, reason: 'no hace falta escribir el italiano');
+        expect(plan.skipKeepsOld, isTrue);
+        expect(plan.skipEmptiesItalianDescription, isFalse, reason: 'sigue en la web');
+
+        expect(await editor.saveWithoutTranslating(), RecipeSaveResult.saved);
+        expect(translator.calls, hasLength(1));
+        final saved = repository.saveCalls.single;
+        expect(saved, pastel().copyWith(nameIt: 'Pastel de papas', descriptionIt: 'Carne picada, puré y queso.'));
+        expect([saved.nameEs, saved.descriptionEs, saved.nameEn, saved.descriptionEn], [null, null, null, null]);
+        expect(saved.autoTranslated, isEmpty);
+        expect(inCatalog(pastelId)!.webStatus, RecipeWebStatus.published, reason: 'sigue en la web');
+        // El formulario, como se volvería a abrir: el español, y el italiano
+        // por traducir.
+        expect(stateOf(editPastel).draft.nameIt, isEmpty);
+        expect(stateOf(editPastel).movedToSpanish, {TranslatedField.nameIt, TranslatedField.descriptionIt});
+      });
+
+      for (final kind in const [TranslationFailureKind.notConfigured, TranslationFailureKind.untranslatable]) {
+        test('${kind.name}: guarda sin traducir y sin preguntar, y sigue viejo como estaba', () async {
+          await start();
+          translator.failure = kind;
+          final editor = open(editPastel);
+          expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+          expect(stateOf(editPastel).untranslatedBecause, kind);
+          expect(stateOf(editPastel).translateError, isNull);
+          expect(repository.saveCalls.single, pastel());
+        });
+      }
+
+      test('guardado sin traducir, la próxima vez que se guarda se traduce', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(editPastel);
+        expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+
+        translator.failure = null;
+        expect(await editor.save(), RecipeSaveResult.saved);
+        final saved = repository.saveCalls.last;
+        expect([saved.nameEs, saved.nameIt, saved.nameEn], ['Pastel de papa', '[it] Pastel de papa', '[en] Pastel de papa']);
+        expect([saved.descriptionEs, saved.descriptionIt], [pastelDescription, '[it] $pastelDescription']);
+      });
+
+      test('guardado sin traducir, al volver a abrirlo abre como viejo y guardar lo traduce', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final first = container.listen(recipeEditorProvider(editPastel), (_, _) {});
+        container.read(recipeEditorProvider(editPastel).notifier).setNameEs('Pastel de papas');
+        expect(await container.read(recipeEditorProvider(editPastel).notifier).save(), RecipeSaveResult.savedUntranslated);
+        expect(inCatalog(pastelId), pastel().copyWith(nameIt: 'Pastel de papas'));
+        // Cerrar el editor: se descarta y el próximo se arma del catálogo.
+        first.close();
+        await pumpEventQueue();
+
+        translator.failure = null;
+        final editor = open(editPastel);
+        expect(stateOf(editPastel).untranslatedBecause, isNull, reason: 'es otro editor');
+        final draft = stateOf(editPastel).draft;
+        expect([draft.nameEs, draft.nameIt], ['Pastel de papas', '']);
+        expect([draft.descriptionEs, draft.descriptionIt], [pastelDescription, '']);
+        expect(stateOf(editPastel).dirty, isFalse);
+
+        expect(await editor.save(), RecipeSaveResult.saved);
+        expect(translator.calls.last, (name: 'Pastel de papas', description: pastelDescription));
+        expect([repository.saveCalls.last.nameEs, repository.saveCalls.last.nameIt], ['Pastel de papas', '[it] Pastel de papas']);
+      });
+
+      test('si guardarlo sin traducir falla, el formulario sigue por traducir y el reintento traduce', () async {
+        await start();
+        translator.failure = TranslationFailureKind.unavailable;
+        repository.saveFailure = RecipesFailureKind.unavailable;
+        final editor = open(editPastel);
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(await editor.saveWithoutTranslating(), RecipeSaveResult.failed);
+        expect(repository.saveCalls.single, pastel(), reason: 'lo que se intentó guardar sigue viejo');
+        final draft = stateOf(editPastel).draft;
+        expect([draft.nameEs, draft.nameIt], ['Pastel de papa', ''], reason: 'nada pasó al italiano');
+        expect([draft.descriptionEs, draft.descriptionIt], [pastelDescription, '']);
+        expect(stateOf(editPastel).errors.isEmpty, isTrue);
+
+        repository.saveFailure = null;
+        translator.failure = null;
+        expect(await editor.save(), RecipeSaveResult.saved);
+        expect(translator.calls, hasLength(2));
+        expect(repository.saveCalls.map((r) => r.id), [pastelId, pastelId]);
+        expect([repository.saveCalls.last.nameEs, repository.saveCalls.last.nameIt], ['Pastel de papa', '[it] Pastel de papa']);
+      });
+
+      test('lo escrito a mano en el italiano vale: no se traduce', () async {
+        await start();
+        final editor = open(editPastel)..setNameIt('Pasticcio di patate');
+        expect(await editor.save(), RecipeSaveResult.saved);
+        expect(translator.calls, [pastelSpanish]);
+        final saved = repository.saveCalls.single;
+        expect([saved.nameIt, saved.nameEs], ['Pasticcio di patate', 'Pastel de papa']);
+        expect(saved.autoTranslated, {
+          TranslatedField.descriptionIt,
+          TranslatedField.nameEn,
+          TranslatedField.descriptionEn,
+        });
+      });
+
+      test('sin traducir y con el nombre en italiano escrito a mano deja de ser viejo: name_es se guarda y la descripción queda por traducir', () async {
+        await start();
+        translator.failure = TranslationFailureKind.timeout;
+        final editor = open(editPastel)..setNameIt('Pasticcio di patate');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        final plan = stateOf(editPastel).translationPlan;
+        expect(plan.skipKeepsOld, isFalse);
+        expect(plan.skipEmptiesItalianDescription, isTrue, reason: 'el aviso dice que sale de la web');
+
+        expect(await editor.saveWithoutTranslating(), RecipeSaveResult.saved);
+        expect(
+          repository.saveCalls.single,
+          pastel().copyWith(
+            nameIt: 'Pasticcio di patate',
+            nameEs: 'Pastel de papa',
+            descriptionIt: null,
+            descriptionEs: pastelDescription,
+          ),
+        );
+      });
+
+      test('con el nombre en italiano escrito a mano y la traducción apagada no guarda solo: sacaría el plato de la web', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(editPastel)..setNameIt('Pasticcio di patate');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(stateOf(editPastel).translateError, TranslationFailureKind.notConfigured);
+        expect(repository.saveCalls, isEmpty);
+      });
+
+      test('sin traducir y con la descripción italiana escrita a mano: sigue viejo por el nombre y la descripción es la suya', () async {
+        await start();
+        translator.failure = TranslationFailureKind.unavailable;
+        final editor = open(editPastel)..setDescriptionIt('Carne, purè e formaggio.');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(await editor.saveWithoutTranslating(), RecipeSaveResult.saved);
+        expect(
+          repository.saveCalls.single,
+          pastel().copyWith(descriptionIt: 'Carne, purè e formaggio.', descriptionEs: pastelDescription),
+        );
+      });
+
+      test('el nombre en español es obligatorio: si se borra, falta el español y no el italiano', () async {
+        await start();
+        final editor = open(editPastel)..setNameEs('  ');
+        expect(await editor.save(), RecipeSaveResult.invalid);
+        expect(stateOf(editPastel).errors.nameEs, TextError.required);
+        expect(stateOf(editPastel).errors.nameIt, isNull);
+        expect(translator.calls, isEmpty);
+        expect(repository.saveCalls, isEmpty);
+      });
+
+      test('duplicarlo: el nombre pasa al español y el italiano se traduce; las descripciones no se copian', () async {
+        await start();
+        final editor = open(copyPastel);
+        final draft = stateOf(copyPastel).draft;
+        expect([draft.nameEs, draft.nameIt], ['Pastel de papa', '']);
+        expect([draft.descriptionIt, draft.descriptionEs, draft.descriptionEn], ['', '', '']);
+
+        expect(await editor.save(), RecipeSaveResult.saved);
+        expect(translator.calls, [(name: 'Pastel de papa', description: null)]);
+        expect(
+          repository.saveCalls.single,
+          pastel().copyWith(
+            id: _id1,
+            nameIt: '[it] Pastel de papa',
+            nameEs: 'Pastel de papa',
+            nameEn: '[en] Pastel de papa',
+            descriptionIt: null,
+            autoTranslated: {TranslatedField.nameIt, TranslatedField.nameEn},
+          ),
+        );
+        expect(inCatalog(pastelId), pastel(), reason: 'el original no cambia');
+      });
+
+      test('la copia sin traducir también queda vieja: el nombre en italiano y sin name_es', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(copyPastel);
+        expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+        expect(repository.saveCalls.single, pastel().copyWith(id: _id1, descriptionIt: null));
+        expect(stateOf(copyPastel).movedToSpanish, {TranslatedField.nameIt});
+      });
+
+      test('su nombre en italiano cuenta como el español para el aviso de nombre repetido', () async {
+        await start();
+        final editor = open(create);
+        container.listen(recipeSpanishNameTakenProvider(create), (_, _) {});
+        editor.setNameEs('pastel de papá');
+        expect(container.read(recipeSpanishNameTakenProvider(create)), isTrue);
+
+        open(copyPastel);
+        container.listen(recipeSpanishNameTakenProvider(copyPastel), (_, _) {});
+        expect(container.read(recipeSpanishNameTakenProvider(copyPastel)), isTrue, reason: 'la copia sin renombrar');
+        open(editPastel);
+        container.listen(recipeSpanishNameTakenProvider(editPastel), (_, _) {});
+        expect(container.read(recipeSpanishNameTakenProvider(editPastel)), isFalse, reason: 'su propio nombre');
+      });
+    });
+
+    test('sin descripción que traducir, a Anthropic no va la descripción', () async {
+      await start();
+      final editor = open(editMilanesa)..setNameEs('Napolitana');
+      expect(await editor.save(), RecipeSaveResult.saved);
+      expect(translator.calls, [(name: 'Napolitana', description: null)]);
+      expect(repository.saveCalls.single.descriptionIt, milanesa().descriptionIt);
+    });
+
+    test('uno que ya tenía español no lo puede perder', () async {
+      await start();
+      final editor = open(editLasagne)..setNameEs(' ');
+      expect(await editor.save(), RecipeSaveResult.invalid);
+      expect(stateOf(editLasagne).errors.nameEs, TextError.required);
+      expect(repository.saveCalls, isEmpty);
+    });
+
+    test('uno escrito a mano: traduce lo vacío y no toca lo demás', () async {
+      await start();
+      // La lasaña no tiene la descripción en inglés.
+      final editor = open(editLasagne)..setNameEs('Lasaña boloñesa');
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      expect(translator.calls, [(name: 'Lasaña boloñesa', description: lasagneDescriptionEs)]);
+      expect(
+        repository.saveCalls.single,
+        lasagne().copyWith(
+          nameEs: 'Lasaña boloñesa',
+          descriptionEn: '[en] $lasagneDescriptionEs',
+          autoTranslated: {TranslatedField.descriptionEn},
+        ),
+      );
+    });
+
+    test('con campos automáticos y el español sin cambios: no traduce y guarda las marcas', () async {
+      await start();
+      final editor = open(editMilanesa)..toggleAllergen(Allergen.mustard);
+      expect(await editor.save(), RecipeSaveResult.saved);
+      expect(translator.calls, isEmpty);
+      expect(repository.saveCalls.single.autoTranslated, milanesa().autoTranslated);
+    });
+
+    test('cambió la descripción en español: traduce las descripciones automáticas, el resto queda', () async {
+      await start();
+      final editor = open(editMilanesa)..setDescriptionEs('Con tomate y queso.');
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      expect(translator.calls, [(name: 'Milanesa a la napolitana', description: 'Con tomate y queso.')]);
+      expect(
+        repository.saveCalls.single,
+        milanesa().copyWith(
+          descriptionEs: 'Con tomate y queso.',
+          descriptionIt: '[it] Con tomate y queso.',
+          descriptionEn: '[en] Con tomate y queso.',
+        ),
+      );
+    });
+
+    test('se borró la descripción en español: las automáticas se vacían sin llamar al traductor', () async {
+      await start();
+      final editor = open(editMilanesa)..setDescriptionEs('');
+      expect(await editor.save(), RecipeSaveResult.saved);
+
+      expect(translator.calls, isEmpty);
+      final saved = repository.saveCalls.single;
+      expect([saved.descriptionEs, saved.descriptionIt, saved.descriptionEn], [null, null, null]);
+      expect(saved.autoTranslated, {TranslatedField.nameEn});
+      expect(stateOf(editMilanesa).draft.descriptionIt, isEmpty);
+    });
+
+    test('tocar un campo a mano lo saca de los automáticos y no se vuelve a traducir', () async {
+      await start();
+      final editor = open(editMilanesa)..setNameEn('Milanese Neapolitan style');
+      expect(stateOf(editMilanesa).draft.autoTranslated, {
+        TranslatedField.descriptionIt,
+        TranslatedField.descriptionEn,
+      });
+
+      editor.setNameEs('Napolitana');
+      expect(await editor.save(), RecipeSaveResult.saved);
+      expect(translator.calls, isEmpty, reason: 'los dos nombres están escritos a mano');
+      expect(repository.saveCalls.single.nameEn, 'Milanese Neapolitan style');
+      expect(repository.saveCalls.single.autoTranslated, {
+        TranslatedField.descriptionIt,
+        TranslatedField.descriptionEn,
+      });
+    });
+
+    test('mientras traduce lo dice, y otro toque no manda nada', () async {
+      await start();
+      translator.pending = Completer<void>();
+      final editor = open(create)..setNameEs('Locro');
+
+      final first = editor.save();
+      await pumpEventQueue();
+      expect(stateOf(create).translating, isTrue);
+      expect(stateOf(create).busy, isTrue);
+      expect(await editor.save(), RecipeSaveResult.busy);
+      expect(await editor.saveWithoutTranslating(), RecipeSaveResult.busy);
+
+      translator.pending!.complete();
+      expect(await first, RecipeSaveResult.saved);
+      expect(translator.calls, hasLength(1));
+      expect(repository.saveCalls, hasLength(1));
+      expect(stateOf(create).translating, isFalse);
+    });
+
+    for (final kind in TranslationFailureKind.values) {
+      test('si el traductor falla (${kind.name}): no guarda nada y lo escrito queda', () async {
+        await start();
+        translator.failure = kind;
+        final editor = open(editMilanesa)
+          ..setNameEs('Napolitana')
+          ..setNameIt('Cotoletta');
+        final before = stateOf(editMilanesa).draft;
+
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(stateOf(editMilanesa).translateError, kind);
+        expect(stateOf(editMilanesa).translating, isFalse);
+        expect(stateOf(editMilanesa).draft, before, reason: 'ni lo escrito ni las marcas cambian');
+        expect(repository.saveCalls, isEmpty);
+        expect(inCatalog(milanesaId), milanesa());
+      });
+    }
+
+    test('el reintento traduce de nuevo y guarda con el mismo id', () async {
+      await start();
+      translator.failure = TranslationFailureKind.timeout;
+      final editor = open(create)..setNameEs('Locro');
+      expect(await editor.save(), RecipeSaveResult.translationFailed);
+
+      translator.failure = null;
+      expect(await editor.save(), RecipeSaveResult.saved);
+      expect(stateOf(create).translateError, isNull);
+      expect(translator.calls, [(name: 'Locro', description: null), (name: 'Locro', description: null)]);
+      expect(repository.saveCalls.single.id, _id1);
+      expect(repository.saveCalls.single.nameIt, '[it] Locro');
+    });
+
+    test('si la traducción llegó pero save_recipe falló, el reintento no vuelve a traducir', () async {
+      await start();
+      repository.saveFailure = RecipesFailureKind.unavailable;
+      final editor = open(create)..setNameEs('Locro');
+      expect(await editor.save(), RecipeSaveResult.failed);
+      expect(stateOf(create).draft.nameIt, '[it] Locro', reason: 'lo traducido queda en el formulario');
+      expect(stateOf(create).dirty, isTrue);
+
+      repository.saveFailure = null;
+      expect(await editor.save(), RecipeSaveResult.saved);
+      expect(translator.calls, hasLength(1));
+      expect(repository.saveCalls.map((r) => r.id), [_id1, _id1]);
+      expect(repository.saveCalls.last.autoTranslated, {TranslatedField.nameIt, TranslatedField.nameEn});
+    });
+
+    test('«Annulla» de un ingrediente quitado no hace nada mientras traduce', () async {
+      await start();
+      translator.pending = Completer<void>();
+      final editor = open(editLasagne);
+      final removed = editor.removeIngredient(stateOf(editLasagne).draft.ingredients.first.key)!;
+      final saving = editor.save();
+      await pumpEventQueue();
+      expect(stateOf(editLasagne).translating, isTrue);
+
+      editor.restoreIngredient(removed);
+      expect(stateOf(editLasagne).draft.ingredients, hasLength(2), reason: 'quedaría fuera del guardado');
+
+      translator.pending!.complete();
+      expect(await saving, RecipeSaveResult.saved);
+      expect(repository.saveCalls.single.ingredients, hasLength(2));
+    });
+
+    test('si el formulario cambió mientras traducía, la traducción no pisa nada ni se guarda', () async {
+      await start();
+      translator.pending = Completer<void>();
+      final editor = open(create)..setNameEs('Locro');
+      final saving = editor.save();
+      await pumpEventQueue();
+      editor.setNameIt('Locro criollo');
+
+      translator.pending!.complete();
+      expect(await saving, RecipeSaveResult.stale);
+      expect(stateOf(create).draft.nameIt, 'Locro criollo');
+      expect(stateOf(create).translating, isFalse);
+      expect(repository.saveCalls, isEmpty);
+    });
+
+    // Decisión del 20/11/2026: con la traducción apagada (501) y solo campos
+    // vacíos para traducir no queda nada viejo, así que guarda sin traducir
+    // y la lista lo dice; si algo automático quedaría viejo, o falta el
+    // nombre en italiano, sigue el aviso con las salidas.
+    group('con la traducción apagada', () {
+      test('y solo campos vacíos para traducir: guarda sin traducir', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        // La lasaña no tiene la descripción en inglés.
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+
+        expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+        expect(translator.calls, hasLength(1));
+        expect(repository.saveCalls.single, lasagne().copyWith(allergens: [...lasagne().allergens, Allergen.sesame]));
+        expect(stateOf(editLasagne).translateError, isNull);
+        expect(stateOf(editLasagne).translating, isFalse);
+        expect(stateOf(editLasagne).dirty, isFalse);
+      });
+
+      test('un plato nuevo con el italiano escrito a mano: guarda sin traducir el inglés', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(create)
+          ..setNameEs('Locro')
+          ..setNameIt('Locro');
+        expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+        expect(repository.saveCalls.single, const Recipe(id: _id1, nameIt: 'Locro', nameEs: 'Locro'));
+      });
+
+      test('si algo automático quedaría viejo, no guarda y sigue el aviso', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(editMilanesa)..setDescriptionEs('Con tomate y queso.');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(stateOf(editMilanesa).translateError, TranslationFailureKind.notConfigured);
+        expect(repository.saveCalls, isEmpty);
+      });
+
+      test('un plato nuevo sin el nombre en italiano tampoco: sigue el aviso', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(create)..setNameEs('Locro');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(repository.saveCalls, isEmpty);
+      });
+
+      test('con otra falla y solo campos vacíos, no guarda: sigue el aviso', () async {
+        await start();
+        translator.failure = TranslationFailureKind.unavailable;
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(repository.saveCalls, isEmpty);
+      });
+
+      test('si save_recipe falla, lo dice como cualquier guardado y no se pierde nada', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        repository.saveFailure = RecipesFailureKind.unavailable;
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+        expect(await editor.save(), RecipeSaveResult.failed);
+        expect(stateOf(editLasagne).saveError, RecipesFailureKind.unavailable);
+        expect(stateOf(editLasagne).draft.allergens, contains(Allergen.sesame));
+      });
+    });
+
+    // Revisión del 20/11/2026: un 422 o un 429 no se arregla reintentando lo
+    // mismo (y el 429 rechazado gasta cupo); con el mismo pedido no se vuelve
+    // a llamar. El 422 con solo campos vacíos guarda sin traducir, como el
+    // 501.
+    group('las negativas que no se arreglan reintentando', () {
+      for (final kind in const [TranslationFailureKind.untranslatable, TranslationFailureKind.rateLimited]) {
+        test('${kind.name}: con el mismo español va directo al aviso, sin llamar; con otro, llama', () async {
+          await start();
+          translator.failure = kind;
+          final editor = open(editMilanesa)..setDescriptionEs('Con tomate y queso.');
+          expect(await editor.save(), RecipeSaveResult.translationFailed);
+          expect(stateOf(editMilanesa).refusal, (
+            kind: kind,
+            request: (name: 'Milanesa a la napolitana', description: 'Con tomate y queso.'),
+          ));
+
+          expect(await editor.save(), RecipeSaveResult.translationFailed);
+          expect(stateOf(editMilanesa).translateError, kind);
+          expect(translator.calls, hasLength(1), reason: 'el mismo pedido no vuelve a la red');
+
+          translator.failure = null;
+          editor.setDescriptionEs('Con tomate, jamón y queso.');
+          expect(await editor.save(), RecipeSaveResult.saved);
+          expect(translator.calls, hasLength(2));
+          expect(stateOf(editMilanesa).refusal, isNull);
+        });
+      }
+
+      test('un 503 no queda guardado: el reintento vuelve a llamar', () async {
+        await start();
+        translator.failure = TranslationFailureKind.unavailable;
+        final editor = open(editMilanesa)..setDescriptionEs('Con tomate y queso.');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(stateOf(editMilanesa).refusal, isNull);
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(translator.calls, hasLength(2));
+      });
+
+      test('un 422 con solo campos vacíos guarda sin traducir y dice por qué', () async {
+        await start();
+        translator.failure = TranslationFailureKind.untranslatable;
+        // La lasaña no tiene la descripción en inglés.
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+        expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+        expect(stateOf(editLasagne).untranslatedBecause, TranslationFailureKind.untranslatable);
+        expect(repository.saveCalls.single.descriptionEn, isNull);
+      });
+
+      test('un 429 con solo campos vacíos no guarda: sigue el aviso', () async {
+        await start();
+        translator.failure = TranslationFailureKind.rateLimited;
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(repository.saveCalls, isEmpty);
+      });
+
+      test('después de un guardado normal, el motivo de guardar sin traducir no queda', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(editLasagne)..toggleAllergen(Allergen.sesame);
+        expect(await editor.save(), RecipeSaveResult.savedUntranslated);
+        expect(stateOf(editLasagne).untranslatedBecause, TranslationFailureKind.notConfigured);
+        translator.failure = null;
+        expect(await editor.save(), RecipeSaveResult.saved);
+        expect(stateOf(editLasagne).untranslatedBecause, isNull);
+      });
+    });
+
+    group('guardar sin traducir', () {
+      test('lo automático viejo se vacía, lo escrito a mano queda y el español se guarda', () async {
+        await start();
+        translator.failure = TranslationFailureKind.unavailable;
+        final editor = open(editMilanesa)
+          ..setNameEs('Napolitana')
+          ..setDescriptionEs('Con tomate.');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(stateOf(editMilanesa).translationPlan.canSkip, isTrue);
+
+        expect(await editor.saveWithoutTranslating(), RecipeSaveResult.saved);
+        expect(translator.calls, hasLength(1), reason: 'no vuelve a llamar');
+        final saved = repository.saveCalls.single;
+        expect(saved.nameIt, 'Cotoletta alla napoletana');
+        expect([saved.nameEs, saved.descriptionEs], ['Napolitana', 'Con tomate.']);
+        expect([saved.descriptionIt, saved.nameEn, saved.descriptionEn], [null, null, null]);
+        expect(saved.autoTranslated, isEmpty);
+        expect(stateOf(editMilanesa).translateError, isNull);
+        expect(stateOf(editMilanesa).draft.nameEn, isEmpty, reason: 'el formulario muestra lo que se guardó');
+      });
+
+      test('uno nuevo sin el nombre en italiano no se puede; escribiéndolo, sí', () async {
+        await start();
+        translator.failure = TranslationFailureKind.notConfigured;
+        final editor = open(create)..setNameEs('Locro');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(stateOf(create).translationPlan.canSkip, isFalse);
+        expect(await editor.saveWithoutTranslating(), RecipeSaveResult.invalid);
+        expect(repository.saveCalls, isEmpty);
+
+        editor.setNameIt('Locro');
+        expect(stateOf(create).translationPlan.canSkip, isTrue);
+        expect(await editor.saveWithoutTranslating(), RecipeSaveResult.saved);
+        expect(repository.saveCalls.single, const Recipe(id: _id1, nameIt: 'Locro', nameEs: 'Locro'));
+        expect(translator.calls, hasLength(1));
+      });
+
+      test('después de guardar sin traducir, lo vacío se traduce la próxima vez', () async {
+        await start();
+        translator.failure = TranslationFailureKind.timeout;
+        final editor = open(create)
+          ..setNameEs('Locro')
+          ..setNameIt('Locro');
+        expect(await editor.save(), RecipeSaveResult.translationFailed);
+        expect(await editor.saveWithoutTranslating(), RecipeSaveResult.saved);
+
+        translator.failure = null;
+        expect(await editor.save(), RecipeSaveResult.saved);
+        expect(repository.saveCalls.last.nameEn, '[en] Locro');
+        expect(repository.saveCalls.last.nameIt, 'Locro', reason: 'escrito a mano');
+      });
+    });
+
+    // SPEC §4: duplicar no copia las descripciones de la web, así que
+    // tampoco sus marcas; las de los nombres copiados, sí.
+    test('la copia lleva las marcas de los nombres; si cambia el español, se traduce el automático', () async {
+      await start();
+      const copyMilanesa = RecipeEditorTarget.copy(milanesaId);
+      final editor = open(copyMilanesa);
+      expect(stateOf(copyMilanesa).draft.autoTranslated, {TranslatedField.nameEn});
+
+      editor.setNameEs('Milanesa de pollo');
+      expect(await editor.save(), RecipeSaveResult.saved);
+      expect(translator.calls, [(name: 'Milanesa de pollo', description: null)]);
+      final saved = repository.saveCalls.single;
+      expect(saved.id, _id1);
+      expect(saved.nameIt, 'Cotoletta alla napoletana', reason: 'escrito a mano en el original');
+      expect(saved.nameEn, '[en] Milanesa de pollo');
+      expect([saved.descriptionIt, saved.descriptionEs, saved.descriptionEn], [null, null, null]);
+      expect(saved.autoTranslated, {TranslatedField.nameEn});
+      expect(inCatalog(milanesaId), milanesa(), reason: 'el original no cambia');
+    });
+
+    test('el aviso de nombre repetido no sale si el italiano automático se va a traducir de nuevo', () async {
+      final auto = milanesa().copyWith(
+        autoTranslated: {...milanesa().autoTranslated, TranslatedField.nameIt},
+      );
+      repository.recipes[milanesaId] = auto;
+      await start();
+      const copyMilanesa = RecipeEditorTarget.copy(milanesaId);
+      final editor = open(copyMilanesa);
+      container.listen(recipeNameTakenProvider(copyMilanesa), (_, _) {});
+      expect(container.read(recipeNameTakenProvider(copyMilanesa)), isTrue);
+      editor.setNameEs('Milanesa de pollo');
+      expect(container.read(recipeNameTakenProvider(copyMilanesa)), isFalse);
     });
   });
 
@@ -809,6 +1578,21 @@ void main() {
     expect(photos.uploadCalls, [_id2]);
     expect(photos.setCalls, [(recipeId: _id1, photoId: _id2)]);
     expect(inCatalog(_id1)!.photoId, _id2);
+  });
+
+  test('aviso de nombre en español repetido: un plato nuevo lo ve mientras escribe', () async {
+    await start();
+    final editor = open(create);
+    container.listen(recipeSpanishNameTakenProvider(create), (_, _) {});
+    expect(container.read(recipeSpanishNameTakenProvider(create)), isFalse, reason: 'vacío');
+    editor.setNameEs('  LASAÑA a la boloñesa');
+    expect(container.read(recipeSpanishNameTakenProvider(create)), isTrue);
+    editor.setNameEs('Lasaña de verduras');
+    expect(container.read(recipeSpanishNameTakenProvider(create)), isFalse);
+
+    open(editLasagne);
+    container.listen(recipeSpanishNameTakenProvider(editLasagne), (_, _) {});
+    expect(container.read(recipeSpanishNameTakenProvider(editLasagne)), isFalse, reason: 'su propio nombre');
   });
 
   test('aviso de nombre repetido: la copia tiene el mismo nombre hasta cambiarlo', () async {

@@ -11,6 +11,7 @@ import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
 import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
+import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/domain/recipe_photo.dart';
 
@@ -349,7 +350,12 @@ void main() {
     await start();
     final notice = container.read(recipeSavedNoticeProvider.notifier);
     notice.post(lasagne());
-    expect(container.read(recipeSavedNoticeProvider), lasagne());
+    expect(container.read(recipeSavedNoticeProvider), (recipe: lasagne(), untranslatedBecause: null));
+    notice.post(lasagne(), untranslatedBecause: TranslationFailureKind.untranslatable);
+    expect(
+      container.read(recipeSavedNoticeProvider),
+      (recipe: lasagne(), untranslatedBecause: TranslationFailureKind.untranslatable),
+    );
     notice.clear();
     expect(container.read(recipeSavedNoticeProvider), isNull);
   });

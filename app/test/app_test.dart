@@ -13,7 +13,7 @@ import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
 import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
-import 'package:radici/features/requests/presentation/inbox_screen.dart';
+import 'package:radici/features/today/presentation/today_screen.dart';
 
 import 'support/fakes.dart';
 import 'support/pump_app.dart';
@@ -104,7 +104,7 @@ void main() {
   });
 
   group('a qué área va cada usuario', () {
-    testWidgets('la cocinera con sesión guardada entra directo a Richieste', (
+    testWidgets('la cocinera con sesión guardada entra directo a Hoy', (
       tester,
     ) async {
       await pumpRadiciApp(
@@ -121,7 +121,7 @@ void main() {
           ),
         ],
       );
-      expect(find.byType(InboxScreen), findsOneWidget);
+      expect(find.byType(TodayScreen), findsOneWidget);
     });
 
     testWidgets('otro usuario ve el área de clientes y puede salir', (
@@ -175,7 +175,7 @@ void main() {
       accounts.failure = null;
       await tester.tap(find.byKey(const ValueKey('session-retry')));
       await tester.pumpAndSettle();
-      expect(find.byType(InboxScreen), findsOneWidget);
+      expect(find.byType(TodayScreen), findsOneWidget);
     });
 
     testWidgets('web (/gestione/): sin sesión arranca en el login', (

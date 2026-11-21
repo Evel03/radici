@@ -1,17 +1,18 @@
 // Lógica de la Edge Function chef: el área de Evelyn (docs/contracts/chef-api.md). Es la única puerta
 // para crear, mover y cancelar sesiones: los estados de sesión solo cambian vía Edge Functions.
-// No depende de Deno ni de supabase-js: index.ts arma las dependencias reales y los tests
-// (handler.test.ts, en Node) las simulan.
+// También traduce los platos con Claude. No depende de Deno, de supabase-js ni del SDK de Anthropic:
+// index.ts arma las dependencias reales y los tests (handler.test.ts, en Node) las simulan.
 //
-// Rutas, todas POST: /bookings (chef_create_booking), /sessions/move (chef_move_session) y
-// /sessions/cancel (chef_cancel_sessions). Orden: CORS → ruta (404) → método (405) → configuración
-// (500) → token (401) → usuario, con auth.getUser (401; 503 si Auth no responde) → su cocina, con
-// public.chef_id_for_user: la de la que es dueña o colaborador (403 si no es de ninguna) → tipo (415)
-// → tamaño (413) → JSON y validación (400) → función SQL con la cocina del token → 200 o 201, o el
-// error de la base traducido (400, 404, 409, 500 o 503).
+// Rutas, todas POST: /bookings (chef_create_booking), /sessions/move (chef_move_session),
+// /sessions/cancel (chef_cancel_sessions) y /translate (el traductor). Orden: CORS → ruta (404) →
+// método (405) → configuración (500) → token (401) → usuario, con auth.getUser (401; 503 si Auth no
+// responde) → su cocina, con public.chef_id_for_user: la de la que es dueña o colaborador (403 si no
+// es de ninguna) → tipo (415) → tamaño (413) → JSON y validación (400) → función SQL con la cocina del
+// token → 200 o 201, o el error de la base traducido (400, 404, 409, 500 o 503). /translate, después
+// de la validación: traductor configurado (503) → límite por cocina (429) → traductor (200 o 503).
 //
-// Los logs llevan solo evento, ruta, códigos, contadores e ids: nunca nombres, teléfonos, emails,
-// direcciones, notas, restricciones ni fechas.
+// Los logs llevan solo evento, ruta, códigos, contadores, largos e ids: nunca nombres, teléfonos,
+// emails, direcciones, notas, restricciones, fechas ni el texto de un plato.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import {
   CHEF_MAX_PAYLOAD_BYTES,
@@ -21,6 +22,8 @@ import {
   parseBookingRequest,
   parseCancelSessionsRequest,
   parseMoveSessionRequest,
+  parseTranslateRequest,
+  textLength,
   type BookingResponse,
   type BookingWeek,
   type CancelReason,
@@ -33,6 +36,7 @@ import {
   type ChefRoute,
   type MoveSessionResponse,
   type NormalizedBooking,
+  type TranslationSource,
 } from "../_shared/chef_api.ts";
 import { corsHeaders, parseAllowedOrigins, type OriginRule } from "../_shared/cors.ts";
 import {
@@ -42,9 +46,20 @@ import {
   readBodyLimited,
   resolveServiceKey,
   safeDbMessage,
+  type LogFields,
   type Logger,
 } from "../_shared/edge.ts";
 import { isIsoDate, isOneOf, isUuid, romeToday, type Locale, type Meal, type RequestType } from "../_shared/public_request.ts";
+import {
+  TRANSLATE_RATE_LIMITS,
+  TRANSLATE_RETRY_AFTER_SECONDS,
+  readTranslationOutput,
+  translateRateKey,
+  readTranslationConfig,
+  type TranslationMode,
+  type Translator,
+  type TranslatorReply,
+} from "./translation.ts";
 
 /** Nombre de la función: la plataforma le pasa la ruta como /chef/<ruta>. */
 export const FUNCTION_NAME = "chef";
@@ -62,18 +77,39 @@ export interface ChefConfig {
   allowedOrigins: OriginRule[];
   /** Variables sin las que no se puede atender nada (→ 500). Las pone Supabase. */
   missing: string[];
+  /**
+   * De dónde sale la traducción de los platos: Claude (ANTHROPIC_API_KEY), la de mentira
+   * (TRANSLATE_TRANSPORT=fake, solo con un Supabase local) u off (POST /translate responde 501). La
+   * clave no queda acá: la lee solo index.ts para armar el cliente.
+   */
+  translation: TranslationMode;
+  /** TRANSLATE_TRANSPORT=fake fuera de un Supabase local: ignorado (error al arrancar y en cada pedido). */
+  translationFakeIgnored: boolean;
 }
 
 export function readChefConfig(get: (name: string) => string | undefined): ChefConfig {
   const missing: string[] = [];
   if (!get("SUPABASE_URL")?.trim()) missing.push("SUPABASE_URL");
   if (!resolveServiceKey(get)) missing.push("SUPABASE_SECRET_KEYS");
-  return { allowedOrigins: parseAllowedOrigins(get("ALLOWED_ORIGINS")), missing };
+  const translation = readTranslationConfig(get);
+  return {
+    allowedOrigins: parseAllowedOrigins(get("ALLOWED_ORIGINS")),
+    missing,
+    translation: translation.mode,
+    translationFakeIgnored: translation.fakeIgnored,
+  };
 }
 
-/** Sin ALLOWED_ORIGINS la bandeja web (/gestione/) no puede llamar a la función; la app nativa sí. */
+/**
+ * Lo que falta sin cortar todo, para el aviso del arranque (solo nombres de variables): sin
+ * ALLOWED_ORIGINS la bandeja web (/gestione/) no puede llamar a la función (la app nativa sí); sin
+ * ANTHROPIC_API_KEY la traducción de los platos queda apagada.
+ */
 export function chefConfigWarnings(config: ChefConfig): string[] {
-  return config.allowedOrigins.length === 0 ? ["ALLOWED_ORIGINS"] : [];
+  const warnings: string[] = [];
+  if (config.allowedOrigins.length === 0) warnings.push("ALLOWED_ORIGINS");
+  if (config.translation === "off") warnings.push("ANTHROPIC_API_KEY");
+  return warnings;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +169,11 @@ export interface ChefStore {
   moveSession(params: MoveSessionParams): Promise<unknown>;
   /** public.chef_cancel_sessions: el jsonb tal cual. */
   cancelSessions(params: CancelSessionsParams): Promise<unknown>;
+  /**
+   * public.hit_public_request_rate (la misma del formulario, con otra clave: translateRateKey):
+   * registra el intento y dice si está dentro de los topes.
+   */
+  hitRateLimit(key: string, maxPerHour: number, maxPerDay: number): Promise<boolean>;
 }
 
 export function toCreateBookingParams(chefId: string, value: NormalizedBooking): CreateBookingParams {
@@ -437,6 +478,8 @@ export function bearerToken(header: string | null): string | null {
 export interface ChefHandlerDeps {
   config: ChefConfig;
   store: ChefStore;
+  /** Claude (claude_translator.ts), el de mentira o null si la traducción está apagada (503). */
+  translator: Translator | null;
   now: () => Date;
   log: Logger;
 }
@@ -611,6 +654,112 @@ async function cancelRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, in
   return reply(200, result);
 }
 
+/** Una traducción que no salió: la respuesta, y el nivel y los campos del log translate_failed. */
+interface TranslateFailure {
+  status: 422 | 500 | 501 | 503;
+  body: ChefErrorBody;
+  level: "warn" | "error";
+  fields: LogFields;
+}
+
+const UNTRANSLATABLE: ChefErrorBody = { error: "untranslatable" };
+const UNAVAILABLE: ChefErrorBody = { error: "unavailable" };
+const SERVER: ChefErrorBody = { error: "server" };
+
+/**
+ * Por qué no hubo traducción → la respuesta (contrato §12). 503 solo lo que se puede reintentar (tiempo
+ * agotado, conexión, un 5xx o un 429 de Anthropic); 422 lo que no sale con este plato (una negativa,
+ * un corte por max_tokens, otro stop_reason o una salida que no pasa la validación); 500 lo que está
+ * mal configurado o roto (otro 4xx de Anthropic, como una clave inválida, o un error del SDK).
+ */
+export function translateFailure(outcome: Exclude<TranslatorReply, { kind: "text" }> | { kind: "invalidOutput" }): TranslateFailure {
+  switch (outcome.kind) {
+    case "refusal":
+      return { status: 422, body: UNTRANSLATABLE, level: "warn", fields: { reason: "refusal", category: outcome.category } };
+    case "maxTokens":
+      return { status: 422, body: UNTRANSLATABLE, level: "warn", fields: { reason: "maxTokens" } };
+    case "invalidOutput":
+      return { status: 422, body: UNTRANSLATABLE, level: "error", fields: { reason: "invalidOutput" } };
+    case "failed": {
+      const fields: LogFields = { reason: outcome.reason, apiStatus: outcome.status };
+      switch (outcome.reason) {
+        case "stopReason":
+          return { status: 422, body: UNTRANSLATABLE, level: "error", fields };
+        case "timeout":
+        case "connection":
+        case "rateLimited":
+          return { status: 503, body: UNAVAILABLE, level: "error", fields };
+        case "apiError":
+          return outcome.status !== null && outcome.status >= 500
+            ? { status: 503, body: UNAVAILABLE, level: "error", fields }
+            : { status: 500, body: SERVER, level: "error", fields };
+        default:
+          return { status: 500, body: SERVER, level: "error", fields };
+      }
+    }
+  }
+}
+
+/**
+ * POST /translate: el plato en español → italiano e inglés (contrato §12). Sin traductor, 501 sin
+ * gastar el cupo; pasado el límite de la cocina, 429; si el traductor falla, 503, 422 o 500 según el
+ * motivo (translateFailure). Nunca una traducción a medias. El log lleva largos y duración, nunca el
+ * texto.
+ */
+async function translateRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, input: unknown, reply: Reply): Promise<Response> {
+  const { log } = deps;
+  const route = CHEF_ROUTES.translate;
+  const parsed = parseTranslateRequest(input);
+  if (!parsed.ok) return invalidPayload(log, route, parsed, reply);
+
+  const source: TranslationSource = parsed.value;
+  const lengths: LogFields = {
+    nameLength: textLength(source.name),
+    descriptionLength: source.description === null ? null : textLength(source.description),
+  };
+  const fail = (failure: TranslateFailure, extra: LogFields = {}): Response => {
+    log(failure.level, "translate_failed", { route, ...failure.fields, ...extra, ...lengths });
+    return reply(failure.status, failure.body);
+  };
+
+  const translator = deps.translator;
+  if (!translator) {
+    // TRANSLATE_TRANSPORT=fake fuera de local es un error de configuración; sin clave, una decisión.
+    return deps.config.translationFakeIgnored
+      ? fail({ status: 501, body: { error: "notConfigured" }, level: "error", fields: { reason: "fakeIgnored" } })
+      : fail({ status: 501, body: { error: "notConfigured" }, level: "warn", fields: { reason: "notConfigured" } });
+  }
+
+  let allowed: boolean;
+  try {
+    allowed = await deps.store.hitRateLimit(await translateRateKey(chefId), TRANSLATE_RATE_LIMITS.perHour, TRANSLATE_RATE_LIMITS.perDay);
+  } catch (error) {
+    logStoreError(log, error, "rate_limit");
+    const failure = serverFailure(error);
+    return reply(failure.status, failure.body);
+  }
+  if (!allowed) {
+    log("info", "rate_limited", { route, userId });
+    return reply(429, { error: "rateLimited" }, { "Retry-After": String(TRANSLATE_RETRY_AFTER_SECONDS) });
+  }
+
+  const started = deps.now().getTime();
+  let result: TranslatorReply;
+  try {
+    result = await translator.translate(source);
+  } catch {
+    // Nunca el mensaje: podría traer el texto del plato.
+    result = { kind: "failed", reason: "unexpected", status: null };
+  }
+  const ms = Math.max(0, deps.now().getTime() - started);
+
+  if (result.kind !== "text") return fail(translateFailure(result), { ms });
+  const translation = readTranslationOutput(result.text, source);
+  if (!translation) return fail(translateFailure({ kind: "invalidOutput" }), { ms });
+  log("info", "translated", { route, ms, ...lengths, userId });
+  return reply(200, translation);
+}
+
 export function createChefHandler(deps: ChefHandlerDeps): (request: Request) => Promise<Response> {
   const { config, log } = deps;
 
@@ -665,6 +814,8 @@ export function createChefHandler(deps: ChefHandlerDeps): (request: Request) => 
           return await moveRoute(deps, auth, input, reply);
         case CHEF_ROUTES.cancelSessions:
           return await cancelRoute(deps, auth, input, reply);
+        case CHEF_ROUTES.translate:
+          return await translateRoute(deps, auth, input, reply);
         default:
           return reply(404, { error: "notFound" });
       }

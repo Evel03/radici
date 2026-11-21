@@ -86,6 +86,24 @@ void main() {
       expect(old.descriptionIt, isNull);
     });
 
+    // recipes.auto_translated (20261120090000_recipe_translations.sql): los
+    // campos que llenó la traducción automática y Evelyn no tocó.
+    test('los campos de la traducción automática; sin la columna (o vacía), ninguno', () {
+      final recipe = Recipe.fromJson(
+        recipeRow(descriptionEn: 'Slow-cooked ragù.', autoTranslated: const ['description_en', 'name_en']),
+      );
+      expect(recipe.autoTranslated, {TranslatedField.nameEn, TranslatedField.descriptionEn});
+      expect(Recipe.fromJson(recipeRow()).autoTranslated, isEmpty);
+      expect(Recipe.fromJson(recipeRow()..remove('auto_translated')).autoTranslated, isEmpty);
+      expect(Recipe.fromJson(recipeRow(autoTranslated: null)).autoTranslated, isEmpty);
+      // Un campo que esta versión no conoce (un idioma nuevo) se trata como
+      // escrito a mano: nunca se vuelve a traducir encima.
+      expect(
+        Recipe.fromJson(recipeRow(autoTranslated: const ['name_fr', 'name_en'])).autoTranslated,
+        {TranslatedField.nameEn},
+      );
+    });
+
     test('la foto: photo_id o null (sin foto)', () {
       const photoId = 'f0000000-0000-4000-8000-000000000001';
       expect(Recipe.fromJson(recipeRow(photoId: photoId)).photoId, photoId);
@@ -147,6 +165,8 @@ void main() {
         {'notes': 3},
       ])),
       ('notas que no son una fila', recipeRow(notes: const ['Senza aglio.'])),
+      ('campos traducidos que no son una lista', recipeRow(autoTranslated: 'name_en')),
+      ('un campo traducido que no es texto', recipeRow(autoTranslated: const [3])),
     ]) {
       test('fila rota ($label): FormatException', () {
         expect(() => Recipe.fromJson(row), throwsFormatException);
@@ -169,6 +189,7 @@ void main() {
         'description_it': 'Ragù cotto piano e besciamella fatta in casa.',
         'description_es': 'Ragú cocido despacio y bechamel casera.',
         'description_en': null,
+        'auto_translated': <String>[],
         'diet': null,
         'season_months': null,
         'fridge_days': 3,
@@ -202,6 +223,22 @@ void main() {
       expect(payload['description_es'], isNull);
       expect(payload['description_en'], isNull);
       expect(recipeSavePayload(risotto())['description_it'], 'Porcini freschi e parmigiano.');
+    });
+
+    // save_recipe reemplaza la lista en cada guardado (sin la clave queda
+    // vacía) y rechaza un campo marcado que no llega con texto.
+    test('los campos de la traducción automática, en el orden de save_recipe y solo los que tienen texto', () {
+      expect(recipeSavePayload(lasagne())['auto_translated'], isEmpty);
+      expect(recipeSavePayload(milanesa())['auto_translated'], ['description_it', 'name_en', 'description_en']);
+      final withoutEnglish = milanesa().copyWith(descriptionEn: null);
+      expect(recipeSavePayload(withoutEnglish)['auto_translated'], ['description_it', 'name_en']);
+      // Una marca exige el español del que sale: sin la descripción española,
+      // las descripciones no van marcadas; sin el nombre, los nombres tampoco.
+      expect(recipeSavePayload(milanesa().copyWith(descriptionEs: null))['auto_translated'], ['name_en']);
+      expect(
+        recipeSavePayload(milanesa().copyWith(nameEs: null))['auto_translated'],
+        ['description_it', 'description_en'],
+      );
     });
 
     // Activar o desactivar es otra acción: guardar nunca reactiva un plato
@@ -242,6 +279,16 @@ void main() {
       expect(frittata().webStatus, RecipeWebStatus.inactive);
       expect(minestrone().copyWith(active: false).webStatus, RecipeWebStatus.inactive);
     });
+  });
+
+  test('nombre repetido, también por el nombre en español', () {
+    final recipes = sampleRecipes();
+    expect(hasRecipeNamed(recipes, 'lasagne ALLA bolognese'), isTrue);
+    expect(hasRecipeNamed(recipes, 'Lasaña a la boloñesa'), isFalse, reason: 'por defecto, el italiano');
+    expect(hasRecipeNamed(recipes, ' lasana a la bolonesa ', nameOf: (r) => r.nameEs), isTrue);
+    expect(hasRecipeNamed(recipes, 'Lasaña a la boloñesa', exceptId: lasagneId, nameOf: (r) => r.nameEs), isFalse);
+    // Un plato sin nombre en español no choca con nada.
+    expect(hasRecipeNamed([lasagne().copyWith(nameEs: null)], 'Lasagne alla bolognese', nameOf: (r) => r.nameEs), isFalse);
   });
 
   group('nombres', () {

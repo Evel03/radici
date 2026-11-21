@@ -69,6 +69,10 @@ abstract class RecipeDraft with _$RecipeDraft {
     @Default('') String descriptionIt,
     @Default('') String descriptionEs,
     @Default('') String descriptionEn,
+
+    /// Los campos que llenó la traducción automática y la cocinera no tocó a
+    /// mano ([Recipe.autoTranslated]).
+    @Default(<TranslatedField>{}) Set<TranslatedField> autoTranslated,
     @Default(<Allergen>{}) Set<Allergen> allergens,
     Diet? diet,
 
@@ -85,6 +89,26 @@ abstract class RecipeDraft with _$RecipeDraft {
 
   const RecipeDraft._();
 
+  /// Lo escrito en [field].
+  String textOf(TranslatedField field) => switch (field) {
+    TranslatedField.nameIt => nameIt,
+    TranslatedField.descriptionIt => descriptionIt,
+    TranslatedField.nameEn => nameEn,
+    TranslatedField.descriptionEn => descriptionEn,
+  };
+
+  /// El español del que sale [field]: el nombre o la descripción.
+  String sourceOf(TranslatedField field) =>
+      field.isName ? nameEs : descriptionEs;
+
+  /// El formulario con [text] en [field] (las marcas no cambian).
+  RecipeDraft withText(TranslatedField field, String text) => switch (field) {
+    TranslatedField.nameIt => copyWith(nameIt: text),
+    TranslatedField.descriptionIt => copyWith(descriptionIt: text),
+    TranslatedField.nameEn => copyWith(nameEn: text),
+    TranslatedField.descriptionEn => copyWith(descriptionEn: text),
+  };
+
   @override
   String toString() => 'RecipeDraft($id)';
 }
@@ -92,37 +116,77 @@ abstract class RecipeDraft with _$RecipeDraft {
 /// Un plato nuevo, con el id que generó el teléfono.
 RecipeDraft emptyRecipeDraft(String id) => RecipeDraft(id: id);
 
+/// Un plato viejo (guardado sin nombre en español, anterior a la traducción
+/// automática) se abre como si lo escrito en italiano estuviera en español:
+/// Evelyn cargó los platos en español en el campo italiano, el único
+/// principal del editor de antes (decisión de Nicolas del 20/11/2026; SPEC
+/// §4). Devuelve los campos en italiano de [recipe] cuyo texto pasa al
+/// español: el nombre, y la descripción si no tenía la española (no en una
+/// copia, [copy]: no lleva las descripciones). Vacío si [recipe] tiene el
+/// nombre en español.
+///
+/// En el formulario esos campos quedan vacíos (se traducen al guardar, sin la
+/// marca de lo automático: nada los tradujo todavía). Si se guarda sin
+/// traducirlos, el plato sigue siendo viejo: el español vuelve a esos campos
+/// y queda vacío (`movedToSpanish` de planRecipeTranslation), así nunca hace
+/// falta escribir el italiano para guardar y la próxima vez se traduce.
+Set<TranslatedField> italianMovedToSpanish(Recipe recipe, {bool copy = false}) {
+  if (recipe.nameEs != null) return const {};
+  return {
+    TranslatedField.nameIt,
+    if (!copy && recipe.descriptionEs == null && recipe.descriptionIt != null)
+      TranslatedField.descriptionIt,
+  };
+}
+
 /// El formulario de [recipe]; con [id], el de una copia (duplicar es guardar
 /// el mismo plato con un id nuevo), sin las descripciones de la web: la copia
 /// es otro plato y no tiene que salir en la web con la descripción del
 /// original («Senza descrizione: non è sul sito» hasta que tenga la suya).
-/// Las filas llevan las claves 0, 1, 2…
-RecipeDraft recipeDraftFrom(Recipe recipe, {String? id}) => RecipeDraft(
-  id: id ?? recipe.id,
-  nameIt: recipe.nameIt,
-  nameEs: recipe.nameEs ?? '',
-  nameEn: recipe.nameEn ?? '',
-  descriptionIt: id == null ? recipe.descriptionIt ?? '' : '',
-  descriptionEs: id == null ? recipe.descriptionEs ?? '' : '',
-  descriptionEn: id == null ? recipe.descriptionEn ?? '' : '',
-  allergens: recipe.allergens.toSet(),
-  diet: recipe.diet,
-  months: {...?recipe.seasonMonths},
-  fridgeDays: '${recipe.fridgeDays}',
-  freezable: recipe.freezable,
-  freezerDays: '${recipe.freezerDays}',
-  notes: recipe.notes ?? '',
-  ingredients: [
-    for (final (index, ingredient) in recipe.ingredients.indexed)
-      IngredientDraft(
-        key: index,
-        name: ingredient.name,
-        quantity: ingredient.amount == null ? '' : '${ingredient.amount!.quantity}',
-        unit: UnitChoice.of(ingredient.amount),
-        section: ingredient.section,
-      ),
-  ],
-);
+/// Por eso la copia no lleva las marcas de la traducción automática de las
+/// descripciones; las de los nombres, que sí copia, quedan (SPEC §4). En un
+/// plato viejo, el italiano pasa al español ([italianMovedToSpanish]),
+/// también en la copia. Las filas llevan las claves 0, 1, 2…
+RecipeDraft recipeDraftFrom(Recipe recipe, {String? id}) {
+  final copy = id != null;
+  final moved = italianMovedToSpanish(recipe, copy: copy);
+  final movedName = moved.contains(TranslatedField.nameIt);
+  final movedDescription = moved.contains(TranslatedField.descriptionIt);
+  return RecipeDraft(
+    id: id ?? recipe.id,
+    nameIt: movedName ? '' : recipe.nameIt,
+    nameEs: movedName ? recipe.nameIt : recipe.nameEs ?? '',
+    nameEn: recipe.nameEn ?? '',
+    descriptionIt: copy || movedDescription ? '' : recipe.descriptionIt ?? '',
+    descriptionEs: copy
+        ? ''
+        : movedDescription
+        ? recipe.descriptionIt ?? ''
+        : recipe.descriptionEs ?? '',
+    descriptionEn: copy ? '' : recipe.descriptionEn ?? '',
+    autoTranslated: {
+      for (final field in recipe.autoTranslated)
+        if ((!copy || field.isName) && !moved.contains(field)) field,
+    },
+    allergens: recipe.allergens.toSet(),
+    diet: recipe.diet,
+    months: {...?recipe.seasonMonths},
+    fridgeDays: '${recipe.fridgeDays}',
+    freezable: recipe.freezable,
+    freezerDays: '${recipe.freezerDays}',
+    notes: recipe.notes ?? '',
+    ingredients: [
+      for (final (index, ingredient) in recipe.ingredients.indexed)
+        IngredientDraft(
+          key: index,
+          name: ingredient.name,
+          quantity: ingredient.amount == null ? '' : '${ingredient.amount!.quantity}',
+          unit: UnitChoice.of(ingredient.amount),
+          section: ingredient.section,
+        ),
+    ],
+  );
+}
 
 /// Error de un texto: falta o es demasiado largo.
 enum TextError { required, tooLong }
@@ -211,7 +275,18 @@ int? _quantity(String raw) {
 /// Valida [draft] con las reglas de la base (nombres, descripciones,
 /// cantidades, hasta 50 ingredientes), los topes de conservación del
 /// formulario y la dieta contra los alérgenos.
-RecipeDraftErrors validateRecipeDraft(RecipeDraft draft) {
+///
+/// Las del editor desde que el español es la fuente (20/11/2026): con
+/// [requireSpanish], el nombre en español es obligatorio (el editor lo pide
+/// siempre: un plato guardado abre con él, el suyo o, en uno viejo, el que
+/// estaba en el campo italiano); con [willTranslate], el nombre en italiano
+/// vacío no falta si sale del español (lo traduce el guardado). Sin ellas,
+/// las de la base: el italiano es obligatorio.
+RecipeDraftErrors validateRecipeDraft(
+  RecipeDraft draft, {
+  bool requireSpanish = false,
+  bool willTranslate = false,
+}) {
   final rows = [
     for (final row in draft.ingredients)
       if (!row.isBlank) row,
@@ -232,9 +307,13 @@ RecipeDraftErrors validateRecipeDraft(RecipeDraft draft) {
     }
   }
   final notes = draft.notes.trim();
+  // Sin el español, si es obligatorio, lo que falta es el español: el
+  // italiano sale de ahí.
+  final italianFromSpanish =
+      willTranslate && (requireSpanish || normalizeRecipeText(draft.nameEs).isNotEmpty);
   return RecipeDraftErrors(
-    nameIt: _nameError(draft.nameIt, maxRecipeNameLength, required: true),
-    nameEs: _nameError(draft.nameEs, maxRecipeNameLength),
+    nameIt: _nameError(draft.nameIt, maxRecipeNameLength, required: !italianFromSpanish),
+    nameEs: _nameError(draft.nameEs, maxRecipeNameLength, required: requireSpanish),
     nameEn: _nameError(draft.nameEn, maxRecipeNameLength),
     descriptionIt: _nameError(draft.descriptionIt, maxRecipeDescriptionLength),
     descriptionEs: _nameError(draft.descriptionEs, maxRecipeDescriptionLength),
@@ -250,7 +329,9 @@ RecipeDraftErrors validateRecipeDraft(RecipeDraft draft) {
 
 /// El plato que sale de [draft], listo para save_recipe: nombres y
 /// descripciones limpios, traducciones, descripciones y notas vacías en null,
-/// los 12 meses como todo el año y sin las filas vacías. [saved] es el plato guardado (null si es nuevo): de él
+/// los 12 meses como todo el año, sin las filas vacías y con las marcas de la
+/// traducción automática solo en los campos con texto y con el español del
+/// que salen (como exige save_recipe). [saved] es el plato guardado (null si es nuevo): de él
 /// salen el estado (guardar no lo cambia) y, si no se puede congelar y el
 /// número de días del freezer no vale, esos días. Lanza [ArgumentError] si
 /// [draft] tiene errores.
@@ -272,6 +353,12 @@ Recipe recipeFromDraft(RecipeDraft draft, {Recipe? saved}) {
     descriptionIt: optional(draft.descriptionIt),
     descriptionEs: optional(draft.descriptionEs),
     descriptionEn: optional(draft.descriptionEn),
+    autoTranslated: {
+      for (final field in draft.autoTranslated)
+        if (optional(draft.textOf(field)) != null &&
+            optional(draft.sourceOf(field)) != null)
+          field,
+    },
     diet: draft.diet,
     allergens: [
       for (final allergen in Allergen.values)

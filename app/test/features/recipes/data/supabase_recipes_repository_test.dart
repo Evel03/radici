@@ -55,12 +55,13 @@ void main() {
       final query = request.url.queryParameters;
       // Las notas, de recipe_notes (solo de la cocinera): recipes ya no las
       // tiene, porque el cliente lee la fila entera. Las descripciones de la
-      // web, de recipes (20261119150000_menu_web.sql), y la foto
-      // (20261120100000_recipe_photos.sql).
+      // web, de recipes (20261119150000_menu_web.sql), los campos de la
+      // traducción automática (20261120090000_recipe_translations.sql) y la
+      // foto (20261120100000_recipe_photos.sql).
       expect(
         query['select'],
         'id,name_it,name_es,name_en,description_it,description_es,description_en,'
-        'diet,season_months,fridge_days,freezable,'
+        'auto_translated,diet,season_months,fridge_days,freezable,'
         'freezer_days,active,photo_id,allergens:recipe_allergens(allergen),'
         'ingredients:recipe_ingredients(position,name,section,quantity,unit),'
         'notes:recipe_notes(notes)',
