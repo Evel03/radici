@@ -441,6 +441,12 @@ Solo se arma una sesión `held` o `confirmed` (o una vieja en `shopping_done`). 
 Errores: `not_a_chef`, `invalid_payload` (con el campo), `session_not_found`, `recipe_not_found` (con el campo) y los checks de las tablas. Una clave desconocida es un error, como en `save_recipe`.
 
 La lista y la nota son solo de la cocinera: la clienta las recibe en el mensaje y en su link. La política vieja que deja a una clienta con cuenta leer `session_menu` de sus sesiones se revisa en M2, para que vea solo los menús enviados.
+
+**Envío del menú** (migración `20261121100000_menu_sends.sql`, pgTAP `20_menu_sends`; función `chef`, contrato chef-api §13). En dos pasos, desde la app:
+1. **Vista previa** (`POST /chef/menus/preview`): la función arma el mensaje en el idioma de la clienta (el de su pedido) y guarda el envío todavía sin salir (`menu_sends`), con la foto de lo que va a recibir: los platos con sus traducciones guardadas, la lista, la nota y las fechas. La lista y la nota las escribe Evelyn en español: si la clienta lee italiano o inglés, se traducen ahí con Claude, con el mismo límite que los platos; si la traducción falla, la app ofrece mandarlas sin traducir. Evelyn ve el mensaje sin el link (en su lugar, un texto de reemplazo) y el contacto (el del pedido de la web o el de la ficha), y elige email, WhatsApp o los dos.
+2. **Envío** (`POST /chef/menus/send`): la función crea el link de la clienta (un token al azar en el fragmento de la URL, `/prenotazione/#t=…`; la base guarda solo su hash, `client_links`), manda el email (Resend; las respuestas le llegan a Evelyn) y marca el envío enviado. Si el email no sale, el envío queda sin marcar y la app ofrece reintentar o mandarlo solo por WhatsApp. El WhatsApp lo abre la app desde el teléfono de Evelyn, con el texto y el link que devuelve la función: el servidor nunca lo manda.
+
+La clienta recibe siempre la foto de la vista previa: si Evelyn cambia el menú antes de mandar, hace falta otra vista previa (`menu_changed`). El mensaje nunca lleva la dirección, el contacto, las alergias de la clienta ni nada de pagos, y de su nombre solo el de pila, si parece un nombre (el email o el teléfono pueden venir del formulario, sin verificar). La página del link es del PR siguiente.
 ---
 
 ## 6. Seguridad, privacidad y RGPD

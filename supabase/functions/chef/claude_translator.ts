@@ -1,6 +1,7 @@
-// La traducción de los platos con Claude (POST /chef/translate, docs/contracts/chef-api.md §12): la
-// única parte que usa el SDK oficial de Anthropic. index.ts la importa recién en la primera
-// traducción (import dinámico, lazyTranslator): si el SDK no carga, solo falla /translate. El pedido,
+// La traducción de los platos con Claude (POST /chef/translate, docs/contracts/chef-api.md §12) y de
+// la lista de compras y la nota de un menú (POST /chef/menus/preview, §13): la única parte que usa el
+// SDK oficial de Anthropic. index.ts la importa recién en la primera traducción (import dinámico,
+// lazyTranslator): si el SDK no carga, solo fallan las traducciones. El pedido,
 // la lectura de la respuesta, el mapeo de errores y la validación están en translation.ts (con tests
 // en Node) y handler.ts recibe un Translator sin conocer el SDK. handler.test.ts mira el texto de
 // este archivo.
@@ -18,6 +19,7 @@ import {
   TRANSLATION_DEADLINE_MS,
   TRANSLATION_MAX_RETRIES,
   TRANSLATION_TIMEOUT_MS,
+  buildMenuTranslationRequest,
   buildTranslationRequest,
   failureFrom,
   replyFromMessage,
@@ -39,6 +41,17 @@ export function createClaudeTranslator(apiKey: string): Translator {
     async translate(source) {
       try {
         const message = await client.beta.messages.create(buildTranslationRequest(source), {
+          signal: AbortSignal.timeout(TRANSLATION_DEADLINE_MS),
+        });
+        return replyFromMessage(message);
+      } catch (error) {
+        return failureFrom(error, Anthropic);
+      }
+    },
+    async translateMenu(source) {
+      // El mismo cliente, el mismo tope y el mismo mapeo de errores que un plato.
+      try {
+        const message = await client.beta.messages.create(buildMenuTranslationRequest(source), {
           signal: AbortSignal.timeout(TRANSLATION_DEADLINE_MS),
         });
         return replyFromMessage(message);

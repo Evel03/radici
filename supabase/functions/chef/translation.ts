@@ -4,6 +4,9 @@
 // validación de la traducción con los límites de la base, el límite por cocina y el traductor de
 // mentira de desarrollo (TRANSLATE_TRANSPORT=fake). La llamada real está en claude_translator.ts,
 // que importa solo index.ts: handler.ts recibe un Translator y no conoce el SDK.
+// El mismo traductor traduce también la lista de compras y la nota del menú de una semana (POST
+// /chef/menus/preview, §13): su prompt, su esquema y su validación están en menu_translation.ts; el
+// pedido (buildMenuTranslationRequest) va acá, con los mismos parámetros que el de los platos.
 //
 // Nada de esto loguea: el texto del plato nunca va a un log.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
@@ -16,6 +19,13 @@ import {
   type TranslateResponse,
   type TranslationSource,
 } from "../_shared/chef_api.ts";
+import {
+  MENU_TRANSLATION_SYSTEM_PROMPT,
+  fakeMenuTranslationText,
+  menuTranslationSchema,
+  menuTranslationUserMessage,
+  type MenuTextSource,
+} from "./menu_translation.ts";
 
 // ---------------------------------------------------------------------------
 // El traductor
@@ -43,7 +53,10 @@ export type TranslatorReply =
   | { kind: "failed"; reason: TranslationFailure; status: number | null };
 
 export interface Translator {
+  /** Un plato del español al italiano y al inglés (POST /translate). */
   translate(source: TranslationSource): Promise<TranslatorReply>;
+  /** La lista de compras y la nota de un menú, del español al idioma de la clienta (POST /menus/preview). */
+  translateMenu(source: MenuTextSource): Promise<TranslatorReply>;
 }
 
 /** De dónde sale la traducción: Claude (con ANTHROPIC_API_KEY), la de mentira (TRANSLATE_TRANSPORT=fake) o ninguna. */
@@ -220,6 +233,31 @@ export function buildTranslationRequest(source: TranslationSource): TranslationR
   };
 }
 
+/**
+ * Tope de la salida de la lista y la nota: hasta 150 productos y 1000 caracteres de nota, más el
+ * pensamiento. El doble que el de un plato: un corte deja la traducción a medias (422).
+ */
+export const MENU_TRANSLATION_MAX_TOKENS = 16_000;
+
+/**
+ * El pedido de la lista de compras y la nota de un menú (§13): el mismo modelo, esfuerzo, fallback y
+ * forma que el de los platos, con su prompt y su esquema (menu_translation.ts).
+ */
+export function buildMenuTranslationRequest(source: MenuTextSource): TranslationRequest {
+  return {
+    model: TRANSLATION_MODEL,
+    max_tokens: MENU_TRANSLATION_MAX_TOKENS,
+    system: MENU_TRANSLATION_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: menuTranslationUserMessage(source) }],
+    output_config: {
+      effort: TRANSLATION_EFFORT,
+      format: { type: "json_schema", schema: menuTranslationSchema(source.note !== null) },
+    },
+    betas: [...TRANSLATION_BETAS],
+    fallbacks: "default",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // La respuesta de Claude
 // ---------------------------------------------------------------------------
@@ -352,17 +390,25 @@ export function failureFrom(error: unknown, errors: SdkErrorClasses): Translator
  */
 export function lazyTranslator(load: () => Promise<Translator>): Translator {
   let loading: Promise<Translator> | null = null;
+  /** El traductor cargado, o null si la carga falló (la próxima vez se vuelve a intentar). */
+  const loaded = async (): Promise<Translator | null> => {
+    loading ??= load();
+    try {
+      return await loading;
+    } catch {
+      loading = null;
+      return null;
+    }
+  };
+  const sdkLoad: TranslatorReply = { kind: "failed", reason: "sdkLoad", status: null };
   return {
     async translate(source) {
-      loading ??= load();
-      let translator: Translator;
-      try {
-        translator = await loading;
-      } catch {
-        loading = null;
-        return { kind: "failed", reason: "sdkLoad", status: null };
-      }
-      return await translator.translate(source);
+      const translator = await loaded();
+      return translator ? await translator.translate(source) : sdkLoad;
+    },
+    async translateMenu(source) {
+      const translator = await loaded();
+      return translator ? await translator.translateMenu(source) : sdkLoad;
     },
   };
 }
@@ -387,5 +433,8 @@ export const fakeTranslator: Translator = {
         ? { name: fakeText(locale, source.name, RECIPE_NAME_MAX) }
         : { name: fakeText(locale, source.name, RECIPE_NAME_MAX), description: fakeText(locale, source.description, RECIPE_DESCRIPTION_MAX) };
     return Promise.resolve({ kind: "text", text: JSON.stringify({ it: dish("it"), en: dish("en") }) });
+  },
+  translateMenu(source) {
+    return Promise.resolve({ kind: "text", text: fakeMenuTranslationText(source) });
   },
 };
