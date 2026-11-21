@@ -389,5 +389,82 @@
     "text": "Forse il link è sbagliato o incompleto, oppure la pagina è stata spostata. Puoi ripartire da qui:",
     "home": "Vai alla pagina iniziale",
     "request": "Richiedi un preventivo"
+  },
+  "reservation": {
+    "metaTitle": "La tua prenotazione · {brand}",
+    "metaDescription": "Le settimane della tua prenotazione e il menù di ognuna, da confermare o da cambiare.",
+    "title": "La tua prenotazione",
+    "noscript": "Per vedere la tua prenotazione serve JavaScript: attivalo nel browser e ricarica la pagina.",
+    "loading": "Sto caricando la tua prenotazione…",
+    "greeting": "Ciao {name}!",
+    "greetingNoName": "Ciao!",
+    "intro": "Qui trovi le settimane della tua prenotazione con {chef} e il menù che ti ha mandato per ognuna. Controllalo e confermalo, oppure chiedi dei cambi.",
+    "noWeeks": "In questa prenotazione non ci sono settimane in programma. Per qualsiasi dubbio scrivi a {chef}.",
+    "weekTitle": "Settimana {week} di {weeks}",
+    "weekTitleOne": "La tua settimana",
+    "arrival": "{date} · arrivo alle {time}",
+    "weekDone": "{chef} ha già cucinato questa settimana.",
+    "menuNotSent": "Il menù di questa settimana te lo manda {chef} nei prossimi giorni.",
+    "menuUnreadable": "Non riusciamo a mostrare qui questo menù. Scrivi a {chef}: te lo rimanda.",
+    "state": {
+      "pending": "Da confermare",
+      "confirmed": "Confermato",
+      "changesRequested": "Cambi chiesti",
+      "pendingText": "{chef} ti ha mandato questo menù il {date}.",
+      "confirmedText": "L'hai confermato il {date}.",
+      "changesRequestedText": "Hai chiesto dei cambi il {date}: {chef} ti manderà il menù di nuovo."
+    },
+    "dishesTitle": "Piatti",
+    "portionsOne": "1 porzione",
+    "portionsOther": "{n} porzioni",
+    "allergensLabel": "Allergeni:",
+    "allergensNone": "Nessuno dei 14 allergeni principali",
+    "shoppingTitle": "Lista della spesa",
+    "shoppingIntro": "La spesa la fai tu: ecco cosa serve per questa settimana.",
+    "shoppingEmpty": "{chef} non ha messo niente nella lista della spesa.",
+    "atHomeTitle": "Da avere in casa",
+    "sections": {
+      "produce": "Frutta e verdura",
+      "meat_fish": "Carne e pesce",
+      "dairy_eggs": "Latticini e uova",
+      "bakery": "Pane e forno",
+      "pantry": "Dispensa",
+      "frozen": "Surgelati",
+      "other": "Altro"
+    },
+    "units": {
+      "pcsOne": "1 pezzo",
+      "pcsOther": "{n} pezzi"
+    },
+    "noteTitle": "Nota di {chef}",
+    "confirm": "Confermo il menù",
+    "askChanges": "Chiedo dei cambi",
+    "sending": "Un momento…",
+    "changesLabel": "Cosa vorresti cambiare?",
+    "changesHint": "Scrivi quali piatti vorresti cambiare e cosa preferisci. Non scrivere qui allergie, intolleranze o altri dati sulla salute: se è cambiato qualcosa, dillo direttamente a {chef}.",
+    "changesCount": "{count}/{max}",
+    "changesSubmit": "Invia la richiesta",
+    "changesCancel": "Annulla",
+    "notices": {
+      "confirmed": "Grazie! Abbiamo avvisato {chef}.",
+      "alreadyConfirmed": "Questo menù era già confermato.",
+      "changesSent": "Fatto: {chef} ha ricevuto la tua richiesta.",
+      "menuOutdated": "{chef} ti ha mandato un menù più recente per questa settimana: eccolo.",
+      "changesAlreadyRequested": "Avevi già chiesto dei cambi per questo menù: {chef} te ne manderà uno nuovo.",
+      "alreadyConfirmedChanges": "Hai già confermato questo menù. Per cambiare qualcosa, scrivi direttamente a {chef}.",
+      "sendNotFound": "Questo menù non è più disponibile. Qui sotto trovi quello attuale."
+    },
+    "errors": {
+      "invalidLinkTitle": "Questo link non funziona",
+      "invalidLink": "Forse è incompleto o è scaduto. Scrivi a Evelyn e ti manderà un link nuovo.",
+      "network": "Non riusciamo a collegarci. Controlla la connessione e riprova.",
+      "server": "C'è stato un problema da parte nostra. Riprova tra qualche minuto.",
+      "rateLimited": "Troppi tentativi in poco tempo. Riprova più tardi.",
+      "rateLimitedMinutes": "Troppi tentativi in poco tempo. Riprova tra circa {minutes} min.",
+      "rateLimitedHours": "Troppi tentativi in poco tempo. Riprova tra circa {hours} h.",
+      "text": "Scrivi cosa vorresti cambiare (al massimo {max} caratteri).",
+      "retry": "Riprova"
+    },
+    "home": "Vai alla pagina iniziale"
   }
 }

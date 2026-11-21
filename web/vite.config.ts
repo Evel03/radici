@@ -15,7 +15,8 @@ import { createSiteI18n } from "./src/i18n/site.ts";
 const root = fileURLToPath(new URL(".", import.meta.url));
 // Motor de presupuesto y contrato del pedido, compartidos (solo lectura): supabase/functions/_shared/
 const sharedDir = resolve(root, "../supabase/functions/_shared");
-const PAGES = ["richiesta", "privacy"];
+// prenotazione: la página de la clienta (su reserva y el menú de cada semana; el token va en el fragmento).
+const PAGES = ["richiesta", "privacy", "prenotazione"];
 
 /** /richiesta → /richiesta/ (en dev y preview; el hosting estático debería hacer lo mismo). */
 const trailingSlash: Connect.NextHandleFunction = (req, res, next) => {
@@ -177,6 +178,7 @@ export default defineConfig({
         main: resolve(root, "index.html"),
         richiesta: resolve(root, "richiesta/index.html"),
         privacy: resolve(root, "privacy/index.html"),
+        prenotazione: resolve(root, "prenotazione/index.html"),
         // dist/404.html: con él Pages responde 404 a lo que no existe (src/build/pages.ts).
         notFound: resolve(root, "404.html"),
       },

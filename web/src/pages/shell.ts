@@ -1,5 +1,5 @@
-// Parte común de todas las páginas: idioma (URL > localStorage > italiano), selector, links internos
-// y el aviso si no llegan los textos de un idioma.
+// Parte común de todas las páginas: idioma (URL > localStorage > el de la página, si lo da, > italiano),
+// selector, links internos y el aviso si no llegan los textos de un idioma.
 import { DEFAULT_LANG, isLang, resolveLang, type I18n, type Lang } from "../i18n/core.ts";
 import { applyTranslations } from "../i18n/dom.ts";
 import { loadDict } from "../i18n/load.ts";
@@ -90,8 +90,9 @@ function hideLoadError(): void {
 /**
  * @param eager la página necesita los textos en tiempo de ejecución (formulario): se cargan siempre.
  * @param onReady se llama la primera vez que hay textos cargados (también si llegan en un reintento).
+ * @param defaultLang el idioma de la página si la visitante nunca eligió uno (ShellOptions).
  */
-function setup(eager: boolean, onReady?: () => void): State {
+function setup(eager: boolean, onReady?: () => void, defaultLang?: Promise<Lang | null>): State {
   const state: State = { current: null, listeners: [] };
   const fromUrl = new URLSearchParams(window.location.search).get("lang")?.toLowerCase();
   if (isLang(fromUrl)) storeLang(fromUrl);
@@ -121,15 +122,32 @@ function setup(eager: boolean, onReady?: () => void): State {
     );
   };
 
-  const lang = resolveLang(window.location.search, readStoredLang());
-  if (eager || lang !== pageLang()) switchTo(lang);
-  else render(lang, null);
+  // La visitante eligió un idioma en esta página: el idioma por defecto que llegue después no lo pisa.
+  let chose = false;
+  const stored = readStoredLang();
+  if (defaultLang && !isLang(fromUrl) && !isLang(stored)) {
+    // Nunca eligió un idioma: el que diga la página (el de su reserva) cuando llegue; mientras, el del HTML.
+    render(pageLang(), null);
+    void defaultLang
+      .then(
+        (lang) => lang ?? DEFAULT_LANG,
+        () => DEFAULT_LANG,
+      )
+      .then((lang) => {
+        if (!chose) switchTo(lang);
+      });
+  } else {
+    const lang = resolveLang(window.location.search, stored);
+    if (eager || lang !== pageLang()) switchTo(lang);
+    else render(lang, null);
+  }
 
   for (const link of document.querySelectorAll<HTMLAnchorElement>("a[data-lang]")) {
     link.addEventListener("click", (event) => {
       const next = link.dataset["lang"];
       if (!isLang(next)) return;
       event.preventDefault();
+      chose = true;
       storeLang(next);
       const url = new URL(window.location.href);
       url.searchParams.set("lang", next);
@@ -152,14 +170,22 @@ export function initLanguage(): void {
   setup(false);
 }
 
+export interface ShellOptions {
+  /**
+   * El idioma de la página si la visitante nunca eligió uno (ni ?lang= ni guardado): p. ej. el de su reserva
+   * en /prenotazione/. Los textos se cargan cuando se resuelve (null, o si falla: italiano). Sin esto, italiano.
+   */
+  defaultLang?: Promise<Lang | null>;
+}
+
 /**
  * Páginas que necesitan textos en tiempo de ejecución (formulario): se resuelve cuando llegan. Si la
  * primera carga falla, queda el aviso con el botón para recargar; si después un reintento funciona
  * (elegir el idioma otra vez), se resuelve en ese momento y la página arranca igual.
  */
-export function initShell(): Promise<Shell> {
+export function initShell(options: ShellOptions = {}): Promise<Shell> {
   return new Promise((resolve) => {
-    const state = setup(true, () => resolve(shell));
+    const state = setup(true, () => resolve(shell), options.defaultLang);
     const shell: Shell = {
       get i18n(): I18n {
         if (!state.current) throw new Error("Textos no cargados");

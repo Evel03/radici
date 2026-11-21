@@ -389,5 +389,82 @@
     "text": "The link may be wrong or incomplete, or the page may have moved. You can start again from here:",
     "home": "Go to the home page",
     "request": "Ask for a quote"
+  },
+  "reservation": {
+    "metaTitle": "Your booking · {brand}",
+    "metaDescription": "The weeks of your booking and the menu for each one, to confirm or change.",
+    "title": "Your booking",
+    "noscript": "To see your booking you need JavaScript: turn it on in your browser and reload the page.",
+    "loading": "Loading your booking…",
+    "greeting": "Hi {name}!",
+    "greetingNoName": "Hi!",
+    "intro": "Here are the weeks of your booking with {chef} and the menu for each one. Check it and confirm it, or ask for changes.",
+    "noWeeks": "There are no weeks scheduled in this booking. If you have any questions, write to {chef}.",
+    "weekTitle": "Week {week} of {weeks}",
+    "weekTitleOne": "Your week",
+    "arrival": "{date} · arriving at {time}",
+    "weekDone": "{chef} has already cooked this week.",
+    "menuNotSent": "{chef} will send you this week's menu in the next few days.",
+    "menuUnreadable": "We can't show this menu here. Write to {chef} to get it again.",
+    "state": {
+      "pending": "To confirm",
+      "confirmed": "Confirmed",
+      "changesRequested": "Changes requested",
+      "pendingText": "{chef} sent you this menu on {date}.",
+      "confirmedText": "You confirmed it on {date}.",
+      "changesRequestedText": "You asked for changes on {date}: {chef} will send you the menu again."
+    },
+    "dishesTitle": "Dishes",
+    "portionsOne": "1 portion",
+    "portionsOther": "{n} portions",
+    "allergensLabel": "Allergens:",
+    "allergensNone": "None of the 14 main allergens",
+    "shoppingTitle": "Shopping list",
+    "shoppingIntro": "You do the shopping: here's what you need for this week.",
+    "shoppingEmpty": "{chef} didn't put anything on the shopping list.",
+    "atHomeTitle": "To have at home",
+    "sections": {
+      "produce": "Fruit and veg",
+      "meat_fish": "Meat and fish",
+      "dairy_eggs": "Dairy and eggs",
+      "bakery": "Bakery",
+      "pantry": "Pantry",
+      "frozen": "Frozen",
+      "other": "Other"
+    },
+    "units": {
+      "pcsOne": "1 piece",
+      "pcsOther": "{n} pieces"
+    },
+    "noteTitle": "A note from {chef}",
+    "confirm": "I confirm the menu",
+    "askChanges": "I'd like changes",
+    "sending": "One moment…",
+    "changesLabel": "What would you like to change?",
+    "changesHint": "Write which dishes you'd like to change and what you'd prefer. Don't write allergies, intolerances or other health information here: if something has changed, tell {chef} directly.",
+    "changesCount": "{count}/{max}",
+    "changesSubmit": "Send request",
+    "changesCancel": "Cancel",
+    "notices": {
+      "confirmed": "Thank you! We've let {chef} know.",
+      "alreadyConfirmed": "This menu was already confirmed.",
+      "changesSent": "Done: {chef} has received your request.",
+      "menuOutdated": "{chef} has sent you a newer menu for this week: here it is.",
+      "changesAlreadyRequested": "You'd already asked for changes to this menu: {chef} will send you a new one.",
+      "alreadyConfirmedChanges": "You've already confirmed this menu. To change something, write to {chef} directly.",
+      "sendNotFound": "This menu is no longer available. The current one is below."
+    },
+    "errors": {
+      "invalidLinkTitle": "This link doesn't work",
+      "invalidLink": "It may be incomplete or expired. Write to Evelyn and she'll send you a new one.",
+      "network": "We can't connect. Check your connection and try again.",
+      "server": "Something went wrong on our side. Try again in a few minutes.",
+      "rateLimited": "Too many attempts in a short time. Try again later.",
+      "rateLimitedMinutes": "Too many attempts in a short time. Try again in about {minutes} min.",
+      "rateLimitedHours": "Too many attempts in a short time. Try again in about {hours} h.",
+      "text": "Write what you'd like to change (up to {max} characters).",
+      "retry": "Try again"
+    },
+    "home": "Go to the home page"
   }
 }

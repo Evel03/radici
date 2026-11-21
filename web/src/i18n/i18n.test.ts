@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import notFoundHtml from "../../404.html?raw";
 import indexHtml from "../../index.html?raw";
+import reservationHtml from "../../prenotazione/index.html?raw";
 import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
 import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
 import { DEFAULT_PRICING, LIMITS } from "../engine.ts";
 import { formatCents } from "../lib/format.ts";
+import { SHOPPING_SECTIONS } from "../../../supabase/functions/_shared/client_link.ts";
 import { ALLERGENS, DIETS } from "../../../supabase/functions/_shared/public_request.ts";
 import { DATE_WINDOW, MEAL_OPTIONS, REQUEST_TYPES } from "../request/model.ts";
 import { exampleQuote, EXAMPLE_INPUT } from "../request/quote.ts";
@@ -20,7 +22,7 @@ import { createSiteI18n } from "./site.ts";
 const dicts = { it: flatten(itJson), es: flatten(es), en: flatten(en) };
 const itKeys = Object.keys(dicts.it).sort();
 
-const htmlFiles = { indexHtml, requestHtml, privacyHtml, notFoundHtml, headerHtml, footerHtml };
+const htmlFiles = { indexHtml, requestHtml, privacyHtml, reservationHtml, notFoundHtml, headerHtml, footerHtml };
 
 /** Claves que el HTML pide con data-i18n, data-i18n-html y data-i18n-attr. */
 function htmlKeys(html: string): string[] {
@@ -118,6 +120,32 @@ describe("claves usadas por la web", () => {
       const keys = [...ALLERGENS.map((a) => `allergens.${a}`), ...DIETS.map((d) => `diets.${d}`)];
       expect(keys.filter((key) => !(key in dicts[lang])), lang).toEqual([]);
       expect(ALLERGENS.length).toBe(14);
+    }
+  });
+
+  it("página de la clienta: cada sección del súper tiene su nombre en los tres idiomas", () => {
+    for (const lang of LANGS) {
+      const keys = SHOPPING_SECTIONS.map((section) => `reservation.sections.${section}`);
+      expect(keys.filter((key) => !(key in dicts[lang])), lang).toEqual([]);
+    }
+  });
+
+  it("página de la clienta: el mensaje de cambios pide no escribir datos de salud (SPEC §6), en los tres idiomas", () => {
+    const expected: Record<Lang, string> = {
+      it: "Non scrivere qui allergie, intolleranze o altri dati sulla salute",
+      es: "No escribas aquí alergias, intolerancias ni otros datos de salud",
+      en: "Don't write allergies, intolerances or other health information here",
+    };
+    for (const lang of LANGS) {
+      expect(dicts[lang]["reservation.changesHint"], lang).toContain(expected[lang]);
+    }
+  });
+
+  it("página de la clienta: ningún texto habla de precios ni de pagos (la página no los muestra)", () => {
+    for (const lang of LANGS) {
+      const texts = Object.entries(dicts[lang]).filter(([key]) => key.startsWith("reservation."));
+      expect(texts.length).toBeGreaterThan(50);
+      for (const [key, value] of texts) expect(value, `${lang} ${key}`).not.toMatch(/€|\{(price|amount|total)\w*\}|prezz|precio|price|pagament|pago|payment/i);
     }
   });
 

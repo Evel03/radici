@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import notFoundHtml from "../../404.html?raw";
 import indexHtml from "../../index.html?raw";
+import reservationHtml from "../../prenotazione/index.html?raw";
 import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
 import type { AppConfig } from "../config.ts";
@@ -47,6 +48,7 @@ describe("renderPage con las páginas reales", () => {
     ["/", indexHtml],
     ["/richiesta/", requestHtml],
     ["/privacy/", privacyHtml],
+    ["/prenotazione/", reservationHtml],
   ] as const;
 
   for (const [path, html] of pages) {
@@ -213,6 +215,28 @@ describe("vista previa al compartir (Open Graph y X)", () => {
       expect(out).not.toContain("og:image");
       expect(out).toContain('<meta name="twitter:card" content="summary">');
     }
+  });
+});
+
+describe("página de la clienta (/prenotazione/)", () => {
+  const render = (config: AppConfig) => renderPage(reservationHtml, { i18n, config, pagePath: "/prenotazione/", partials });
+
+  it("nunca se indexa ni declara una URL propia (la suya lleva el token), ni con el sitio indexable", () => {
+    const out = render({ ...baseConfig, noindex: false, siteUrl: "https://radicicucina.app" });
+    expect(out).toContain('<meta name="robots" content="noindex, nofollow">');
+    expect(out).not.toMatch(/rel="canonical"|og:url|application\/ld\+json/);
+    // La vista previa del link en WhatsApp sí muestra la imagen.
+    expect(out).toContain(`<meta property="og:image" content="https://radicicucina.app${OG_IMAGE.path}">`);
+  });
+
+  it("el script de la página, la región en vivo y el aviso sin JS; sin estilos ni scripts inline", () => {
+    const out = render(baseConfig);
+    expect(out).toContain('<script type="module" src="/src/pages/prenotazione.ts"></script>');
+    expect(out).toMatch(/<p id="reservation-live" class="visually-hidden" role="status" aria-live="polite"><\/p>/);
+    expect(out).toContain('id="reservation"');
+    expect(out).toMatch(/<noscript>\s*<p class="notice notice--warn" data-i18n="reservation.noscript">Per vedere la tua prenotazione/);
+    expect(out).not.toMatch(/\sstyle=/);
+    expect(out).not.toMatch(/<style/);
   });
 });
 
