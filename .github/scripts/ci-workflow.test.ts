@@ -27,7 +27,25 @@ test("CI: deno check de las Edge Functions, con el traductor de chef (que index.
   assert.match(job, /deno-version: \d+\.\d+\.\d+$/m, "una versión exacta de Deno");
   const command = /- run: >-\n([\s\S]*?)(?:\n\s*\n|$)/.exec(job)?.[1]?.replace(/\s+/g, " ").trim() ?? "";
   assert.match(command, /^deno check --no-lock --node-modules-dir=none /);
-  for (const file of ["supabase/functions/chef/index.ts", "supabase/functions/chef/claude_translator.ts", "supabase/functions/public-request/index.ts"]) {
+  const files = [
+    "supabase/functions/chef/index.ts",
+    "supabase/functions/chef/claude_translator.ts",
+    "supabase/functions/public-request/index.ts",
+    "supabase/functions/client-link/index.ts",
+  ];
+  for (const file of files) {
     assert.ok(command.includes(file), `revisa ${file}`);
+  }
+});
+
+test("CI: deno check revisa el index.ts de cada Edge Function del repo", () => {
+  // Una función nueva sin su deno check llegaría a producción sin que nadie revise sus tipos con Deno.
+  const functionsDir = new URL("../../supabase/functions/", import.meta.url);
+  const functions = readdirSync(functionsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
+    .map((entry) => entry.name);
+  assert.ok(functions.includes("client-link"), "está la función client-link");
+  for (const name of functions) {
+    assert.ok(CI.includes(`supabase/functions/${name}/index.ts`), `deno check de ${name}`);
   }
 });
