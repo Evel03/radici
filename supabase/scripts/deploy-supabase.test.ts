@@ -139,3 +139,48 @@ test("el encabezado del workflow documenta CHEF_MEMBER_EMAILS entre los secretos
   assert.match(header, /SPEC §6/, "quién puede ser colaborador sin cambiar la privacy");
   assert.match(header, /Run\s+#?\s*workflow/, "cambiar el secreto no hace nada hasta correr el workflow");
 });
+
+test("traducción: ANTHROPIC_API_KEY es un secreto opcional que carga el paso de los secretos, y avisa si falta", () => {
+  // La función chef la usa para traducir los platos (contrato chef-api.md §12); sin ella responde 501.
+  const run = step("Secretos de la función");
+  assert.match(run, /^\s+ANTHROPIC_API_KEY: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}$/m);
+  assert.ok(!WORKFLOW.includes("vars.ANTHROPIC_API_KEY"), "nunca como variable: saldría en claro en el log");
+  // Va en los pares que se cargan con supabase secrets set, sin pasar por echo.
+  const loop = /for name in ([\s\S]*?); do\n\s+value="\$\{!name:-\}"/.exec(run)?.[1] ?? "";
+  assert.match(loop, /\bANTHROPIC_API_KEY\b/, "se carga con los demás secretos");
+  // Opcional: no está entre las que hacen fallar el despliegue ni entre las que avisan como obligatorias.
+  const required = /for name in (TURNSTILE_SECRET_KEY IP_HASH_SALT[^;]*); do\n\s+grep -qx/.exec(run)?.[1] ?? "";
+  assert.ok(required !== "" && !required.includes("ANTHROPIC_API_KEY"), "no corta el despliegue");
+  // Sin el secreto en GitHub: si sigue en Supabase, aviso de que la traducción sigue prendida (borrarlo
+  // de GitHub no lo saca de Supabase); si no está en ningún lado, aviso de que queda apagada.
+  assert.match(
+    run,
+    /if \[ -z "\$\{ANTHROPIC_API_KEY:-\}" \]; then\n\s+if grep -qx "ANTHROPIC_API_KEY" <<< "\$\{names\}"; then\n\s+echo "::notice::ANTHROPIC_API_KEY no está en GitHub pero sigue en los secretos de Supabase[^\n]*supabase secrets unset ANTHROPIC_API_KEY[^\n]*"\n\s+else\n\s+echo "::warning::Sin ANTHROPIC_API_KEY la traducción automática de los platos queda apagada/,
+  );
+  assert.doesNotMatch(run, /echo[^\n]*\$\{?ANTHROPIC_API_KEY\b/, "ningún echo imprime el valor");
+
+  const header = WORKFLOW.slice(0, WORKFLOW.indexOf("\nname: "));
+  assert.match(header, /opcionales: [^)]*ANTHROPIC_API_KEY/);
+  assert.match(header, /solo[\s#]+van el nombre y la descripción del plato/, "qué se manda a Anthropic");
+  assert.match(header, /Borrar el secreto de GitHub no la saca de Supabase[\s\S]*?supabase secrets unset ANTHROPIC_API_KEY/);
+});
+
+test("TRANSLATE_TRANSPORT nunca en producción: el workflow no lo carga y, si está en Supabase, el despliegue corta", () => {
+  // Con fake la función chef devolvería traducciones de mentira (además la función lo ignora fuera de
+  // un Supabase local; contrato chef-api.md §8).
+  assert.ok(!/TRANSLATE_TRANSPORT: \$\{\{/.test(WORKFLOW), "no se carga desde GitHub");
+  const run = step("Secretos de la función");
+  assert.match(run, /if grep -qx "TRANSLATE_TRANSPORT" <<< "\$\{names\}"; then\n\s+echo "::error::TRANSLATE_TRANSPORT está en los secretos de Supabase[^\n]*supabase secrets unset TRANSLATE_TRANSPORT[^\n]*"\n\s+exit 1\n\s+fi/);
+});
+
+test("la lista de secretos de Supabase: si no se puede leer, el despliegue corta (no pasa en silencio)", () => {
+  const run = step("Secretos de la función");
+  // El comando que falla y la lista vacía (o con otro formato) cortan, antes de los chequeos que dependen de ella.
+  assert.match(run, /if ! listing=\$\(supabase secrets list --project-ref "\$\{SUPABASE_PROJECT_REF\}" -o json\); then\n\s+echo "::error::No se pudo leer la lista de secretos[^\n]*"\n\s+exit 1\n\s+fi/);
+  assert.match(run, /if \[ -z "\$\{names\}" \]; then\n\s+echo "::error::La lista de secretos de la función vino vacía[^\n]*"\n\s+exit 1\n\s+fi/);
+  assert.ok(!run.includes("::warning::No se pudo leer la lista"), "ya no es solo un aviso");
+  const list = run.indexOf("supabase secrets list");
+  for (const check of ['grep -qx "${name}" <<< "${names}"', 'grep -qx "TRANSLATE_TRANSPORT"', 'grep -qx "ANTHROPIC_API_KEY"']) {
+    assert.ok(run.indexOf(check) > list, `${check} usa la lista leída`);
+  }
+});

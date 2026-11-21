@@ -11,11 +11,15 @@ import {
   MAX_COOK_MINUTES,
   MAX_PORTIONS,
   MAX_WEEKS,
+  RECIPE_DESCRIPTION_MAX,
+  RECIPE_NAME_MAX,
   isTimeOfDay,
   isoWeekMonday,
   parseBookingRequest,
   parseCancelSessionsRequest,
   parseMoveSessionRequest,
+  parseTranslateRequest,
+  textLength,
 } from "./chef_api.ts";
 import { LIMITS } from "./quote.ts";
 
@@ -57,7 +61,13 @@ function manual(overrides: Record<string, unknown> = {}): Record<string, unknown
   };
 }
 
-function errorsOf(result: ReturnType<typeof parseBookingRequest> | ReturnType<typeof parseMoveSessionRequest> | ReturnType<typeof parseCancelSessionsRequest>): unknown {
+function errorsOf(
+  result:
+    | ReturnType<typeof parseBookingRequest>
+    | ReturnType<typeof parseMoveSessionRequest>
+    | ReturnType<typeof parseCancelSessionsRequest>
+    | ReturnType<typeof parseTranslateRequest>,
+): unknown {
   assert.equal(result.ok, false, "tenía que fallar");
   return result.ok ? null : result.errors;
 }
@@ -67,7 +77,14 @@ function errorsOf(result: ReturnType<typeof parseBookingRequest> | ReturnType<ty
 // ---------------------------------------------------------------------------
 
 test("rutas y límites del contrato", () => {
-  assert.deepEqual(CHEF_ROUTES, { bookings: "/bookings", moveSession: "/sessions/move", cancelSessions: "/sessions/cancel" });
+  assert.deepEqual(CHEF_ROUTES, {
+    bookings: "/bookings",
+    moveSession: "/sessions/move",
+    cancelSessions: "/sessions/cancel",
+    translate: "/translate",
+  });
+  assert.equal(RECIPE_NAME_MAX, 120, "como recipes_name_*_valido");
+  assert.equal(RECIPE_DESCRIPTION_MAX, 200, "como recipes_description_*_valida");
   assert.equal(MAX_WEEKS, 8);
   assert.equal(MAX_COOK_MINUTES, 720, "igual que chef_create_booking y chef_move_session");
   assert.equal(MAX_PORTIONS, 2 * LIMITS.maxPeople * LIMITS.maxDays * LIMITS.maxMeals, "lo más que da quote.ts: 30 + 30 personas, 7 días, 2 comidas");
@@ -383,5 +400,59 @@ test("cancelar: de 1 a 100 sesiones y un motivo de la lista, nunca texto libre",
   // Una frase en snake_case o un código del sistema (hold_expired, declined) tampoco: la clienta con cuenta lee su sesión.
   for (const reason of ["Se enfermó la clienta", "1abc", "x".repeat(41), "chef-cancelled", 7, "clienta_maleducada_no_paga", "hold_expired", "declined", "CHEF_CANCELLED"]) {
     assert.deepEqual(errorsOf(parseCancelSessionsRequest({ sessionIds: [SESSION_ID], reason })), { reason: "invalid" }, String(reason));
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /translate
+// ---------------------------------------------------------------------------
+
+test("traducir: el plato en español, recortado; sin descripción (ausente, null, vacía o solo espacios) es null", () => {
+  assert.deepEqual(parseTranslateRequest({ name: "  Milanesa a la napolitana ", description: " Con jamón y muzzarella. " }), {
+    ok: true,
+    value: { name: "Milanesa a la napolitana", description: "Con jamón y muzzarella." },
+  });
+  for (const description of [undefined, null, "", "   "]) {
+    const body = description === undefined ? { name: "Empanadas" } : { name: "Empanadas", description };
+    assert.deepEqual(parseTranslateRequest(body), { ok: true, value: { name: "Empanadas", description: null } }, JSON.stringify(description));
+  }
+  // Espacios dobles en el medio quedan: la base los acepta (la app los normaliza antes de mandar).
+  assert.deepEqual(parseTranslateRequest({ name: "Chipá  caliente" }), { ok: true, value: { name: "Chipá  caliente", description: null } });
+});
+
+test("traducir: los largos se cuentan por caracteres como la base (un emoji es uno), hasta 120 y 200", () => {
+  assert.equal(textLength("🍝"), 1);
+  assert.equal(textLength("Ñoquis"), 6);
+  assert.ok(parseTranslateRequest({ name: "x".repeat(RECIPE_NAME_MAX), description: "y".repeat(RECIPE_DESCRIPTION_MAX) }).ok);
+  assert.ok(parseTranslateRequest({ name: "🍝".repeat(RECIPE_NAME_MAX), description: "🥟".repeat(RECIPE_DESCRIPTION_MAX) }).ok, "240 unidades UTF-16, 120 caracteres");
+  assert.ok(parseTranslateRequest({ name: ` ${"x".repeat(RECIPE_NAME_MAX)} ` }).ok, "se cuenta después de recortar");
+  assert.deepEqual(errorsOf(parseTranslateRequest({ name: "x".repeat(RECIPE_NAME_MAX + 1) })), { name: "tooLong" });
+  assert.deepEqual(errorsOf(parseTranslateRequest({ name: "Locro", description: "🥟".repeat(RECIPE_DESCRIPTION_MAX + 1) })), { description: "tooLong" });
+});
+
+test("traducir: nombre obligatorio y de texto; caracteres de control en cualquiera de los dos: invalid", () => {
+  for (const name of [undefined, null, "", "   "]) {
+    assert.deepEqual(errorsOf(parseTranslateRequest(name === undefined ? {} : { name })), { name: "required" }, JSON.stringify(name));
+  }
+  for (const name of [5, true, ["Locro"], { es: "Locro" }]) {
+    assert.deepEqual(errorsOf(parseTranslateRequest({ name })), { name: "invalid" }, JSON.stringify(name));
+  }
+  for (const description of [5, false, ["Con zapallo"], { es: "Con zapallo" }]) {
+    assert.deepEqual(errorsOf(parseTranslateRequest({ name: "Locro", description })), { description: "invalid" }, JSON.stringify(description));
+  }
+  // Un salto de línea, un tabulador, un C1 (U+0085) o un separador de línea: la base los rechaza.
+  for (const text of ["Locro\ncriollo", "Locro\tcriollo", "Locro\u0085criollo", "Locro\u2028criollo", "Locro\u0000"]) {
+    assert.deepEqual(errorsOf(parseTranslateRequest({ name: text })), { name: "invalid" }, JSON.stringify(text));
+    assert.deepEqual(errorsOf(parseTranslateRequest({ name: "Locro", description: text })), { description: "invalid" }, JSON.stringify(text));
+  }
+});
+
+test("traducir: una clave que el contrato no tiene o un cuerpo que no es un objeto: payload invalid", () => {
+  for (const extra of [{ nameEs: "Locro" }, { locale: "it" }, { chefId: "cef00000-0000-4000-8000-000000000001" }]) {
+    assert.deepEqual(errorsOf(parseTranslateRequest({ name: "Locro", ...extra })), { payload: "invalid" }, JSON.stringify(extra));
+  }
+  assert.deepEqual(errorsOf(parseTranslateRequest({ name: "", extra: 1 })), { payload: "invalid", name: "required" }, "con los errores de cada campo");
+  for (const input of [null, [], "Locro", 7]) {
+    assert.deepEqual(errorsOf(parseTranslateRequest(input)), { payload: "invalid" }, JSON.stringify(input));
   }
 });
