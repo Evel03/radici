@@ -1047,9 +1047,9 @@ reset role;
 insert into public.sessions (id, chef_id, client_id, date, start_time, cook_minutes, status) values
   ('7e5c4000-0000-4000-8000-00000000000a', '7e5c1000-0000-4000-8000-000000000001',
    '7e5c2000-0000-4000-8000-00000000000a', '2027-03-01', '10:00', 150, 'confirmed');
-insert into public.session_menu (session_id, recipe_id, chef_id, portions) values
+insert into public.session_menu (session_id, recipe_id, chef_id, portions, position) values
   ('7e5c4000-0000-4000-8000-00000000000a', '7e5c6000-0000-4000-8000-000000000001',
-   '7e5c1000-0000-4000-8000-000000000001', 4);
+   '7e5c1000-0000-4000-8000-000000000001', 4, 1);
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"7e5c0000-0000-4000-8000-00000000c001","role":"authenticated"}';

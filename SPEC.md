@@ -180,7 +180,9 @@ create type ingredient_unit  as enum ('g','ml','pcs');  -- unidad de la cantidad
 | `requests` | id, chef_id, client_id (siempre, también para prospectos), type, status, adults, kids, days, meals text[], weeks (1–8: las semanas de un pedido `week`, una sesión de cocina por semana; 1 en los demás; al confirmar una reserva, las que se crearon), restrictions jsonb, wishes uuid[] (desde el 19/11/2026, los platos que el cliente eligió en el menú de la web, en orden: §4, «Menú de la web»), notes, preferred_date, preferred_start, pay_mode, target_session_id null (para 'change'), text (para 'change'), created_at; del pedido de la web además preferred_slot, locale, whatsapp_opt_in, estimate, source, seen_at, request_key, contact jsonb (el contacto con que llegó) y no_allergies (la pregunta de alergias: true = nadie tiene, false = las escribió y van en restrictions, null = sin respuesta; contrato §3) |
 | `quotes` | id, request_id, session_id (la sesión `held` que reserva el horario), version, menu uuid[], cook_minutes, portions, service_cents, groceries_est_cents, preauth_cents, pricing_snapshot jsonb, allergen_override text null, slot_date, slot_start, hold_until, sent_at, accepted_at |
 | `sessions` | id, chef_id, client_id, request_id, quote_id, date, start_time, cook_minutes, shop_minutes, gap_minutes, portions, status, hold_until null (solo `held`), pay_mode, service_cents, groceries_est_cents, preauth_cents, groceries_actual_cents null, service_paid_at, groceries_paid_at, shopping_done_at, cooked_at, cancelled_at, cancel_reason, **busy tstzrange** (generada), week_start (generada: el lunes de la semana ISO). Como máximo una sesión viva (no cancelada) por semana de cada pedido (`sessions_una_por_semana`) |
-| `session_menu` | session_id, recipe_id, portions |
+| `session_menu` | session_id, recipe_id, chef_id, portions (1–500: las de ese plato en la semana), position (1–30: el orden de los platos; 21/11/2026). Los platos del menú de una semana (5.8); se escribe con `save_session_menu` |
+| `session_shopping_items` (21/11/2026) | session_id, chef_id, position (1–150), name (hasta 80 caracteres), section (`shopping_section`), quantity int null (1 a 1000000), unit null (`ingredient_unit`); quantity y unit van juntas, o ninguna (q.b.). La lista de compras de la semana para la clienta, tal como la dejó Evelyn (5.8). Solo de la cocinera |
+| `session_menus` (21/11/2026) | session_id PK, chef_id, note null (para la clienta, hasta 1000 caracteres, admite saltos de línea), version (1 al crearse; sube en cada guardado), allergens_confirmed (Evelyn confirmó los platos que chocan con las alergias del pedido), updated_at. Una fila por semana con menú (5.8). Solo de la cocinera |
 | `receipts` | id, session_id, storage_path, total_cents, store_name, purchased_at, uploaded_by |
 | `payments` | id, session_id, kind, provider ('stripe','satispay','cash','transfer'), stripe_payment_intent_id, amount_cents, captured_cents, service_part_cents, groceries_part_cents (reparto para separar servicio e insumos en un mismo cobro), status, idempotency_key unique, last_error, created_at |
 | `prepared_portions` (F2) | id, client_id, session_id, recipe_id, count_initial, count_left, location, made_on, consume_by, discarded_at |
@@ -400,6 +402,45 @@ Guardar la política en `chef_settings.cancellation_policy` y mostrarla antes de
 
 Con `pay_after` no hay tarjeta guardada: la penalidad no se puede cobrar automáticamente. Decidir si se pide tarjeta a todos los clientes (sección 14).
 
+
+### 5.8 Presupuesto y menú de cada semana (proceso de Nicolas del 21/11/2026)
+
+1. La clienta pide desde la web, como siempre.
+2. Evelyn recibe el pedido (email y bandeja).
+3. Evelyn prepara el presupuesto dentro del pedido: semanas, fechas, hora y precio, y el menú de la semana 1.
+4. **Menú de una semana** (una sesión, ligada al pedido por `sessions.request_id`):
+   - Platos del catálogo con sus porciones en la semana. En la semana 1 vienen los que la clienta eligió en la web. Si un plato no existe, Evelyn lo crea desde ahí y queda elegido.
+   - Si un plato choca con las alergias del pedido, la app pide confirmarlo (§9, criterio 8) y queda registrado (`session_menus.allergens_confirmed`).
+   - La lista de compras sale de los ingredientes por las porciones (los ingredientes son para 4), juntando los iguales y agrupada por sección del súper. Evelyn la edita y se guarda tal como queda.
+   - Una nota opcional para la clienta.
+5. **Envío.** Evelyn ve la vista previa en el idioma de la clienta (la lista y la nota se traducen solas, como los platos) y lo manda por email, por WhatsApp o por los dos. El mensaje dice todo sin dejar dudas:
+   - los días y la hora de llegada;
+   - los platos, con su descripción, sus alérgenos y sus porciones;
+   - la lista de compras con cantidades y qué tener listo;
+   - la nota;
+   - un link para confirmar.
+
+   Nunca lleva la dirección, las alergias de la clienta ni nada de pagos.
+6. **La clienta confirma** el presupuesto y el menú en el link (todavía no tiene cuenta), o pide cambios. Evelyn los hace y vuelve a enviar.
+7. **Semanas siguientes:** Evelyn vuelve al mismo pedido, arma el menú de la semana siguiente, lo envía y la clienta lo confirma.
+8. **Avisos a Evelyn por email** si el menú de una semana todavía no se envió:
+   - 4 días y 72 h antes de la cocina;
+   - pasado el límite de 48 h, cada 2 horas, sobre ese pedido, hasta que lo envíe o empiece la sesión.
+9. Después del servicio se cobra como hoy. Este proceso no cambia ni especifica nada de pagos.
+
+Se construye en PRs chicos: base del menú, menú en la app, envío y link, página de la clienta, avisos y presupuesto. Esta sección se completa con cada uno.
+
+**Base del menú** (migración `20261121090000_session_menus.sql`, tests pgTAP `19_session_menus`). `save_session_menu(p jsonb)` guarda en una transacción, con la RLS de quien llama (security invoker), la cocinera o un colaborador:
+- los platos con sus porciones (`session_menu`) y la lista (`session_shopping_items`), que se reemplazan enteros;
+- la nota y la confirmación de alérgenos (`session_menus`), que si no vienen no se tocan.
+
+Control de versión: `version` es la que la app tenía cargada (null = todavía no había menú). Si no coincide, nada se escribe (`menu_changed`, 40001), así Evelyn y un colaborador nunca se pisan en silencio. Una receta tiene que ser de la cocina y no repetirse; una desactivada después de elegirla sigue valiendo.
+
+Solo se arma una sesión `held` o `confirmed` (o una vieja en `shopping_done`). Una cancelada, cocinada o cobrada da `session_not_editable` (55000).
+
+Errores: `not_a_chef`, `invalid_payload` (con el campo), `session_not_found`, `recipe_not_found` (con el campo) y los checks de las tablas. Una clave desconocida es un error, como en `save_recipe`.
+
+La lista y la nota son solo de la cocinera: la clienta las recibe en el mensaje y en su link. La política vieja que deja a una clienta con cuenta leer `session_menu` de sus sesiones se revisa en M2, para que vea solo los menús enviados.
 ---
 
 ## 6. Seguridad, privacidad y RGPD
