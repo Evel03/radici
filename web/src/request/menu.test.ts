@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildMenuResponse } from "../../../supabase/functions/_shared/menu.ts";
+import { buildMenuResponse, recipePhotoUrls } from "../../../supabase/functions/_shared/menu.ts";
 import { i18nFor, validRequest } from "./fixtures.ts";
 import {
+  DISH_PHOTO_SIZE,
+  dishPhoto,
   dishesInSeason,
   doneMenu,
   fetchMenu,
@@ -14,11 +16,20 @@ import {
   toggleDish,
   type MenuDish,
   type MenuPanelInput,
+  type DishPhotoElement,
   type MenuState,
 } from "./menu.ts";
 
-// Las lasagne, de octubre a diciembre; el minestrone, todo el año, sin traducción al español; la
-// panzanella, solo en verano.
+const SUPABASE = "https://abc.supabase.co";
+const LASAGNE_PHOTO = recipePhotoUrls(
+  SUPABASE,
+  "7e651000-0000-4000-8000-000000000001",
+  "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
+  "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f",
+);
+
+// Las lasagne, de octubre a diciembre y con foto; el minestrone, todo el año, sin traducción al español; la
+// panzanella, solo en verano. Los dos últimos, sin foto.
 const LASAGNE: MenuDish = {
   id: "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
   name: { it: "Lasagne", es: "Lasaña", en: null },
@@ -26,6 +37,7 @@ const LASAGNE: MenuDish = {
   allergens: ["gluten", "eggs", "milk"],
   diet: null,
   seasonMonths: [10, 11, 12],
+  photo: LASAGNE_PHOTO,
 };
 const MINESTRONE: MenuDish = {
   id: "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
@@ -34,6 +46,7 @@ const MINESTRONE: MenuDish = {
   allergens: [],
   diet: "vegan",
   seasonMonths: null,
+  photo: null,
 };
 const PANZANELLA: MenuDish = {
   id: "2a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
@@ -42,11 +55,12 @@ const PANZANELLA: MenuDish = {
   allergens: ["gluten"],
   diet: "vegetarian",
   seasonMonths: [6, 7, 8],
+  photo: null,
 };
 const READY: MenuState = { kind: "ready", dishes: [LASAGNE, MINESTRONE, PANZANELLA] };
 const NOVEMBER = 11;
 
-const URL_OK = menuUrl("https://abc.supabase.co/");
+const URL_OK = menuUrl(`${SUPABASE}/`);
 
 function view(overrides: Partial<MenuPanelInput> = {}, lang: "it" | "es" | "en" = "it") {
   return menuPanelView({ state: READY, selected: [], days: 5, month: NOVEMBER, removed: [], ...overrides }, i18nFor(lang));
@@ -71,6 +85,16 @@ describe("catálogo: GET …/menu", () => {
     expect(init.method).toBe("GET");
     expect(init.headers).toBeUndefined();
     expect(init.credentials).toBe("omit");
+  });
+
+  it("las fotos valen si son del mismo proyecto de Supabase que la función; de otro lado, el plato sale sin foto", async () => {
+    const respond = (dishes: unknown[]) => async () => new Response(JSON.stringify({ version: 1, dishes }), { status: 200 });
+    expect(await fetchMenu(URL_OK, { fetch: respond([LASAGNE]) })).toEqual([LASAGNE]);
+    const elsewhere = menuUrl("https://otro.supabase.co");
+    expect(await fetchMenu(elsewhere, { fetch: respond([LASAGNE]) })).toEqual([{ ...LASAGNE, photo: null }]);
+    // Una función de antes de las fotos (sin photo): el plato, sin foto.
+    const { photo: _, ...old } = LASAGNE;
+    expect(await fetchMenu(URL_OK, { fetch: respond([old]) })).toEqual([{ ...LASAGNE, photo: null }]);
   });
 
   it("503, JSON roto, otra versión, sin conexión o tiempo agotado: null (el menù lo propone Evelyn)", async () => {
@@ -165,6 +189,7 @@ describe("panel", () => {
         description: "Ragù e besciamella.",
         allergens: "Allergeni: glutine, uova, latte e derivati",
         diet: null,
+        photo: LASAGNE_PHOTO.thumb,
         checked: false,
         disabled: false,
       },
@@ -174,6 +199,7 @@ describe("panel", () => {
         description: "Verdure di stagione.",
         allergens: "Nessuno dei 14 allergeni principali",
         diet: "Vegano",
+        photo: null,
         checked: false,
         disabled: false,
       },
@@ -207,6 +233,79 @@ describe("panel", () => {
       const panel = view({ state, month });
       expect(panel, state.kind).toMatchObject({ hint: null, count: null, overLimit: false, cards: [], message });
     }
+  });
+});
+
+describe("foto del plato", () => {
+  /** Una <img> simulada: anota el listener y el src, y deja disparar el error. */
+  function fakeImage() {
+    const steps: string[] = [];
+    const listeners: Array<() => void> = [];
+    let src = "";
+    const img: DishPhotoElement & { steps: string[]; removed: boolean; fail(): void } = {
+      className: "",
+      alt: "Lasagne",
+      width: 0,
+      height: 0,
+      loading: "eager",
+      decoding: "auto",
+      get src() {
+        return src;
+      },
+      set src(value: string) {
+        steps.push("src");
+        src = value;
+      },
+      addEventListener(type, listener, options) {
+        steps.push(`${type}${options?.once ? " (una vez)" : ""}`);
+        listeners.push(listener);
+      },
+      remove() {
+        img.removed = true;
+      },
+      steps,
+      removed: false,
+      fail() {
+        for (const listener of listeners) listener();
+      },
+    };
+    return img;
+  }
+
+  it("con foto, la tarjeta trae la miniatura (la de 360 px); sin foto, null y se ve como antes", () => {
+    const cards = view().cards;
+    expect(cards.map((card) => [card.name, card.photo])).toEqual([
+      ["Lasagne", LASAGNE_PHOTO.thumb],
+      ["Minestrone", null],
+    ]);
+  });
+
+  it("miniatura cuadrada de tamaño fijo, perezosa y con alt vacío (el nombre está al lado)", () => {
+    const img = dishPhoto(fakeImage(), LASAGNE_PHOTO.thumb, () => {});
+    expect(DISH_PHOTO_SIZE).toBeGreaterThanOrEqual(72);
+    expect(DISH_PHOTO_SIZE).toBeLessThanOrEqual(88);
+    expect(img).toMatchObject({
+      className: "dish__photo",
+      alt: "",
+      width: DISH_PHOTO_SIZE,
+      height: DISH_PHOTO_SIZE,
+      loading: "lazy",
+      decoding: "async",
+      src: LASAGNE_PHOTO.thumb,
+    });
+    // Un listener de error, de una sola vez, y el src.
+    expect([...img.steps].sort()).toEqual(["error (una vez)", "src"]);
+  });
+
+  it("si la imagen no carga, se saca (sin un hueco roto) y avisa para que la tarjeta quede como sin foto", () => {
+    let failed = 0;
+    const img = dishPhoto(fakeImage(), LASAGNE_PHOTO.thumb, () => {
+      failed += 1;
+    });
+    expect(img.removed).toBe(false);
+    img.fail();
+    expect(img.removed).toBe(true);
+    expect(failed).toBe(1);
   });
 });
 

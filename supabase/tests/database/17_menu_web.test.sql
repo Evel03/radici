@@ -344,34 +344,35 @@ select is(
     {"id": "7e656000-0000-4000-8000-000000000001",
      "name": {"it": "Lasagne alla bolognese", "es": null, "en": "Lasagne Bolognese"},
      "description": {"it": "Ragù di manzo, besciamella e sfoglia all''uovo.", "es": null, "en": "Beef ragù, béchamel and egg pasta."},
-     "allergens": ["gluten", "eggs", "milk"], "diet": null, "seasonMonths": null},
+     "allergens": ["gluten", "eggs", "milk"], "diet": null, "seasonMonths": null, "photoId": null},
     {"id": "7e656000-0000-4000-8000-000000000002",
      "name": {"it": "minestrone di verdure", "es": "Minestrone de verduras", "en": "Vegetable minestrone"},
      "description": {"it": "Verdure di stagione e legumi.", "es": "Verduras de estación y legumbres.", "en": "Seasonal vegetables and pulses."},
-     "allergens": [], "diet": "vegan", "seasonMonths": [10, 11, 12]},
+     "allergens": [], "diet": "vegan", "seasonMonths": [10, 11, 12], "photoId": null},
     {"id": "7e656000-0000-4000-8000-00000000000a",
      "name": {"it": "pasta e fagioli", "es": null, "en": null},
      "description": {"it": "Con i cannellini.", "es": null, "en": null},
-     "allergens": ["gluten"], "diet": "vegan", "seasonMonths": null},
+     "allergens": ["gluten"], "diet": "vegan", "seasonMonths": null, "photoId": null},
     {"id": "7e656000-0000-4000-8000-00000000000b",
      "name": {"it": "Pasta e fagioli", "es": null, "en": null},
      "description": {"it": "Con i borlotti.", "es": null, "en": null},
-     "allergens": ["gluten"], "diet": "vegan", "seasonMonths": null},
+     "allergens": ["gluten"], "diet": "vegan", "seasonMonths": null, "photoId": null},
     {"id": "7e656000-0000-4000-8000-000000000006",
      "name": {"it": "Polenta taragna", "es": null, "en": null},
      "description": {"it": "Grano saraceno e formaggio della Valtellina.", "es": null, "en": null},
-     "allergens": ["milk"], "diet": "vegetarian", "seasonMonths": [1, 2]}
+     "allergens": ["milk"], "diet": "vegetarian", "seasonMonths": [1, 2], "photoId": null}
   ]'::jsonb,
   'el menú de C1: solo los publicados (sin el desactivado, la receta de evento ni el que no tiene descripción '
   'en italiano), por nombre sin mayúsculas y después por id, con los alérgenos en el orden del enum, [] sin '
-  'alérgenos, dieta null sin dieta y los meses en orden (null = todo el año)'
+  'alérgenos, dieta null sin dieta, los meses en orden (null = todo el año) y photoId null sin foto '
+  '(20261120100000_recipe_photos.sql)'
 );
 select is(
   (select array_agg(distinct k order by k)
    from jsonb_array_elements(public.get_public_menu('7e651000-0000-4000-8000-000000000001')) as d,
         jsonb_object_keys(d) as k),
-  array['allergens', 'description', 'diet', 'id', 'name', 'seasonMonths'],
-  'cada plato trae solo esas seis claves: nunca ingredientes ni notas'
+  array['allergens', 'description', 'diet', 'id', 'name', 'photoId', 'seasonMonths'],
+  'cada plato trae solo esas siete claves: nunca ingredientes ni notas'
 );
 select is(
   public.get_public_menu('7e651000-0000-4000-8000-000000000002') -> 0 -> 'name' ->> 'it'
