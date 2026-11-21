@@ -49,12 +49,36 @@ void main() {
       },
     );
 
+    test('la foto del plato: photo_id o null (sin foto)', () {
+      const photoId = 'f0000000-0000-4000-8000-000000000001';
+      expect(
+        MenuDish.fromJson(const {
+          'id': risottoId,
+          'name_it': 'Risotto',
+          'photo_id': photoId,
+        }).photoId,
+        photoId,
+      );
+      expect(
+        MenuDish.fromJson(const {
+          'id': risottoId,
+          'name_it': 'Risotto',
+          'photo_id': null,
+        }).photoId,
+        isNull,
+      );
+    });
+
     for (final (label, row) in [
       ('sin id', const {'id': '', 'name_it': 'Risotto'}),
       ('sin nombre en italiano', const {'id': risottoId, 'name_it': null}),
       (
         'una traducción que no es texto',
         const {'id': risottoId, 'name_it': 'Risotto', 'name_es': 3},
+      ),
+      (
+        'una foto que no es un uuid',
+        const {'id': risottoId, 'name_it': 'Risotto', 'photo_id': '../x'},
       ),
     ]) {
       test('fila rota ($label): FormatException', () {
@@ -92,7 +116,10 @@ void main() {
     },
   );
 
-  test('menuDishColumns: solo los nombres (nunca ingredientes ni notas)', () {
-    expect(menuDishColumns, 'id, name_it, name_es, name_en');
-  });
+  test(
+    'menuDishColumns: solo los nombres y la foto (nunca ingredientes ni notas)',
+    () {
+      expect(menuDishColumns, 'id, name_it, name_es, name_en, photo_id');
+    },
+  );
 }

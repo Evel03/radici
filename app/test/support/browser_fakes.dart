@@ -63,6 +63,12 @@ class FakeBrowser implements Browser {
   void writeFlag(String key, String value) {
     if (!storageBlocked) flags[key] = value;
   }
+
+  /// URLs soltadas con [revokeObjectUrl], en orden.
+  final List<String> revoked = [];
+
+  @override
+  void revokeObjectUrl(String url) => revoked.add(url);
 }
 
 /// El id publicado en build.json, controlable.

@@ -30,6 +30,7 @@ Map<String, dynamic> recipeRow({
   Object? freezerDays = 60,
   Object? notes,
   Object? active = true,
+  Object? photoId,
   Object? allergens = const [
     {'allergen': 'milk'},
     {'allergen': 'gluten'},
@@ -63,6 +64,7 @@ Map<String, dynamic> recipeRow({
     _ => notes,
   },
   'active': active,
+  'photo_id': photoId,
   'allergens': allergens,
   'ingredients': ingredients,
 };

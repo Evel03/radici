@@ -1,6 +1,7 @@
 // Lista de platos: el estado vacío que propone cargar el primero, cada plato
-// con sus alérgenos, dieta y temporada a la vista, los desactivados al final,
-// la búsqueda en los tres idiomas y el aviso al volver del editor.
+// con sus alérgenos, dieta y temporada a la vista (y su foto, si tiene), los
+// desactivados al final, la búsqueda en los tres idiomas y el aviso al volver
+// del editor.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/features/more/presentation/more_screen.dart';
@@ -12,7 +13,9 @@ import 'package:radici/features/recipes/presentation/recipes_screen.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
+import '../../../support/photo_fakes.dart';
 import '../../../support/recipe_fixtures.dart';
+import '../../../support/request_fixtures.dart';
 import '../../../support/text_input_guard.dart';
 
 void main() {
@@ -27,6 +30,7 @@ void main() {
     FakeRecipesRepository? repository,
     Size size = const Size(400, 900),
     Locale locale = const Locale('it', 'IT'),
+    ImageProvider<Object> Function(String url)? photoImage,
   }) async {
     final app = await pumpChefApp(
       tester,
@@ -35,6 +39,7 @@ void main() {
       location: '/altro/piatti',
       size: size,
       deviceLocales: [locale],
+      photoImage: photoImage,
     );
     expect(find.byType(RecipesScreen), findsOneWidget);
     return app;
@@ -100,6 +105,53 @@ void main() {
     await openList(tester, locale: const Locale('es', 'ES'));
     expect(inTile(lasagneId, 'En la web'), findsOneWidget);
     expect(inTile(minestroneId, 'Sin descripción: no está en la web'), findsOneWidget);
+  });
+
+  // La miniatura (320 px de lado menor) de los platos con foto; sin foto, como siempre.
+  group('fotos', () {
+    const photoId = 'f0000000-0000-4000-8000-0000000000aa';
+    List<Recipe> withPhoto() => [risotto(), frittata(), lasagne().copyWith(photoId: photoId), minestrone()];
+
+    testWidgets('un plato con foto lleva la miniatura a la izquierda; los otros, sin lugar para la foto', (tester) async {
+      final urls = <String>[];
+      await openList(
+        tester,
+        recipes: withPhoto(),
+        photoImage: (url) {
+          urls.add(url);
+          return MemoryImage(tinyJpeg);
+        },
+      );
+
+      final photo = find.descendant(of: tile(lasagneId), matching: byKey('recipe-photo-$lasagneId'));
+      expect(photo, findsOneWidget);
+      expect(tester.getSize(photo), const Size(56, 56));
+      expect(tester.getTopLeft(photo).dx, lessThan(tester.getTopLeft(inTile(lasagneId, 'Lasagne alla bolognese')).dx));
+      expect(urls, ['https://fotos.test/$testChefId/$lasagneId/$photoId-thumb.jpg']);
+      for (final id in [risottoId, minestroneId, frittataId]) {
+        expect(find.descendant(of: tile(id), matching: find.byType(Image)), findsNothing, reason: id);
+      }
+      // Decorativa: el lector de pantalla lee el nombre y los datos, no la foto.
+      expect(tester.getSemantics(tile(lasagneId)).label, startsWith('Lasagne alla bolognese'));
+    });
+
+    testWidgets('si la foto no carga: un cuadrado neutro, sin error a la vista', (tester) async {
+      await openList(tester, recipes: withPhoto(), photoImage: (_) => const FailingImageProvider());
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: byKey('recipe-photo-$lasagneId'), matching: byKey('recipe-photo-placeholder')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('con el texto al doble, a 375×667, sin desbordes', (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await openList(tester, recipes: withPhoto(), size: const Size(375, 667));
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('recipe-photo-$lasagneId')), findsOneWidget);
+    });
   });
 
   testWidgets('un plato sin alérgenos lo dice', (tester) async {

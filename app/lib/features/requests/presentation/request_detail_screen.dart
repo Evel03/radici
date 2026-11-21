@@ -14,6 +14,7 @@ import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/money.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/quote/domain/quote.dart' show defaultPricing;
+import 'package:radici/features/recipes/presentation/recipe_photo_thumbnail.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/application/chosen_menu_provider.dart';
 import 'package:radici/features/requests/application/contact_actions.dart';
@@ -571,8 +572,9 @@ class _RequestDetail extends ConsumerWidget {
 /// Los platos que eligió el cliente en la pestaña «Menù» de la web: cuántos de
 /// cuántos días (o cuántos, si el pedido no dice los días) y sus nombres en el
 /// orden en que los tildó, en el idioma de la app (con el italiano si falta la
-/// traducción). El título sale del pedido: se ve aunque los nombres no hayan
-/// llegado o no se puedan leer.
+/// traducción), con la miniatura a la derecha si el plato tiene foto (los
+/// nombres quedan alineados). El título sale del pedido: se ve aunque los
+/// nombres no hayan llegado o no se puedan leer.
 class _ChosenMenu extends ConsumerWidget {
   const _ChosenMenu({required this.request});
 
@@ -646,6 +648,16 @@ class _ChosenMenu extends ConsumerWidget {
                           ),
                         ),
                       ),
+                      if (chosenDish.dish?.photoId case final photoId?)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(start: 12),
+                          child: RecipePhotoThumbnail(
+                            key: ValueKey('detail-menu-photo-$index'),
+                            recipeId: chosenDish.id,
+                            photoId: photoId,
+                            size: 48,
+                          ),
+                        ),
                     ],
                   ),
                 ),

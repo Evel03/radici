@@ -104,6 +104,12 @@ void main() {
       );
     });
 
+    test('la foto: photo_id o null (sin foto)', () {
+      const photoId = 'f0000000-0000-4000-8000-000000000001';
+      expect(Recipe.fromJson(recipeRow(photoId: photoId)).photoId, photoId);
+      expect(Recipe.fromJson(recipeRow()).photoId, isNull);
+    });
+
     test('las cuatro secciones compuestas y las tres unidades se leen bien', () {
       final recipe = Recipe.fromJson(
         recipeRow(
@@ -132,6 +138,8 @@ void main() {
       ('sin id', recipeRow(id: '')),
       ('nombre que no es texto', recipeRow(nameIt: 3)),
       ('descripción que no es texto', recipeRow(descriptionIt: 3)),
+      ('foto que no es texto', recipeRow(photoId: 3)),
+      ('foto que no es un uuid', recipeRow(photoId: '../otra-cocina')),
       ('alérgeno desconocido', recipeRow(allergens: const [{'allergen': 'kiwi'}])),
       ('dieta desconocida', recipeRow(diet: 'pescatarian')),
       ('sección desconocida', recipeRow(ingredients: const [
@@ -239,6 +247,14 @@ void main() {
       final payload = recipeSavePayload(frittata());
       expect(payload.containsKey('active'), isFalse);
       expect(payload.containsKey('catalog_visible'), isFalse);
+    });
+
+    // La foto la pone set_recipe_photo, después de subir los archivos;
+    // save_recipe no la toca (duplicar un plato no la copia).
+    test('nunca manda la foto', () {
+      final payload = recipeSavePayload(lasagne().copyWith(photoId: 'f0000000-0000-4000-8000-000000000001'));
+      expect(payload.containsKey('photo_id'), isFalse);
+      expect(payload.values, isNot(contains('f0000000-0000-4000-8000-000000000001')));
     });
   });
 

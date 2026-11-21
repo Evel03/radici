@@ -31,12 +31,17 @@
 # - script-src 'wasm-unsafe-eval': CanvasKit es WebAssembly (sin él la app no arranca). Nada de
 #   'unsafe-inline' ni 'unsafe-eval' en scripts (el build usa --csp).
 # - style-src 'unsafe-inline': el motor inserta <style> que cambian según el navegador (no sirven hashes).
-# - connect-src: Supabase por https (Auth y REST) y wss (Realtime, el aviso de pedido nuevo).
+# - img-src blob: en Safari y Firefox (sin ImageDecoder) el motor decodifica cada imagen en un <img> con
+#   una URL blob: (las fotos de los platos y la vista previa de la elegida), e image_picker carga ahí la
+#   foto elegida para achicarla. El origen de Supabase (bucket recipe-photos), por si una imagen se carga
+#   con un <img>: hoy el motor las pide con XMLHttpRequest (connect-src).
+# - connect-src: Supabase por https (Auth, REST, Storage) y wss (Realtime, el aviso de pedido nuevo), y
+#   blob: (la foto elegida se lee de su URL blob: con XMLHttpRequest).
 # Caché: los archivos de Flutter NO llevan hash en el nombre (main.dart.js, canvaskit/…): cada carga
 # revalida (ETag → 304 si no cambió). La regla de /assets/* no alcanza a /gestione/assets/*.
 /gestione/*
   ! Content-Security-Policy
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' __SUPABASE_ORIGIN__ __SUPABASE_WS_ORIGIN__; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: __SUPABASE_ORIGIN__; connect-src 'self' blob: __SUPABASE_ORIGIN__ __SUPABASE_WS_ORIGIN__; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
   Cache-Control: no-cache
   X-Robots-Tag: noindex, nofollow
 

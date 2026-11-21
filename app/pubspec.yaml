@@ -17,6 +17,12 @@ dependencies:
   flutter_riverpod: ^3.4.3
   freezed_annotation: ^3.1.0
   go_router: ^18.1.0
+  # Fotos de los platos: enderezar (EXIF), achicar y volver a codificar en JPEG
+  # sin metadatos, en el dispositivo (features/recipes/domain/recipe_photo.dart).
+  image: ^4.12.0
+  # Elegir la foto de un plato: cámara o galería en el teléfono; en la web, un
+  # archivo (el navegador ofrece la cámara si la hay).
+  image_picker: ^1.2.4
   intl: ^0.20.3
   json_annotation: ^4.12.0
   # Idioma de la interfaz guardado en el dispositivo: un arranque en frío lo

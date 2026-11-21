@@ -61,6 +61,16 @@ class WebBrowser implements Browser {
       // Sin almacenamiento, la marca no queda: el aviso vuelve la próxima vez.
     }
   }
+
+  @override
+  void revokeObjectUrl(String url) {
+    if (!url.startsWith('blob:')) return;
+    try {
+      web.URL.revokeObjectURL(url);
+    } on Object {
+      // Ya estaba suelta: nada que hacer.
+    }
+  }
 }
 
 extension on web.Navigator {

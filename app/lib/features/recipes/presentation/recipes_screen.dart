@@ -1,8 +1,9 @@
 // Catálogo de platos de la cocinera: la lista con búsqueda (en los nombres en
 // italiano, español e inglés), los activos primero y por nombre, cada uno con
-// sus alérgenos, su dieta, su temporada y si sale en la web a la vista, y los
-// desactivados al final. «Nuovo piatto» abre el editor. Solo muestra
-// providers: la lógica está en RecipeCatalogController y en recipe.dart.
+// sus alérgenos, su dieta, su temporada y si sale en la web a la vista (y su
+// foto, si tiene), y los desactivados al final. «Nuovo piatto» abre el editor.
+// Solo muestra providers: la lógica está en RecipeCatalogController y en
+// recipe.dart.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/presentation/recipe_labels.dart';
+import 'package:radici/features/recipes/presentation/recipe_photo_thumbnail.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
 import 'package:radici/l10n/app_localizations.dart';
@@ -248,9 +250,10 @@ class _RecipesScreenState extends ConsumerState<RecipesScreen> {
   }
 }
 
-/// Un plato de la lista: el nombre en italiano (el principal), el del idioma
-/// de la interfaz si es otro, los alérgenos, la dieta, la temporada y, si
-/// está activo, si sale en la web o le falta la descripción para salir.
+/// Un plato de la lista: la foto (si tiene; sin foto, sin lugar), el nombre en
+/// italiano (el principal), el del idioma de la interfaz si es otro, los
+/// alérgenos, la dieta, la temporada y, si está activo, si sale en la web o le
+/// falta la descripción para salir.
 class _RecipeTile extends StatelessWidget {
   const _RecipeTile({required this.recipe});
 
@@ -288,9 +291,18 @@ class _RecipeTile extends StatelessWidget {
       RecipeWebStatus.inactive => null,
     };
 
+    final photoId = recipe.photoId;
     return ListTile(
       key: ValueKey('recipe-${recipe.id}'),
       onTap: () => context.go(AppRoutes.recipeEdit(recipe.id)),
+      leading: photoId == null
+          ? null
+          : RecipePhotoThumbnail(
+              key: ValueKey('recipe-photo-${recipe.id}'),
+              recipeId: recipe.id,
+              photoId: photoId,
+              size: 56,
+            ),
       title: Text(
         recipe.nameIt,
         style: recipe.active ? null : TextStyle(color: muted),

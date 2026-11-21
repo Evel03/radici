@@ -24,4 +24,7 @@ class NoBrowser implements Browser {
 
   @override
   void writeFlag(String key, String value) {}
+
+  @override
+  void revokeObjectUrl(String url) {}
 }

@@ -10,7 +10,7 @@
 --   1. Bucket público 'recipe-photos' (la web muestra las fotos sin login): JPEG de hasta 2 MiB. La
 --      app sube dos archivos por foto, ya achicados y sin metadatos:
 --        {chef_id}/{recipe_id}/{photo_id}.jpg        (lado mayor 1200 px)
---        {chef_id}/{recipe_id}/{photo_id}-thumb.jpg  (lado mayor 360 px)
+--        {chef_id}/{recipe_id}/{photo_id}-thumb.jpg  (lado menor 320 px: se ve recortada en un cuadrado)
 --      Que cada foto nueva lleve un uuid nuevo (nunca pisa ni mueve un archivo) es una convención de
 --      la app, que los sube con una caché de una semana; la base no la garantiza: sin política de
 --      UPDATE la cocina no reemplaza ni renombra por la API, pero puede borrar un archivo y volver a

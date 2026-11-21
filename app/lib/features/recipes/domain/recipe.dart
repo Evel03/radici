@@ -24,6 +24,10 @@
 // chef/translate, contrato chef-api.md §12). recipes.auto_translated guarda
 // qué campos llenó el traductor y ella no tocó a mano (migración
 // 20261120090000_recipe_translations.sql): [Recipe.autoTranslated].
+//
+// La foto (photoId, migración 20261120100000_recipe_photos.sql) también es
+// pública: dos archivos del bucket recipe-photos (recipe_photo.dart). La pone
+// set_recipe_photo, nunca save_recipe: duplicar un plato no la copia.
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
@@ -153,6 +157,11 @@ abstract class Recipe with _$Recipe {
     /// false = desactivado: no se ofrece ni entra en menús nuevos. Un plato
     /// nunca se borra (session_menu lo protege).
     @Default(true) bool active,
+
+    /// La foto del plato (null = sin foto): los archivos
+    /// `{chef_id}/{id}/{photoId}.jpg` y `…-thumb.jpg` del bucket público
+    /// recipe-photos. No va en save_recipe.
+    String? photoId,
     @Default(<RecipeIngredient>[]) List<RecipeIngredient> ingredients,
   }) = _Recipe;
 
@@ -199,6 +208,7 @@ abstract class Recipe with _$Recipe {
       freezerDays: freezerDays,
       notes: _notesFromJson(json['notes']),
       active: active,
+      photoId: _photoIdFromJson(json['photo_id']),
       ingredients: _ingredientsFromJson(ingredients),
     );
   }
@@ -234,7 +244,7 @@ abstract class Recipe with _$Recipe {
 const String recipeColumns =
     'id, name_it, name_es, name_en, description_it, description_es, '
     'description_en, auto_translated, diet, season_months, fridge_days, '
-    'freezable, freezer_days, active, '
+    'freezable, freezer_days, active, photo_id, '
     'allergens:recipe_allergens(allergen), '
     'ingredients:recipe_ingredients(position, name, section, quantity, unit), '
     'notes:recipe_notes(notes)';
@@ -242,12 +252,13 @@ const String recipeColumns =
 /// El argumento `p` de save_recipe: el plato entero. Los ingredientes van en
 /// orden (la base les pone la posición). Nunca lleva `active` ni
 /// `catalog_visible`: save_recipe no toca una clave que no viene, así guardar
-/// no reactiva un plato ni pasa una receta de evento al catálogo. Las
-/// descripciones van siempre (null = sin descripción: borra la que había), y
-/// también `auto_translated`, que save_recipe reemplaza en cada guardado: solo
-/// los campos con texto y con el español del que salen (save_recipe rechaza un
-/// campo marcado sin texto, un nombre marcado sin `name_es` y una descripción
-/// marcada sin `description_es`).
+/// no reactiva un plato ni pasa una receta de evento al catálogo. Tampoco la
+/// foto (la pone set_recipe_photo). Las descripciones van siempre (null = sin
+/// descripción: borra la que había), y también `auto_translated`, que
+/// save_recipe reemplaza en cada guardado: solo los campos con texto y con el
+/// español del que salen (save_recipe rechaza un campo marcado sin texto, un
+/// nombre marcado sin `name_es` y una descripción marcada sin
+/// `description_es`).
 Map<String, Object?> recipeSavePayload(Recipe recipe) => {
   'id': recipe.id,
   'name_it': recipe.nameIt,
@@ -299,6 +310,22 @@ Set<TranslatedField> _autoTranslatedFromJson(Object? value) {
     for (final field in TranslatedField.values)
       if (value.contains(field.dbValue)) field,
   };
+}
+
+final RegExp _uuid = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+);
+
+/// recipes.photo_id (un uuid, en minúsculas como lo da Postgres; null = sin
+/// foto): con él se arman las rutas de los archivos, así que otra cosa es una
+/// fila rota. Una base sin la columna no llega acá: PostgREST rechaza la
+/// consulta entera (400) y el catálogo no carga.
+String? _photoIdFromJson(Object? value) {
+  if (value == null) return null;
+  if (value is! String || !_uuid.hasMatch(value)) {
+    throw const FormatException('Foto inválida');
+  }
+  return value;
 }
 
 /// Las notas embebidas de recipe_notes: PostgREST las manda como una lista

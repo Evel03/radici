@@ -1,12 +1,17 @@
 // Catálogo de platos de la cocinera: la lista, la búsqueda y los cambios.
 // Guardar deja el plato en la lista con lo que se mandó (sin volver a leer);
-// desactivar o reactivar se ve enseguida y vuelve atrás si el servidor falla.
+// desactivar o reactivar se ve enseguida y vuelve atrás si el servidor falla;
+// la foto cambia en la lista cuando la base la guardó.
 // Entre dos dispositivos alcanza con deslizar para actualizar (sin Realtime).
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
+import 'package:radici/features/recipes/domain/recipe_photo.dart';
 
 final recipeCatalogProvider =
     AsyncNotifierProvider<RecipeCatalogController, List<Recipe>>(
@@ -102,13 +107,16 @@ class RecipeCatalogController extends AsyncNotifier<List<Recipe>> {
   }
 
   /// Guarda [recipe] entero y lo deja en la lista. Guardar no cambia si está
-  /// activo: el plato de la lista conserva su estado. Devuelve el plato como
-  /// quedó. Si falla, la lista no cambia y se relanza [RecipesFailure].
+  /// activo ni su foto (save_recipe no las toca): el plato de la lista las
+  /// conserva. Devuelve el plato como quedó. Si falla, la lista no cambia y se
+  /// relanza [RecipesFailure].
   Future<Recipe> save(Recipe recipe) async {
     final saved = await _change(() async {
       await _repository.save(recipe);
       final current = _find(recipe.id);
-      return current == null ? recipe : recipe.copyWith(active: current.active);
+      return current == null
+          ? recipe
+          : recipe.copyWith(active: current.active, photoId: current.photoId);
     });
     if (ref.mounted) _put(saved);
     return saved;
@@ -129,6 +137,66 @@ class RecipeCatalogController extends AsyncNotifier<List<Recipe>> {
         rethrow;
       }
     });
+  }
+
+  /// La limpieza en curso de la carpeta de cada plato: el próximo cambio de
+  /// foto del mismo plato la espera, así no borra lo que se está subiendo.
+  final Map<String, Future<void>> _cleanups = {};
+
+  /// Pone en el plato [recipeId] (ya guardado) la foto [photo], o se la saca
+  /// con null: sube los dos archivos, llama a set_recipe_photo y deja el plato
+  /// de la lista con la foto nueva. Después limpia la carpeta del plato, sin
+  /// esperar ni avisar si falla: borra todo lo que no sea la foto nueva (la
+  /// que dejó de usarse, también si la respuesta de un intento anterior se
+  /// perdió, y las subidas abandonadas). Si falla, la lista no cambia y se
+  /// relanza [RecipePhotoFailure].
+  Future<void> setPhoto(String recipeId, NewRecipePhoto? photo) async {
+    final chefId = _chefId;
+    if (chefId == null) {
+      throw const RecipePhotoFailure(RecipePhotoFailureKind.unavailable);
+    }
+    final photos = ref.read(recipePhotosRepositoryProvider);
+    final photoId = photo?.photoId;
+    await _change(() async {
+      await _cleanups[recipeId];
+      if (photo != null) {
+        await photos.upload(chefId: chefId, recipeId: recipeId, photo: photo);
+      }
+      await photos.setPhoto(recipeId: recipeId, photoId: photoId);
+      if (ref.mounted) {
+        final current = _find(recipeId);
+        if (current != null) _put(current.copyWith(photoId: photoId));
+      }
+      final cleanup = _cleanQuietly(photos, chefId, recipeId, photoId);
+      _cleanups[recipeId] = cleanup;
+      unawaited(
+        cleanup.whenComplete(() {
+          if (identical(_cleanups[recipeId], cleanup)) {
+            _cleanups.remove(recipeId);
+          }
+        }),
+      );
+    });
+  }
+
+  /// Si no se puede limpiar, lo que sobra queda en el bucket hasta el próximo
+  /// cambio de foto de ese plato: no se le avisa a la cocinera (la foto del
+  /// plato ya cambió).
+  Future<void> _cleanQuietly(
+    RecipePhotosRepository photos,
+    String chefId,
+    String recipeId,
+    String? photoId,
+  ) async {
+    try {
+      await photos.deleteAllExcept(
+        chefId: chefId,
+        recipeId: recipeId,
+        keepPhotoId: photoId,
+      );
+    } on Object {
+      // Mejor esfuerzo.
+    }
   }
 
   Future<T> _change<T>(Future<T> Function() body) async {

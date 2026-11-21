@@ -1,5 +1,5 @@
 // Editor de un plato: el formulario (RecipeDraft) con sus cambios, el
-// guardado entero por save_recipe y desactivar o reactivar.
+// guardado entero por save_recipe, la foto y desactivar o reactivar.
 //
 // Un plato nuevo (o una copia) lleva un id generado al abrir el editor: cada
 // reintento de guardar manda el mismo, así un guardado que llegó al servidor
@@ -9,8 +9,8 @@
 // El español es la fuente (20/11/2026): al guardar, antes de save_recipe, se
 // traduce al italiano y al inglés lo que dice el plan
 // (planRecipeTranslation: lo vacío y lo automático cuyo español cambió). Si
-// el traductor falla no se guarda nada y lo escrito queda; se puede
-// reintentar, escribir a mano lo que falta o guardar sin traducir (lo
+// el traductor falla no se guarda nada (tampoco la foto) y lo escrito queda;
+// se puede reintentar, escribir a mano lo que falta o guardar sin traducir (lo
 // automático viejo se vacía: nunca queda una traducción vieja como si fuera
 // la del español nuevo).
 //
@@ -20,14 +20,31 @@
 // traducir, sigue siendo viejo: el español vuelve al campo italiano y
 // name_es queda null (RecipeTranslationPlan.skippedToSave), así nunca hace
 // falta escribir el italiano y la próxima vez que se guarde se traduce.
+//
+// La foto se elige en el mismo editor, también en un plato nuevo: queda
+// preparada (achicada y sin metadatos) y se sube al guardar, después de la
+// traducción y del plato (los archivos van en la carpeta del plato y
+// set_recipe_photo exige que exista). Si la foto falla, el plato queda guardado
+// y la foto sigue en el editor para reintentar, con el mismo uuid. Mientras se
+// elige o se prepara una foto no se guarda; una que llega mientras guarda (en
+// la web) queda para el próximo guardado y el editor no se cierra. El guardado
+// sigue (plato, foto) aunque el editor se cierre: lo hace el catálogo, que no
+// se descarta.
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:radici/core/platform.dart';
 import 'package:radici/core/uuid.dart';
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
+import 'package:radici/features/recipes/application/recipe_photo_providers.dart';
+import 'package:radici/features/recipes/data/recipe_photo_picker.dart';
+import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/domain/recipe_draft.dart';
+import 'package:radici/features/recipes/domain/recipe_photo.dart';
 import 'package:radici/features/recipes/domain/recipe_translation.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 
@@ -94,12 +111,46 @@ abstract class RecipeEditorState with _$RecipeEditorState {
 
     /// Se está desactivando o reactivando.
     @Default(false) bool changingActive,
+
+    /// La foto que tiene guardada el plato (null = sin foto; también en uno
+    /// nuevo y en una copia: duplicar no copia la foto).
+    String? savedPhotoId,
+
+    /// Lo que se cambia en la foto al guardar (null = nada).
+    RecipePhotoChange? photoChange,
+
+    /// Se está eligiendo o preparando una foto: en el teléfono, desde que se
+    /// abre el selector (sigue cargando la foto, por ejemplo de iCloud, con el
+    /// selector ya cerrado); en la web, desde que llega (ahí la cancelación
+    /// puede no llegar nunca).
+    @Default(false) bool preparingPhoto,
+
+    /// El cambio de foto que se está guardando (mientras guarda, después del
+    /// plato); null si no.
+    RecipePhotoChange? photoInFlight,
+
+    /// Por qué falló la foto en el último guardado (el plato sí se guardó);
+    /// null si no falló.
+    RecipePhotoFailureKind? photoError,
   }) = _RecipeEditorState;
 
   const RecipeEditorState._();
 
-  /// Hay cambios sin guardar.
-  bool get dirty => draft != initial;
+  /// Hay cambios sin guardar (en el formulario o en la foto).
+  bool get dirty => draft != initial || photoChange != null;
+
+  /// La foto elegida que todavía no se subió (null si no hay).
+  NewRecipePhoto? get newPhoto => switch (photoChange) {
+    ReplaceRecipePhoto(:final photo) => photo,
+    _ => null,
+  };
+
+  /// La foto guardada que se ve en el editor: null si no tiene, si se eligió
+  /// otra o si se va a sacar.
+  String? get shownSavedPhotoId => photoChange == null ? savedPhotoId : null;
+
+  /// Se está subiendo (o sacando) la foto.
+  bool get uploadingPhoto => photoInFlight != null;
 
   /// Traduciendo o guardando: no se puede volver a guardar ni salir.
   bool get busy => saving || translating;
@@ -151,12 +202,32 @@ enum RecipeSaveResult {
   /// aplicó la traducción ni se guardó nada.
   stale,
 
+  /// El plato se guardó, pero la foto no (ver
+  /// [RecipeEditorState.photoError]): sigue en el editor para reintentar.
+  photoFailed,
+
+  /// Se guardó, pero mientras guardaba se eligió otra foto (o se está
+  /// preparando): queda en el editor para guardarla, que no se cierra.
+  photoPending,
+
   /// Ya se estaba guardando o traduciendo.
   busy,
 }
 
 /// Una fila quitada y dónde estaba, para «Deshacer».
 typedef RemovedIngredient = ({IngredientDraft row, int index});
+
+/// Por qué no quedó la foto elegida en [RecipeEditorController.pickPhoto].
+enum RecipePhotoPickError {
+  /// No es una foto que la app pueda abrir.
+  unreadable,
+
+  /// El teléfono no le da permiso a la app (la cámara).
+  permissionDenied,
+
+  /// El selector no se pudo abrir.
+  unavailable,
+}
 
 /// El editor de [RecipeEditorTarget]. Para editar o copiar, el catálogo tiene
 /// que estar cargado y tener el plato (la pantalla lo espera).
@@ -251,6 +322,7 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
       isNew: isNew,
       // Los campos automáticos de un plato guardado salen de su español.
       translatedFrom: spanishTextOf(draft),
+      savedPhotoId: isNew ? null : source?.photoId,
       movedToSpanish: source == null
           ? const {}
           : italianMovedToSpanish(source, copy: target is CopyRecipe),
@@ -389,17 +461,21 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
     _edit((d) => d.copyWith(ingredients: rows));
   }
 
-  /// Valida, traduce lo que diga el plan y guarda el plato entero. Con
-  /// errores no manda nada y los muestra. Si el traductor falla, no guarda
-  /// nada y el formulario queda como estaba ([RecipeSaveResult.translationFailed]),
-  /// salvo con la traducción apagada (501) o un texto que no se puede traducir
-  /// (422) y solo campos vacíos para traducir: ahí guarda sin traducir, porque
-  /// no queda nada viejo ([RecipeSaveResult.savedUntranslated]). Después de
-  /// un 422 o un 429, con el mismo pedido no vuelve a llamar al traductor.
-  /// Si el servidor falla al guardar, el formulario queda (con la traducción,
-  /// que no se vuelve a pedir) y el próximo intento manda el mismo id.
+  /// Valida, traduce lo que diga el plan y guarda el plato entero y, si
+  /// cambió, la foto. Con errores no manda nada y los muestra. Mientras se
+  /// elige o se prepara una foto no guarda. Si el traductor falla, no guarda
+  /// nada (tampoco la foto) y el formulario queda como estaba
+  /// ([RecipeSaveResult.translationFailed]), salvo con la traducción apagada
+  /// (501) o un texto que no se puede traducir (422) y solo campos vacíos para
+  /// traducir: ahí guarda sin traducir, porque no queda nada viejo
+  /// ([RecipeSaveResult.savedUntranslated]). Después de un 422 o un 429, con
+  /// el mismo pedido no vuelve a llamar al traductor. Si el servidor falla al
+  /// guardar, el formulario queda (con la traducción, que no se vuelve a pedir)
+  /// y el próximo intento manda el mismo id. Si solo cambió la foto de un
+  /// plato ya guardado (por ejemplo, el reintento después de que falló la
+  /// foto) y no hay nada que traducir, no vuelve a mandar el plato.
   Future<RecipeSaveResult> save() async {
-    if (state.busy) return RecipeSaveResult.busy;
+    if (state.busy || state.preparingPhoto) return RecipeSaveResult.busy;
     if (!_validate()) return RecipeSaveResult.invalid;
     final plan = state.translationPlan;
     // Sin nada que traducir puede haber descripciones automáticas que vaciar
@@ -474,8 +550,9 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
   /// vacío y lo escrito a mano, como estaba; un plato viejo sigue siendo
   /// viejo ([RecipeTranslationPlan.skippedToSave]). Sin el nombre en
   /// italiano no se puede ([RecipeTranslationPlan.canSkip]): no manda nada.
+  /// La foto se guarda como con [save].
   Future<RecipeSaveResult> saveWithoutTranslating() async {
-    if (state.busy) return RecipeSaveResult.busy;
+    if (state.busy || state.preparingPhoto) return RecipeSaveResult.busy;
     if (!_validate()) return RecipeSaveResult.invalid;
     final plan = state.translationPlan;
     if (!plan.canSkip) return RecipeSaveResult.invalid;
@@ -509,19 +586,24 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
 
   /// Guarda [draft] (ya traducido o sin traducir) con save_recipe, o
   /// [stored] si lo que se guarda no es lo que muestra el formulario (un
-  /// plato viejo que sigue viejo). El formulario pasa a [draft]: sus campos
-  /// automáticos salen del español de [draft], se guarde o no; si falla,
-  /// queda así para reintentar. [untranslatedBecause]: se guarda sin
-  /// traducir sin preguntar, por eso.
+  /// plato viejo que sigue viejo), y después, si cambió, la foto. El
+  /// formulario pasa a [draft]: sus campos automáticos salen del español de
+  /// [draft], se guarde o no; si falla, queda así para reintentar.
+  /// [untranslatedBecause]: se guarda sin traducir sin preguntar, por eso.
+  /// Si solo cambió la foto de un plato ya guardado, no vuelve a mandar el
+  /// plato.
   Future<RecipeSaveResult> _persist(
     RecipeDraft draft, {
     RecipeDraft? stored,
     TranslationFailureKind? untranslatedBecause,
   }) async {
-    final recipe = recipeFromDraft(
-      stored ?? draft,
-      saved: state.isNew ? null : state.source,
-    );
+    // Antes del primer await del guardado: si el editor se cierra mientras
+    // guarda, el catálogo (que no se descarta) termina de guardar el plato y
+    // la foto.
+    final catalog = ref.read(recipeCatalogProvider.notifier);
+    final photoChange = state.photoChange;
+    final recipeChanged =
+        state.isNew || draft != state.initial || photoChange == null;
     state = state.copyWith(
       draft: draft,
       translatedFrom: spanishTextOf(draft),
@@ -529,28 +611,160 @@ class RecipeEditorController extends Notifier<RecipeEditorState> {
       saveError: null,
       translateError: null,
       untranslatedBecause: null,
+      photoError: null,
     );
+    if (recipeChanged) {
+      final recipe = recipeFromDraft(
+        stored ?? draft,
+        saved: state.isNew ? null : state.source,
+      );
+      try {
+        final saved = await catalog.save(recipe);
+        if (ref.mounted) {
+          state = state.copyWith(
+            saving: photoChange != null,
+            initial: draft,
+            source: saved,
+            isNew: false,
+            untranslatedBecause: untranslatedBecause,
+            // Como quedó guardado: si sigue viejo, el formulario es el mismo
+            // con que se volvería a abrir.
+            movedToSpanish: italianMovedToSpanish(saved),
+          );
+        }
+      } on RecipesFailure catch (failure) {
+        if (ref.mounted) {
+          state = state.copyWith(saving: false, saveError: failure.kind);
+        }
+        return RecipeSaveResult.failed;
+      }
+    } else {
+      // Solo cambió la foto: el plato guardado ya es este.
+      state = state.copyWith(untranslatedBecause: untranslatedBecause);
+    }
+    final result = photoChange == null
+        ? RecipeSaveResult.saved
+        : await _savePhoto(catalog, draft.id, photoChange);
+    // Mientras guardaba llegó otra foto (en la web, una elegida justo antes de
+    // tocar «Salva»): no se guardó, así que el editor no se cierra.
+    if (result == RecipeSaveResult.saved &&
+        ref.mounted &&
+        (state.photoChange != null || state.preparingPhoto)) {
+      return RecipeSaveResult.photoPending;
+    }
+    return result;
+  }
+
+  /// Guarda [change] en el plato [recipeId] por [catalog], también si el
+  /// editor se cerró. Al terminar, el editor deja de tener pendiente [change]
+  /// solo si sigue siendo el suyo: una foto elegida mientras tanto queda.
+  Future<RecipeSaveResult> _savePhoto(
+    RecipeCatalogController catalog,
+    String recipeId,
+    RecipePhotoChange change,
+  ) async {
+    final photo = switch (change) {
+      ReplaceRecipePhoto(:final photo) => photo,
+      RemoveRecipePhoto() => null,
+    };
+    if (ref.mounted) state = state.copyWith(photoInFlight: change);
     try {
-      final saved = await ref.read(recipeCatalogProvider.notifier).save(recipe);
+      await catalog.setPhoto(recipeId, photo);
       if (ref.mounted) {
         state = state.copyWith(
           saving: false,
-          initial: draft,
-          source: saved,
-          isNew: false,
-          untranslatedBecause: untranslatedBecause,
-          // Como quedó guardado: si sigue viejo, el formulario es el mismo
-          // con que se volvería a abrir.
-          movedToSpanish: italianMovedToSpanish(saved),
+          photoInFlight: null,
+          photoChange: state.photoChange == change ? null : state.photoChange,
+          savedPhotoId: photo?.photoId,
+          source: state.source?.copyWith(photoId: photo?.photoId),
         );
       }
       return RecipeSaveResult.saved;
-    } on RecipesFailure catch (failure) {
-      if (ref.mounted) {
-        state = state.copyWith(saving: false, saveError: failure.kind);
-      }
-      return RecipeSaveResult.failed;
+    } on RecipePhotoFailure catch (failure) {
+      if (!ref.mounted) return RecipeSaveResult.photoFailed;
+      final stillPending = state.photoChange == change;
+      state = state.copyWith(
+        saving: false,
+        photoInFlight: null,
+        photoError: stillPending ? failure.kind : null,
+      );
+      // Si ya se eligió otra, esta no importa: queda la nueva para guardar.
+      return stillPending
+          ? RecipeSaveResult.photoFailed
+          : RecipeSaveResult.photoPending;
     }
+  }
+
+  /// Abre el selector en [source] y prepara la foto elegida (derecha,
+  /// achicada y sin metadatos), con un uuid nuevo: se sube al guardar, en
+  /// lugar de la que tenga. Devuelve por qué no quedó (null si quedó o si se
+  /// canceló).
+  Future<RecipePhotoPickError?> pickPhoto(RecipePhotoSource source) async {
+    if (state.saving || state.preparingPhoto) return null;
+    final picker = ref.read(recipePhotoPickerProvider);
+    final processor = ref.read(recipePhotoProcessorProvider);
+    final newId = ref.read(newIdProvider);
+    // En el teléfono el selector siempre termina, también si se cancela: la
+    // foto cuenta como «preparando» desde que se abre (y mientras carga con el
+    // selector ya cerrado), así «Salva» espera y un segundo toque no cancela
+    // el primero. En la web, si se cancela en un navegador sin el evento
+    // cancel, el selector no termina nunca y la marca dejaría todo trabado:
+    // ahí se marca recién cuando llega la foto.
+    final markWhilePicking = !ref.read(isWebProvider);
+    if (markWhilePicking) state = state.copyWith(preparingPhoto: true);
+    void stopPicking() {
+      if (markWhilePicking && ref.mounted) {
+        state = state.copyWith(preparingPhoto: false);
+      }
+    }
+
+    final Uint8List? bytes;
+    try {
+      bytes = await picker.pick(source);
+    } on RecipePhotoPickFailure catch (failure) {
+      stopPicking();
+      return switch (failure.kind) {
+        RecipePhotoPickFailureKind.permissionDenied =>
+          RecipePhotoPickError.permissionDenied,
+        RecipePhotoPickFailureKind.unavailable =>
+          RecipePhotoPickError.unavailable,
+      };
+    }
+    if (bytes == null) {
+      stopPicking();
+      return null;
+    }
+    if (!ref.mounted) return null;
+    // Si mientras tanto empezó a guardar (en la web: sin marca mientras elige),
+    // el guardado en curso ya tomó su cambio de foto y no toca esta: queda
+    // para el próximo guardado y, como sigue «preparando», el editor no se
+    // cierra al terminar.
+    state = state.copyWith(preparingPhoto: true);
+    try {
+      final photo = await processor(bytes);
+      if (!ref.mounted) return null;
+      state = state.copyWith(
+        preparingPhoto: false,
+        photoError: null,
+        photoChange: ReplaceRecipePhoto(
+          NewRecipePhoto(photoId: newId(), photo: photo),
+        ),
+      );
+      return null;
+    } on RecipePhotoFormatException {
+      if (ref.mounted) state = state.copyWith(preparingPhoto: false);
+      return RecipePhotoPickError.unreadable;
+    }
+  }
+
+  /// Saca la foto: la elegida y todavía no subida se descarta; la guardada
+  /// se saca al guardar.
+  void removePhoto() {
+    if (state.saving || state.preparingPhoto) return;
+    state = state.copyWith(
+      photoError: null,
+      photoChange: state.savedPhotoId == null ? null : const RemoveRecipePhoto(),
+    );
   }
 
   /// Desactiva o reactiva el plato (solo uno guardado). No toca el

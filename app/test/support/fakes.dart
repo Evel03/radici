@@ -1047,7 +1047,8 @@ class FakeSessionsRepository implements SessionsRepository {
 }
 
 /// Catálogo "en el servidor", en memoria. Como save_recipe, guardar crea o
-/// reemplaza el plato entero y nunca cambia si está activo. Cada pedido se
+/// reemplaza el plato entero y nunca cambia si está activo ni su foto (la
+/// pone set_recipe_photo: FakeRecipePhotosRepository). Cada pedido se
 /// aplica (o la lectura toma su foto) en cuanto llega: los `pending…` demoran
 /// solo la respuesta, como una red lenta.
 class FakeRecipesRepository implements RecipesRepository {
@@ -1090,7 +1091,10 @@ class FakeRecipesRepository implements RecipesRepository {
     final failure = saveFailure;
     if (failure == null) {
       final current = recipes[recipe.id];
-      recipes[recipe.id] = recipe.copyWith(active: current?.active ?? true);
+      recipes[recipe.id] = recipe.copyWith(
+        active: current?.active ?? true,
+        photoId: current?.photoId,
+      );
     }
     final pending = pendingSave;
     if (pending != null) await pending.future;

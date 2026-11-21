@@ -10,11 +10,15 @@ import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/clients/data/clients_repository.dart';
+import 'package:radici/features/recipes/application/recipe_photo_providers.dart';
+import 'package:radici/features/recipes/data/recipe_photo_picker.dart';
+import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 
 import 'fakes.dart';
+import 'photo_fakes.dart';
 import 'pump_app.dart';
 import 'request_fixtures.dart';
 
@@ -30,6 +34,8 @@ class ChefApp {
     this.sessions,
     this.recipes,
     this.clients,
+    this.photos,
+    this.photoPicker,
   );
 
   final ProviderContainer container;
@@ -42,6 +48,8 @@ class ChefApp {
   final FakeSessionsRepository sessions;
   final FakeRecipesRepository recipes;
   final FakeClientsRepository clients;
+  final FakeRecipePhotosRepository photos;
+  final FakeRecipePhotoPicker photoPicker;
 
   /// Navega como si se abriera un enlace a [location].
   void go(String location) => container.read(routerProvider).go(location);
@@ -58,10 +66,13 @@ class ChefApp {
 /// y la Edge Function para moverlas y cancelarlas (por defecto, ninguna).
 /// [recipes] es su catálogo de platos (por defecto, vacío). [clients] son sus
 /// fichas, las del directorio de «Nuova prenotazione» (por defecto, ninguna;
-/// una reserva a mano las actualiza como la base). Con [settle] en
-/// false no espera a que la pantalla se asiente (una rueda que gira no se
-/// asienta nunca). [retry]: los reintentos automáticos de Riverpod (por
-/// defecto, ninguno; ver retryOnce).
+/// una reserva a mano las actualiza como la base). [photos] es el bucket de
+/// las fotos de los platos y [photoPicker] el selector; las fotos se preparan
+/// al instante ([fakeProcessRecipePhoto]) y [photoImage] es la imagen de cada
+/// URL (por defecto, un JPEG chiquito en memoria: sin red). [isWeb] simula la
+/// versión web (/gestione/). Con [settle] en false no espera a que la
+/// pantalla se asiente (una rueda que gira no se asienta nunca). [retry]: los
+/// reintentos automáticos de Riverpod (por defecto, ninguno; ver retryOnce).
 Future<ChefApp> pumpChefApp(
   WidgetTester tester, {
   required FakeChefRequestsRepository requests,
@@ -71,6 +82,10 @@ Future<ChefApp> pumpChefApp(
   FakeSessionsRepository? sessions,
   FakeRecipesRepository? recipes,
   FakeClientsRepository? clients,
+  FakeRecipePhotosRepository? photos,
+  FakeRecipePhotoPicker? photoPicker,
+  ImageProvider<Object> Function(String url)? photoImage,
+  bool isWeb = false,
   String? location,
   Size size = const Size(400, 900),
   List<Locale> deviceLocales = const [Locale('it', 'IT')],
@@ -93,11 +108,14 @@ Future<ChefApp> pumpChefApp(
         sessions: sessionsRepository,
       );
   final catalog = recipes ?? FakeRecipesRepository();
+  final bucket = photos ?? FakeRecipePhotosRepository();
+  final picker = photoPicker ?? FakeRecipePhotoPicker();
   final launcher = FakeLinkLauncher();
   final container = await pumpRadiciApp(
     tester,
     deviceLocales: deviceLocales,
     clock: clock,
+    isWeb: isWeb,
     settle: settle,
     retry: retry,
     overrides: [
@@ -109,6 +127,12 @@ Future<ChefApp> pumpChefApp(
       sessionsRepositoryProvider.overrideWithValue(sessionsRepository),
       recipesRepositoryProvider.overrideWithValue(catalog),
       clientsRepositoryProvider.overrideWithValue(directory),
+      recipePhotosRepositoryProvider.overrideWithValue(bucket),
+      recipePhotoPickerProvider.overrideWithValue(picker),
+      recipePhotoProcessorProvider.overrideWithValue(fakeProcessRecipePhoto),
+      recipePhotoImageProvider.overrideWith(
+        (ref, url) => photoImage?.call(url) ?? MemoryImage(tinyJpeg),
+      ),
       linkLauncherProvider.overrideWithValue(launcher),
       ...overrides,
     ],
@@ -124,6 +148,8 @@ Future<ChefApp> pumpChefApp(
     sessionsRepository,
     catalog,
     directory,
+    bucket,
+    picker,
   );
   if (location != null) {
     app.go(location);

@@ -2673,6 +2673,82 @@
   "@recipeBackToList": {
     "description": "Botón que vuelve a la lista de platos."
   },
+  "recipePhotoSection": "Foto",
+  "@recipePhotoSection": {
+    "description": "Sección del editor con la foto del plato (una por plato)."
+  },
+  "recipePhotoHelp": "Compare sul sito, accanto al piatto nel menù. Prima di caricarla la rimpiccioliamo e togliamo i dati nascosti, come il luogo dello scatto.",
+  "@recipePhotoHelp": {
+    "description": "Ayuda de la sección «Foto»: dónde se ve y que antes de subirla se achica y se le sacan los metadatos (EXIF, GPS)."
+  },
+  "recipePhotoAdd": "Aggiungi foto",
+  "@recipePhotoAdd": {
+    "description": "Botón que elige la foto de un plato que no tiene (también en un plato nuevo)."
+  },
+  "recipePhotoChange": "Cambia foto",
+  "@recipePhotoChange": {
+    "description": "Botón que elige otra foto para el plato."
+  },
+  "recipePhotoRemove": "Togli foto",
+  "@recipePhotoRemove": {
+    "description": "Botón que saca la foto del plato (se saca al guardar)."
+  },
+  "recipePhotoCamera": "Scatta una foto",
+  "@recipePhotoCamera": {
+    "description": "Opción al elegir la foto en el teléfono: la cámara."
+  },
+  "recipePhotoGallery": "Scegli dalla galleria",
+  "@recipePhotoGallery": {
+    "description": "Opción al elegir la foto en el teléfono: la galería."
+  },
+  "recipePhotoPreview": "Foto del piatto",
+  "@recipePhotoPreview": {
+    "description": "Lo que dice el lector de pantalla de la foto en el editor."
+  },
+  "recipePhotoPreparing": "Preparo la foto…",
+  "@recipePhotoPreparing": {
+    "description": "Mientras se achica la foto elegida y se le sacan los metadatos."
+  },
+  "recipePhotoUploading": "Carico la foto…",
+  "@recipePhotoUploading": {
+    "description": "Mientras se sube la foto, después de guardar el plato."
+  },
+  "recipePhotoRemoving": "Tolgo la foto…",
+  "@recipePhotoRemoving": {
+    "description": "Mientras se saca la foto del plato, después de guardarlo."
+  },
+  "recipePhotoPending": "La foto si carica quando salvi.",
+  "@recipePhotoPending": {
+    "description": "Debajo de la foto elegida que todavía no se subió."
+  },
+  "recipePhotoRemovePending": "La foto si toglie quando salvi.",
+  "@recipePhotoRemovePending": {
+    "description": "Después de «Togli foto» en un plato con foto guardada."
+  },
+  "recipePhotoUnreadable": "Non riesco ad aprire questa foto. Prova con un'altra.",
+  "@recipePhotoUnreadable": {
+    "description": "Error: la foto elegida no se puede abrir (formato o archivo roto)."
+  },
+  "recipePhotoPermissionDenied": "Radici non ha il permesso di usare la fotocamera. Puoi darlo nelle impostazioni del telefono.",
+  "@recipePhotoPermissionDenied": {
+    "description": "Error: el teléfono no le da permiso a la app para usar la cámara."
+  },
+  "recipePhotoPickFailed": "Impossibile aprire le foto. Riprova.",
+  "@recipePhotoPickFailed": {
+    "description": "Error: el selector de fotos no se pudo abrir."
+  },
+  "recipePhotoUploadFailed": "Il piatto è salvato, ma la foto non è stata caricata. Controlla la connessione e riprova.",
+  "@recipePhotoUploadFailed": {
+    "description": "Error: el plato se guardó pero la foto no se subió (sin conexión), con «Riprova»."
+  },
+  "recipePhotoRemoveFailed": "Il piatto è salvato, ma la foto non è stata tolta. Controlla la connessione e riprova.",
+  "@recipePhotoRemoveFailed": {
+    "description": "Error: el plato se guardó pero la foto no se sacó (sin conexión), con «Riprova»."
+  },
+  "recipePhotoRejected": "Il piatto è salvato, ma il server non ha accettato la foto. Prova con un'altra.",
+  "@recipePhotoRejected": {
+    "description": "Error: el plato se guardó pero el servidor rechazó la foto."
+  },
 
   "dietVegetarian": "Vegetariana",
   "@dietVegetarian": {

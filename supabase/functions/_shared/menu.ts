@@ -34,7 +34,7 @@ export interface MenuChoice {
  * nuevo (sube archivos nuevos y borra los viejos), así una URL no cambia de contenido; la base no lo garantiza.
  */
 export interface MenuPhoto {
-  /** La miniatura (lado mayor 360 px): la que muestra la web. */
+  /** La miniatura (lado menor 320 px): la que muestra la web, recortada en un cuadrado. */
   thumb: string;
   /** La grande (lado mayor 1200 px). */
   full: string;

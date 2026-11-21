@@ -4,12 +4,13 @@
 // italiano y el inglés (nombre y descripción), que llena la traducción al
 // guardar, con la marca «tradotto automaticamente» en lo que no se tocó a
 // mano (sin la descripción italiana el plato no sale en el formulario de
-// pedido); y lo opcional: conservación, ingredientes con su cantidad para 4
-// porciones y notas. «Salva» queda abajo, siempre a mano (con el teclado
-// abierto, justo arriba de él); mientras traduce dice que traduce y el
-// formulario no se puede tocar. Si la traducción falla, un aviso ofrece
-// reintentar, escribir a mano o guardar sin traducir. Un plato guardado se
-// puede duplicar y desactivar (nunca se borra). Solo muestra providers: la
+// pedido), y la foto (también en un plato nuevo: se sube al guardar, después
+// de la traducción y del plato); y lo opcional: conservación, ingredientes con
+// su cantidad para 4 porciones y notas. «Salva» queda abajo, siempre a mano
+// (con el teclado abierto, justo arriba de él); mientras traduce dice que
+// traduce y el formulario no se puede tocar. Si la traducción falla, un aviso
+// ofrece reintentar, escribir a mano o guardar sin traducir. Un plato guardado
+// se puede duplicar y desactivar (nunca se borra). Solo muestra providers: la
 // lógica está en RecipeEditorController.
 import 'dart:async';
 
@@ -28,6 +29,7 @@ import 'package:radici/features/recipes/domain/recipe_draft.dart';
 import 'package:radici/features/recipes/domain/recipe_translation.dart';
 import 'package:radici/features/recipes/presentation/ingredient_row.dart';
 import 'package:radici/features/recipes/presentation/recipe_labels.dart';
+import 'package:radici/features/recipes/presentation/recipe_photo_section.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
@@ -110,6 +112,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
   final GlobalKey _nameKey = GlobalKey();
   final GlobalKey _dietKey = GlobalKey();
   final GlobalKey _descriptionKey = GlobalKey();
+  final GlobalKey _photoKey = GlobalKey();
   final GlobalKey _translationsKey = GlobalKey();
   final GlobalKey _storageKey = GlobalKey();
   final GlobalKey _notesKey = GlobalKey();
@@ -256,6 +259,21 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
             showCloseIcon: _persist,
           ),
         );
+      case RecipeSaveResult.photoFailed || RecipeSaveResult.photoPending:
+        // El plato se guardó, pero no se cierra: la foto falló (la sección lo
+        // dice, con su «Riprova») o se eligió otra mientras guardaba (queda
+        // para guardar). La sección se lleva a la vista. Sin aviso abajo: con
+        // el texto grande se desbordaba y tapaba el «Riprova» de la sección.
+        final photo = _photoKey.currentContext;
+        if (photo != null && photo.mounted) {
+          unawaited(
+            Scrollable.ensureVisible(
+              photo,
+              duration: const Duration(milliseconds: 300),
+              alignment: 0.1,
+            ),
+          );
+        }
       case RecipeSaveResult.busy:
         break;
     }
@@ -790,6 +808,11 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
         textInputAction: TextInputAction.done,
         onChanged: _editor.setDescriptionEn,
       ),
+      KeyedSubtree(
+        key: _photoKey,
+        child: _SectionTitle(l10n.recipePhotoSection),
+      ),
+      RecipePhotoSection(target: target, onRetry: () => unawaited(_save())),
       const Divider(height: 48),
       Semantics(
         header: true,
@@ -957,6 +980,7 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
           bottomNavigationBar: _SaveBar(
             saving: state.busy,
             translating: state.translating,
+            preparingPhoto: state.preparingPhoto,
             onSave: _save,
           ),
         ),
@@ -973,6 +997,7 @@ class _SaveBar extends StatelessWidget {
   const _SaveBar({
     required this.saving,
     required this.translating,
+    required this.preparingPhoto,
     required this.onSave,
   });
 
@@ -980,6 +1005,10 @@ class _SaveBar extends StatelessWidget {
 
   /// Traduciendo: puede tardar, así que además de la ruedita lo dice.
   final bool translating;
+
+  /// Se está eligiendo o preparando una foto: «Salva» espera (si no, el plato
+  /// se guardaría sin ella).
+  final bool preparingPhoto;
   final VoidCallback onSave;
 
   @override
@@ -1005,7 +1034,7 @@ class _SaveBar extends StatelessWidget {
                   width: double.infinity,
                   child: FilledButton(
                     key: const ValueKey('recipe-save'),
-                    onPressed: saving ? null : onSave,
+                    onPressed: saving || preparingPhoto ? null : onSave,
                     child: switch ((saving, translating)) {
                       (_, true) => Row(
                         mainAxisSize: MainAxisSize.min,

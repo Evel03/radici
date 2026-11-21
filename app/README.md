@@ -445,6 +445,44 @@ repositorios falsos (`test/support/fakes.dart`).
   vuelve a la red. Con la traducción apagada (`501`) o un `422`, y solo campos vacíos para traducir,
   guarda sin traducir sin el aviso y la lista lo dice, con el motivo, en un aviso que dura como un
   error. Duplicar copia las marcas de los nombres, no las de las descripciones.
+- **Foto del plato** (migración `20261120100000_recipe_photos.sql`; una por plato): la sección «Foto»
+  del editor, después del italiano y el inglés, **también en «Nuovo piatto»**, antes de guardar el
+  plato. «Aggiungi foto» pregunta cámara o galería en el teléfono; en `/gestione/` la app le pide a
+  image_picker la galería (`ImageSource.gallery`, un `<input type="file">` sin `capture`), y la cámara la
+  ofrece la hoja de archivos del iPhone. La foto se prepara en el dispositivo
+  (`processRecipePhoto`, `domain/recipe_photo.dart`): se pide al selector ya achicada a 1200 px (en el
+  iPhone convierte HEIC a JPEG; en la web la achica el navegador), se endereza con su orientación
+  EXIF, se achica a 1200 px de lado mayor y la miniatura a 320 de lado menor (se ve recortada en un
+  cuadrado) y se vuelve a codificar en JPEG **sin metadatos** (EXIF, GPS, XMP, IPTC, comentarios ni
+  ningún otro segmento), siempre debajo de 2 MiB. Solo queda el perfil de color (ICC): no es un dato
+  personal y sin él una foto Display P3 del iPhone se ve apagada. En el teléfono corre en otro
+  isolate; en la web, en el hilo principal (la foto ya llega achicada por el navegador), y la URL `blob:`
+  de la foto elegida se suelta al leerla. Mientras se elige o se prepara («Preparo la foto…»), «Salva»
+  espera: en el teléfono desde que se abre el selector, porque la foto puede seguir cargando (de
+  iCloud) con el selector ya cerrado; en la web desde que llega, porque si se cancela, un navegador sin
+  el evento `cancel` no avisa nunca. Queda en el editor como un cambio sin guardar y se sube al tocar
+  «Salva»: primero la traducción automática, si hay algo que traducir (si falla, no se guarda nada,
+  tampoco la foto, que sigue en el editor), después el plato (`save_recipe`) y después los dos
+  archivos al bucket público
+  `recipe-photos` (`{chef_id}/{plato}/{foto}.jpg` y `…-thumb.jpg`, con un uuid nuevo en cada foto,
+  `image/jpeg`, caché de una semana, sin pisar nada) y `set_recipe_photo` («Carico la foto…» o, al
+  sacarla, «Tolgo la foto…»); la subida espera como mucho 60 s y lo demás 30 s. Al final se limpia la
+  carpeta del plato, sin esperar ni avisar si falla: se borra todo lo que no sea la foto nueva (la que
+  dejó de usarse y las subidas abandonadas); el próximo cambio de foto del mismo plato espera esa
+  limpieza. El guardado sigue aunque el editor se cierre (lo hace el catálogo). Si la foto falla, el
+  plato queda guardado (sin foto si era nuevo, con la anterior si se cambiaba), el editor no se cierra
+  y la sección lo dice con «Riprova» (sube solo la foto, con el mismo uuid; un archivo que ya estaba
+  cuenta como subido). Una foto elegida mientras se guardaba (en la web) queda para el próximo
+  guardado: el editor no se cierra. En un plato guardado, «Cambia foto» y «Togli foto» se aplican al
+  guardar; si solo cambió la foto (y no hay nada que traducir), el plato no se vuelve a mandar. Duplicar un plato no copia la foto. La miniatura se ve en la
+  lista de platos (a la izquierda) y en el menù elegido del detalle del pedido (a la derecha del
+  nombre); la vista previa del editor usa la foto grande; sin foto, como siempre, y si no carga, un
+  cuadrado neutro. La URL pública la arma el repositorio (`getPublicUrl`); los widgets la leen de `recipePhotoUrlProvider`. En iOS, los
+  textos de permiso de la cámara y de las fotos (`NSCameraUsageDescription`,
+  `NSPhotoLibraryUsageDescription` en `ios/Runner/Info.plist`) están en italiano: no hay
+  `InfoPlist.strings` por idioma (sumarlos toca el proyecto de Xcode). Con `requestFullMetadata: false`
+  elegir de la galería no pide permiso; la cámara, sí. En Android no hace falta nada (el selector de
+  fotos del sistema y la cámara por intent).
 - **Impostazioni** (en «Altro»; en pantallas anchas, también en el menú de la cuenta): idioma de la
   app (Español, Italiano, English), la cuenta (el nombre de la cocinera, o «Collaboratore di …» si
   entró un colaborador), salir y, en la web, la versión abierta («Versione abc1234»).
@@ -491,6 +529,9 @@ El orden completo del primer despliegue está en el contrato (§10.1).
   Su guarda `requests_guard_update` deja a la app pasar `new` → `rejected` y `rejected` → `new`, y
   desde `20261019160000_public_request_hardening.sql` también vale en el alta (un pedido nace en `new`).
   Esa migración agrega `requests.contact` (el contacto con que llegó cada pedido).
+- Migración `supabase/migrations/20261120100000_recipe_photos.sql` antes de esta versión: la app lee
+  `recipes.photo_id` con el catálogo y con el menù elegido (sin la columna, el catálogo no carga),
+  sube al bucket `recipe-photos` y llama a `set_recipe_photo`.
 - Migración `supabase/migrations/20261119150000_menu_web.sql`: `recipes.description_*` (las lee el
   editor y las guarda `save_recipe`) y el uso de `requests.wishes` (los platos elegidos en la web, que
   la bandeja y el detalle leen; la columna existe desde la primera migración).
@@ -605,7 +646,8 @@ detalle, reconexión del WebSocket y agenda: sin violaciones ni errores de conso
 
 ```
 default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline';
-connect-src 'self' https://<ref>.supabase.co wss://<ref>.supabase.co; object-src 'none';
+img-src 'self' blob: https://<ref>.supabase.co;
+connect-src 'self' blob: https://<ref>.supabase.co wss://<ref>.supabase.co; object-src 'none';
 base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
 ```
 
@@ -615,6 +657,16 @@ base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-re
   del motor en `flutter_bootstrap.js` con `style-src 'self' 'nonce-…'`, pero en un sitio estático el
   nonce sería fijo por deploy (no por respuesta).
 - Los scripts siguen estrictos: sin `'unsafe-inline'` ni `'unsafe-eval'`.
+- `img-src` y `blob:` (20/11/2026, fotos de los platos), según el código del motor de Flutter 3.47.7 y
+  de image_picker_for_web 3.1.1: `Image.network` pide la foto con XMLHttpRequest (`connect-src`,
+  `WebHtmlElementStrategy.never` por defecto); Safari y Firefox (sin `ImageDecoder`, que el motor
+  solo usa en Chrome y Edge) decodifican toda imagen en un `<img>` con una URL `blob:` (`img-src
+  blob:`); image_picker_for_web achica la foto elegida en un `<img>` con su URL `blob:` y cross_file
+  la lee con XMLHttpRequest (`connect-src blob:`). El origen de Supabase en `img-src` es por si una
+  imagen se carga con un `<img>`. Sin probar todavía en Safari del iPhone.
+- La cámara en `/gestione/`: la app pide la galería (un `<input type="file">` sin `capture`) y la
+  cámara la ofrece la hoja de archivos del iPhone. La `Permissions-Policy: camera=()` de `/*` es para
+  `getUserMedia`: no toca ese `<input>` (sin probar en el iPhone).
 - Caché: los nombres de archivo de Flutter **no** llevan hash. Nada de `immutable` ni `max-age` largo
   en `/gestione/*`: `_headers` pone `Cache-Control: no-cache` y cada carga revalida (304 si no
   cambió). En Cloudflare, Browser Cache TTL tiene que quedar en «Respect Existing Headers» (contrato
