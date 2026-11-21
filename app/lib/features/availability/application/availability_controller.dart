@@ -12,6 +12,7 @@ import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/availability/domain/availability.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart';
 
 final availabilityControllerProvider =
     AsyncNotifierProvider<AvailabilityController, AvailabilitySnapshot>(
@@ -51,11 +52,17 @@ final agendaDayAvailabilityProvider = Provider.autoDispose
       final requestCount = ref.watch(
         agendaByDateProvider.select((byDate) => byDate[day]?.length ?? 0),
       );
+      final sessionCount = ref.watch(
+        agendaSessionsByDateProvider.select(
+          (byDate) => byDate[day]?.length ?? 0,
+        ),
+      );
       return agendaDayAvailability(
         day: day,
         today: ref.watch(romeTodayProvider),
         snapshot: snapshot,
         requestsThatDay: requestCount,
+        sessionsThatDay: sessionCount,
       );
     });
 

@@ -16,6 +16,15 @@ import 'request_fixtures.dart';
 /// tiene que fallar una vez, sin dejar timers pendientes.
 Duration? noRetry(int retryCount, Object error) => null;
 
+/// Cuánto esperar antes de cada reintento automático (null: no reintenta).
+typedef RetryDelay = Duration? Function(int retryCount, Object error);
+
+/// Como en producción (lib/main.dart no pasa `retry`: Riverpod reintenta
+/// solo), pero con un único reintento a los [delay]: mientras tanto el
+/// provider queda cargando con el error.
+RetryDelay retryOnce([Duration delay = const Duration(seconds: 1)]) =>
+    (retryCount, error) => retryCount == 0 ? delay : null;
+
 Future<void> pumpLocalized(
   WidgetTester tester,
   Widget screen, {
@@ -40,7 +49,8 @@ Future<void> pumpLocalized(
 
 /// La app completa (router, redirecciones, aviso de pedidos nuevos).
 /// [isWeb] simula la versión web (/gestione/); [clock] es "ahora" (por
-/// defecto, siempre [testNow]).
+/// defecto, siempre [testNow]); [retry], los reintentos automáticos de
+/// Riverpod (por defecto, ninguno).
 Future<ProviderContainer> pumpRadiciApp(
   WidgetTester tester, {
   List<Override> overrides = const [],
@@ -49,12 +59,13 @@ Future<ProviderContainer> pumpRadiciApp(
   bool isWeb = false,
   bool settle = true,
   DateTime Function()? clock,
+  RetryDelay retry = noRetry,
 }) async {
   tester.platformDispatcher.localesTestValue = deviceLocales;
   addTearDown(tester.platformDispatcher.clearLocalesTestValue);
   await tester.pumpWidget(
     ProviderScope(
-      retry: noRetry,
+      retry: retry,
       overrides: [
         appEnvProvider.overrideWithValue(env),
         isWebProvider.overrideWithValue(isWeb),

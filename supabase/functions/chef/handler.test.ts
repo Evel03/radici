@@ -1,10 +1,12 @@
 // Tests de la Edge Function chef con dependencias simuladas (docs/contracts/chef-api.md).
-// Correr con: npm test (node --test). La función real (index.ts) solo conecta Supabase y Deno; la
-// base simulada imita lo que importa de chef_create_booking, chef_move_session y chef_cancel_sessions
-// (lo demás lo prueba supabase/tests/database/13_bookings.test.sql).
+// Correr con: npm test (node --test). La función real (index.ts) solo conecta Supabase, Deno y el SDK
+// de Anthropic; la base simulada imita lo que importa de chef_create_booking, chef_move_session,
+// chef_cancel_sessions y hit_public_request_rate (lo demás lo prueba supabase/tests/database/), y el
+// traductor simulado responde como claude_translator.ts (sus partes puras: translation.test.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import type { TranslationSource } from "../_shared/chef_api.ts";
 import { StoreError, type LogFields } from "../_shared/edge.ts";
 import {
   CHEF_CORS_METHODS,
@@ -27,6 +29,7 @@ import {
   type CreateBookingParams,
   type MoveSessionParams,
 } from "./handler.ts";
+import { fakeTranslator, translateRateKey, type Translator, type TranslatorReply } from "./translation.ts";
 
 const CHEF_ID = "cef00000-0000-4000-8000-000000000001";
 const USER_EVELYN = "e0000000-0000-4000-8000-000000000001";
@@ -70,7 +73,7 @@ function split(total: number, parts: number): number[] {
   return Array.from({ length: parts }, (_, i) => Math.floor(total / parts) + (i < total % parts ? 1 : 0));
 }
 
-type Op = "get_user" | "load_chef" | "create_booking" | "move_session" | "cancel_sessions";
+type Op = "get_user" | "load_chef" | "create_booking" | "move_session" | "cancel_sessions" | "rate_limit";
 
 interface FakeSession {
   id: string;
@@ -111,6 +114,10 @@ class FakeStore implements ChefStore {
   bookings = new Map<string, string>();
   /** Respuesta cruda que reemplaza a la simulada (para probar formas inesperadas). */
   raw: unknown = undefined;
+  /** Intentos registrados en hit_public_request_rate (la clave y los topes). */
+  rateHits: Array<{ key: string; maxPerHour: number; maxPerDay: number }> = [];
+  /** Lo que contesta hit_public_request_rate: dentro del límite o no. */
+  rateAllowed = true;
 
   private fail(op: Op): void {
     if (this.failures.has(op)) throw this.failures.get(op);
@@ -207,6 +214,12 @@ class FakeStore implements ChefStore {
     };
   }
 
+  async hitRateLimit(key: string, maxPerHour: number, maxPerDay: number): Promise<boolean> {
+    this.fail("rate_limit");
+    this.rateHits.push({ key, maxPerHour, maxPerDay });
+    return this.rateAllowed;
+  }
+
   async cancelSessions(params: CancelSessionsParams): Promise<unknown> {
     this.cancelCalls.push(params);
     this.fail("cancel_sessions");
@@ -216,25 +229,47 @@ class FakeStore implements ChefStore {
   }
 }
 
+/**
+ * El traductor simulado: por defecto, el de mentira de TRANSLATE_TRANSPORT=fake (la misma forma que la
+ * salida de Claude). `reply` reemplaza la respuesta; `throws`, la hace explotar.
+ */
+class FakeTranslator implements Translator {
+  calls: TranslationSource[] = [];
+  reply: TranslatorReply | null = null;
+  throws: unknown = undefined;
+  /** Se llama mientras «traduce» (para simular el tiempo que tarda). */
+  during: () => void = () => {};
+
+  async translate(source: TranslationSource): Promise<TranslatorReply> {
+    this.calls.push(source);
+    this.during();
+    if (this.throws !== undefined) throw this.throws;
+    return this.reply ?? (await fakeTranslator.translate(source));
+  }
+}
+
 interface Harness {
   handle: (request: Request) => Promise<Response>;
   store: FakeStore;
+  translator: FakeTranslator;
   logs: Array<{ level: string; event: string; fields: LogFields }>;
 }
 
-function harness(options: { env?: Record<string, string | undefined>; now?: Date } = {}): Harness {
+function harness(options: { env?: Record<string, string | undefined>; now?: () => Date; translator?: null } = {}): Harness {
   const env: Record<string, string | undefined> = { ...ENV, ...options.env };
   const store = new FakeStore();
+  const translator = new FakeTranslator();
   const logs: Harness["logs"] = [];
   const deps: ChefHandlerDeps = {
     config: readChefConfig((name) => env[name]),
     store,
-    now: () => options.now ?? NOW,
+    translator: options.translator === null ? null : translator,
+    now: options.now ?? (() => NOW),
     log: (level, event, fields = {}) => {
       logs.push({ level, event, fields });
     },
   };
-  return { handle: createChefHandler(deps), store, logs };
+  return { handle: createChefHandler(deps), store, translator, logs };
 }
 
 interface PostOptions {
@@ -425,12 +460,13 @@ test("401 sin token, con otro esquema, con algo que no es un JWT o con un token 
   assert.equal(invalid.status, 401);
 });
 
-test("403 para un usuario válido que no es la cocinera, en todas las rutas, sin tocar las sesiones", async () => {
-  const { handle, store, logs } = harness();
+test("403 para un usuario válido que no es la cocinera, en todas las rutas, sin tocar las sesiones ni traducir", async () => {
+  const { handle, store, translator, logs } = harness();
   const routes: Array<[string, unknown]> = [
     ["/bookings", bookingBody()],
     ["/sessions/move", { sessionId: SESSION_ID, date: "2026-11-25" }],
     ["/sessions/cancel", { sessionIds: [SESSION_ID] }],
+    ["/translate", { name: "Locro" }],
   ];
   for (const [route, body] of routes) {
     const response = await handle(post(route, body, { token: TOKEN_CLIENT }));
@@ -438,8 +474,9 @@ test("403 para un usuario válido que no es la cocinera, en todas las rutas, sin
     assert.deepEqual(await json(response), { error: "forbidden" });
     assert.ok(logs.some((entry) => entry.event === "forbidden" && entry.fields["route"] === route && entry.fields["userId"] === USER_CLIENT));
   }
-  assert.deepEqual(store.chefLookups, [USER_CLIENT, USER_CLIENT, USER_CLIENT], "la cocinera se busca por el usuario del token");
+  assert.deepEqual(store.chefLookups, [USER_CLIENT, USER_CLIENT, USER_CLIENT, USER_CLIENT], "la cocinera se busca por el usuario del token");
   assert.equal(store.bookingCalls.length + store.moveCalls.length + store.cancelCalls.length, 0);
+  assert.equal(translator.calls.length + store.rateHits.length, 0, "ni traduce ni gasta el cupo de la cocina");
 });
 
 test("un colaborador de la cocinera entra con la cocina de la que es colaborador, en todas las rutas", async () => {
@@ -450,8 +487,11 @@ test("un colaborador de la cocinera entra con la cocina de la que es colaborador
   assert.equal(move.status, 200);
   const cancel = await handle(post("/sessions/cancel", { sessionIds: [SESSION_ID] }, { token: TOKEN_MEMBER }));
   assert.equal(cancel.status, 200);
+  const translate = await handle(post("/translate", { name: "Locro" }, { token: TOKEN_MEMBER }));
+  assert.equal(translate.status, 200);
 
-  assert.deepEqual(store.chefLookups, [USER_MEMBER, USER_MEMBER, USER_MEMBER], "la cocina sale de su propio usuario");
+  assert.deepEqual(store.chefLookups, [USER_MEMBER, USER_MEMBER, USER_MEMBER, USER_MEMBER], "la cocina sale de su propio usuario");
+  assert.equal(store.rateHits[0]?.key, await translateRateKey(CHEF_ID), "y traduce con el cupo de la cocina de ella");
   assert.deepEqual(
     [store.bookingCalls[0]?.p_chef_id, store.moveCalls[0]?.p_chef_id, store.cancelCalls[0]?.p_chef_id],
     [CHEF_ID, CHEF_ID, CHEF_ID],
@@ -459,7 +499,7 @@ test("un colaborador de la cocinera entra con la cocina de la que es colaborador
   );
   assert.ok(!logs.some((entry) => entry.event === "forbidden"));
   // Con varias cuentas en la cocina, el log de lo que cambia dice quién lo hizo (un id, como el del 403).
-  for (const event of ["booking_created", "session_moved", "sessions_cancelled"]) {
+  for (const event of ["booking_created", "session_moved", "sessions_cancelled", "translated"]) {
     assert.equal(logs.find((entry) => entry.event === event)?.fields["userId"], USER_MEMBER, event);
   }
 });
@@ -1018,10 +1058,183 @@ test("cancelar una cocinada o pagada: 409 invalidTransition con la sesión; moti
 });
 
 // ---------------------------------------------------------------------------
+// POST /translate
+// ---------------------------------------------------------------------------
+
+// Un plato con textos fáciles de buscar en los logs.
+const DISH = { name: "  Milanesaxyz a la napolitana ", description: "Con salsa de tomate y DescripQwe muzzarella." };
+
+test("traducir: 200 con el italiano y el inglés; el traductor recibe el plato recortado y la cocina gasta su cupo", async () => {
+  const { handle, store, translator, logs } = harness();
+  const response = await handle(post("/translate", DISH));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("access-control-allow-origin"), ORIGIN);
+  assert.deepEqual(await json(response), {
+    it: { name: "[it] Milanesaxyz a la napolitana", description: "[it] Con salsa de tomate y DescripQwe muzzarella." },
+    en: { name: "[en] Milanesaxyz a la napolitana", description: "[en] Con salsa de tomate y DescripQwe muzzarella." },
+  });
+  assert.deepEqual(translator.calls, [{ name: "Milanesaxyz a la napolitana", description: "Con salsa de tomate y DescripQwe muzzarella." }]);
+  assert.deepEqual(store.rateHits, [{ key: await translateRateKey(CHEF_ID), maxPerHour: 60, maxPerDay: 150 }]);
+  assert.equal(store.bookingCalls.length + store.moveCalls.length + store.cancelCalls.length, 0, "no toca ninguna sesión");
+  const entry = logs.find((log) => log.event === "translated");
+  assert.deepEqual(entry?.fields, { route: "/translate", ms: 0, nameLength: 27, descriptionLength: 44, userId: USER_EVELYN });
+});
+
+test("traducir: sin descripción (o vacía), null en los dos idiomas", async () => {
+  const { handle, translator } = harness();
+  for (const body of [{ name: "Empanadas" }, { name: "Empanadas", description: null }, { name: "Empanadas", description: "  " }]) {
+    const response = await handle(post("/translate", body));
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.deepEqual(await json(response), {
+      it: { name: "[it] Empanadas", description: null },
+      en: { name: "[en] Empanadas", description: null },
+    });
+  }
+  assert.deepEqual(translator.calls.map((call) => call.description), [null, null, null]);
+});
+
+test("traducir: 400 por campo, sin traducir ni gastar el cupo", async () => {
+  const { handle, store, translator, logs } = harness();
+  const cases: Array<[unknown, unknown]> = [
+    [{}, { errors: { name: "required" } }],
+    [{ name: "x".repeat(121) }, { errors: { name: "tooLong" } }],
+    [{ name: "Locro", description: 5 }, { errors: { description: "invalid" } }],
+    [{ name: "Locro\ncriollo" }, { errors: { name: "invalid" } }],
+    [{ name: "Locro", nameEs: "Locro" }, { errors: { payload: "invalid" } }],
+    [["Locro"], { errors: { payload: "invalid" } }],
+  ];
+  for (const [body, expected] of cases) {
+    const response = await handle(post("/translate", body));
+    assert.equal(response.status, 400, JSON.stringify(body));
+    assert.deepEqual(await json(response), expected);
+  }
+  assert.equal(translator.calls.length + store.rateHits.length, 0);
+  assert.ok(logs.some((entry) => entry.event === "invalid_payload" && entry.fields["route"] === "/translate" && JSON.stringify(entry.fields["fields"]) === '["name"]'));
+});
+
+test("traducir con la traducción apagada (sin ANTHROPIC_API_KEY): 501 notConfigured sin gastar el cupo", async () => {
+  const { handle, store, logs } = harness({ translator: null });
+  const response = await handle(post("/translate", DISH));
+  assert.equal(response.status, 501);
+  assert.deepEqual(await json(response), { error: "notConfigured" });
+  assert.equal(store.rateHits.length, 0, "no se gasta el cupo si no se puede traducir");
+  assert.ok(logs.some((entry) => entry.event === "translate_failed" && entry.fields["reason"] === "notConfigured" && entry.level === "warn"));
+  // Igual valida primero: un cuerpo roto sigue siendo un 400.
+  assert.equal((await handle(post("/translate", {}))).status, 400);
+});
+
+test("traducir con TRANSLATE_TRANSPORT=fake fuera de un Supabase local: 501 notConfigured y un error en el log", async () => {
+  // index.ts no arma ningún traductor (la configuración dice off): el handler recibe null.
+  const { handle, store, logs } = harness({
+    env: { SUPABASE_URL: "https://abcdefghijklmnop.supabase.co", TRANSLATE_TRANSPORT: "fake" },
+    translator: null,
+  });
+  const response = await handle(post("/translate", DISH));
+  assert.equal(response.status, 501);
+  assert.deepEqual(await json(response), { error: "notConfigured" });
+  assert.equal(store.rateHits.length, 0);
+  const entry = logs.find((log) => log.event === "translate_failed");
+  assert.equal(entry?.fields["reason"], "fakeIgnored");
+  assert.equal(entry?.level, "error");
+});
+
+test("traducir pasado el límite de la cocina: 429 rateLimited con Retry-After, sin llamar al traductor", async () => {
+  const { handle, store, translator, logs } = harness();
+  store.rateAllowed = false;
+  const response = await handle(post("/translate", DISH));
+  assert.equal(response.status, 429);
+  assert.deepEqual(await json(response), { error: "rateLimited" });
+  assert.equal(response.headers.get("retry-after"), "3600");
+  assert.equal(response.headers.get("access-control-expose-headers"), "Retry-After", "la bandeja web lo puede leer");
+  assert.equal(translator.calls.length, 0);
+  assert.equal(store.rateHits.length, 1, "el intento rechazado también se registra");
+  assert.ok(logs.some((entry) => entry.event === "rate_limited" && entry.fields["route"] === "/translate" && entry.fields["userId"] === USER_EVELYN));
+});
+
+test("traducir con la base caída al contar el límite: 503 (o 500 si no se puede reintentar), sin traducir", async () => {
+  const down = harness();
+  down.store.failures.set("rate_limit", storeErrorFrom("rate_limit", { code: "", message: "TypeError: fetch failed" }));
+  const response = await down.handle(post("/translate", DISH));
+  assert.equal(response.status, 503);
+  assert.deepEqual(await json(response), { error: "unavailable" });
+  assert.equal(down.translator.calls.length, 0);
+  assert.ok(down.logs.some((entry) => entry.event === "db_error" && entry.fields["op"] === "rate_limit"));
+
+  const denied = harness();
+  denied.store.failures.set("rate_limit", storeErrorFrom("rate_limit", { code: "42501", message: "permission denied for function hit_public_request_rate" }));
+  const deniedResponse = await denied.handle(post("/translate", DISH));
+  assert.equal(deniedResponse.status, 500);
+  assert.deepEqual(await json(deniedResponse), { error: "server" });
+  assert.equal(denied.translator.calls.length, 0);
+});
+
+test("traducir sin traducción: 503 lo que se puede reintentar, 422 lo que no sale con este plato, 500 lo que está roto; nunca a medias", async () => {
+  const cases: Array<[string, TranslatorReply | Error, number, string, Record<string, unknown>, "warn" | "error"]> = [
+    // Se puede reintentar: tiempo agotado, conexión, 5xx o 429 de Anthropic.
+    ["timeout", { kind: "failed", reason: "timeout", status: null }, 503, "unavailable", { reason: "timeout", apiStatus: null }, "error"],
+    ["sin conexión", { kind: "failed", reason: "connection", status: null }, 503, "unavailable", { reason: "connection" }, "error"],
+    ["sobrecargada", { kind: "failed", reason: "apiError", status: 529 }, 503, "unavailable", { reason: "apiError", apiStatus: 529 }, "error"],
+    ["error interno", { kind: "failed", reason: "apiError", status: 500 }, 503, "unavailable", { reason: "apiError", apiStatus: 500 }, "error"],
+    ["límite de Anthropic", { kind: "failed", reason: "rateLimited", status: 429 }, 503, "unavailable", { reason: "rateLimited", apiStatus: 429 }, "error"],
+    // No sale con este plato.
+    ["negativa", { kind: "refusal", category: "cyber" }, 422, "untranslatable", { reason: "refusal", category: "cyber" }, "warn"],
+    ["max_tokens", { kind: "maxTokens" }, 422, "untranslatable", { reason: "maxTokens" }, "warn"],
+    ["otro stop_reason", { kind: "failed", reason: "stopReason", status: null }, 422, "untranslatable", { reason: "stopReason" }, "error"],
+    ["JSON cortado", { kind: "text", text: '{"it":{"name":"Cotoletta","description":"Con' }, 422, "untranslatable", { reason: "invalidOutput" }, "error"],
+    ["sin inglés", { kind: "text", text: JSON.stringify({ it: { name: "Cotoletta", description: "Con pomodoro." } }) }, 422, "untranslatable", { reason: "invalidOutput" }, "error"],
+    ["sin la descripción", { kind: "text", text: JSON.stringify({ it: { name: "A" }, en: { name: "B" } }) }, 422, "untranslatable", { reason: "invalidOutput" }, "error"],
+    // Roto o mal configurado: no sirve reintentar.
+    ["clave inválida", { kind: "failed", reason: "apiError", status: 401 }, 500, "server", { reason: "apiError", apiStatus: 401 }, "error"],
+    ["pedido rechazado", { kind: "failed", reason: "apiError", status: 400 }, 500, "server", { reason: "apiError", apiStatus: 400 }, "error"],
+    ["error del SDK", { kind: "failed", reason: "sdk", status: null }, 500, "server", { reason: "sdk" }, "error"],
+    ["el SDK no carga", { kind: "failed", reason: "sdkLoad", status: null }, 500, "server", { reason: "sdkLoad" }, "error"],
+    ["explota", new Error("Milanesaxyz DescripQwe"), 500, "server", { reason: "unexpected" }, "error"],
+  ];
+  for (const [name, reply, status, error, expected, level] of cases) {
+    const { handle, translator, logs } = harness();
+    if (reply instanceof Error) translator.throws = reply;
+    else translator.reply = reply;
+    const response = await handle(post("/translate", DISH));
+    assert.equal(response.status, status, name);
+    assert.deepEqual(await json(response), { error }, name);
+    const entry = logs.find((log) => log.event === "translate_failed");
+    assert.ok(entry, name);
+    for (const [field, value] of Object.entries(expected)) assert.equal(entry.fields[field], value, `${name}: ${field}`);
+    assert.equal(entry.fields["route"], "/translate");
+    assert.equal(entry.fields["nameLength"], 27);
+    assert.equal(entry.level, level, name);
+  }
+});
+
+test("traducir: el log lleva cuánto tardó el traductor", async () => {
+  let clock = NOW.getTime();
+  const run = harness({ now: () => new Date(clock) });
+  run.translator.during = () => {
+    clock += 1830;
+  };
+  assert.equal((await run.handle(post("/translate", DISH))).status, 200);
+  assert.equal(run.logs.find((entry) => entry.event === "translated")?.fields["ms"], 1830);
+
+  run.translator.reply = { kind: "failed", reason: "timeout", status: null };
+  assert.equal((await run.handle(post("/translate", DISH))).status, 503);
+  assert.equal(run.logs.find((entry) => entry.event === "translate_failed")?.fields["ms"], 1830);
+});
+
+test("traducir sin token válido: 401 sin leer el cuerpo ni traducir", async () => {
+  const { handle, store, translator } = harness();
+  const request = post("/translate", DISH, { token: null });
+  const response = await handle(request);
+  assert.equal(response.status, 401);
+  assert.equal(request.bodyUsed, false);
+  assert.equal(translator.calls.length + store.rateHits.length, 0);
+});
+
+// ---------------------------------------------------------------------------
 // Logs
 // ---------------------------------------------------------------------------
 
-test("los logs nunca llevan nombre, teléfono, email, zona, dirección, notas, restricciones ni fechas", async () => {
+test("los logs nunca llevan nombre, teléfono, email, zona, dirección, notas, restricciones, fechas ni el texto de un plato", async () => {
   const success = harness();
   await success.handle(post("/bookings", manualBody()));
   await success.handle(post("/bookings", manualBody()));
@@ -1083,11 +1296,34 @@ test("los logs nunca llevan nombre, teléfono, email, zona, dirección, notas, r
   sessionErrors.store.failures.set("cancel_sessions", storeErrorFrom("cancel_sessions", { code: "55000", message: "has_payments", details: "Mariaxyz" }));
   await sessionErrors.handle(post("/sessions/cancel", { sessionIds: [SESSION_ID] }));
 
+  // Traducir: lo que sale bien, un 400, sin traductor, el límite, la base caída, cada falla del
+  // traductor (también una salida que repite el plato y uno que explota con el plato en el mensaje).
+  const translations = harness();
+  await translations.handle(post("/translate", DISH));
+  await translations.handle(post("/translate", { name: "Milanesaxyz", description: 5, extra: "DescripQwe" }));
+  for (const reply of [
+    { kind: "refusal", category: "cyber" },
+    { kind: "maxTokens" },
+    { kind: "failed", reason: "apiError", status: 529 },
+    { kind: "text", text: JSON.stringify({ it: { name: "Milanesaxyz" }, en: { name: "DescripQwe" } }) },
+  ] as TranslatorReply[]) {
+    translations.translator.reply = reply;
+    await translations.handle(post("/translate", DISH));
+  }
+  translations.translator.throws = new Error("Milanesaxyz a la napolitana, DescripQwe");
+  await translations.handle(post("/translate", DISH));
+  translations.store.rateAllowed = false;
+  await translations.handle(post("/translate", DISH));
+  translations.store.failures.set("rate_limit", storeErrorFrom("rate_limit", { code: "", message: "Milanesaxyz DescripQwe" }));
+  await translations.handle(post("/translate", DISH));
+  const noTranslator = harness({ translator: null });
+  await noTranslator.handle(post("/translate", DISH));
+
   const markers = [
     "Mariaxyz", "Bianchiqwe", "765", "4321", "maria.pii", "ZonaPrivadaKkk", "Segretissima", "NOTA-LIBRE", "NOTA-SALUD",
-    "2026-11-23", "2026-11-30", TOKEN_EVELYN, TOKEN_REJECTED, TOKEN_CLIENT,
+    "2026-11-23", "2026-11-30", TOKEN_EVELYN, TOKEN_REJECTED, TOKEN_CLIENT, "Milanesaxyz", "DescripQwe", "napolitana",
   ];
-  const runs = [success, dbError, crash, invalid, conflict, auth, authDown, config, shape, getter, sessionErrors];
+  const runs = [success, dbError, crash, invalid, conflict, auth, authDown, config, shape, getter, sessionErrors, translations, noTranslator];
   for (const run of runs) {
     const text = JSON.stringify(run.logs);
     assert.ok(run.logs.length > 0);
@@ -1099,7 +1335,8 @@ test("los logs nunca llevan nombre, teléfono, email, zona, dirección, notas, r
   const events = new Set(runs.flatMap((run) => run.logs.map((entry) => entry.event)));
   for (const event of [
     "auth_rejected", "forbidden", "invalid_payload", "rejected", "booking_created", "booking_duplicate", "session_moved",
-    "sessions_cancelled", "db_error", "unexpected_result", "unexpected_error", "config_missing",
+    "sessions_cancelled", "db_error", "unexpected_result", "unexpected_error", "config_missing", "translated", "translate_failed",
+    "rate_limited",
   ]) {
     assert.ok(events.has(event), `falta el camino ${event}`);
   }
@@ -1145,6 +1382,61 @@ test("index.ts: la cocina del usuario sale de public.chef_id_for_user (la dueña
   );
   assert.ok(!index.includes('from("chefs")'), "sin consultas propias a chefs");
   assert.ok(!index.includes('from("chef_members")'), "ni a chef_members");
+});
+
+test("index.ts: el traductor real solo con ANTHROPIC_API_KEY, cargado en la primera traducción; el de mentira con TRANSLATE_TRANSPORT=fake; la clave no se loguea", () => {
+  const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  // El SDK no se importa al arrancar: una falla al cargarlo solo afecta a /translate.
+  assert.doesNotMatch(index, /^import [^\n]*claude_translator/m, "sin import estático de claude_translator.ts");
+  assert.doesNotMatch(index, /@anthropic-ai\/sdk/);
+  assert.match(index, /return lazyTranslator\(async \(\) => \{\s*const \{ createClaudeTranslator \} = await import\("\.\/claude_translator\.ts"\);\s*return createClaudeTranslator\(apiKey\);\s*\}\);/);
+  assert.match(index, /if \(config\.translation === "fake"\) return fakeTranslator;/);
+  assert.match(index, /if \(config\.translationFakeIgnored\) consoleLogger\("error", "translate_fake_ignored"\);/, "error al arrancar, sin datos");
+  assert.match(index, /if \(config\.translation === "off"\) return null;/);
+  assert.match(index, /translator: createTranslator\(\),/);
+  // El límite por cocina va a la misma función SQL que el formulario, con la clave que arma el handler.
+  assert.match(index, /supabase\.rpc\("hit_public_request_rate", \{\s*p_ip_hash: key,\s*p_max_hour: maxPerHour,\s*p_max_day: maxPerDay,\s*\}\)/);
+  for (const line of index.split("\n").filter((text) => /consoleLogger|console\./.test(text))) {
+    assert.ok(!/apiKey|ANTHROPIC_API_KEY"\)/.test(line), `un log con la clave: ${line.trim()}`);
+  }
+});
+
+test("handler.ts no conoce el SDK de Anthropic: recibe un Translator (index.ts arma el real)", () => {
+  const imports = (file: string): string[] =>
+    readFileSync(new URL(file, import.meta.url), "utf8")
+      .split("\n")
+      .filter((line) => /^import |^\} from /.test(line));
+  for (const line of imports("./handler.ts")) {
+    assert.doesNotMatch(line, /anthropic|claude_translator/, line);
+  }
+  for (const line of imports("./translation.ts")) {
+    assert.doesNotMatch(line, /anthropic|claude_translator/, `las partes puras tampoco (corren en Node): ${line}`);
+  }
+});
+
+test("claude_translator.ts: el SDK oficial fijado, sin nada del entorno, timeout por intento, un reintento y un tope de 40 s; los errores, a failureFrom", () => {
+  // No corre en Node (importa npm:@anthropic-ai/sdk): esto cuida lo que el diseño fija de la llamada.
+  // El mapeo de errores se prueba de verdad en translation.test.ts (failureFrom, con clases inyectadas).
+  const source = readFileSync(new URL("./claude_translator.ts", import.meta.url), "utf8");
+  assert.match(source, /^import Anthropic from "npm:@anthropic-ai\/sdk@1\.6\.0";$/m, "versión exacta, la de la guía");
+  // La URL fija (ANTHROPIC_BASE_URL no desvía la clave), sin logs del SDK (ANTHROPIC_LOG=debug loguearía
+  // el cuerpo, con el plato) ni trazas (ANTHROPIC_OPEN_TELEMETRY_* podría exportar el contenido).
+  assert.match(
+    source,
+    /new Anthropic\(\{\s*apiKey,\s*baseURL: ANTHROPIC_API_URL,\s*logLevel: "off",\s*openTelemetry: false,\s*timeout: TRANSLATION_TIMEOUT_MS,\s*maxRetries: TRANSLATION_MAX_RETRIES,\s*\}\)/,
+  );
+  assert.doesNotMatch(source, /authToken|defaultHeaders|fetchOptions/, "ninguna otra credencial ni cabecera");
+  // El tope de toda la llamada (el SDK respeta el retry-after sin tope y esa espera no cuenta para el timeout).
+  assert.match(
+    source,
+    /await client\.beta\.messages\.create\(buildTranslationRequest\(source\), \{\s*signal: AbortSignal\.timeout\(TRANSLATION_DEADLINE_MS\),\s*\}\)/,
+    "beta: el fallback del servidor",
+  );
+  assert.match(source, /return replyFromMessage\(message\);/, "stop_reason antes que el contenido, en la parte pura");
+  assert.match(source, /return failureFrom\(error, Anthropic\);/, "las clases de error del SDK, a la parte pura");
+  for (const forbidden of [/\bstream\s*:/, /\bthinking\s*:/, /console\./, /error\.message/, /JSON\.stringify\(error/, /String\(error/]) {
+    assert.doesNotMatch(source, forbidden);
+  }
 });
 
 test("authFailureKind: Auth rechaza el token (4xx) o no responde (429, 5xx, red)", () => {
@@ -1268,15 +1560,31 @@ test("moveSessionResponseFromRpc y cancelSessionsResponseFromRpc: la forma de la
   assert.equal(cancelSessionsResponseFromRpc({ cancelled: [], already_cancelled: [], with_payments: [] }), null);
 });
 
-test("readChefConfig: orígenes de ALLOWED_ORIGINS y lo que falta de Supabase", () => {
+test("readChefConfig: orígenes de ALLOWED_ORIGINS, lo que falta de Supabase y de dónde sale la traducción", () => {
   const config = readChefConfig((name) => ENV[name]);
   assert.equal(config.allowedOrigins.length, 2);
   assert.deepEqual(config.missing, []);
-  assert.deepEqual(chefConfigWarnings(config), []);
+  assert.equal(config.translation, "off");
+  assert.deepEqual(chefConfigWarnings(config), ["ANTHROPIC_API_KEY"], "sin la clave, la traducción queda apagada (503) y el arranque avisa");
+
+  const withKey = readChefConfig((name) => ({ ...ENV, ANTHROPIC_API_KEY: "sk-ant-prueba" })[name]);
+  assert.equal(withKey.translation, "claude");
+  assert.deepEqual(chefConfigWarnings(withKey), []);
+  assert.ok(!JSON.stringify(withKey).includes("sk-ant-prueba"), "la clave no queda en la configuración (la lee solo index.ts)");
+  const fake = readChefConfig((name) => ({ ...ENV, TRANSLATE_TRANSPORT: "fake" })[name]);
+  assert.equal(fake.translation, "fake", "con el Supabase local de los tests (127.0.0.1)");
+  assert.equal(fake.translationFakeIgnored, false);
+  assert.deepEqual(chefConfigWarnings(fake), []);
+  const fakeInProduction = readChefConfig(
+    (name) => ({ ...ENV, SUPABASE_URL: "https://abcdefghijklmnop.supabase.co", TRANSLATE_TRANSPORT: "fake", ANTHROPIC_API_KEY: "sk-ant-prueba" })[name],
+  );
+  assert.equal(fakeInProduction.translation, "off", "nunca traducciones de mentira en producción, aunque haya clave");
+  assert.equal(fakeInProduction.translationFakeIgnored, true);
+  assert.deepEqual(chefConfigWarnings(fakeInProduction), ["ANTHROPIC_API_KEY"]);
 
   const empty = readChefConfig(() => undefined);
   assert.deepEqual(empty.missing, ["SUPABASE_URL", "SUPABASE_SECRET_KEYS"]);
-  assert.deepEqual(chefConfigWarnings(empty), ["ALLOWED_ORIGINS"], "sin CORS la app web no la puede llamar (la nativa sí)");
+  assert.deepEqual(chefConfigWarnings(empty), ["ALLOWED_ORIGINS", "ANTHROPIC_API_KEY"], "sin CORS la app web no la puede llamar (la nativa sí)");
 
   const legacy = readChefConfig((name) => ({ SUPABASE_URL: " http://x ", SUPABASE_SERVICE_ROLE_KEY: "legacy" })[name]);
   assert.deepEqual(legacy.missing, []);

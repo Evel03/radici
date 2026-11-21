@@ -1,5 +1,6 @@
-// Ids generados en el teléfono (uuid v4): los acepta save_recipe y no se
-// repiten.
+// Ids generados en el teléfono (uuid v4): la clave de idempotencia de cada
+// intento de reserva (requestKey) y el id del plato nuevo (save_recipe). Tienen
+// la forma que aceptan los dos y no se repiten.
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -32,5 +33,11 @@ void main() {
     expect(isUuid('0e5b3c1a2f4d4a6b8c9d0123456789ab'), isFalse);
     expect(isUuid('nuovo'), isFalse);
     expect(isUuid(''), isFalse);
+  });
+
+  test('lo que genera uuidV4 lo acepta isUuid (save_recipe y la requestKey de chef)', () {
+    for (var i = 0; i < 200; i++) {
+      expect(isUuid(uuidV4()), isTrue);
+    }
   });
 }

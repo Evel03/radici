@@ -77,11 +77,12 @@ enum AllergyAnswer {
   /// ni celiaquía.
   none,
 
-  /// Las escribió (o el pedido trae restricciones): se muestran.
+  /// Las escribió (o el pedido trae alérgenos): se muestran.
   listed,
 
-  /// Sin respuesta: un pedido anterior a la pregunta, uno de la app o uno
-  /// cuyo consentimiento de salud se retiró. Hay que preguntarle al cliente.
+  /// Sin respuesta: un pedido anterior a la pregunta, uno de la app, uno
+  /// cuyo consentimiento de salud se retiró o uno con solo una dieta (una
+  /// dieta no dice nada de alergias). Hay que preguntarle al cliente.
   unknown,
 }
 
@@ -131,6 +132,10 @@ abstract class RequestRestrictions with _$RequestRestrictions {
 
   bool get isEmpty => allergens.isEmpty && diets.isEmpty && note.isEmpty;
 
+  /// Dice algo de alergias: alérgenos o la nota. Una dieta sola no (ser
+  /// vegetariano no dice si alguien es celíaco).
+  bool get answersAllergies => allergens.isNotEmpty || note.trim().isNotEmpty;
+
   @override
   String toString() => 'RequestRestrictions(<oculto>)';
 }
@@ -165,6 +170,13 @@ abstract class RequestEstimate with _$RequestEstimate {
     /// Hasta cuántas personas había precio automático con esas tarifas
     /// (`pricing.weeklyRateMaxPeople`), para decir por qué no lo hay.
     int? maxPeople,
+
+    /// Las tarifas por semana con que se calculó (`pricing`: las de
+    /// chef_settings al crear el pedido): con ellas «Confirmar reserva»
+    /// propone el precio de otra cantidad de semanas. null en las de antes.
+    int? weeklyRateCents,
+    int? weeklyRateDiscountedCents,
+    int? weeklyDiscountMinWeeks,
   }) = _RequestEstimate;
 
   const RequestEstimate._();
@@ -184,6 +196,8 @@ abstract class RequestEstimate with _$RequestEstimate {
     final autoPrice = json['autoPrice'];
     final reason = json['reason'];
     final pricing = json['pricing'];
+    int? readPricing(String key) =>
+        pricing is Map ? readFrom(pricing, key) : null;
     return RequestEstimate(
       weeks: read('weeks'),
       portions: read('portions'),
@@ -194,7 +208,10 @@ abstract class RequestEstimate with _$RequestEstimate {
       weeklyServiceCents: read('weeklyServiceCents'),
       serviceCents: read('serviceCents'),
       savingsCents: read('savingsCents'),
-      maxPeople: pricing is Map ? readFrom(pricing, 'weeklyRateMaxPeople') : null,
+      maxPeople: readPricing('weeklyRateMaxPeople'),
+      weeklyRateCents: readPricing('weeklyRateCents'),
+      weeklyRateDiscountedCents: readPricing('weeklyRateDiscountedCents'),
+      weeklyDiscountMinWeeks: readPricing('weeklyDiscountMinWeeks'),
     );
   }
 
@@ -347,8 +364,19 @@ abstract class ChefRequest with _$ChefRequest {
   factory ChefRequest.fromJson(Map<String, dynamic> json) =>
       _$ChefRequestFromJson(_withRequestContact(json));
 
-  /// Nueva para la bandeja: Evelyn todavía no la abrió.
-  bool get isNew => seenAt == null && status != RequestStatus.rejected;
+  /// Nueva para la bandeja: Evelyn todavía no la abrió (y no es una reserva:
+  /// esas van a su pestaña aunque no tengan `seen_at`, como las del seed).
+  bool get isNew =>
+      seenAt == null &&
+      status != RequestStatus.rejected &&
+      status != RequestStatus.accepted;
+
+  /// Al llegar (por tiempo real o al reconectar) salta el aviso «Nuova
+  /// richiesta da …»: solo si es nuevo ([isNew]) y llegó de la web. Uno de la
+  /// app se suma a la lista sin aviso: una reserva cargada a mano (nace
+  /// aceptada y vista) o un pedido nuevo, que igual cuenta como nuevo en la
+  /// bandeja. Cuando los clientes con cuenta pidan desde la app (M2), revisar.
+  bool get alertsOnArrival => source == RequestSource.web && isNew;
 
   bool get isRejected => status == RequestStatus.rejected;
 
@@ -358,34 +386,51 @@ abstract class ChefRequest with _$ChefRequest {
   /// Un rechazo de la cocinera se puede deshacer (vuelve a `new`).
   bool get canUndoReject => status == RequestStatus.rejected;
 
+  /// «Confirmar reserva»: solo desde un pedido nuevo (chef_create_booking
+  /// exige `new`) y que no sea un cambio de una sesión.
+  bool get canConfirmBooking =>
+      status == RequestStatus.newRequest && type != RequestType.change;
+
+  /// Ya es una reserva confirmada (pestaña «Prenotazioni» de la bandeja).
+  bool get isBooking => status == RequestStatus.accepted;
+
   /// La persona es todavía un prospecto: la cocinera la puede marcar como
   /// cliente (ficha en `trial`), así sus datos no se borran a los 90 días
   /// (contrato §9).
   bool get canMarkClient => client.status == ClientStatus.prospect;
 
-  /// Cuenta para la agenda: pedidos en curso (no rechazados, vencidos ni
-  /// cerrados).
+  /// Cuenta para la agenda por su fecha preferida: pedidos en curso que
+  /// todavía no son una reserva. Una reserva (`accepted`) ya tiene sus
+  /// sesiones, que la agenda muestra en su día; los rechazados, vencidos o
+  /// cerrados no cuentan.
   bool get isActive => switch (status) {
-    RequestStatus.newRequest ||
-    RequestStatus.quoted ||
-    RequestStatus.accepted => true,
+    RequestStatus.newRequest || RequestStatus.quoted => true,
+    RequestStatus.accepted ||
     RequestStatus.declined ||
     RequestStatus.rejected ||
     RequestStatus.expired ||
     RequestStatus.resolved => false,
   };
 
+  /// Trae alguna restricción (también solo una dieta): la lista de la bandeja
+  /// lo marca.
   bool get hasRestrictions => !(restrictions?.isEmpty ?? true);
 
   /// El cliente eligió platos en la web: la bandeja y el aviso lo marcan.
   bool get hasMenu => wishes.isNotEmpty;
 
-  /// Qué mostrar de alergias. Con restricciones, siempre
+  /// Responde a la pregunta de alergias: las indica (alérgenos o la nota) o
+  /// confirma que nadie tiene. Una dieta sola no responde.
+  bool get answersAllergies =>
+      noAllergies == true || (restrictions?.answersAllergies ?? false);
+
+  /// Qué mostrar de alergias. Con alérgenos o la nota, siempre
   /// [AllergyAnswer.listed] (más vale mostrarlas, aunque diga lo contrario);
   /// sin ellas, [AllergyAnswer.none] solo si lo confirmó y si no,
-  /// [AllergyAnswer.unknown].
+  /// [AllergyAnswer.unknown], también con solo una dieta (que se muestra
+  /// igual).
   AllergyAnswer get allergyAnswer {
-    if (hasRestrictions) return AllergyAnswer.listed;
+    if (restrictions?.answersAllergies ?? false) return AllergyAnswer.listed;
     return noAllergies == true ? AllergyAnswer.none : AllergyAnswer.unknown;
   }
 
