@@ -33,6 +33,8 @@ import 'package:radici/features/sessions/presentation/cooking_session_screen.dar
 import 'package:radici/features/sessions/presentation/move_session_screen.dart';
 import 'package:radici/features/settings/presentation/settings_screen.dart';
 import 'package:radici/features/today/presentation/today_screen.dart';
+import 'package:radici/features/week_menu/application/week_menu_editor_controller.dart';
+import 'package:radici/features/week_menu/presentation/week_menu_screen.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -122,6 +124,31 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
             onExit: (context, state) =>
                 _canLeaveBooking(ref, _renewalSource(state)),
+          ),
+          // El menú de la semana. Con push desde un pedido o desde la hoja de
+          // reserva confirmada se apila solo el menú.
+          GoRoute(
+            path: AppRoutes.sessionMenuSegment,
+            pageBuilder: (context, state) => _page(
+              state,
+              WeekMenuScreen(sessionId: state.pathParameters['id']!),
+            ),
+            onExit: (context, state) =>
+                _canLeaveMenu(context, ref, state.pathParameters['id']!),
+            routes: [
+              // «Nuovo piatto» desde el menú: el editor de platos vuelve con
+              // el plato guardado, que entra al menú.
+              GoRoute(
+                path: AppRoutes.menuNewDishSegment,
+                pageBuilder: (context, state) => MaterialPage<Object?>(
+                  key: state.pageKey,
+                  child: const RecipeEditorScreen(
+                    target: RecipeEditorTarget.create(),
+                    returnsSaved: true,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -316,6 +343,30 @@ bool _canLeaveBooking(Ref ref, BookingSource source) {
   return !ref.exists(provider) || !ref.read(provider).holdsOpen;
 }
 
+/// El onExit del menú de la semana: con cambios sin guardar pregunta antes
+/// de descartarlos, también por el atrás del navegador en /gestione/ (que no
+/// pasa por PopScope). Mientras guarda no sale. Si ya se eligió descartar en
+/// la pantalla (WeekMenuEditorState.leaving), sale sin volver a preguntar.
+/// Sin la sesión de la cocinera, sí: la redirección al login la saca.
+Future<bool> _canLeaveMenu(
+  BuildContext context,
+  Ref ref,
+  String sessionId,
+) async {
+  if (ref.read(sessionControllerProvider) is! ChefSession) return true;
+  final provider = weekMenuEditorProvider(sessionId);
+  if (!ref.exists(provider)) return true;
+  final state = ref.read(provider).value;
+  if (state == null || state.leaving) return true;
+  if (state.busy) return false;
+  if (!state.dirty) return true;
+  final discard = await confirmDiscardMenuChanges(context);
+  if (discard && ref.exists(provider)) {
+    ref.read(provider.notifier).allowLeave();
+  }
+  return discard;
+}
+
 /// Una fecha "AAAA-MM-DD" de la URL, o null si falta o no es una fecha.
 CalendarDate? _dateOrNull(String? value) {
   if (value == null) return null;
@@ -334,12 +385,14 @@ const String _sessionPath = '${AppRoutes.sessions}/:id';
 /// ejemplo, un pedido abierto desde el aviso), una hoja «Conferma
 /// prenotazione» (desde un pedido, a mano o «Rinnova»), el elegir de «Nuova
 /// prenotazione», su formulario «Nuova cliente» o la ficha de una sesión
-/// (sola o con su hoja «Sposta»). Un go las sacaría sin pasar por ningún
-/// PopScope, con lo que tengan a medias: la hoja de reserva, con lo escrito
-/// o, mientras se manda, con la pantalla final y su WhatsApp; el elegir y el
-/// formulario, con la búsqueda y el borrador de la ficha nueva; la ficha, con
-/// la hoja «Sposta» a medio mover (y el resultado del que sale «Annulla») o
-/// el aviso con «Annulla» después de mover.
+/// (sola, con su hoja «Sposta» o con el menú de la semana, que cuelga de ella
+/// también cuando se apila solo desde un pedido o una hoja de reserva). Un go
+/// las sacaría sin pasar por ningún PopScope, con lo que tengan a medias: la
+/// hoja de reserva, con lo escrito o, mientras se manda, con la pantalla
+/// final y su WhatsApp; el elegir y el formulario, con la búsqueda y el
+/// borrador de la ficha nueva; la ficha, con la hoja «Sposta» a medio mover
+/// (y el resultado del que sale «Annulla») o el aviso con «Annulla» después
+/// de mover; el menú de la semana pregunta antes con su onExit.
 ///
 /// Con la ficha en la pila, hoy a «Apri» solo se llega desde la hoja
 /// «Sposta» o desde un pedido o una hoja de reserva abiertos encima: sobre la

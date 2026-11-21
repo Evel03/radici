@@ -101,6 +101,20 @@ abstract final class AppRoutes {
   static String sessionRenew(String id) =>
       '${sessionDetail(id)}/$sessionRenewSegment';
 
+  /// El menú de la semana de una sesión (sobre la ficha o, con push, sobre
+  /// el pedido o la hoja de reserva confirmada).
+  static const String sessionMenuSegment = 'menu';
+
+  static String sessionMenu(String id) =>
+      '${sessionDetail(id)}/$sessionMenuSegment';
+
+  /// El editor de un plato nuevo desde el menú de la semana: al guardarlo,
+  /// el plato entra al menú.
+  static const String menuNewDishSegment = 'nuovo-piatto';
+
+  static String sessionMenuNewDish(String id) =>
+      '${sessionMenu(id)}/$menuNewDishSegment';
+
   /// Parámetro con la ruta a la que volver después de entrar.
   static const String fromParam = 'from';
 }

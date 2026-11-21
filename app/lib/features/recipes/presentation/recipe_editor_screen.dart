@@ -36,9 +36,18 @@ import 'package:radici/features/requests/presentation/request_labels.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 class RecipeEditorScreen extends ConsumerWidget {
-  const RecipeEditorScreen({super.key, required this.target});
+  const RecipeEditorScreen({
+    super.key,
+    required this.target,
+    this.returnsSaved = false,
+  });
 
   final RecipeEditorTarget target;
+
+  /// Abierto desde el menú de una semana («Nuevo plato»): al guardar vuelve
+  /// con el plato (SavedRecipeNotice, el resultado de la ruta) en lugar de
+  /// avisarlo en la lista de platos.
+  final bool returnsSaved;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -68,16 +77,17 @@ class RecipeEditorScreen extends ConsumerWidget {
             if (sourceId != null && !recipes.any((r) => r.id == sourceId)) {
               return const _RecipeNotFound();
             }
-            return _RecipeEditor(target: target);
+            return _RecipeEditor(target: target, returnsSaved: returnsSaved);
           },
         );
   }
 }
 
 class _RecipeEditor extends ConsumerStatefulWidget {
-  const _RecipeEditor({required this.target});
+  const _RecipeEditor({required this.target, required this.returnsSaved});
 
   final RecipeEditorTarget target;
+  final bool returnsSaved;
 
   @override
   ConsumerState<_RecipeEditor> createState() => _RecipeEditorState();
@@ -211,17 +221,24 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     switch (result) {
       case RecipeSaveResult.saved || RecipeSaveResult.savedUntranslated:
         // La lista lo avisa (este editor se cierra), y si se guardó sin
-        // traducir sin preguntar, también dice por qué.
+        // traducir sin preguntar, también dice por qué. Abierto desde el
+        // menú de una semana, vuelve con el plato: el menú lo agrega y avisa.
         final saved = state.source;
+        final untranslatedBecause = result == RecipeSaveResult.savedUntranslated
+            ? state.untranslatedBecause
+            : null;
+        if (widget.returnsSaved) {
+          Navigator.of(context).pop<SavedRecipeNotice>(
+            saved == null
+                ? null
+                : (recipe: saved, untranslatedBecause: untranslatedBecause),
+          );
+          return;
+        }
         if (saved != null) {
           ref
               .read(recipeSavedNoticeProvider.notifier)
-              .post(
-                saved,
-                untranslatedBecause: result == RecipeSaveResult.savedUntranslated
-                    ? state.untranslatedBecause
-                    : null,
-              );
+              .post(saved, untranslatedBecause: untranslatedBecause);
         }
         Navigator.of(context).pop();
       case RecipeSaveResult.invalid:
