@@ -441,6 +441,13 @@ Solo se arma una sesión `held` o `confirmed` (o una vieja en `shopping_done`). 
 Errores: `not_a_chef`, `invalid_payload` (con el campo), `session_not_found`, `recipe_not_found` (con el campo) y los checks de las tablas. Una clave desconocida es un error, como en `save_recipe`.
 
 La lista y la nota son solo de la cocinera: la clienta las recibe en el mensaje y en su link. La política vieja que deja a una clienta con cuenta leer `session_menu` de sus sesiones se revisa en M2, para que vea solo los menús enviados.
+
+**Link de la clienta** (Edge Function `client-link` y página `/prenotazione/`; contrato `docs/contracts/client-link.md`). Cada mensaje del menú lleva `https://radicicucina.app/prenotazione/#t=<token>`: el token (32 bytes al azar) va en el fragmento, que no llega a ningún servidor, y es la llave hasta que la clienta tenga cuenta (M2). La base guarda solo su hash (`client_links`) y un link abre la reserva entera durante 120 días.
+- La página llama a la función, pública como `public-request` (sin JWT, con su propio límite por IP). `POST /view` devuelve las semanas no canceladas (fecha, hora de llegada, si ya se cocinó) y, de cada una, el último menú enviado tal como salió y su estado: los platos con descripción, alérgenos, dieta, porciones y foto; la lista por sección del súper, con lo «q.b.» aparte, para tener en casa; la nota de Evelyn. De la clienta, solo un nombre de pila que parezca un nombre. Nada de precios, pagos, dirección ni alergias.
+- La clienta confirma el menú de una semana (`POST /confirm`) o pide cambios con un mensaje de 1 a 1000 caracteres (`POST /changes`); el campo pide no escribir datos de salud. Si Evelyn mandó un menú más nuevo, se contesta ese (`menuOutdated`) y la página lo muestra. Uno confirmado no se cambia desde el link: se habla con Evelyn.
+- Cada respuesta le avisa a Evelyn por email (`CHEF_NOTIFY_EMAIL`, en `CHEF_LOCALE`, con el botón al pedido en la bandeja), salvo una confirmación repetida. El mensaje de la clienta no va en el email (es una nota libre, §6): Evelyn lo lee en la app. Un email que falla no rompe la respuesta de la clienta.
+- La página sale en el idioma de la reserva, salvo que la clienta haya elegido otro; nunca se indexa y su CSP suma solo el origen de Supabase (la función y las fotos). Cuando llegue el presupuesto, se acepta en esta misma página, arriba de las semanas.
+
 ---
 
 ## 6. Seguridad, privacidad y RGPD
