@@ -441,6 +441,25 @@ Solo se arma una sesión `held` o `confirmed` (o una vieja en `shopping_done`). 
 Errores: `not_a_chef`, `invalid_payload` (con el campo), `session_not_found`, `recipe_not_found` (con el campo) y los checks de las tablas. Una clave desconocida es un error, como en `save_recipe`.
 
 La lista y la nota son solo de la cocinera: la clienta las recibe en el mensaje y en su link. La política vieja que deja a una clienta con cuenta leer `session_menu` de sus sesiones se revisa en M2, para que vea solo los menús enviados.
+
+**Avisos a Evelyn** (migración `20261121110000_menu_reminders.sql`, tests pgTAP `21_menu_reminders`; Edge Function `menu-reminders`). Una semana está pendiente si:
+- es de una reserva y está confirmada (una `held` es de un presupuesto sin aceptar);
+- empieza dentro de 4 días;
+- no tiene ningún envío del menú que haya salido, o en el último la clienta pidió cambios;
+- se creó hace más de una hora.
+
+Para una semana pendiente, Evelyn recibe un email a `CHEF_NOTIFY_EMAIL`, en `CHEF_LOCALE`:
+- 4 días antes de la cocina;
+- 72 h antes, si sigue pendiente;
+- pasado el límite de 48 h, cada 2 horas, hasta que lo envíe o empiece la sesión.
+
+Ningún aviso sale de noche: solo de 8:00 a 20:59, hora de Roma (§8). El que cae de noche sale a las 8:00. Las semanas que tocan en un mismo turno van en un solo email, con la clienta, la semana, el día y la hora de la cocina, el límite y el link al pedido en `/gestione/`. Nunca lleva alergias ni direcciones.
+
+Cómo funciona:
+1. pg_cron corre `private.call_menu_reminders()` cada 15 minutos.
+2. Esa función llama a la Edge Function con pg_net, usando la URL y un secreto que el despliegue genera en cada corrida y guarda en Vault y como `MENU_REMINDERS_SECRET` de la función. Sin ellos, en local, no hace nada.
+3. La función lee `menu_reminders_due` y manda el email.
+4. Recién entonces marca los avisos con `menu_reminders_mark`. Si el email falla, el turno siguiente lo reintenta.
 ---
 
 ## 6. Seguridad, privacidad y RGPD
@@ -540,6 +559,7 @@ Un prospecto con cuenta ve Inicio, Pedir (sin platos deseados) y su perfil; no v
 | Cocinado: porciones listas | cliente | push |
 | Pedido especial aprobado o con alternativa (M2b) | cliente | push |
 | Pago pendiente (24 h y 72 h después) | cliente | push + email |
+| Menú de la semana sin enviar (4 días y 72 h antes de la cocina; pasado el límite de 48 h, cada 2 horas), 5.8 | Evelyn | email |
 | Porción vence mañana (F2) | cliente | push a las 8:00 |
 | Ingrediente compartido vence y hay sesión en ≤ 3 días (F2) | Evelyn | push |
 

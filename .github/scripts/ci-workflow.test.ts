@@ -27,7 +27,12 @@ test("CI: deno check de las Edge Functions, con el traductor de chef (que index.
   assert.match(job, /deno-version: \d+\.\d+\.\d+$/m, "una versión exacta de Deno");
   const command = /- run: >-\n([\s\S]*?)(?:\n\s*\n|$)/.exec(job)?.[1]?.replace(/\s+/g, " ").trim() ?? "";
   assert.match(command, /^deno check --no-lock --node-modules-dir=none /);
-  for (const file of ["supabase/functions/chef/index.ts", "supabase/functions/chef/claude_translator.ts", "supabase/functions/public-request/index.ts"]) {
+  for (const file of [
+    "supabase/functions/chef/index.ts",
+    "supabase/functions/chef/claude_translator.ts",
+    "supabase/functions/public-request/index.ts",
+    "supabase/functions/menu-reminders/index.ts",
+  ]) {
     assert.ok(command.includes(file), `revisa ${file}`);
   }
 });

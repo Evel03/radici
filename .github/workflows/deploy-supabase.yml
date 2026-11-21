@@ -1,7 +1,8 @@
 # Despliega el backend de Supabase a producción: la configuración de Auth (desde config.toml y la
 # plantilla del código), migraciones (db push), la cuenta de la cocinera con su horario inicial la
-# primera vez, secretos de las Edge Functions, las funciones public-request y chef (el área de Evelyn,
-# con la traducción de los platos) y, al final, las cuentas de sus colaboradores, en cada despliegue.
+# primera vez, secretos de las Edge Functions, las funciones public-request, chef (el área de Evelyn,
+# con la traducción de los platos) y menu-reminders (los avisos a Evelyn para completar el menú de cada
+# semana, SPEC 5.8) y, al final, las cuentas de sus colaboradores, en cada despliegue.
 # Contratos:
 # docs/contracts/public-request.md §8 y §10.1, y docs/contracts/chef-api.md §9.
 # - push a main que toque supabase/** (o este archivo) → producción
@@ -423,6 +424,38 @@ jobs:
           fi
           supabase functions deploy chef --project-ref "${SUPABASE_PROJECT_REF}" --use-api
 
+      # Los avisos a Evelyn para completar el menú de cada semana (SPEC 5.8). La base llama a la función
+      # cada 15 minutos (pg_cron + pg_net, migración 20261121110000_menu_reminders.sql) con un secreto
+      # compartido en la cabecera x-reminders-secret. Este paso genera uno nuevo en cada despliegue, lo
+      # carga como secreto de la función (MENU_REMINDERS_SECRET) y lo guarda en Vault junto con la URL de
+      # la función (private.upsert_vault_secret, por SQL con la Management API como postgres). Si un
+      # turno de pg_cron cae justo en medio, ese turno recibe 401 y el siguiente ya anda. El secreto se
+      # enmascara (::add-mask::) y viaja como argumento o por la entrada de curl, nunca en un archivo.
+      # verify_jwt = false sale de supabase/config.toml ([functions.menu-reminders]). Usa CHEF_NOTIFY_EMAIL,
+      # CHEF_LOCALE, MAIL_FROM, RESEND_API_KEY, INBOX_URL, EMAIL_TRANSPORT y CHEF_ID, cargados en
+      # "Secretos de la función".
+      - name: Desplegar menu-reminders (avisos del menú)
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          supabase functions deploy menu-reminders --project-ref "${SUPABASE_PROJECT_REF}" --use-api
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::${secret}"
+          supabase secrets set --project-ref "${SUPABASE_PROJECT_REF}" "MENU_REMINDERS_SECRET=${secret}"
+          url="https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/menu-reminders"
+          # El secreto es hexadecimal y la URL sale del ref del proyecto: ninguno tiene comillas.
+          query="select private.upsert_vault_secret('radici_menu_reminders_url', '${url}'), private.upsert_vault_secret('radici_menu_reminders_secret', '${secret}');"
+          if ! out=$(jq -n --arg query "${query}" '{query: $query}' \
+              | curl -sS --fail-with-body -X POST "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/database/query" \
+                  -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  --data-binary @-); then
+            echo "::error::No se pudieron guardar la URL y el secreto de los avisos en Vault: $(jq -r '.message // .error // "sin mensaje"' <<< "${out}" 2>/dev/null || echo "sin mensaje"). Los avisos del menú no salen hasta el próximo despliegue."
+            exit 1
+          fi
+
       # Los colaboradores de la cocinera, en cada despliegue (supabase/scripts/deploy-accounts.sh members,
       # con tests): la lista del secreto CHEF_MEMBER_EMAILS manda (la valida y la convierte en SQL
       # supabase/scripts/chef-members.ts). Crea las cuentas que faltan (confirmadas, como la de la cocinera)
@@ -453,5 +486,5 @@ jobs:
           {
             echo "### Backend desplegado"
             echo "- Migraciones aplicadas con db push"
-            echo "- Funciones: https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/public-request y …/functions/v1/chef"
+            echo "- Funciones: https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/public-request, …/functions/v1/chef y …/functions/v1/menu-reminders"
           } >> "${GITHUB_STEP_SUMMARY}"

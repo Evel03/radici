@@ -601,13 +601,13 @@ const FONT_DISPLAY = `Cinzel,'Trajan Pro',${FONT}`;
 const BRAND_TAGLINE = "Cucina privata";
 
 /** Fila etiqueta / valor. `valueHtml` ya viene escapado (puede traer un link). */
-interface Row {
+export interface Row {
   label: string;
   value: string;
   valueHtml?: string;
 }
 
-type Block =
+export type Block =
   | { kind: "paragraph"; text: string }
   | { kind: "title"; text: string }
   | { kind: "rows"; rows: Row[] }
@@ -615,7 +615,7 @@ type Block =
   | { kind: "button"; label: string; href: string }
   | { kind: "link"; label: string; href: string };
 
-interface EmailDocument {
+export interface EmailDocument {
   locale: Locale;
   subject: string;
   preheader: string;
@@ -723,7 +723,7 @@ function logoHtml(brand: string): string {
   );
 }
 
-function render(doc: EmailDocument): RenderedEmail {
+export function render(doc: EmailDocument): RenderedEmail {
   const slogan = doc.slogan
     ? `<p style="margin:0 0 10px;font-size:17px;line-height:1.4;font-style:italic;color:${COLOR.text};">${escapeHtml(doc.slogan)}</p>`
     : "";
