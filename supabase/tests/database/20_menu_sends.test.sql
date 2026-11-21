@@ -315,7 +315,7 @@ select is(
 select is(public.client_link_view('token-a'), null, 'un token sin hashear no abre nada');
 select is(public.client_link_view(pg_temp.h('no-existe')), null, 'un hash que no existe tampoco');
 select is(public.client_link_view(null), null, 'null tampoco');
-select is(public.client_link_view(pg_temp.h('token-a')) - 'weeks',
+select is(public.client_link_view(pg_temp.h('token-a')) - 'weeks' - 'quote',
   '{"requestId": "7e6a3000-0000-4000-8000-00000000000a", "locale": "es", "chefName": "Evelyn", "clientName": "Anna Rota"}'::jsonb,
   'el link abre la reserva: idioma, cocinera y nombre de la ficha');
 select is(
@@ -324,7 +324,7 @@ select is(
     {"sessionId": "7e6a4000-0000-4000-8000-000000000002", "date": "2027-03-15", "start": "09:30", "status": "confirmed", "week": 2, "weeks": 2}]'::jsonb,
   'las semanas vivas, por fecha');
 select is(
-  (public.client_link_view(pg_temp.h('token-a')) #> '{weeks,0,send}') - 'id' - 'sentAt',
+  (public.client_link_view(pg_temp.h('token-a')) #> '{weeks,0,send}') - 'id' - 'sentAt' - 'quoteId',
   '{"snapshot": {"v": 1, "token": "token-a"}, "confirmedAt": null, "changesRequestedAt": null}'::jsonb,
   'la semana 1 muestra la foto del envío que salió, no las vistas previas');
 select is(public.client_link_view(pg_temp.h('token-a')) #> '{weeks,1,send}', 'null'::jsonb, 'la semana 2 todavía no tiene envío');

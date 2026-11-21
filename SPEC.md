@@ -178,7 +178,7 @@ create type ingredient_unit  as enum ('g','ml','pcs');  -- unidad de la cantidad
 | `recipe_notes` (M4a) | recipe_id (una fila por plato con notas; sin notas, sin fila), chef_id, notes (sin espacios al borde). Solo de la cocinera |
 | `recipe_allergens` | recipe_id, allergen |
 | `requests` | id, chef_id, client_id (siempre, también para prospectos), type, status, adults, kids, days, meals text[], weeks (1–8: las semanas de un pedido `week`, una sesión de cocina por semana; 1 en los demás; al confirmar una reserva, las que se crearon), restrictions jsonb, wishes uuid[] (desde el 19/11/2026, los platos que el cliente eligió en el menú de la web, en orden: §4, «Menú de la web»), notes, preferred_date, preferred_start, pay_mode, target_session_id null (para 'change'), text (para 'change'), created_at; del pedido de la web además preferred_slot, locale, whatsapp_opt_in, estimate, source, seen_at, request_key, contact jsonb (el contacto con que llegó) y no_allergies (la pregunta de alergias: true = nadie tiene, false = las escribió y van en restrictions, null = sin respuesta; contrato §3) |
-| `quotes` | id, request_id, session_id (la sesión `held` que reserva el horario), version, menu uuid[], cook_minutes, portions, service_cents, groceries_est_cents, preauth_cents, pricing_snapshot jsonb, allergen_override text null, slot_date, slot_start, hold_until, sent_at, accepted_at |
+| `quotes` | id, request_id, session_id (la primera sesión `held` que reserva el horario; las demás semanas lo apuntan con `sessions.quote_id`), version (sube en cada reenvío), menu uuid[], cook_minutes, portions, service_cents (el total), groceries_est_cents, preauth_cents, pricing_snapshot jsonb (los términos enviados), allergen_override text null, slot_date, slot_start, hold_until, sent_at (el primer envío), accepted_at; desde el 21/11/2026 last_sent_at, declined_at, withdrawn_at y expired_at (a lo sumo un cierre), y uno abierto por pedido (5.8) |
 | `sessions` | id, chef_id, client_id, request_id, quote_id, date, start_time, cook_minutes, shop_minutes, gap_minutes, portions, status, hold_until null (solo `held`), pay_mode, service_cents, groceries_est_cents, preauth_cents, groceries_actual_cents null, service_paid_at, groceries_paid_at, shopping_done_at, cooked_at, cancelled_at, cancel_reason, **busy tstzrange** (generada), week_start (generada: el lunes de la semana ISO). Como máximo una sesión viva (no cancelada) por semana de cada pedido (`sessions_una_por_semana`) |
 | `session_menu` | session_id, recipe_id, chef_id, portions (1–500: las de ese plato en la semana), position (1–30: el orden de los platos; 21/11/2026). Los platos del menú de una semana (5.8); se escribe con `save_session_menu` |
 | `session_shopping_items` (21/11/2026) | session_id, chef_id, position (1–150), name (hasta 80 caracteres), section (`shopping_section`), quantity int null (1 a 1000000), unit null (`ingredient_unit`); quantity y unit van juntas, o ninguna (q.b.). La lista de compras de la semana para la clienta, tal como la dejó Evelyn (5.8). Solo de la cocinera |
@@ -311,7 +311,8 @@ Implementado en SQL (migración `20261115130000_free_slots.sql`, tests pgTAP `07
 ```
 new ──(Evelyn envía presupuesto)──▶ quoted ──(cliente acepta)──▶ accepted
  │                                    ├──(cliente rechaza)──▶ declined
- │                                    └──(vence hold_until)──▶ expired
+ │                                    ├──(vence hold_until)──▶ expired
+ │                                    └──(Evelyn lo retira)──▶ new
  ├──(Evelyn rechaza)──▶ rejected
  └──(type = change, Evelyn lo resuelve)──▶ resolved
 ```
@@ -447,6 +448,20 @@ La lista y la nota son solo de la cocinera: la clienta las recibe en el mensaje 
 - empieza dentro de 4 días;
 - no tiene ningún envío del menú que haya salido, o en el último la clienta pidió cambios;
 - se creó hace más de una hora.
+
+**Presupuesto** (migración `20261121120000_quotes.sql`, tests pgTAP `22_quotes`):
+- **Preparar.** Desde un pedido `new`, semanal o extra, sin otro presupuesto abierto, `chef_create_quote` crea una sesión `held` por semana (pago manual, como las reservas) y el presupuesto, sin enviar. Valida fechas, hora, minutos, porciones y precio como `chef_create_booking` y reparte el precio entre las semanas. El borrador retiene el horario 24 h; el pedido sigue `new`.
+- **Enviar.** Sale con el menú de la semana 1: el envío de esa semana lleva el presupuesto (`menu_sends.quote_id`) y sus términos (`quote_terms`: semanas, horas y precio, calculados por la base). Si cambian antes de mandarlo, el envío no sale (`quote_changed`). Al salir, el pedido pasa a `quoted` y el horario queda retenido `quote_hold_hours` (48 h). Cada reenvío es otra versión y el plazo vuelve a empezar. Mientras no lo acepte, solo la semana 1 sale (`quote_week_not_first`).
+- **Cambiar o retirar.** Evelyn cambia el precio con `chef_update_quote` y las fechas y semanas con `chef_move_session` y `chef_cancel_sessions`. `chef_withdraw_quote` cancela las semanas (`quote_withdrawn`) y el pedido vuelve a `new`.
+- **La clienta, en su link:**
+  - acepta la última versión (`client_link_accept_quote`): las semanas pasan a `confirmed`, el pedido a `accepted`, la ficha de prospecto a `trial` y el menú de la semana 1 queda confirmado;
+  - la rechaza (`client_link_decline_quote`): semanas canceladas (`declined`) y pedido `declined`;
+  - o pide cambios con un mensaje, como con cualquier menú.
+
+  Un menú que va con un presupuesto abierto no se confirma solo (`quote_pending`): se acepta el presupuesto.
+- **Vencer.** Pasado el plazo no se acepta, y `private.expire_quotes` (pg_cron, cada 15 minutos) cancela las semanas (`hold_expired`) y pasa el pedido `quoted` a `expired`. Un borrador que nunca salió deja el pedido en `new`.
+
+«Confirmar sin presupuesto» (`chef_create_booking`) sigue igual, para lo que se acordó por fuera. Nada de esto toca los pagos.
 
 Para una semana pendiente, Evelyn recibe un email a `CHEF_NOTIFY_EMAIL`, en `CHEF_LOCALE`:
 - 4 días antes de la cocina;
