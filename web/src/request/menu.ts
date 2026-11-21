@@ -7,6 +7,9 @@
 //   de hoy. Si al cambiar la fecha un plato elegido sale de temporada, se quita y se avisa.
 // - Tope: un plato por día. Al llegar, las demás casillas se deshabilitan; si bajan los días por debajo de
 //   lo elegido, el contador queda en error y la validación (la del servidor: menu "tooMany") frena el envío.
+// - Foto (20/11/2026): la miniatura de cada plato que la tiene, a la izquierda del texto. Solo se aceptan las
+//   del bucket recipe-photos del mismo proyecto de Supabase que la función (la CSP de /richiesta/* deja
+//   cargar imágenes de ese origen). Sin foto, o si no carga, la tarjeta se ve como antes.
 // Los nombres y descripciones van en el idioma de la página, con respaldo al italiano.
 import {
   MENU_PATH,
@@ -37,7 +40,11 @@ export interface MenuFetchOptions {
   timeoutMs?: number;
 }
 
-/** Los platos publicados, o null si no hubo una respuesta útil (sin conexión, tiempo agotado, error, otra forma). */
+/**
+ * Los platos publicados, o null si no hubo una respuesta útil (sin conexión, tiempo agotado, error, otra forma).
+ * Las fotos tienen que ser del mismo proyecto de Supabase que la función (el origen de url); las de otro lado
+ * se descartan y el plato sale sin foto.
+ */
 export async function fetchMenu(url: string, opts: MenuFetchOptions = {}): Promise<MenuDish[] | null> {
   // Llamada envuelta: algunos navegadores fallan si fetch se invoca sin su `this` (window).
   const fetchFn = opts.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
@@ -46,7 +53,7 @@ export async function fetchMenu(url: string, opts: MenuFetchOptions = {}): Promi
   try {
     const response = await fetchFn(url, { method: "GET", credentials: "omit", signal: controller.signal });
     if (!response.ok) return null;
-    return parseMenuResponse(JSON.parse(await response.text()) as unknown)?.dishes ?? null;
+    return parseMenuResponse(JSON.parse(await response.text()) as unknown, new URL(url).origin)?.dishes ?? null;
   } catch {
     return null;
   } finally {
@@ -114,6 +121,8 @@ export interface DishCard {
   allergens: string;
   /** «Vegetariano», «Vegano» o null. */
   diet: string | null;
+  /** URL de la miniatura (la de 360 px); null = sin foto. */
+  photo: string | null;
   checked: boolean;
   /** Al tope, las que no están marcadas. */
   disabled: boolean;
@@ -169,6 +178,7 @@ export function menuPanelView(input: MenuPanelInput, i18n: I18n): MenuPanelView 
           ? t("request.menu.allergensNone")
           : t("request.menu.allergens", { list: dish.allergens.map((allergen) => t(`allergens.${allergen}`)).join(", ") }),
       diet: dish.diet ? t(`diets.${dish.diet}`) : null,
+      photo: dish.photo?.thumb ?? null,
       checked,
       disabled: !checked && chosen >= max,
     };
@@ -185,6 +195,51 @@ export function menuPanelView(input: MenuPanelInput, i18n: I18n): MenuPanelView 
     overLimit,
     cards,
   };
+}
+
+/**
+ * Lado de la miniatura en px CSS (el mismo de .dish__photo en request.css). Fijo, no crece con la letra: con
+ * letra grande la foto pasa arriba del texto. El archivo tiene 360 px de lado mayor: alcanza para pantallas 3x.
+ */
+export const DISH_PHOTO_SIZE = 80;
+
+/** Lo que dishPhoto usa de una <img> (en los tests, un objeto simulado). */
+export interface DishPhotoElement {
+  className: string;
+  alt: string;
+  width: number;
+  height: number;
+  loading: string;
+  decoding: string;
+  src: string;
+  addEventListener(type: "error", listener: () => void, options?: { once?: boolean }): void;
+  remove(): void;
+}
+
+/**
+ * La miniatura de un plato: cuadrada, con ancho y alto fijos (la tarjeta no salta cuando llega), perezosa
+ * (loading="lazy", decoding="async") y con alt vacío (el nombre del plato está al lado). Si no carga, se saca
+ * del todo (nada de ícono roto ni hueco) y avisa con onError, para que la tarjeta quede como una sin foto. El
+ * evento error de una <img> llega siempre en una tarea encolada, así que el orden entre el listener y el src da
+ * igual.
+ */
+export function dishPhoto<T extends DishPhotoElement>(img: T, src: string, onError: () => void): T {
+  img.className = "dish__photo";
+  img.alt = "";
+  img.width = DISH_PHOTO_SIZE;
+  img.height = DISH_PHOTO_SIZE;
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.addEventListener(
+    "error",
+    () => {
+      img.remove();
+      onError();
+    },
+    { once: true },
+  );
+  img.src = src;
+  return img;
 }
 
 /**

@@ -145,27 +145,37 @@ describe("public/_headers real", () => {
       const policy = csp(path);
       expect(policy.get("script-src")).toEqual(["'self'"]);
       expect(policy.get("connect-src")).toEqual(["'self'"]);
+      expect(policy.get("img-src")).toEqual(["'self'", "data:"]);
       expect(policy.has("frame-src")).toBe(false);
       expect(policy.get("frame-ancestors")).toEqual(["'none'"]);
     }
   });
 
-  it("/richiesta/: Turnstile en script-src y frame-src, y la función de Supabase en connect-src", () => {
+  it("/richiesta/: Turnstile en script-src y frame-src, la función de Supabase en connect-src y sus fotos en img-src", () => {
     for (const path of ["/richiesta/", "/richiesta/index.html"]) {
       const policy = csp(path);
       expect(policy.get("script-src")).toEqual(["'self'", "https://challenges.cloudflare.com"]);
       expect(policy.get("frame-src")).toEqual(["https://challenges.cloudflare.com"]);
       expect(policy.get("connect-src")).toEqual(["'self'", origin]);
+      // Las fotos de los platos de la pestaña «Menù» (bucket público recipe-photos del mismo proyecto).
+      expect(policy.get("img-src")).toEqual(["'self'", "data:", origin]);
     }
   });
 
-  it("/richiesta/ es la CSP base más esas tres fuentes (no se desalinean)", () => {
+  it("/richiesta/ sin Supabase configurado: las imágenes, solo las propias", () => {
+    const bare = parseHeadersFile(renderHeadersFile(headersFile, null));
+    const policy = cspDirectives(headersFor(bare, "/richiesta/").get("Content-Security-Policy") ?? "");
+    expect(policy.get("img-src")).toEqual(["'self'", "data:"]);
+    expect(policy.get("connect-src")).toEqual(["'self'"]);
+  });
+
+  it("/richiesta/ es la CSP base más esas fuentes (no se desalinean)", () => {
     const base = csp("/");
     const form = csp("/richiesta/");
     for (const [directive, sources] of base) {
       const extra = (form.get(directive) ?? []).filter((s) => !sources.includes(s));
       if (directive === "script-src") expect(extra).toEqual(["https://challenges.cloudflare.com"]);
-      else if (directive === "connect-src") expect(extra).toEqual([origin]);
+      else if (directive === "connect-src" || directive === "img-src") expect(extra, directive).toEqual([origin]);
       else expect(form.get(directive), directive).toEqual(sources);
     }
     expect([...form.keys()].filter((d) => !base.has(d))).toEqual(["frame-src"]);
