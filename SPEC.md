@@ -510,6 +510,8 @@ Los avisos se prenden con el primer despliegue que guarda la URL y el secreto en
 
   El link muestra el último presupuesto que le llegó a la clienta, salvo uno cerrado sin aceptar (rechazado, retirado o vencido) cuando la reserva se confirmó sin él.
 - **Vencer.** Pasado el plazo no se acepta, y `private.expire_quotes` (pg_cron, cada 15 minutos) cancela las semanas (`hold_expired`) y pasa el pedido `quoted` a `expired`. Un borrador que nunca salió deja el pedido en `new`.
+  Un plazo pasado (`hold_until <= now()`) ya cuenta como vencido para todo lo que manda o contesta (vista previa, link, completar el envío, aceptar), aunque el cron todavía no haya pasado; lo que escribe `expire_quotes` no cambia.
+- **No en el pasado.** `chef_create_quote` rechaza (`invalid_dates`, 22023) un presupuesto cuya primera semana ya pasó: la llegada (fecha y hora, Roma) a más tardar ahora, o, sin hora en el dryRun, un día anterior a hoy.
 
 «Confirmar sin presupuesto» (`chef_create_booking`) sigue, para lo que se acordó por fuera: desde un pedido con un presupuesto abierto, lo retira (arriba, «Cambiar o retirar»). Nada de esto toca los pagos.
 

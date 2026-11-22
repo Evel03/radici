@@ -21,7 +21,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(166);
+select plan(185);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres)
@@ -59,6 +59,9 @@ insert into public.requests (id, chef_id, client_id, type, status, adults, kids,
   ('7e6c3000-0000-4000-8000-00000000000f', '7e6c1000-0000-4000-8000-000000000002', '7e6c2000-0000-4000-8000-00000000000f', 'week',   'new',      1, 0, 3, '{dinner}', 1, 'app', 'it', null);
 insert into public.requests (id, chef_id, client_id, type, status, adults, kids, days, meals, weeks, source, locale) values
   ('7e6c3000-0000-4000-8000-000000000008', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 2, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000017', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000018', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000019', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
   ('7e6c3000-0000-4000-8000-000000000009', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 2, 'web', 'it'),
   ('7e6c3000-0000-4000-8000-000000000010', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
   ('7e6c3000-0000-4000-8000-000000000011', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
@@ -714,6 +717,58 @@ select is(
           ((pg_temp.d(161) - 2) + time '12:00') at time zone 'Europe/Rome')) as e
    where e ->> 'sessionId' = (select session_id::text from public.menu_sends where id = pg_temp.send_of('r15-a'))),
   0, 'confirmado, ya no hay aviso');
+
+
+-- ---------------------------------------------------------------------
+-- 8. Presupuestos en el pasado (defensa en la base)
+-- ---------------------------------------------------------------------
+select is(pg_temp.error_of($$ select public.chef_create_quote('7e6c1000-0000-4000-8000-000000000001',
+    '7e6c3000-0000-4000-8000-000000000001', array[pg_temp.d(-30)], '10:00', 180, 10000, 4) $$),
+  '22023: invalid_dates (La primera semana ya pasó.)', 'no se prepara un presupuesto cuya primera semana ya pasó');
+select is(pg_temp.error_of($$ select public.chef_create_quote('7e6c1000-0000-4000-8000-000000000001',
+    '7e6c3000-0000-4000-8000-000000000001', array[(now() at time zone 'Europe/Rome')::date], '00:00', 180, 10000, 4) $$),
+  '22023: invalid_dates (La primera semana ya pasó.)', 'tampoco hoy a una hora que ya pasó (hora de Roma)');
+select is(pg_temp.error_of($$ select public.chef_create_quote('7e6c1000-0000-4000-8000-000000000001',
+    '7e6c3000-0000-4000-8000-000000000001', array[pg_temp.d(-30)], null, 180, 10000, 4, true) $$),
+  '22023: invalid_dates (La primera semana ya pasó.)', 'el dryRun sin hora rechaza un día que ya pasó');
+
+-- Plazo vencido sin que haya pasado el cron: está cerrado en todo lo que manda o contesta.
+-- R17: borrador con vista previa; al vencer su plazo, el link no sale.
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000017', array[300], 30000) is not null, 'presupuesto de R17');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000017', 1)) $$, 'su menú');
+select ok(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000017', 1), 'r17') is not null, 'vista previa de R17');
+-- R18: con el link armado; al vencer su plazo, no se completa el envío.
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000018', array[310], 30000) is not null, 'presupuesto de R18');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000018', 1)) $$, 'su menú');
+select ok(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000018', 1), 'r18') is not null, 'vista previa de R18');
+select lives_ok($$ select public.chef_link_menu_send('7e6c1000-0000-4000-8000-000000000001', pg_temp.send_of('r18'), pg_temp.h('r18')) $$,
+  'link armado de R18');
+-- R19: borrador cuyo plazo vence antes de la vista previa.
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000019', array[320], 30000) is not null, 'presupuesto de R19');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000019', 1)) $$, 'su menú');
+reset role;
+update public.quotes set hold_until = now() - interval '1 minute'
+where request_id in ('7e6c3000-0000-4000-8000-000000000017', '7e6c3000-0000-4000-8000-000000000018', '7e6c3000-0000-4000-8000-000000000019');
+update public.sessions set hold_until = now() - interval '1 minute'
+where request_id in ('7e6c3000-0000-4000-8000-000000000017', '7e6c3000-0000-4000-8000-000000000018', '7e6c3000-0000-4000-8000-000000000019');
+set local role service_role;
+select is(pg_temp.error_of($$ select public.chef_link_menu_send('7e6c1000-0000-4000-8000-000000000001', pg_temp.send_of('r17'), pg_temp.h('r17')) $$),
+  '55000: quote_closed', 'vencido el plazo, el link del envío no se arma (aunque el cron no haya pasado)');
+select is(pg_temp.error_of($$ select public.chef_complete_menu_send('7e6c1000-0000-4000-8000-000000000001', pg_temp.send_of('r18'), array['email']) $$),
+  '55000: quote_closed', 'ni se completa un envío con el link armado');
+select is(public.chef_menu_send_context('7e6c1000-0000-4000-8000-000000000001', pg_temp.week('7e6c3000-0000-4000-8000-000000000019', 1)) -> 'quote',
+  'null'::jsonb, 'el contexto del envío ya no trae el presupuesto vencido');
+select is(pg_temp.error_of($$ select pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000019', 1), 'r19') $$),
+  '55000: quote_closed', 'ni se prepara la vista previa');
+select is((select count(*)::int from public.quotes
+           where request_id in ('7e6c3000-0000-4000-8000-000000000017', '7e6c3000-0000-4000-8000-000000000018', '7e6c3000-0000-4000-8000-000000000019')
+             and expired_at is null), 3, 'nada de eso escribió el vencimiento: lo escribe expire_quotes');
+reset role;
+select is(private.expire_quotes(now()), 3, 'expire_quotes sigue venciendo y cancelando como antes');
+select is((select count(*)::int from public.sessions
+           where request_id in ('7e6c3000-0000-4000-8000-000000000017', '7e6c3000-0000-4000-8000-000000000018', '7e6c3000-0000-4000-8000-000000000019')
+             and status = 'cancelled' and cancel_reason = 'hold_expired'), 3, 'con sus sesiones canceladas (hold_expired)');
+set local role service_role;
 
 reset role;
 select * from finish();
