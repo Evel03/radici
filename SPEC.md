@@ -132,7 +132,7 @@ Se reutiliza lo que ya conocés de Se Puso La 10, sin servidor propio.
 | Traducción de los platos y de la lista de compras | **Claude** (API de Anthropic, SDK oficial), desde la Edge Function `chef` | Evelyn escribe en español; el italiano y el inglés de los platos salen solos (20/11/2026, §4), y los renglones de la lista de compras de cada semana se traducen al idioma de la clienta al mandarle el menú (22/11/2026, §5.8). Solo recibe el plato y los nombres de la lista, nunca datos personales ni la nota de la semana (§6) |
 | i18n | App: `flutter_localizations` + ARB. Web: un JSON por idioma. `it` por defecto, `es`, `en` | |
 | Errores | Sentry | |
-| CI | GitHub Actions: `flutter analyze`, `flutter test`, tests de base de datos | |
+| CI | GitHub Actions: `flutter analyze`, `flutter test`, tests de base de datos | Para ahorrar minutos (cuenta personal gratis), en un PR cada job corre solo si cambió lo que usa y la vista previa no compila `/gestione/` si el PR no toca la app (`.github/scripts/ci-changes.sh`); en `main` corre todo |
 
 **Web pública:** Flutter web es pesado para la primera carga y no posiciona; el cliente nuevo llega desde un link de WhatsApp en el celular. Por eso la web pública (landing, `/richiesta`, seguimiento y aceptación del presupuesto) es estática y aparte. Flutter web solo se usa para la bandeja de Evelyn en `/gestione/` (la misma app, publicada dentro del sitio; contrato public-request §7).
 

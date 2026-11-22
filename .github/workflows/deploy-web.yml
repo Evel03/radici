@@ -8,8 +8,12 @@
 #   <subdominio> lo asigna Cloudflare al crear el proyecto: "radici", o con un sufijo si ya está tomado.
 #   En una vista previa /gestione/ se compila sin backend (modo dev): es código sin revisar en una URL
 #   pública y no se conecta a los datos de producción (contrato §8).
+# Para gastar menos minutos de Actions, una vista previa (PR) solo compila /gestione/ (Flutter, ~10 min)
+# si el PR toca la app o lo que la afecta (.github/scripts/ci-changes.sh, salida «gestione»); si no,
+# publica la web con una página de aviso en /gestione/. Producción (push a main) y workflow_dispatch
+# siempre la compilan.
 # Antes de publicar corre los tests de la web (npm test) y de la app (flutter analyze + flutter test).
-# Cada deploy (producción y vistas previas) compila /gestione/ con su id (BUILD_ID, el commit) y publica
+# Cada deploy que compila la app (producción y vistas previas con cambios en ella) compila /gestione/ con su id (BUILD_ID, el commit) y publica
 # el mismo en gestione/build.json: la app los compara y avisa cuando hay una versión nueva. En
 # producción, después de publicar, comprueba que /gestione/ llegue con Cache-Control: no-cache.
 #
@@ -83,6 +87,28 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # En un PR hace falta la historia para ver qué cambió (git diff contra la base).
+          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+
+      # ¿Se compila /gestione/? Siempre, salvo en una vista previa que no toca la app.
+      - name: Decidir si se compila /gestione/
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          build_app=true
+          if [ "${EVENT}" = "pull_request" ]; then
+            git diff --name-only "${BASE_SHA}...${HEAD_SHA}" > "${RUNNER_TEMP}/changed.txt"
+            build_app=$(bash .github/scripts/ci-changes.sh < "${RUNNER_TEMP}/changed.txt" | sed -n 's/^gestione=//p')
+          fi
+          echo "BUILD_APP=${build_app}" >> "${GITHUB_ENV}"
+          if [ "${build_app}" != true ]; then
+            echo "::notice::Vista previa sin cambios en la app: /gestione/ no se compila (página de aviso)."
+          fi
 
       # Con el token se va a publicar. La clave de Supabase termina en el JS público: solo una
       # publicable. Sin la configuración, en producción se corta acá; en una vista previa se avisa.
@@ -208,7 +234,8 @@ jobs:
         run: npm run build
 
       # ---- Bandeja de Evelyn (/gestione/) --------------------------------------------------------
-      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+      - if: env.BUILD_APP == 'true'
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -216,12 +243,14 @@ jobs:
 
       # El código generado (freezed, json, l10n) no se versiona.
       - name: App - dependencias y código generado
+        if: env.BUILD_APP == 'true'
         working-directory: app
         run: |
           flutter pub get
           dart run build_runner build
 
       - name: App - análisis y tests
+        if: env.BUILD_APP == 'true'
         working-directory: app
         run: |
           flutter analyze
@@ -232,6 +261,7 @@ jobs:
       # app los compara al abrir y al volver a primer plano, y avisa si hay una versión nueva
       # (app/README.md, "Web /gestione/").
       - name: App - id del build
+        if: env.BUILD_APP == 'true'
         env:
           COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
@@ -251,6 +281,7 @@ jobs:
       # Solo producción (main) conecta la bandeja al Supabase de producción. Una vista previa es código
       # sin revisar en una URL pública: va en modo dev y sin backend (muestra "Backend non configurato").
       - name: App - build web para /gestione/
+        if: env.BUILD_APP == 'true'
         working-directory: app
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
@@ -272,6 +303,7 @@ jobs:
       # registra). Se conservan canvaskit/ (Safari, Firefox) y canvaskit/chromium/ (Chrome, Edge).
       # Suma build.json con el id del build (el de version.json no sirve: es siempre 1.0.0+1).
       - name: Copiar /gestione/ al sitio
+        if: env.BUILD_APP == 'true'
         run: |
           set -euo pipefail
           src=../app/build/web
@@ -323,6 +355,27 @@ jobs:
             exit 1
           fi
           echo "dist/gestione: $(du -sh "${out}" | cut -f1) en $(find "${out}" -type f | wc -l) archivos"
+
+      # Vista previa sin cambios en la app: una página de aviso en /gestione/ (sin build.json ni app).
+      - name: Página de aviso en /gestione/ (sin compilar la app)
+        if: env.BUILD_APP != 'true'
+        run: |
+          set -euo pipefail
+          if [ -e dist/gestione ]; then
+            echo "::error::dist/gestione ya existe: el build de la web tendría que haberlo vaciado."
+            exit 1
+          fi
+          if grep -q '__SUPABASE' dist/_headers; then
+            echo "::error::dist/_headers tiene marcadores de Supabase sin completar."
+            exit 1
+          fi
+          mkdir -p dist/gestione
+          cat > dist/gestione/index.html <<'HTML'
+          <!doctype html>
+          <html lang="it"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Radici</title></head>
+          <body><p>Anteprima senza la bandeja: questa versione non modifica l'app.</p></body></html>
+          HTML
+          echo "BUILD_ID=sin-app" >> "${GITHUB_ENV}"
 
       # ---- Publicación ----------------------------------------------------------------------------
       - name: Sin token, no se publica
@@ -407,7 +460,7 @@ jobs:
             echo "- Entorno: ${{ steps.deploy.outputs.pages-environment }}"
             echo "- Deploy: ${{ steps.deploy.outputs.deployment-url }}"
             echo "- Alias: ${{ steps.deploy.outputs.pages-deployment-alias-url }}"
-            echo "- Bandeja de Evelyn: ${{ steps.deploy.outputs.deployment-url }}/gestione/ (versión ${BUILD_ID})"
+            echo "- Bandeja de Evelyn: ${{ steps.deploy.outputs.deployment-url }}/gestione/ (versión ${BUILD_ID:-sin-app})"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       # Producción: los archivos de /gestione/ no llevan hash en el nombre, así que el navegador tiene que

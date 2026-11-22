@@ -11,8 +11,46 @@ permissions:
   contents: read
 
 jobs:
+  # Gasta pocos minutos (los de Actions son limitados): en un PR, cada job pesado corre solo si cambió
+  # algo de lo que usa (reglas en .github/scripts/ci-changes.sh, con tests). En push a main corren todos.
+  changes:
+    name: Qué cambió
+    runs-on: ubuntu-latest
+    outputs:
+      quote: ${{ steps.areas.outputs.quote }}
+      edge: ${{ steps.areas.outputs.edge }}
+      web: ${{ steps.areas.outputs.web }}
+      app: ${{ steps.areas.outputs.app }}
+      database: ${{ steps.areas.outputs.database }}
+    steps:
+      # Historia completa: git diff necesita la base del PR.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: areas
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT}" = "pull_request" ]; then
+            git diff --name-only "${BASE_SHA}...${HEAD_SHA}" > "${RUNNER_TEMP}/changed.txt"
+            cat "${RUNNER_TEMP}/changed.txt"
+            bash .github/scripts/ci-changes.sh < "${RUNNER_TEMP}/changed.txt" | tee -a "${GITHUB_OUTPUT}"
+          else
+            printf 'quote=true
+edge=true
+web=true
+app=true
+database=true
+' | tee -a "${GITHUB_OUTPUT}"
+          fi
+
   quote:
     name: Motor de presupuesto (TS)
+    needs: changes
+    if: needs.changes.outputs.quote == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -23,6 +61,8 @@ jobs:
 
   edge-functions:
     name: Edge Functions (deno check)
+    needs: changes
+    if: needs.changes.outputs.edge == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -42,6 +82,8 @@ jobs:
 
   web:
     name: Web pública
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -59,6 +101,8 @@ jobs:
 
   app:
     name: App Flutter
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -77,6 +121,8 @@ jobs:
 
   database:
     name: Base de datos (RLS y no_overlap)
+    needs: changes
+    if: needs.changes.outputs.database == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
