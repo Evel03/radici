@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { i18nFor } from "../request/fixtures.ts";
 import { content } from "./fixtures.ts";
-import { formatQuantity, formatRomeDay, shoppingList } from "./format.ts";
+import { formatQuantity, formatRomeDay, formatRomeTime, shoppingList } from "./format.ts";
 
 const NBSP = String.fromCharCode(0xa0);
 
@@ -55,5 +55,14 @@ describe("formatRomeDay", () => {
     expect(formatRomeDay("2027-02-25T18:03:00.123456+00:00", "es-ES")).toBe("jueves, 25 de febrero de 2027");
     expect(formatRomeDay("2027-02-25T18:03:00Z", "en-IE")).toBe("Thursday 25 February 2027");
     expect(formatRomeDay("ayer", "it-IT")).toBe("ayer");
+  });
+});
+
+describe("formatRomeTime", () => {
+  it("la hora en Roma, HH:MM de 24 horas, en invierno y en verano (el plazo del presupuesto)", () => {
+    expect(formatRomeTime("2027-02-27T17:03:00.123456+00:00")).toBe("18:03");
+    expect(formatRomeTime("2027-07-01T07:05:00Z")).toBe("09:05");
+    expect(formatRomeTime("2027-02-28T23:30:00Z")).toBe("00:30");
+    expect(formatRomeTime("ayer")).toBe("");
   });
 });

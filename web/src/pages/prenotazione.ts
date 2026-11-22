@@ -1,6 +1,7 @@
 // Página de la clienta (/prenotazione/, SPEC 5.8): su reserva con el menú que Evelyn mandó de cada semana, para
-// confirmarlo o pedir cambios (docs/contracts/client-link.md). Toda la lógica vive en src/reservation/ (pura y
-// testeada): acá se lee el token del fragmento, se pinta lo que dice el estado y se pasan los clics.
+// confirmarlo o pedir cambios, y el presupuesto, para aceptarlo o rechazarlo (docs/contracts/client-link.md). Toda
+// la lógica vive en src/reservation/ (pura y testeada): acá se lee el token del fragmento, se pinta lo que dice el
+// estado y se pasan los clics.
 // El idioma: el que eligió la visitante (?lang= o el guardado) o, si nunca eligió, el de su reserva.
 // Nunca se registran en la consola el token, la reserva ni el mensaje de la clienta.
 import "../styles/base.css";
@@ -50,6 +51,7 @@ function start(shell: Shell): void {
       state: reservation.state,
       ui: reservation.ui,
       i18n: shell.i18n,
+      quoteUi: reservation.quoteUi,
       retrying: reservation.retrying,
       pageNotice: reservation.pageNotice,
       failedPhotos,
@@ -98,6 +100,19 @@ function start(shell: Shell): void {
         break;
       case "close-changes":
         finish(reservation.closeChanges(session));
+        break;
+      // El presupuesto: aceptarlo, o rechazarlo después de confirmar.
+      case "accept-quote":
+        void reservation.acceptQuote().then(finish);
+        break;
+      case "decline-quote":
+        finish(reservation.openDecline());
+        break;
+      case "decline-quote-cancel":
+        finish(reservation.closeDecline());
+        break;
+      case "decline-quote-confirm":
+        void reservation.declineQuote().then(finish);
         break;
     }
   });

@@ -4,11 +4,14 @@
 import {
   CLIENT_LINK_FUNCTION,
   CLIENT_LINK_ROUTES,
+  QUOTE_CLOSED_REASONS,
   isTimestamp,
   parseClientLinkView,
   type ClientLinkRoute,
   type ClientLinkView,
+  type QuoteClosedReason,
 } from "../../../supabase/functions/_shared/client_link.ts";
+import { isOneOf } from "../../../supabase/functions/_shared/public_request.ts";
 import { FUNCTION_REGION, parseRetryAfter } from "../request/submit.ts";
 
 /** Sin respuesta en este tiempo se corta: se trata como error de red y se puede reintentar. */
@@ -42,20 +45,37 @@ export type ViewOutcome =
 export type ActionOutcome =
   | { kind: "confirmed"; confirmedAt: string; already: boolean }
   | { kind: "changesSent"; changesRequestedAt: string }
-  /** Evelyn mandó un menú más nuevo para esa semana: se contesta ese. */
+  /** Aceptó el presupuesto (y con él el menú de la semana 1). already: ya lo había aceptado. */
+  | { kind: "quoteAccepted"; acceptedAt: string; already: boolean }
+  /** Rechazó el presupuesto. already: ya lo había rechazado. */
+  | { kind: "quoteDeclined"; already: boolean }
+  /** Evelyn mandó un menú más nuevo para esa semana (o una versión más nueva del presupuesto): se contesta ese. */
   | { kind: "menuOutdated" }
-  /** Ya pidió cambios para ese menú: no se puede confirmar hasta que Evelyn mande otro. */
+  /** Ya pidió cambios para ese menú: no se puede confirmar (ni aceptar el presupuesto) hasta que Evelyn mande otro. */
   | { kind: "changesRequested" }
   /** Ya lo confirmó: los cambios se hablan con Evelyn. */
   | { kind: "alreadyConfirmed" }
   /** La semana se canceló después del envío: ya no hay menú que contestar. */
   | { kind: "sessionCancelled" }
+  /** El menú va con un presupuesto abierto: se confirma aceptando el presupuesto. */
+  | { kind: "quotePending" }
+  /** El presupuesto ya no se contesta: aceptado, rechazado, retirado o vencido (si la función dice cuál). */
+  | { kind: "quoteClosed"; reason: QuoteClosedReason | null }
+  /** Evelyn cambió el presupuesto y todavía no lo reenvió: no se acepta lo que ya no vale. */
+  | { kind: "quoteChanged" }
+  /** El envío no lleva presupuesto. */
+  | { kind: "notAQuote" }
+  /** El presupuesto no tiene semanas por aceptar. */
+  | { kind: "quoteEmpty" }
   | { kind: "sendNotFound" }
   | { kind: "linkNotFound" }
   | { kind: "invalidText" }
   | { kind: "rateLimited"; retryAfterSeconds: number | null }
   | { kind: "server" }
   | { kind: "network" };
+
+/** Los 409 de la función que no llevan nada más que el código. */
+const CONFLICTS = ["menuOutdated", "changesRequested", "alreadyConfirmed", "sessionCancelled", "quotePending", "quoteChanged", "notAQuote", "quoteEmpty"] as const;
 
 interface RawResponse {
   status: number;
@@ -123,8 +143,10 @@ export async function fetchView(supabaseUrl: string, token: string, opts: ApiOpt
 function actionError(raw: RawResponse, opts: ApiOptions): ActionOutcome {
   const code = errorCode(raw.body);
   if (raw.status === 404 && (code === "linkNotFound" || code === "sendNotFound")) return { kind: code };
-  if (raw.status === 409 && (code === "menuOutdated" || code === "changesRequested" || code === "alreadyConfirmed" || code === "sessionCancelled")) {
-    return { kind: code };
+  if (raw.status === 409 && isOneOf(CONFLICTS, code)) return { kind: code };
+  if (raw.status === 409 && code === "quoteClosed") {
+    const reason = isRecord(raw.body) ? raw.body["reason"] : null;
+    return { kind: "quoteClosed", reason: isOneOf(QUOTE_CLOSED_REASONS, reason) ? reason : null };
   }
   if (raw.status === 400 && code === "invalidText") return { kind: "invalidText" };
   if (raw.status === 429) return { kind: "rateLimited", retryAfterSeconds: parseRetryAfter(raw.retryAfter, opts.now) };
@@ -155,4 +177,24 @@ export async function requestChanges(
   if (raw.status !== 200) return actionError(raw, opts);
   const at = isRecord(raw.body) ? raw.body["changesRequestedAt"] : null;
   return isTimestamp(at) ? { kind: "changesSent", changesRequestedAt: at } : { kind: "server" };
+}
+
+/** La clienta acepta el presupuesto que lleva el envío sendId (el menú de la semana 1, que queda confirmado). */
+export async function acceptQuote(supabaseUrl: string, token: string, sendId: string, opts: ApiOptions = {}): Promise<ActionOutcome> {
+  const raw = await post(clientLinkUrl(supabaseUrl, CLIENT_LINK_ROUTES.accept), { token, sendId }, opts);
+  if (!raw) return { kind: "network" };
+  if (raw.status !== 200) return actionError(raw, opts);
+  const body = isRecord(raw.body) ? raw.body : {};
+  const acceptedAt = body["acceptedAt"];
+  const already = body["already"];
+  return isTimestamp(acceptedAt) && typeof already === "boolean" ? { kind: "quoteAccepted", acceptedAt, already } : { kind: "server" };
+}
+
+/** La clienta rechaza el presupuesto que lleva el envío sendId. */
+export async function declineQuote(supabaseUrl: string, token: string, sendId: string, opts: ApiOptions = {}): Promise<ActionOutcome> {
+  const raw = await post(clientLinkUrl(supabaseUrl, CLIENT_LINK_ROUTES.decline), { token, sendId }, opts);
+  if (!raw) return { kind: "network" };
+  if (raw.status !== 200) return actionError(raw, opts);
+  const already = isRecord(raw.body) ? raw.body["already"] : null;
+  return typeof already === "boolean" ? { kind: "quoteDeclined", already } : { kind: "server" };
 }

@@ -5,9 +5,11 @@
 // reales y los tests (handler.test.ts, en Node) las simulan.
 //
 // Rutas, todas POST: /bookings (chef_create_booking), /sessions/move (chef_move_session),
-// /sessions/cancel (chef_cancel_sessions), /translate (el traductor) y el envío del menú de una semana:
+// /sessions/cancel (chef_cancel_sessions), /translate (el traductor), el envío del menú de una semana:
 // /menus/preview (chef_menu_send_context y chef_prepare_menu_send) y /menus/send (chef_link_menu_send,
-// el email y chef_complete_menu_send). Orden: CORS → ruta (404) → método (405) → configuración (500) →
+// el email y chef_complete_menu_send), y el presupuesto: /quotes (chef_create_quote), /quotes/price
+// (chef_update_quote) y /quotes/withdraw (chef_withdraw_quote). El presupuesto sale con el menú de la
+// semana 1 (/menus/send): la foto de ese envío lo lleva. Orden: CORS → ruta (404) → método (405) → configuración (500) →
 // token (401) → usuario, con auth.getUser (401; 503 si Auth no responde) → su cocina, con
 // public.chef_id_for_user: la de la que es dueña o colaborador (403 si no es de ninguna) → tipo (415) →
 // tamaño (413) → JSON y validación (400) → función SQL con la cocina del token → 200 o 201, o el error
@@ -15,10 +17,11 @@
 // - /translate, después de la validación: traductor configurado (501) → límite por cocina (429) →
 //   traductor (200, 422, 503 o 500).
 // - /menus/preview: lo necesario para el mensaje (chef_menu_send_context: 404, o 409 si la semana ya
-//   no se manda; otra versión del menú o un menú sin platos, 409, antes de gastar una traducción) → si la
-//   clienta no lee español y hay lista, la traducción de sus renglones (nunca la nota), como /translate y
-//   con el mismo límite → la foto del envío y el envío sin salir (chef_prepare_menu_send, con la huella
-//   del contexto: si algo cambió mientras tanto, 409) → 200 con el mensaje sin el link.
+//   no se manda; una semana held sin su presupuesto abierto o que no es la primera, otra versión del menú
+//   o un menú sin platos, 409, antes de gastar una traducción) → si la clienta no lee español y hay lista,
+//   la traducción de sus renglones (nunca la nota), como /translate y con el mismo límite → la foto del
+//   envío (con el presupuesto, en la semana 1 de uno abierto) y el envío sin salir (chef_prepare_menu_send,
+//   con la huella del contexto: si algo cambió mientras tanto, 409) → 200 con el mensaje sin el link.
 // - /menus/send: la web del link configurada (500) → el email configurado, si lo pidió (503) → el link
 //   (un token nuevo; la base guarda su hash: chef_link_menu_send) → el contacto (409 sin email o sin
 //   teléfono) → el email (502 si no sale: el envío queda sin marcar) → chef_complete_menu_send → 200,
@@ -37,9 +40,12 @@ import {
   menuSendChannels,
   parseBookingRequest,
   parseCancelSessionsRequest,
+  parseCreateQuoteRequest,
   parseMenuPreviewRequest,
   parseMenuSendRequest,
   parseMoveSessionRequest,
+  parseQuotePriceRequest,
+  parseQuoteWithdrawRequest,
   parseTranslateRequest,
   textLength,
   type BookingResponse,
@@ -94,6 +100,7 @@ import {
   translatedItemNames,
   type MenuTextTranslation,
 } from "./menu_translation.ts";
+import { createQuoteResponseFromRpc, quoteTermsFromRpc, withdrawQuoteResponseFromRpc } from "./quotes.ts";
 import {
   TRANSLATE_RATE_LIMITS,
   TRANSLATE_RETRY_AFTER_SECONDS,
@@ -254,6 +261,24 @@ export type LinkMenuSendParams = { p_chef_id: string; p_send_id: string; p_token
 /** Argumentos de public.chef_complete_menu_send. */
 export type CompleteMenuSendParams = { p_chef_id: string; p_send_id: string; p_via: MenuSendChannel[] };
 
+/** Argumentos de public.chef_create_quote (snake_case, como la base). */
+export type CreateQuoteParams = {
+  p_chef_id: string;
+  p_request_id: string;
+  p_dates: string[];
+  p_start: string | null;
+  p_cook_minutes: number;
+  p_service_total_cents: number;
+  p_portions: number;
+  p_dry_run: boolean;
+};
+
+/** Argumentos de public.chef_update_quote. */
+export type UpdateQuoteParams = { p_chef_id: string; p_quote_id: string; p_service_total_cents: number };
+
+/** Argumentos de public.chef_withdraw_quote. */
+export type WithdrawQuoteParams = { p_chef_id: string; p_quote_id: string };
+
 export interface ChefStore {
   /** auth.getUser: el id del usuario del token; null si Auth lo rechaza. Lanza StoreError si Auth no responde. */
   userIdFromToken(token: string): Promise<string | null>;
@@ -282,6 +307,12 @@ export interface ChefStore {
   linkMenuSend(params: LinkMenuSendParams): Promise<unknown>;
   /** public.chef_complete_menu_send: el jsonb tal cual ({sendId, sentAt, sentVia}). */
   completeMenuSend(params: CompleteMenuSendParams): Promise<unknown>;
+  /** public.chef_create_quote: el jsonb tal cual (lo interpreta createQuoteResponseFromRpc). */
+  createQuote(params: CreateQuoteParams): Promise<unknown>;
+  /** public.chef_update_quote: los términos nuevos (private.quote_terms), tal cual. */
+  updateQuote(params: UpdateQuoteParams): Promise<unknown>;
+  /** public.chef_withdraw_quote: el jsonb tal cual ({quote_id, request_id, already, cancelled}). */
+  withdrawQuote(params: WithdrawQuoteParams): Promise<unknown>;
 }
 
 /** Manda un email: index.ts lo arma con Resend y RESEND_API_KEY (sendWithResend); null sin la clave. */
@@ -371,6 +402,20 @@ const NOT_FOUND = new Map<string, ChefErrorCode>([
   ["session_not_found", "sessionNotFound"],
   ["menu_not_found", "menuNotFound"],
   ["send_not_found", "sendNotFound"],
+  ["quote_not_found", "quoteNotFound"],
+]);
+
+/**
+ * Estados del presupuesto que no permiten lo pedido (55000), sin detalle: ya hay uno abierto para el pedido
+ * (quote_exists), está cerrado (aceptado, rechazado, retirado o vencido: quote_closed), no tiene semanas vivas
+ * (quote_empty) o la semana held no es la primera de su presupuesto, la única que sale antes de aceptarlo
+ * (quote_week_not_first).
+ */
+const QUOTE_CONFLICTS = new Map<string, ChefErrorCode>([
+  ["quote_exists", "quoteExists"],
+  ["quote_closed", "quoteClosed"],
+  ["quote_empty", "quoteEmpty"],
+  ["quote_week_not_first", "quoteWeekNotFirst"],
 ]);
 
 /**
@@ -416,8 +461,10 @@ export function dbErrorReply(error: unknown): ErrorReply {
   if (!(error instanceof StoreError)) return { status: 500, body: { error: "server" } };
   const { code, safeMessage: message, safeDetail: detail } = error;
 
-  // El menú cambió desde la vista previa (40001, la clase de los reintentos): reintentar igual no sirve.
+  // El menú, o los términos del presupuesto que va con él, cambiaron desde la vista previa (40001, la clase
+  // de los reintentos): reintentar igual no sirve, hace falta otra vista previa.
   if (code === "40001" && message === "menu_changed") return { status: 409, body: { error: "menuChanged" } };
+  if (code === "40001" && message === "quote_changed") return { status: 409, body: { error: "quoteChanged" } };
 
   if (code === "23P01" || code === "23505") {
     if (detail && message === "slot_taken") return { status: 409, body: { error: "slotTaken", date: detail } };
@@ -440,6 +487,8 @@ export function dbErrorReply(error: unknown): ErrorReply {
     }
     if (message === "session_without_request") return { status: 409, body: { error: "sessionWithoutRequest" } };
     if (message === "already_sent") return { status: 409, body: { error: "alreadySent" } };
+    const quoteConflict = message === null ? undefined : QUOTE_CONFLICTS.get(message);
+    if (quoteConflict) return { status: 409, body: { error: quoteConflict } };
     return { status: 409, body: { error: "conflict" } };
   }
   if (code === "P0002") {
@@ -461,6 +510,18 @@ export function dbErrorReply(error: unknown): ErrorReply {
     return { status: 400, body: { errors: { payload: "invalid" } } };
   }
   return serverFailure(error);
+}
+
+/**
+ * Error de chef_create_quote → respuesta. Como dbErrorReply, salvo el tipo del pedido: el cuerpo no tiene `type`
+ * (es el del pedido), así que un pedido que no es semanal ni extra (un cambio) es un estado que no admite
+ * presupuesto, 409 requestNotQuotable, no un 400 de un campo.
+ */
+export function createQuoteErrorReply(error: unknown): ErrorReply {
+  if (error instanceof StoreError && error.code === "22023" && error.safeMessage === "invalid_request_type") {
+    return { status: 409, body: { error: "requestNotQuotable" } };
+  }
+  return dbErrorReply(error);
 }
 
 // ---------------------------------------------------------------------------
@@ -680,9 +741,11 @@ function invalidPayload(log: Logger, route: ChefRoute, failure: { errors: ChefAp
   return reply(400, failure.date === undefined ? { errors: failure.errors } : { errors: failure.errors, date: failure.date });
 }
 
-/** Error de una función SQL: el código va al log (sin mensaje de Postgres ni detalle) y la respuesta, traducida. */
-function dbFailure(log: Logger, route: ChefRoute, op: string, error: unknown, reply: Reply): Response {
-  const mapped = dbErrorReply(error);
+/**
+ * Error de una función SQL: el código va al log (sin mensaje de Postgres ni detalle) y la respuesta, traducida
+ * (dbErrorReply, o la de la ruta si traduce algo distinto).
+ */
+function dbFailure(log: Logger, route: ChefRoute, op: string, error: unknown, reply: Reply, mapped: ErrorReply = dbErrorReply(error)): Response {
   if (mapped.status >= 500) {
     logStoreError(log, error, op);
   } else {
@@ -929,12 +992,18 @@ function menuRejected(log: Logger, route: ChefRoute, error: ChefErrorCode, reply
 }
 
 /**
- * Lo que chef_prepare_menu_send vuelve a mirar, antes de gastar una traducción: otra versión del menú
- * (Evelyn o un colaborador guardó después de que la app lo cargó) o un menú sin platos. Una semana que ya
+ * Lo que chef_prepare_menu_send vuelve a mirar, antes de gastar una traducción, en su orden: una semana held
+ * (de un presupuesto) solo sale como la primera de su presupuesto abierto (si ya no está abierto,
+ * quoteClosed; si no es la primera, quoteWeekNotFirst: las demás salen después de aceptarlo), otra versión del
+ * menú (Evelyn o un colaborador guardó después de que la app lo cargó) o un menú sin platos. Una semana que ya
  * no se manda (cancelada, cocinada o cobrada) la rechaza antes chef_menu_send_context (409
  * sessionNotEditable).
  */
 function earlyMenuRejection(context: MenuSendContext, menuVersion: number): ChefErrorCode | null {
+  if (context.session.status === "held") {
+    if (!context.quote) return "quoteClosed";
+    if (!context.quote.firstWeek) return "quoteWeekNotFirst";
+  }
   if (context.menu.version !== menuVersion) return "menuChanged";
   if (context.menu.dishes.length === 0) return "menuEmpty";
   return null;
@@ -1014,6 +1083,7 @@ async function menuPreviewRoute(deps: ChefHandlerDeps, caller: Caller, input: un
     clientName: context.contact.name,
     snapshot,
     link: null,
+    now: deps.now(),
   });
   log("info", "menu_previewed", {
     route,
@@ -1125,6 +1195,8 @@ async function menuSendRoute(deps: ChefHandlerDeps, caller: Caller, input: unkno
     clientName: linked.contact.name,
     snapshot,
     link: clientLinkUrl(siteUrl, token.token),
+    // Con el presupuesto, el plazo que dice el mensaje es el de ahora (como chef_complete_menu_send, enseguida).
+    now: deps.now(),
   });
   if (email && to) {
     const sent = await deliverMenuEmail(deps, route, sendId, {
@@ -1168,6 +1240,92 @@ async function menuSendRoute(deps: ChefHandlerDeps, caller: Caller, input: unkno
     body.whatsappPhone = phone;
   }
   return reply(200, body);
+}
+
+// ---------------------------------------------------------------------------
+// El presupuesto (contrato §14)
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /quotes: prepara el presupuesto de un pedido new (chef_create_quote): una sesión held por semana, con el
+ * precio repartido, y el presupuesto sin enviar (el borrador retiene el horario 24 h). dryRun: el estado de cada
+ * fecha, sin escribir nada (200). Sale con el menú de la semana 1 (/menus/preview y /menus/send).
+ */
+async function createQuoteRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, input: unknown, reply: Reply): Promise<Response> {
+  const { log } = deps;
+  const route = CHEF_ROUTES.quotes;
+  const parsed = parseCreateQuoteRequest(input, { today: romeToday(deps.now()) });
+  if (!parsed.ok) return invalidPayload(log, route, parsed, reply);
+
+  const value = parsed.value;
+  let data: unknown;
+  try {
+    data = await deps.store.createQuote({
+      p_chef_id: chefId,
+      p_request_id: value.requestId,
+      p_dates: [...value.dates],
+      p_start: value.start,
+      p_cook_minutes: value.cookMinutes,
+      p_service_total_cents: value.serviceTotalCents,
+      p_portions: value.portions,
+      p_dry_run: value.dryRun,
+    });
+  } catch (error) {
+    return dbFailure(log, route, "create_quote", error, reply, createQuoteErrorReply(error));
+  }
+  const result = createQuoteResponseFromRpc(data);
+  if (!result || result.dryRun !== value.dryRun || result.requestId !== value.requestId) return unexpectedResult(log, "create_quote", reply);
+  if (result.dryRun) return reply(200, result);
+  log("info", "quote_created", { requestId: result.requestId, quoteId: result.quoteId, sessions: result.weeks.length, userId });
+  return reply(201, result);
+}
+
+/**
+ * POST /quotes/price: otro precio para un presupuesto abierto (chef_update_quote), repartido entre sus semanas
+ * vivas. Si ya salió, hay que volver a mandarlo: hasta entonces la clienta no lo puede aceptar. 200 con los
+ * términos nuevos.
+ */
+async function quotePriceRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, input: unknown, reply: Reply): Promise<Response> {
+  const { log } = deps;
+  const route = CHEF_ROUTES.quotePrice;
+  const parsed = parseQuotePriceRequest(input);
+  if (!parsed.ok) return invalidPayload(log, route, parsed, reply);
+
+  let data: unknown;
+  try {
+    data = await deps.store.updateQuote({ p_chef_id: chefId, p_quote_id: parsed.value.quoteId, p_service_total_cents: parsed.value.serviceTotalCents });
+  } catch (error) {
+    return dbFailure(log, route, "update_quote", error, reply);
+  }
+  const terms = quoteTermsFromRpc(data);
+  // Lo que acaba de fijar, repartido entre sus semanas: con otra cosa, la respuesta no se entiende.
+  if (!terms || terms.quoteId !== parsed.value.quoteId || terms.totalCents !== parsed.value.serviceTotalCents || terms.weeks.length === 0) {
+    return unexpectedResult(log, "update_quote", reply);
+  }
+  log("info", "quote_priced", { quoteId: terms.quoteId, weeks: terms.weeks.length, userId });
+  return reply(200, terms);
+}
+
+/**
+ * POST /quotes/withdraw: Evelyn retira un presupuesto abierto, enviado o no (chef_withdraw_quote): sus semanas
+ * held se cancelan y el pedido vuelve a new. Idempotente: uno ya retirado da 200 con already.
+ */
+async function quoteWithdrawRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, input: unknown, reply: Reply): Promise<Response> {
+  const { log } = deps;
+  const route = CHEF_ROUTES.quoteWithdraw;
+  const parsed = parseQuoteWithdrawRequest(input);
+  if (!parsed.ok) return invalidPayload(log, route, parsed, reply);
+
+  let data: unknown;
+  try {
+    data = await deps.store.withdrawQuote({ p_chef_id: chefId, p_quote_id: parsed.value.quoteId });
+  } catch (error) {
+    return dbFailure(log, route, "withdraw_quote", error, reply);
+  }
+  const result = withdrawQuoteResponseFromRpc(data);
+  if (!result || result.quoteId !== parsed.value.quoteId) return unexpectedResult(log, "withdraw_quote", reply);
+  log("info", "quote_withdrawn", { quoteId: result.quoteId, requestId: result.requestId, already: result.already, cancelled: result.cancelled, userId });
+  return reply(200, result);
 }
 
 export function createChefHandler(deps: ChefHandlerDeps): (request: Request) => Promise<Response> {
@@ -1230,6 +1388,12 @@ export function createChefHandler(deps: ChefHandlerDeps): (request: Request) => 
           return await menuPreviewRoute(deps, auth, input, reply);
         case CHEF_ROUTES.menuSend:
           return await menuSendRoute(deps, auth, input, reply);
+        case CHEF_ROUTES.quotes:
+          return await createQuoteRoute(deps, auth, input, reply);
+        case CHEF_ROUTES.quotePrice:
+          return await quotePriceRoute(deps, auth, input, reply);
+        case CHEF_ROUTES.quoteWithdraw:
+          return await quoteWithdrawRoute(deps, auth, input, reply);
         default:
           return reply(404, { error: "notFound" });
       }

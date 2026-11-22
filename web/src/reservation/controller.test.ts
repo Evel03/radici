@@ -1,8 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { ClientLinkView } from "../../../supabase/functions/_shared/client_link.ts";
 import type { FetchLike } from "./api.ts";
-import { createReservation, rateLimitMessage, type Reservation } from "./controller.ts";
-import { SEND_1, SEND_2, SEND_NEW, SESSION_1, SESSION_2, SESSION_3, SUPABASE_URL, TOKEN, menu, session, view, week } from "./fixtures.ts";
+import { createReservation, menuQuoteMode, quoteView as quoteViewOf, rateLimitMessage, type Reservation } from "./controller.ts";
+import {
+  QUOTE_ID,
+  SEND_1,
+  SEND_2,
+  SEND_NEW,
+  SESSION_1,
+  SESSION_2,
+  SESSION_3,
+  SUPABASE_URL,
+  TOKEN,
+  menu,
+  quoteView,
+  session,
+  view,
+  week,
+} from "./fixtures.ts";
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
@@ -15,14 +30,16 @@ interface FakeServer {
   viewResponse: Respond | null;
   confirm: RespondTo;
   changes: RespondTo;
+  accept: RespondTo;
+  decline: RespondTo;
   calls: Array<{ route: string; body: Record<string, unknown> }>;
   fetch: FetchLike;
 }
 
 /**
- * La función simulada: /view devuelve `current` (si no se cambia `viewResponse`); /confirm y /changes, lo que
- * digan `confirm` y `changes` (por defecto, como la función: guardan la respuesta en `current`). Registra cada
- * llamada (ruta y cuerpo).
+ * La función simulada: /view devuelve `current` (si no se cambia `viewResponse`); /confirm, /changes, /accept y
+ * /decline, lo que digan `confirm`, `changes`, `accept` y `decline` (por defecto, como la función: guardan la
+ * respuesta en `current`; rechazar el presupuesto cancela sus semanas). Registra cada llamada (ruta y cuerpo).
  */
 function fakeServer(initial: ClientLinkView = view()): FakeServer {
   /** Como la base: la respuesta queda en el envío de `current`. */
@@ -43,6 +60,16 @@ function fakeServer(initial: ClientLinkView = view()): FakeServer {
       answer(body["sendId"], { state: "changesRequested", changesRequestedAt: "2027-02-26T11:00:00+00:00" });
       return json(200, { changesRequestedAt: "2027-02-26T11:00:00+00:00" });
     },
+    accept: (body) => {
+      answer(body["sendId"], { state: "confirmed", confirmedAt: "2027-02-26T12:00:00+00:00" });
+      if (server.current.quote) server.current = { ...server.current, quote: { ...server.current.quote, status: "accepted", acceptedAt: "2027-02-26T12:00:00+00:00" } };
+      return json(200, { acceptedAt: "2027-02-26T12:00:00+00:00", already: false });
+    },
+    decline: () => {
+      // Como la base: las semanas del presupuesto se cancelan (salen de la lista) y queda el estado.
+      if (server.current.quote) server.current = { ...server.current, weeks: [], quote: { ...server.current.quote, status: "declined", summary: null } };
+      return json(200, { already: false });
+    },
     calls: [],
     fetch: (async (url, init) => {
       const route = new URL(url).pathname.replace("/functions/v1/client-link", "");
@@ -51,6 +78,8 @@ function fakeServer(initial: ClientLinkView = view()): FakeServer {
       if (route === "/view") return server.viewResponse ? server.viewResponse() : json(200, server.current);
       if (route === "/confirm") return server.confirm(body);
       if (route === "/changes") return server.changes(body);
+      if (route === "/accept") return server.accept(body);
+      if (route === "/decline") return server.decline(body);
       throw new Error(`ruta inesperada: ${route}`);
     }) as FetchLike,
   };
@@ -496,5 +525,279 @@ describe("rateLimitMessage", () => {
     expect(rateLimitMessage(0)).toEqual({ key: "reservation.errors.rateLimited" });
     expect(rateLimitMessage(61)).toEqual({ key: "reservation.errors.rateLimitedMinutes", params: { minutes: 2 } });
     expect(rateLimitMessage(7200)).toEqual({ key: "reservation.errors.rateLimitedHours", params: { hours: 2 } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// El presupuesto (SPEC 5.8)
+// ---------------------------------------------------------------------------
+
+describe("quoteView y menuQuoteMode", () => {
+  it("por aceptar: se acepta y se rechaza; con cambios pedidos, solo se rechaza", () => {
+    expect(quoteViewOf(quoteView())).toMatchObject({ display: "pending", canAccept: true, canDecline: true, week: { sessionId: SESSION_1 } });
+    expect(quoteViewOf(quoteView({}, { state: "changesRequested", changesRequestedAt: "2027-02-26T09:00:00+00:00" }))).toMatchObject({
+      display: "changesRequested",
+      canAccept: false,
+      canDecline: true,
+    });
+    expect(quoteViewOf(view())).toBeNull();
+  });
+
+  it("cambiado, aceptado, rechazado, retirado o vencido: el estado, sin botones", () => {
+    for (const status of ["changed", "accepted", "declined", "withdrawn", "expired"] as const) {
+      const acceptedAt = status === "accepted" ? "2027-02-26T09:00:00+00:00" : null;
+      expect(quoteViewOf(quoteView({ status, acceptedAt })), status).toMatchObject({ display: status, canAccept: false, canDecline: false });
+    }
+  });
+
+  it("lo que no se ve no se contesta: sin el menú que lo lleva, sin resumen, una foto que no se lee o la semana fuera de la lista", () => {
+    const cases: ClientLinkView[] = [
+      quoteView({}, { content: null }),
+      quoteView({ summary: null }),
+      quoteView({ sendId: SEND_NEW }),
+      quoteView({ sendId: null }),
+      { ...quoteView(), weeks: [] },
+    ];
+    for (const value of cases) expect(quoteViewOf(value)).toMatchObject({ display: "unreadable", canAccept: false, canDecline: false });
+  });
+
+  it("el menú de un envío: sin presupuesto (none), con el presupuesto abierto (open) o con uno cerrado (closed)", () => {
+    const open = quoteView();
+    expect(menuQuoteMode(open, menu())).toBe("none");
+    expect(menuQuoteMode(open, menu({ quoteId: QUOTE_ID }))).toBe("open");
+    expect(menuQuoteMode(quoteView({ status: "changed" }), menu({ quoteId: QUOTE_ID }))).toBe("open");
+    for (const status of ["accepted", "declined", "withdrawn", "expired"] as const) {
+      expect(menuQuoteMode(quoteView({ status, acceptedAt: status === "accepted" ? "2027-02-26T09:00:00+00:00" : null }), menu({ quoteId: QUOTE_ID })), status).toBe("closed");
+    }
+    // Un presupuesto que la página no conoce: no se contesta.
+    expect(menuQuoteMode(view(), menu({ quoteId: QUOTE_ID }))).toBe("closed");
+  });
+});
+
+describe("aceptar el presupuesto", () => {
+  it("manda el envío que lo lleva, lo marca aceptado (y el menú de la semana 1 confirmado), avisa y vuelve a leer la reserva", async () => {
+    const server = fakeServer(quoteView());
+    const reservation = await loaded(server);
+    const result = reservation.acceptQuote();
+    expect(reservation.quoteUi.busy).toBe("accept");
+    expect(await result).toEqual({ focus: { kind: "quoteStatus" }, announce: null });
+    expect(server.calls.map((call) => call.route)).toEqual(["/view", "/accept", "/view"]);
+    expect(server.calls[1]?.body).toEqual({ token: TOKEN, sendId: SEND_1 });
+    expect(reservation.state.kind === "ready" && reservation.state.view.quote).toMatchObject({ status: "accepted", acceptedAt: "2027-02-26T12:00:00+00:00" });
+    expect(menuOf(reservation)).toMatchObject({ state: "confirmed", confirmedAt: "2027-02-26T12:00:00+00:00" });
+    expect(reservation.quoteUi).toMatchObject({ busy: null, error: null, notice: { key: "reservation.quote.notices.accepted" } });
+  });
+
+  it("si no puede volver a leer la reserva, queda aceptado con lo que devolvió la función (también el menú)", async () => {
+    const server = fakeServer(quoteView());
+    const reservation = await loaded(server);
+    server.viewResponse = () => json(503, { error: "unavailable" });
+    await reservation.acceptQuote();
+    expect(reservation.state.kind === "ready" && reservation.state.view.quote?.status).toBe("accepted");
+    expect(menuOf(reservation)?.state).toBe("confirmed");
+  });
+
+  it("ya lo había aceptado: lo dice", async () => {
+    const server = fakeServer(quoteView());
+    server.accept = () => json(200, { acceptedAt: "2027-02-25T20:00:00+00:00", already: true });
+    const reservation = await loaded(server);
+    await reservation.acceptQuote();
+    expect(reservation.quoteUi.notice).toEqual({ key: "reservation.quote.notices.alreadyAccepted" });
+  });
+
+  it("cada respuesta de la función con su aviso, y la reserva vuelta a leer", async () => {
+    const cases: Array<[Response, string]> = [
+      [json(409, { error: "menuOutdated" }), "reservation.quote.notices.outdated"],
+      [json(409, { error: "changesRequested" }), "reservation.quote.notices.changesRequested"],
+      [json(409, { error: "quoteChanged" }), "reservation.quote.notices.changed"],
+      [json(409, { error: "sessionCancelled" }), "reservation.quote.notices.changed"],
+      [json(409, { error: "quoteClosed", reason: "accepted" }), "reservation.quote.notices.closedAccepted"],
+      [json(409, { error: "quoteClosed", reason: "declined" }), "reservation.quote.notices.closedDeclined"],
+      [json(409, { error: "quoteClosed", reason: "withdrawn" }), "reservation.quote.notices.closedWithdrawn"],
+      [json(409, { error: "quoteClosed", reason: "expired" }), "reservation.quote.notices.closedExpired"],
+      [json(409, { error: "quoteClosed" }), "reservation.quote.notices.unavailable"],
+      [json(409, { error: "quoteEmpty" }), "reservation.quote.notices.empty"],
+      [json(409, { error: "notAQuote" }), "reservation.quote.notices.unavailable"],
+      [json(404, { error: "sendNotFound" }), "reservation.quote.notices.unavailable"],
+    ];
+    for (const [response, key] of cases) {
+      const server = fakeServer(quoteView());
+      server.accept = () => response.clone();
+      const reservation = await loaded(server);
+      expect(await reservation.acceptQuote(), key).toEqual({ focus: { kind: "quoteStatus" }, announce: null });
+      expect(reservation.quoteUi.notice, key).toEqual({ key });
+      expect(reservation.quoteUi.error).toBeNull();
+      expect(server.calls.at(-1)?.route, key).toBe("/view");
+    }
+  });
+
+  it("sin conexión, error o demasiados intentos: el error junto al botón, anunciado, y se puede reintentar", async () => {
+    const cases: Array<[Respond, unknown]> = [
+      [
+        () => {
+          throw new TypeError("offline");
+        },
+        { key: "reservation.errors.network" },
+      ],
+      [() => json(500, { error: "server" }), { key: "reservation.errors.server" }],
+      [() => json(429, { error: "rateLimited" }, { "Retry-After": "120" }), { key: "reservation.errors.rateLimitedMinutes", params: { minutes: 2 } }],
+    ];
+    for (const [respond, message] of cases) {
+      const server = fakeServer(quoteView());
+      server.accept = respond;
+      const reservation = await loaded(server);
+      expect(await reservation.acceptQuote()).toEqual({ focus: { kind: "quoteAccept" }, announce: message });
+      expect(reservation.quoteUi).toMatchObject({ busy: null, error: message });
+      expect(reservation.state.kind === "ready" && reservation.state.view.quote?.status).toBe("sent");
+      server.accept = () => json(200, { acceptedAt: "2027-02-26T12:00:00+00:00", already: false });
+      await reservation.acceptQuote();
+      expect(reservation.quoteUi.error).toBeNull();
+    }
+  });
+
+  it("el link venció mientras tanto: la página lo dice", async () => {
+    const server = fakeServer(quoteView());
+    server.accept = () => json(404, { error: "linkNotFound" });
+    const reservation = await loaded(server);
+    expect(await reservation.acceptQuote()).toEqual({ focus: { kind: "problem" }, announce: null });
+    expect(reservation.state).toEqual({ kind: "invalidLink" });
+  });
+
+  it("no hace nada con una respuesta en camino, con cambios pedidos, cambiado, ya aceptado ni sin presupuesto", async () => {
+    const server = fakeServer(quoteView());
+    const reservation = await loaded(server);
+    const first = reservation.acceptQuote();
+    expect(await reservation.acceptQuote()).toEqual({ focus: null, announce: null });
+    await first;
+    for (const value of [
+      quoteView({}, { state: "changesRequested", changesRequestedAt: "2027-02-26T09:00:00+00:00" }),
+      quoteView({ status: "changed" }),
+      quoteView({ status: "accepted", acceptedAt: "2027-02-26T09:00:00+00:00" }),
+      view(),
+    ]) {
+      const other = fakeServer(value);
+      const page = await loaded(other);
+      expect(await page.acceptQuote()).toEqual({ focus: null, announce: null });
+      expect(other.calls.filter((call) => call.route === "/accept")).toEqual([]);
+    }
+  });
+});
+
+describe("rechazar el presupuesto", () => {
+  it("pide confirmar: el foco va a la pregunta; «No» la cierra y vuelve a «Rifiuto»; sin confirmar no se rechaza nada", async () => {
+    const server = fakeServer(quoteView());
+    const reservation = await loaded(server);
+    expect(await reservation.declineQuote()).toEqual({ focus: null, announce: null });
+    expect(reservation.openDecline()).toEqual({ focus: { kind: "quoteDeclineQuestion" }, announce: null });
+    expect(reservation.quoteUi).toMatchObject({ declineOpen: true, declineFor: SEND_1 });
+    expect(reservation.closeDecline()).toEqual({ focus: { kind: "quoteDecline" }, announce: null });
+    expect(reservation.quoteUi.declineOpen).toBe(false);
+    expect(server.calls.filter((call) => call.route === "/decline")).toEqual([]);
+  });
+
+  it("confirmado: manda el envío, lo marca rechazado, avisa y vuelve a leer (sus semanas ya no están)", async () => {
+    const server = fakeServer(quoteView());
+    const reservation = await loaded(server);
+    reservation.openDecline();
+    const result = reservation.declineQuote();
+    expect(reservation.quoteUi.busy).toBe("decline");
+    expect(await result).toEqual({ focus: { kind: "quoteStatus" }, announce: null });
+    expect(server.calls.map((call) => call.route)).toEqual(["/view", "/decline", "/view"]);
+    expect(server.calls[1]?.body).toEqual({ token: TOKEN, sendId: SEND_1 });
+    expect(reservation.state.kind === "ready" && reservation.state.view.quote).toMatchObject({ status: "declined", summary: null });
+    expect(reservation.state.kind === "ready" && reservation.state.view.weeks).toEqual([]);
+    expect(reservation.quoteUi).toMatchObject({ declineOpen: false, busy: null, notice: { key: "reservation.quote.notices.declined" } });
+  });
+
+  it("se puede rechazar después de pedir cambios; ya rechazado, lo dice", async () => {
+    const server = fakeServer(quoteView({}, { state: "changesRequested", changesRequestedAt: "2027-02-26T09:00:00+00:00" }));
+    server.decline = () => json(200, { already: true });
+    const reservation = await loaded(server);
+    reservation.openDecline();
+    await reservation.declineQuote();
+    expect(reservation.quoteUi.notice).toEqual({ key: "reservation.quote.notices.alreadyDeclined" });
+  });
+
+  it("un error deja la confirmación abierta, con el error junto a «Sì, rifiuto» (que recibe el foco)", async () => {
+    const server = fakeServer(quoteView());
+    server.decline = () => {
+      throw new TypeError("offline");
+    };
+    const reservation = await loaded(server);
+    reservation.openDecline();
+    expect(await reservation.declineQuote()).toEqual({ focus: { kind: "quoteDeclineConfirm" }, announce: { key: "reservation.errors.network" } });
+    expect(reservation.quoteUi).toMatchObject({ declineOpen: true, error: { key: "reservation.errors.network" } });
+  });
+
+  it("si llega otra versión con la confirmación abierta, se cierra (no se rechaza lo que no vio) y se le avisa", async () => {
+    const server = fakeServer(quoteView());
+    const reservation = await loaded(server);
+    reservation.openDecline();
+    // Evelyn lo reenvía (versión 2, otro envío); otra lectura de la reserva lo trae.
+    server.current = quoteView({ version: 2, sendId: SEND_NEW }, { sendId: SEND_NEW });
+    await reservation.load();
+    expect(reservation.quoteUi).toMatchObject({ declineOpen: false, declineFor: null, notice: { key: "reservation.quote.notices.outdated" } });
+    expect(await reservation.declineQuote()).toEqual({ focus: null, announce: null });
+  });
+
+  it("otro presupuesto (otro id): lo del anterior se olvida", async () => {
+    const server = fakeServer(quoteView());
+    const reservation = await loaded(server);
+    reservation.openDecline();
+    server.current = quoteView({ id: "9a0e0000-0000-4000-8000-000000000002" }, { quoteId: "9a0e0000-0000-4000-8000-000000000002" });
+    await reservation.load();
+    expect(reservation.quoteUi).toEqual({ declineOpen: false, declineFor: null, busy: null, error: null, notice: null });
+  });
+});
+
+describe("el menú que va con el presupuesto", () => {
+  it("abierto: no se confirma solo (se acepta el presupuesto); los cambios sí, y entonces el presupuesto ya no se acepta", async () => {
+    const server = fakeServer(quoteView());
+    const reservation = await loaded(server);
+    expect(await reservation.confirm(SESSION_1)).toEqual({ focus: null, announce: null });
+    expect(server.calls.filter((call) => call.route === "/confirm")).toEqual([]);
+    expect(reservation.openChanges(SESSION_1)).toEqual({ focus: { kind: "textarea", session: SESSION_1 }, announce: null });
+    reservation.setDraft(SESSION_1, "Meglio alle 11");
+    await reservation.submitChanges(SESSION_1);
+    expect(server.calls.find((call) => call.route === "/changes")?.body).toEqual({ token: TOKEN, sendId: SEND_1, text: "Meglio alle 11" });
+    const current = reservation.state.kind === "ready" ? quoteViewOf(reservation.state.view) : null;
+    expect(current).toMatchObject({ display: "changesRequested", canAccept: false, canDecline: true });
+  });
+
+  it("cerrado (rechazado, retirado o vencido): ni se confirma ni se piden cambios", async () => {
+    for (const status of ["declined", "withdrawn", "expired"] as const) {
+      const server = fakeServer(quoteView({ status }));
+      const reservation = await loaded(server);
+      expect(await reservation.confirm(SESSION_1), status).toEqual({ focus: null, announce: null });
+      expect(reservation.openChanges(SESSION_1), status).toEqual({ focus: null, announce: null });
+      expect(server.calls.filter((call) => call.route !== "/view")).toEqual([]);
+    }
+  });
+
+  it("si la función dice que va con el presupuesto (quotePending) o que el presupuesto se cerró (quoteClosed), lo avisa en la semana", async () => {
+    for (const [response, key] of [
+      [json(409, { error: "quotePending" }), "reservation.notices.quotePending"],
+      [json(409, { error: "quoteClosed" }), "reservation.notices.quoteClosed"],
+    ] as const) {
+      const server = fakeServer();
+      server.confirm = () => response.clone();
+      const reservation = await loaded(server);
+      expect(await reservation.confirm(SESSION_1)).toEqual({ focus: { kind: "status", session: SESSION_1 }, announce: null });
+      expect(reservation.ui(SESSION_1).notice).toEqual({ key });
+    }
+  });
+
+  it("aceptar el presupuesto saca el aviso de la página (una semana cancelada antes)", async () => {
+    const server = fakeServer(quoteView());
+    server.changes = () => json(409, { error: "sessionCancelled" });
+    const reservation = await loaded(server);
+    reservation.openChanges(SESSION_1);
+    reservation.setDraft(SESSION_1, "x");
+    server.current = quoteView();
+    await reservation.submitChanges(SESSION_1);
+    expect(reservation.pageNotice).not.toBeNull();
+    await reservation.acceptQuote();
+    expect(reservation.pageNotice).toBeNull();
+    expect(server.calls.filter((call) => call.route === "/accept")).toHaveLength(1);
   });
 });

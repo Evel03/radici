@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { hashSubject, rateLimitSubject } from "../_shared/client_ip.ts";
 import { CLIENT_LINK_VERSION, readMenuSnapshot } from "../_shared/client_link.ts";
 import { recipePhotoUrls } from "../_shared/menu.ts";
@@ -18,6 +19,7 @@ import {
   clientLinkConfigWarnings,
   createClientLinkHandler,
   errorReply,
+  quoteAnswerFromRpc,
   readClientLinkConfig,
   routeOf,
   storeErrorFrom,
@@ -108,6 +110,24 @@ interface FakeSend {
   confirmedAt: string | null;
   changesRequestedAt: string | null;
   changesText: string | null;
+  /** El presupuesto que lleva (el menú de la semana 1 de un presupuesto), o null. */
+  quoteId?: string | null;
+}
+
+/** El presupuesto de la reserva, como lo ven las funciones client_link_* (migración 20261121120000_quotes.sql). */
+interface FakeQuote {
+  id: string;
+  version: number;
+  sentAt: string;
+  holdUntil: string | null;
+  acceptedAt: string | null;
+  declinedAt: string | null;
+  withdrawn: boolean;
+  /** Pasó el plazo (con o sin private.expire_quotes). */
+  expired: boolean;
+  /** Evelyn cambió el precio o una semana y no lo reenvió: los términos ya no son los del envío. */
+  changed: boolean;
+  totalCents: number;
 }
 
 /**
@@ -134,7 +154,13 @@ class FakeStore implements ClientLinkStore {
   /** true: cuenta los intentos de cada clave y aplica los límites (como hit_public_request_rate). */
   countHits = false;
   hits: Array<{ ipHash: string; maxHour: number; maxDay: number }> = [];
-  failOn: "rate" | "view" | "confirm" | "changes" | null = null;
+  failOn: "rate" | "view" | "confirm" | "changes" | "accept" | "decline" | null = null;
+  /** El presupuesto de la reserva (null: una reserva sin presupuesto). */
+  quote: FakeQuote | null = null;
+  /** Lo que devuelve view en el bloque quote en lugar del calculado (para formas inesperadas). */
+  quoteOverride: unknown = undefined;
+  acceptCalls: Array<{ tokenHash: string; sendId: string }> = [];
+  declineCalls: Array<{ tokenHash: string; sendId: string }> = [];
   /** Para simular una base que rechaza el texto (22023 invalid_text). */
   rejectText = false;
   /** Lo que devuelve view en lugar de la reserva (para formas inesperadas). */
@@ -167,12 +193,39 @@ class FakeStore implements ClientLinkStore {
     return count <= maxHour && count <= maxDay;
   }
 
+  /** El estado del presupuesto, como client_link_view. */
+  private quoteStatus(quote: FakeQuote): string {
+    if (quote.acceptedAt) return "accepted";
+    if (quote.declinedAt) return "declined";
+    if (quote.withdrawn) return "withdrawn";
+    if (quote.expired) return "expired";
+    return quote.changed ? "changed" : "sent";
+  }
+
+  /** private.quote_closed_reason: accepted, declined, withdrawn, expired o null (abierto y a tiempo). */
+  private closedReason(): string | null {
+    const quote = this.quote;
+    if (!quote) return null;
+    if (quote.acceptedAt) return "accepted";
+    if (quote.declinedAt) return "declined";
+    if (quote.withdrawn) return "withdrawn";
+    return quote.expired ? "expired" : null;
+  }
+
+  /** El último envío que salió con el presupuesto. */
+  private latestQuoteSend(): FakeSend | null {
+    const sent = this.sends.filter((s) => s.quoteId && s.quoteId === this.quote?.id && s.sentAt !== null);
+    sent.sort((a, b) => (b.sentAt ?? "").localeCompare(a.sentAt ?? "") || b.id.localeCompare(a.id));
+    return sent[0] ?? null;
+  }
+
   async view(tokenHash: string): Promise<unknown> {
     if (this.failOn === "view") throw new StoreError("view", "08006", null);
     this.viewCalls.push(tokenHash);
     if (this.viewOverride !== undefined) return this.viewOverride;
     if (!this.links.has(tokenHash)) return null;
     const live = this.live();
+    const quote = this.quote;
     return {
       requestId: REQUEST_ID,
       locale: "es",
@@ -188,10 +241,31 @@ class FakeStore implements ClientLinkStore {
           week: index + 1,
           weeks: live.length,
           send: send
-            ? { id: send.id, sentAt: send.sentAt, snapshot: send.snapshot, confirmedAt: send.confirmedAt, changesRequestedAt: send.changesRequestedAt }
+            ? {
+                id: send.id,
+                sentAt: send.sentAt,
+                snapshot: send.snapshot,
+                confirmedAt: send.confirmedAt,
+                changesRequestedAt: send.changesRequestedAt,
+                quoteId: send.quoteId ?? null,
+              }
             : null,
         };
       }),
+      quote:
+        this.quoteOverride !== undefined
+          ? this.quoteOverride
+          : quote
+            ? {
+                id: quote.id,
+                version: quote.version,
+                status: this.quoteStatus(quote),
+                sentAt: quote.sentAt,
+                holdUntil: quote.holdUntil,
+                acceptedAt: quote.acceptedAt,
+                sendId: this.latestQuoteSend()?.id ?? null,
+              }
+            : null,
     };
   }
 
@@ -228,11 +302,22 @@ class FakeStore implements ClientLinkStore {
     };
   }
 
+  /** Si el envío lleva un presupuesto: open (abierto y a tiempo), accepted o closed; none sin presupuesto. */
+  private sendQuoteState(send: FakeSend): "none" | "open" | "accepted" | "closed" {
+    if (!send.quoteId || send.quoteId !== this.quote?.id) return "none";
+    const reason = this.closedReason();
+    return reason === null ? "open" : reason === "accepted" ? "accepted" : "closed";
+  }
+
   async confirmMenu(tokenHash: string, sendId: string): Promise<unknown> {
     if (this.failOn === "confirm") throw new StoreError("confirm_menu", "40001", null);
     this.confirmCalls.push({ tokenHash, sendId });
     const send = this.sendForAnswer("confirm_menu", tokenHash, sendId);
     if (send.confirmedAt !== null) return this.answer(send, true);
+    const state = this.sendQuoteState(send);
+    // Un menú que va con un presupuesto abierto se acepta con el presupuesto (quote_pending, sin detalle).
+    if (state === "open") throw storeErrorFrom("confirm_menu", { code: "55000", message: "quote_pending" });
+    if (state === "closed") throw storeErrorFrom("confirm_menu", { code: "55000", message: "quote_closed" });
     if (send.changesRequestedAt !== null) throw new StoreError("confirm_menu", "55000", "changes_requested");
     send.confirmedAt = this.now();
     return this.answer(send, false);
@@ -244,9 +329,59 @@ class FakeStore implements ClientLinkStore {
     if (this.rejectText) throw new StoreError("request_changes", "22023", "invalid_text");
     const send = this.sendForAnswer("request_changes", tokenHash, sendId);
     if (send.confirmedAt !== null) throw new StoreError("request_changes", "55000", "already_confirmed");
+    if (this.sendQuoteState(send) === "closed") throw storeErrorFrom("request_changes", { code: "55000", message: "quote_closed" });
     send.changesRequestedAt = this.now();
     send.changesText = text;
-    return this.answer(send, false);
+    return { ...this.answer(send, false), quoteId: send.quoteId ?? null };
+  }
+
+  /** private.client_link_sent_send: el envío que salió de la reserva del link, sin más controles. */
+  private sentSend(op: string, tokenHash: string, sendId: string): FakeSend {
+    if (!this.links.has(tokenHash)) throw new StoreError(op, "P0002", "link_not_found");
+    const send = this.sends.find((s) => s.id === sendId && s.sentAt !== null);
+    if (!send) throw new StoreError(op, "P0002", "send_not_found");
+    return send;
+  }
+
+  /** Lo que suman aceptar y rechazar a la respuesta de siempre. */
+  private quoteFields(withTerms: boolean): Record<string, unknown> {
+    const quoteWeeks = this.sessions.filter((s) => s.status !== "cancelled").length;
+    return withTerms ? { quoteId: this.quote?.id, totalCents: this.quote?.totalCents, quoteWeeks } : { quoteId: this.quote?.id };
+  }
+
+  /** Como client_link_accept_quote (con el DETAIL de quote_closed, que index.ts filtra con storeErrorFrom). */
+  async acceptQuote(tokenHash: string, sendId: string): Promise<unknown> {
+    if (this.failOn === "accept") throw new StoreError("accept_quote", "08006", null);
+    this.acceptCalls.push({ tokenHash, sendId });
+    const send = this.sentSend("accept_quote", tokenHash, sendId);
+    if (!send.quoteId || !this.quote) throw new StoreError("accept_quote", "55000", "not_a_quote");
+    const reason = this.closedReason();
+    if (reason === "accepted" && send.confirmedAt !== null) return { ...this.answer(send, true), ...this.quoteFields(true) };
+    if (reason) throw storeErrorFrom("accept_quote", { code: "55000", message: "quote_closed", details: reason });
+    this.sendForAnswer("accept_quote", tokenHash, sendId);
+    if (send.changesRequestedAt !== null) throw new StoreError("accept_quote", "55000", "changes_requested");
+    if (this.quote.changed) throw storeErrorFrom("accept_quote", { code: "40001", message: "quote_changed" });
+    if (!this.sessions.some((s) => s.status === "held")) throw new StoreError("accept_quote", "55000", "quote_empty");
+    for (const session of this.sessions) if (session.status === "held") session.status = "confirmed";
+    const at = this.now();
+    this.quote.acceptedAt = at;
+    send.confirmedAt = at;
+    return { ...this.answer(send, false), ...this.quoteFields(true) };
+  }
+
+  /** Como client_link_decline_quote: las semanas held se cancelan. */
+  async declineQuote(tokenHash: string, sendId: string): Promise<unknown> {
+    if (this.failOn === "decline") throw new StoreError("decline_quote", "08006", null);
+    this.declineCalls.push({ tokenHash, sendId });
+    const send = this.sentSend("decline_quote", tokenHash, sendId);
+    if (!send.quoteId || !this.quote) throw new StoreError("decline_quote", "55000", "not_a_quote");
+    const reason = this.closedReason();
+    if (reason === "declined") return { ...this.answer(send, true), ...this.quoteFields(false) };
+    if (reason) throw storeErrorFrom("decline_quote", { code: "55000", message: "quote_closed", details: reason });
+    this.sendForAnswer("decline_quote", tokenHash, sendId);
+    for (const session of this.sessions) if (session.status === "held") session.status = "cancelled";
+    this.quote.declinedAt = this.now();
+    return { ...this.answer(send, false), ...this.quoteFields(false) };
   }
 }
 
@@ -452,6 +587,7 @@ test("/view: la reserva con el último menú de cada semana, leído campo por ca
     locale: "es",
     chefName: "Evelyn",
     clientFirstName: "Annaxyz",
+    quote: null,
     weeks: [
       {
         sessionId: SESSION_1,
@@ -466,6 +602,7 @@ test("/view: la reserva con el último menú de cada semana, leído campo por ca
           state: "pending",
           confirmedAt: null,
           changesRequestedAt: null,
+          quoteId: null,
           content,
         },
       },
@@ -559,7 +696,7 @@ test("/view: si falla la base, 503; con una forma inesperada, 500", async () => 
 
 test("viewFromRpc: el idioma y la cocinera con respaldo; semanas y envíos con otra forma, null", () => {
   const base = { requestId: REQUEST_ID, locale: "xx", chefName: " ", clientName: "Anna", weeks: [] };
-  assert.deepEqual(viewFromRpc(base, STORAGE)?.view, { version: 1, locale: "it", chefName: "Evelyn", clientFirstName: "Anna", weeks: [] });
+  assert.deepEqual(viewFromRpc(base, STORAGE)?.view, { version: 1, locale: "it", chefName: "Evelyn", clientFirstName: "Anna", quote: null, weeks: [] });
   const week = { sessionId: SESSION_1.toUpperCase(), date: "2027-03-01", start: "10:00", status: "held", week: 1, weeks: 1, send: null };
   assert.equal(viewFromRpc({ ...base, weeks: [week] }, STORAGE)?.view.weeks[0]?.done, false);
   assert.equal(viewFromRpc({ ...base, weeks: [week] }, STORAGE)?.view.weeks[0]?.sessionId, SESSION_1);
@@ -890,4 +1027,437 @@ test("/changes: los saltos de línea pegados desde Word (\\v, \\f) y NEL llegan 
   const response = await handle(post("/changes", { token: TOKEN, sendId: SEND_A, text: "Lasagne\vRisotto\fPollo\u0085Fine\u0007" }));
   assert.equal(response.status, 200);
   assert.deepEqual(store.changesCalls.map((call) => call.text), ["Lasagne\nRisotto\nPollo\nFine"]);
+});
+
+// ---------------------------------------------------------------------------
+// El presupuesto (SPEC 5.8): /view, /accept, /decline y lo que cambia en /confirm y /changes
+// ---------------------------------------------------------------------------
+
+const QUOTE_ID = "9a0e0000-0000-4000-8000-000000000001";
+
+/** La foto del envío de la semana 1 de un presupuesto (2 semanas, 300 €): la de siempre más el presupuesto. */
+function quoteSnapshot(): Record<string, unknown> {
+  return {
+    ...snapshot(),
+    quote: {
+      version: 2,
+      totalCents: 30000,
+      weeks: [
+        { date: "2027-03-01", start: "10:00", serviceCents: 15000 },
+        { date: "2027-03-08", start: "10:00", serviceCents: 15000 },
+      ],
+      holdHours: 48,
+      firstStart: "2027-03-01T10:00",
+    },
+  };
+}
+
+/**
+ * Una reserva con un presupuesto por aceptar (versión 2): las dos semanas held y los dos envíos de la semana 1 con
+ * el presupuesto (el viejo, versión 1, y el de ahora, SEND_A).
+ */
+function quoteHarness(options: HarnessOptions = {}): Harness {
+  const run = harness(options);
+  for (const session of run.store.sessions) if (session.status === "confirmed") session.status = "held";
+  for (const send of run.store.sends) {
+    send.quoteId = QUOTE_ID;
+    send.snapshot = quoteSnapshot();
+  }
+  run.store.quote = {
+    id: QUOTE_ID,
+    version: 2,
+    sentAt: "2027-02-25T18:03:00.123456+00:00",
+    holdUntil: "2027-02-27T18:03:00.123456+00:00",
+    acceptedAt: null,
+    declinedAt: null,
+    withdrawn: false,
+    expired: false,
+    changed: false,
+    totalCents: 30000,
+  };
+  return run;
+}
+
+/** Ningún log lleva importes del presupuesto. */
+function assertNoAmounts(logs: Harness["logs"]): void {
+  const text = JSON.stringify(logs);
+  for (const amount of ["30000", "15000", "300,00", "150,00"]) assert.ok(!text.includes(amount), `el log lleva ${amount}`);
+}
+
+test("/view con presupuesto: su estado, el plazo, el envío que lo lleva y lo que vio la clienta (de la foto de ese envío)", async () => {
+  const { handle, logs } = quoteHarness();
+  const body = await json(await handle(post("/view", { token: TOKEN })));
+  assert.deepEqual(body["quote"], {
+    id: QUOTE_ID,
+    version: 2,
+    status: "sent",
+    sentAt: "2027-02-25T18:03:00.123456+00:00",
+    holdUntil: "2027-02-27T18:03:00.123456+00:00",
+    acceptedAt: null,
+    sendId: SEND_A,
+    summary: {
+      totalCents: 30000,
+      weeks: [
+        { date: "2027-03-01", start: "10:00", serviceCents: 15000 },
+        { date: "2027-03-08", start: "10:00", serviceCents: 15000 },
+      ],
+    },
+  });
+  const weeks = body["weeks"] as Array<Record<string, unknown>>;
+  const menu = weeks[0]?.["menu"] as Record<string, unknown>;
+  assert.equal(menu["quoteId"], QUOTE_ID, "el envío de la semana 1 dice qué presupuesto lleva");
+  // El contenido del menú no cambia por llevar el presupuesto (los precios van solo en quote).
+  assert.deepEqual(menu["content"], readMenuSnapshot(snapshot(), STORAGE));
+  assert.equal(weeks[1]?.["menu"], null);
+  assertNoLeaks(logs);
+  assertNoAmounts(logs);
+});
+
+test("/view con presupuesto: los precios solo por aceptar o aceptado; cambiado, rechazado, retirado o vencido, sin resumen", async () => {
+  const cases: Array<[string, (quote: FakeQuote) => void, string, boolean]> = [
+    ["cambiado sin reenviar", (q) => (q.changed = true), "changed", false],
+    ["vencido", (q) => (q.expired = true), "expired", false],
+    ["retirado", (q) => (q.withdrawn = true), "withdrawn", false],
+    ["aceptado", (q) => (q.acceptedAt = "2027-02-26T09:00:00+00:00"), "accepted", true],
+  ];
+  for (const [name, change, status, summary] of cases) {
+    const { handle, store } = quoteHarness();
+    change(store.quote!);
+    const quote = (await json(await handle(post("/view", { token: TOKEN }))))["quote"] as Record<string, unknown>;
+    assert.equal(quote["status"], status, name);
+    assert.equal(quote["summary"] !== null, summary, name);
+  }
+  // Rechazado: las semanas se cancelaron (no hay envío a la vista) y queda el estado.
+  const declined = quoteHarness();
+  declined.store.quote!.declinedAt = "2027-02-26T09:00:00+00:00";
+  for (const session of declined.store.sessions) session.status = "cancelled";
+  const body = await json(await declined.handle(post("/view", { token: TOKEN })));
+  assert.deepEqual(body["weeks"], []);
+  assert.equal((body["quote"] as Record<string, unknown>)["status"], "declined");
+  assert.equal((body["quote"] as Record<string, unknown>)["summary"], null);
+});
+
+test("/view con presupuesto: una foto sin el presupuesto deja el resumen en null; un bloque quote con otra forma, 500", async () => {
+  const unreadable = quoteHarness();
+  unreadable.store.sends.find((s) => s.id === SEND_A)!.snapshot = snapshot();
+  const quote = (await json(await unreadable.handle(post("/view", { token: TOKEN }))))["quote"] as Record<string, unknown>;
+  assert.equal(quote["summary"], null);
+  assert.equal(quote["status"], "sent");
+
+  for (const bad of [
+    "presupuesto",
+    { id: QUOTE_ID, version: 1, status: "pending", sentAt: "2027-02-25T18:03:00Z", holdUntil: null, acceptedAt: null, sendId: null },
+    { id: QUOTE_ID, version: 0, status: "sent", sentAt: "2027-02-25T18:03:00Z", holdUntil: null, acceptedAt: null, sendId: null },
+    { id: QUOTE_ID, version: 1, status: "accepted", sentAt: "2027-02-25T18:03:00Z", holdUntil: null, acceptedAt: null, sendId: null },
+    { id: "x", version: 1, status: "sent", sentAt: "2027-02-25T18:03:00Z", holdUntil: null, acceptedAt: null, sendId: null },
+  ]) {
+    const { handle, store, logs } = quoteHarness();
+    store.quoteOverride = bad;
+    const response = await handle(post("/view", { token: TOKEN }));
+    assert.equal(response.status, 500, JSON.stringify(bad));
+    assert.ok(logs.some((log) => log.event === "unexpected_result"));
+  }
+});
+
+test("/accept: acepta el presupuesto (y el menú de la semana 1), responde la hora y le avisa a Evelyn una sola vez", async () => {
+  const { handle, store, logs, emails, settle } = quoteHarness();
+  const response = await handle(post("/accept", { token: TOKEN, sendId: SEND_A.toUpperCase() }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await json(response), { acceptedAt: "2027-02-26T10:00:01.000000+00:00", already: false });
+  assert.deepEqual(store.acceptCalls, [{ tokenHash: TOKEN_HASH, sendId: SEND_A }]);
+  assert.deepEqual(store.sessions.filter((s) => s.status !== "cancelled").map((s) => s.status), ["confirmed", "confirmed"]);
+  await settle();
+  assert.equal(emails.length, 1);
+  const email = emails[0]!;
+  assert.deepEqual(email.body["to"], ["evelyn@example.test"]);
+  assert.equal(email.body["subject"], "Annaxyz aceptó el presupuesto");
+  assert.ok(String(email.body["text"]).includes("Annaxyz Bianchiqwe aceptó el presupuesto: 2 semanas, 300,00 €."));
+  assert.ok(String(email.body["text"]).includes("La primera semana es el lunes, 1 de marzo de 2027, con llegada a las 10:00."));
+  assert.ok(String(email.body["text"]).includes(`https://radicicucina.app/gestione/#/richieste/${REQUEST_ID}`));
+  assert.equal(email.headers.get("idempotency-key"), `quote-accepted-${QUOTE_ID}`);
+  assert.ok(
+    logs.some(
+      (log) =>
+        log.event === "quote_accepted" &&
+        log.fields["sendId"] === SEND_A &&
+        log.fields["quoteId"] === QUOTE_ID &&
+        log.fields["requestId"] === REQUEST_ID &&
+        log.fields["already"] === false,
+    ),
+  );
+  assert.ok(logs.some((log) => log.event === "email_sent" && log.fields["kind"] === "accepted" && log.fields["quoteId"] === QUOTE_ID));
+
+  // Otra vez: ya estaba aceptado, la misma hora y ningún aviso nuevo.
+  const again = await handle(post("/accept", { token: TOKEN, sendId: SEND_A }));
+  assert.deepEqual(await json(again), { acceptedAt: "2027-02-26T10:00:01.000000+00:00", already: true });
+  await settle();
+  assert.equal(emails.length, 1);
+  // Después de aceptarlo, el menú de la semana 1 está confirmado: confirmar de nuevo es already.
+  assert.deepEqual(await json(await handle(post("/confirm", { token: TOKEN, sendId: SEND_A }))), { confirmedAt: "2027-02-26T10:00:01.000000+00:00", already: true });
+  assertNoLeaks(logs);
+  assertNoAmounts(logs);
+});
+
+test("/decline: rechaza el presupuesto (las semanas se liberan), responde y le avisa a Evelyn una sola vez", async () => {
+  const { handle, store, logs, emails, settle } = quoteHarness();
+  const response = await handle(post("/decline", { token: TOKEN, sendId: SEND_A }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await json(response), { already: false });
+  assert.deepEqual(store.declineCalls, [{ tokenHash: TOKEN_HASH, sendId: SEND_A }]);
+  assert.equal(store.sessions.filter((s) => s.status !== "cancelled").length, 0);
+  await settle();
+  assert.equal(emails.length, 1);
+  const email = emails[0]!;
+  assert.equal(email.body["subject"], "Annaxyz rechazó el presupuesto");
+  assert.ok(String(email.body["text"]).includes("Annaxyz Bianchiqwe rechazó el presupuesto."));
+  assert.ok(String(email.body["text"]).includes("La primera semana propuesta era el lunes, 1 de marzo de 2027, con llegada a las 10:00."));
+  assert.ok(!String(email.body["text"]).includes("€"));
+  assert.equal(email.headers.get("idempotency-key"), `quote-declined-${QUOTE_ID}`);
+  assert.ok(logs.some((log) => log.event === "quote_declined" && log.fields["quoteId"] === QUOTE_ID && log.fields["already"] === false));
+
+  const again = await handle(post("/decline", { token: TOKEN, sendId: SEND_A }));
+  assert.deepEqual([again.status, await json(again)], [200, { already: true }]);
+  await settle();
+  assert.equal(emails.length, 1);
+  assertNoLeaks(logs);
+});
+
+test("/accept: cada error de la base con su código (y el motivo de quoteClosed), sin avisos", async () => {
+  const cases: Array<[string, Record<string, unknown>, (store: FakeStore) => void, number, Record<string, unknown>]> = [
+    ["link vencido", { token: UNKNOWN_TOKEN, sendId: SEND_A }, () => {}, 404, { error: "linkNotFound" }],
+    ["envío de otra reserva o que no salió", { token: TOKEN, sendId: MISSING_SEND }, () => {}, 404, { error: "sendNotFound" }],
+    ["la versión vieja", { token: TOKEN, sendId: SEND_OLD }, () => {}, 409, { error: "menuOutdated" }],
+    [
+      "la semana del envío se canceló",
+      { token: TOKEN, sendId: SEND_A },
+      (store) => {
+        store.sessions.find((s) => s.id === SESSION_1)!.status = "cancelled";
+      },
+      409,
+      { error: "sessionCancelled" },
+    ],
+    [
+      "un envío sin presupuesto",
+      { token: TOKEN, sendId: SEND_A },
+      (store) => {
+        store.sends.find((s) => s.id === SEND_A)!.quoteId = null;
+      },
+      409,
+      { error: "notAQuote" },
+    ],
+    ["rechazado", { token: TOKEN, sendId: SEND_A }, (store) => (store.quote!.declinedAt = "2027-02-26T09:00:00+00:00"), 409, { error: "quoteClosed", reason: "declined" }],
+    ["retirado", { token: TOKEN, sendId: SEND_A }, (store) => (store.quote!.withdrawn = true), 409, { error: "quoteClosed", reason: "withdrawn" }],
+    ["vencido", { token: TOKEN, sendId: SEND_A }, (store) => (store.quote!.expired = true), 409, { error: "quoteClosed", reason: "expired" }],
+    [
+      "pidió cambios a esa versión",
+      { token: TOKEN, sendId: SEND_A },
+      (store) => {
+        store.sends.find((s) => s.id === SEND_A)!.changesRequestedAt = "2027-02-26T09:00:00+00:00";
+      },
+      409,
+      { error: "changesRequested" },
+    ],
+    ["Evelyn lo cambió sin reenviarlo", { token: TOKEN, sendId: SEND_A }, (store) => (store.quote!.changed = true), 409, { error: "quoteChanged" }],
+    [
+      "sin semanas por aceptar",
+      { token: TOKEN, sendId: SEND_A },
+      (store) => {
+        store.sessions.find((s) => s.id === SESSION_2)!.status = "cancelled";
+        store.sessions.find((s) => s.id === SESSION_1)!.status = "confirmed";
+      },
+      409,
+      { error: "quoteEmpty" },
+    ],
+  ];
+  for (const [label, body, setup, status, expected] of cases) {
+    const { handle, store, logs, emails, settle } = quoteHarness();
+    setup(store);
+    const response = await handle(post("/accept", body));
+    assert.equal(response.status, status, label);
+    assert.deepEqual(await json(response), expected, label);
+    await settle();
+    assert.equal(emails.length, 0, label);
+    assert.ok(logs.some((log) => log.event === "rejected" && log.fields["error"] === expected["error"]), label);
+    if (expected["reason"]) assert.ok(logs.some((log) => log.event === "rejected" && log.fields["reason"] === expected["reason"]), label);
+    assertNoLeaks(logs);
+  }
+});
+
+test("/decline: uno aceptado no se rechaza (quoteClosed accepted); la versión vieja, menuOutdated; sin presupuesto, notAQuote", async () => {
+  const accepted = quoteHarness();
+  accepted.store.quote!.acceptedAt = "2027-02-26T09:00:00+00:00";
+  const closed = await accepted.handle(post("/decline", { token: TOKEN, sendId: SEND_A }));
+  assert.deepEqual([closed.status, await json(closed)], [409, { error: "quoteClosed", reason: "accepted" }]);
+
+  const outdated = quoteHarness();
+  const old = await outdated.handle(post("/decline", { token: TOKEN, sendId: SEND_OLD }));
+  assert.deepEqual([old.status, await json(old)], [409, { error: "menuOutdated" }]);
+
+  const plain = harness();
+  const none = await plain.handle(post("/decline", { token: TOKEN, sendId: SEND_A }));
+  assert.deepEqual([none.status, await json(none)], [409, { error: "notAQuote" }]);
+
+  // Se puede rechazar aunque haya pedido cambios antes.
+  const changes = quoteHarness();
+  changes.store.sends.find((s) => s.id === SEND_A)!.changesRequestedAt = "2027-02-26T09:00:00+00:00";
+  assert.equal((await changes.handle(post("/decline", { token: TOKEN, sendId: SEND_A }))).status, 200);
+
+  for (const h of [accepted, outdated, plain]) {
+    await h.settle();
+    assert.equal(h.emails.length, 0);
+  }
+});
+
+test("/confirm de un menú con el presupuesto abierto: 409 quotePending (se acepta el presupuesto); cerrado, quoteClosed", async () => {
+  const open = quoteHarness();
+  const pending = await open.handle(post("/confirm", { token: TOKEN, sendId: SEND_A }));
+  assert.deepEqual([pending.status, await json(pending)], [409, { error: "quotePending" }]);
+  assert.ok(open.logs.some((log) => log.event === "rejected" && log.fields["error"] === "quotePending"));
+
+  const expired = quoteHarness();
+  expired.store.quote!.expired = true;
+  const closed = await expired.handle(post("/confirm", { token: TOKEN, sendId: SEND_A }));
+  assert.deepEqual([closed.status, await json(closed)], [409, { error: "quoteClosed" }], "sin motivo: confirm no lo dice");
+
+  // Pedir cambios con el presupuesto abierto, sí (como con cualquier menú); con el presupuesto cerrado, no.
+  const changes = quoteHarness();
+  assert.equal((await changes.handle(post("/changes", { token: TOKEN, sendId: SEND_A, text: "Mejor a las 11" }))).status, 200);
+  const withdrawn = quoteHarness();
+  withdrawn.store.quote!.withdrawn = true;
+  const refused = await withdrawn.handle(post("/changes", { token: TOKEN, sendId: SEND_A, text: "Mejor a las 11" }));
+  assert.deepEqual([refused.status, await json(refused)], [409, { error: "quoteClosed" }]);
+
+  for (const h of [open, expired, withdrawn]) {
+    await h.settle();
+    assert.equal(h.emails.length, 0);
+  }
+});
+
+test("/accept y /decline: el cuerpo como /confirm (400 sin sendId), el contador de las respuestas y 503 si la base no responde", async () => {
+  const { handle, store } = quoteHarness();
+  for (const route of ["/accept", "/decline"]) {
+    for (const body of [{ token: TOKEN }, { token: TOKEN, sendId: "x" }, { sendId: SEND_A }]) {
+      const response = await handle(post(route, body));
+      assert.deepEqual([response.status, await json(response)], [400, { error: "invalidPayload" }], `${route} ${JSON.stringify(body)}`);
+    }
+  }
+  assert.equal(store.hits.length, 0, "un cuerpo inválido no llega al límite");
+  await handle(post("/accept", { token: TOKEN, sendId: SEND_OLD }));
+  await handle(post("/decline", { token: TOKEN, sendId: SEND_OLD }));
+  const answerHash = await hashSubject(answerRateSubject("203.0.113.7"), ENV["IP_HASH_SALT"] ?? "");
+  assert.deepEqual(
+    store.hits.map((hit) => [hit.ipHash, hit.maxHour, hit.maxDay]),
+    [
+      [answerHash, ANSWER_RATE_LIMITS.perHour, ANSWER_RATE_LIMITS.perDay],
+      [answerHash, ANSWER_RATE_LIMITS.perHour, ANSWER_RATE_LIMITS.perDay],
+    ],
+    "el mismo contador que /confirm y /changes",
+  );
+
+  for (const failOn of ["accept", "decline"] as const) {
+    const down = quoteHarness();
+    down.store.failOn = failOn;
+    const response = await down.handle(post(`/${failOn}`, { token: TOKEN, sendId: SEND_A }));
+    assert.deepEqual([response.status, await json(response)], [503, { error: "unavailable" }], failOn);
+    await down.settle();
+    assert.equal(down.emails.length, 0);
+  }
+});
+
+test("presupuesto: si el aviso a Evelyn falla la clienta igual recibe su 200; con EMAIL_TRANSPORT=log no sale nada; sin destinatario, se saltea", async () => {
+  const failing = quoteHarness({ resend: () => Response.json({ name: "internal_server_error" }, { status: 500 }) });
+  assert.equal((await failing.handle(post("/accept", { token: TOKEN, sendId: SEND_A }))).status, 200);
+  await failing.settle();
+  assert.ok(failing.logs.some((log) => log.level === "error" && log.event === "email_failed" && log.fields["kind"] === "accepted"));
+
+  const logged = quoteHarness({ env: { EMAIL_TRANSPORT: "log", RESEND_API_KEY: undefined } });
+  await logged.handle(post("/decline", { token: TOKEN, sendId: SEND_A }));
+  await logged.settle();
+  assert.equal(logged.emails.length, 0);
+  assert.ok(logged.logs.some((log) => log.event === "email_logged" && log.fields["kind"] === "declined"));
+
+  const nobody = quoteHarness({ env: { CHEF_NOTIFY_EMAIL: undefined } });
+  assert.equal((await nobody.handle(post("/accept", { token: TOKEN, sendId: SEND_A }))).status, 200);
+  await nobody.settle();
+  assert.ok(nobody.logs.some((log) => log.event === "email_skipped" && log.fields["reason"] === "no_recipient"));
+
+  const italian = quoteHarness({ env: { CHEF_LOCALE: "it" } });
+  await italian.handle(post("/accept", { token: TOKEN, sendId: SEND_A }));
+  await italian.settle();
+  assert.equal(italian.emails[0]?.body["subject"], "Annaxyz ha accettato il preventivo");
+  for (const h of [failing, logged, nobody, italian]) {
+    assertNoLeaks(h.logs);
+    assertNoAmounts(h.logs);
+  }
+});
+
+test("errorReply y storeErrorFrom del presupuesto: cada código con su SQLSTATE; de quote_closed, solo un motivo conocido", () => {
+  const cases: Array<[StoreError, number, Record<string, unknown>]> = [
+    [new StoreError("x", "55000", "quote_pending"), 409, { error: "quotePending" }],
+    [new StoreError("x", "55000", "quote_closed"), 409, { error: "quoteClosed" }],
+    [new StoreError("x", "55000", "quote_closed", "expired"), 409, { error: "quoteClosed", reason: "expired" }],
+    [new StoreError("x", "55000", "quote_closed", "otra cosa"), 409, { error: "quoteClosed" }],
+    // 40001 es la clase de los reintentos, pero quote_changed no se arregla reintentando.
+    [new StoreError("x", "40001", "quote_changed"), 409, { error: "quoteChanged" }],
+    [new StoreError("x", "55000", "not_a_quote"), 409, { error: "notAQuote" }],
+    [new StoreError("x", "55000", "quote_empty"), 409, { error: "quoteEmpty" }],
+    [new StoreError("x", "55000", "quote_changed"), 500, { error: "server" }],
+  ];
+  for (const [error, status, body] of cases) {
+    assert.deepEqual(errorReply(error), { status, body }, `${error.code} ${error.safeMessage} ${error.safeDetail}`);
+  }
+  for (const reason of ["accepted", "declined", "withdrawn", "expired"]) {
+    assert.equal(storeErrorFrom("accept_quote", { code: "55000", message: "quote_closed", details: reason }).safeDetail, reason);
+  }
+  // El detalle de Postgres de cualquier otro error (puede traer la fila) no pasa.
+  assert.equal(storeErrorFrom("accept_quote", { code: "55000", message: "quote_closed", details: "Failing row contains (Anna)" }).safeDetail, null);
+  assert.equal(storeErrorFrom("view", { code: "23514", message: "menu_outdated", details: "accepted" }).safeDetail, null);
+});
+
+test("quoteAnswerFromRpc: la respuesta de siempre más el presupuesto (y, al aceptar, semanas y total); otra forma, null", () => {
+  const base = {
+    sendId: SEND_A,
+    requestId: REQUEST_ID,
+    already: false,
+    confirmedAt: "2027-02-26T10:00:00+00:00",
+    changesRequestedAt: null,
+    date: "2027-03-01",
+    start: "10:00",
+    week: 1,
+    weeks: 2,
+    clientName: "Anna",
+  };
+  assert.deepEqual(quoteAnswerFromRpc({ ...base, quoteId: QUOTE_ID.toUpperCase(), totalCents: 30000, quoteWeeks: 2 }), {
+    ...base,
+    quoteId: QUOTE_ID,
+    totalCents: 30000,
+    quoteWeeks: 2,
+  });
+  assert.deepEqual(quoteAnswerFromRpc({ ...base, confirmedAt: null, week: null, weeks: 0, quoteId: QUOTE_ID }), {
+    ...base,
+    confirmedAt: null,
+    week: null,
+    weeks: 0,
+    quoteId: QUOTE_ID,
+    totalCents: null,
+    quoteWeeks: null,
+  });
+  for (const bad of [{ ...base }, { ...base, quoteId: "x" }, { ...base, quoteId: QUOTE_ID, totalCents: 1.5 }, { ...base, quoteId: QUOTE_ID, quoteWeeks: -1 }]) {
+    assert.equal(quoteAnswerFromRpc(bad), null, JSON.stringify(bad));
+  }
+});
+
+test("index.ts: aceptar y rechazar con las funciones SQL del presupuesto y sus errores por storeErrorFrom", () => {
+  const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  for (const [fn, op] of [
+    ["client_link_accept_quote", "accept_quote"],
+    ["client_link_decline_quote", "decline_quote"],
+  ]) {
+    assert.match(
+      index,
+      new RegExp(`supabase\\.rpc\\("${fn}", \\{ p_token_hash: tokenHash, p_send_id: sendId \\}\\);\\s*if \\(error\\) throw storeErrorFrom\\("${op}", error\\);\\s*return data;`),
+      fn,
+    );
+    assert.ok(index.includes(`fail("${op}")`), op);
+  }
 });

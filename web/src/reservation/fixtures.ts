@@ -1,7 +1,9 @@
-// Datos de prueba de la página /prenotazione/: una reserva de dos semanas, la primera con el menú enviado.
+// Datos de prueba de la página /prenotazione/: una reserva de dos semanas, la primera con el menú enviado; y la
+// misma con el presupuesto por aceptar (quoteView), que viaja con el menú de la semana 1.
 import {
   CLIENT_LINK_VERSION,
   type ClientLinkMenu,
+  type ClientLinkQuote,
   type ClientLinkView,
   type ClientLinkWeek,
   type MenuContent,
@@ -63,6 +65,7 @@ export function menu(overrides: Partial<ClientLinkMenu> = {}): ClientLinkMenu {
     state: "pending",
     confirmedAt: null,
     changesRequestedAt: null,
+    quoteId: null,
     content: content(),
     ...overrides,
   };
@@ -79,7 +82,42 @@ export function view(overrides: Partial<ClientLinkView> = {}): ClientLinkView {
     locale: "it",
     chefName: "Evelyn",
     clientFirstName: "Anna",
+    quote: null,
     weeks: [week(), week({ sessionId: SESSION_2, week: 2, date: "2027-03-08", menu: null })],
     ...overrides,
   };
+}
+
+export const QUOTE_ID = "9a0e0000-0000-4000-8000-000000000001";
+
+/**
+ * El presupuesto por aceptar (versión 1): las dos semanas a 150 € (300 €), con el plazo el sábado 27/2 a las
+ * 19:03 en Roma, y el envío de la semana 1 (SEND_1) que lo lleva.
+ */
+export function quote(overrides: Partial<ClientLinkQuote> = {}): ClientLinkQuote {
+  return {
+    id: QUOTE_ID,
+    version: 1,
+    status: "sent",
+    sentAt: "2027-02-25T18:03:00.123456+00:00",
+    holdUntil: "2027-02-27T18:03:00.123456+00:00",
+    acceptedAt: null,
+    sendId: SEND_1,
+    summary: {
+      totalCents: 30000,
+      weeks: [
+        { date: "2027-03-01", start: "10:00", serviceCents: 15000 },
+        { date: "2027-03-08", start: "10:00", serviceCents: 15000 },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+/** La reserva con el presupuesto: la semana 1 con el menú que lo lleva, la 2 sin menú (sale después de aceptarlo). */
+export function quoteView(quoteOverrides: Partial<ClientLinkQuote> = {}, menuOverrides: Partial<ClientLinkMenu> = {}): ClientLinkView {
+  return view({
+    quote: quote(quoteOverrides),
+    weeks: [week({ menu: menu({ quoteId: QUOTE_ID, ...menuOverrides }) }), week({ sessionId: SESSION_2, week: 2, date: "2027-03-08", menu: null })],
+  });
 }

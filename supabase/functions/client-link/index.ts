@@ -1,6 +1,7 @@
 // Edge Function client-link: el link de la clienta (docs/contracts/client-link.md, SPEC 5.8). La página
 // /prenotazione/ de la web muestra la reserva con el menú que Evelyn mandó de cada semana, y la clienta lo
-// confirma o pide cambios, con las funciones SQL client_link_* (solo service_role).
+// confirma o pide cambios, y acepta o rechaza el presupuesto, con las funciones SQL client_link_* (solo
+// service_role).
 // Este archivo solo conecta lo real (Deno, supabase-js con la clave secreta, EdgeRuntime); la lógica y sus
 // tests están en handler.ts.
 //
@@ -39,6 +40,8 @@ function createStore(): ClientLinkStore {
       view: () => fail("view"),
       confirmMenu: () => fail("confirm_menu"),
       requestChanges: () => fail("request_changes"),
+      acceptQuote: () => fail("accept_quote"),
+      declineQuote: () => fail("decline_quote"),
     };
   }
 
@@ -77,6 +80,19 @@ function createStore(): ClientLinkStore {
         p_text: text,
       });
       if (error) throw storeErrorFrom("request_changes", error);
+      return data;
+    },
+
+    // El presupuesto (migración 20261121120000_quotes.sql). De quote_closed pasa solo el motivo (storeErrorFrom).
+    async acceptQuote(tokenHash, sendId) {
+      const { data, error } = await supabase.rpc("client_link_accept_quote", { p_token_hash: tokenHash, p_send_id: sendId });
+      if (error) throw storeErrorFrom("accept_quote", error);
+      return data;
+    },
+
+    async declineQuote(tokenHash, sendId) {
+      const { data, error } = await supabase.rpc("client_link_decline_quote", { p_token_hash: tokenHash, p_send_id: sendId });
+      if (error) throw storeErrorFrom("decline_quote", error);
       return data;
     },
   };

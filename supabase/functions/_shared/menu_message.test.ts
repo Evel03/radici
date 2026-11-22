@@ -12,8 +12,11 @@ import {
 } from "./menu_message.ts";
 import { readMenuSnapshot, type MenuSnapshot } from "./menu_snapshot.ts";
 import { LOCALES, type Locale } from "./public_request.ts";
+import type { SnapshotQuote } from "./quote_snapshot.ts";
 
 const LINK = "https://radicicucina.app/prenotazione/#t=Tok3n_abc-XYZ";
+/** Viernes 20/11/2026, 11:00 en Roma: el lunes 30 (la primera llegada) está a más de 48 horas. */
+const NOW = new Date("2026-11-20T10:00:00Z");
 
 function snapshot(locale: Locale = "it", overrides: Partial<MenuSnapshot> = {}): MenuSnapshot {
   return {
@@ -51,7 +54,7 @@ function snapshot(locale: Locale = "it", overrides: Partial<MenuSnapshot> = {}):
 }
 
 function input(overrides: Partial<MenuMessageInput> = {}): MenuMessageInput {
-  return { brand: "Radici", chefName: "Evelyn", clientName: "Maria Rossi", snapshot: snapshot(), link: LINK, ...overrides };
+  return { brand: "Radici", chefName: "Evelyn", clientName: "Maria Rossi", snapshot: snapshot(), link: LINK, now: NOW, ...overrides };
 }
 
 // ---------------------------------------------------------------------------
@@ -396,4 +399,202 @@ test("la nota: una palabra larga (un link) se parte y no ensancha el email en el
   assert.ok(paragraph, "la nota va en un párrafo");
   assert.ok(paragraph.startsWith('style="') && paragraph.includes("word-break:break-word;overflow-wrap:anywhere;"), paragraph);
   assert.ok(paragraph.includes(`Compra il lievito qui: ${url}</p>`));
+});
+
+// ---------------------------------------------------------------------------
+// Con el presupuesto (la semana 1 de un presupuesto abierto, SPEC 5.8)
+// ---------------------------------------------------------------------------
+
+/** El presupuesto de 4 semanas a 140 € (560 €), con la primera llegada el lunes 30/11 a las 10:00. */
+function quote(overrides: Partial<SnapshotQuote> = {}): SnapshotQuote {
+  return {
+    version: 1,
+    totalCents: 56000,
+    weeks: [
+      { date: "2026-11-30", start: "10:00", serviceCents: 14000 },
+      { date: "2026-12-07", start: "10:00", serviceCents: 14000 },
+      { date: "2026-12-14", start: "10:00", serviceCents: 14000 },
+      { date: "2026-12-21", start: "11:30", serviceCents: 14000 },
+    ],
+    holdHours: 48,
+    firstStart: "2026-11-30T10:00",
+    ...overrides,
+  };
+}
+
+function quoteSnapshot(locale: Locale = "it", value: SnapshotQuote = quote()): MenuSnapshot {
+  return snapshot(locale, {
+    session: { date: "2026-11-30", start: "10:00", week: 1, weeks: value.weeks.length },
+    weeks: value.weeks.map((week) => ({ date: week.date, start: week.start })),
+    quote: value,
+  });
+}
+
+/** Palabras de pagos (cómo o cuándo se paga): ningún mensaje las lleva. */
+const PAYMENT_WORDS =
+  /pagament|pagar|\bpago|\bpaga\b|bonifico|transferencia|bank transfer|contanti|efectivo|\bcash\b|tarjeta|carta di credito|credit card|\bcard\b|stripe|satispay|payment|\bpay\b|\bpaid\b|anticipo|adelanto|deposit|caparra|señal/i;
+
+test("italiano con el presupuesto: las semanas con su llegada, el precio del servicio, 48 horas y que se acepta desde el link", () => {
+  const message = renderMenuMessage(input({ snapshot: quoteSnapshot() }));
+  assert.equal(message.subject, "Radici: il tuo preventivo e il menù del 30 nov");
+  for (const expected of [
+    "Ciao Maria!\n\nEvelyn ha preparato il preventivo per le tue 4 settimane e il menù della prima.",
+    "IL PREVENTIVO\nEcco il preventivo per le tue 4 settimane:\n" +
+      "Settimana 1: lunedì 30 novembre 2026, arrivo alle 10:00\n" +
+      "Settimana 2: lunedì 7 dicembre 2026, arrivo alle 10:00\n" +
+      "Settimana 3: lunedì 14 dicembre 2026, arrivo alle 10:00\n" +
+      "Settimana 4: lunedì 21 dicembre 2026, arrivo alle 11:30\n" +
+      "Prezzo del servizio: 560,00 € in totale (140,00 € a settimana)\n" +
+      "Accettalo entro 48 ore. Fino ad allora, queste date restano riservate per te.\n" +
+      "Dal tuo link puoi accettare il preventivo e il menù della prima settimana, chiedere dei cambi o rifiutarlo.",
+    "QUANDO\nSettimana: 1 di 4\nGiorno: lunedì 30 novembre 2026\nArrivo: 10:00",
+    "Apri il tuo link per vedere il preventivo e il menù completo, con le foto dei piatti, e accettarli.",
+    `Vedi e accetta il preventivo: ${LINK}`,
+  ]) {
+    assert.ok(message.text.includes(expected), `falta en el texto: ${expected}\n${message.text}`);
+  }
+  // Las fechas van en el presupuesto, con la llegada de cada una: sin «Tutte le date».
+  assert.ok(!message.text.includes("Tutte le date"));
+  assert.ok(!message.whatsapp.includes("Tutte le date"));
+  // El presupuesto va antes del menú.
+  assert.ok(message.text.indexOf("IL PREVENTIVO") < message.text.indexOf("IL MENÙ"));
+
+  assert.ok(message.html.includes("<strong>560,00&nbsp;€ in totale (140,00&nbsp;€ a settimana)</strong>"), "el precio, destacado y sin cortarse");
+  assert.ok(message.html.includes(">Vedi e accetta il preventivo</a>"));
+  assert.ok(message.html.includes("Evelyn ti ha mandato il preventivo: guardalo e accettalo dal tuo link."), "el preheader");
+  assert.ok(!message.html.includes("Vedi e conferma il menù"));
+
+  for (const expected of [
+    "*Il preventivo*\nEcco il preventivo per le tue 4 settimane:\n• Settimana 1: lunedì 30 novembre 2026, arrivo alle 10:00",
+    "• Settimana 4: lunedì 21 dicembre 2026, arrivo alle 11:30\n*Prezzo del servizio:* 560,00 € in totale (140,00 € a settimana)\nAccettalo entro 48 ore.",
+    "Apri il tuo link per vedere il preventivo e il menù completo, con le foto dei piatti, e accettarli. Se vuoi cambiare qualcosa, puoi chiederlo da lì; puoi anche rifiutare il preventivo.\n" +
+      LINK,
+  ]) {
+    assert.ok(message.whatsapp.includes(expected), `falta en el WhatsApp: ${expected}\n${message.whatsapp}`);
+  }
+});
+
+test("el plazo: si la primera llegada es antes de las 48 horas, «prima di <día>, alle <hora>» (nunca después de la llegada)", () => {
+  // Sábado 28/11 a las 20:00 en Roma: el lunes a las 10:00 está a 38 horas.
+  const late = new Date("2026-11-28T19:00:00Z");
+  const expected: Record<Locale, string> = {
+    it: "Accettalo prima di lunedì 30 novembre 2026, alle 10:00. Fino ad allora, queste date restano riservate per te.",
+    es: "Acéptalo antes del lunes, 30 de noviembre de 2026, a las 10:00. Hasta entonces, estas fechas quedan reservadas para ti.",
+    en: "Please accept it before Monday 30 November 2026 at 10:00. Until then, these dates are held for you.",
+  };
+  for (const locale of LOCALES) {
+    const message = renderMenuMessage(input({ snapshot: quoteSnapshot(locale), now: late }));
+    for (const text of [message.text, message.whatsapp]) assert.ok(text.includes(expected[locale]), `${locale}: ${text}`);
+    assert.ok(!/48/.test(message.text), `${locale}: sin las 48 horas`);
+  }
+  // Con otro plazo de la cocinera, sus horas.
+  const short = renderMenuMessage(input({ snapshot: quoteSnapshot("it", quote({ holdHours: 24 })), now: late }));
+  assert.ok(short.text.includes("Accettalo entro 24 ore."));
+  const one = renderMenuMessage(input({ snapshot: quoteSnapshot("en", quote({ holdHours: 1 })), now: late }));
+  assert.ok(one.text.includes("Please accept it within 1 hour."));
+});
+
+test("semanas a distinto precio: cada una con el suyo y el total; una sola semana: el precio y su día", () => {
+  const uneven = quote({
+    totalCents: 30001,
+    weeks: [
+      { date: "2026-11-30", start: "10:00", serviceCents: 15001 },
+      { date: "2026-12-07", start: "10:00", serviceCents: 15000 },
+    ],
+  });
+  const message = renderMenuMessage(input({ snapshot: quoteSnapshot("it", uneven) }));
+  for (const expected of [
+    "Settimana 1: lunedì 30 novembre 2026, arrivo alle 10:00 · 150,01 €",
+    "Settimana 2: lunedì 7 dicembre 2026, arrivo alle 10:00 · 150,00 €",
+    "Prezzo del servizio: 300,01 € in totale",
+  ]) {
+    assert.ok(message.text.includes(expected), `falta: ${expected}\n${message.text}`);
+  }
+  assert.ok(!message.text.includes("€ a settimana"), "sin un precio por semana que no es el de todas");
+  assert.ok(message.html.includes("arrivo alle 10:00 · 150,01&nbsp;€"));
+
+  const single = quote({ totalCents: 15000, weeks: [{ date: "2026-11-30", start: "10:00", serviceCents: 15000 }] });
+  const one = renderMenuMessage(input({ snapshot: quoteSnapshot("it", single) }));
+  for (const expected of [
+    "Evelyn ha preparato il preventivo e il tuo menù.",
+    "IL PREVENTIVO\nEcco il preventivo:\nQuando: lunedì 30 novembre 2026, arrivo alle 10:00\nPrezzo del servizio: 150,00 €\n",
+    "Dal tuo link puoi accettare il preventivo e il menù, chiedere dei cambi o rifiutarlo.",
+  ]) {
+    assert.ok(one.text.includes(expected), `falta: ${expected}\n${one.text}`);
+  }
+  assert.ok(!one.text.includes("Settimana"), "una sola semana: ni «Settimana 1» ni «1 di 1»");
+});
+
+test("un reenvío (versión 2 o más): el asunto y el texto dicen que es el presupuesto actualizado", () => {
+  const expected: Record<Locale, { subject: string; lead: string }> = {
+    it: { subject: "Radici: il preventivo aggiornato e il menù del 30 nov", lead: "Ecco il preventivo aggiornato per le tue 4 settimane:" },
+    es: { subject: "Radici: tu presupuesto actualizado y el menú del 30 nov", lead: "Este es el presupuesto actualizado para tus 4 semanas:" },
+    en: { subject: "Radici: your updated quote and menu for 30 Nov", lead: "Here is the updated quote for your 4 weeks:" },
+  };
+  for (const locale of LOCALES) {
+    const message = renderMenuMessage(input({ snapshot: quoteSnapshot(locale, quote({ version: 2 })) }));
+    assert.equal(message.subject, expected[locale].subject, locale);
+    assert.ok(message.text.includes(expected[locale].lead), `${locale}: ${message.text}`);
+  }
+});
+
+test("español e inglés con el presupuesto: sus textos y el € con los separadores de cada idioma", () => {
+  const es = renderMenuMessage(input({ snapshot: quoteSnapshot("es") }));
+  assert.equal(es.subject, "Radici: tu presupuesto y el menú del 30 nov");
+  for (const expected of [
+    "Evelyn ha preparado el presupuesto para tus 4 semanas y el menú de la primera.",
+    "EL PRESUPUESTO\nEste es el presupuesto para tus 4 semanas:\nSemana 1: lunes, 30 de noviembre de 2026, llegada a las 10:00",
+    "Precio del servicio: 560,00 € en total (140,00 € por semana)",
+    "Acéptalo dentro de las próximas 48 horas. Hasta entonces, estas fechas quedan reservadas para ti.",
+    "Desde tu enlace puedes aceptar el presupuesto y el menú de la primera semana, pedir cambios o rechazarlo.",
+    `Ver y aceptar el presupuesto: ${LINK}`,
+  ]) {
+    assert.ok(es.text.includes(expected), `es: ${expected}\n${es.text}`);
+  }
+
+  const pricey = quote({ totalCents: 112000, weeks: quote().weeks.map((week) => ({ ...week, serviceCents: 28000 })) });
+  const en = renderMenuMessage(input({ snapshot: quoteSnapshot("en", pricey) }));
+  assert.equal(en.subject, "Radici: your quote and menu for 30 Nov");
+  for (const expected of [
+    "Evelyn has prepared the quote for your 4 weeks and the menu for the first one.",
+    "THE QUOTE\nHere is the quote for your 4 weeks:\nWeek 1: Monday 30 November 2026, arriving at 10:00",
+    "Service price: €1,120.00 in total (€280.00 per week)",
+    "Please accept it within 48 hours. Until then, these dates are held for you.",
+    "From your link you can accept the quote and the first week's menu, ask for changes or decline it.",
+    `See and accept the quote: ${LINK}`,
+  ]) {
+    assert.ok(en.text.includes(expected), `en: ${expected}\n${en.text}`);
+  }
+});
+
+test("con el presupuesto: la vista previa sin link y nunca la forma ni el momento de pago, la dirección ni las alergias", () => {
+  for (const locale of LOCALES) {
+    const preview = renderMenuMessage(input({ snapshot: quoteSnapshot(locale), link: null }));
+    for (const text of [preview.text, preview.whatsapp, preview.html]) {
+      assert.ok(text.includes(linkPlaceholder(locale)), locale);
+      assert.ok(!text.includes("#t="), `${locale}: sin token`);
+    }
+    const message = renderMenuMessage(input({ snapshot: quoteSnapshot(locale) }));
+    for (const text of [message.subject, message.text, message.whatsapp, message.html]) {
+      assert.ok(!PAYMENT_WORDS.test(text), `${locale}: habla de pagos: ${PAYMENT_WORDS.exec(text)?.[0]}`);
+    }
+  }
+  // Una foto con el presupuesto y datos que no son del contrato: el mensaje sale sin ellos.
+  const read = readMenuSnapshot({
+    ...quoteSnapshot(),
+    quote: { ...quote(), payment: "bonifico anticipato", address: "Via Segretissima 42" },
+    restrictions: "celiachia grave",
+  });
+  assert.ok(read?.quote);
+  const message = renderMenuMessage(input({ snapshot: read }));
+  for (const text of [message.text, message.whatsapp, message.html]) {
+    for (const marker of ["bonifico", "Segretissima", "celiachia"]) assert.ok(!text.includes(marker), marker);
+  }
+});
+
+test("sin el presupuesto, el mensaje de siempre (confirmar el menú), también con otro «ahora»", () => {
+  const message = renderMenuMessage(input({ now: new Date("2030-01-01T00:00:00Z") }));
+  assert.equal(message.subject, "Radici: il menù della settimana 1 di 3 (30 nov)");
+  assert.ok(message.text.includes(`Vedi e conferma il menù: ${LINK}`));
+  assert.ok(!/preventivo|€/.test(message.text + message.whatsapp + message.html));
 });

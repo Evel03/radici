@@ -141,11 +141,20 @@ describe("claves usadas por la web", () => {
     }
   });
 
-  it("página de la clienta: ningún texto habla de precios ni de pagos (la página no los muestra)", () => {
+  it("página de la clienta: ningún texto habla de pagos; del precio, solo el recuadro del presupuesto (el servicio)", () => {
+    // Este proceso no cambia ni describe nada de pagos (SPEC 5.8): ni cómo ni cuándo se paga.
+    const payments =
+      /pagament|pagar|\bpago|\bpaga\b|payment|\bpay\b|\bpaid\b|bonifico|transferencia|bank transfer|contanti|efectivo|\bcash\b|tarjeta|carta di credito|credit card|\bcard\b|satispay|stripe|anticipo|adelanto|deposit|caparra/i;
+    const prices = /\{(price|amount|total)\w*\}|prezz|precio|price/i;
     for (const lang of LANGS) {
       const texts = Object.entries(dicts[lang]).filter(([key]) => key.startsWith("reservation."));
       expect(texts.length).toBeGreaterThan(50);
-      for (const [key, value] of texts) expect(value, `${lang} ${key}`).not.toMatch(/€|\{(price|amount|total)\w*\}|prezz|precio|price|pagament|pago|payment/i);
+      for (const [key, value] of texts) {
+        expect(value, `${lang} ${key}`).not.toMatch(payments);
+        if (!key.startsWith("reservation.quote.")) expect(value, `${lang} ${key}`).not.toMatch(prices);
+        // Los importes los escribe la página con formatCents: ningún texto trae uno.
+        expect(value, `${lang} ${key}`).not.toMatch(/€|\d+[.,]\d{2}\b/);
+      }
     }
   });
 
@@ -396,6 +405,29 @@ describe("privacy", () => {
         expect(dicts[lang][key], key).toMatch(booking[lang].limit);
       }
       expect(dicts[lang]["privacy.flowBody"]).toContain(booking[lang].email);
+    });
+  }
+
+  // 2026-11-23: el presupuesto en la página de la reserva (SPEC 5.8). La página muestra su precio (la de 2026-11-22
+  // decía que nunca mostraba precios) y la clienta lo acepta o lo rechaza: una respuesta más de la solicitud, con la
+  // misma base (art. 6.1.b) y la misma conservación que las respuestas al menú. Nada de pagos.
+  const quote: Record<Lang, { reply: string; shown: string; before: string }> = {
+    it: { reply: "accettare o rifiutare il preventivo", shown: "il preventivo (le date e il prezzo del servizio)", before: "prezzi o allergie" },
+    es: { reply: "aceptar o rechazar el presupuesto", shown: "el presupuesto (las fechas y el precio del servicio)", before: "los precios" },
+    en: { reply: "accept or decline the quote", shown: "the quote (the dates and the service price)", before: "prices or allergies" },
+  };
+  const answer: Record<Lang, string> = { it: "preventivo", es: "presupuesto", en: "quote" };
+  for (const lang of LANGS) {
+    it(`${lang}: cuenta el presupuesto en la página de la reserva (que lo muestra, aceptarlo o rechazarlo, base y conservación)`, () => {
+      expect(dicts[lang]["privacy.dataBody"]).toContain(quote[lang].reply);
+      expect(dicts[lang]["privacy.flowBody"]).toContain(quote[lang].shown);
+      expect(dicts[lang]["privacy.flowBody"], "ya no dice que la página nunca muestra precios").not.toContain(quote[lang].before);
+      for (const key of ["privacy.purposeBody", "privacy.legalBody", "privacy.retentionBody", "privacy.requiredBody"]) {
+        expect(dicts[lang][key], key).toMatch(new RegExp(answer[lang], "i"));
+      }
+      for (const key of ["privacy.dataBody", "privacy.purposeBody", "privacy.legalBody", "privacy.flowBody", "privacy.retentionBody"]) {
+        expect(dicts[lang][key], key).not.toMatch(/pagament|pagar|\bpago|payment|bonifico|transferencia|contanti|efectivo|\bcash\b/i);
+      }
     });
   }
 });

@@ -3,18 +3,20 @@ import type { ClientLinkView } from "../../../supabase/functions/_shared/client_
 import type { Lang } from "../i18n/core.ts";
 import { find, findAll, textOf, toHtml, type VNode } from "../lib/vdom.ts";
 import { i18nFor } from "../request/fixtures.ts";
-import type { Message, PageState, WeekUi } from "./controller.ts";
-import { PHOTO, SESSION_1, SESSION_2, content, menu, view, week } from "./fixtures.ts";
+import type { Message, PageState, QuoteUi, WeekUi } from "./controller.ts";
+import { PHOTO, SESSION_1, SESSION_2, content, menu, quoteView, view, week } from "./fixtures.ts";
 import { DISH_PHOTO_SIZE, changesCountText, focusId, messageText, reservationTree, weekDomId } from "./render.ts";
 
 const NBSP = String.fromCharCode(0xa0);
 const EMPTY_UI: WeekUi = { formOpen: false, draft: "", draftFor: null, busy: null, error: null, textError: null, notice: null };
+const EMPTY_QUOTE_UI: QuoteUi = { declineOpen: false, declineFor: null, busy: null, error: null, notice: null };
 const W1 = weekDomId(SESSION_1);
 const W2 = weekDomId(SESSION_2);
 
 interface RenderOptions {
   lang?: Lang;
   ui?: Partial<Record<string, Partial<WeekUi>>>;
+  quoteUi?: Partial<QuoteUi>;
   failedPhotos?: ReadonlySet<string>;
   retrying?: boolean;
   pageNotice?: Message | null;
@@ -25,6 +27,7 @@ function render(state: PageState, options: RenderOptions = {}): VNode {
     state,
     i18n: i18nFor(options.lang ?? "it"),
     ui: (session) => ({ ...EMPTY_UI, ...options.ui?.[session] }),
+    quoteUi: { ...EMPTY_QUOTE_UI, ...options.quoteUi },
     retrying: options.retrying ?? false,
     pageNotice: options.pageNotice ?? null,
     ...(options.failedPhotos ? { failedPhotos: options.failedPhotos } : {}),
@@ -413,5 +416,230 @@ describe("piezas", () => {
 
   it("changesCountText", () => {
     expect(changesCountText(0, i18nFor("en"))).toBe("0/1000");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// El presupuesto (SPEC 5.8)
+// ---------------------------------------------------------------------------
+
+/** El texto con los espacios duros como espacios (los importes de Intl los llevan entre el número y el €). */
+const plain = (text: string): string => text.replace(/[  ]/g, " ");
+const quoteStatusText = (tree: VNode): string => plain(textOf(byId(tree, "quote-status") ?? ""));
+
+describe("el presupuesto, por aceptar (en italiano)", () => {
+  const tree = render(ready(quoteView()));
+
+  it("arriba de las semanas, con la presentación del presupuesto", () => {
+    const content = find(tree, (node) => (node.attrs["class"] ?? "") === "reservation__content");
+    const order = (content?.children ?? []).map((child) => (typeof child === "string" ? child : (child.attrs["class"] ?? "")));
+    expect(order.indexOf("quote quote--pending")).toBeGreaterThan(-1);
+    expect(order.indexOf("quote quote--pending")).toBeLessThan(order.indexOf("weeks"));
+    expect(texts(tree, "reservation__lead")[0]).toBe(
+      "Qui trovi il preventivo di Evelyn, con le settimane che ti propone e il menù della prima. Accettalo, oppure chiedi dei cambi.",
+    );
+    expect(byId(tree, "quote")?.attrs["aria-labelledby"]).toBe("quote-title");
+    expect(textOf(byId(tree, "quote-title") ?? "")).toBe("Il tuo preventivo");
+    expect(byClass(tree, "quote__version"), "la versión 1 no lo dice").toEqual([]);
+  });
+
+  it("el estado: por aceptar, hasta cuándo (el plazo en Roma, día y hora) y que las fechas quedan reservadas", () => {
+    const status = byId(tree, "quote-status");
+    expect(status?.attrs["tabindex"]).toBe("-1");
+    expect(status?.attrs["class"]).toBe("quote__status quote__status--pending");
+    expect(quoteStatusText(tree)).toBe(
+      "Da accettare Puoi accettarlo fino a sabato 27 febbraio 2027 alle 19:03. Fino ad allora queste date restano riservate per te.",
+    );
+  });
+
+  it("lo que vio: cada semana con su llegada y su precio, y el total del servicio", () => {
+    const rows = byClass(tree, "quote__week").map((row) => [
+      texts(row, "quote__week-label")[0],
+      texts(row, "quote__week-when")[0],
+      plain(texts(row, "quote__week-price")[0] ?? ""),
+    ]);
+    expect(rows).toEqual([
+      ["Settimana 1", "lunedì 1 marzo 2027 · arrivo alle 10:00", "150,00 €"],
+      ["Settimana 2", "lunedì 8 marzo 2027 · arrivo alle 10:00", "150,00 €"],
+    ]);
+    expect(texts(tree, "quote__total-label")).toEqual(["Totale del servizio"]);
+    expect(texts(tree, "quote__total-value").map(plain)).toEqual(["300,00 €"]);
+  });
+
+  it("«Accetto il preventivo» (que confirma también el menú de la semana 1) y «Rifiuto»; los cambios, en el menú", () => {
+    const accept = byId(tree, "quote-accept");
+    expect(accept?.attrs).toMatchObject({ type: "button", "data-action": "accept-quote", class: "btn btn--primary" });
+    expect(accept?.attrs["aria-disabled"]).toBeUndefined();
+    expect(textOf(accept ?? "")).toBe("Accetto il preventivo");
+    expect(textOf(byId(tree, "quote-decline") ?? "")).toBe("Rifiuto");
+    expect(byId(tree, "quote-decline")?.attrs["data-action"]).toBe("decline-quote");
+    expect(texts(tree, "quote__hint")).toEqual(["Accettando il preventivo confermi anche il menù della prima settimana."]);
+    expect(texts(tree, "quote__more")).toEqual(["Vuoi cambiare qualcosa? Scrivilo con «Chiedo dei cambi», nel menù qui sotto."]);
+  });
+
+  it("la semana 1: el menú va con el presupuesto, sin «Confermo il menù» (sí «Chiedo dei cambi»)", () => {
+    expect(statusText(tree)).toBe(
+      "Con il preventivo Evelyn ti ha mandato questo menù insieme al preventivo giovedì 25 febbraio 2027. Lo confermi quando accetti il preventivo, qui sopra.",
+    );
+    expect(byClass(tree, "week__status")[0]?.attrs["class"]).toBe("week__status week__status--pending");
+    expect(byId(tree, `${W1}-confirm`)).toBeNull();
+    expect(byId(tree, `${W1}-changes`)?.attrs).toMatchObject({ "data-action": "open-changes", "data-session": SESSION_1 });
+    expect(byClass(tree, "dish"), "el menú se ve entero").toHaveLength(2);
+  });
+
+  it("los precios, solo en el recuadro del presupuesto; nada de pagos en ningún lado", () => {
+    const weeks = find(tree, (node) => node.attrs["class"] === "weeks");
+    expect(toHtml(weeks ?? "")).not.toMatch(/€|EUR|prezzo/i);
+    expect(toHtml(tree)).not.toMatch(/pagament|bonifico|contanti|carta di credito|payment|pago/i);
+  });
+});
+
+describe("el presupuesto: estados", () => {
+  it("con cambios pedidos a esta versión: lo dice, sin «Accetto»; «Rifiuto» sigue (la base lo deja)", () => {
+    const tree = render(ready(quoteView({}, { state: "changesRequested", changesRequestedAt: "2027-02-26T10:00:00+00:00" })));
+    expect(quoteStatusText(tree)).toBe("Cambi chiesti Hai chiesto dei cambi venerdì 26 febbraio 2027: Evelyn ti manderà il preventivo aggiornato.");
+    expect(byId(tree, "quote-accept")).toBeNull();
+    expect(byId(tree, "quote-decline")).not.toBeNull();
+    expect(byClass(tree, "quote__week"), "lo que vio sigue a la vista").toHaveLength(2);
+    expect(byClass(tree, "quote__more")).toEqual([]);
+  });
+
+  it("cambiado sin reenviar: Evelyn prepara otra versión; sin precios ni botones", () => {
+    const tree = render(ready(quoteView({ status: "changed" })));
+    expect(quoteStatusText(tree)).toBe("In aggiornamento Evelyn sta preparando una nuova versione di questo preventivo: te la manda presto.");
+    expect(byClass(tree, "quote__week")).toEqual([]);
+    expect(byId(tree, "quote-accept")).toBeNull();
+    expect(byId(tree, "quote-decline")).toBeNull();
+    // El menú sigue yendo con el presupuesto: sin «Confermo».
+    expect(byId(tree, `${W1}-confirm`)).toBeNull();
+    expect(texts(tree, "reservation__lead")[0]).toContain("il preventivo di Evelyn");
+  });
+
+  it("aceptado: el día y lo que aceptó; el menú de la semana 1, confirmado; sin botones", () => {
+    const tree = render(
+      ready(quoteView({ status: "accepted", acceptedAt: "2027-02-26T10:00:00+00:00" }, { state: "confirmed", confirmedAt: "2027-02-26T10:00:00+00:00" })),
+    );
+    expect(byId(tree, "quote")?.attrs["class"]).toBe("quote quote--accepted");
+    expect(quoteStatusText(tree)).toBe("Accettato L'hai accettato venerdì 26 febbraio 2027.");
+    expect(texts(tree, "quote__total-value").map(plain)).toEqual(["300,00 €"]);
+    expect(byId(tree, "quote-accept")).toBeNull();
+    expect(byId(tree, "quote-decline")).toBeNull();
+    expect(statusText(tree)).toBe("Confermato L'hai confermato venerdì 26 febbraio 2027.");
+    expect(texts(tree, "reservation__lead")[0]).toContain("Qui trovi le settimane della tua prenotazione");
+  });
+
+  it("rechazado, retirado y vencido: lo dicen, sin precios ni botones; el menú que iba con él, sin botones", () => {
+    const cases = [
+      ["declined", "Rifiutato Hai rifiutato questo preventivo. Se cambi idea, scrivi a Evelyn."],
+      ["withdrawn", "Ritirato Questo preventivo è stato ritirato. Per qualsiasi dubbio scrivi a Evelyn."],
+      [
+        "expired",
+        "Scaduto Il tempo per accettare questo preventivo è finito. Se ti interessa ancora, scrivi a Evelyn: ti prepara un nuovo preventivo.",
+      ],
+    ] as const;
+    for (const [status, expected] of cases) {
+      const tree = render(ready(quoteView({ status })));
+      expect(byId(tree, "quote")?.attrs["class"], status).toBe("quote quote--closed");
+      expect(quoteStatusText(tree), status).toBe(expected);
+      expect(byClass(tree, "quote__week"), status).toEqual([]);
+      expect(findAll(tree, (node) => node.tag === "button"), status).toEqual([]);
+      expect(statusText(tree), status).toBe("Inviato Evelyn ti ha mandato questo menù insieme al preventivo giovedì 25 febbraio 2027.");
+    }
+  });
+
+  it("una versión nueva lo dice; uno que no se puede mostrar, tampoco se contesta", () => {
+    expect(texts(render(ready(quoteView({ version: 2 }))), "quote__version")).toEqual(["Versione 2"]);
+    const unreadable = render(ready(quoteView({ summary: null })));
+    expect(quoteStatusText(unreadable)).toBe("Da accettare Non riusciamo a mostrare qui questo preventivo. Scrivi a Evelyn: te lo rimanda.");
+    expect(findAll(unreadable, (node) => (node.attrs["id"] ?? "").startsWith("quote-") && node.tag === "button")).toEqual([]);
+  });
+
+  it("una sola semana: sin «Settimana 1» ni precio por semana; «Prezzo del servizio»", () => {
+    const tree = render(ready(quoteView({ summary: { totalCents: 15000, weeks: [{ date: "2027-03-01", start: "10:00", serviceCents: 15000 }] } })));
+    expect(byClass(tree, "quote__week-label")).toEqual([]);
+    expect(byClass(tree, "quote__week-price")).toEqual([]);
+    expect(texts(tree, "quote__total-label")).toEqual(["Prezzo del servizio"]);
+    expect(texts(tree, "quote__hint")).toEqual(["Accettando il preventivo confermi anche il menù."]);
+  });
+
+  it("sin plazo: cuándo se lo mandó", () => {
+    const tree = render(ready(quoteView({ holdUntil: null })));
+    expect(quoteStatusText(tree)).toBe("Da accettare Evelyn ti ha mandato questo preventivo giovedì 25 febbraio 2027.");
+  });
+});
+
+describe("el presupuesto: acciones", () => {
+  it("la confirmación del rechazo: la pregunta (enfocable), «Sì, rifiuto il preventivo» y «No, torna indietro»; sin «Accetto»", () => {
+    const tree = render(ready(quoteView()), { quoteUi: { declineOpen: true, declineFor: "x" } });
+    const question = byId(tree, "quote-decline-question");
+    expect(question?.attrs["tabindex"]).toBe("-1");
+    expect(textOf(question ?? "")).toBe(
+      "Vuoi rifiutare il preventivo? Le date proposte non saranno più riservate per te e da qui non potrai più accettarlo.",
+    );
+    const group = find(tree, (node) => node.attrs["role"] === "group");
+    expect(group?.attrs["aria-labelledby"]).toBe("quote-decline-question");
+    expect(byId(tree, "quote-decline-confirm")?.attrs).toMatchObject({ "data-action": "decline-quote-confirm", class: "btn btn--danger" });
+    expect(textOf(byId(tree, "quote-decline-confirm") ?? "")).toBe("Sì, rifiuto il preventivo");
+    expect(byId(tree, "quote-decline-cancel")?.attrs["data-action"]).toBe("decline-quote-cancel");
+    expect(textOf(byId(tree, "quote-decline-cancel") ?? "")).toBe("No, torna indietro");
+    expect(byId(tree, "quote-accept")).toBeNull();
+  });
+
+  it("con una respuesta en camino, los botones quedan aria-disabled (conservan el foco) y dicen «Un momento…»", () => {
+    const accepting = render(ready(quoteView()), { quoteUi: { busy: "accept" } });
+    expect(byId(accepting, "quote-accept")?.attrs["aria-disabled"]).toBe("true");
+    expect(textOf(byId(accepting, "quote-accept") ?? "")).toBe("Un momento…");
+    expect(byId(accepting, "quote-decline")?.attrs["aria-disabled"]).toBe("true");
+    const declining = render(ready(quoteView()), { quoteUi: { busy: "decline", declineOpen: true } });
+    expect(textOf(byId(declining, "quote-decline-confirm") ?? "")).toBe("Un momento…");
+    expect(byId(declining, "quote-decline-cancel")?.attrs["aria-disabled"]).toBe("true");
+  });
+
+  it("el error de la última respuesta, junto a los botones; el aviso, en el estado (que recibe el foco)", () => {
+    const failed = render(ready(quoteView()), { quoteUi: { error: { key: "reservation.errors.network" } } });
+    expect(textOf(byId(failed, "quote-error") ?? "")).toBe("Non riusciamo a collegarci. Controlla la connessione e riprova.");
+    const done = render(ready(quoteView({ status: "accepted", acceptedAt: "2027-02-26T10:00:00+00:00" }, { state: "confirmed", confirmedAt: "2027-02-26T10:00:00+00:00" })), {
+      quoteUi: { notice: { key: "reservation.quote.notices.accepted" } },
+    });
+    const status = byId(done, "quote-status");
+    expect(status && texts(status, "quote__notice")).toEqual(["Grazie! Hai accettato il preventivo e il menù: abbiamo avvisato Evelyn."]);
+  });
+});
+
+describe("el presupuesto en español y en inglés", () => {
+  it("los textos, el plazo y los importes en el idioma de la página", () => {
+    const es = render(ready(quoteView()), { lang: "es" });
+    expect(textOf(byId(es, "quote-title") ?? "")).toBe("Tu presupuesto");
+    expect(quoteStatusText(es)).toBe(
+      "Por aceptar Puedes aceptarlo hasta el sábado, 27 de febrero de 2027 a las 19:03. Hasta entonces, estas fechas quedan reservadas para ti.",
+    );
+    expect(texts(es, "quote__week-label")).toEqual(["Semana 1", "Semana 2"]);
+    expect(texts(es, "quote__week-when")[0]).toBe("lunes, 1 de marzo de 2027 · llegada a las 10:00");
+    expect(texts(es, "quote__total-value").map(plain)).toEqual(["300,00 €"]);
+    expect(textOf(byId(es, "quote-accept") ?? "")).toBe("Acepto el presupuesto");
+    expect(textOf(byId(es, "quote-decline") ?? "")).toBe("Rechazo");
+
+    const en = render(ready(quoteView()), { lang: "en" });
+    expect(textOf(byId(en, "quote-title") ?? "")).toBe("Your quote");
+    expect(quoteStatusText(en)).toBe("To accept You can accept it until Saturday 27 February 2027 at 19:03. Until then, these dates are held for you.");
+    expect(texts(en, "quote__week-price")).toEqual(["€150.00", "€150.00"]);
+    expect(texts(en, "quote__total")).toEqual(["Service total €300.00"]);
+    expect(textOf(byId(en, "quote-accept") ?? "")).toBe("I accept the quote");
+    expect(statusText(en)).toBe("With the quote Evelyn sent you this menu with the quote on Thursday 25 February 2027. You confirm it when you accept the quote, above.");
+  });
+
+  it("lo que llega de la función va como texto también en el presupuesto (el nombre de la cocinera)", () => {
+    const tree = render(ready({ ...quoteView({ status: "withdrawn" }), chefName: "<b>Eve</b>" }));
+    const html = toHtml(tree);
+    expect(html).not.toContain("<b>Eve</b>");
+    expect(html).toContain("&lt;b&gt;Eve&lt;/b&gt;");
+  });
+
+  it("focusId: el id de lo que recibe el foco en el presupuesto", () => {
+    expect(focusId({ kind: "quoteStatus" })).toBe("quote-status");
+    expect(focusId({ kind: "quoteAccept" })).toBe("quote-accept");
+    expect(focusId({ kind: "quoteDecline" })).toBe("quote-decline");
+    expect(focusId({ kind: "quoteDeclineQuestion" })).toBe("quote-decline-question");
+    expect(focusId({ kind: "quoteDeclineConfirm" })).toBe("quote-decline-confirm");
   });
 });

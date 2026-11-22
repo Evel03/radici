@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { clientLinkUrl, confirmMenu, fetchView, requestChanges, type FetchLike } from "./api.ts";
-import { SEND_1, SUPABASE_URL, TOKEN, view } from "./fixtures.ts";
+import { acceptQuote, clientLinkUrl, confirmMenu, declineQuote, fetchView, requestChanges, type FetchLike } from "./api.ts";
+import { SEND_1, SUPABASE_URL, TOKEN, quoteView, view } from "./fixtures.ts";
 
 interface Call {
   url: string;
@@ -117,5 +117,60 @@ describe("confirmMenu y requestChanges", () => {
     expect(confirmed).toEqual({ kind: "server" });
     const limited = await confirmMenu(SUPABASE_URL, TOKEN, SEND_1, { fetch: fakeFetch(() => json(429, {}, { "Retry-After": "90" })).fetch });
     expect(limited).toEqual({ kind: "rateLimited", retryAfterSeconds: 90 });
+  });
+});
+
+describe("el presupuesto: acceptQuote y declineQuote", () => {
+  it("la reserva con el presupuesto se lee tal cual", async () => {
+    const { fetch } = fakeFetch(() => json(200, quoteView()));
+    expect(await fetchView(SUPABASE_URL, TOKEN, { fetch })).toEqual({ kind: "ok", view: quoteView() });
+  });
+
+  it("aceptar: manda el token y el envío que lo lleva; lee la hora y si ya lo había aceptado", async () => {
+    const { fetch, calls } = fakeFetch(() => json(200, { acceptedAt: "2027-02-26T10:00:00+00:00", already: false }));
+    expect(await acceptQuote(SUPABASE_URL, TOKEN, SEND_1, { fetch })).toEqual({ kind: "quoteAccepted", acceptedAt: "2027-02-26T10:00:00+00:00", already: false });
+    expect(calls[0]?.url).toBe(clientLinkUrl(SUPABASE_URL, "/accept"));
+    expect(calls[0]?.url).not.toContain(TOKEN);
+    expect(calls[0]?.body).toEqual({ token: TOKEN, sendId: SEND_1 });
+    expect(calls[0]?.init.method).toBe("POST");
+  });
+
+  it("rechazar: manda el token y el envío; lee si ya lo había rechazado", async () => {
+    const { fetch, calls } = fakeFetch(() => json(200, { already: true }));
+    expect(await declineQuote(SUPABASE_URL, TOKEN, SEND_1, { fetch })).toEqual({ kind: "quoteDeclined", already: true });
+    expect(calls[0]?.url).toBe(clientLinkUrl(SUPABASE_URL, "/decline"));
+    expect(calls[0]?.body).toEqual({ token: TOKEN, sendId: SEND_1 });
+  });
+
+  it("los errores del presupuesto, cada uno con su código (quoteClosed con su motivo, si es uno conocido)", async () => {
+    const cases: Array<[Response, unknown]> = [
+      [json(409, { error: "quotePending" }), { kind: "quotePending" }],
+      [json(409, { error: "quoteChanged" }), { kind: "quoteChanged" }],
+      [json(409, { error: "notAQuote" }), { kind: "notAQuote" }],
+      [json(409, { error: "quoteEmpty" }), { kind: "quoteEmpty" }],
+      [json(409, { error: "quoteClosed", reason: "expired" }), { kind: "quoteClosed", reason: "expired" }],
+      [json(409, { error: "quoteClosed", reason: "declined" }), { kind: "quoteClosed", reason: "declined" }],
+      [json(409, { error: "quoteClosed" }), { kind: "quoteClosed", reason: null }],
+      [json(409, { error: "quoteClosed", reason: "otra" }), { kind: "quoteClosed", reason: null }],
+      [json(409, { error: "menuOutdated" }), { kind: "menuOutdated" }],
+      [json(409, { error: "changesRequested" }), { kind: "changesRequested" }],
+      [json(409, { error: "sessionCancelled" }), { kind: "sessionCancelled" }],
+      [json(404, { error: "sendNotFound" }), { kind: "sendNotFound" }],
+      [json(404, { error: "quoteClosed" }), { kind: "server" }],
+      [json(503, { error: "unavailable" }), { kind: "server" }],
+      [json(429, {}, { "Retry-After": "60" }), { kind: "rateLimited", retryAfterSeconds: 60 }],
+    ];
+    for (const [response, expected] of cases) {
+      for (const call of [acceptQuote, declineQuote]) {
+        expect(await call(SUPABASE_URL, TOKEN, SEND_1, { fetch: fakeFetch(() => response.clone()).fetch }), `${response.status} ${call.name}`).toEqual(expected);
+      }
+    }
+    // Un 200 con otra forma no se toma por bueno.
+    expect(await acceptQuote(SUPABASE_URL, TOKEN, SEND_1, { fetch: fakeFetch(() => json(200, { acceptedAt: "ayer", already: false })).fetch })).toEqual({ kind: "server" });
+    expect(await declineQuote(SUPABASE_URL, TOKEN, SEND_1, { fetch: fakeFetch(() => json(200, {})).fetch })).toEqual({ kind: "server" });
+    const offline: FetchLike = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    expect(await acceptQuote(SUPABASE_URL, TOKEN, SEND_1, { fetch: offline })).toEqual({ kind: "network" });
   });
 });

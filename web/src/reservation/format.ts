@@ -1,5 +1,5 @@
-// Formatos de la página /prenotazione/: cantidades de la lista de compras, la lista agrupada por sección y las
-// fechas de los envíos. Puros (se testean sin DOM).
+// Formatos de la página /prenotazione/: cantidades de la lista de compras, la lista agrupada por sección, las
+// fechas de los envíos y la hora del plazo del presupuesto. Puros (se testean sin DOM).
 import {
   SHOPPING_SECTIONS,
   type ShoppingItem,
@@ -73,4 +73,18 @@ export function formatRomeDay(timestamp: string, locale: string): string {
     year: "numeric",
     timeZone: BUSINESS_TIME_ZONE,
   }).format(date);
+}
+
+const ROME_TIME = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: BUSINESS_TIME_ZONE });
+
+/**
+ * La hora de un instante en Roma, "HH:MM" (24 h, como las llegadas): el plazo del presupuesto. Por partes, así no
+ * depende de cómo escribe la hora cada idioma (los textos ponen «alle», «a las» o «at»).
+ */
+export function formatRomeTime(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = ROME_TIME.formatToParts(date);
+  const get = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("hour")}:${get("minute")}`;
 }
