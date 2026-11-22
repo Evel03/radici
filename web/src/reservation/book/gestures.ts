@@ -123,6 +123,8 @@ export const SWALLOW_CLICK_MS = 500;
  * el puntero (setPointerCapture), así un toque en un botón sigue siendo un clic; el clic que llega enseguida después
  * de deslizar no cuenta. Ojo: el navegador decide el gesto con el touch-action desde el elemento tocado hasta su
  * contenedor de scroll más cercano (la hoja de cada página, en book.css). Devuelve cómo desconectarlos.
+ * El mouse no tiene captura implícita: soltado fuera del elemento antes de saber el eje, el pointerup no llega. Ese
+ * gesto termina (sin pasar de página) con el primer movimiento sin el botón apretado o con el próximo pointerdown.
  */
 export function bindSwipe(el: HTMLElement, handlers: SwipeHandlers): () => void {
   const tracker = createSwipeTracker();
@@ -130,14 +132,32 @@ export function bindSwipe(el: HTMLElement, handlers: SwipeHandlers): () => void 
   /** Hasta cuándo (event.timeStamp) un clic es el de un arrastre que terminó. */
   let swallowUntil = 0;
 
+  /** Termina el gesto sin pasar de página (su pointerup no llegó): si ya era horizontal, la hoja vuelve a su lugar. */
+  const drop = (): void => {
+    const horizontal = tracker.axis === "x";
+    pointer = null;
+    tracker.cancel();
+    if (horizontal) handlers.onRelease(null);
+  };
   const down = (event: PointerEvent): void => {
-    if (pointer !== null || !event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+    if (pointer !== null) {
+      // Otro dedo mientras dura el gesto: no cuenta.
+      if (event.pointerId !== pointer) return;
+      // El mismo puntero no se aprieta dos veces: su gesto anterior terminó afuera sin avisar.
+      drop();
+    }
+    if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
     pointer = event.pointerId;
     swallowUntil = 0;
     tracker.start(event.clientX, event.clientY, event.timeStamp);
   };
   const move = (event: PointerEvent): void => {
     if (event.pointerId !== pointer) return;
+    // El mouse sin el botón principal apretado: el gesto ya terminó afuera (el pointerup no llegó).
+    if (event.pointerType === "mouse" && (event.buttons & 1) === 0) {
+      drop();
+      return;
+    }
     const before = tracker.axis;
     const { axis, dx } = tracker.move(event.clientX, event.clientY);
     if (axis === "y") {
