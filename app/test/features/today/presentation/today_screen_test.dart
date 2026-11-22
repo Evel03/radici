@@ -8,7 +8,8 @@
 // dieta, la advertencia «Allergie: nessun dato nell'app, chiedile», como en
 // la ficha),
 // la contaminación cruzada con gluten y las notas de cocina; abajo, en el
-// tercio inferior, «Come arrivare» (sin dirección, «Aggiungi indirizzo») y
+// tercio inferior, «Come arrivare» (sin dirección, «Aggiungi indirizzo» y, si
+// hay zona, «Come arrivare (zona)», que lleva hasta ella con «, Bergamo») y
 // WhatsApp (el mensaje de la ficha: lo firma la cocinera o, con la cuenta de
 // un colaborador, escribe de parte de ella). Tocar la tarjeta abre la ficha.
 // Los pendientes (pedidos nuevos, que llevan a «Nuove», y reservas que
@@ -74,6 +75,7 @@ void main() {
     String name = 'Giulia Rossi',
     String? phone = '+39 333 123 4567',
     String? address = 'Via Gombito 12, 24129 Bergamo',
+    String? zone = 'Città Alta',
     List<Allergen> clientAllergens = const [],
     PastAllergyAnswer? lastAllergyAnswer,
     RequestRestrictions? restrictions,
@@ -90,6 +92,7 @@ void main() {
     name: name,
     phone: phone,
     address: address,
+    zone: zone,
     clientAllergens: clientAllergens,
     lastAllergyAnswer: lastAllergyAnswer,
     restrictions: restrictions,
@@ -402,6 +405,8 @@ void main() {
       tester,
     ) async {
       final app = await openToday(tester, sessions: [session()]);
+      // Con dirección, la zona no suma otro botón.
+      expect(byKey('today-directions-zone'), findsNothing);
       await tester.tap(byKey('today-directions'));
       await tester.pumpAndSettle();
       expect(
@@ -507,6 +512,64 @@ void main() {
       expect(find.text('Indirizzo salvato.'), findsOneWidget);
       expect(byKey('today-directions'), findsOneWidget);
       expect(byKey('today-add-address'), findsNothing);
+      // Con la dirección guardada, ya no la zona.
+      expect(byKey('today-directions-zone'), findsNothing);
+    });
+
+    testWidgets('sin dirección y con la zona del pedido: arriba de WhatsApp y «Aggiungi indirizzo», «Come arrivare (zona)» lleva hasta la zona con «, Bergamo»', (
+      tester,
+    ) async {
+      final app = await openToday(
+        tester,
+        sessions: [session(address: null, zone: 'Via Gabriele Camozzi 50')],
+      );
+      expect(byKey('today-directions'), findsNothing);
+      final zone = byKey('today-directions-zone');
+      expect(tester.widget(zone), isA<OutlinedButton>());
+      expect(
+        find.descendant(of: zone, matching: find.text('Come arrivare (zona)')),
+        findsOneWidget,
+      );
+      expect(tester.widget(byKey('today-whatsapp')), isA<FilledButton>());
+      expect(byKey('today-add-address'), findsOneWidget);
+      expect(
+        tester.getRect(zone).bottom,
+        lessThanOrEqualTo(tester.getRect(byKey('today-whatsapp')).top),
+      );
+
+      await tester.tap(zone);
+      await tester.pumpAndSettle();
+      expect(
+        app.launcher.launched.single.toString(),
+        'https://www.google.com/maps/dir/?api=1&destination='
+        'Via%20Gabriele%20Camozzi%2050%2C%20Bergamo',
+      );
+    });
+
+    testWidgets('en el iPhone, «Come arrivare (zona)» va a Apple Maps', (
+      tester,
+    ) async {
+      final app = await openToday(
+        tester,
+        sessions: [session(address: null)],
+        appleMaps: true,
+      );
+      await tester.tap(byKey('today-directions-zone'));
+      await tester.pumpAndSettle();
+      expect(
+        app.launcher.launched.single.toString(),
+        'https://maps.apple.com/?daddr=Citt%C3%A0%20Alta%2C%20Bergamo',
+      );
+    });
+
+    testWidgets('sin dirección ni zona, ningún «Come arrivare»: WhatsApp y «Aggiungi indirizzo»', (
+      tester,
+    ) async {
+      await openToday(tester, sessions: [session(address: null, zone: null)]);
+      expect(byKey('today-directions'), findsNothing);
+      expect(byKey('today-directions-zone'), findsNothing);
+      expect(tester.widget(byKey('today-whatsapp')), isA<FilledButton>());
+      expect(byKey('today-add-address'), findsOneWidget);
     });
 
     testWidgets('tocar la tarjeta abre la ficha; volver lleva a Hoy', (
@@ -1790,7 +1853,7 @@ void main() {
       });
 
       testWidgets(
-        'a 375×667 sin dirección: los botones de 48 dp y el diálogo sin desbordes (${locale.languageCode})',
+        'a 375×667 sin dirección (con la zona y la línea de quién son): los botones de 48 dp, en el tercio inferior, y el diálogo sin desbordes (${locale.languageCode})',
         (tester) async {
           await openToday(
             tester,
@@ -1801,10 +1864,16 @@ void main() {
               session(n: 2, hour: 15, address: null, name: 'Marco Bianchi'),
             ],
           );
-          for (final key in ['today-whatsapp', 'today-add-address']) {
+          final bar = tester.getRect(byKey('chef-nav-bar'));
+          for (final key in [
+            'today-directions-zone',
+            'today-whatsapp',
+            'today-add-address',
+          ]) {
             final rect = tester.getRect(byKey(key));
             expect(rect.height, greaterThanOrEqualTo(48), reason: key);
             expect(rect.center.dy, greaterThan(667 * 2 / 3), reason: key);
+            expect(rect.bottom, lessThanOrEqualTo(bar.top), reason: key);
           }
           expect(tester.takeException(), isNull);
           await tester.tap(byKey('today-add-address'));

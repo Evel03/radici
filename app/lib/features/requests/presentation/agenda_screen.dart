@@ -3,7 +3,8 @@
 // abre su ficha), los pedidos que todavía no son una reserva por su fecha
 // preferida, con la franja, la lista "senza data" y la disponibilidad de cada
 // día: bloqueados (la web no los ofrece), feriados y el botón «Blocca giorni»
-// para un rango.
+// para un rango. En el mes, el cartel de cada día con sesiones o pedidos
+// (agenda_day_summary_tooltip.dart).
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -15,9 +16,11 @@ import 'package:radici/features/availability/presentation/availability_labels.da
 import 'package:radici/features/availability/presentation/block_range_dialog.dart';
 import 'package:radici/features/availability/presentation/day_availability_card.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
+import 'package:radici/features/requests/application/agenda_day_summary_provider.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/agenda.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/requests/presentation/agenda_day_summary_tooltip.dart';
 import 'package:radici/features/requests/presentation/chef_refresh_button.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
@@ -380,6 +383,7 @@ class _DayCell extends ConsumerWidget {
     );
     final isToday = ref.watch(romeTodayProvider) == day;
     final availability = ref.watch(agendaDayAvailabilityProvider(day));
+    final summary = ref.watch(agendaDaySummaryProvider(day));
     final isBlocked = availability?.status == DayStatus.blocked;
     // El punto: un feriado en un día de trabajo que no pasó ni está bloqueado.
     final holiday = availability?.status == DayStatus.open
@@ -406,10 +410,12 @@ class _DayCell extends ConsumerWidget {
       if (holiday != null) l10n.holidayLine(holiday),
     ].join(', ');
 
-    return Semantics(
+    final cell = Semantics(
       button: true,
       selected: isSelected,
       label: label,
+      // Lo que dice el cartel del día (que el lector de pantalla no lee).
+      hint: summary.isEmpty ? null : l10n.agendaSummaryText(summary),
       excludeSemantics: true,
       // La acción va en el nodo: excludeSemantics descarta la del InkWell, y
       // en /gestione/ el clic de VoiceOver solo llega a un nodo que la tiene.
@@ -518,6 +524,9 @@ class _DayCell extends ConsumerWidget {
         ),
       ),
     );
+    // Con el mouse encima o apretada un rato, el resumen de sus sesiones y
+    // pedidos; tocarla la sigue eligiendo.
+    return AgendaDaySummaryTooltip(day: day, summary: summary, child: cell);
   }
 }
 
