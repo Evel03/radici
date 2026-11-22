@@ -4,9 +4,10 @@
 // validación de la traducción con los límites de la base, el límite por cocina y el traductor de
 // mentira de desarrollo (TRANSLATE_TRANSPORT=fake). La llamada real está en claude_translator.ts,
 // que importa solo index.ts: handler.ts recibe un Translator y no conoce el SDK.
-// El mismo traductor traduce también la lista de compras y la nota del menú de una semana (POST
-// /chef/menus/preview, §13): su prompt, su esquema y su validación están en menu_translation.ts; el
-// pedido (buildMenuTranslationRequest) va acá, con los mismos parámetros que el de los platos.
+// El mismo traductor traduce también la lista de compras del menú de una semana (POST
+// /chef/menus/preview, §13; la nota nunca): su prompt, su esquema y su validación están en
+// menu_translation.ts; el pedido (buildMenuTranslationRequest) va acá, con los mismos parámetros que el
+// de los platos.
 //
 // Nada de esto loguea: el texto del plato nunca va a un log.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
@@ -55,7 +56,7 @@ export type TranslatorReply =
 export interface Translator {
   /** Un plato del español al italiano y al inglés (POST /translate). */
   translate(source: TranslationSource): Promise<TranslatorReply>;
-  /** La lista de compras y la nota de un menú, del español al idioma de la clienta (POST /menus/preview). */
+  /** Los nombres de la lista de compras de un menú, del español al idioma de la clienta (POST /menus/preview). */
   translateMenu(source: MenuTextSource): Promise<TranslatorReply>;
 }
 
@@ -234,14 +235,14 @@ export function buildTranslationRequest(source: TranslationSource): TranslationR
 }
 
 /**
- * Tope de la salida de la lista y la nota: hasta 150 productos y 1000 caracteres de nota, más el
- * pensamiento. El doble que el de un plato: un corte deja la traducción a medias (422).
+ * Tope de la salida de la lista: hasta 150 productos, más el pensamiento. El doble que el de un plato:
+ * un corte deja la traducción a medias (422).
  */
 export const MENU_TRANSLATION_MAX_TOKENS = 16_000;
 
 /**
- * El pedido de la lista de compras y la nota de un menú (§13): el mismo modelo, esfuerzo, fallback y
- * forma que el de los platos, con su prompt y su esquema (menu_translation.ts).
+ * El pedido de la lista de compras de un menú (§13): el mismo modelo, esfuerzo, fallback y forma que el
+ * de los platos, con su prompt y su esquema (menu_translation.ts).
  */
 export function buildMenuTranslationRequest(source: MenuTextSource): TranslationRequest {
   return {
@@ -251,7 +252,7 @@ export function buildMenuTranslationRequest(source: MenuTextSource): Translation
     messages: [{ role: "user", content: menuTranslationUserMessage(source) }],
     output_config: {
       effort: TRANSLATION_EFFORT,
-      format: { type: "json_schema", schema: menuTranslationSchema(source.note !== null) },
+      format: { type: "json_schema", schema: menuTranslationSchema() },
     },
     betas: [...TRANSLATION_BETAS],
     fallbacks: "default",

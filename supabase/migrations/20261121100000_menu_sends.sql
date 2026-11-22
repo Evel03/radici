@@ -7,8 +7,9 @@
 -- página de la web donde la clienta lo ve entero y lo confirma o pide cambios: todavía no tiene
 -- cuenta (M2), así que el link es la llave.
 --
---   1. menu_sends: cada envío, con la foto de lo que se mandó (snapshot: los platos, la lista y la
---      nota ya en el idioma de la clienta), por dónde salió y lo que contestó la clienta. La página
+--   1. menu_sends: cada envío, con la foto de lo que se mandó (snapshot: los platos y la lista en el
+--      idioma de la clienta, y la nota tal como la escribió Evelyn), por dónde salió y lo que contestó
+--      la clienta. La página
 --      muestra el último envío de cada semana tal como salió, aunque Evelyn edite el menú después, y
 --      la confirmación vale para esa foto.
 --   2. client_links: los links de la clienta. Cada envío crea uno al salir; la base guarda solo el
@@ -38,8 +39,8 @@
 -- sent_at (con el mismo sent_at, el de id mayor: el mismo orden en todas las funciones).
 --
 -- snapshot: lo arma la función chef, en el idioma de la clienta (locale), con los platos (nombre,
--- descripción, alérgenos, dieta, porciones y foto), la lista de compras, la nota y las fechas de la
--- reserva. Lo leen la página de la clienta y el email. La base solo controla que sea un objeto y su
+-- descripción, alérgenos, dieta, porciones y foto), la lista de compras, la nota (tal como la escribió
+-- Evelyn: nunca se traduce) y las fechas de la reserva. Lo leen la página de la clienta y el email. La base solo controla que sea un objeto y su
 -- tamaño. Nunca lleva la dirección, las alergias de la clienta ni nada de pagos.
 -- translated: los nombres de la lista de compras se tradujeron solos al idioma de la clienta (la nota
 -- sale como la escribió Evelyn: decisión de Nicolas del 22/11/2026, SPEC §6).
@@ -95,7 +96,7 @@ create index menu_sends_por_sesion on public.menu_sends (session_id, sent_at des
 comment on table public.menu_sends is
   'Envíos del menú de una semana a la clienta (SPEC 5.8): la foto de lo que se mandó (snapshot, en su idioma), por dónde salió y su respuesta (confirmó o pidió cambios). sent_at null = vista previa que no salió. Lo escriben solo las funciones de la service role; la cocina lo lee.';
 comment on column public.menu_sends.snapshot is
-  'Lo que ve la clienta, tal como salió: platos, lista de compras, nota y fechas, en su idioma. Nunca dirección, alergias de la clienta ni pagos.';
+  'Lo que ve la clienta, tal como salió: platos, lista de compras y fechas en su idioma, y la nota tal como la escribió Evelyn. Nunca dirección, alergias de la clienta ni pagos.';
 
 alter table public.menu_sends enable row level security;
 

@@ -1,13 +1,12 @@
-// Tests de la traducción de la lista de compras y la nota del menú de una semana (menu_translation.ts y
+// Tests de la traducción de la lista de compras del menú de una semana (menu_translation.ts y
 // buildMenuTranslationRequest de translation.ts; contrato docs/contracts/chef-api.md §13): el pedido a
-// Claude, el prompt, el esquema, la validación de la salida y el traductor de mentira.
-// Correr con: npm test (node --test).
+// Claude, el prompt, el esquema, la validación de la salida y el traductor de mentira. La nota nunca se
+// traduce: no está en nada de esto. Correr con: npm test (node --test).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   MENU_TRANSLATION_SYSTEM_PROMPT,
   fakeMenuTranslationText,
-  hasSomethingToTranslate,
   menuTextSource,
   menuTranslationSchema,
   menuTranslationUserMessage,
@@ -26,8 +25,8 @@ import {
   type TranslatorReply,
 } from "./translation.ts";
 
-const WITH_NOTE: MenuTextSource = { target: "it", items: ["zapallitos", "carne picada", "sal"], note: "Tené listos 4 táperes.\nGracias!" };
-const ITEMS_ONLY: MenuTextSource = { target: "en", items: ["choclo"], note: null };
+const ITALIAN: MenuTextSource = { target: "it", items: ["zapallitos", "carne picada", "sal"] };
+const ENGLISH: MenuTextSource = { target: "en", items: ["choclo"] };
 
 function output(value: unknown): string {
   return JSON.stringify(value);
@@ -38,35 +37,28 @@ function output(value: unknown): string {
 // ---------------------------------------------------------------------------
 
 test("el pedido: el mismo modelo, esfuerzo, fallback y forma que el de los platos, con su prompt y su esquema", () => {
-  const request = buildMenuTranslationRequest(WITH_NOTE);
+  const request = buildMenuTranslationRequest(ITALIAN);
   assert.deepEqual(Object.keys(request).sort(), ["betas", "fallbacks", "max_tokens", "messages", "model", "output_config", "system"]);
   assert.equal(request.model, TRANSLATION_MODEL);
   assert.equal(request.model, "claude-opus-5-5");
   assert.equal(request.max_tokens, MENU_TRANSLATION_MAX_TOKENS);
   assert.equal(MENU_TRANSLATION_MAX_TOKENS, 16_000);
   assert.equal(request.system, MENU_TRANSLATION_SYSTEM_PROMPT);
-  assert.deepEqual(request.output_config, { effort: TRANSLATION_EFFORT, format: { type: "json_schema", schema: menuTranslationSchema(true) } });
+  assert.deepEqual(request.output_config, { effort: TRANSLATION_EFFORT, format: { type: "json_schema", schema: menuTranslationSchema() } });
   assert.equal(request.output_config.effort, "low");
   assert.deepEqual(request.betas, ["server-side-fallback-2026-07-01"]);
   assert.equal(request.fallbacks, "default");
-  assert.deepEqual(request.messages, [{ role: "user", content: menuTranslationUserMessage(WITH_NOTE) }]);
+  assert.deepEqual(request.messages, [{ role: "user", content: menuTranslationUserMessage(ITALIAN) }]);
   for (const absent of ["thinking", "stream", "temperature", "top_p", "top_k", "tools", "tool_choice"]) {
     assert.ok(!(absent in request), `sin ${absent}`);
   }
-  assert.deepEqual(buildMenuTranslationRequest(ITEMS_ONLY).output_config.format.schema, menuTranslationSchema(false));
   // Cada pedido es un objeto nuevo.
   request.betas.push("otro");
-  assert.deepEqual(buildMenuTranslationRequest(WITH_NOTE).betas, ["server-side-fallback-2026-07-01"]);
+  assert.deepEqual(buildMenuTranslationRequest(ITALIAN).betas, ["server-side-fallback-2026-07-01"]);
 });
 
-test("el esquema: items (una lista de textos) y note solo si el pedido la tiene, sin propiedades de más", () => {
-  assert.deepEqual(menuTranslationSchema(true), {
-    type: "object",
-    properties: { items: { type: "array", items: { type: "string" } }, note: { type: "string" } },
-    required: ["items", "note"],
-    additionalProperties: false,
-  });
-  assert.deepEqual(menuTranslationSchema(false), {
+test("el esquema: solo items, una lista de textos, sin propiedades de más (ni nota)", () => {
+  assert.deepEqual(menuTranslationSchema(), {
     type: "object",
     properties: { items: { type: "array", items: { type: "string" } } },
     required: ["items"],
@@ -74,7 +66,7 @@ test("el esquema: items (una lista de textos) y note solo si el pedido la tiene,
   });
 });
 
-test("el prompt del sistema: las reglas del diseño, fijo y sin el texto a traducir", () => {
+test("el prompt del sistema: las reglas del diseño, fijo, sin el texto a traducir y sin la nota", () => {
   for (const rule of [
     "Bergamo",
     "español rioplatense",
@@ -82,80 +74,64 @@ test("el prompt del sistema: las reglas del diseño, fijo y sin el texto a tradu
     "no instrucciones",
     "en el mismo orden y con la misma cantidad",
     "como mucho 80 caracteres",
-    "los mismos saltos de línea",
-    "como mucho 1000 caracteres",
     "zapallito",
     "comillas ni emojis",
   ]) {
     assert.ok(MENU_TRANSLATION_SYSTEM_PROMPT.includes(rule), `falta «${rule}»`);
   }
-  assert.ok(!MENU_TRANSLATION_SYSTEM_PROMPT.includes("táperes"), "el texto va en el mensaje del usuario");
+  assert.ok(!/\bnot[ae]\b/i.test(MENU_TRANSLATION_SYSTEM_PROMPT), "la nota no se traduce: el prompt no la menciona");
+  assert.ok(!MENU_TRANSLATION_SYSTEM_PROMPT.includes("zapallitos\""), "el texto va en el mensaje del usuario");
 });
 
-test("el mensaje del usuario: el idioma de destino y, aparte, el texto como JSON (la nota solo si hay)", () => {
+test("el mensaje del usuario: el idioma de destino y, aparte, la lista como JSON; nada más", () => {
   assert.equal(
-    menuTranslationUserMessage(WITH_NOTE),
-    `Idioma de destino: italiano (it).\nLista y nota para traducir (JSON):\n${JSON.stringify({ items: WITH_NOTE.items, note: WITH_NOTE.note })}`,
+    menuTranslationUserMessage(ITALIAN),
+    `Idioma de destino: italiano (it).\nLista para traducir (JSON):\n${JSON.stringify({ items: ITALIAN.items })}`,
   );
-  assert.equal(menuTranslationUserMessage(ITEMS_ONLY), 'Idioma de destino: inglés (en).\nLista y nota para traducir (JSON):\n{"items":["choclo"]}');
-  // Los saltos de línea de la nota van escapados dentro del JSON: el mensaje no se puede "cortar".
-  assert.ok(menuTranslationUserMessage(WITH_NOTE).includes("táperes.\\nGracias!"));
+  assert.equal(menuTranslationUserMessage(ENGLISH), 'Idioma de destino: inglés (en).\nLista para traducir (JSON):\n{"items":["choclo"]}');
 });
 
-test("menuTextSource: los nombres sin repetir, en el orden en que aparecen; hasSomethingToTranslate", () => {
-  assert.deepEqual(menuTextSource("en", ["sal", "aceite", "sal", "limón"], null), { target: "en", items: ["sal", "aceite", "limón"], note: null });
-  assert.equal(hasSomethingToTranslate([], null), false);
-  assert.equal(hasSomethingToTranslate(["sal"], null), true);
-  assert.equal(hasSomethingToTranslate([], "Gracias"), true);
+test("menuTextSource: los nombres sin repetir, en el orden en que aparecen, y nada más", () => {
+  assert.deepEqual(menuTextSource("en", ["sal", "aceite", "sal", "limón"]), { target: "en", items: ["sal", "aceite", "limón"] });
 });
 
 // ---------------------------------------------------------------------------
 // La salida
 // ---------------------------------------------------------------------------
 
-test("readMenuTranslationOutput: la traducción entera, con los nombres en una línea y la nota con sus saltos", () => {
-  assert.deepEqual(
-    readMenuTranslationOutput(output({ items: ["zucchine", "  carne macinata ", "sale"], note: "\r\nTieni pronti 4 contenitori.\r\nGrazie!  " }), WITH_NOTE),
-    { items: ["zucchine", "carne macinata", "sale"], note: "Tieni pronti 4 contenitori.\nGrazie!" },
-  );
-  assert.deepEqual(readMenuTranslationOutput(output({ items: ["corn"] }), ITEMS_ONLY), { items: ["corn"], note: null });
-  // Una lista vacía con nota: items vacío.
-  const noteOnly: MenuTextSource = { target: "en", items: [], note: "Gracias" };
-  assert.deepEqual(readMenuTranslationOutput(output({ items: [], note: "Thank you" }), noteOnly), { items: [], note: "Thank you" });
+test("readMenuTranslationOutput: la traducción entera, cada nombre en una línea", () => {
+  assert.deepEqual(readMenuTranslationOutput(output({ items: ["zucchine", "  carne macinata ", "sale"] }), ITALIAN), {
+    items: ["zucchine", "carne macinata", "sale"],
+  });
+  assert.deepEqual(readMenuTranslationOutput(output({ items: ["corn"] }), ENGLISH), { items: ["corn"] });
 });
 
 test("readMenuTranslationOutput: nunca una traducción a medias ni con la forma equivocada", () => {
   const cases: Array<[string, string, MenuTextSource]> = [
-    ["no es JSON", '{"items":["zucchine"', WITH_NOTE],
-    ["no es un objeto", output(["zucchine"]), WITH_NOTE],
-    ["sin la nota pedida", output({ items: ["a", "b", "c"] }), WITH_NOTE],
-    ["con una nota que no vino", output({ items: ["corn"], note: "x" }), ITEMS_ONLY],
-    ["una clave de más", output({ items: ["corn"], extra: 1 }), ITEMS_ONLY],
-    ["uno de menos", output({ items: ["a", "b"], note: "x" }), WITH_NOTE],
-    ["uno de más", output({ items: ["a", "b", "c", "d"], note: "x" }), WITH_NOTE],
-    ["items no es una lista", output({ items: "corn" }), ITEMS_ONLY],
-    ["un nombre que no es texto", output({ items: [5] }), ITEMS_ONLY],
-    ["un nombre vacío", output({ items: ["   "] }), ITEMS_ONLY],
-    ["un nombre de 81", output({ items: ["x".repeat(81)] }), ITEMS_ONLY],
-    ["un nombre con un control", output({ items: ["corn\u0007"] }), ITEMS_ONLY],
-    ["un nombre con un control de dirección", output({ items: ["corn‮"] }), ITEMS_ONLY],
-    ["una nota vacía", output({ items: ["a", "b", "c"], note: " \n " }), WITH_NOTE],
-    ["una nota de 1001", output({ items: ["a", "b", "c"], note: "x".repeat(1001) }), WITH_NOTE],
-    ["una nota con un tabulador", output({ items: ["a", "b", "c"], note: "uno\tdos" }), WITH_NOTE],
-    ["una nota con un control de dirección", output({ items: ["a", "b", "c"], note: "uno⁦dos" }), WITH_NOTE],
-    ["una nota que no es texto", output({ items: ["a", "b", "c"], note: null }), WITH_NOTE],
+    ["no es JSON", '{"items":["zucchine"', ITALIAN],
+    ["no es un objeto", output(["zucchine"]), ITALIAN],
+    ["con una nota", output({ items: ["corn"], note: "x" }), ENGLISH],
+    ["una clave de más", output({ items: ["corn"], extra: 1 }), ENGLISH],
+    ["sin items", output({ products: ["corn"] }), ENGLISH],
+    ["uno de menos", output({ items: ["a", "b"] }), ITALIAN],
+    ["uno de más", output({ items: ["a", "b", "c", "d"] }), ITALIAN],
+    ["items no es una lista", output({ items: "corn" }), ENGLISH],
+    ["un nombre que no es texto", output({ items: [5] }), ENGLISH],
+    ["un nombre vacío", output({ items: ["   "] }), ENGLISH],
+    ["un nombre de 81", output({ items: ["x".repeat(81)] }), ENGLISH],
+    ["un nombre con un control", output({ items: ["corn\u0007"] }), ENGLISH],
+    ["un nombre con un control de dirección", output({ items: ["corn‮"] }), ENGLISH],
   ];
   for (const [name, text, source] of cases) {
     assert.equal(readMenuTranslationOutput(text, source), null, name);
   }
   // Los largos, por caracteres como la base: 80 emojis entran.
-  assert.ok(readMenuTranslationOutput(output({ items: ["🥕".repeat(80)] }), ITEMS_ONLY));
-  assert.ok(readMenuTranslationOutput(output({ items: ["a", "b", "c"], note: "x".repeat(1000) }), WITH_NOTE));
+  assert.ok(readMenuTranslationOutput(output({ items: ["🥕".repeat(80)] }), ENGLISH));
 });
 
 test("translatedItemNames: cada nombre original por el suyo (los repetidos de la lista, por el mismo)", () => {
-  const source = menuTextSource("it", ["sal", "aceite", "sal"], null);
-  const names = translatedItemNames(source, { items: ["sale", "olio"], note: null });
+  const source = menuTextSource("it", ["sal", "aceite", "sal"]);
+  const names = translatedItemNames(source, { items: ["sale", "olio"] });
   assert.deepEqual([...names.entries()], [
     ["sal", "sale"],
     ["aceite", "olio"],
@@ -166,21 +142,18 @@ test("translatedItemNames: cada nombre original por el suyo (los repetidos de la
 // El traductor de mentira y la carga del SDK
 // ---------------------------------------------------------------------------
 
-test("TRANSLATE_TRANSPORT=fake: una traducción reconocible que pasa la misma validación, cortada a los largos", async () => {
-  const reply = await fakeTranslator.translateMenu(WITH_NOTE);
+test("TRANSLATE_TRANSPORT=fake: una traducción reconocible que pasa la misma validación, cortada a 80", async () => {
+  const reply = await fakeTranslator.translateMenu(ITALIAN);
   assert.equal(reply.kind, "text");
-  assert.deepEqual(readMenuTranslationOutput(reply.kind === "text" ? reply.text : "", WITH_NOTE), {
+  assert.deepEqual(readMenuTranslationOutput(reply.kind === "text" ? reply.text : "", ITALIAN), {
     items: ["[it] zapallitos", "[it] carne picada", "[it] sal"],
-    note: "[it] Tené listos 4 táperes.\nGracias!",
   });
-  const long: MenuTextSource = { target: "en", items: ["x".repeat(80)], note: "y".repeat(1000) };
-  const parsed = readMenuTranslationOutput(fakeMenuTranslationText(long), long);
-  assert.equal(parsed?.items[0]?.length, 80);
-  assert.equal(parsed?.note?.length, 1000);
-  assert.deepEqual(JSON.parse(fakeMenuTranslationText(ITEMS_ONLY)), { items: ["[en] choclo"] });
+  const long: MenuTextSource = { target: "en", items: ["x".repeat(80)] };
+  assert.equal(readMenuTranslationOutput(fakeMenuTranslationText(long), long)?.items[0]?.length, 80);
+  assert.deepEqual(JSON.parse(fakeMenuTranslationText(ENGLISH)), { items: ["[en] choclo"] });
 });
 
-test("lazyTranslator: la lista y la nota con el mismo traductor cargado una vez; si no carga, sdkLoad y reintenta", async () => {
+test("lazyTranslator: la lista con el mismo traductor cargado una vez; si no carga, sdkLoad y reintenta", async () => {
   let loads = 0;
   const calls: string[] = [];
   const inner: Translator = {
@@ -197,7 +170,7 @@ test("lazyTranslator: la lista y la nota con el mismo traductor cargado una vez;
     loads++;
     return inner;
   });
-  assert.deepEqual(await lazy.translateMenu(ITEMS_ONLY), { kind: "text", text: "{}" });
+  assert.deepEqual(await lazy.translateMenu(ENGLISH), { kind: "text", text: "{}" });
   assert.deepEqual(await lazy.translate({ name: "Locro", description: null }), { kind: "maxTokens" });
   assert.deepEqual(calls, ["menu:en", "translate"]);
   assert.equal(loads, 1, "se carga una sola vez para los dos");
@@ -208,8 +181,8 @@ test("lazyTranslator: la lista y la nota con el mismo traductor cargado una vez;
     if (attempts === 1) throw new Error("no carga");
     return inner;
   });
-  const failed: TranslatorReply = await flaky.translateMenu(ITEMS_ONLY);
+  const failed: TranslatorReply = await flaky.translateMenu(ENGLISH);
   assert.deepEqual(failed, { kind: "failed", reason: "sdkLoad", status: null });
-  assert.deepEqual(await flaky.translateMenu(ITEMS_ONLY), { kind: "text", text: "{}" }, "la próxima vuelve a intentar la carga");
+  assert.deepEqual(await flaky.translateMenu(ENGLISH), { kind: "text", text: "{}" }, "la próxima vuelve a intentar la carga");
   assert.equal(attempts, 2);
 });
