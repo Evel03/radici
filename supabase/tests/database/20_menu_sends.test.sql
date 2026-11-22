@@ -14,7 +14,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(77);
+select plan(89);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
@@ -40,7 +40,7 @@ insert into public.clients (id, chef_id, display_name, contact_email, contact_ph
 insert into public.requests (id, chef_id, client_id, type, status, adults, kids, days, meals, weeks, source, locale, contact) values
   ('7e6a3000-0000-4000-8000-00000000000a', '7e6a1000-0000-4000-8000-000000000001', '7e6a2000-0000-4000-8000-00000000000a',
    'week', 'accepted', 2, 1, 5, '{lunch,dinner}', 3, 'web', 'es',
-   '{"name": "Anna Rota", "email": "anna@envios.test", "phone": "+393339999999", "zone": "Loreto"}'),
+   '{"name": "Annina Rota", "email": "anna@envios.test", "phone": "+393339999999", "zone": "Loreto"}'),
   ('7e6a3000-0000-4000-8000-00000000000f', '7e6a1000-0000-4000-8000-000000000002', '7e6a2000-0000-4000-8000-00000000000f',
    'week', 'accepted', 1, 0, 3, '{dinner}', 1, 'app', 'it', null);
 
@@ -103,7 +103,8 @@ create function pg_temp.prepare(p_session text, p_version int, p_token text) ret
 language sql
 as $$
   select (public.chef_prepare_menu_send('7e6a1000-0000-4000-8000-000000000001', p_session::uuid, p_version, 'it',
-            jsonb_build_object('v', 1, 'token', p_token), false) ->> 'sendId')::uuid
+            jsonb_build_object('v', 1, 'token', p_token), false,
+            public.chef_menu_send_context('7e6a1000-0000-4000-8000-000000000001', p_session::uuid) ->> 'fingerprint') ->> 'sendId')::uuid
 $$;
 
 -- El envío con ese token en la foto.
@@ -171,7 +172,7 @@ select is(
   'request: idioma y hogar');
 select is(
   public.chef_menu_send_context('7e6a1000-0000-4000-8000-000000000001', '7e6a4000-0000-4000-8000-000000000001') -> 'contact',
-  '{"name": "Anna Rota", "email": "anna@envios.test", "phone": "+393339999999"}'::jsonb,
+  '{"name": "Annina Rota", "email": "anna@envios.test", "phone": "+393339999999"}'::jsonb,
   'contact: el del pedido de la web, no el viejo de la ficha');
 select is(
   public.chef_menu_send_context('7e6a1000-0000-4000-8000-000000000001', '7e6a4000-0000-4000-8000-000000000001') -> 'menu',
@@ -210,12 +211,16 @@ select is(
   '1 it f t t 7e6a3000-0000-4000-8000-00000000000a',
   'el envío queda sin salir, con la versión, el idioma y el pedido');
 select is((select count(*)::int from public.client_links), 0, 'la vista previa no crea ningún link');
+select ok((public.chef_menu_send_context('7e6a1000-0000-4000-8000-000000000001', '7e6a4000-0000-4000-8000-000000000001') ->> 'fingerprint') ~ '^[0-9a-f]{32}$',
+  'el contexto trae la huella de la foto');
+select is(pg_temp.error_of($$ select public.chef_prepare_menu_send('7e6a1000-0000-4000-8000-000000000001', '7e6a4000-0000-4000-8000-000000000001', 1, 'it', '{}', false, 'otra') $$),
+  '40001: menu_changed', 'una vista previa con otra huella (algo cambió mientras se armaba la foto): menu_changed');
 
 select is(
   array[
     pg_temp.error_of($$ select pg_temp.prepare('7e6a4000-0000-4000-8000-000000000001', 2, 'token-x1') $$),
-    pg_temp.error_of($$ select public.chef_prepare_menu_send('7e6a1000-0000-4000-8000-000000000001', '7e6a4000-0000-4000-8000-000000000001', 1, 'fr', '{}', false) $$),
-    pg_temp.error_of($$ select public.chef_prepare_menu_send('7e6a1000-0000-4000-8000-000000000001', '7e6a4000-0000-4000-8000-000000000001', 1, 'it', '[]', false) $$),
+    pg_temp.error_of($$ select public.chef_prepare_menu_send('7e6a1000-0000-4000-8000-000000000001', '7e6a4000-0000-4000-8000-000000000001', 1, 'fr', '{}', false, 'x') $$),
+    pg_temp.error_of($$ select public.chef_prepare_menu_send('7e6a1000-0000-4000-8000-000000000001', '7e6a4000-0000-4000-8000-000000000001', 1, 'it', '[]', false, 'x') $$),
     pg_temp.error_of($$ select pg_temp.prepare('7e6a4000-0000-4000-8000-000000000003', 1, 'token-x2') $$),
     pg_temp.error_of($$ select pg_temp.prepare('7e6a4000-0000-4000-8000-000000000002', 1, 'token-x3') $$),
     pg_temp.error_of($$ select pg_temp.prepare('7e6a4000-0000-4000-8000-000000000004', 1, 'token-x4') $$),
@@ -238,7 +243,7 @@ select is(
   public.chef_link_menu_send('7e6a1000-0000-4000-8000-000000000001', pg_temp.send_of('token-a'), pg_temp.h('token-a')) - 'sendId',
   '{"sessionId": "7e6a4000-0000-4000-8000-000000000001", "requestId": "7e6a3000-0000-4000-8000-00000000000a",
     "locale": "it", "snapshot": {"v": 1, "token": "token-a"},
-    "contact": {"name": "Anna Rota", "email": "anna@envios.test", "phone": "+393339999999"}, "chefName": "Evelyn"}'::jsonb,
+    "contact": {"name": "Annina Rota", "email": "anna@envios.test", "phone": "+393339999999"}, "chefName": "Evelyn"}'::jsonb,
   'al enviar: la foto, el idioma, el contacto de ahora y la cocinera');
 select is(
   (select concat_ws(' ', l.request_id, l.chef_id, l.expires_at = l.created_at + interval '120 days')
@@ -316,8 +321,8 @@ select is(public.client_link_view('token-a'), null, 'un token sin hashear no abr
 select is(public.client_link_view(pg_temp.h('no-existe')), null, 'un hash que no existe tampoco');
 select is(public.client_link_view(null), null, 'null tampoco');
 select is(public.client_link_view(pg_temp.h('token-a')) - 'weeks',
-  '{"requestId": "7e6a3000-0000-4000-8000-00000000000a", "locale": "es", "chefName": "Evelyn", "clientName": "Anna Rota"}'::jsonb,
-  'el link abre la reserva: idioma, cocinera y nombre de la ficha');
+  '{"requestId": "7e6a3000-0000-4000-8000-00000000000a", "locale": "es", "chefName": "Evelyn", "clientName": "Annina Rota"}'::jsonb,
+  'el link abre la reserva: idioma, cocinera y el nombre con que llegó el pedido (no el de la ficha)');
 select is(
   (select jsonb_agg(w - 'send') from jsonb_array_elements(public.client_link_view(pg_temp.h('token-a')) -> 'weeks') as w),
   '[{"sessionId": "7e6a4000-0000-4000-8000-000000000001", "date": "2027-03-01", "start": "10:00", "status": "confirmed", "week": 1, "weeks": 2},
@@ -346,7 +351,7 @@ select is(
     - 'sendId' - 'confirmedAt',
   '{"sessionId": "7e6a4000-0000-4000-8000-000000000001", "requestId": "7e6a3000-0000-4000-8000-00000000000a",
     "chefId": "7e6a1000-0000-4000-8000-000000000001", "already": false, "changesRequestedAt": null,
-    "date": "2027-03-01", "start": "10:00", "week": 1, "weeks": 2, "clientName": "Anna Rota", "locale": "it"}'::jsonb,
+    "date": "2027-03-01", "start": "10:00", "week": 1, "weeks": 2, "clientName": "Annina Rota", "locale": "it"}'::jsonb,
   'la clienta confirma con cualquier link de la reserva; vuelve lo necesario para avisarle a Evelyn');
 select is((select client_confirmed_at from public.menu_sends where id = pg_temp.send_of('token-a')), now(), 'queda confirmado');
 select is(
@@ -369,13 +374,17 @@ select is(
 -- El envío de C2, con su propio link: el link de C1 no lo contesta.
 select ok(pg_temp.deliver('7e6a1000-0000-4000-8000-000000000002',
   (public.chef_prepare_menu_send('7e6a1000-0000-4000-8000-000000000002', '7e6a4000-0000-4000-8000-00000000000f', 1, 'it',
-     '{"v": 1, "token": "token-x"}', false) ->> 'sendId')::uuid, 'token-x', array['whatsapp']) is not null,
+     '{"v": 1, "token": "token-x"}', false,
+     public.chef_menu_send_context('7e6a1000-0000-4000-8000-000000000002', '7e6a4000-0000-4000-8000-00000000000f') ->> 'fingerprint') ->> 'sendId')::uuid,
+  'token-x', array['whatsapp']) is not null,
   'C2 manda el menú de SX');
 select is(pg_temp.error_of($$ select public.client_link_confirm_menu(pg_temp.h('token-a'),
     pg_temp.send_of('token-x')) $$),
   'P0002: send_not_found', 'el link de una reserva no contesta el envío de otra');
 select is((public.client_link_view(pg_temp.h('token-x')) -> 'weeks') -> 0 ->> 'sessionId',
   '7e6a4000-0000-4000-8000-00000000000f', 'y cada link abre solo su reserva');
+select is(public.client_link_view(pg_temp.h('token-x')) ->> 'clientName', 'Xenia Ferri',
+  'un pedido sin nombre propio (de la app) usa el de la ficha');
 
 -- Evelyn manda otra versión de la semana 1: el envío viejo ya no se contesta.
 select ok(pg_temp.deliver('7e6a1000-0000-4000-8000-000000000001',
@@ -417,6 +426,54 @@ select is(
   true, 'la página sabe que pidió cambios');
 select ok(public.client_link_view(pg_temp.h('token-a'))::text !~ 'Mejor sin ajo',
   'la página no vuelve a mostrar el mensaje (es para Evelyn)');
+
+-- Después de la vista previa cambian un plato del catálogo, la hora de la semana o las semanas de la
+-- reserva: el envío no sale hasta pedir otra vista previa.
+select ok(pg_temp.prepare('7e6a4000-0000-4000-8000-000000000001', 2, 'token-n') is not null, 'vista previa n');
+reset role;
+insert into public.recipe_allergens (recipe_id, chef_id, allergen) values
+  ('7e6a6000-0000-4000-8000-000000000002', '7e6a1000-0000-4000-8000-000000000001', 'celery');
+set local role service_role;
+select is(pg_temp.error_of($$ select public.chef_link_menu_send('7e6a1000-0000-4000-8000-000000000001', pg_temp.send_of('token-n'), pg_temp.h('token-n')) $$),
+  '40001: menu_changed', 'un plato del menú cambió en el catálogo (un alérgeno nuevo): menu_changed');
+reset role;
+delete from public.recipe_allergens where recipe_id = '7e6a6000-0000-4000-8000-000000000002' and allergen = 'celery';
+set local role service_role;
+select ok(public.chef_link_menu_send('7e6a1000-0000-4000-8000-000000000001', pg_temp.send_of('token-n'), pg_temp.h('token-n')) is not null,
+  'con el plato como estaba, el link sale');
+reset role;
+update public.sessions set start_time = '11:00' where id = '7e6a4000-0000-4000-8000-000000000001';
+set local role service_role;
+select is(pg_temp.error_of($$ select public.chef_complete_menu_send('7e6a1000-0000-4000-8000-000000000001', pg_temp.send_of('token-n'), array['whatsapp']) $$),
+  '40001: menu_changed', 'la semana se movió de hora: no se marca enviado');
+reset role;
+update public.sessions set start_time = '10:00' where id = '7e6a4000-0000-4000-8000-000000000001';
+insert into public.sessions (id, chef_id, client_id, request_id, "date", start_time, cook_minutes, status) values
+  ('7e6a4000-0000-4000-8000-0000000000aa', '7e6a1000-0000-4000-8000-000000000001', '7e6a2000-0000-4000-8000-00000000000a',
+   '7e6a3000-0000-4000-8000-00000000000a', '2027-03-22', '10:00', 180, 'confirmed');
+set local role service_role;
+select is(pg_temp.error_of($$ select public.chef_complete_menu_send('7e6a1000-0000-4000-8000-000000000001', pg_temp.send_of('token-n'), array['whatsapp']) $$),
+  '40001: menu_changed', 'la reserva sumó una semana («1 di 3»): tampoco');
+reset role;
+delete from public.sessions where id = '7e6a4000-0000-4000-8000-0000000000aa';
+set local role service_role;
+select is((select sent_at from public.menu_sends where id = pg_temp.send_of('token-n')), null, 'el envío n no salió');
+
+-- El contexto de una semana cancelada con menú: session_not_editable, no un contexto a medias.
+reset role;
+insert into public.session_menus (session_id, chef_id) values ('7e6a4000-0000-4000-8000-000000000003', '7e6a1000-0000-4000-8000-000000000001');
+set local role service_role;
+select is(pg_temp.error_of($$ select public.chef_menu_send_context('7e6a1000-0000-4000-8000-000000000001', '7e6a4000-0000-4000-8000-000000000003') $$),
+  '55000: session_not_editable (cancelled)', 'el contexto de una semana cancelada: session_not_editable');
+
+-- La semana del envío de C2 se cancela: su clienta ya no contesta ese menú.
+reset role;
+update public.sessions set status = 'cancelled', cancelled_at = now() where id = '7e6a4000-0000-4000-8000-00000000000f';
+set local role service_role;
+select is(pg_temp.error_of($$ select public.client_link_confirm_menu(pg_temp.h('token-x'), pg_temp.send_of('token-x')) $$),
+  '55000: session_cancelled', 'el menú de una semana cancelada no se confirma');
+select is(pg_temp.error_of($$ select public.client_link_request_changes(pg_temp.h('token-x'), pg_temp.send_of('token-x'), 'Hola') $$),
+  '55000: session_cancelled', 'ni se le piden cambios');
 
 -- ---------------------------------------------------------------------
 -- 6. Lo que ve la cocina por la API

@@ -9,14 +9,19 @@ import {
   MAX_CANCEL_SESSIONS,
   MAX_CENTS,
   MAX_COOK_MINUTES,
+  MAX_MENU_VERSION,
   MAX_PORTIONS,
   MAX_WEEKS,
   RECIPE_DESCRIPTION_MAX,
   RECIPE_NAME_MAX,
+  SESSION_STATUSES,
   isTimeOfDay,
   isoWeekMonday,
+  menuSendChannels,
   parseBookingRequest,
   parseCancelSessionsRequest,
+  parseMenuPreviewRequest,
+  parseMenuSendRequest,
   parseMoveSessionRequest,
   parseTranslateRequest,
   textLength,
@@ -66,7 +71,9 @@ function errorsOf(
     | ReturnType<typeof parseBookingRequest>
     | ReturnType<typeof parseMoveSessionRequest>
     | ReturnType<typeof parseCancelSessionsRequest>
-    | ReturnType<typeof parseTranslateRequest>,
+    | ReturnType<typeof parseTranslateRequest>
+    | ReturnType<typeof parseMenuPreviewRequest>
+    | ReturnType<typeof parseMenuSendRequest>,
 ): unknown {
   assert.equal(result.ok, false, "tenía que fallar");
   return result.ok ? null : result.errors;
@@ -82,6 +89,8 @@ test("rutas y límites del contrato", () => {
     moveSession: "/sessions/move",
     cancelSessions: "/sessions/cancel",
     translate: "/translate",
+    menuPreview: "/menus/preview",
+    menuSend: "/menus/send",
   });
   assert.equal(RECIPE_NAME_MAX, 120, "como recipes_name_*_valido");
   assert.equal(RECIPE_DESCRIPTION_MAX, 200, "como recipes_description_*_valida");
@@ -455,4 +464,87 @@ test("traducir: una clave que el contrato no tiene o un cuerpo que no es un obje
   for (const input of [null, [], "Locro", 7]) {
     assert.deepEqual(errorsOf(parseTranslateRequest(input)), { payload: "invalid" }, JSON.stringify(input));
   }
+});
+
+// ---------------------------------------------------------------------------
+// Envío del menú de una semana (§13)
+// ---------------------------------------------------------------------------
+
+const SEND_ID = "5e550000-0000-4000-8000-0000000000aa";
+
+test("estados de sesión: los del enum; la versión del menú, un int de Postgres", () => {
+  assert.deepEqual([...SESSION_STATUSES], ["held", "confirmed", "shopping_done", "cooked", "paid", "cancelled"]);
+  assert.equal(MAX_MENU_VERSION, 2_147_483_647);
+});
+
+test("vista previa: la sesión en minúsculas, la versión del menú y traducir por defecto", () => {
+  assert.deepEqual(parseMenuPreviewRequest({ sessionId: SESSION_ID.toUpperCase(), menuVersion: 3 }), {
+    ok: true,
+    value: { sessionId: SESSION_ID, menuVersion: 3, translate: true },
+  });
+  assert.deepEqual(parseMenuPreviewRequest({ sessionId: SESSION_ID, menuVersion: 1, translate: false }), {
+    ok: true,
+    value: { sessionId: SESSION_ID, menuVersion: 1, translate: false },
+  });
+  assert.deepEqual(parseMenuPreviewRequest({ sessionId: SESSION_ID, menuVersion: MAX_MENU_VERSION, translate: null }), {
+    ok: true,
+    value: { sessionId: SESSION_ID, menuVersion: MAX_MENU_VERSION, translate: true },
+  });
+});
+
+test("vista previa: 400 por campo; una clave de más o un cuerpo que no es un objeto, payload invalid", () => {
+  const cases: Array<[unknown, unknown]> = [
+    [{}, { sessionId: "required", menuVersion: "required" }],
+    [{ sessionId: "x", menuVersion: 1 }, { sessionId: "invalid" }],
+    [{ sessionId: SESSION_ID, menuVersion: 0 }, { menuVersion: "range" }],
+    [{ sessionId: SESSION_ID, menuVersion: MAX_MENU_VERSION + 1 }, { menuVersion: "range" }],
+    [{ sessionId: SESSION_ID, menuVersion: 1.5 }, { menuVersion: "invalid" }],
+    [{ sessionId: SESSION_ID, menuVersion: "1" }, { menuVersion: "invalid" }],
+    [{ sessionId: SESSION_ID, menuVersion: 1, translate: "no" }, { translate: "invalid" }],
+    [{ sessionId: SESSION_ID, menuVersion: 1, locale: "it" }, { payload: "invalid" }],
+    [{ sessionId: SESSION_ID, menuVersion: 1, chefId: SESSION_ID }, { payload: "invalid" }],
+    [null, { payload: "invalid" }],
+    [[SESSION_ID], { payload: "invalid" }],
+  ];
+  for (const [input, expected] of cases) {
+    assert.deepEqual(errorsOf(parseMenuPreviewRequest(input)), expected, JSON.stringify(input));
+  }
+});
+
+test("enviar: el envío en minúsculas y por dónde sale; ausente es false, y al menos uno", () => {
+  assert.deepEqual(parseMenuSendRequest({ sendId: SEND_ID.toUpperCase(), email: true, whatsapp: false }), {
+    ok: true,
+    value: { sendId: SEND_ID, email: true, whatsapp: false },
+  });
+  assert.deepEqual(parseMenuSendRequest({ sendId: SEND_ID, whatsapp: true }), {
+    ok: true,
+    value: { sendId: SEND_ID, email: false, whatsapp: true },
+  });
+  assert.deepEqual(parseMenuSendRequest({ sendId: SEND_ID, email: true, whatsapp: true }), {
+    ok: true,
+    value: { sendId: SEND_ID, email: true, whatsapp: true },
+  });
+});
+
+test("enviar: 400 por campo; sin ningún canal, channels required; una clave de más, payload invalid", () => {
+  const cases: Array<[unknown, unknown]> = [
+    [{ email: true }, { sendId: "required" }],
+    [{ sendId: "abc", email: true }, { sendId: "invalid" }],
+    [{ sendId: SEND_ID }, { channels: "required" }],
+    [{ sendId: SEND_ID, email: false, whatsapp: false }, { channels: "required" }],
+    [{ sendId: SEND_ID, email: "yes" }, { email: "invalid" }],
+    [{ sendId: SEND_ID, email: true, whatsapp: 1 }, { whatsapp: "invalid" }],
+    [{ sendId: SEND_ID, email: true, to: "otra@example.test" }, { payload: "invalid" }],
+    [{ sendId: SEND_ID, whatsapp: true, phone: "+390000" }, { payload: "invalid" }],
+    ["x", { payload: "invalid" }],
+  ];
+  for (const [input, expected] of cases) {
+    assert.deepEqual(errorsOf(parseMenuSendRequest(input)), expected, JSON.stringify(input));
+  }
+});
+
+test("menuSendChannels: en el orden de la base, email antes que whatsapp", () => {
+  assert.deepEqual(menuSendChannels({ email: true, whatsapp: true }), ["email", "whatsapp"]);
+  assert.deepEqual(menuSendChannels({ email: false, whatsapp: true }), ["whatsapp"]);
+  assert.deepEqual(menuSendChannels({ email: true, whatsapp: false }), ["email"]);
 });
