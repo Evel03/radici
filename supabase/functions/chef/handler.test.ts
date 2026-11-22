@@ -2146,9 +2146,17 @@ test("enviar por email: crea el link (la base guarda solo el hash), manda el ema
   const url = `https://radicicucina.app/prenotazione/#t=${token}`;
   assert.ok(mail.html.includes(`href="${url}"`));
   assert.equal(mail.idempotencyKey, `menu-send-${preview.sendId}-${link.p_token_hash.slice(0, 16)}`);
-  // Lo que salió es lo que Evelyn vio en la vista previa, con el link en lugar del texto de reemplazo.
-  assert.equal(mail.text, preview.message.emailText.replace("[link personale per confermare]", url));
-  assert.ok(!mail.html.includes("[link personale per confermare]"));
+  // Lo que salió es lo que Evelyn vio en la vista previa, con los links en lugar de los textos de reemplazo: el de
+  // confirmar y el del libro del menú de esa semana (el mismo token, la sesión también en el fragmento).
+  const book = `${url}&libro=${SESSION_ID}`;
+  assert.equal(
+    mail.text,
+    preview.message.emailText.replace("[link personale per confermare]", url).replace("[link personale per sfogliare il menù]", book),
+  );
+  assert.ok(mail.html.includes(`href="${url}&amp;libro=${SESSION_ID}"`), "el link al libro, escapado en el HTML");
+  for (const placeholder of ["[link personale per confermare]", "[link personale per sfogliare il menù]"]) {
+    assert.ok(!mail.html.includes(placeholder), placeholder);
+  }
 
   assert.deepEqual(run.store.completeCalls, [{ p_chef_id: CHEF_ID, p_send_id: preview.sendId, p_via: ["email"] }]);
   assert.ok(run.logs.some((entry) => entry.event === "email_sent" && entry.fields["sendId"] === preview.sendId));
@@ -2172,7 +2180,13 @@ test("enviar por WhatsApp: el servidor no manda nada; devuelve el texto con el l
   const token = tokenIn(body.whatsappText);
   assert.ok(token);
   assert.equal(sha256(token), run.store.linkCalls[0]?.p_token_hash);
-  assert.equal(body.whatsappText, preview.message.whatsappText.replace("[link personale per confermare]", `https://radicicucina.app/prenotazione/#t=${token}`));
+  const url = `https://radicicucina.app/prenotazione/#t=${token}`;
+  assert.equal(
+    body.whatsappText,
+    preview.message.whatsappText
+      .replace("[link personale per confermare]", url)
+      .replace("[link personale per sfogliare il menù]", `${url}&libro=${SESSION_ID}`),
+  );
   assert.equal(run.mailer.messages.length, 0);
   assert.deepEqual(run.store.completeCalls[0]?.p_via, ["whatsapp"]);
 });
@@ -2396,12 +2410,19 @@ test("enviar: el link o la foto con otra forma, 500 sin mandar nada", async () =
 
   const other = harness();
   const otherPreview = await previewed(other);
-  other.store.linkRaw = { sendId: sendIdOf(5), locale: "it", snapshot: {}, contact: LINK_CONTACT, chefName: "Evelyn" };
+  other.store.linkRaw = { sendId: sendIdOf(5), sessionId: SESSION_ID, locale: "it", snapshot: {}, contact: LINK_CONTACT, chefName: "Evelyn" };
   assert.equal((await other.handle(post("/menus/send", { sendId: otherPreview.sendId, email: true }))).status, 500, "otro envío");
 
   const snapshot = harness();
   const snapshotPreview = await previewed(snapshot);
-  snapshot.store.linkRaw = { sendId: snapshotPreview.sendId, locale: "it", snapshot: { v: 2 }, contact: LINK_CONTACT, chefName: "Evelyn" };
+  snapshot.store.linkRaw = {
+    sendId: snapshotPreview.sendId,
+    sessionId: SESSION_ID,
+    locale: "it",
+    snapshot: { v: 2 },
+    contact: LINK_CONTACT,
+    chefName: "Evelyn",
+  };
   assert.equal((await snapshot.handle(post("/menus/send", { sendId: snapshotPreview.sendId, email: true }))).status, 500);
   assert.ok(snapshot.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "menu_snapshot"));
   for (const run of [link, other, snapshot]) assert.equal(run.mailer.messages.length + run.store.completeCalls.length, 0);
@@ -2565,4 +2586,76 @@ test("index.ts: las cuatro funciones del envío con la clave secreta, sus errore
   for (const line of index.split("\n").filter((text) => /consoleLogger|console\./.test(text))) {
     assert.ok(!/apiKey|RESEND_API_KEY"\)/.test(line), `un log con la clave: ${line.trim()}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Libro del menú (SPEC 5.8): los ingredientes de los platos y el link al libro
+// ---------------------------------------------------------------------------
+
+/** El contexto con los ingredientes que trae la base desde 20261122120000_menu_book.sql (solo los nombres). */
+function menuContextWithIngredients(ingredients: string[], overrides: Record<string, unknown> = {}, menu: Record<string, unknown> = {}): Record<string, unknown> {
+  const base = menuContextRpc(overrides, menu);
+  const baseMenu = base["menu"] as { dishes: Array<Record<string, unknown>> };
+  return { ...base, menu: { ...baseMenu, dishes: baseMenu.dishes.map((dish) => ({ ...dish, ingredients })) } };
+}
+
+test("libro del menú: los ingredientes se traducen con la lista en un solo pedido (sin repetir) y van en la foto, solo los nombres", async () => {
+  const run = harness();
+  run.store.menuContext = menuContextWithIngredients(["Zapallitoszzz", "Pan rallado-ing"]);
+  const body = await previewed(run);
+  assert.equal(body.translated, true);
+  // Un solo pedido a Claude: la lista y después los ingredientes, sin repetir; nunca la nota.
+  assert.deepEqual(run.translator.menuCalls, [{ target: "it", items: ["Zapallitoszzz", "sal", "Pan rallado-ing"] }]);
+  assert.ok(!JSON.stringify(run.translator.menuCalls).includes("NOTA-MENU"));
+  assert.equal(run.store.rateHits.length, 1, "un solo cupo de la cocina");
+  const snapshot = run.store.prepareCalls[0]?.p_snapshot;
+  assert.deepEqual(snapshot?.dishes[0]?.ingredients, ["[it] Zapallitoszzz", "[it] Pan rallado-ing"]);
+  assert.equal(snapshot?.items[0]?.name, "[it] Zapallitoszzz", "la misma traducción para la lista");
+  assert.equal(run.logs.find((entry) => entry.event === "translated")?.fields["items"], 3);
+  // Los logs nunca llevan los nombres.
+  assert.ok(!JSON.stringify(run.logs).includes("Pan rallado"));
+  // La vista previa: el texto de reemplazo del link al libro, junto al de confirmar.
+  for (const text of [body.message.emailText, body.message.whatsappText]) {
+    assert.ok(text.includes("[link personale per sfogliare il menù]"));
+    assert.ok(text.includes("[link personale per confermare]"));
+    assert.equal(tokenIn(text), null);
+  }
+});
+
+test("libro del menú: en español, con translate: false o sin traductor para la lista, los ingredientes van como los escribió Evelyn", async () => {
+  const spanish = harness();
+  spanish.store.menuContext = menuContextWithIngredients(["Zapallitoszzz", "Pan rallado-ing"], { request: { locale: "es" } });
+  await previewed(spanish);
+  const untranslated = harness();
+  untranslated.store.menuContext = menuContextWithIngredients(["Zapallitoszzz", "Pan rallado-ing"]);
+  await previewed(untranslated, previewBody({ translate: false }));
+  for (const run of [spanish, untranslated]) {
+    assert.equal(run.translator.menuCalls.length + run.store.rateHits.length, 0);
+    assert.deepEqual(run.store.prepareCalls[0]?.p_snapshot.dishes[0]?.ingredients, ["Zapallitoszzz", "Pan rallado-ing"]);
+    assert.equal(run.store.prepareCalls[0]?.p_translated, false);
+  }
+
+  // Sin lista pero con ingredientes: se traducen los ingredientes (para el libro).
+  const onlyIngredients = harness();
+  onlyIngredients.store.menuContext = menuContextWithIngredients(["Pan rallado-ing"], {}, { items: [] });
+  const body = await previewed(onlyIngredients);
+  assert.equal(body.translated, true);
+  assert.deepEqual(onlyIngredients.translator.menuCalls, [{ target: "it", items: ["Pan rallado-ing"] }]);
+});
+
+test("libro del menú: el mensaje que sale lleva el link al libro de esa semana (el mismo token, la sesión en el fragmento)", async () => {
+  const run = harness();
+  run.store.menuContext = menuContextWithIngredients(["Zapallitoszzz"]);
+  const preview = await previewed(run);
+  const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true, whatsapp: true }));
+  assert.equal(response.status, 200);
+  const body = await json(response);
+  const token = tokenIn(body.whatsappText);
+  assert.ok(token);
+  const book = `https://radicicucina.app/prenotazione/#t=${token}&libro=${SESSION_ID}`;
+  for (const text of [body.whatsappText, run.mailer.messages[0]?.text ?? ""]) {
+    assert.ok(text.includes(book), "el link al libro");
+    assert.ok(!text.includes("?libro"), "nunca en la query");
+  }
+  assert.ok(!JSON.stringify(run.logs).includes(token), "el token nunca va a los logs");
 });

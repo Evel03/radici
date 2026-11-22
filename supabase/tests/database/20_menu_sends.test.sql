@@ -179,10 +179,11 @@ select is(
   '{"version": 1, "note": "Tené listos 4 táperes", "allergensConfirmed": false,
     "dishes": [
       {"recipeId": "7e6a6000-0000-4000-8000-000000000002", "portions": 6, "nameIt": "Minestrone", "nameEs": null, "nameEn": null,
-       "descriptionIt": null, "descriptionEs": null, "descriptionEn": null, "diet": "vegan", "photoId": null, "allergens": []},
+       "descriptionIt": null, "descriptionEs": null, "descriptionEn": null, "diet": "vegan", "photoId": null, "allergens": [],
+       "ingredients": []},
       {"recipeId": "7e6a6000-0000-4000-8000-000000000001", "portions": 8, "nameIt": "Lasagne", "nameEs": "Lasaña", "nameEn": null,
        "descriptionIt": "Al ragù", "descriptionEs": null, "descriptionEn": null, "diet": null, "photoId": null,
-       "allergens": ["gluten", "milk"]}],
+       "allergens": ["gluten", "milk"], "ingredients": []}],
     "items": [
       {"name": "Zucchine", "section": "produce", "quantity": 750, "unit": "g"},
       {"name": "Sale", "section": "pantry", "quantity": null, "unit": null}]}'::jsonb,

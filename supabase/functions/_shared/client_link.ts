@@ -35,6 +35,10 @@ export const CLIENT_LINK_TOKEN_BYTES = 32;
 
 /** Porciones de un plato en la semana: el check de session_menu.portions. */
 export const MAX_PORTIONS = 500;
+/** Ingredientes de un plato (libro del menú): el check de recipe_ingredients.position (de 1 a 50). */
+export const MAX_DISH_INGREDIENTS = 50;
+/** Caracteres del nombre de un ingrediente: el check de recipe_ingredients.name. */
+export const INGREDIENT_NAME_MAX = 80;
 /** Cantidad de un renglón de la lista: el check de session_shopping_items.quantity. */
 export const MAX_ITEM_QUANTITY = 1_000_000;
 
@@ -73,6 +77,17 @@ export async function hashClientLinkToken(token: string): Promise<string> {
 /** El link de la clienta: la página /prenotazione/ con el token en el fragmento. */
 export function reservationPageUrl(siteUrl: string, token: string): string {
   return `${siteUrl.replace(/\/+$/, "")}${RESERVATION_PAGE_PATH}#t=${token}`;
+}
+
+/** La clave del fragmento que abre el libro del menú de una semana: #t=<token>&libro=<sesión>. */
+export const BOOK_FRAGMENT_PARAM = "libro";
+
+/**
+ * El link al libro del menú de una semana: el de la reserva con la sesión de esa semana, también en el fragmento
+ * (#t=<token>&libro=<sesión>), nunca en la query. La sesión no abre nada sin el token.
+ */
+export function menuBookUrl(siteUrl: string, token: string, sessionId: string): string {
+  return `${reservationPageUrl(siteUrl, token)}&${BOOK_FRAGMENT_PARAM}=${sessionId.toLowerCase()}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +148,11 @@ export interface SnapshotDish {
   portions: number;
   /** La foto del plato (bucket recipe-photos del origen de Supabase), o null. */
   photo: MenuPhoto | null;
+  /**
+   * Los nombres de sus ingredientes, sin cantidades (libro del menú), en el idioma del envío. Sin la clave: el plato
+   * no tiene, o la foto es de antes del libro (22/11/2026); nunca una lista vacía.
+   */
+  ingredients?: string[];
 }
 
 /** Un renglón de la lista de compras. Sin cantidad ni unidad: «q.b.», algo para tener en casa. */
@@ -179,6 +199,29 @@ function readAllergens(value: unknown): Allergen[] | null {
   return ALLERGENS.filter((allergen) => (value as unknown[]).includes(allergen));
 }
 
+/** Caracteres de control: un nombre de ingrediente va en una línea. */
+const NAME_CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+
+/**
+ * Los nombres de los ingredientes de un plato (libro del menú), o undefined si no queda ninguno para mostrar. Como la
+ * foto, nunca descartan el plato: si no es una lista, sale sin ingredientes; de una lista quedan los nombres de 1 a 80
+ * caracteres en una línea, recortados, sin repetir (sin distinguir mayúsculas) y hasta 50.
+ */
+function readIngredients(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!isText(item) || NAME_CONTROL.test(item) || textLength(item.trim()) > INGREDIENT_NAME_MAX) continue;
+    const name = item.trim();
+    if (seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    names.push(name);
+    if (names.length === MAX_DISH_INGREDIENTS) break;
+  }
+  return names.length > 0 ? names : undefined;
+}
+
 function readDish(value: unknown, storageOrigin: string | null): SnapshotDish | null {
   if (!isRecord(value)) return null;
   const name = value["name"];
@@ -192,7 +235,16 @@ function readDish(value: unknown, storageOrigin: string | null): SnapshotDish | 
   }
   // La foto nunca descarta el plato: con otra forma, o de otro origen, sale sin foto.
   const photo = readStoragePhoto(value["photo"], storageOrigin);
-  return { name, description, allergens, diet, portions, photo: photo ? { thumb: photo.thumb, full: photo.full } : null };
+  const ingredients = readIngredients(value["ingredients"]);
+  return {
+    name,
+    description,
+    allergens,
+    diet,
+    portions,
+    photo: photo ? { thumb: photo.thumb, full: photo.full } : null,
+    ...(ingredients ? { ingredients } : {}),
+  };
 }
 
 function readItem(value: unknown): ShoppingItem | null {

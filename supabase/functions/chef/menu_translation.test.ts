@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
   MENU_TRANSLATION_SYSTEM_PROMPT,
   fakeMenuTranslationText,
+  menuTextNames,
   menuTextSource,
   menuTranslationSchema,
   menuTranslationUserMessage,
@@ -185,4 +186,24 @@ test("lazyTranslator: la lista con el mismo traductor cargado una vez; si no car
   assert.deepEqual(failed, { kind: "failed", reason: "sdkLoad", status: null });
   assert.deepEqual(await flaky.translateMenu(ENGLISH), { kind: "text", text: "{}" }, "la próxima vuelve a intentar la carga");
   assert.equal(attempts, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Libro del menú: los ingredientes de los platos van en el mismo pedido
+// ---------------------------------------------------------------------------
+
+test("menuTextNames: la lista y después los ingredientes de cada plato, en orden; menuTextSource saca los repetidos", () => {
+  const items = [{ name: "zapallitos" }, { name: "sal" }];
+  const dishes = [{ ingredients: ["zapallitos", "carne picada", "sal"] }, { ingredients: [] }, { ingredients: ["choclo"] }];
+  const names = menuTextNames(items, dishes);
+  assert.deepEqual(names, ["zapallitos", "sal", "zapallitos", "carne picada", "sal", "choclo"]);
+  assert.deepEqual(menuTextSource("it", names), { target: "it", items: ["zapallitos", "sal", "carne picada", "choclo"] });
+  // Sin lista, solo los ingredientes; sin nada, nada (quien llama no traduce).
+  assert.deepEqual(menuTextNames([], dishes), ["zapallitos", "carne picada", "sal", "choclo"]);
+  assert.deepEqual(menuTextNames([], [{ ingredients: [] }]), []);
+});
+
+test("el prompt del sistema: dice que llegan también los ingredientes de los platos (sin la nota)", () => {
+  assert.ok(MENU_TRANSLATION_SYSTEM_PROMPT.includes("los ingredientes de los platos del menú"));
+  assert.ok(!/\bnot[ae]\b/i.test(MENU_TRANSLATION_SYSTEM_PROMPT));
 });

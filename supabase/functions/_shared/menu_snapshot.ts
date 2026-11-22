@@ -32,7 +32,18 @@ export const MENU_LIMITS = {
   itemNameMax: 80,
   /** Caracteres de la nota para la clienta (admite saltos de línea). */
   noteMax: 1000,
+  /** Ingredientes de un plato (recipe_ingredients.position, de 1 a 50). */
+  maxIngredients: 50,
+  /** Caracteres del nombre de un ingrediente (como el de un renglón de la lista). */
+  ingredientNameMax: 80,
 } as const;
+
+/**
+ * Bytes de la foto (JSON en UTF-8) hasta los que lleva los ingredientes de los platos: la base acepta hasta 64 KB
+ * (menu_sends_snapshot_valido, en jsonb, que ocupa algo más que el texto). Pasado esto, los platos salen sin
+ * ingredientes (fitMenuSnapshotSize): el menú se manda igual y el libro los muestra sin esa parte.
+ */
+export const SNAPSHOT_INGREDIENTS_MAX_BYTES = 60_000;
 
 /** La semana del envío: «Semana k de N» (las sesiones no canceladas de la reserva), su día y su llegada. */
 export interface MenuSnapshotSession {
@@ -61,6 +72,12 @@ export interface MenuSnapshotDish {
   portions: number;
   /** Las URL públicas de la foto (como el menù de la web), o null. El email no las usa: sin imágenes remotas. */
   photo: MenuPhoto | null;
+  /**
+   * Los nombres de sus ingredientes para el libro del menú (sin cantidades), en el idioma de la clienta si se
+   * tradujeron (como la lista), en el orden de Evelyn y sin repetir. Sin ingredientes no va la clave, como en
+   * las fotos de antes del libro (22/11/2026): todo lo que lee una foto tiene que andar sin ella.
+   */
+  ingredients?: string[];
 }
 
 export interface MenuSnapshotItem {
@@ -145,16 +162,56 @@ function readPhoto(value: unknown): MenuPhoto | null | undefined {
   return { thumb: value["thumb"], full: value["full"] };
 }
 
+/** Caracteres de control (los de la base y los de C1): un nombre de ingrediente va en una línea. */
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+
+/**
+ * Los nombres de los ingredientes de un plato (la clave ingredients, libro del menú): undefined si no vienen (null o
+ * ausente, como en las fotos de antes del libro) o si la lista está vacía; null si tienen otra forma (no es una
+ * lista, más de 50, o un nombre vacío, de más de 80 caracteres o con caracteres de control).
+ */
+export function readIngredientNames(value: unknown): string[] | null | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > MENU_LIMITS.maxIngredients) return null;
+  const names: string[] = [];
+  for (const item of value) {
+    if (!isText(item) || CONTROL.test(item) || Array.from(item).length > MENU_LIMITS.ingredientNameMax) return null;
+    names.push(item);
+  }
+  return names.length > 0 ? names : undefined;
+}
+
 function readDish(value: unknown): MenuSnapshotDish | null {
   if (!isRecord(value)) return null;
   const { name, description, diet, portions } = value;
   const allergens = readAllergenList(value["allergens"]);
   const photo = readPhoto(value["photo"]);
+  const ingredients = readIngredientNames(value["ingredients"]);
   if (!isText(name) || (description !== null && !isText(description))) return null;
   if (!allergens || (diet !== null && !isOneOf(DIETS, diet)) || !isIntBetween(portions, 1, MENU_LIMITS.maxPortions) || photo === undefined) {
     return null;
   }
-  return { name, description, allergens, diet, portions, photo };
+  if (ingredients === null) return null;
+  return { name, description, allergens, diet, portions, photo, ...(ingredients ? { ingredients } : {}) };
+}
+
+/** Bytes de la foto como JSON en UTF-8. */
+export function menuSnapshotBytes(snapshot: MenuSnapshot): number {
+  return new TextEncoder().encode(JSON.stringify(snapshot)).length;
+}
+
+/**
+ * La foto que entra en la base: la misma si no pasa de SNAPSHOT_INGREDIENTS_MAX_BYTES; si pasa, una copia sin los
+ * ingredientes de los platos (lo único que se puede sacar sin cambiar el mensaje: el libro sale sin esa parte).
+ */
+export function fitMenuSnapshotSize(snapshot: MenuSnapshot): MenuSnapshot {
+  if (menuSnapshotBytes(snapshot) <= SNAPSHOT_INGREDIENTS_MAX_BYTES) return snapshot;
+  const dishes = snapshot.dishes.map((dish) => {
+    const copy: MenuSnapshotDish = { ...dish };
+    delete copy.ingredients;
+    return copy;
+  });
+  return { ...snapshot, dishes };
 }
 
 function readList<T>(value: unknown, read: (item: unknown) => T | null): T[] | null {

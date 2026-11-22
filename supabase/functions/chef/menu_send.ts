@@ -15,6 +15,7 @@ import { recipePhotoUrls } from "../_shared/menu.ts";
 import {
   MENU_SNAPSHOT_VERSION,
   readAllergenList,
+  readIngredientNames,
   readMenuItem,
   type MenuSnapshot,
   type MenuSnapshotDish,
@@ -48,6 +49,8 @@ export interface ContextDish {
   descriptionEn: string | null;
   diet: Diet | null;
   photoId: string | null;
+  /** Los nombres de sus ingredientes en español, en orden y sin repetir (libro del menú); [] sin ingredientes. */
+  ingredients: string[];
   allergens: Allergen[];
 }
 
@@ -118,10 +121,12 @@ function readContextDish(value: unknown): ContextDish | null {
     descriptionEn: optionalText(value["descriptionEn"]),
   };
   const allergens = readAllergenList(value["allergens"]);
+  // Los nombres de los ingredientes (libro del menú, migración 20261122120000_menu_book.sql): sin la clave, ninguno.
+  const ingredients = readIngredientNames(value["ingredients"]);
   if (!isDbUuid(recipeId) || !isPositiveInt(portions) || typeof nameIt !== "string" || nameIt.trim() === "" || !allergens) return null;
   if (texts.nameEs === undefined || texts.nameEn === undefined || texts.descriptionIt === undefined) return null;
   if (texts.descriptionEs === undefined || texts.descriptionEn === undefined) return null;
-  if ((diet !== null && !isOneOf(DIETS, diet)) || (photoId !== null && !isDbUuid(photoId))) return null;
+  if ((diet !== null && !isOneOf(DIETS, diet)) || (photoId !== null && !isDbUuid(photoId)) || ingredients === null) return null;
   return {
     recipeId,
     portions,
@@ -133,6 +138,7 @@ function readContextDish(value: unknown): ContextDish | null {
     descriptionEn: texts.descriptionEn,
     diet,
     photoId,
+    ingredients: ingredients ?? [],
     allergens,
   };
 }
@@ -208,12 +214,32 @@ export function dishDescription(dish: ContextDish, locale: Locale): string | nul
   return own ?? dish.descriptionIt;
 }
 
+/**
+ * Los ingredientes de un plato para la foto (libro del menú): solo los nombres, traducidos con el mismo mapa que la
+ * lista (se traducen juntos) o como los escribió Evelyn, y sin repetir sin distinguir mayúsculas (dos nombres pueden
+ * quedar iguales al traducirse). Sin ingredientes, nada: la clave no va en la foto.
+ */
+export function snapshotIngredients(dish: ContextDish, names: ReadonlyMap<string, string> | null): { ingredients?: string[] } {
+  const seen = new Set<string>();
+  const ingredients: string[] = [];
+  for (const original of dish.ingredients) {
+    const name = (names?.get(original) ?? original).trim();
+    if (name === "" || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    ingredients.push(name);
+  }
+  return ingredients.length > 0 ? { ingredients } : {};
+}
+
 export interface SnapshotOptions {
   /** La cocina del token: la carpeta de las fotos en Storage. */
   chefId: string;
   /** photoOrigin(SUPABASE_URL): sin origen (functions serve, http://kong:8000), los platos van sin foto. */
   photoOrigin: string | null;
-  /** Los nombres de la lista traducidos (cada nombre original → el suyo); null si no se tradujo. */
+  /**
+   * Los nombres traducidos (cada nombre original → el suyo) de la lista y de los ingredientes de los platos, que se
+   * traducen juntos (menuTextNames); null si no se tradujo.
+   */
   itemNames: ReadonlyMap<string, string> | null;
 }
 
@@ -235,6 +261,7 @@ export function buildMenuSnapshot(context: MenuSendContext, options: SnapshotOpt
       options.photoOrigin !== null && dish.photoId !== null
         ? recipePhotoUrls(options.photoOrigin, options.chefId, dish.recipeId, dish.photoId)
         : null,
+    ...snapshotIngredients(dish, options.itemNames),
   }));
   const items: MenuSnapshotItem[] = context.menu.items.map((item) => ({
     ...item,
@@ -296,6 +323,8 @@ export function preparedSendIdFromRpc(data: unknown): string | null {
 
 export interface LinkedSend {
   sendId: string;
+  /** La semana del envío: el link al libro del menú la abre (#t=…&libro=<sesión>). */
+  sessionId: string;
   locale: Locale;
   /** La foto tal como la guardó la base (se lee con readMenuSnapshot). */
   snapshot: unknown;
@@ -308,10 +337,11 @@ export interface LinkedSend {
 export function linkedSendFromRpc(data: unknown): LinkedSend | null {
   if (!isRecord(data)) return null;
   const sendId = data["sendId"];
+  const sessionId = data["sessionId"];
   const locale = data["locale"];
   const contact = readContact(data["contact"]);
-  if (!isDbUuid(sendId) || !isOneOf(LOCALES, locale) || !contact || !isRecord(data["snapshot"])) return null;
-  return { sendId, locale, snapshot: data["snapshot"], contact, chefName: chefNameOf(data["chefName"]) };
+  if (!isDbUuid(sendId) || !isDbUuid(sessionId) || !isOneOf(LOCALES, locale) || !contact || !isRecord(data["snapshot"])) return null;
+  return { sendId, sessionId, locale, snapshot: data["snapshot"], contact, chefName: chefNameOf(data["chefName"]) };
 }
 
 const CHANNELS: readonly MenuSendChannel[] = ["email", "whatsapp"];

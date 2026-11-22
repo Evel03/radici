@@ -18,6 +18,7 @@ import {
   preparedSendIdFromRpc,
   sendableEmail,
   sha256Hex,
+  snapshotIngredients,
   whatsappPhone,
   type ContextDish,
 } from "./menu_send.ts";
@@ -273,12 +274,21 @@ test("preparedSendIdFromRpc, linkedSendFromRpc y completedSendFromRpc: la forma 
   };
   assert.deepEqual(linkedSendFromRpc(linked), {
     sendId: SEND_ID,
+    sessionId: SESSION_ID,
     locale: "it",
     snapshot: { v: 1 },
     contact: { name: "Maria", email: "maria@example.test", phone: null },
     chefName: "Evelyn",
   });
-  for (const raw of [{ ...linked, locale: "de" }, { ...linked, snapshot: null }, { ...linked, contact: null }, { ...linked, sendId: 1 }]) {
+  for (const raw of [
+    { ...linked, locale: "de" },
+    { ...linked, snapshot: null },
+    { ...linked, contact: null },
+    { ...linked, sendId: 1 },
+    // La semana del envío: el link al libro del menú la abre.
+    { ...linked, sessionId: undefined },
+    { ...linked, sessionId: "semana-1" },
+  ]) {
     assert.equal(linkedSendFromRpc(raw), null, JSON.stringify(raw));
   }
 
@@ -295,4 +305,62 @@ test("preparedSendIdFromRpc, linkedSendFromRpc y completedSendFromRpc: la forma 
   ]) {
     assert.equal(completedSendFromRpc(raw), null, JSON.stringify(raw));
   }
+});
+
+// ---------------------------------------------------------------------------
+// Libro del menú: los ingredientes de cada plato (solo los nombres)
+// ---------------------------------------------------------------------------
+
+/** El contexto con los ingredientes de la base (20261122120000_menu_book.sql): el primer plato con, el segundo sin. */
+function contextWithIngredients(first: unknown = ["zapallitos", "sal", "aceite de oliva"], second: unknown = []): Record<string, unknown> {
+  const base = contextRpc();
+  const menu = base["menu"] as Record<string, unknown>;
+  const [lasagne, minestrone] = menu["dishes"] as Array<Record<string, unknown>>;
+  return { ...base, menu: { ...menu, dishes: [{ ...lasagne, ingredients: first }, { ...minestrone, ingredients: second }] } };
+}
+
+test("menuSendContextFromRpc: los nombres de los ingredientes de cada plato; sin la clave, ninguno; con otra forma, null", () => {
+  const context = menuSendContextFromRpc(contextWithIngredients());
+  assert.deepEqual(
+    context?.menu.dishes.map((dish) => dish.ingredients),
+    [["zapallitos", "sal", "aceite de oliva"], []],
+  );
+  // Un contexto de antes del libro (sin la clave): los platos, sin ingredientes.
+  assert.deepEqual(menuSendContextFromRpc(contextRpc())?.menu.dishes.map((dish) => dish.ingredients), [[], []]);
+  for (const broken of ["sal", [{ name: "sal", quantity: 5 }], ["  "], ["x".repeat(81)]]) {
+    assert.equal(menuSendContextFromRpc(contextWithIngredients(broken)), null, JSON.stringify(broken));
+  }
+});
+
+test("buildMenuSnapshot: los ingredientes, traducidos con la lista (el mismo mapa) y sin repetir; un plato sin ingredientes no lleva la clave", () => {
+  const context = menuSendContextFromRpc(contextWithIngredients(["zapallitos", "sal", "Sal", "aceite de oliva", "aceite"]));
+  assert.ok(context);
+  const snapshot = buildMenuSnapshot(context, {
+    chefId: CHEF_ID,
+    photoOrigin: null,
+    itemNames: new Map([
+      ["zapallitos", "courgettes"],
+      ["sal", "salt"],
+      ["Sal", "Salt"],
+      ["aceite de oliva", "olive oil"],
+      ["aceite", "olive oil"],
+    ]),
+  });
+  // «Sal» y «aceite» quedan iguales a otro al traducirse: una vez cada uno.
+  assert.deepEqual(snapshot.dishes[0]?.ingredients, ["courgettes", "salt", "olive oil"]);
+  assert.equal("ingredients" in snapshot.dishes[1]!, false, "sin ingredientes, sin la clave (como las fotos de antes)");
+  assert.deepEqual(readMenuSnapshot(JSON.parse(JSON.stringify(snapshot))), snapshot, "la lee igual quien la guarda");
+  // Las cantidades, las unidades y las secciones de la receta nunca están en la foto del plato.
+  assert.ok(!/quantity|unit|section/.test(JSON.stringify(snapshot.dishes)));
+
+  // Sin traducir (español o translate: false): como los escribió Evelyn, sin repetir sin distinguir mayúsculas.
+  const plain = buildMenuSnapshot(context, { chefId: CHEF_ID, photoOrigin: null, itemNames: null });
+  assert.deepEqual(plain.dishes[0]?.ingredients, ["zapallitos", "sal", "aceite de oliva", "aceite"]);
+});
+
+test("snapshotIngredients: el nombre traducido o el original, recortado y sin repetir; ninguno → sin la clave", () => {
+  const dish = menuSendContextFromRpc(contextWithIngredients(["sal", "pimienta"]))?.menu.dishes[0];
+  assert.ok(dish);
+  assert.deepEqual(snapshotIngredients(dish, new Map([["sal", " sale "]])), { ingredients: ["sale", "pimienta"] });
+  assert.deepEqual(snapshotIngredients({ ...dish, ingredients: [] }, null), {});
 });
