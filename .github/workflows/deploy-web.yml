@@ -89,7 +89,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # En un PR hace falta la historia para ver qué cambió (git diff contra la base).
-          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
 
       # ¿Se compila /gestione/? Siempre, salvo en una vista previa que no toca la app.
       - name: Decidir si se compila /gestione/

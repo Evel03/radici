@@ -98,7 +98,7 @@ test("ci.yml: cada job pesado depende de «changes» y corre según su área; en
   assert.match(changes, /git diff --name-only "\$\{BASE_SHA\}\.\.\.\$\{HEAD_SHA\}"/);
   assert.match(changes, /ci-changes\.sh/);
   // Fuera de un PR todas las salidas son true.
-  assert.match(changes, /else\n\s+printf 'quote=true\nedge=true\nweb=true\napp=true\ndatabase=true\n'/);
+  assert.match(changes, /else\n\s+printf '%s\\n' quote=true edge=true web=true app=true database=true \| tee -a/);
 });
 
 test("deploy-web.yml: la vista previa sin cambios en la app no compila Flutter; producción siempre", () => {
@@ -120,5 +120,42 @@ test("deploy-web.yml: la vista previa sin cambios en la app no compila Flutter; 
     assert.ok(step.includes("if: env.BUILD_APP == 'true'"), `${marker} solo si BUILD_APP`);
   }
   assert.match(DEPLOY, /- name: Página de aviso en \/gestione\/[^\n]*\n\s+if: env\.BUILD_APP != 'true'/);
-  assert.match(DEPLOY, /fetch-depth: \$\{\{ github\.event_name == 'pull_request' && 0 \|\| 1 \}\}/);
+  assert.match(DEPLOY, /fetch-depth: \$\{\{ github\.event_name == 'pull_request' && '0' \|\| '1' \}\}/);
+});
+
+// Sin dependencia de un parser YAML (la raíz no instala paquetes): lint estructural que habría
+// detectado el bloque «run: |» cortado por líneas en columna 0.
+function lintYaml(text: string): string[] {
+  const errors: string[] = [];
+  let blockIndent = -1; // indentación de la clave del bloque «|» abierto, -1 si no hay
+  text.split("\n").forEach((line, i) => {
+    const n = i + 1;
+    if (line.trim() === "") return;
+    const indent = line.length - line.trimStart().length;
+    if (blockIndent >= 0) {
+      if (indent > blockIndent) return;
+      blockIndent = -1;
+    }
+    if (line.includes("\t")) errors.push(`línea ${n}: tabulación`);
+    if (indent === 0 && !/^(#|[A-Za-z_][\w-]*:|---)/.test(line)) errors.push(`línea ${n}: texto suelto en columna 0`);
+    if (/^\s*(- )?[\w-]+:\s*[|>][+-]?\s*$/.test(line)) blockIndent = indent + (line.trimStart().startsWith("- ") ? 2 : 0);
+  });
+  return errors;
+}
+
+test("los workflows no tienen texto suelto en columna 0 (YAML válido)", () => {
+  assert.deepEqual(lintYaml(CI), []);
+  assert.deepEqual(lintYaml(DEPLOY), []);
+  assert.ok(lintYaml("a:\n  run: |\n    x\nedge=true\n").length > 0, "el lint detecta el error");
+});
+
+test("las salidas de «changes» coinciden con las que usan los demás jobs", () => {
+  const declared = [...job(CI, "changes").matchAll(/\n      (\w+): \$\{\{ steps\.areas\.outputs\.(\w+) \}\}/g)].map((m) => m[1]);
+  assert.deepEqual(declared.sort(), ["app", "database", "edge", "quote", "web"]);
+  const used = [...CI.matchAll(/needs\.changes\.outputs\.(\w+)/g)].map((m) => m[1]);
+  for (const name of used) assert.ok(declared.includes(name), `la salida ${name} está declarada`);
+});
+
+test("el checkout con historia no usa un fetch-depth falsy (0 en «cond && 0 || 1» vale siempre 1)", () => {
+  for (const text of [CI, DEPLOY]) assert.doesNotMatch(text, /fetch-depth: \$\{\{[^}]*&& 0 \|\|/);
 });

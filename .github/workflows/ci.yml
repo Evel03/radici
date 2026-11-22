@@ -39,12 +39,7 @@ jobs:
             cat "${RUNNER_TEMP}/changed.txt"
             bash .github/scripts/ci-changes.sh < "${RUNNER_TEMP}/changed.txt" | tee -a "${GITHUB_OUTPUT}"
           else
-            printf 'quote=true
-edge=true
-web=true
-app=true
-database=true
-' | tee -a "${GITHUB_OUTPUT}"
+            printf '%s\n' quote=true edge=true web=true app=true database=true | tee -a "${GITHUB_OUTPUT}"
           fi
 
   quote:
