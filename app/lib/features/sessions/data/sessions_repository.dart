@@ -19,14 +19,19 @@
 // alergias. Se traduce a [SessionFailure] (el tipo, la fecha, el estado o los
 // ids) y el resto se descarta.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/supabase_client.dart';
+import 'package:radici/features/availability/domain/availability.dart'
+    show parsePgTime;
 import 'package:radici/features/bookings/data/bookings_repository.dart'
     show SupabaseBookingsRepository;
 import 'package:radici/features/requests/domain/chef_request.dart'
     show RequestSource, RequestStatus, RequestType;
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_api.dart';
+import 'package:radici/features/sessions/domain/session_booking.dart'
+    show BookingWeekRef;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Cuántas sesiones lee la agenda como mucho: unas pocas por semana, desde el
@@ -62,6 +67,15 @@ abstract interface class SessionsRepository {
   Future<List<CookingSession>> fetchBookingSessions({
     required String chefId,
     required String requestId,
+  });
+
+  /// Las sesiones vivas (no canceladas) de las reservas [requestIds], solo lo
+  /// que hace falta para saber qué semana de su reserva es cada una («Semana
+  /// k de N», bookingWeekPositions), en una sola consulta: Hoy lo usa para
+  /// las semanas que esperan su menú. Lanza [SessionFailure].
+  Future<List<BookingWeekRef>> fetchLiveBookingWeeks({
+    required String chefId,
+    required List<String> requestIds,
   });
 
   /// Mueve una semana (o, con `dryRun`, solo dice cómo queda esa fecha).
@@ -222,6 +236,22 @@ class SupabaseSessionsRepository implements SessionsRepository {
     return rows.map(CookingSession.fromJson).toList();
   });
 
+  @override
+  Future<List<BookingWeekRef>> fetchLiveBookingWeeks({
+    required String chefId,
+    required List<String> requestIds,
+  }) => _read(() async {
+    if (requestIds.isEmpty) return const [];
+    final rows = await _client
+        .from('sessions')
+        .select('id, request_id, date, start_time')
+        .eq('chef_id', chefId)
+        .inFilter('request_id', requestIds)
+        .neq('status', SessionStatus.cancelled.dbName)
+        .limit(sessionsPageSize);
+    return rows.map(bookingWeekRefFromRow).toList();
+  });
+
   /// `sessions` con [cookingSessionColumns] y, de los pedidos de la clienta
   /// (`client.answers`), solo los semanales (lo de su casa: en uno extra los
   /// que comen pueden ser otros, SPEC §5.6), de la web (una reserva a mano no
@@ -364,6 +394,32 @@ SessionFailure sessionFailureFromResponse(int status, Object? body) {
   }
 }
 
+/// Una fila de `sessions` con id, request_id, date y start_time
+/// ([SessionsRepository.fetchLiveBookingWeeks]). Lanza [FormatException] si
+/// está rota.
+BookingWeekRef bookingWeekRefFromRow(Map<String, dynamic> row) {
+  final id = row['id'];
+  final requestId = row['request_id'];
+  final date = row['date'];
+  final start = row['start_time'];
+  if (id is! String ||
+      requestId is! String ||
+      date is! String ||
+      start is! String) {
+    throw const FormatException('Fila de sessions inválida');
+  }
+  final minutes = parsePgTime(start).inMinutes;
+  if (minutes >= ClockTime.minutesPerDay) {
+    throw FormatException('Hora inválida', start);
+  }
+  return (
+    id: id,
+    requestId: requestId,
+    date: CalendarDate.parse(date),
+    start: ClockTime(minutes),
+  );
+}
+
 CalendarDate? _dateOrNull(Object? value) {
   if (value is! String) return null;
   try {
@@ -401,6 +457,12 @@ class _NoBackendSessionsRepository implements SessionsRepository {
   Future<List<CookingSession>> fetchBookingSessions({
     required String chefId,
     required String requestId,
+  }) => Future.error(_failure);
+
+  @override
+  Future<List<BookingWeekRef>> fetchLiveBookingWeeks({
+    required String chefId,
+    required List<String> requestIds,
   }) => Future.error(_failure);
 
   @override
