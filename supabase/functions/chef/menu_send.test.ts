@@ -19,6 +19,7 @@ import {
   sendableEmail,
   sha256Hex,
   snapshotIngredients,
+  snapshotQuoteOf,
   whatsappPhone,
   type ContextDish,
 } from "./menu_send.ts";
@@ -220,6 +221,106 @@ test("buildMenuSnapshot: en el idioma de la clienta, con las fotos de la web, la
   assert.equal(plain.dishes[0]?.photo, null);
   assert.deepEqual(plain.items.map((item) => item.name), ["zapallitos", "sal", "zapallitos"]);
   assert.equal(plain.note, "Tené listos 4 táperes.");
+});
+
+// ---------------------------------------------------------------------------
+// El presupuesto (la semana 1 de un presupuesto abierto, migración 20261121120000_quotes.sql)
+// ---------------------------------------------------------------------------
+
+const QUOTE_ID = "5e550000-0000-4000-8000-0000000000a1";
+const OTHER_SESSION = "5e550000-0000-4000-8000-000000000004";
+
+/** Lo que trae chef_menu_send_context en quote (private.session_quote) para la semana 1. */
+function quoteRpc(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: QUOTE_ID,
+    version: 1,
+    sent: false,
+    holdUntil: "2026-11-17T10:00:00.123456+00:00",
+    holdHours: 48,
+    firstWeek: true,
+    terms: {
+      quoteId: QUOTE_ID,
+      totalCents: 30000,
+      weeks: [
+        { sessionId: SESSION_ID, date: "2026-11-30", start: "10:00", cookMinutes: 180, serviceCents: 15000 },
+        { sessionId: OTHER_SESSION, date: "2026-12-07", start: "11:30", cookMinutes: 180, serviceCents: 15000 },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+/** El contexto de la semana 1 held de un presupuesto. */
+function heldContextRpc(quote: unknown = quoteRpc()): Record<string, unknown> {
+  const base = contextRpc();
+  return { ...base, session: { ...(base["session"] as Record<string, unknown>), status: "held" }, quote };
+}
+
+test("menuSendContextFromRpc: el presupuesto de una semana held (sus términos de ahora); sin él, null", () => {
+  const context = menuSendContextFromRpc(heldContextRpc());
+  assert.ok(context);
+  assert.deepEqual(context.quote, {
+    id: QUOTE_ID,
+    version: 1,
+    sent: false,
+    holdUntil: "2026-11-17T10:00:00.123456+00:00",
+    holdHours: 48,
+    firstWeek: true,
+    terms: (quoteRpc()["terms"] as Record<string, unknown>),
+  });
+  assert.equal(menuSendContextFromRpc(contextRpc())?.quote, null, "una semana confirmada no lo trae");
+  assert.equal(menuSendContextFromRpc(contextRpc({ quote: null }))?.quote, null);
+});
+
+test("menuSendContextFromRpc: un presupuesto con otra forma es null (un 500, nunca un precio roto en el mensaje)", () => {
+  const terms = quoteRpc()["terms"] as Record<string, unknown>;
+  const broken: Array<[string, unknown]> = [
+    ["en una semana confirmada", { ...contextRpc(), quote: quoteRpc() }],
+    ["sin términos", heldContextRpc(quoteRpc({ terms: null }))],
+    ["términos de otro presupuesto", heldContextRpc(quoteRpc({ terms: { ...terms, quoteId: SEND_ID } }))],
+    ["sin semanas vivas", heldContextRpc(quoteRpc({ terms: { ...terms, totalCents: 0, weeks: [] } }))],
+    ["la primera semana no es esta", heldContextRpc(quoteRpc({ terms: { ...terms, weeks: [...(terms["weeks"] as unknown[])].reverse() } }))],
+    ["versión 0", heldContextRpc(quoteRpc({ version: 0 }))],
+    ["plazo de 0 horas", heldContextRpc(quoteRpc({ holdHours: 0 }))],
+    ["sent que no es booleano", heldContextRpc(quoteRpc({ sent: "sí" }))],
+    ["no es un objeto", heldContextRpc("presupuesto")],
+  ];
+  for (const [name, value] of broken) assert.equal(menuSendContextFromRpc(value), null, name);
+});
+
+test("buildMenuSnapshot: la semana 1 de un presupuesto lleva el presupuesto, con la versión que va a salir", () => {
+  const first = menuSendContextFromRpc(heldContextRpc());
+  assert.ok(first);
+  const snapshot = buildMenuSnapshot(first, { chefId: CHEF_ID, photoOrigin: ORIGIN, itemNames: null });
+  assert.deepEqual(snapshot.quote, {
+    version: 1,
+    totalCents: 30000,
+    weeks: [
+      { date: "2026-11-30", start: "10:00", serviceCents: 15000 },
+      { date: "2026-12-07", start: "11:30", serviceCents: 15000 },
+    ],
+    holdHours: 48,
+    firstStart: "2026-11-30T10:00",
+  });
+  assert.deepEqual(readMenuSnapshot(JSON.parse(JSON.stringify(snapshot))), snapshot, "la lee igual quien la guarda y la vuelve a leer");
+  for (const marker of [QUOTE_ID, SESSION_ID, OTHER_SESSION, "cookMinutes", "holdUntil"]) {
+    assert.ok(!JSON.stringify(snapshot.quote).includes(marker), `el presupuesto de la foto lleva ${marker}`);
+  }
+
+  // Un reenvío (ya salió): la versión siguiente, la que pone chef_complete_menu_send.
+  const resent = menuSendContextFromRpc(heldContextRpc(quoteRpc({ version: 2, sent: true })));
+  assert.ok(resent);
+  assert.equal(snapshotQuoteOf(resent)?.version, 3);
+
+  // Una semana que no es la primera (la base no la deja salir) o una confirmada: la foto de siempre.
+  const second = menuSendContextFromRpc(heldContextRpc(quoteRpc({ firstWeek: false })));
+  assert.ok(second);
+  assert.equal(snapshotQuoteOf(second), null);
+  assert.equal("quote" in buildMenuSnapshot(second, { chefId: CHEF_ID, photoOrigin: null, itemNames: null }), false);
+  const confirmed = menuSendContextFromRpc(contextRpc());
+  assert.ok(confirmed);
+  assert.equal("quote" in buildMenuSnapshot(confirmed, { chefId: CHEF_ID, photoOrigin: null, itemNames: null }), false);
 });
 
 // ---------------------------------------------------------------------------

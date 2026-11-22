@@ -7,15 +7,21 @@
 --   * La clienta, con su link: acepta (sesiones confirmed, pedido accepted, prospecto → trial, menú
 --     confirmado), rechaza (sesiones canceladas, pedido declined) o pide cambios.
 --   * private.expire_quotes: vence los que no contestó (y los borradores que nunca salieron).
+--   * La versión es la que ve la clienta: un borrador que nunca salió no gasta número.
+--   * Confirmar sin presupuesto (chef_create_booking) retira el presupuesto abierto del pedido, en
+--     borrador o enviado, y su dryRun no cuenta sus semanas held como ocupadas.
+--   * El link no muestra un presupuesto cerrado sin aceptar si la reserva siguió sin él.
+--   * Una semana que llevaba el presupuesto y dejó de ser la primera: su menú no se confirma mientras
+--     el presupuesto está abierto, y aceptado, Evelyn recibe el aviso de esa semana.
 --
--- C1 tiene a la prospecta A (pedido semanal R1 de la web), a B (R2 extra, R5, R6 y R7 semanales) y a
--- C (R3 de cambio, R4 ya aceptado). C2 es otra cocinera con su pedido RX. Las fechas salen del lunes
--- que viene en Roma: pg_temp.d(0) es ese lunes.
+-- C1 tiene a la prospecta A (pedido semanal R1 de la web), a B (R2 extra, R5 a R16 semanales; R16
+-- quoted sin presupuesto) y a C (R3 de cambio, R4 ya aceptado). C2 es otra cocinera con su pedido RX.
+-- Las fechas salen del lunes que viene en Roma: pg_temp.d(0) es ese lunes.
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(114);
+select plan(185);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres)
@@ -53,10 +59,17 @@ insert into public.requests (id, chef_id, client_id, type, status, adults, kids,
   ('7e6c3000-0000-4000-8000-00000000000f', '7e6c1000-0000-4000-8000-000000000002', '7e6c2000-0000-4000-8000-00000000000f', 'week',   'new',      1, 0, 3, '{dinner}', 1, 'app', 'it', null);
 insert into public.requests (id, chef_id, client_id, type, status, adults, kids, days, meals, weeks, source, locale) values
   ('7e6c3000-0000-4000-8000-000000000008', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 2, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000017', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000018', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000019', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
   ('7e6c3000-0000-4000-8000-000000000009', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 2, 'web', 'it'),
   ('7e6c3000-0000-4000-8000-000000000010', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
   ('7e6c3000-0000-4000-8000-000000000011', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
-  ('7e6c3000-0000-4000-8000-000000000012', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it');
+  ('7e6c3000-0000-4000-8000-000000000012', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000013', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 2, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000014', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 2, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000015', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 3, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000016', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'quoted', 2, 0, 5, '{dinner}', 1, 'web', 'it');
 insert into public.requests (id, chef_id, client_id, type, status, text, source) values
   ('7e6c3000-0000-4000-8000-000000000003', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000c', 'change', 'new', 'Otra cosa', 'app');
 
@@ -114,13 +127,28 @@ as $$
   values (p_session, '7e6c6000-0000-4000-8000-000000000001', '7e6c1000-0000-4000-8000-000000000001', 8, 1);
 $$;
 
-create function pg_temp.prep(p_session uuid, p_token text) returns uuid
+-- La vista previa de una semana, con la huella del contexto de ahora o con una leída antes.
+create function pg_temp.prep(p_session uuid, p_token text, p_fingerprint text default null) returns uuid
 language sql
 as $$
   select (public.chef_prepare_menu_send('7e6c1000-0000-4000-8000-000000000001', p_session,
             (select m.version from public.session_menus m where m.session_id = p_session), 'it',
             jsonb_build_object('v', 1, 'token', p_token), false,
-            public.chef_menu_send_context('7e6c1000-0000-4000-8000-000000000001', p_session) ->> 'fingerprint') ->> 'sendId')::uuid
+            coalesce(p_fingerprint,
+                     public.chef_menu_send_context('7e6c1000-0000-4000-8000-000000000001', p_session) ->> 'fingerprint')) ->> 'sendId')::uuid
+$$;
+
+-- Huellas leídas del contexto antes de un cambio (las lee y las escribe service_role).
+create temp table huellas (k text primary key, v text not null);
+grant select, insert on huellas to service_role;
+
+-- «Confirmar sin presupuesto» desde un pedido de C1: fechas (offsets), hora, 180 min y 280 €.
+create function pg_temp.book(p_request text, p_offsets int[], p_start time, p_dry boolean default false) returns jsonb
+language sql
+as $$
+  select public.chef_create_booking('7e6c1000-0000-4000-8000-000000000001',
+           array(select pg_temp.d(o) from unnest(p_offsets) as o), p_start, 180, 28000,
+           p_request_id => p_request::uuid, p_dry_run => p_dry)
 $$;
 
 create function pg_temp.deliver(p_send uuid, p_token text) returns timestamptz
@@ -155,6 +183,10 @@ select ok(not has_function_privilege('service_role', 'private.expire_quotes(time
 select is((select count(*)::int from cron.job where jobname = 'radici-expire-quotes' and schedule = '*/15 * * * *'
            and command = 'select private.expire_quotes()'),
   1, 'pg_cron vence los presupuestos cada 15 minutos');
+select is(
+  (select indexdef from pg_indexes where schemaname = 'public' and indexname = 'quotes_version_por_pedido'),
+  'CREATE UNIQUE INDEX quotes_version_por_pedido ON public.quotes USING btree (request_id, version) WHERE (sent_at IS NOT NULL)',
+  'la versión es única solo entre los presupuestos que salieron: un borrador no gasta número');
 
 -- ---------------------------------------------------------------------
 -- 2. chef_create_quote
@@ -252,6 +284,40 @@ select is(
    from public.menu_sends ms join public.quotes q on q.request_id = '7e6c3000-0000-4000-8000-000000000001'
    where ms.id = pg_temp.send_of('r1-a')),
   't 40000', 'el envío lleva el presupuesto y sus términos');
+
+-- La huella de la foto cubre los términos del presupuesto: si cambian entre el contexto (la función
+-- traduce la lista con la huella en la mano) y la vista previa, la foto no se guarda, aunque el menú
+-- sea el mismo. Los minutos de la semana 2, con la misma fecha y hora, solo los ven los términos: otra
+-- fecha u hora ya cambiaría la clave de las semanas de la reserva.
+insert into huellas (k, v)
+values ('r1-precio', public.chef_menu_send_context('7e6c1000-0000-4000-8000-000000000001',
+                       pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 1)) ->> 'fingerprint');
+select ok(public.chef_update_quote('7e6c1000-0000-4000-8000-000000000001',
+  (select id from public.quotes where request_id = '7e6c3000-0000-4000-8000-000000000001'), 41000) is not null,
+  'Evelyn cambia el precio mientras la función arma la foto');
+select isnt(
+  public.chef_menu_send_context('7e6c1000-0000-4000-8000-000000000001', pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 1)) ->> 'fingerprint',
+  (select v from huellas where k = 'r1-precio'),
+  'la huella cambia con el precio, aunque el menú es el mismo');
+select is(pg_temp.error_of($$ select pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 1), 'r1-huella-precio',
+                                                (select v from huellas where k = 'r1-precio')) $$),
+  '40001: menu_changed', 'la foto armada con el precio de antes no se guarda (menu_changed)');
+select is((select count(*)::int from public.menu_sends where session_id = pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 1)),
+  1, 'ni deja otro envío: sigue solo la vista previa r1-a');
+
+insert into huellas (k, v)
+values ('r1-minutos', public.chef_menu_send_context('7e6c1000-0000-4000-8000-000000000001',
+                        pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 1)) ->> 'fingerprint');
+select ok(public.chef_move_session('7e6c1000-0000-4000-8000-000000000001', pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 2),
+  pg_temp.d(7), null, 200) is not null,
+  'Evelyn le cambia los minutos a la semana 2 (misma fecha y hora) mientras se arma la foto de la semana 1');
+select is(pg_temp.error_of($$ select pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 1), 'r1-huella-minutos',
+                                                (select v from huellas where k = 'r1-minutos')) $$),
+  '40001: menu_changed', 'esa foto tampoco se guarda: los términos del presupuesto cambiaron');
+select is((select count(*)::int from public.menu_sends where session_id = pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 1)),
+  1, 'y tampoco deja otro envío');
+select ok(public.chef_move_session('7e6c1000-0000-4000-8000-000000000001', pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 2),
+  pg_temp.d(7), null, 180) is not null, 'la semana 2 vuelve a sus 180 minutos');
 
 -- Evelyn cambia el precio después de la vista previa: ese envío ya no sale.
 select ok(public.chef_update_quote('7e6c1000-0000-4000-8000-000000000001',
@@ -438,7 +504,19 @@ select is(private.expire_quotes(now()), 0, 'una segunda pasada no hace nada');
 select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000006', array[30], 31000) is not null,
   'R6 admite otro presupuesto (el vencido ya no está abierto)');
 select is((select array_agg(version order by version) from public.quotes where request_id = '7e6c3000-0000-4000-8000-000000000006'),
-  array[1, 2]::smallint[], 'con la versión siguiente');
+  array[1, 1]::smallint[], 'también la versión 1: el borrador vencido nunca salió y no gastó número');
+select is(public.chef_withdraw_quote('7e6c1000-0000-4000-8000-000000000001',
+    (select id from public.quotes where request_id = '7e6c3000-0000-4000-8000-000000000006'
+       and withdrawn_at is null and expired_at is null)) ->> 'cancelled',
+  '1', 'Evelyn retira ese borrador sin mandarlo');
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000006', array[30], 32000) is not null, 'y prepara otro');
+select is((select array_agg(version order by version) from public.quotes where request_id = '7e6c3000-0000-4000-8000-000000000006'),
+  array[1, 1, 1]::smallint[], 'un borrador retirado tampoco gasta número');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000006', 1)) $$, 'su menú');
+select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000006', 1), 'r6'), 'r6') is not null,
+  'sale: es el primer presupuesto que le llega');
+select is(public.client_link_view(pg_temp.h('r6')) #>> '{quote,version}', '1',
+  'la clienta lo ve como la versión 1 (no «aggiornato»)');
 
 -- ---------------------------------------------------------------------
 -- 8. Retirar (R7) y un presupuesto sin semanas
@@ -467,6 +545,8 @@ select is(pg_temp.error_of($$ select public.chef_withdraw_quote('7e6c1000-0000-4
 
 -- R7 de nuevo, y Evelyn cancela todas sus semanas antes de mandarlo: no hay nada que aceptar.
 select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000007', array[35], 30000) is not null, 'otro presupuesto de R7');
+select is((select version from public.quotes where request_id = '7e6c3000-0000-4000-8000-000000000007' and withdrawn_at is null),
+  2::smallint, 'la versión 2: la clienta ya vio la 1 (la retirada), así que este sí es «aggiornato»');
 select ok(public.chef_cancel_sessions('7e6c1000-0000-4000-8000-000000000001',
   array[pg_temp.week('7e6c3000-0000-4000-8000-000000000007', 1)]) is not null, 'Evelyn cancela su única semana');
 select is(pg_temp.error_of($$ select public.chef_update_quote('7e6c1000-0000-4000-8000-000000000001',
@@ -490,6 +570,17 @@ select is(
 -- R7 tenía un presupuesto retirado y otro borrador: el link de antes no muestra el borrador.
 select is(jsonb_array_length(public.client_link_view(pg_temp.h('r7')) -> 'weeks'), 0,
   'el link no muestra las semanas de un borrador que no salió');
+select is(public.client_link_view(pg_temp.h('r7')) #>> '{quote,status}', 'withdrawn',
+  'y sigue mostrando retirado el que le llegó, mientras el pedido no siga por otro camino');
+
+-- Evelyn confirma R7 sin presupuesto: el link deja de mostrar arriba el presupuesto retirado.
+select ok(pg_temp.book('7e6c3000-0000-4000-8000-000000000007', array[35], '10:00') is not null,
+  'Evelyn confirma R7 sin presupuesto (retira el borrador vacío)');
+select is(public.client_link_view(pg_temp.h('r7')) -> 'quote', 'null'::jsonb,
+  'el link ya no muestra el presupuesto retirado arriba de la reserva');
+select is(
+  (select jsonb_agg(w ->> 'status') from jsonb_array_elements(public.client_link_view(pg_temp.h('r7')) -> 'weeks') as w),
+  '["confirmed"]'::jsonb, 'solo la semana confirmada');
 
 -- R10: Evelyn rechaza el pedido desde la bandeja con un borrador abierto.
 select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000010', array[77], 30000) is not null, 'borrador de R10');
@@ -513,6 +604,171 @@ select is(
   (select string_agg(concat_ws(' ', s.status, s.cancel_reason), ' | ' order by s."date") from public.sessions s
    where s.request_id = '7e6c3000-0000-4000-8000-000000000011'),
   'cancelled quote_withdrawn | confirmed', 'el borrador se retira solo; queda la semana confirmada');
+
+-- ---------------------------------------------------------------------
+-- 9. Confirmar sin presupuesto con las fechas del presupuesto abierto: R13 (borrador, pedido new),
+--    R14 (enviado, pedido quoted) y R16 (quoted sin presupuesto abierto)
+-- ---------------------------------------------------------------------
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000013', array[98, 105], 30000) is not null, 'borrador de R13');
+select is(
+  (select array_agg(w ->> 'status' = 'busy' order by w ->> 'date')
+   from jsonb_array_elements(pg_temp.book('7e6c3000-0000-4000-8000-000000000013', array[98, 105], '10:00', true) -> 'weeks') as w),
+  array[false, false], 'dryRun desde R13 con sus fechas y su hora: las semanas de su propio borrador no cuentan como ocupadas');
+select is(
+  (select array_agg(w ->> 'status' order by w ->> 'date')
+   from jsonb_array_elements(public.chef_create_booking('7e6c1000-0000-4000-8000-000000000001', array[pg_temp.d(98), pg_temp.d(105)],
+          '10:00', 180, 0, p_client_id => '7e6c2000-0000-4000-8000-00000000000b', p_type => 'week',
+          p_household => '{"adults": 2, "kids": 0, "days": 5, "meals": ["dinner"]}', p_dry_run => true) -> 'weeks') as w),
+  array['busy', 'busy'], 'para otra reserva siguen ocupadas');
+select is(pg_temp.error_of($$ select pg_temp.book('7e6c3000-0000-4000-8000-000000000013', array[16, 98], '10:00') $$),
+  '23P01: slot_taken (' || to_char(pg_temp.d(16), 'YYYY-MM-DD') || ')',
+  'si una semana choca con otra reserva, no se confirma nada');
+select is(
+  (select concat_ws(' ', q.withdrawn_at is null, (select count(*) from public.sessions s where s.quote_id = q.id and s.status = 'held'), r.status)
+   from public.quotes q join public.requests r on r.id = q.request_id
+   where q.request_id = '7e6c3000-0000-4000-8000-000000000013'),
+  't 2 new', 'y el retiro vuelve atrás con todo: el borrador sigue abierto, con sus dos semanas, y el pedido new');
+select ok(pg_temp.book('7e6c3000-0000-4000-8000-000000000013', array[98, 107], '10:00') is not null,
+  'Evelyn confirma sin presupuesto: la semana 1 a la misma hora del borrador, la 2 en la semana de la del borrador (otro día)');
+select is(
+  (select string_agg(concat_ws(' ', s."date" - pg_temp.d(0), s.status, s.cancel_reason), ' | ' order by s."date", s.status::text)
+   from public.sessions s where s.request_id = '7e6c3000-0000-4000-8000-000000000013'),
+  '98 cancelled quote_withdrawn | 98 confirmed | 105 cancelled quote_withdrawn | 107 confirmed',
+  'el borrador se retira antes de crear las semanas (las suyas, canceladas: quote_withdrawn) y quedan las confirmadas');
+select is(
+  (select concat_ws(' ', q.withdrawn_at = now(), r.status, r.weeks)
+   from public.quotes q join public.requests r on r.id = q.request_id
+   where q.request_id = '7e6c3000-0000-4000-8000-000000000013'),
+  't accepted 2', 'el presupuesto queda retirado y el pedido, aceptado con sus dos semanas');
+
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000014', array[119, 126], 30000) is not null, 'presupuesto de R14');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000014', 1)) $$, 'su menú');
+select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000014', 1), 'r14'), 'r14') is not null,
+  'sale: el pedido pasa a quoted');
+select is(
+  (select array_agg(w ->> 'status' = 'busy' order by w ->> 'date')
+   from jsonb_array_elements(pg_temp.book('7e6c3000-0000-4000-8000-000000000014', array[119, 126], '11:00', true) -> 'weeks') as w),
+  array[false, false], 'dryRun desde el pedido quoted: no da requestNotNew y las semanas de su presupuesto no cuentan');
+select ok(pg_temp.book('7e6c3000-0000-4000-8000-000000000014', array[119, 126], '11:00') is not null,
+  'la clienta aceptó por WhatsApp, a las 11: Evelyn confirma sin presupuesto');
+select is(
+  (select string_agg(concat_ws(' ', s."date" - pg_temp.d(0), to_char(s.start_time, 'HH24:MI'), s.status, s.cancel_reason), ' | '
+                     order by s."date", s.status::text)
+   from public.sessions s where s.request_id = '7e6c3000-0000-4000-8000-000000000014'),
+  '119 10:00 cancelled quote_withdrawn | 119 11:00 confirmed | 126 10:00 cancelled quote_withdrawn | 126 11:00 confirmed',
+  'el presupuesto enviado se retira y quedan las semanas confirmadas a las 11');
+select is(
+  (select concat_ws(' ', q.withdrawn_at is not null, r.status)
+   from public.quotes q join public.requests r on r.id = q.request_id
+   where q.request_id = '7e6c3000-0000-4000-8000-000000000014'),
+  't accepted', 'presupuesto retirado y pedido aceptado');
+select is(pg_temp.book('7e6c3000-0000-4000-8000-000000000014', array[119, 126], '11:00') ->> 'duplicate', 'true',
+  'confirmar otra vez es un reintento (duplicate)');
+select is(pg_temp.error_of($$ select public.client_link_accept_quote(pg_temp.h('r14'), pg_temp.send_of('r14')) $$),
+  '55000: quote_closed (withdrawn)', 'la clienta ya no acepta el presupuesto retirado');
+select is(public.client_link_view(pg_temp.h('r14')) -> 'quote', 'null'::jsonb,
+  'y su link no lo muestra: la reserva siguió sin él');
+select is(
+  (select jsonb_agg(concat_ws(' ', w ->> 'start', w ->> 'status'))
+   from jsonb_array_elements(public.client_link_view(pg_temp.h('r14')) -> 'weeks') as w),
+  '["11:00 confirmed", "11:00 confirmed"]'::jsonb, 'solo las semanas confirmadas');
+
+select is(
+  array[pg_temp.error_of($$ select pg_temp.book('7e6c3000-0000-4000-8000-000000000016', array[175], '10:00', true) $$),
+        pg_temp.error_of($$ select pg_temp.book('7e6c3000-0000-4000-8000-000000000016', array[175], '10:00') $$)]::text[],
+  array['55000: request_not_new (quoted)', '55000: request_not_new (quoted)'],
+  'un pedido quoted sin presupuesto abierto no se confirma (requestNotNew), tampoco en el dryRun');
+
+-- ---------------------------------------------------------------------
+-- 10. La semana que llevaba el presupuesto deja de ser la primera (R15): Evelyn la pasa al final y
+--     reenvía desde la nueva primera semana.
+-- ---------------------------------------------------------------------
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000015', array[140, 147, 154], 45000) is not null,
+  'presupuesto de R15 (tres semanas)');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000015', 1)) $$, 'menú de su semana 1');
+select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000015', 1), 'r15-a'), 'r15-a') is not null,
+  'sale la versión 1 con el menú de la semana 1');
+reset role;
+update public.menu_sends set sent_at = now() - interval '1 hour' where id = pg_temp.send_of('r15-a');
+set local role service_role;
+select ok(public.chef_move_session('7e6c1000-0000-4000-8000-000000000001',
+  (select session_id from public.menu_sends where id = pg_temp.send_of('r15-a')), pg_temp.d(161)) is not null,
+  'la clienta quiere empezar una semana después: Evelyn pasa la semana 1 al final');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000015', 1)) $$, 'menú de la que ahora es la primera');
+select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000015', 1), 'r15-b'), 'r15-b') is not null,
+  'y reenvía desde ahí (versión 2)');
+select is(pg_temp.error_of($$ select public.client_link_confirm_menu(pg_temp.h('r15-b'), pg_temp.send_of('r15-a')) $$),
+  '55000: quote_pending', 'el envío viejo, ahora en la última semana: su menú no se confirma mientras el presupuesto está abierto');
+select is(pg_temp.error_of($$ select public.client_link_accept_quote(pg_temp.h('r15-b'), pg_temp.send_of('r15-a')) $$),
+  '55000: menu_outdated', 'ni acepta el presupuesto: vale la versión del envío nuevo');
+select is(public.client_link_accept_quote(pg_temp.h('r15-b'), pg_temp.send_of('r15-b')) ->> 'quoteWeeks', '3',
+  'la clienta acepta la versión 2, con sus tres semanas');
+select is(
+  (select count(*)::int
+   from jsonb_array_elements(public.menu_reminders_due('7e6c1000-0000-4000-8000-000000000001',
+          ((pg_temp.d(161) - 2) + time '12:00') at time zone 'Europe/Rome')) as e
+   where e ->> 'sessionId' = (select session_id::text from public.menu_sends where id = pg_temp.send_of('r15-a'))),
+  1, 'Evelyn recibe el aviso de esa semana: su menú salió con una versión anterior del presupuesto y nadie lo confirmó');
+select is(public.client_link_confirm_menu(pg_temp.h('r15-b'), pg_temp.send_of('r15-a')) ->> 'already', 'false',
+  'aceptado el presupuesto, la clienta puede confirmar ese menú');
+select is(
+  (select count(*)::int
+   from jsonb_array_elements(public.menu_reminders_due('7e6c1000-0000-4000-8000-000000000001',
+          ((pg_temp.d(161) - 2) + time '12:00') at time zone 'Europe/Rome')) as e
+   where e ->> 'sessionId' = (select session_id::text from public.menu_sends where id = pg_temp.send_of('r15-a'))),
+  0, 'confirmado, ya no hay aviso');
+
+
+-- ---------------------------------------------------------------------
+-- 8. Presupuestos en el pasado (defensa en la base)
+-- ---------------------------------------------------------------------
+select is(pg_temp.error_of($$ select public.chef_create_quote('7e6c1000-0000-4000-8000-000000000001',
+    '7e6c3000-0000-4000-8000-000000000001', array[pg_temp.d(-30)], '10:00', 180, 10000, 4) $$),
+  '22023: invalid_dates (La primera semana ya pasó.)', 'no se prepara un presupuesto cuya primera semana ya pasó');
+select is(pg_temp.error_of($$ select public.chef_create_quote('7e6c1000-0000-4000-8000-000000000001',
+    '7e6c3000-0000-4000-8000-000000000001', array[(now() at time zone 'Europe/Rome')::date], '00:00', 180, 10000, 4) $$),
+  '22023: invalid_dates (La primera semana ya pasó.)', 'tampoco hoy a una hora que ya pasó (hora de Roma)');
+select is(pg_temp.error_of($$ select public.chef_create_quote('7e6c1000-0000-4000-8000-000000000001',
+    '7e6c3000-0000-4000-8000-000000000001', array[pg_temp.d(-30)], null, 180, 10000, 4, true) $$),
+  '22023: invalid_dates (La primera semana ya pasó.)', 'el dryRun sin hora rechaza un día que ya pasó');
+
+-- Plazo vencido sin que haya pasado el cron: está cerrado en todo lo que manda o contesta.
+-- R17: borrador con vista previa; al vencer su plazo, el link no sale.
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000017', array[300], 30000) is not null, 'presupuesto de R17');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000017', 1)) $$, 'su menú');
+select ok(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000017', 1), 'r17') is not null, 'vista previa de R17');
+-- R18: con el link armado; al vencer su plazo, no se completa el envío.
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000018', array[310], 30000) is not null, 'presupuesto de R18');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000018', 1)) $$, 'su menú');
+select ok(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000018', 1), 'r18') is not null, 'vista previa de R18');
+select lives_ok($$ select public.chef_link_menu_send('7e6c1000-0000-4000-8000-000000000001', pg_temp.send_of('r18'), pg_temp.h('r18')) $$,
+  'link armado de R18');
+-- R19: borrador cuyo plazo vence antes de la vista previa.
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000019', array[320], 30000) is not null, 'presupuesto de R19');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000019', 1)) $$, 'su menú');
+reset role;
+update public.quotes set hold_until = now() - interval '1 minute'
+where request_id in ('7e6c3000-0000-4000-8000-000000000017', '7e6c3000-0000-4000-8000-000000000018', '7e6c3000-0000-4000-8000-000000000019');
+update public.sessions set hold_until = now() - interval '1 minute'
+where request_id in ('7e6c3000-0000-4000-8000-000000000017', '7e6c3000-0000-4000-8000-000000000018', '7e6c3000-0000-4000-8000-000000000019');
+set local role service_role;
+select is(pg_temp.error_of($$ select public.chef_link_menu_send('7e6c1000-0000-4000-8000-000000000001', pg_temp.send_of('r17'), pg_temp.h('r17')) $$),
+  '55000: quote_closed', 'vencido el plazo, el link del envío no se arma (aunque el cron no haya pasado)');
+select is(pg_temp.error_of($$ select public.chef_complete_menu_send('7e6c1000-0000-4000-8000-000000000001', pg_temp.send_of('r18'), array['email']) $$),
+  '55000: quote_closed', 'ni se completa un envío con el link armado');
+select is(public.chef_menu_send_context('7e6c1000-0000-4000-8000-000000000001', pg_temp.week('7e6c3000-0000-4000-8000-000000000019', 1)) -> 'quote',
+  'null'::jsonb, 'el contexto del envío ya no trae el presupuesto vencido');
+select is(pg_temp.error_of($$ select pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000019', 1), 'r19') $$),
+  '55000: quote_closed', 'ni se prepara la vista previa');
+select is((select count(*)::int from public.quotes
+           where request_id in ('7e6c3000-0000-4000-8000-000000000017', '7e6c3000-0000-4000-8000-000000000018', '7e6c3000-0000-4000-8000-000000000019')
+             and expired_at is null), 3, 'nada de eso escribió el vencimiento: lo escribe expire_quotes');
+reset role;
+select is(private.expire_quotes(now()), 3, 'expire_quotes sigue venciendo y cancelando como antes');
+select is((select count(*)::int from public.sessions
+           where request_id in ('7e6c3000-0000-4000-8000-000000000017', '7e6c3000-0000-4000-8000-000000000018', '7e6c3000-0000-4000-8000-000000000019')
+             and status = 'cancelled' and cancel_reason = 'hold_expired'), 3, 'con sus sesiones canceladas (hold_expired)');
+set local role service_role;
 
 reset role;
 select * from finish();

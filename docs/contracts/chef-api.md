@@ -1,10 +1,11 @@
 # Contrato: área de Evelyn, Edge Function `chef`
 
 Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2). Con el PR 8 del plan (18/11/2026), la app manda también `clientId` («Nuova prenotazione» con una ficha existente y «Rinnova», la renovación de una reserva para la misma ficha) y `newClient` («Nuova cliente»): ver «Uso desde la app» en §4.
-Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, `index.ts`; para la traducción, `translation.ts` con `translation.test.ts` y `claude_translator.ts`; para el envío del menú, `menu_send.ts` y `menu_translation.ts`, con sus tests, y en `_shared/` la foto del envío, `menu_snapshot.ts`, y el mensaje, `menu_message.ts`). Si este documento y el código difieren, manda el código.
+Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, `index.ts`; para la traducción, `translation.ts` con `translation.test.ts` y `claude_translator.ts`; para el envío del menú, `menu_send.ts` y `menu_translation.ts`, con sus tests, y en `_shared/` la foto del envío, `menu_snapshot.ts`, y el mensaje, `menu_message.ts`; para el presupuesto, `quotes.ts`, con sus tests, y en `_shared/` el presupuesto de la foto, `quote_snapshot.ts`). Si este documento y el código difieren, manda el código.
 Actualizado el 19/11/2026: Evelyn no hace la compra (la hace el cliente, con la lista de ingredientes y cantidades que ella le manda). `POST /bookings` ya no tiene `groceriesEstCents`: si llega (la app de antes lo manda), se ignora como cualquier otra clave que el contrato no tiene, valga lo que valga, y la función le pasa siempre `p_groceries_est_cents: 0` a `chef_create_booking`, cuya firma no cambia (§4, §7). Sin compra, `chef_settings.shop_minutes` es 0 (migración `20261119090000_sin_compra.sql`): la llegada sugerida de un día de 9:00 a 15:00 es las 9:00.
 Actualizado el 20/11/2026: `POST /translate` traduce un plato del español al italiano y al inglés con Claude (§12), sobre la migración `20261120090000_recipe_translations.sql` (`recipes.auto_translated`, pgTAP `18_recipe_translations`).
 Actualizado el 21/11/2026: `POST /menus/preview` y `POST /menus/send` mandan a la clienta el menú de una semana por email, por WhatsApp o por los dos, con un link para confirmarlo (§13; SPEC §5.8), sobre la migración `20261121100000_menu_sends.sql` (pgTAP `20_menu_sends`).
+Actualizado el 22/11/2026: el presupuesto (§14; SPEC §5.8, «Presupuesto»): `POST /quotes` lo prepara desde un pedido, `POST /quotes/price` le cambia el precio y `POST /quotes/withdraw` lo retira, sobre la migración `20261121120000_quotes.sql` (pgTAP `22_quotes`). Sale con el menú de la semana 1: la foto y el mensaje de ese envío lo llevan (§13), y la clienta lo acepta o lo rechaza en su link (contrato `client-link.md`). Con la revisión del mismo día: confirmar sin presupuesto desde el pedido (`/bookings`) retira el presupuesto abierto, también uno que ya salió (§4); la versión cuenta solo los presupuestos que le llegaron a la clienta (§14), y con una sola semana el mensaje habla de esa fecha (§13).
 
 ## 1. Para qué
 
@@ -18,8 +19,11 @@ Actualizado el 21/11/2026: `POST /menus/preview` y `POST /menus/send` mandan a l
 | `/sessions/move` | `chef_move_session` | mover una semana (§5) |
 | `/sessions/cancel` | `chef_cancel_sessions` | cancelar una o varias semanas (§6) |
 | `/translate` | ninguna (`hit_public_request_rate` para el límite) | traducir el nombre y la descripción de un plato al italiano y al inglés (§12) |
-| `/menus/preview` | `chef_menu_send_context`, `chef_prepare_menu_send` | la vista previa del menú de una semana para la clienta, en su idioma, y el envío guardado sin salir (§13) |
-| `/menus/send` | `chef_link_menu_send`, `chef_complete_menu_send` | mandarlo: el link de la clienta, el email y el texto del WhatsApp (§13) |
+| `/menus/preview` | `chef_menu_send_context`, `chef_prepare_menu_send` | la vista previa del menú de una semana para la clienta, en su idioma, y el envío guardado sin salir (§13); en la semana 1 de un presupuesto abierto, con el presupuesto |
+| `/menus/send` | `chef_link_menu_send`, `chef_complete_menu_send` | mandarlo: el link de la clienta, el email y el texto del WhatsApp (§13); con el presupuesto, el presupuesto sale con él |
+| `/quotes` | `chef_create_quote` | preparar el presupuesto de un pedido: una semana retenida (`held`) por fecha y el presupuesto sin enviar (§14) |
+| `/quotes/price` | `chef_update_quote` | otro precio para un presupuesto abierto (§14) |
+| `/quotes/withdraw` | `chef_withdraw_quote` | retirar un presupuesto abierto: sus semanas se cancelan y el pedido vuelve a `new` (§14) |
 
   Con el plan crecen: `/sessions/cooked`, `/sessions/uncook`, `/payments`, `/payments/void` y `/payments/refund` (PR 10a, «Cociné» y cobros). Las de los tickets (`/sessions/receipts` y `/receipts/remove`, PR 9a) salieron el 19/11/2026: sin compra no hay tickets.
 
@@ -44,12 +48,12 @@ Actualizado el 21/11/2026: `POST /menus/preview` y `POST /menus/send` mandan a l
 
 | Código | Cuerpo | Cuándo |
 |---|---|---|
-| 200 / 201 | según la ruta | §4, §5, §6 y §12 |
+| 200 / 201 | según la ruta | §4, §5, §6, §12, §13 y §14 |
 | 400 | `{ "errors": { campo: código } }`, más `"date"` cuando el error es de una fecha concreta (de `dates`: fuera de rango, misma semana u orden) | validación de la función o, como defensa, de la base (§7) |
 | 401 | `{ "error": "unauthorized" }` y `WWW-Authenticate: Bearer` | sin token, token que no es un JWT o que Auth rechaza (vencido, sesión cerrada). Sin `Authorization`, o con un JWT que no valida, responde la plataforma con su propio cuerpo |
 | 403 | `{ "error": "forbidden" }` | usuario válido que no es la cocinera ni un colaborador suyo |
 | 404 | `{ "error": "notFound" }` | ruta desconocida |
-| 404 | `{ "error": "requestNotFound" \| "clientNotFound" \| "sessionNotFound" \| "menuNotFound" \| "sendNotFound" }` | el pedido, la ficha, la sesión, el menú de la semana o el envío no existen para esta cocinera |
+| 404 | `{ "error": "requestNotFound" \| "clientNotFound" \| "sessionNotFound" \| "menuNotFound" \| "sendNotFound" \| "quoteNotFound" }` | el pedido, la ficha, la sesión, el menú de la semana, el envío o el presupuesto no existen para esta cocinera |
 | 405 | `{ "error": "method" }` y `Allow: POST, OPTIONS` | otro método |
 | 409 | ver abajo | choques y estados que no lo permiten; no se escribió nada |
 | 413 / 415 | `{ "error": "tooLarge" \| "contentType" }` | cuerpo de más de 8 KB o que no es JSON |
@@ -67,7 +71,7 @@ Los 409:
 |---|---|
 | `{ "error": "slotTaken", "date": "AAAA-MM-DD" }` | la semana de esa fecha choca con otra sesión (`no_overlap`). En una reserva no se crea ninguna semana |
 | `{ "error": "weekTaken", "date": "AAAA-MM-DD" }` | esa semana ya tiene otra sesión viva de la misma reserva (una por semana). Al mover, la app ofrece pasarla al final de la reserva |
-| `{ "error": "requestNotNew", "status": "accepted" }` | el pedido ya no está `new` y no es un reintento; `status` es su estado actual |
+| `{ "error": "requestNotNew", "status": "accepted" }` | el pedido ya no está `new` y no es un reintento; `status` es su estado actual. En `/bookings` se confirma también uno `quoted` con su presupuesto abierto (§4) |
 | `{ "error": "sessionNotMovable", "status": "cooked" }` | solo se mueve una sesión `held` o `confirmed`; `status` es el actual |
 | `{ "error": "invalidTransition", "sessionId": uuid }` | al cancelar, esa sesión está `cooked` o `paid`; no se cancela ninguna |
 | `{ "error": "hasPayments", "sessionIds": [uuid] }` | al cancelar sin `allowWithPayments`, esas semanas ya están cobradas; no se cancela ninguna (§6) |
@@ -77,6 +81,12 @@ Los 409:
 | `{ "error": "menuEmpty" }` | el menú de la semana no tiene platos (§13) |
 | `{ "error": "alreadySent" }` | ese envío ya salió: para mandar otra vez, otra vista previa (§13) |
 | `{ "error": "noEmail" }` \| `{ "error": "noPhone" }` | el contacto de la clienta no tiene un email o un teléfono que sirva para lo que se pidió; no salió nada (§13) |
+| `{ "error": "requestNotQuotable" }` | el pedido no admite presupuesto (uno de cambios): el cuerpo de `/quotes` no tiene `type`, es el del pedido (§14) |
+| `{ "error": "quoteExists" }` | el pedido ya tiene un presupuesto abierto: para preparar otro, primero se retira (§14) |
+| `{ "error": "quoteClosed" }` | el presupuesto ya está aceptado, rechazado, retirado o vencido (también con el plazo ya pasado, aunque el cron de 15 minutos todavía no lo haya escrito: un borrador cuyas 24 h pasaron da `quoteClosed` en la vista previa y el envío); en `/menus/*`, la semana `held` ya no tiene su presupuesto abierto (§13, §14) |
+| `{ "error": "quoteEmpty" }` | el presupuesto no tiene semanas vivas (Evelyn las canceló todas) (§14) |
+| `{ "error": "quoteWeekNotFirst" }` | el menú de una semana `held` que no es la primera de su presupuesto: antes de aceptarlo solo sale la semana 1 (§13) |
+| `{ "error": "quoteChanged" }` | desde la vista previa cambiaron los términos del presupuesto (otro precio, una semana movida o cancelada): hace falta otra vista previa (§13) |
 | `{ "error": "conflict" }` | otro choque (no debería pasar; en `/menus/send`, dos tokens repetidos seguidos) |
 
 Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato; un número que no es entero), `range`, `tooLong`, `dateOutOfRange`, `sameWeek`, `order`, `weeksOnlyForWeek` y `conflict`. Los campos de un objeto van con punto (`newClient.name`, `household.meals`); `client`, `people`, `cents` y `channels` (§13) agrupan varios. `payload` es el cuerpo entero (no es JSON, no es un objeto o, en `/translate` y `/menus/*`, trae una clave de más).
@@ -126,7 +136,7 @@ Las claves que el contrato no tiene se ignoran. Entre ellas `groceriesEstCents`,
 
 | `status` | Qué significa |
 |---|---|
-| `busy` | choca con otra sesión: la misma cuenta que `no_overlap` |
+| `busy` | choca con otra sesión: la misma cuenta que `no_overlap`. Desde un pedido con un presupuesto abierto, las semanas retenidas de ese presupuesto no cuentan: se retira al confirmar |
 | `past` | la fecha ya pasó (hoy no cuenta como pasado) |
 | `blocked` | día bloqueado (puede ser justo el que Evelyn bloqueó por la sesión acordada) |
 | `closed` | ese día de la semana no tiene horario |
@@ -135,7 +145,8 @@ Las claves que el contrato no tiene se ignoran. Entre ellas `groceriesEstCents`,
 
 ### Reglas
 
-- **Desde un pedido** (`requestId`): el pedido tiene que estar `new` (si no, `409 requestNotNew`, también en el `dryRun`). Pasa a `accepted`, con `weeks` = las semanas creadas y `seen_at`; la ficha, de `prospect` a `trial`.
+- **Desde un pedido** (`requestId`): el pedido tiene que estar `new`, o `quoted` con su presupuesto abierto (si no, `409 requestNotNew`, también en el `dryRun`). Pasa a `accepted`, con `weeks` = las semanas creadas y `seen_at`; la ficha, de `prospect` a `trial`.
+- **Con un presupuesto abierto** (un borrador, o uno que ya le llegó a la clienta: SPEC §5.8, «Presupuesto»): confirmar sin presupuesto lo retira antes de crear las semanas, en la misma transacción. Sus semanas retenidas se cancelan (`quote_withdrawn`) y no chocan con las nuevas, aunque sean las mismas fechas y hora; en el `dryRun` tampoco cuentan como `busy`. Si una semana choca con otra reserva, no se retira nada. No hace falta retirarlo antes (`chef_withdraw_quote`). Si ya le había llegado, el link de la clienta deja de mostrarlo (`quote` es `null`, contrato client-link §4); si justo lo acepta o lo rechaza, su respuesta no se registra y la página le dice que Evelyn confirmó la reserva (client-link §10).
 - **A mano** (`clientId` o `newClient`): crea el pedido (`source = 'app'`, `accepted`) y, si es nueva, la ficha (`trial`, `pay_mode manual`). Una ficha existente no se modifica, salvo el paso de `prospect` a `trial`.
 - **Todo o nada**: si una semana choca no se crea ninguna, tampoco el pedido ni la ficha (`409` con la fecha).
 - **Idempotencia**: la app genera una `requestKey` por hoja «Confirmar reserva» (al abrirla) y la repite en cada envío de esa hoja (botón deshabilitado mientras envía); otra hoja, otra clave (ver «Uso desde la app»). A mano, la misma clave devuelve la reserva guardada con `duplicate: true` sin crear nada; es única por cocinera y compartida con las de la web (una clave ya usada por un pedido de la web da `400 requestKey: "conflict"`). Desde un pedido, el reintento se reconoce por el estado: el pedido ya `accepted` con esas mismas fechas y hora devuelve lo mismo con `duplicate: true`.
@@ -194,7 +205,7 @@ Respuesta `200`:
 
 Las funciones son de la migración `20261116150100_bookings.sql` (SPEC §4, «Reservas»): `security definer`, `search_path = ''`, ejecutables solo por `service_role`. Ninguna escribe en el log.
 
-- `public.chef_create_booking(p_chef_id, p_dates, p_start, p_cook_minutes, p_service_total_cents, p_portions, p_groceries_est_cents, p_request_id, p_client_id, p_new_client, p_type, p_household, p_locale, p_request_key, p_dry_run) → jsonb`. `p_service_total_cents` no tiene valor por defecto (null es `invalid_cents`). `p_groceries_est_cents` sigue en la firma, pero la Edge Function le pasa siempre 0 (sin compra desde el 19/11/2026); la columna `sessions.groceries_est_cents` queda en 0 en las reservas nuevas.
+- `public.chef_create_booking(p_chef_id, p_dates, p_start, p_cook_minutes, p_service_total_cents, p_portions, p_groceries_est_cents, p_request_id, p_client_id, p_new_client, p_type, p_household, p_locale, p_request_key, p_dry_run) → jsonb`. `p_service_total_cents` no tiene valor por defecto (null es `invalid_cents`). `p_groceries_est_cents` sigue en la firma, pero la Edge Function le pasa siempre 0 (sin compra desde el 19/11/2026); la columna `sessions.groceries_est_cents` queda en 0 en las reservas nuevas. La migración `20261121120000_quotes.sql` la rehace con la misma firma: desde un pedido con un presupuesto abierto, lo retira antes de crear las semanas (§4), sin errores nuevos.
 - `public.chef_move_session(p_chef_id, p_session_id, p_date, p_start, p_cook_minutes, p_dry_run) → jsonb`
 - `public.chef_cancel_sessions(p_chef_id, p_session_ids, p_reason, p_allow_with_payments) → jsonb`
 
@@ -210,6 +221,10 @@ La función pasa los argumentos en snake_case (`toCreateBookingParams`) y convie
 | `P0002 menu_not_found`, `send_not_found` (envío del menú, §13) | `404 menuNotFound` / `sendNotFound` |
 | `55000 session_not_editable` (detalle: el estado), `session_without_request`, `already_sent` | `409 sessionNotEditable` (con `status`) / `sessionWithoutRequest` / `alreadySent` |
 | `40001 menu_changed` (otra versión del menú, u otra huella de la foto: §13) | `409 menuChanged` (no `503`: reintentar igual no sirve) |
+| `40001 quote_changed` (los términos del presupuesto ya no son los de la vista previa: §13) | `409 quoteChanged` (tampoco `503`) |
+| `P0002 quote_not_found` (§14) | `404 quoteNotFound` |
+| `55000 quote_exists`, `quote_closed`, `quote_empty`, `quote_week_not_first` (§13, §14) | `409 quoteExists` / `quoteClosed` / `quoteEmpty` / `quoteWeekNotFirst` |
+| `22023 invalid_request_type` en `/quotes` (un pedido de cambios; el cuerpo no tiene `type`) | `409 requestNotQuotable` (en `/bookings`, `400 type: "invalid"`) |
 | `22023 menu_empty` | `409 menuEmpty` |
 | `22023 invalid_snapshot`, `invalid_token`, `invalid_via` (los arma la función, nunca la app) | `500` |
 | `23505` en `chef_link_menu_send` (token repetido) | otro token, una vez; si vuelve a chocar, `409 conflict` |
@@ -218,7 +233,7 @@ La función pasa los argumentos en snake_case (`toCreateBookingParams`) y convie
 | sin código (la base no respondió), `08xxx`, `40xxx`, `53xxx`, `57xxx`, `58xxx` o `PGRST000`–`PGRST003` | `503` |
 | cualquier otro (por ejemplo `PGRST202`: la función SQL no existe, la migración no está desplegada) | `500` |
 
-Las funciones del envío del menú son de la migración `20261121100000_menu_sends.sql` (SPEC §5.8, contrato §13): `chef_menu_send_context(p_chef_id, p_session_id)`, `chef_prepare_menu_send(p_chef_id, p_session_id, p_menu_version, p_locale, p_snapshot, p_translated, p_fingerprint)`, `chef_link_menu_send(p_chef_id, p_send_id, p_token_hash)` y `chef_complete_menu_send(p_chef_id, p_send_id, p_via)`, también solo de `service_role` y con la cocina del token.
+Las funciones del envío del menú son de la migración `20261121100000_menu_sends.sql` (SPEC §5.8, contrato §13): `chef_menu_send_context(p_chef_id, p_session_id)`, `chef_prepare_menu_send(p_chef_id, p_session_id, p_menu_version, p_locale, p_snapshot, p_translated, p_fingerprint)`, `chef_link_menu_send(p_chef_id, p_send_id, p_token_hash)` y `chef_complete_menu_send(p_chef_id, p_send_id, p_via)`, también solo de `service_role` y con la cocina del token. Las del presupuesto, de la migración `20261121120000_quotes.sql` (§14), que además rehace esas cuatro con el presupuesto: `chef_create_quote(p_chef_id, p_request_id, p_dates, p_start, p_cook_minutes, p_service_total_cents, p_portions, p_dry_run)`, `chef_update_quote(p_chef_id, p_quote_id, p_service_total_cents)` y `chef_withdraw_quote(p_chef_id, p_quote_id)`.
 
 De un error de la base solo se usan el código, el mensaje si es un código propio en snake_case y el detalle si tiene la forma esperada (una fecha, un estado, un uuid o una lista de hasta 100 uuid). El mensaje y el detalle de Postgres pueden traer la fila, con datos personales: nunca pasan ni a la respuesta ni al log.
 
@@ -246,7 +261,7 @@ En local, `npx supabase start` sirve la función con `verify_jwt` de `config.tom
 
 ## 10. Logs
 
-Solo evento, ruta, códigos, contadores, largos, duraciones e ids. Nunca nombres, teléfonos, emails, zonas, direcciones, notas, restricciones, fechas, tokens (tampoco el del link de la clienta ni su hash), el texto de un plato, de la lista o de la nota, el mensaje ni las claves de Anthropic o de Resend. Los tests lo comprueban con un espía en todos los caminos del handler: cada evento de esta tabla (salvo `config_incomplete`, `translate_fake` y `translate_fake_ignored`, que escribe `index.ts` al arrancar, solo con nombres de variables), también con errores de la base que traen la fila, una respuesta de la base que lanza al leerla, un cuerpo que se corta mientras se lee y un traductor que explota o repite el plato en su salida.
+Solo evento, ruta, códigos, contadores, largos, duraciones e ids. Nunca nombres, teléfonos, emails, zonas, direcciones, notas, restricciones, fechas, importes, tokens (tampoco el del link de la clienta ni su hash), el texto de un plato, de la lista o de la nota, el mensaje ni las claves de Anthropic o de Resend. Los tests lo comprueban con un espía en todos los caminos del handler: cada evento de esta tabla (salvo `config_incomplete`, `translate_fake` y `translate_fake_ignored`, que escribe `index.ts` al arrancar, solo con nombres de variables), también con errores de la base que traen la fila, una respuesta de la base que lanza al leerla, un cuerpo que se corta mientras se lee y un traductor que explota o repite el plato en su salida.
 
 | Evento | Campos |
 |---|---|
@@ -268,6 +283,9 @@ Solo evento, ruta, códigos, contadores, largos, duraciones e ids. Nunca nombres
 | `email_skipped` | `route`, `sendId`, `reason: not_configured` (nivel `warn`: `503 emailUnavailable`) |
 | `token_collision` | `route`, `sendId` (nivel `warn`: un hash repetido en `client_links`, se generó otro token) |
 | `menu_send_incomplete` | `route`, `sendId`, `status`, `code`, `message` (nivel `error`: el email salió pero el envío no se pudo marcar) |
+| `quote_created` | `requestId`, `quoteId`, `sessions` (cuántas semanas), `userId` (no el `dryRun`) |
+| `quote_priced` | `quoteId`, `weeks` (cuántas semanas vivas), `userId`: nunca el importe |
+| `quote_withdrawn` | `quoteId`, `requestId`, `already`, `cancelled` (cuántas semanas), `userId` |
 | `db_error` | `op`, `code` y, si lo hay, `message` (el código propio) |
 | `unexpected_result` | `op` (también `load_chef`, si `chef_id_for_user` responde algo que no es un uuid ni null) |
 | `unexpected_error` | `error` (el tipo, nunca el mensaje) |
@@ -281,7 +299,8 @@ Solo evento, ruta, códigos, contadores, largos, duraciones e ids. Nunca nombres
 
 - `npm test`: `supabase/functions/_shared/chef_api.test.ts` (validación), `supabase/functions/chef/handler.test.ts` (401 antes de leer el cuerpo, 403, un colaborador que entra con la cocina de ella y queda en los logs con su propio `userId`, una cocina con otra forma → 500, 400 por campo, 409 con la fecha o las sesiones cobradas, `dryRun` que no escribe, reintento con la misma clave, la cocinera siempre del token, que `index.ts` use `chef_id_for_user` y le pase su respuesta tal cual al handler, errores de la base, `/translate` con un traductor simulado y el espía de logs), `supabase/functions/chef/translation.test.ts` (el pedido a Claude, el prompt, el esquema, la lectura de la respuesta, la validación de la salida, el límite y el traductor de mentira) y el paso del workflow en `supabase/scripts/deploy-supabase.test.ts`. `claude_translator.ts` no corre en Node (importa el SDK): `handler.test.ts` mira su texto (la versión fija del SDK, las opciones del cliente, el pedido, la señal del tope y que le pase sus clases de error a `failureFrom`, que `translation.test.ts` prueba con clases de mentira) y que ni `handler.ts` ni `index.ts` lo importen al arrancar. CI corre además `deno check` de las dos funciones y de `claude_translator.ts`, con el SDK y supabase-js reales (job `edge-functions`).
 - Envío del menú (§13): `_shared/menu_snapshot.test.ts` (la foto: forma, lectura defensiva, que no salga nada de más), `_shared/menu_message.test.ts` (el mensaje en los tres idiomas: cantidades, secciones, alérgenos, fechas, vista previa sin link, WhatsApp, escape del HTML y que nunca lleve contacto, dirección, alergias ni precios), `chef/menu_send.test.ts` (lo que devuelven las funciones SQL, la foto, el token y su hash), `chef/menu_translation.test.ts` (el pedido, el prompt, el esquema, la validación de la salida y el de mentira) y, en `handler.test.ts`, las dos rutas con la base, el traductor y el Mailer simulados (con y sin traducción, cada error, email que sale o no, sin email o sin teléfono, sin configuración, WhatsApp, token repetido, `emailSent`) y el espía de logs.
-- pgTAP `13_bookings`: las funciones SQL (reparto, chequeos y su prioridad, choques, reintentos, transiciones, mover, cancelar con y sin cobros, y permisos, también que la app no borra fichas). `15_chef_members`: `chef_id_for_user` (quién es de qué cocina, solo `service_role`) y lo que ve y hace un colaborador. `18_recipe_translations`: `recipes.auto_translated`, su fuente en español y la clave de `save_recipe`. `20_menu_sends`: las funciones del envío del menú y del link de la clienta (§13).
+- Presupuesto (§14): `_shared/chef_api.test.ts` (los tres cuerpos), `chef/quotes.test.ts` (lo que devuelven `chef_create_quote`, `chef_update_quote` y `chef_withdraw_quote`), `_shared/quote_snapshot.test.ts` (el presupuesto en la foto: lectura defensiva, el plazo de 48 horas o la primera llegada, la hora de Roma), `chef/menu_send.test.ts` (el presupuesto del contexto y de la foto, con la versión que sale), `_shared/menu_message.test.ts` (la sección del presupuesto en los tres idiomas: semanas, precios con los separadores de cada idioma, el plazo y que nunca hable de pagos) y, en `handler.test.ts`, las tres rutas con cada error de la base, la vista previa y el envío de la semana 1 con el presupuesto (y sus 409), los colaboradores, `index.ts` y el espía de logs.
+- pgTAP `13_bookings`: las funciones SQL (reparto, chequeos y su prioridad, choques, reintentos, transiciones, mover, cancelar con y sin cobros, y permisos, también que la app no borra fichas). `22_quotes`: las del presupuesto (§14) y el envío y el link con el presupuesto. `15_chef_members`: `chef_id_for_user` (quién es de qué cocina, solo `service_role`) y lo que ve y hace un colaborador. `18_recipe_translations`: `recipes.auto_translated`, su fuente en español y la clave de `save_recipe`. `20_menu_sends`: las funciones del envío del menú y del link de la clienta (§13).
 - En local, de punta a punta: `npx supabase start` (con `-x` se pueden dejar afuera los servicios que no hacen falta: alcanza con la base, Kong, Auth, PostgREST y el runtime de funciones), un token con `POST /auth/v1/token?grant_type=password` para `evelyn@example.test` (la contraseña del seed) y las llamadas a `/functions/v1/chef/…`. Con `marco@example.test`, su colaborador en el seed, las mismas llamadas actúan sobre la cocina de Evelyn. `POST /functions/v1/chef/translate` con `TRANSLATE_TRANSPORT=fake` (lo que trae `.env.example`) devuelve la traducción de mentira sin llamar a Claude; con `EMAIL_TRANSPORT=log` (también de `.env.example`), `/menus/send` marca el envío sin mandar ningún email.
 
 ## 12. `POST /translate`: traducir un plato
@@ -403,9 +422,11 @@ Respuesta `200`:
 
 **La huella**: `chef_menu_send_context` devuelve `fingerprint` (32 caracteres en hexadecimal) y la función se la pasa tal cual a `chef_prepare_menu_send` (`p_fingerprint`). Si mientras armaba la foto o traducía la lista cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo, la base no la guarda (`409 menuChanged`).
 
-**La foto** (`menu_sends.snapshot`, `_shared/menu_snapshot.ts`, versión 1): `{ v: 1, locale, session: { date, start, week, weeks }, weeks: [{ date, start }], dishes: [{ name, description, allergens, diet, portions, photo, ingredients? }], items: [{ name, section, quantity, unit }], note }`. La leen el envío y la página de la clienta. `ingredients` (desde el 22/11/2026, para el libro del menú): los nombres de los ingredientes del plato, en el idioma de la clienta, en el orden de la receta y sin repetir (sin distinguir mayúsculas); nunca cantidades, unidades ni secciones. Un plato sin ingredientes no lleva la clave, como las fotos de antes; si con ellos la foto pasara de 60 KB (la base acepta hasta 64 KB), se arma sin ingredientes (`fitMenuSnapshotSize`). Nunca lleva el contacto, la dirección, las alergias de la clienta, precios ni nada de pagos.
+**La foto** (`menu_sends.snapshot`, `_shared/menu_snapshot.ts`, versión 1): `{ v: 1, locale, session: { date, start, week, weeks }, weeks: [{ date, start }], dishes: [{ name, description, allergens, diet, portions, photo, ingredients? }], items: [{ name, section, quantity, unit }], note }`. La leen el envío y la página de la clienta. `ingredients` (desde el 22/11/2026, para el libro del menú): los nombres de los ingredientes del plato, en el idioma de la clienta, en el orden de la receta y sin repetir (sin distinguir mayúsculas); nunca cantidades, unidades ni secciones. Un plato sin ingredientes no lleva la clave, como las fotos de antes; si con ellos la foto pasara de 60 KB (la base acepta hasta 64 KB), se arma sin ingredientes (`fitMenuSnapshotSize`). Nunca lleva el contacto, la dirección, las alergias de la clienta ni nada de pagos (con un presupuesto abierto, más abajo, suma `quote`).
 
-Orden: validación (`400`) → `chef_menu_send_context` (`404 sessionNotFound`; `409 sessionNotEditable` con `status` si la semana está cancelada, cocinada o cobrada; `409 sessionWithoutRequest`; `404 menuNotFound`) → lo que la base vuelve a mirar al guardar, antes de gastar una traducción: la versión (`409 menuChanged`) y algún plato (`409 menuEmpty`) → si hay que traducir: traductor configurado (`501`) → límite de la cocina (`429`; si la base no responde, `503` o `500`) → traductor (`422`, `503` o `500`) → `chef_prepare_menu_send` (los mismos `404` y `409`, y `409 menuChanged` si cambió la huella) → `200`.
+**El presupuesto** (§14): el envío de la semana 1 de un presupuesto abierto (una semana `held`, la primera viva de su presupuesto: `chef_menu_send_context` trae `quote` con `firstWeek: true`) suma a la foto `quote: { version, totalCents, weeks: [{ date, start, serviceCents }], holdHours, firstStart }` (`_shared/quote_snapshot.ts`): la versión que va a salir (la de ahora la primera vez; la siguiente en un reenvío, como `chef_complete_menu_send`; la 1 es el primer presupuesto que le llega del pedido, §14), el precio del servicio de todas las semanas y de cada una (en centavos; los términos que calcula la base y que la clienta acepta: la huella los cubre), las horas que tiene para aceptarlo (`chef_settings.quote_hold_hours`) y la primera llegada (`"AAAA-MM-DDTHH:MM"`, hora de Roma), que el plazo nunca pasa. Sin presupuesto, la foto de siempre (y las de antes se leen igual). Una foto con un presupuesto que no cierra (el total no es la suma, otra forma) no se manda: `500`. Del precio, solo el del servicio; nunca cómo ni cuándo se paga.
+
+Orden: validación (`400`) → `chef_menu_send_context` (`404 sessionNotFound`; `409 sessionNotEditable` con `status` si la semana está cancelada, cocinada o cobrada; `409 sessionWithoutRequest`; `404 menuNotFound`) → lo que la base vuelve a mirar al guardar, antes de gastar una traducción: una semana `held` sin su presupuesto abierto (`409 quoteClosed`) o que no es la primera (`409 quoteWeekNotFirst`), la versión (`409 menuChanged`) y algún plato (`409 menuEmpty`) → si hay que traducir: traductor configurado (`501`) → límite de la cocina (`429`; si la base no responde, `503` o `500`) → traductor (`422`, `503` o `500`) → `chef_prepare_menu_send` (los mismos `404` y `409`, y `409 menuChanged` si cambió la huella, también por los términos del presupuesto) → `200`.
 
 ### `POST /menus/send`
 
@@ -427,11 +448,13 @@ Respuesta `200`:
 - `sentVia`: en el orden de la base (`email` antes que `whatsapp`).
 - `whatsappText` y `whatsappPhone` solo si se pidió WhatsApp: el mismo mensaje de la vista previa con el link. El teléfono en E.164; `https://wa.me/` lo quiere sin el `+`. La app abre WhatsApp desde el teléfono de Evelyn: el envío ya quedó marcado.
 
-**El link**: `<PUBLIC_SITE_URL>/prenotazione/#t=<token>`, con el token en el fragmento (`#t=`), que el navegador no manda a ningún servidor ni pone en el `Referer`; nunca en la query. El token son 32 bytes al azar (WebCrypto) en base64url, 43 caracteres. La base guarda solo su hash (SHA-256 del token en UTF-8, en hexadecimal), en `client_links`: abre la reserva entera durante 120 días, y todos los links de una reserva valen a la vez. El token no se guarda ni se loguea: va solo en el mensaje (y en `whatsappText`). Si el hash ya existe (`23505`, no debería pasar), la función genera otro una vez. El mensaje lleva además el link al libro del menú de esa semana: el mismo, con `&libro=<sesión>` (`menuBookUrl`; la sesión la devuelve `chef_link_menu_send`), también en el fragmento.
+**El link**: `<PUBLIC_SITE_URL>/prenotazione/#t=<token>`, con el token en el fragmento (`#t=`), que el navegador no manda a ningún servidor ni pone en el `Referer`; nunca en la query. El token son 32 bytes al azar (WebCrypto) en base64url, 43 caracteres. La base guarda solo su hash (SHA-256 del token en UTF-8, en hexadecimal), en `client_links`: abre la reserva entera durante 15 días (migración `20261121105000_client_links_15_days.sql`), y todos los links de una reserva valen a la vez. El token no se guarda ni se loguea: va solo en el mensaje (y en `whatsappText`). Si el hash ya existe (`23505`, no debería pasar), la función genera otro una vez. El mensaje lleva además el link al libro del menú de esa semana: el mismo, con `&libro=<sesión>` (`menuBookUrl`; la sesión la devuelve `chef_link_menu_send`), también en el fragmento.
 
 **El email**: de `MAIL_FROM` al email del contacto, con `Reply-To` `MAIL_REPLY_TO` (o `CHEF_NOTIFY_EMAIL`): las respuestas de la clienta le llegan a Evelyn. Asunto, HTML y texto como la vista previa, con el link. `Idempotency-Key`: `menu-send-<sendId>-<16 primeros caracteres del hash>`, una por link: el reintento de un mismo pedido a Resend no duplica el email, y otro intento de envío (otro link) es otro email. Con `EMAIL_TRANSPORT=log` no sale nada: se registra el tamaño y el envío se marca igual (desarrollo).
 
-Orden: validación (`400`) → la web configurada (sin `PUBLIC_SITE_URL`, `500`) → si pidió email, el email configurado (`503 emailUnavailable`, sin crear el link) → `chef_link_menu_send` (`404 sendNotFound`, `409 alreadySent`, `409 sessionNotEditable`, `409 menuChanged` si cambió la versión o la huella desde la vista previa) → el contacto de ahora: un email con forma de email si pidió email (`409 noEmail`) y un teléfono que se puede normalizar si pidió WhatsApp (`409 noPhone`); con cualquiera de los dos no sale nada → el email (`502 emailFailed`: el envío queda sin marcar) → `chef_complete_menu_send` → `200`.
+Orden: validación (`400`) → la web configurada (sin `PUBLIC_SITE_URL`, `500`) → si pidió email, el email configurado (`503 emailUnavailable`, sin crear el link) → `chef_link_menu_send` (`404 sendNotFound`, `409 alreadySent`, `409 sessionNotEditable`, `409 menuChanged` si cambió la versión o la huella desde la vista previa; con el presupuesto, `409 quoteClosed` si ya no está abierto y `409 quoteChanged` si cambiaron sus términos) → el contacto de ahora: un email con forma de email si pidió email (`409 noEmail`) y un teléfono que se puede normalizar si pidió WhatsApp (`409 noPhone`); con cualquiera de los dos no sale nada → el email (`502 emailFailed`: el envío queda sin marcar) → `chef_complete_menu_send` (con el presupuesto, el presupuesto sale con él: versión, el plazo de `quote_hold_hours` sin pasar la primera llegada, también en sus semanas `held`, y el pedido pasa a `quoted`) → `200`.
+
+- Con el presupuesto, el mensaje se arma al mandarlo con la hora de ahora: dice «entro 48 ore» o, si la primera llegada es antes, «prima di <día>, alle <hora>», como el plazo que fija `chef_complete_menu_send` enseguida.
 
 - Un `409 noEmail` o `noPhone` deja creado un link que no salió en ningún mensaje: nadie tiene su token, así que no abre nada.
 - Después de un `502`, la app ofrece reintentar (otro link, otro email) o mandarlo solo por WhatsApp.
@@ -447,14 +470,16 @@ Orden: validación (`400`) → la web configurada (sin `PUBLIC_SITE_URL`, `500`)
 | 409 | `menuChanged` | las dos | otra versión del menú, o desde la vista previa cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo: otra vista previa |
 | 404 | `sendNotFound` | send | el envío no existe para esta cocina |
 | 409 | `sessionNotEditable` (con `status`), `sessionWithoutRequest`, `menuChanged`, `menuEmpty` | preview | §3 |
+| 409 | `quoteClosed`, `quoteWeekNotFirst`, `quoteChanged` | preview | una semana `held` cuyo presupuesto ya no está abierto, que no es la primera (las demás salen después de aceptarlo) o cuyos términos cambiaron mientras se armaba la foto (§3) |
 | 409 | `alreadySent`, `sessionNotEditable`, `menuChanged`, `noEmail`, `noPhone`, `conflict` | send | §3 |
+| 409 | `quoteClosed`, `quoteChanged` | send | el presupuesto se cerró, o Evelyn le cambió el precio o una semana después de la vista previa: otra vista previa (con `emailSent: true` si el email ya salió) |
 | 422 | `untranslatable` | preview | la traducción no salió con este texto (§12): la app ofrece mandarlo sin traducir (`translate: false`) |
 | 429 | `rateLimited` y `Retry-After: 3600` | preview | la cocina pasó su límite de traducciones |
 | 501 | `notConfigured` | preview | la traducción está apagada; sin traducir sale igual |
 | 502 | `emailFailed` | send | el email no salió; el envío queda sin marcar |
 | 503 | `unavailable` | las dos | la base o Claude no respondieron, o un error que se puede reintentar (en send, con `emailSent: true` si el email ya salió) |
 | 503 | `emailUnavailable` | send | email pedido sin `RESEND_API_KEY` o `MAIL_FROM` |
-| 500 | `server` | las dos | configuración rota (sin `PUBLIC_SITE_URL`), una respuesta de la base con otra forma o un error que no se puede reintentar (en send, con `emailSent: true` si el email ya salió) |
+| 500 | `server` | las dos | configuración rota (sin `PUBLIC_SITE_URL`), una respuesta de la base con otra forma o un error que no se puede reintentar (en send, con `emailSent: true` si el email ya salió; en preview, también una traducción rota, §12: otro 4xx de Anthropic o un error del SDK, así que, si se pidió traducir y la clienta no lee español, la app ofrece seguir sin traducir) |
 
 ### El mensaje
 
@@ -465,12 +490,89 @@ Orden: validación (`400`) → la web configurada (sin `PUBLIC_SITE_URL`, `500`)
 - los platos: nombre, descripción, porciones, dieta y alérgenos con su nombre (los de la web; sin alérgenos, «Nessuno dei 14 allergeni principali», como la web);
 - la lista de compras agrupada por sección del súper, en el orden del recorrido (`produce`, `meat_fish`, `dairy_eggs`, `bakery`, `pantry`, `frozen`, `other`), con las cantidades legibles: hasta 999 en g o ml; desde 1000, en kg o l redondeados a la centésima («1,25 kg» en italiano y español, «1.25 kg» en inglés); las piezas con su unidad («6 pz», «6 uds.», «6 pcs»). Lo que va q.b. aparte, al final: «Da avere in casa» / «Para tener en casa» / «To have at home»;
 - la nota de Evelyn, tal como la escribió;
-- el link para hojear el libro del menú de la semana («Sfoglia il menù della settimana», con «Un piatto per pagina, come al ristorante.» debajo), justo antes del de confirmar;
+- el link para hojear el libro del menú de la semana («Sfoglia il menù della settimana», con «Un piatto per pagina, come al ristorante.» debajo), justo antes del de confirmar (o, con el presupuesto, del botón para aceptarlo: el mensaje presenta primero el presupuesto y el menú, después el link al libro y al final el botón);
 - el link para ver el menú entero, con las fotos, y confirmarlo o pedir cambios;
 - cómo responder (al email o al WhatsApp).
 
-Nunca lleva la dirección, el contacto, las alergias de la clienta, precios ni nada de pagos: el mensaje sale solo de la foto. Todo el texto va escapado en el HTML, sin imágenes remotas ni seguimiento.
+Con el presupuesto (la semana 1 de uno abierto), el mensaje lo presenta primero, sin dejar dudas, y el asunto, el preheader, el saludo y el botón lo dicen («il tuo preventivo e il menù del 30 nov»; desde la versión 2, un reenvío o uno nuevo después de otro que le llegó, «il preventivo aggiornato»; «Vedi e accetta il preventivo»):
+
+- cuántas semanas y cada una con su fecha larga y su hora de llegada (las fechas ya no se repiten en «Tutte le date»);
+- el precio del servicio: de todas las semanas y, si todas cuestan lo mismo, por semana («560,00 € in totale (140,00 € a settimana)», «€1,120.00 in total (€280.00 per week)»); si no, cada semana con el suyo y el total; con una sola semana, el precio. Desde los centavos enteros, con los separadores de cada idioma (`formatCents`);
+- hasta cuándo puede aceptarlo: las horas del plazo («Accettalo entro 48 ore»), o, si la primera llegada es antes, «Accettalo prima di lunedì 30 novembre 2026, alle 10:00»; y que mientras tanto esas fechas quedan reservadas para ella (con una sola semana, en singular: «questa data resta riservata per te»);
+- que desde el link acepta el presupuesto y el menú de la primera semana, pide cambios o lo rechaza.
+
+Nunca lleva la dirección, el contacto, las alergias de la clienta ni nada de pagos (ni cómo ni cuándo se paga); del precio, solo el del servicio del presupuesto: el mensaje sale solo de la foto. Todo el texto va escapado en el HTML, sin imágenes remotas ni seguimiento.
 
 ### Qué se manda a Anthropic
 
 Solo los nombres de los renglones de la lista de compras y de los ingredientes de los platos del menú (para el libro), como los escribió Evelyn, y solo si la clienta no lee español: texto genérico de ingredientes (la app le avisa que no escriba datos de clientes en los renglones). Nunca la nota, datos de la clienta, del pedido ni de la sesión, restricciones ni direcciones. Como con los platos (§12), no son datos personales: la privacy no cambia (SPEC §6).
+
+## 14. `POST /quotes`, `/quotes/price` y `/quotes/withdraw`: el presupuesto
+
+Proceso de Nicolas del 21/11/2026 (SPEC §5.8, «Presupuesto»): desde un pedido, Evelyn prepara el presupuesto (semanas, fechas, hora, minutos, porciones y precio del servicio), arma el menú de la semana 1 y los manda juntos (§13); la clienta lo acepta (y con él ese menú) o lo rechaza en su link (contrato `client-link.md`). Base de datos: migración `20261121120000_quotes.sql` (pgTAP `22_quotes`). Nada de esto toca los pagos: el precio es el del servicio que acuerda con Evelyn, y se paga como hoy.
+
+Cómo lo usa la app (PR siguiente): `/quotes` con `dryRun` (los avisos de cada fecha, como «Confirmar reserva») → `/quotes` → el menú de la semana 1 (`save_session_menu`) → `/menus/preview` → `/menus/send`. Para otro precio, `/quotes/price` y otra vista previa y envío (otra versión: el plazo vuelve a empezar); para otras fechas o semanas, `/sessions/move` y `/sessions/cancel` (§5, §6) sobre sus semanas `held`, y lo mismo. `/quotes/withdraw` lo retira. Para confirmar sin presupuesto lo que se acordó por fuera, `/bookings` con el `requestId` (§4) lo retira solo, también si ya salió (pedido `quoted`): responde `201`, sin retirarlo antes. Mientras no lo acepte, solo sale el menú de la semana 1 (`409 quoteWeekNotFirst`); si la semana que lo llevaba pasa al final (`/sessions/move`) y se reenvía desde la nueva primera, el envío viejo queda en su semana y la clienta lo confirma después de aceptar (contrato client-link §4).
+
+### `POST /quotes`: preparar el presupuesto
+
+| Campo | Tipo | Regla |
+|---|---|---|
+| `requestId` | uuid | obligatorio: un pedido `new` (semanal o extra) sin otro presupuesto abierto |
+| `dates` | `string[]` | como en `/bookings` (§4): de 1 a 8, una por semana ISO y en orden, de hoy − 366 a hoy + 366 (`range`, `sameWeek`, `order`, `dateOutOfRange`, con `date`); más de una solo en un pedido semanal (la base: `400 dates: "weeksOnlyForWeek"`) |
+| `start` | `"HH:MM"` | llegada de todas las semanas; puede faltar solo en el `dryRun` |
+| `cookMinutes` | entero de 1 a 720 | minutos de cocina de cada semana |
+| `portions` | entero de 0 a 840 | porciones de cada semana (0 por defecto) |
+| `serviceTotalCents` | entero de 0 a 10 000 000 | el precio del servicio de **todo** el presupuesto; se reparte en centavos entre las semanas (los que sobran, a las primeras). Obligatorio salvo en el `dryRun`; 0 vale |
+| `dryRun` | boolean | `true`: el estado de cada fecha, sin escribir nada |
+
+Una clave que el contrato no tiene es `payload: "invalid"` (como en `/translate` y `/menus/*`: lo arma solo la app). No hay `type`, `clientId` ni `newClient`: es siempre el pedido, con su tipo.
+
+Respuesta `201` (en el `dryRun`, `200`):
+
+```json
+{ "dryRun": false, "quoteId": "uuid", "requestId": "uuid", "clientId": "uuid", "holdUntil": "2026-11-23T10:00:00.123456+00:00",
+  "weeks": [ { "date": "2026-11-30", "start": "10:00", "cookMinutes": 240, "status": "free", "suggestedStart": null,
+               "serviceCents": 14000, "sessionId": "uuid" } ] }
+```
+
+- Crea una sesión `held` por semana (`pay_mode` manual), con su parte del precio, y el presupuesto sin enviar, con la versión siguiente a la última que salió del pedido (la 1 si no salió ninguna: un borrador que venció o se retiró sin salir no gasta número, y la clienta ve la versión 1 en su primer presupuesto). El pedido sigue `new` (queda visto). La página de la clienta no muestra las semanas de un borrador.
+- `holdUntil`: el borrador retiene el horario 24 h, nunca más allá de la llegada de la primera semana. Al salir con el menú, el plazo pasa a ser el de la clienta: `quote_hold_hours` (48 h) desde el envío, tampoco más allá de esa llegada.
+- `weeks`: en el `dryRun`, el estado de cada fecha como en `/bookings` (`busy`, `past`, `blocked`, `closed`, `outside`, `ok`, con `suggestedStart`; solo `busy` impide crearlo) y `quoteId`, `holdUntil` y `sessionId` en null. Un presupuesto no puede empezar en el pasado: con la llegada de la primera semana a más tardar ahora (o, sin hora, un día anterior a hoy) la base responde `400 { errors: { dates: "invalid" } }`, también en el `dryRun`; por eso `past` no sale. Creado, cada semana con su sesión y `status: "free"` (retenida; los avisos eran los del `dryRun`).
+- Todo o nada: si una semana choca no se crea ninguna (`409 slotTaken` / `weekTaken` con la fecha).
+
+### `POST /quotes/price`: otro precio
+
+Cuerpo `{ "quoteId": uuid, "serviceTotalCents": 0 a 10 000 000 }` (los dos obligatorios). Respuesta `200`, los términos de ahora (`private.quote_terms`):
+
+```json
+{ "quoteId": "uuid", "totalCents": 42001,
+  "weeks": [ { "sessionId": "uuid", "date": "2026-11-30", "start": "10:00", "cookMinutes": 240, "serviceCents": 10501 } ] }
+```
+
+Se reparte entre las semanas vivas. Si ya salió, hay que volver a mandarlo: hasta entonces la página de la clienta lo muestra como cambiado y no se acepta, y una vista previa armada antes ya no sale (`409 quoteChanged`). Una respuesta de la base con otro total o de otro presupuesto da `500`.
+
+### `POST /quotes/withdraw`: retirarlo
+
+Cuerpo `{ "quoteId": uuid }`. Respuesta `200 { "quoteId", "requestId", "already", "cancelled" }`: sus semanas `held` se cancelan (`quote_withdrawn`), el presupuesto queda retirado y el pedido vuelve a `new` (para preparar otro o rechazarlo; para confirmar sin presupuesto no hace falta retirarlo antes: `/bookings` lo retira, §4). Idempotente: uno ya retirado da `already: true` y `cancelled: 0`. Si después se confirma la reserva sin él, la página de la clienta deja de mostrarlo (contrato client-link §4).
+
+### Errores (además de los comunes, §3)
+
+| HTTP | Cuerpo | Ruta | Cuándo |
+|---|---|---|---|
+| 400 | `{ "errors": { campo: código } }` (con `date` en un error de una fecha) | las tres | el cuerpo no cumple, o una validación de la base (`dates: "weeksOnlyForWeek"`, `cents: "range"`, …); no se escribió nada |
+| 404 | `requestNotFound` | quotes | el pedido no es de esta cocina |
+| 404 | `quoteNotFound` | price, withdraw | el presupuesto no es de esta cocina |
+| 409 | `requestNotNew` (con `status`) | quotes | el pedido ya no está `new` |
+| 409 | `requestNotQuotable` | quotes | un pedido de cambios |
+| 409 | `quoteExists` | quotes | ya tiene un presupuesto abierto: retirarlo antes |
+| 409 | `slotTaken` / `weekTaken` (con `date`) | quotes | la semana de esa fecha choca; no se crea ninguna |
+| 409 | `quoteClosed` | price, withdraw | ya está aceptado, rechazado o vencido (y, en price, retirado) |
+| 409 | `quoteEmpty` | price | no le quedan semanas vivas |
+| 500 | `server` | las tres | `chef_not_found`, una respuesta con otra forma o un error que no se puede reintentar |
+| 503 | `unavailable` | las tres | la base no respondió |
+
+Los de la base (§7): `P0002 request_not_found`, `quote_not_found` → `404`; `55000 request_not_new` (detalle: el estado), `quote_exists`, `quote_closed`, `quote_empty` → `409`; `22023 invalid_request_type` → `409 requestNotQuotable`; los demás `22023` (`invalid_dates`, `dates_same_week`, `invalid_start`, `invalid_cook_minutes`, `invalid_portions`, `invalid_cents`, `weeks_only_for_week`) → `400` con su campo; `23P01 slot_taken` y `23505 week_taken` → `409` con la fecha; `P0002 chef_not_found` → `500`.
+
+### Logs
+
+`quote_created` (`requestId`, `quoteId`, `sessions`, `userId`), `quote_priced` (`quoteId`, `weeks`, `userId`) y `quote_withdrawn` (`quoteId`, `requestId`, `already`, `cancelled`, `userId`); los errores, como en las otras rutas (`rejected`, `db_error`, `invalid_payload`, `unexpected_result`). Nunca importes, fechas ni datos de la clienta (§10).

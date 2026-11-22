@@ -887,6 +887,29 @@ class FakeSessionsRepository implements SessionsRepository {
     return found;
   }
 
+  /// Cada lectura de las semanas vivas de varias reservas, en orden.
+  final List<List<String>> bookingWeeksCalls = [];
+
+  /// Si no es null, fetchLiveBookingWeeks falla con esto.
+  SessionFailure? bookingWeeksFailure;
+
+  @override
+  Future<List<BookingWeekRef>> fetchLiveBookingWeeks({
+    required String chefId,
+    required List<String> requestIds,
+  }) async {
+    bookingWeeksCalls.add(List.of(requestIds));
+    final ids = requestIds.toSet();
+    final found = [
+      for (final s in sessions.values)
+        if (s.chefId == chefId && s.isLive && ids.contains(s.requestId))
+          (id: s.id, requestId: s.requestId!, date: s.date, start: s.start),
+    ];
+    final failure = bookingWeeksFailure;
+    if (failure != null) throw failure;
+    return found;
+  }
+
   @override
   Future<MoveSessionResult> moveSession(MoveSessionRequest request) async {
     moveCalls.add(request);

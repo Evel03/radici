@@ -32,11 +32,14 @@ import {
   type ChefStore,
   type CompleteMenuSendParams,
   type CreateBookingParams,
+  type CreateQuoteParams,
   type LinkMenuSendParams,
   type Mailer,
   type MenuSendContextParams,
   type MoveSessionParams,
   type PrepareMenuSendParams,
+  type UpdateQuoteParams,
+  type WithdrawQuoteParams,
 } from "./handler.ts";
 import type { MenuTextSource } from "./menu_translation.ts";
 import { fakeTranslator, translateRateKey, type Translator, type TranslatorReply } from "./translation.ts";
@@ -51,6 +54,8 @@ const CLIENT_ID = "5e550000-0000-4000-8000-000000000002";
 const SESSION_ID = "5e550000-0000-4000-8000-000000000003";
 const OTHER_SESSION_ID = "5e550000-0000-4000-8000-000000000004";
 const REQUEST_KEY = "3f2b8c1e-9a4d-4c7b-8e2f-0123456789ab";
+/** El presupuesto que crea la base simulada (§14). */
+const QUOTE_ID = "5e550000-0000-4000-8000-0000000000a1";
 // Lunes 16/11/2026, 11:00 en Roma.
 const NOW = new Date("2026-11-16T10:00:00Z");
 const BASE = "http://127.0.0.1:54321/functions/v1/chef";
@@ -98,7 +103,10 @@ type Op =
   | "menu_send_context"
   | "prepare_menu_send"
   | "link_menu_send"
-  | "complete_menu_send";
+  | "complete_menu_send"
+  | "create_quote"
+  | "update_quote"
+  | "withdraw_quote";
 
 // El menú de una semana (§13), con textos fáciles de buscar en los logs.
 const MENU_VERSION = 3;
@@ -226,6 +234,12 @@ class FakeStore implements ChefStore {
   prepareRaw: unknown = undefined;
   linkRaw: unknown = undefined;
   completeRaw: unknown = undefined;
+  /** El presupuesto (§14): llamadas, presupuestos creados (id → sesiones y si se retiró) y respuestas crudas. */
+  createQuoteCalls: CreateQuoteParams[] = [];
+  updateQuoteCalls: UpdateQuoteParams[] = [];
+  withdrawQuoteCalls: WithdrawQuoteParams[] = [];
+  quotes = new Map<string, { requestId: string; sessions: FakeSession[]; withdrawn: boolean }>();
+  quoteRaw: unknown = undefined;
 
   private fail(op: Op): void {
     if (this.failures.has(op)) throw this.failures.get(op);
@@ -396,6 +410,101 @@ class FakeStore implements ChefStore {
     if (send && send.fingerprint !== this.fingerprint) throw this.menuChanged("complete_menu_send");
     if (send) send.sent = true;
     return { sendId: params.p_send_id, sentAt: SENT_AT, sentVia: [...params.p_via].sort() };
+  }
+
+  /** Como chef_create_quote: el dryRun con el estado de cada fecha; creado, una sesión held por semana. */
+  async createQuote(params: CreateQuoteParams): Promise<unknown> {
+    this.createQuoteCalls.push(params);
+    this.fail("create_quote");
+    if (this.quoteRaw !== undefined) return this.quoteRaw;
+    const parts = split(params.p_service_total_cents, params.p_dates.length);
+    if (params.p_dry_run) {
+      return {
+        dry_run: true,
+        quote_id: null,
+        request_id: params.p_request_id,
+        client_id: CLIENT_ID,
+        hold_until: null,
+        weeks: params.p_dates.map((date, i) => ({
+          date,
+          start_time: params.p_start === null ? "09:00:00" : `${params.p_start}:00`,
+          cook_minutes: params.p_cook_minutes,
+          status: this.dayStatus.get(date) ?? "ok",
+          suggested_start: "09:00:00",
+          service_cents: parts[i],
+          session_id: null,
+        })),
+      };
+    }
+    const quoteId = QUOTE_ID;
+    const sessions = params.p_dates.map((date, i) => {
+      const session: FakeSession = {
+        id: sessionId(this.sessions.length),
+        requestId: params.p_request_id,
+        date,
+        start: params.p_start ?? "",
+        cookMinutes: params.p_cook_minutes,
+        serviceCents: parts[i] ?? 0,
+      };
+      this.sessions.push(session);
+      this.writes++;
+      return session;
+    });
+    this.quotes.set(quoteId, { requestId: params.p_request_id, sessions, withdrawn: false });
+    return {
+      dry_run: false,
+      quote_id: quoteId,
+      request_id: params.p_request_id,
+      client_id: CLIENT_ID,
+      hold_until: "2026-11-17T10:00:00.123456+00:00",
+      weeks: sessions.map((session) => ({
+        date: session.date,
+        start_time: session.start,
+        cook_minutes: session.cookMinutes,
+        status: "free",
+        suggested_start: null,
+        service_cents: session.serviceCents,
+        session_id: session.id,
+      })),
+    };
+  }
+
+  /** Como chef_update_quote: el precio nuevo, repartido; devuelve private.quote_terms. */
+  async updateQuote(params: UpdateQuoteParams): Promise<unknown> {
+    this.updateQuoteCalls.push(params);
+    this.fail("update_quote");
+    if (this.quoteRaw !== undefined) return this.quoteRaw;
+    const quote = this.quotes.get(params.p_quote_id);
+    if (!quote) throw storeErrorFrom("update_quote", { code: "P0002", message: "quote_not_found" });
+    const parts = split(params.p_service_total_cents, quote.sessions.length);
+    quote.sessions.forEach((session, i) => {
+      session.serviceCents = parts[i] ?? 0;
+    });
+    this.writes++;
+    return {
+      quoteId: params.p_quote_id,
+      totalCents: params.p_service_total_cents,
+      weeks: quote.sessions.map((session) => ({
+        sessionId: session.id,
+        date: session.date,
+        start: session.start,
+        cookMinutes: session.cookMinutes,
+        serviceCents: session.serviceCents,
+      })),
+    };
+  }
+
+  /** Como chef_withdraw_quote: idempotente (already). */
+  async withdrawQuote(params: WithdrawQuoteParams): Promise<unknown> {
+    this.withdrawQuoteCalls.push(params);
+    this.fail("withdraw_quote");
+    if (this.quoteRaw !== undefined) return this.quoteRaw;
+    const quote = this.quotes.get(params.p_quote_id);
+    if (!quote) throw storeErrorFrom("withdraw_quote", { code: "P0002", message: "quote_not_found" });
+    const already = quote.withdrawn;
+    quote.withdrawn = true;
+    if (!already) this.writes++;
+    return { quote_id: params.p_quote_id, request_id: quote.requestId, already, cancelled: already ? 0 : quote.sessions.length };
   }
 }
 
@@ -668,6 +777,9 @@ test("403 para un usuario válido que no es la cocinera, en todas las rutas, sin
     ["/translate", { name: "Locro" }],
     ["/menus/preview", { sessionId: SESSION_ID, menuVersion: MENU_VERSION }],
     ["/menus/send", { sendId: sendIdOf(0), email: true }],
+    ["/quotes", { requestId: REQUEST_ID, dates: FOUR_MONDAYS, start: "10:00", cookMinutes: 240, serviceTotalCents: 56000 }],
+    ["/quotes/price", { quoteId: QUOTE_ID, serviceTotalCents: 1 }],
+    ["/quotes/withdraw", { quoteId: QUOTE_ID }],
   ];
   for (const [route, body] of routes) {
     const response = await handle(post(route, body, { token: TOKEN_CLIENT }));
@@ -679,6 +791,7 @@ test("403 para un usuario válido que no es la cocinera, en todas las rutas, sin
   assert.equal(store.bookingCalls.length + store.moveCalls.length + store.cancelCalls.length, 0);
   assert.equal(translator.calls.length + translator.menuCalls.length + store.rateHits.length, 0, "ni traduce ni gasta el cupo de la cocina");
   assert.equal(store.contextCalls.length + store.prepareCalls.length + store.linkCalls.length + store.completeCalls.length, 0, "ni toca los envíos");
+  assert.equal(store.createQuoteCalls.length + store.updateQuoteCalls.length + store.withdrawQuoteCalls.length, 0, "ni toca los presupuestos");
 });
 
 test("un colaborador de la cocinera entra con la cocina de la que es colaborador, en todas las rutas", async () => {
@@ -2658,4 +2771,462 @@ test("libro del menú: el mensaje que sale lleva el link al libro de esa semana 
     assert.ok(!text.includes("?libro"), "nunca en la query");
   }
   assert.ok(!JSON.stringify(run.logs).includes(token), "el token nunca va a los logs");
+});
+
+// ---------------------------------------------------------------------------
+// El presupuesto: POST /quotes, /quotes/price y /quotes/withdraw (§14)
+// ---------------------------------------------------------------------------
+
+/** Preparar el presupuesto de un pedido de la bandeja: 4 semanas, 560 € de servicio. */
+function quoteBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { requestId: REQUEST_ID, dates: FOUR_MONDAYS, start: "10:00", cookMinutes: 240, portions: 50, serviceTotalCents: 56000, ...overrides };
+}
+
+/** Un harness con el presupuesto ya preparado (la base simulada lo guarda). */
+async function withQuote(options: Parameters<typeof harness>[0] = {}): Promise<Harness> {
+  const run = harness(options);
+  assert.equal((await run.handle(post("/quotes", quoteBody()))).status, 201, "el presupuesto");
+  return run;
+}
+
+test("preparar el presupuesto: 201 con las semanas retenidas, sus sesiones y el plazo del borrador; la base recibe la cocina del token", async () => {
+  const { handle, store, logs } = harness();
+  const response = await handle(post("/quotes", quoteBody({ requestId: REQUEST_ID.toUpperCase() })));
+  assert.equal(response.status, 201);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await json(response), {
+    dryRun: false,
+    quoteId: QUOTE_ID,
+    requestId: REQUEST_ID,
+    clientId: CLIENT_ID,
+    holdUntil: "2026-11-17T10:00:00.123456+00:00",
+    weeks: FOUR_MONDAYS.map((date, i) => ({ date, start: "10:00", cookMinutes: 240, status: "free", suggestedStart: null, serviceCents: 14000, sessionId: sessionId(i) })),
+  });
+  assert.deepEqual(store.createQuoteCalls, [
+    {
+      p_chef_id: CHEF_ID,
+      p_request_id: REQUEST_ID,
+      p_dates: FOUR_MONDAYS,
+      p_start: "10:00",
+      p_cook_minutes: 240,
+      p_service_total_cents: 56000,
+      p_portions: 50,
+      p_dry_run: false,
+    },
+  ]);
+  assert.deepEqual(logs.find((entry) => entry.event === "quote_created")?.fields, { requestId: REQUEST_ID, quoteId: QUOTE_ID, sessions: 4, userId: USER_EVELYN });
+});
+
+test("presupuesto en dryRun: 200 con el estado de cada fecha, sin hora ni precio, y sin escribir nada", async () => {
+  const { handle, store, logs } = harness();
+  store.dayStatus.set("2026-11-30", "busy");
+  const response = await handle(post("/quotes", { requestId: REQUEST_ID, dates: FOUR_MONDAYS, cookMinutes: 240, dryRun: true }));
+  assert.equal(response.status, 200);
+  const body = await json(response);
+  assert.equal(body.dryRun, true);
+  assert.equal(body.quoteId, null);
+  assert.equal(body.holdUntil, null);
+  assert.deepEqual(
+    body.weeks.map((week: { status: string; sessionId: string | null; start: string }) => [week.status, week.sessionId, week.start]),
+    [
+      ["ok", null, "09:00"],
+      ["busy", null, "09:00"],
+      ["ok", null, "09:00"],
+      ["ok", null, "09:00"],
+    ],
+  );
+  assert.equal(store.createQuoteCalls[0]?.p_start, null);
+  assert.equal(store.createQuoteCalls[0]?.p_service_total_cents, 0);
+  assert.equal(store.writes, 0);
+  assert.ok(!logs.some((entry) => entry.event === "quote_created"));
+});
+
+test("presupuesto: 400 por campo (con la fecha del error) o con una clave de más, sin llamar a la base", async () => {
+  const { handle, store, logs } = harness();
+  const cases: Array<[Record<string, unknown>, unknown]> = [
+    [quoteBody({ dates: ["2026-11-23", "2026-11-25"] }), { errors: { dates: "sameWeek" }, date: "2026-11-25" }],
+    [quoteBody({ serviceTotalCents: undefined }), { errors: { serviceTotalCents: "required" } }],
+    [quoteBody({ start: "25:00", cookMinutes: 0 }), { errors: { start: "invalid", cookMinutes: "range" } }],
+    [quoteBody({ requestId: undefined }), { errors: { requestId: "required" } }],
+    [quoteBody({ type: "week" }), { errors: { payload: "invalid" } }],
+    [quoteBody({ chefId: "cef00000-0000-4000-8000-000000000099" }), { errors: { payload: "invalid" } }],
+  ];
+  for (const [body, expected] of cases) {
+    const response = await handle(post("/quotes", body));
+    assert.equal(response.status, 400, JSON.stringify(body));
+    assert.deepEqual(await json(response), expected);
+  }
+  assert.equal(store.createQuoteCalls.length, 0);
+  assert.ok(logs.some((entry) => entry.event === "invalid_payload" && entry.fields["route"] === "/quotes"));
+});
+
+test("presupuesto: los errores de la base, traducidos (404, 409, 400, 500, 503); una respuesta con otra forma, 500", async () => {
+  const cases: Array<[string, Record<string, unknown>, number, unknown]> = [
+    ["pedido de otra cocina", { code: "P0002", message: "request_not_found" }, 404, { error: "requestNotFound" }],
+    ["el pedido ya no está new", { code: "55000", message: "request_not_new", details: "quoted" }, 409, { error: "requestNotNew", status: "quoted" }],
+    ["ya tiene un presupuesto abierto", { code: "55000", message: "quote_exists" }, 409, { error: "quoteExists" }],
+    ["un pedido de cambios", { code: "22023", message: "invalid_request_type" }, 409, { error: "requestNotQuotable" }],
+    ["varias semanas en uno extra", { code: "22023", message: "weeks_only_for_week" }, 400, { errors: { dates: "weeksOnlyForWeek" } }],
+    ["horario ocupado", { code: "23P01", message: "slot_taken", details: "2026-11-30" }, 409, { error: "slotTaken", date: "2026-11-30" }],
+    ["semana ocupada", { code: "23505", message: "week_taken", details: "2026-12-07" }, 409, { error: "weekTaken", date: "2026-12-07" }],
+    ["cocinera sin chef_settings", { code: "P0002", message: "chef_not_found" }, 500, { error: "server" }],
+    ["la base no responde", { code: "", message: "TypeError: fetch failed" }, 503, { error: "unavailable" }],
+    ["la función no está desplegada", { code: "PGRST202", message: "Could not find the function" }, 500, { error: "server" }],
+  ];
+  for (const [name, error, status, expected] of cases) {
+    const run = harness();
+    run.store.failures.set("create_quote", storeErrorFrom("create_quote", error));
+    const response = await run.handle(post("/quotes", quoteBody()));
+    assert.equal(response.status, status, name);
+    assert.deepEqual(await json(response), expected, name);
+    if (status < 500) assert.ok(run.logs.some((entry) => entry.event === "rejected" && entry.fields["route"] === "/quotes"), name);
+    else assert.ok(run.logs.some((entry) => entry.event === "db_error" && entry.fields["op"] === "create_quote"), name);
+  }
+
+  for (const raw of [{ dry_run: false }, { dry_run: true, quote_id: null, request_id: REQUEST_ID, client_id: CLIENT_ID, hold_until: null, weeks: [] }]) {
+    const shape = harness();
+    shape.store.quoteRaw = raw;
+    assert.equal((await shape.handle(post("/quotes", quoteBody()))).status, 500, JSON.stringify(raw));
+    assert.ok(shape.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "create_quote"));
+  }
+  // Un dryRun que vuelve como creado (o al revés) no se entiende.
+  const mismatch = harness();
+  const created = await mismatch.store.createQuote({
+    p_chef_id: CHEF_ID,
+    p_request_id: REQUEST_ID,
+    p_dates: ["2026-11-23"],
+    p_start: "10:00",
+    p_cook_minutes: 240,
+    p_service_total_cents: 15000,
+    p_portions: 0,
+    p_dry_run: false,
+  });
+  mismatch.store.quoteRaw = created;
+  assert.equal((await mismatch.handle(post("/quotes", quoteBody({ dryRun: true })))).status, 500);
+});
+
+test("otro precio: 200 con los términos nuevos, repartidos entre las semanas; la base recibe la cocina del token", async () => {
+  const run = await withQuote();
+  const response = await run.handle(post("/quotes/price", { quoteId: QUOTE_ID.toUpperCase(), serviceTotalCents: 42001 }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await json(response), {
+    quoteId: QUOTE_ID,
+    totalCents: 42001,
+    weeks: FOUR_MONDAYS.map((date, i) => ({ sessionId: sessionId(i), date, start: "10:00", cookMinutes: 240, serviceCents: i === 0 ? 10501 : 10500 })),
+  });
+  assert.deepEqual(run.store.updateQuoteCalls, [{ p_chef_id: CHEF_ID, p_quote_id: QUOTE_ID, p_service_total_cents: 42001 }]);
+  assert.deepEqual(run.logs.find((entry) => entry.event === "quote_priced")?.fields, { quoteId: QUOTE_ID, weeks: 4, userId: USER_EVELYN });
+});
+
+test("otro precio: 404 quoteNotFound, 409 quoteClosed y quoteEmpty, 400 por campo; una respuesta que no es lo pedido, 500", async () => {
+  const missing = harness();
+  const notFound = await missing.handle(post("/quotes/price", { quoteId: QUOTE_ID, serviceTotalCents: 100 }));
+  assert.deepEqual([notFound.status, await json(notFound)], [404, { error: "quoteNotFound" }]);
+
+  const cases: Array<[Record<string, unknown>, number, unknown]> = [
+    [{ code: "55000", message: "quote_closed" }, 409, { error: "quoteClosed" }],
+    [{ code: "55000", message: "quote_empty" }, 409, { error: "quoteEmpty" }],
+    [{ code: "22023", message: "invalid_cents" }, 400, { errors: { cents: "range" } }],
+  ];
+  for (const [error, status, expected] of cases) {
+    const run = await withQuote();
+    run.store.failures.set("update_quote", storeErrorFrom("update_quote", error));
+    const response = await run.handle(post("/quotes/price", { quoteId: QUOTE_ID, serviceTotalCents: 100 }));
+    assert.deepEqual([response.status, await json(response)], [status, expected], JSON.stringify(error));
+  }
+
+  const invalid = harness();
+  const bad = await invalid.handle(post("/quotes/price", { quoteId: "x" }));
+  assert.deepEqual([bad.status, await json(bad)], [400, { errors: { quoteId: "invalid", serviceTotalCents: "required" } }]);
+  assert.equal(invalid.store.updateQuoteCalls.length, 0);
+
+  // La base devuelve otro total (o los términos de otro presupuesto): no se entiende.
+  for (const raw of [
+    { quoteId: QUOTE_ID, totalCents: 0, weeks: [] },
+    { quoteId: SESSION_ID, totalCents: 100, weeks: [{ sessionId: SESSION_ID, date: "2026-11-23", start: "10:00", cookMinutes: 240, serviceCents: 100 }] },
+  ]) {
+    const shape = await withQuote();
+    shape.store.quoteRaw = raw;
+    assert.equal((await shape.handle(post("/quotes/price", { quoteId: QUOTE_ID, serviceTotalCents: 100 }))).status, 500, JSON.stringify(raw));
+    assert.ok(shape.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "update_quote"));
+  }
+});
+
+test("retirar: 200 con las semanas canceladas; otra vez, already; 404 quoteNotFound y 409 quoteClosed", async () => {
+  const run = await withQuote();
+  const first = await run.handle(post("/quotes/withdraw", { quoteId: QUOTE_ID }));
+  assert.equal(first.status, 200);
+  assert.deepEqual(await json(first), { quoteId: QUOTE_ID, requestId: REQUEST_ID, already: false, cancelled: 4 });
+  const again = await run.handle(post("/quotes/withdraw", { quoteId: QUOTE_ID }));
+  assert.deepEqual(await json(again), { quoteId: QUOTE_ID, requestId: REQUEST_ID, already: true, cancelled: 0 });
+  assert.deepEqual(run.store.withdrawQuoteCalls[0], { p_chef_id: CHEF_ID, p_quote_id: QUOTE_ID });
+  assert.deepEqual(run.logs.find((entry) => entry.event === "quote_withdrawn")?.fields, {
+    quoteId: QUOTE_ID,
+    requestId: REQUEST_ID,
+    already: false,
+    cancelled: 4,
+    userId: USER_EVELYN,
+  });
+
+  const missing = harness();
+  const notFound = await missing.handle(post("/quotes/withdraw", { quoteId: QUOTE_ID }));
+  assert.deepEqual([notFound.status, await json(notFound)], [404, { error: "quoteNotFound" }]);
+  const closed = await withQuote();
+  closed.store.failures.set("withdraw_quote", storeErrorFrom("withdraw_quote", { code: "55000", message: "quote_closed" }));
+  const refused = await closed.handle(post("/quotes/withdraw", { quoteId: QUOTE_ID }));
+  assert.deepEqual([refused.status, await json(refused)], [409, { error: "quoteClosed" }]);
+  const extra = await closed.handle(post("/quotes/withdraw", { quoteId: QUOTE_ID, reason: "otro" }));
+  assert.deepEqual([extra.status, await json(extra)], [400, { errors: { payload: "invalid" } }]);
+  const shape = await withQuote();
+  shape.store.quoteRaw = { quote_id: QUOTE_ID };
+  assert.equal((await shape.handle(post("/quotes/withdraw", { quoteId: QUOTE_ID }))).status, 500);
+});
+
+test("presupuesto sin token válido: 401 sin leer el cuerpo; un colaborador trabaja con la cocina de ella y queda en el log", async () => {
+  const auth = harness();
+  for (const [route, body] of [
+    ["/quotes", quoteBody()],
+    ["/quotes/price", { quoteId: QUOTE_ID, serviceTotalCents: 1 }],
+    ["/quotes/withdraw", { quoteId: QUOTE_ID }],
+  ] as const) {
+    const request = post(route, body, { token: null });
+    assert.equal((await auth.handle(request)).status, 401, route);
+    assert.equal(request.bodyUsed, false);
+  }
+  assert.equal(auth.store.createQuoteCalls.length + auth.store.updateQuoteCalls.length + auth.store.withdrawQuoteCalls.length, 0);
+
+  const member = harness();
+  assert.equal((await member.handle(post("/quotes", quoteBody(), { token: TOKEN_MEMBER }))).status, 201);
+  assert.equal((await member.handle(post("/quotes/price", { quoteId: QUOTE_ID, serviceTotalCents: 50000 }, { token: TOKEN_MEMBER }))).status, 200);
+  assert.equal((await member.handle(post("/quotes/withdraw", { quoteId: QUOTE_ID }, { token: TOKEN_MEMBER }))).status, 200);
+  assert.deepEqual(
+    [member.store.createQuoteCalls[0]?.p_chef_id, member.store.updateQuoteCalls[0]?.p_chef_id, member.store.withdrawQuoteCalls[0]?.p_chef_id],
+    [CHEF_ID, CHEF_ID, CHEF_ID],
+  );
+  for (const event of ["quote_created", "quote_priced", "quote_withdrawn"]) {
+    assert.equal(member.logs.find((entry) => entry.event === event)?.fields["userId"], USER_MEMBER, event);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// El menú de la semana 1 con el presupuesto (§13 y §14)
+// ---------------------------------------------------------------------------
+
+/** chef_menu_send_context de la semana 1 held de un presupuesto abierto (2 semanas, 300 €). */
+function quoteContextRpc(quote: Record<string, unknown> = {}): Record<string, unknown> {
+  const base = menuContextRpc();
+  return {
+    ...base,
+    session: { ...(base["session"] as Record<string, unknown>), status: "held" },
+    quote: {
+      id: QUOTE_ID,
+      version: 1,
+      sent: false,
+      holdUntil: "2026-11-17T10:00:00.123456+00:00",
+      holdHours: 48,
+      firstWeek: true,
+      terms: {
+        quoteId: QUOTE_ID,
+        totalCents: 30000,
+        weeks: [
+          { sessionId: SESSION_ID, date: "2026-11-30", start: "10:00", cookMinutes: 240, serviceCents: 15000 },
+          { sessionId: OTHER_SESSION_ID, date: "2026-12-07", start: "10:00", cookMinutes: 240, serviceCents: 15000 },
+        ],
+      },
+      ...quote,
+    },
+  };
+}
+
+test("vista previa de la semana 1 de un presupuesto: la foto lleva el presupuesto y el mensaje lo presenta, sin pagos", async () => {
+  const run = harness();
+  run.store.menuContext = quoteContextRpc();
+  const body = await previewed(run);
+  assert.deepEqual(run.store.prepareCalls[0]?.p_snapshot.quote, {
+    version: 1,
+    totalCents: 30000,
+    weeks: [
+      { date: "2026-11-30", start: "10:00", serviceCents: 15000 },
+      { date: "2026-12-07", start: "10:00", serviceCents: 15000 },
+    ],
+    holdHours: 48,
+    firstStart: "2026-11-30T10:00",
+  });
+  assert.equal(body.message.subject, "Radici: il tuo preventivo e il menù del 30 nov");
+  for (const text of [body.message.emailText, body.message.whatsappText]) {
+    for (const expected of [
+      "Evelyn ha preparato il preventivo per le tue 2 settimane e il menù della prima.",
+      "Settimana 1: lunedì 30 novembre 2026, arrivo alle 10:00",
+      "Settimana 2: lunedì 7 dicembre 2026, arrivo alle 10:00",
+      "300,00 € in totale (150,00 € a settimana)",
+      "Accettalo entro 48 ore.",
+      "[link personale per confermare]",
+    ]) {
+      assert.ok(text.includes(expected), `falta: ${expected}\n${text}`);
+    }
+    assert.ok(!/pagament|bonifico|contanti|carta di credito/i.test(text));
+  }
+  assert.ok(body.message.emailText.includes("Vedi e accetta il preventivo: [link personale per confermare]"));
+  // Un reenvío: la versión que va a salir.
+  const resent = harness();
+  resent.store.menuContext = quoteContextRpc({ version: 2, sent: true });
+  const again = await previewed(resent);
+  assert.equal(resent.store.prepareCalls[0]?.p_snapshot.quote?.version, 3);
+  assert.equal(again.message.subject, "Radici: il preventivo aggiornato e il menù del 30 nov");
+});
+
+test("vista previa de una semana held: sin su presupuesto abierto, 409 quoteClosed; si no es la primera, quoteWeekNotFirst; sin traducir ni guardar", async () => {
+  const closedContext = quoteContextRpc();
+  delete closedContext["quote"];
+  const cases: Array<[string, Record<string, unknown>, string]> = [
+    ["el presupuesto ya no está abierto", closedContext, "quoteClosed"],
+    [
+      "no es la primera semana",
+      quoteContextRpc({
+        firstWeek: false,
+        terms: {
+          quoteId: QUOTE_ID,
+          totalCents: 30000,
+          weeks: [
+            { sessionId: OTHER_SESSION_ID, date: "2026-11-23", start: "10:00", cookMinutes: 240, serviceCents: 15000 },
+            { sessionId: SESSION_ID, date: "2026-11-30", start: "10:00", cookMinutes: 240, serviceCents: 15000 },
+          ],
+        },
+      }),
+      "quoteWeekNotFirst",
+    ],
+  ];
+  for (const [name, context, error] of cases) {
+    const run = harness();
+    run.store.menuContext = context;
+    const response = await run.handle(post("/menus/preview", previewBody()));
+    assert.equal(response.status, 409, name);
+    assert.deepEqual(await json(response), { error }, name);
+    assert.equal(run.translator.menuCalls.length + run.store.rateHits.length + run.store.prepareCalls.length, 0, `${name}: sin traducir ni guardar`);
+    assert.ok(run.logs.some((entry) => entry.event === "rejected" && entry.fields["error"] === error), name);
+  }
+});
+
+test("vista previa y envío: los errores del presupuesto de la base, traducidos (quote_week_not_first, quote_closed, quote_changed)", async () => {
+  const previewCases: Array<[Record<string, unknown>, unknown]> = [
+    [{ code: "55000", message: "quote_week_not_first" }, { error: "quoteWeekNotFirst" }],
+    [{ code: "55000", message: "quote_closed" }, { error: "quoteClosed" }],
+    [{ code: "40001", message: "quote_changed" }, { error: "quoteChanged" }],
+  ];
+  for (const [error, expected] of previewCases) {
+    const run = harness();
+    run.store.menuContext = quoteContextRpc();
+    run.store.failures.set("prepare_menu_send", storeErrorFrom("prepare_menu_send", error));
+    const response = await run.handle(post("/menus/preview", previewBody({ translate: false })));
+    assert.deepEqual([response.status, await json(response)], [409, expected], JSON.stringify(error));
+  }
+
+  // Al crear el link: el presupuesto cambió (otro precio, una semana movida) o se cerró: no sale nada.
+  for (const [error, expected] of [
+    [{ code: "40001", message: "quote_changed" }, { error: "quoteChanged" }],
+    [{ code: "55000", message: "quote_closed" }, { error: "quoteClosed" }],
+  ] as const) {
+    const run = harness();
+    run.store.menuContext = quoteContextRpc();
+    const preview = await previewed(run);
+    run.store.failures.set("link_menu_send", storeErrorFrom("link_menu_send", error));
+    const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true }));
+    assert.deepEqual([response.status, await json(response)], [409, expected], JSON.stringify(error));
+    assert.equal(run.mailer.messages.length, 0, "sin email");
+    assert.equal(run.store.completeCalls.length, 0);
+  }
+
+  // El email salió y justo cambió el presupuesto: la respuesta lo dice (emailSent) y hace falta otra vista previa.
+  const late = harness();
+  late.store.menuContext = quoteContextRpc();
+  const preview = await previewed(late);
+  late.store.failures.set("complete_menu_send", storeErrorFrom("complete_menu_send", { code: "40001", message: "quote_changed" }));
+  const response = await late.handle(post("/menus/send", { sendId: preview.sendId, email: true }));
+  assert.deepEqual([response.status, await json(response)], [409, { error: "quoteChanged", emailSent: true }]);
+  assert.ok(late.logs.some((entry) => entry.event === "menu_send_incomplete" && entry.fields["message"] === "quote_changed"));
+});
+
+test("enviar el presupuesto con la semana 1: el email lleva el presupuesto, el plazo de ahora y el botón para aceptarlo", async () => {
+  // Sábado 28/11 a las 20:00 en Roma: la primera llegada (lunes 30 a las 10:00) está a menos de 48 horas.
+  const run = harness({ now: () => new Date("2026-11-28T19:00:00Z") });
+  run.store.menuContext = quoteContextRpc();
+  const preview = await previewed(run);
+  assert.ok(preview.message.emailText.includes("Accettalo prima di lunedì 30 novembre 2026, alle 10:00."), "la vista previa ya lo dice");
+  const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true, whatsapp: true }));
+  assert.equal(response.status, 200);
+  const body = await json(response);
+  const [email] = run.mailer.messages;
+  assert.ok(email);
+  assert.equal(email.subject, "Radici: il tuo preventivo e il menù del 30 nov");
+  for (const text of [email.text, body.whatsappText]) {
+    assert.ok(text.includes("Prezzo del servizio") && text.includes("300,00 € in totale (150,00 € a settimana)"), text);
+    assert.ok(text.includes("Accettalo prima di lunedì 30 novembre 2026, alle 10:00."), text);
+    assert.ok(tokenIn(text), "con el link");
+  }
+  assert.ok(email.text.includes("Vedi e accetta il preventivo: https://radicicucina.app/prenotazione/#t="));
+  assert.ok(email.html.includes(">Vedi e accetta il preventivo</a>"));
+  assert.equal(tokenIn(email.text), tokenIn(body.whatsappText), "el mismo link");
+});
+
+test("los logs del presupuesto nunca llevan nombres, fechas, importes ni el texto del mensaje", async () => {
+  const runs: Harness[] = [];
+  const track = (run: Harness): Harness => {
+    runs.push(run);
+    return run;
+  };
+  const ok = track(await withQuote());
+  await ok.handle(post("/quotes", { requestId: REQUEST_ID, dates: FOUR_MONDAYS, cookMinutes: 240, dryRun: true }));
+  await ok.handle(post("/quotes/price", { quoteId: QUOTE_ID, serviceTotalCents: 42001 }));
+  await ok.handle(post("/quotes/withdraw", { quoteId: QUOTE_ID }));
+  const errors = track(harness());
+  errors.store.failures.set(
+    "create_quote",
+    storeErrorFrom("create_quote", {
+      code: "23514",
+      message: "violates check constraint: Mariaxyz",
+      details: "Failing row contains (Mariaxyz, 2026-11-23, 56000).",
+    }),
+  );
+  await errors.handle(post("/quotes", quoteBody()));
+  errors.store.failures.set("create_quote", storeErrorFrom("create_quote", { code: "23P01", message: "slot_taken", details: "Mariaxyz 2026-11-30" }));
+  await errors.handle(post("/quotes", quoteBody()));
+  errors.store.failures.set("update_quote", storeErrorFrom("update_quote", { code: "08006", message: "connection failure: Mariaxyz" }));
+  await errors.handle(post("/quotes/price", { quoteId: QUOTE_ID, serviceTotalCents: 42001 }));
+  const invalid = track(harness());
+  await invalid.handle(post("/quotes", quoteBody({ requestId: "Mariaxyz", dates: ["2026-11-23", "2026-11-24"] })));
+  const crash = track(harness());
+  crash.store.failures.set("withdraw_quote", new Error("Mariaxyz 2026-11-23 56000"));
+  await crash.handle(post("/quotes/withdraw", { quoteId: QUOTE_ID }));
+  const preview = track(harness());
+  preview.store.menuContext = quoteContextRpc();
+  const sent = await previewed(preview);
+  await preview.handle(post("/menus/send", { sendId: sent.sendId, email: true }));
+
+  const markers = ["Mariaxyz", "2026-11-23", "2026-11-30", "2026-12-07", "56000", "42001", "30000", "560,00", "300,00", "preventivo", "Milanesaxyz"];
+  for (const run of runs) {
+    const text = JSON.stringify(run.logs);
+    assert.ok(run.logs.length > 0);
+    for (const marker of markers) assert.ok(!text.includes(marker), `el log lleva ${marker}: ${text}`);
+  }
+  const events = new Set(runs.flatMap((run) => run.logs.map((entry) => entry.event)));
+  // Una excepción de la base que no es un StoreError (crash) también queda como db_error, sin su mensaje.
+  for (const event of ["quote_created", "quote_priced", "quote_withdrawn", "rejected", "db_error", "invalid_payload", "menu_previewed", "menu_sent"]) {
+    assert.ok(events.has(event), `falta el camino ${event}`);
+  }
+});
+
+test("index.ts: las tres funciones del presupuesto con la clave secreta y sus errores sin datos", () => {
+  const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  for (const [fn, op] of [
+    ["chef_create_quote", "create_quote"],
+    ["chef_update_quote", "update_quote"],
+    ["chef_withdraw_quote", "withdraw_quote"],
+  ]) {
+    assert.match(
+      index,
+      new RegExp(`const \\{ data, error \\} = await supabase\\.rpc\\("${fn}", params\\);\\s*if \\(error\\) throw storeErrorFrom\\("${op}", error\\);\\s*return data;`),
+      fn,
+    );
+    assert.ok(index.includes(`fail("${op}")`), `sin Supabase, ${op} también falla`);
+  }
 });

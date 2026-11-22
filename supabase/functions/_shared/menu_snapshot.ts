@@ -5,11 +5,13 @@
 //
 // Ya está en el idioma de la clienta: los platos con sus nombres en ese idioma (o en italiano) y la
 // lista de compras traducida si se pudo; la nota, como la escribió Evelyn (nunca se traduce). Nunca
-// lleva la dirección, las alergias de la clienta, su contacto ni nada de precios o pagos: solo lo que
-// ve en el mensaje.
+// lleva la dirección, las alergias de la clienta, su contacto ni nada de pagos: solo lo que ve en el
+// mensaje. El envío de la semana 1 de un presupuesto abierto lleva además el presupuesto (quote: las
+// semanas con su precio, el total y el plazo, quote_snapshot.ts); los demás envíos, como siempre.
 // Solo sintaxis borrable (corre en Node, Deno y Vite sin compilar) e imports con extensión .ts.
 import type { MenuPhoto } from "./menu.ts";
 import { ALLERGENS, DIETS, LOCALES, isIsoDate, isOneOf, type Allergen, type Diet, type Locale } from "./public_request.ts";
+import { readSnapshotQuote, type SnapshotQuote } from "./quote_snapshot.ts";
 
 /** Versión de la forma. Si cambia, se sube: quien lee una foto de otra versión no la muestra a medias. */
 export const MENU_SNAPSHOT_VERSION = 1;
@@ -99,6 +101,11 @@ export interface MenuSnapshot {
   /** En el orden en que los dejó Evelyn; el mensaje los agrupa por sección. */
   items: MenuSnapshotItem[];
   note: string | null;
+  /**
+   * Solo en el envío de la semana 1 de un presupuesto abierto: el presupuesto que viaja con el menú (lo que la
+   * clienta acepta). Sin la clave, un envío como los de siempre (también las fotos de antes).
+   */
+  quote?: SnapshotQuote;
 }
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -227,8 +234,8 @@ function readList<T>(value: unknown, read: (item: unknown) => T | null): T[] | n
 
 /**
  * Una foto guardada (la que devuelve la base) → MenuSnapshot, armada de nuevo campo por campo; null si
- * no tiene la forma de esta versión (otra versión, un plato sin nombre, una sección desconocida). Lo que
- * la foto trajera de más no sale.
+ * no tiene la forma de esta versión (otra versión, un plato sin nombre, una sección desconocida, un
+ * presupuesto que no cierra). Lo que la foto trajera de más no sale.
  */
 export function readMenuSnapshot(value: unknown): MenuSnapshot | null {
   if (!isRecord(value) || value["v"] !== MENU_SNAPSHOT_VERSION || !isOneOf(LOCALES, value["locale"])) return null;
@@ -237,6 +244,9 @@ export function readMenuSnapshot(value: unknown): MenuSnapshot | null {
   const dishes = readList(value["dishes"], readDish);
   const items = readList(value["items"], readMenuItem);
   const note = value["note"];
-  if (!session || !weeks || !dishes || dishes.length === 0 || !items || (note !== null && !isText(note))) return null;
-  return { v: MENU_SNAPSHOT_VERSION, locale: value["locale"], session, weeks, dishes, items, note };
+  const quote = readSnapshotQuote(value["quote"]);
+  if (!session || !weeks || !dishes || dishes.length === 0 || !items || (note !== null && !isText(note)) || quote === undefined) return null;
+  const snapshot: MenuSnapshot = { v: MENU_SNAPSHOT_VERSION, locale: value["locale"], session, weeks, dishes, items, note };
+  if (quote) snapshot.quote = quote;
+  return snapshot;
 }

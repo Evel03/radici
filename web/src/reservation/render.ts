@@ -1,10 +1,17 @@
 // Lo que se ve en /prenotazione/, como árbol de elementos (lib/vdom.ts): puro, sin DOM. Todo texto que llega de
 // la función (los platos, la lista, la nota de Evelyn) va como texto, nunca como HTML.
-// Orden de la página: el saludo y, si lo hay, un aviso de la página (una semana que se canceló); después (cuando
-// llegue) el presupuesto para aceptar; después las semanas. Cada semana: la fecha y la hora de llegada y, si
-// Evelyn mandó el menú, su estado, los platos, la lista de compras y la nota, con los botones si está por
-// confirmar. Una semana ya cocinada no promete nada que ya no puede pasar (que llegue el menú, que se reenvíe).
-// Nada de precios, pagos, dirección ni alergias de la clienta: la página muestra solo lo que trae la foto del envío.
+// Orden de la página: el saludo y, si lo hay, un aviso de la página (una semana que se canceló, o una respuesta
+// que no salió porque su semana o su presupuesto ya no están); después, si Evelyn lo mandó, el presupuesto (las
+// semanas con su llegada y su precio, el total, el estado con el plazo y «Accetto il preventivo» / «Rifiuto», con
+// un paso para confirmar el rechazo que se abre debajo de «Rifiuto», sin mover nada de lo de arriba: tampoco los
+// avisos ni el error de aceptar, que el controlador no borra al abrirlo); después las semanas. Cada
+// semana: la fecha y la hora de llegada y, si Evelyn mandó el menú, su estado, los platos, la lista de compras y la
+// nota, con los botones si está por confirmar (el menú que va con el presupuesto abierto no se confirma solo, ni
+// uno anterior del mismo presupuesto que quedó en otra semana: solo «Chiedo dei cambi»). Con una sola semana, los
+// textos del presupuesto van en singular. Una semana ya cocinada no promete nada que ya no puede pasar (que llegue
+// el menú, que se reenvíe).
+// Nada de pagos, dirección ni alergias de la clienta: la página muestra solo lo que trae la foto del envío; del
+// precio, solo el del servicio del presupuesto, y solo en su recuadro.
 // Cada semana se identifica por su sesión (ids del DOM y data-session), no por su número.
 import {
   CHANGES_TEXT_MAX,
@@ -16,10 +23,22 @@ import {
   type SnapshotDish,
 } from "../../../supabase/functions/_shared/client_link.ts";
 import type { I18n, MessageKey } from "../i18n/core.ts";
-import { formatIsoDate } from "../lib/format.ts";
+import { formatCents, formatIsoDate } from "../lib/format.ts";
 import { h, type VNode } from "../lib/vdom.ts";
-import type { Focus, Message, PageState, TextError, WeekUi } from "./controller.ts";
-import { formatQuantity, formatRomeDay, shoppingList } from "./format.ts";
+import {
+  menuQuoteMode,
+  quoteView,
+  type Focus,
+  type Message,
+  type MenuQuoteMode,
+  type PageState,
+  type QuoteDisplay,
+  type QuoteUi,
+  type QuoteView,
+  type TextError,
+  type WeekUi,
+} from "./controller.ts";
+import { formatQuantity, formatRomeDay, formatRomeTime, shoppingList } from "./format.ts";
 
 /** Lado de la miniatura de un plato, en px CSS (el mismo de .dish__photo en reservation.css). */
 export const DISH_PHOTO_SIZE = 72;
@@ -28,13 +47,17 @@ export interface RenderInput {
   state: PageState;
   ui: (session: string) => Readonly<WeekUi>;
   i18n: I18n;
+  /** El estado del recuadro del presupuesto (sin él, como recién abierto). */
+  quoteUi?: Readonly<QuoteUi>;
   /** «Riprova» en camino. */
   retrying?: boolean;
-  /** Aviso de la página entera (una semana que se canceló), o null. */
+  /** Aviso de la página entera (una semana o un presupuesto que ya no está), o null. */
   pageNotice?: Message | null;
   /** Miniaturas que no cargaron: se pintan sin foto. */
   failedPhotos?: ReadonlySet<string>;
 }
+
+const EMPTY_QUOTE_UI: QuoteUi = { declineOpen: false, declineFor: null, busy: null, error: null, declineError: null, notice: null };
 
 /** El prefijo de los ids de una semana: la sesión, que no cambia aunque cambie el número o la fecha. */
 export function weekDomId(session: string): string {
@@ -55,6 +78,16 @@ export function focusId(focus: Focus): string {
       return "reservation-greeting";
     case "notice":
       return "reservation-notice";
+    case "quoteStatus":
+      return "quote-status";
+    case "quoteAccept":
+      return "quote-accept";
+    case "quoteDecline":
+      return "quote-decline";
+    case "quoteDeclineQuestion":
+      return "quote-decline-question";
+    case "quoteDeclineConfirm":
+      return "quote-decline-confirm";
     default: {
       const suffix = { status: "status", confirm: "confirm", askChanges: "changes", submit: "submit", textarea: "text" }[focus.kind];
       return `${weekDomId(focus.session)}-${suffix}`;
@@ -222,29 +255,40 @@ function contentNode(content: MenuContent, ctx: Context, idBase: string): VNode 
 /**
  * Cómo se muestra el estado del último envío de una semana:
  * - pending: por confirmar, con los botones (se ve y la semana no se cocinó);
+ * - quotePending: va con el presupuesto abierto: se confirma aceptándolo (arriba); acá solo se piden cambios;
+ * - quoteSuperseded: un envío anterior del mismo presupuesto, todavía abierto, que quedó en otra semana: aceptar no
+ *   lo confirma (se confirma después, como cualquier menú); acá solo se piden cambios;
+ * - quoteClosed: iba con un presupuesto que ya no se contesta (rechazado, retirado o vencido): sin botones;
  * - sent: enviado, sin pedirle nada (ya cocinada, o un envío que la página no puede mostrar);
- * - confirmed: confirmado, con la fecha;
- * - changes: pidió cambios y Evelyn lo manda de nuevo; changesDone: pidió cambios, pero la semana ya se cocinó.
+ * - confirmed: confirmado, con la fecha (también el de un presupuesto aceptado);
+ * - changes: pidió cambios y Evelyn lo manda de nuevo; changesDone: pidió cambios, pero ya no hay reenvío (la
+ *   semana se cocinó, o el presupuesto se cerró).
  */
-type StatusKind = "pending" | "sent" | "confirmed" | "changes" | "changesDone";
+type StatusKind = "pending" | "quotePending" | "quoteSuperseded" | "quoteClosed" | "sent" | "confirmed" | "changes" | "changesDone";
 
 const STATUS: Readonly<Record<StatusKind, { modifier: string; badge: MessageKey; text: MessageKey }>> = {
   pending: { modifier: "pending", badge: "reservation.state.pending", text: "reservation.state.pendingText" },
+  quotePending: { modifier: "pending", badge: "reservation.state.quotePending", text: "reservation.state.quotePendingText" },
+  quoteSuperseded: { modifier: "sent", badge: "reservation.state.sent", text: "reservation.state.quoteSupersededText" },
+  quoteClosed: { modifier: "sent", badge: "reservation.state.sent", text: "reservation.state.quoteClosedText" },
   sent: { modifier: "sent", badge: "reservation.state.sent", text: "reservation.state.sentText" },
   confirmed: { modifier: "confirmed", badge: "reservation.state.confirmed", text: "reservation.state.confirmedText" },
   changes: { modifier: "changes", badge: "reservation.state.changesRequested", text: "reservation.state.changesRequestedText" },
   changesDone: { modifier: "changes", badge: "reservation.state.changesRequested", text: "reservation.state.changesRequestedDoneText" },
 };
 
-function statusKind(week: ClientLinkWeek, menu: ClientLinkMenu): StatusKind {
+function statusKind(week: ClientLinkWeek, menu: ClientLinkMenu, mode: MenuQuoteMode): StatusKind {
   if (menu.state === "confirmed") return "confirmed";
-  if (menu.state === "changesRequested") return week.done ? "changesDone" : "changes";
-  return menu.content !== null && !week.done ? "pending" : "sent";
+  if (menu.state === "changesRequested") return week.done || mode === "closed" ? "changesDone" : "changes";
+  if (menu.content === null || week.done) return "sent";
+  if (mode === "open") return "quotePending";
+  if (mode === "superseded") return "quoteSuperseded";
+  return mode === "closed" ? "quoteClosed" : "pending";
 }
 
-function statusNode(week: ClientLinkWeek, menu: ClientLinkMenu, ui: Readonly<WeekUi>, ctx: Context): VNode {
+function statusNode(week: ClientLinkWeek, menu: ClientLinkMenu, mode: MenuQuoteMode, ui: Readonly<WeekUi>, ctx: Context): VNode {
   const { i18n } = ctx;
-  const kind = statusKind(week, menu);
+  const kind = statusKind(week, menu, mode);
   const status = STATUS[kind];
   const at = kind === "confirmed" ? menu.confirmedAt : kind === "changes" || kind === "changesDone" ? menu.changesRequestedAt : null;
   const date = formatRomeDay(at ?? menu.sentAt, i18n.locale);
@@ -263,7 +307,8 @@ function statusNode(week: ClientLinkWeek, menu: ClientLinkMenu, ui: Readonly<Wee
   );
 }
 
-function actionsNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): VNode {
+/** Los botones de una semana: «Confermo il menù» (salvo un menú con el presupuesto abierto) y «Chiedo dei cambi». */
+function actionsNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context, withConfirm: boolean): VNode {
   const { i18n } = ctx;
   const id = weekDomId(week.sessionId);
   const session = week.sessionId;
@@ -278,11 +323,12 @@ function actionsNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): 
         "div",
         { class: "actions" },
         // aria-disabled y no disabled: el botón conserva el foco mientras espera la respuesta.
-        h(
-          "button",
-          { class: "btn btn--primary", type: "button", id: `${id}-confirm`, "data-action": "confirm", "data-session": session, "aria-disabled": busy ? "true" : null },
-          ui.busy === "confirm" ? i18n.t("reservation.sending") : i18n.t("reservation.confirm"),
-        ),
+        withConfirm &&
+          h(
+            "button",
+            { class: "btn btn--primary", type: "button", id: `${id}-confirm`, "data-action": "confirm", "data-session": session, "aria-disabled": busy ? "true" : null },
+            ui.busy === "confirm" ? i18n.t("reservation.sending") : i18n.t("reservation.confirm"),
+          ),
         h(
           "button",
           { class: "btn btn--ghost", type: "button", id: `${id}-changes`, "data-action": "open-changes", "data-session": session, "aria-disabled": busy ? "true" : null },
@@ -347,11 +393,13 @@ function bookButtonNode(session: string, ctx: Context): VNode {
   );
 }
 
-function weekNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): VNode {
+function weekNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context, view: ClientLinkView): VNode {
   const { i18n } = ctx;
   const id = weekDomId(week.sessionId);
   const title = week.weeks === 1 ? i18n.t("reservation.weekTitleOne") : i18n.t("reservation.weekTitle", { week: week.week, weeks: week.weeks });
   const menu = week.menu;
+  const mode: MenuQuoteMode = menu ? menuQuoteMode(view, menu) : "none";
+  const kind = menu ? statusKind(week, menu, mode) : null;
   // Una semana ya cocinada sin menú enviado (por ejemplo, una que se arregló por WhatsApp): no se promete un menú.
   const missing = week.done ? null : h("p", { class: "notice" }, i18n.t("reservation.menuNotSent", { chef: ctx.chef }));
   const unreadable = week.done
@@ -370,13 +418,200 @@ function weekNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): VNo
     menu === null
       ? missing
       : [
-          statusNode(week, menu, ui, ctx),
+          statusNode(week, menu, mode, ui, ctx),
           // El libro del menú de esa semana (book/): un plato por página, con las fotos. Solo si se puede mostrar.
           menu.content && bookButtonNode(week.sessionId, ctx),
           menu.content ? contentNode(menu.content, ctx, id) : unreadable,
-          // Solo lo que se puede contestar: por confirmar, mostrado y antes de cocinar.
-          statusKind(week, menu) === "pending" && actionsNode(week, ui, ctx),
+          // Solo lo que se puede contestar: por confirmar, mostrado y antes de cocinar. Con el presupuesto abierto,
+          // el menú que lo lleva se confirma aceptándolo (arriba) y uno anterior, después: acá, solo los cambios.
+          (kind === "pending" || kind === "quotePending" || kind === "quoteSuperseded") && actionsNode(week, ui, ctx, kind === "pending"),
         ],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// El presupuesto
+// ---------------------------------------------------------------------------
+
+/** Cómo se muestra el estado del presupuesto: el modificador del recuadro, la etiqueta y el texto. */
+const QUOTE_STATUS: Readonly<Record<QuoteDisplay, { modifier: string; badge: MessageKey; text: MessageKey }>> = {
+  pending: { modifier: "pending", badge: "reservation.quote.state.pending", text: "reservation.quote.state.pendingText" },
+  changesRequested: { modifier: "changes", badge: "reservation.quote.state.changesRequested", text: "reservation.quote.state.changesRequestedText" },
+  changed: { modifier: "changes", badge: "reservation.quote.state.changed", text: "reservation.quote.state.changedText" },
+  accepted: { modifier: "accepted", badge: "reservation.quote.state.accepted", text: "reservation.quote.state.acceptedText" },
+  declined: { modifier: "closed", badge: "reservation.quote.state.declined", text: "reservation.quote.state.declinedText" },
+  withdrawn: { modifier: "closed", badge: "reservation.quote.state.withdrawn", text: "reservation.quote.state.withdrawnText" },
+  expired: { modifier: "closed", badge: "reservation.quote.state.expired", text: "reservation.quote.state.expiredText" },
+  unreadable: { modifier: "closed", badge: "reservation.quote.state.pending", text: "reservation.quote.state.unreadableText" },
+};
+
+/**
+ * Cuántas semanas propone el presupuesto: las de lo que vio la clienta o, sin eso (cambiado, o una foto que no se
+ * lee), las de la reserva, que son las suyas (un pedido con presupuesto no tiene otras semanas vivas).
+ */
+function quoteWeekCount(qv: QuoteView, view: ClientLinkView): number {
+  return qv.quote.summary?.weeks.length ?? view.weeks.length;
+}
+
+/**
+ * El texto del estado: por aceptar, hasta cuándo (el plazo en Roma: el día y la hora, y que esas fechas, o esa
+ * fecha, quedan reservadas); con cambios pedidos, el día que los pidió; aceptado, el día que lo aceptó; los demás,
+ * sin fecha.
+ */
+function quoteStatusText(qv: QuoteView, ctx: Context, single: boolean): string {
+  const { i18n } = ctx;
+  const { quote } = qv;
+  const day = (at: string): string => formatRomeDay(at, i18n.locale);
+  switch (qv.display) {
+    case "pending":
+      return quote.holdUntil
+        ? i18n.t(single ? "reservation.quote.state.pendingTextOne" : "reservation.quote.state.pendingText", {
+            date: day(quote.holdUntil),
+            time: formatRomeTime(quote.holdUntil),
+          })
+        : i18n.t("reservation.quote.state.pendingNoDeadline", { chef: ctx.chef, date: day(quote.sentAt) });
+    case "changesRequested":
+      return i18n.t("reservation.quote.state.changesRequestedText", { chef: ctx.chef, date: day(qv.week?.menu?.changesRequestedAt ?? quote.sentAt) });
+    case "accepted":
+      return i18n.t("reservation.quote.state.acceptedText", { date: day(quote.acceptedAt ?? quote.sentAt) });
+    default:
+      return i18n.t(QUOTE_STATUS[qv.display].text, { chef: ctx.chef });
+  }
+}
+
+/** Lo que vio la clienta: cada semana con su llegada (y su precio si son varias) y el precio del servicio. */
+function quoteSummaryNode(qv: QuoteView, ctx: Context): VNode | null {
+  const { i18n } = ctx;
+  const summary = qv.quote.summary;
+  const shown = qv.display === "pending" || qv.display === "changesRequested" || qv.display === "accepted";
+  if (!summary || !shown) return null;
+  const several = summary.weeks.length > 1;
+  return h(
+    "div",
+    { class: "quote__summary" },
+    h(
+      "ul",
+      { class: "quote__weeks" },
+      summary.weeks.map((week, index) =>
+        h(
+          "li",
+          { class: "quote__week" },
+          several && h("span", { class: "quote__week-label" }, i18n.t("reservation.quote.weekLabel", { week: index + 1 })),
+          h("span", { class: "quote__week-when" }, i18n.t("reservation.arrival", { date: formatIsoDate(week.date, i18n.locale), time: week.start })),
+          several && h("span", { class: "quote__week-price" }, formatCents(week.serviceCents, i18n.locale)),
+        ),
+      ),
+    ),
+    h(
+      "p",
+      { class: "quote__total" },
+      h("span", { class: "quote__total-label" }, i18n.t(several ? "reservation.quote.total" : "reservation.quote.totalOne")),
+      " ",
+      h("strong", { class: "quote__total-value" }, formatCents(summary.totalCents, i18n.locale)),
+    ),
+  );
+}
+
+/**
+ * Los botones del presupuesto y el paso para confirmar el rechazo. El paso se abre debajo de «Rifiuto», que queda
+ * en su lugar (abierto: tocarlo de nuevo lo cierra), y todo lo de arriba sigue igual (también el aviso y el error de
+ * aceptar, si los hay): en general, el segundo toque de un doble toque cae otra vez en «Rifiuto». Cerca del borde
+ * de abajo de la ventana, el foco en la pregunta puede mover la página; lo que asegura que un doble toque nunca
+ * rechace es que el controlador no deja responder a «Sì, rifiuto il preventivo» hasta DECLINE_GUARD_MS después de
+ * abrir el paso. «Sì» va al final, después de «No, torna indietro».
+ */
+function quoteActionsNode(qv: QuoteView, quoteUi: Readonly<QuoteUi>, ctx: Context, single: boolean): VNode | null {
+  const { i18n } = ctx;
+  if (!qv.canAccept && !qv.canDecline) return null;
+  const busy = quoteUi.busy !== null;
+  const disabled = busy ? "true" : null;
+  const open = quoteUi.declineOpen;
+  const error = quoteUi.error && h("p", { class: "quote__error", id: "quote-error" }, messageText(quoteUi.error, i18n, ctx.state));
+  const declineError =
+    quoteUi.declineError && h("p", { class: "quote__error", id: "quote-decline-error" }, messageText(quoteUi.declineError, i18n, ctx.state));
+  return h(
+    "div",
+    { class: "quote__actions" },
+    qv.canAccept && h("p", { class: "quote__hint" }, i18n.t(single ? "reservation.quote.acceptHintOne" : "reservation.quote.acceptHint")),
+    // El error de aceptar, arriba de los botones, también con el paso abierto (no se mueve nada al abrirlo); el de
+    // rechazar va en el paso, junto a «Sì».
+    error,
+    h(
+      "div",
+      { class: "actions" },
+      qv.canAccept &&
+        h(
+          "button",
+          { class: "btn btn--primary", type: "button", id: "quote-accept", "data-action": "accept-quote", "aria-disabled": disabled },
+          quoteUi.busy === "accept" ? i18n.t("reservation.sending") : i18n.t("reservation.quote.accept"),
+        ),
+      h(
+        "button",
+        {
+          class: "btn btn--ghost",
+          type: "button",
+          id: "quote-decline",
+          "data-action": "decline-quote",
+          "aria-expanded": open ? "true" : "false",
+          "aria-controls": open ? "quote-confirm" : null,
+          "aria-disabled": disabled,
+        },
+        i18n.t("reservation.quote.decline"),
+      ),
+    ),
+    // Los cambios se piden en el menú de esa semana (abajo), como con cualquier menú.
+    !open && qv.canAccept && h("p", { class: "quote__more" }, i18n.t("reservation.quote.changesHint")),
+    open &&
+      h(
+        "div",
+        { class: "quote__confirm", id: "quote-confirm", role: "group", "aria-labelledby": "quote-decline-question" },
+        // Recibe el foco al abrirse: se lee la pregunta antes que los botones.
+        h(
+          "p",
+          { class: "quote__question", id: "quote-decline-question", tabindex: -1 },
+          i18n.t(single ? "reservation.quote.declineQuestionOne" : "reservation.quote.declineQuestion", { chef: ctx.chef }),
+        ),
+        declineError,
+        h(
+          "div",
+          { class: "actions" },
+          h(
+            "button",
+            { class: "btn btn--ghost", type: "button", id: "quote-decline-cancel", "data-action": "decline-quote-cancel", "aria-disabled": disabled },
+            i18n.t("reservation.quote.declineCancel"),
+          ),
+          h(
+            "button",
+            { class: "btn btn--danger", type: "button", id: "quote-decline-confirm", "data-action": "decline-quote-confirm", "aria-disabled": disabled },
+            quoteUi.busy === "decline" ? i18n.t("reservation.sending") : i18n.t("reservation.quote.declineConfirm"),
+          ),
+        ),
+      ),
+  );
+}
+
+/** El recuadro del presupuesto, arriba de las semanas. single: propone una sola semana (los textos, en singular). */
+function quoteNode(qv: QuoteView, quoteUi: Readonly<QuoteUi>, ctx: Context, single: boolean): VNode {
+  const { i18n } = ctx;
+  const status = QUOTE_STATUS[qv.display];
+  return h(
+    "section",
+    { class: `quote quote--${status.modifier}`, id: "quote", "aria-labelledby": "quote-title" },
+    h(
+      "header",
+      { class: "quote__head" },
+      h("h2", { class: "quote__title", id: "quote-title" }, i18n.t("reservation.quote.title")),
+      qv.quote.version > 1 && h("p", { class: "quote__version" }, i18n.t("reservation.quote.version", { version: qv.quote.version })),
+    ),
+    h(
+      "div",
+      // Recibe el foco después de aceptar o rechazar: el aviso y el estado nuevo se leen juntos.
+      { class: `quote__status quote__status--${status.modifier}`, id: "quote-status", tabindex: -1 },
+      quoteUi.notice && h("p", { class: "quote__notice" }, messageText(quoteUi.notice, i18n, ctx.state)),
+      h("p", { class: "quote__state" }, h("span", { class: "state-badge" }, i18n.t(status.badge)), " ", quoteStatusText(qv, ctx, single)),
+    ),
+    quoteSummaryNode(qv, ctx),
+    quoteActionsNode(qv, quoteUi, ctx, single),
   );
 }
 
@@ -384,6 +619,11 @@ function readyNode(view: ClientLinkView, input: RenderInput): VNode {
   const { i18n, state } = input;
   const ctx: Context = { i18n, state, chef: view.chefName, failedPhotos: input.failedPhotos ?? new Set() };
   const notice = input.pageNotice ?? null;
+  const qv = quoteView(view);
+  // Con el presupuesto por aceptar (o por llegar su versión nueva), la presentación habla del presupuesto.
+  const open = qv !== null && (qv.quote.status === "sent" || qv.quote.status === "changed");
+  const single = qv !== null && quoteWeekCount(qv, view) === 1;
+  const lead = open ? (single ? "reservation.introQuoteOne" : "reservation.introQuote") : "reservation.intro";
   return h(
     "div",
     { class: "reservation__content" },
@@ -396,17 +636,19 @@ function readyNode(view: ClientLinkView, input: RenderInput): VNode {
         { class: "reservation__greeting", id: "reservation-greeting", tabindex: -1 },
         view.clientFirstName ? i18n.t("reservation.greeting", { name: view.clientFirstName }) : i18n.t("reservation.greetingNoName"),
       ),
-      h("p", { class: "reservation__lead" }, i18n.t("reservation.intro", { chef: ctx.chef })),
+      h("p", { class: "reservation__lead" }, i18n.t(lead, { chef: ctx.chef })),
     ),
-    // Una semana que se canceló mientras la clienta contestaba: ya no está en la lista, el aviso va acá.
+    // Lo que contestó ya no está: una semana (se canceló, o se cerró su presupuesto, mientras la clienta contestaba;
+    // con su fecha) o el presupuesto (Evelyn confirmó la reserva sin él, o mandó otro, que va justo debajo).
     notice && h("p", { class: "notice notice--warn reservation__notice", id: "reservation-notice", tabindex: -1 }, messageText(notice, i18n, state)),
-    // Acá va, cuando llegue, el presupuesto para aceptar (antes de las semanas).
+    // El presupuesto, antes de las semanas.
+    qv && quoteNode(qv, input.quoteUi ?? EMPTY_QUOTE_UI, ctx, single),
     view.weeks.length === 0
       ? h("p", { class: "notice" }, i18n.t("reservation.noWeeks", { chef: ctx.chef }))
       : h(
           "div",
           { class: "weeks" },
-          view.weeks.map((week) => weekNode(week, input.ui(week.sessionId), ctx)),
+          view.weeks.map((week) => weekNode(week, input.ui(week.sessionId), ctx, view)),
         ),
   );
 }

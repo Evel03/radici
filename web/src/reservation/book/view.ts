@@ -41,6 +41,8 @@ import {
   bookFragment,
   bookPages,
   bookSignature,
+  NO_QUOTE,
+  type BookQuote,
   canGo,
   clampPage,
   closingKind,
@@ -78,10 +80,10 @@ export interface BookViewDeps {
   /** El foco a la vista después de cerrarlo (createFocusReveal), creado también al cargar la página. */
   reveal: FocusReveal;
   /**
-   * El id del botón con que se acepta el presupuesto, si el menú de esa semana va con uno abierto: la última página
-   * lleva ahí. Sin esto (o con null), la última página vuelve a la semana.
+   * Cómo va el menú de esa semana con el presupuesto y a dónde lleva aceptarlo (BookQuote): la última página lleva
+   * ahí o vuelve a la semana. Sin esto, la semana no tiene presupuesto.
    */
-  quoteTarget?: (week: ClientLinkWeek) => string | null;
+  quote?: (week: ClientLinkWeek) => BookQuote;
 }
 
 export interface BookView {
@@ -142,7 +144,7 @@ export function attachBookView(deps: BookViewDeps): BookView {
     const state = deps.state();
     return state.kind === "ready" ? state.view.chefName : "Evelyn";
   };
-  const quoteTargetOf = (week: ClientLinkWeek): string | null => deps.quoteTarget?.(week) ?? null;
+  const quoteOf = (week: ClientLinkWeek): BookQuote => deps.quote?.(week) ?? NO_QUOTE;
 
   /** La semana con su envío para mostrar, o null (no está, o su foto no se puede leer). */
   const findWeek = (session: string): { week: ClientLinkWeek; content: MenuContent } | null => {
@@ -319,7 +321,7 @@ export function attachBookView(deps: BookViewDeps): BookView {
       i18n,
       chef: chef(),
       brand: deps.brand,
-      closing: closingKind(open.week, quoteTargetOf(open.week)),
+      closing: closingKind(open.week, quoteOf(open.week)),
       failedPhotos,
     });
     root.replaceChildren(mount(tree, doc));
@@ -374,7 +376,7 @@ export function attachBookView(deps: BookViewDeps): BookView {
       content: found.content,
       pages: bookPages(found.content),
       page: 0,
-      signature: bookSignature(found.week, deps.i18n().lang, chef(), quoteTargetOf(found.week)),
+      signature: bookSignature(found.week, deps.i18n().lang, chef(), quoteOf(found.week)),
       openerId,
       pushed,
       background: [],
@@ -453,7 +455,7 @@ export function attachBookView(deps: BookViewDeps): BookView {
       close({ fromHistory: false });
       return;
     }
-    const signature = bookSignature(found.week, deps.i18n().lang, chef(), quoteTargetOf(found.week));
+    const signature = bookSignature(found.week, deps.i18n().lang, chef(), quoteOf(found.week));
     if (signature === open.signature) return;
     const focused = doc.activeElement instanceof HTMLElement && root?.contains(doc.activeElement) ? doc.activeElement.id : "";
     open.week = found.week;
@@ -507,7 +509,7 @@ export function attachBookView(deps: BookViewDeps): BookView {
         go(0);
         break;
       case "cta": {
-        const quote = quoteTargetOf(open.week);
+        const quote = quoteOf(open.week);
         close({ fromHistory: false, targets: closingTargets(closingKind(open.week, quote), open.session, quote) });
         break;
       }

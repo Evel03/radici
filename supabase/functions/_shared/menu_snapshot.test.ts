@@ -110,6 +110,27 @@ test("readMenuSnapshot: otra versión, otro idioma o una forma rota → null", (
   }
 });
 
+test("readMenuSnapshot: el envío de la semana 1 de un presupuesto lleva el presupuesto; sin él, como siempre", () => {
+  const quote = {
+    version: 2,
+    totalCents: 28000,
+    weeks: [
+      { date: "2026-11-30", start: "10:00", serviceCents: 14000 },
+      { date: "2026-12-07", start: "10:00", serviceCents: 14000 },
+    ],
+    holdHours: 48,
+    firstStart: "2026-11-30T10:00",
+  };
+  const withQuote = { ...snapshot(), quote };
+  assert.deepEqual(readMenuSnapshot(JSON.parse(JSON.stringify(withQuote))), withQuote);
+  // Sin presupuesto (o con null) no aparece la clave: la foto de siempre.
+  assert.equal("quote" in (readMenuSnapshot(snapshot()) ?? {}), false);
+  assert.equal("quote" in (readMenuSnapshot({ ...snapshot(), quote: null }) ?? {}), false);
+  // Un presupuesto que no cierra no se manda a medias: la foto entera no vale.
+  assert.equal(readMenuSnapshot({ ...snapshot(), quote: { ...quote, totalCents: 1 } }), null);
+  assert.equal(readMenuSnapshot({ ...snapshot(), quote: "560 €" }), null);
+});
+
 test("readAllergenList: sin repetir y en el orden del enum; uno desconocido, null", () => {
   assert.deepEqual(readAllergenList(["milk", "gluten", "milk"]), ["gluten", "milk"]);
   assert.deepEqual(readAllergenList([]), []);

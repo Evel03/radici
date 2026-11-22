@@ -226,10 +226,12 @@ describe("la última página: vuelve a lo que se puede hacer en la semana", () =
   it("con un presupuesto abierto: aceptarlo; ya contestado o cocinado: solo volver a la reserva", () => {
     expect(closing("quote").text).toContain("accetta il preventivo di Evelyn");
     expect(textOf(closing("quote").buttons[0] ?? "")).toBe("Vai al preventivo");
+    expect(closing("later").text).toContain("Questo menù si conferma con il preventivo di Evelyn");
+    expect(closing("closedQuote").text).toContain("non è più valido");
     expect(closing("confirmed").text).toBe("Hai confermato questo menù: Evelyn arriva lunedì 1 marzo 2027 alle 10:00.");
     expect(closing("changes").text).toBe("Hai chiesto dei cambi: Evelyn ti manderà il menù di nuovo.");
     expect(closing("done").text).toContain("ha già cucinato questo menù");
-    for (const kind of ["confirmed", "changes", "done"] as const) {
+    for (const kind of ["later", "closedQuote", "confirmed", "changes", "done"] as const) {
       const [back] = closing(kind).buttons;
       expect([textOf(back ?? ""), back?.attrs["class"]]).toEqual(["Torna alla prenotazione", "btn btn--ghost"]);
     }

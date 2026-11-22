@@ -100,6 +100,14 @@ void main() {
           s.primary,
           build().cardTheme.color!,
         ),
+        // El cartel de un día de la agenda es una tarjeta: nombre, renglón y
+        // el punto de una sesión van en los pares de arriba; el de un pedido,
+        // en terciario.
+        (
+          'punto de un pedido en el cartel del día',
+          s.tertiary,
+          build().cardTheme.color!,
+        ),
       ]) {
         expect(
           _contrast(fg, bg),

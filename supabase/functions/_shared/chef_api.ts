@@ -1,10 +1,11 @@
 // Contrato de la Edge Function chef: la app de Evelyn → reservas, mover y cancelar sesiones, la
-// traducción de los platos y el envío del menú de una semana a la clienta (docs/contracts/chef-api.md).
-// Tipos de los cuerpos y de las respuestas, y la validación del servidor con los mismos límites que las
-// funciones SQL (chef_create_booking, chef_move_session y chef_cancel_sessions, migración
-// 20261116150100_bookings.sql; chef_prepare_menu_send y chef_link_menu_send, migración
-// 20261121100000_menu_sends.sql), que vuelven a validar todo, y que los checks de recipes (los textos
-// de un plato).
+// traducción de los platos, el envío del menú de una semana a la clienta y el presupuesto
+// (docs/contracts/chef-api.md). Tipos de los cuerpos y de las respuestas, y la validación del servidor con
+// los mismos límites que las funciones SQL (chef_create_booking, chef_move_session y chef_cancel_sessions,
+// migración 20261116150100_bookings.sql; chef_prepare_menu_send y chef_link_menu_send, migración
+// 20261121100000_menu_sends.sql; chef_create_quote, chef_update_quote y chef_withdraw_quote, migración
+// 20261121120000_quotes.sql), que vuelven a validar todo, y que los checks de recipes (los textos de un
+// plato).
 // La app (Dart) arma los cuerpos con estos nombres: si el contrato cambia, cambian los dos.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import {
@@ -33,6 +34,9 @@ export const CHEF_ROUTES = {
   translate: "/translate",
   menuPreview: "/menus/preview",
   menuSend: "/menus/send",
+  quotes: "/quotes",
+  quotePrice: "/quotes/price",
+  quoteWithdraw: "/quotes/withdraw",
 } as const;
 export type ChefRoute = (typeof CHEF_ROUTES)[keyof typeof CHEF_ROUTES];
 
@@ -66,6 +70,10 @@ const TRANSLATE_KEYS: readonly string[] = ["name", "description"];
 /** Las claves de POST /menus/preview y /menus/send: cualquier otra es un 400 (los arma solo la app). */
 const MENU_PREVIEW_KEYS: readonly string[] = ["sessionId", "menuVersion", "translate"];
 const MENU_SEND_KEYS: readonly string[] = ["sendId", "email", "whatsapp"];
+/** Las claves de las rutas del presupuesto: cualquier otra es un 400 (las arma solo la app, como las del menú). */
+const QUOTE_KEYS: readonly string[] = ["requestId", "dates", "start", "cookMinutes", "portions", "serviceTotalCents", "dryRun"];
+const QUOTE_PRICE_KEYS: readonly string[] = ["quoteId", "serviceTotalCents"];
+const QUOTE_WITHDRAW_KEYS: readonly string[] = ["quoteId"];
 /** Versión del menú: session_menus.version, un int de Postgres desde 1. */
 export const MAX_MENU_VERSION = 2_147_483_647;
 /** Largo máximo de la dirección de una ficha nueva. */
@@ -204,6 +212,37 @@ export interface MenuSendPayload {
   whatsapp?: boolean;
 }
 
+/**
+ * POST /quotes: preparar el presupuesto de un pedido new (semanal o extra): una sesión held por semana y el
+ * presupuesto sin enviar (sale con el menú de la semana 1, /menus/send). Los mismos campos y límites que una
+ * reserva desde un pedido (POST /bookings con requestId).
+ */
+export interface CreateQuotePayload {
+  requestId: string;
+  /** De 1 a 8 fechas "AAAA-MM-DD", una por semana ISO y en orden (más de una solo en un pedido semanal). */
+  dates: string[];
+  /** Llegada "HH:MM" (hora de Roma). Puede faltar solo en el dryRun. */
+  start?: string | null;
+  cookMinutes: number;
+  /** Porciones de cada semana (0 por defecto). */
+  portions?: number;
+  /** Precio del servicio de todo el presupuesto, en centavos; se reparte entre las semanas. Obligatorio salvo en el dryRun. */
+  serviceTotalCents?: number;
+  /** true: solo los chequeos de cada fecha, sin escribir nada. */
+  dryRun?: boolean;
+}
+
+/** POST /quotes/price: otro precio para un presupuesto abierto (hay que volver a mandarlo). */
+export interface QuotePricePayload {
+  quoteId: string;
+  serviceTotalCents: number;
+}
+
+/** POST /quotes/withdraw: retirar un presupuesto abierto (sus semanas se cancelan y el pedido vuelve a new). */
+export interface QuoteWithdrawPayload {
+  quoteId: string;
+}
+
 // ---------------------------------------------------------------------------
 // Valores validados
 // ---------------------------------------------------------------------------
@@ -285,6 +324,30 @@ export interface NormalizedMenuSend {
   whatsapp: boolean;
 }
 
+export interface NormalizedCreateQuote {
+  /** En minúsculas. */
+  requestId: string;
+  dates: string[];
+  /** null solo en el dryRun. */
+  start: string | null;
+  cookMinutes: number;
+  portions: number;
+  /** 0 en un dryRun sin precio. */
+  serviceTotalCents: number;
+  dryRun: boolean;
+}
+
+export interface NormalizedQuotePrice {
+  /** En minúsculas. */
+  quoteId: string;
+  serviceTotalCents: number;
+}
+
+export interface NormalizedQuoteWithdraw {
+  /** En minúsculas. */
+  quoteId: string;
+}
+
 // ---------------------------------------------------------------------------
 // Errores
 // ---------------------------------------------------------------------------
@@ -340,7 +403,8 @@ export type ChefApiField =
   | "sendId"
   | "email"
   | "whatsapp"
-  | "channels";
+  | "channels"
+  | "quoteId";
 
 export type ChefApiErrors = Partial<Record<ChefApiField, ChefApiErrorCode>>;
 
@@ -450,6 +514,70 @@ export interface MenuSendResponse {
   whatsappPhone?: string;
 }
 
+/**
+ * Estado de cada fecha de un presupuesto: en el dryRun, el de una reserva (DAY_STATUSES, solo busy impide
+ * crearlo); en el presupuesto ya creado, "free": la semana quedó retenida (los avisos eran los del dryRun).
+ */
+export const QUOTE_WEEK_STATUSES = [...DAY_STATUSES, "free"] as const;
+export type QuoteWeekStatus = (typeof QUOTE_WEEK_STATUSES)[number];
+
+export interface QuoteDraftWeek {
+  date: string;
+  /** "HH:MM"; null solo en un dryRun sin hora para un día sin horario. */
+  start: string | null;
+  cookMinutes: number;
+  status: QuoteWeekStatus;
+  /** La primera llegada del día (solo en el dryRun; null si ese día no tiene horario o ya está creado). */
+  suggestedStart: string | null;
+  /** Parte del servicio de esa semana, en centavos. */
+  serviceCents: number;
+  /** null en el dryRun. */
+  sessionId: string | null;
+}
+
+/** 200 (dryRun) o 201 (creado) de POST /quotes. */
+export interface CreateQuoteResponse {
+  dryRun: boolean;
+  /** null en el dryRun. */
+  quoteId: string | null;
+  requestId: string;
+  clientId: string | null;
+  /**
+   * Hasta cuándo el borrador retiene el horario (timestamptz): 24 h, nunca más allá de la llegada de la primera
+   * semana. Al mandarlo con el menú de la semana 1, el plazo pasa a ser el de la clienta (48 h). null en el dryRun.
+   */
+  holdUntil: string | null;
+  weeks: QuoteDraftWeek[];
+}
+
+/** Una semana viva de un presupuesto (private.quote_terms). */
+export interface QuoteTermsWeek {
+  sessionId: string;
+  date: string;
+  start: string;
+  cookMinutes: number;
+  serviceCents: number;
+}
+
+/**
+ * Los términos de ahora de un presupuesto (private.quote_terms): sus semanas vivas por fecha y el total (la suma
+ * de sus servicios). 200 de POST /quotes/price.
+ */
+export interface QuoteTerms {
+  quoteId: string;
+  totalCents: number;
+  weeks: QuoteTermsWeek[];
+}
+
+/** 200 de POST /quotes/withdraw. already: ya estaba retirado (no cambió nada). */
+export interface WithdrawQuoteResponse {
+  quoteId: string;
+  requestId: string;
+  already: boolean;
+  /** Cuántas semanas held se cancelaron. */
+  cancelled: number;
+}
+
 export type ChefErrorCode =
   | "unauthorized"
   | "forbidden"
@@ -482,7 +610,14 @@ export type ChefErrorCode =
   | "noEmail"
   | "noPhone"
   | "emailUnavailable"
-  | "emailFailed";
+  | "emailFailed"
+  | "quoteNotFound"
+  | "quoteExists"
+  | "quoteClosed"
+  | "quoteEmpty"
+  | "quoteChanged"
+  | "quoteWeekNotFirst"
+  | "requestNotQuotable";
 
 /**
  * Cuerpo de un error: `errors` por campo (400) o un `error` con, según el caso, la fecha, el estado o las
@@ -649,6 +784,43 @@ function failure<T>(errors: ChefApiErrors, date?: string): ChefParseResult<T> {
   return date === undefined ? { ok: false, errors } : { ok: false, errors, date };
 }
 
+/**
+ * El campo dates de una reserva o de un presupuesto: de 1 a MAX_WEEKS fechas reales (checkDates). Devuelve las
+ * fechas o null (con el error en `errors.dates`) y, si el error es de una fecha concreta, esa fecha.
+ */
+function readDates(errors: ChefApiErrors, raw: unknown, today: string): { dates: string[] | null; failedDate?: string } {
+  if (absent(raw)) errors.dates = "required";
+  else if (!Array.isArray(raw)) errors.dates = "invalid";
+  else if (raw.length < 1 || raw.length > MAX_WEEKS) errors.dates = "range";
+  else {
+    const checked = checkDates(raw, today);
+    if (checked.ok) return { dates: checked.dates };
+    errors.dates = checked.code;
+    return checked.date === undefined ? { dates: null } : { dates: null, failedDate: checked.date };
+  }
+  return { dates: null };
+}
+
+/** La llegada "HH:MM": obligatoria salvo en el dryRun (cada fecha se evalúa con su llegada sugerida). */
+function readStart(errors: ChefApiErrors, value: unknown, dryRun: boolean): string | null {
+  if (absent(value)) {
+    if (!dryRun) errors.start = "required";
+    return null;
+  }
+  if (isTimeOfDay(value)) return value;
+  errors.start = "invalid";
+  return null;
+}
+
+/** Minutos de cocina de cada semana: obligatorios, de 1 a MAX_COOK_MINUTES. */
+function readCookMinutes(errors: ChefApiErrors, value: unknown): number | null {
+  if (absent(value)) {
+    errors.cookMinutes = "required";
+    return null;
+  }
+  return readInt(errors, "cookMinutes", value, 1, MAX_COOK_MINUTES);
+}
+
 // ---------------------------------------------------------------------------
 // Validación del servidor
 // ---------------------------------------------------------------------------
@@ -702,35 +874,15 @@ export function parseBookingRequest(input: unknown, opts: { today: string }): Ch
     }
   }
 
-  let dates: string[] | null = null;
-  const rawDates = input["dates"];
-  if (absent(rawDates)) errors.dates = "required";
-  else if (!Array.isArray(rawDates)) errors.dates = "invalid";
-  else if (rawDates.length < 1 || rawDates.length > MAX_WEEKS) errors.dates = "range";
-  else {
-    const checked = checkDates(rawDates, opts.today);
-    if (checked.ok) dates = checked.dates;
-    else {
-      errors.dates = checked.code;
-      failedDate = checked.date;
-    }
-  }
+  const readDatesResult = readDates(errors, input["dates"], opts.today);
+  const dates = readDatesResult.dates;
+  failedDate = readDatesResult.failedDate;
   // Más de una semana solo en un pedido semanal (un evento es de una sola). Desde un pedido sin
   // tipo explícito lo controla la base, que conoce el tipo del pedido.
   if (dates !== null && dates.length > 1 && type !== null && type !== "week") errors.dates = "weeksOnlyForWeek";
 
-  let start: string | null = null;
-  if (absent(input["start"])) {
-    if (!dryRun) errors.start = "required";
-  } else if (isTimeOfDay(input["start"])) {
-    start = input["start"];
-  } else {
-    errors.start = "invalid";
-  }
-
-  let cookMinutes: number | null = null;
-  if (absent(input["cookMinutes"])) errors.cookMinutes = "required";
-  else cookMinutes = readInt(errors, "cookMinutes", input["cookMinutes"], 1, MAX_COOK_MINUTES);
+  const start = readStart(errors, input["start"], dryRun);
+  const cookMinutes = readCookMinutes(errors, input["cookMinutes"]);
 
   const optionalInt = (field: "portions" | "serviceTotalCents", max: number): number =>
     absent(input[field]) ? 0 : readInt(errors, field, input[field], 0, max) ?? 0;
@@ -922,4 +1074,60 @@ export function menuSendChannels(value: Pick<NormalizedMenuSend, "email" | "what
   if (value.email) channels.push("email");
   if (value.whatsapp) channels.push("whatsapp");
   return channels;
+}
+
+/** Una clave que el contrato de la ruta no tiene: payload invalid (como en /translate y /menus/*). */
+function rejectUnknownKeys(errors: ChefApiErrors, input: Record<string, unknown>, keys: readonly string[]): void {
+  if (Object.keys(input).some((key) => !keys.includes(key))) errors.payload = "invalid";
+}
+
+/** serviceTotalCents: de 0 a MAX_CENTS; obligatorio salvo en el dryRun (ahí, sin precio, 0). */
+function readServiceTotal(errors: ChefApiErrors, value: unknown, dryRun: boolean): number {
+  if (absent(value)) {
+    if (!dryRun) errors.serviceTotalCents = "required";
+    return 0;
+  }
+  return readInt(errors, "serviceTotalCents", value, 0, MAX_CENTS) ?? 0;
+}
+
+/**
+ * Valida y normaliza el cuerpo de POST /quotes: el pedido y las semanas, con las reglas de una reserva desde un
+ * pedido (fechas, llegada, minutos, porciones y precio). `today`: la fecha de hoy en Europe/Rome. Una clave que el
+ * contrato no tiene es payload invalid (el cuerpo lo arma solo la app). El tipo del pedido lo controla la base:
+ * más de una semana solo en un pedido semanal (400 weeksOnlyForWeek) y nada para un pedido de cambios.
+ */
+export function parseCreateQuoteRequest(input: unknown, opts: { today: string }): ChefParseResult<NormalizedCreateQuote> {
+  if (!isRecord(input)) return failure({ payload: "invalid" });
+  const errors: ChefApiErrors = {};
+  rejectUnknownKeys(errors, input, QUOTE_KEYS);
+  const dryRun = readDryRun(errors, input["dryRun"]);
+  const requestId = readUuid(errors, "requestId", input["requestId"]);
+  const { dates, failedDate } = readDates(errors, input["dates"], opts.today);
+  const start = readStart(errors, input["start"], dryRun);
+  const cookMinutes = readCookMinutes(errors, input["cookMinutes"]);
+  const portions = absent(input["portions"]) ? 0 : (readInt(errors, "portions", input["portions"], 0, MAX_PORTIONS) ?? 0);
+  const serviceTotalCents = readServiceTotal(errors, input["serviceTotalCents"], dryRun);
+  if (Object.keys(errors).length > 0 || requestId === null || dates === null || cookMinutes === null) return failure(errors, failedDate);
+  return { ok: true, value: { requestId, dates, start, cookMinutes, portions, serviceTotalCents, dryRun } };
+}
+
+/** Valida y normaliza el cuerpo de POST /quotes/price: el presupuesto y el precio nuevo (obligatorio). */
+export function parseQuotePriceRequest(input: unknown): ChefParseResult<NormalizedQuotePrice> {
+  if (!isRecord(input)) return failure({ payload: "invalid" });
+  const errors: ChefApiErrors = {};
+  rejectUnknownKeys(errors, input, QUOTE_PRICE_KEYS);
+  const quoteId = readUuid(errors, "quoteId", input["quoteId"]);
+  const serviceTotalCents = readServiceTotal(errors, input["serviceTotalCents"], false);
+  if (Object.keys(errors).length > 0 || quoteId === null) return failure(errors);
+  return { ok: true, value: { quoteId, serviceTotalCents } };
+}
+
+/** Valida y normaliza el cuerpo de POST /quotes/withdraw. */
+export function parseQuoteWithdrawRequest(input: unknown): ChefParseResult<NormalizedQuoteWithdraw> {
+  if (!isRecord(input)) return failure({ payload: "invalid" });
+  const errors: ChefApiErrors = {};
+  rejectUnknownKeys(errors, input, QUOTE_WITHDRAW_KEYS);
+  const quoteId = readUuid(errors, "quoteId", input["quoteId"]);
+  if (Object.keys(errors).length > 0 || quoteId === null) return failure(errors);
+  return { ok: true, value: { quoteId } };
 }

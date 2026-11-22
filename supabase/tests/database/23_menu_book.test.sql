@@ -19,7 +19,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(31);
+select plan(35);
 
 -- ---------------------------------------------------------------------
 -- Fixture
@@ -256,6 +256,46 @@ select is(
   '40001: menu_changed',
   'ni se guarda una vista previa armada con la huella de antes del cambio');
 select ok(pg_temp.deliver(pg_temp.prepare('token-b'), 'token-b') is not null, 'otra vista previa, con la huella nueva, sale');
+
+-- ---------------------------------------------------------------------
+-- 6. Con un presupuesto abierto (20261121120000_quotes.sql): la semana 1 lleva el presupuesto y los
+--    ingredientes; la huella cubre los dos, y un presupuesto con el plazo vencido (cerrado: quote_live)
+--    ya no entra en la huella ni en el contexto.
+-- ---------------------------------------------------------------------
+insert into public.requests (id, chef_id, client_id, type, status, adults, kids, days, meals, weeks, source, locale) values
+  ('7e6d3000-0000-4000-8000-00000000000b', '7e6d1000-0000-4000-8000-000000000001', '7e6d2000-0000-4000-8000-00000000000a',
+   'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it');
+create temp table qs as
+  select (public.chef_create_quote('7e6d1000-0000-4000-8000-000000000001', '7e6d3000-0000-4000-8000-00000000000b',
+            array[(date_trunc('week', (now() at time zone 'Europe/Rome')::date::timestamp)::date + 7 + 9)], '10:00', 180, 14000, 4)
+          ->> 'quote_id')::uuid as id;
+create temp table qsess as
+  select s.id from public.sessions s where s.request_id = '7e6d3000-0000-4000-8000-00000000000b' and s.status = 'held';
+insert into public.session_menus (session_id, chef_id)
+  select id, '7e6d1000-0000-4000-8000-000000000001' from qsess;
+insert into public.session_menu (session_id, recipe_id, chef_id, portions, position)
+  select id, '7e6d6000-0000-4000-8000-000000000001', '7e6d1000-0000-4000-8000-000000000001', 4, 1 from qsess;
+
+select is(
+  (select public.chef_menu_send_context('7e6d1000-0000-4000-8000-000000000001', q.id) #> '{menu,dishes,0,ingredients}' from qsess q),
+  private.recipe_ingredient_names('7e6d6000-0000-4000-8000-000000000001'),
+  'la semana de un presupuesto abierto trae los ingredientes del plato…');
+select ok(
+  (select public.chef_menu_send_context('7e6d1000-0000-4000-8000-000000000001', q.id) -> 'quote' is not null from qsess q),
+  '…y el presupuesto');
+insert into huellas (k, v) select 'q1', private.menu_send_fingerprint(q.id) from qsess q;
+select public.chef_update_quote('7e6d1000-0000-4000-8000-000000000001', (select id from qs), 15000);
+select isnt(
+  (select private.menu_send_fingerprint(q.id) from qsess q), (select h.v from huellas h where h.k = 'q1'),
+  'otro precio cambia la huella (los términos del presupuesto entran)');
+insert into huellas (k, v) select 'q2', private.menu_send_fingerprint(q.id) from qsess q;
+update public.quotes set hold_until = now() - interval '1 minute' where id = (select id from qs);
+update public.sessions set hold_until = now() - interval '1 minute' where id = (select id from qsess);
+select is(
+  (select (private.menu_send_fingerprint(q.id) is distinct from (select h.v from huellas h where h.k = 'q2'))
+          and public.chef_menu_send_context('7e6d1000-0000-4000-8000-000000000001', q.id) -> 'quote' = 'null'::jsonb from qsess q),
+  true,
+  'con el plazo vencido el presupuesto está cerrado: sale de la huella y del contexto, aunque el cron no haya pasado');
 
 select * from finish();
 rollback;

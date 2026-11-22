@@ -100,21 +100,48 @@ export function showDots(count: number): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Qué ofrece la última página, según el último envío de la semana:
+ * Cómo va el menú de la semana con el presupuesto (menuQuoteMode de controller.ts) y a dónde lleva aceptarlo:
+ * - none: no lleva presupuesto, o uno aceptado: se confirma como cualquier menú;
+ * - open: es el envío que lleva el presupuesto abierto: se confirma aceptándolo. target: el id del botón con que se
+ *   acepta («quote-accept»), o el del estado del presupuesto si ya no se puede aceptar; null si no hay a dónde ir;
+ * - superseded: un envío anterior del mismo presupuesto, que quedó en otra semana: aceptar no lo confirma;
+ * - closed: lleva un presupuesto rechazado, retirado o vencido (o uno que la página no conoce).
+ */
+export interface BookQuote {
+  readonly mode: "none" | "open" | "superseded" | "closed";
+  readonly target: string | null;
+}
+
+/** Sin presupuesto. */
+export const NO_QUOTE: BookQuote = { mode: "none", target: null };
+
+/**
+ * Qué ofrece la última página, según el último envío de la semana y el presupuesto:
  * - answer: por confirmar; vuelve a la semana para confirmarlo o pedir cambios (los botones de siempre);
- * - quote: va con un presupuesto abierto; lleva a aceptarlo (donde esté en la página);
+ * - quote: va con un presupuesto abierto que se puede aceptar; lleva a aceptarlo (donde esté en la página);
+ * - later: se confirma con el presupuesto, pero todavía no (Evelyn prepara otra versión, o es un envío anterior que
+ *   se confirma después de aceptarlo): vuelve a la reserva;
+ * - closedQuote: iba con un presupuesto que ya no vale: vuelve a la reserva;
  * - confirmed / changes: ya contestó; solo vuelve a la reserva;
  * - done: la semana ya se cocinó.
  */
-export type ClosingKind = "answer" | "quote" | "confirmed" | "changes" | "done";
+export type ClosingKind = "answer" | "quote" | "later" | "closedQuote" | "confirmed" | "changes" | "done";
 
-/** quoteTarget: el id de donde se acepta el presupuesto, si el menú de esa semana va con uno abierto; si no, null. */
-export function closingKind(week: ClientLinkWeek, quoteTarget: string | null): ClosingKind {
+export function closingKind(week: ClientLinkWeek, quote: BookQuote): ClosingKind {
   const menu = week.menu;
   if (!menu || week.done) return "done";
   if (menu.state === "confirmed") return "confirmed";
   if (menu.state === "changesRequested") return "changes";
-  return quoteTarget ? "quote" : "answer";
+  switch (quote.mode) {
+    case "open":
+      return quote.target ? "quote" : "later";
+    case "superseded":
+      return "later";
+    case "closed":
+      return "closedQuote";
+    default:
+      return "answer";
+  }
 }
 
 /**
@@ -122,13 +149,13 @@ export function closingKind(week: ClientLinkWeek, quoteTarget: string | null): C
  * esté en la página): a confirmar (o al mensaje de cambios, si lo estaba escribiendo), al presupuesto o al estado de
  * la semana. Son las acciones que ya están en la página: el libro no las repite.
  */
-export function closingTargets(kind: ClosingKind, session: string, quoteTarget: string | null): string[] {
+export function closingTargets(kind: ClosingKind, session: string, quote: BookQuote): string[] {
   const status = focusId({ kind: "status", session });
   switch (kind) {
     case "answer":
       return [focusId({ kind: "confirm", session }), focusId({ kind: "textarea", session }), status];
     case "quote":
-      return quoteTarget ? [quoteTarget, status] : [status];
+      return quote.target ? [quote.target, status] : [status];
     default:
       return [status];
   }
@@ -544,7 +571,7 @@ export function createBackdropClick(): BackdropClick {
 }
 
 /** Lo que cambia en el libro cuando cambia esto (la semana, su envío y su estado, el idioma): hay que pintarlo de nuevo. */
-export function bookSignature(week: ClientLinkWeek, lang: string, chef: string, quoteTarget: string | null): string {
+export function bookSignature(week: ClientLinkWeek, lang: string, chef: string, quote: BookQuote): string {
   const menu = week.menu;
-  return JSON.stringify([lang, chef, quoteTarget, week.week, week.weeks, week.date, week.start, week.done, menu?.sendId, menu?.state]);
+  return JSON.stringify([lang, chef, quote.mode, quote.target, week.week, week.weeks, week.date, week.start, week.done, menu?.sendId, menu?.state]);
 }

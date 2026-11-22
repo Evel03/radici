@@ -216,6 +216,8 @@ function dishNode(ctx: Ctx, index: number, label: string, dish: SnapshotDish, po
 const CLOSING: Readonly<Record<ClosingKind, { text: MessageKey; button: MessageKey }>> = {
   answer: { text: "book.closingAnswer", button: "book.closingAnswerButton" },
   quote: { text: "book.closingQuote", button: "book.closingQuoteButton" },
+  later: { text: "book.closingLater", button: "book.closingBack" },
+  closedQuote: { text: "book.closingClosedQuote", button: "book.closingBack" },
   confirmed: { text: "book.closingConfirmed", button: "book.closingBack" },
   changes: { text: "book.closingChanges", button: "book.closingBack" },
   done: { text: "book.closingDone", button: "book.closingBack" },

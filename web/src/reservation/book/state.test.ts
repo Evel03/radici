@@ -20,6 +20,7 @@ import {
   createFocusReveal,
   directionOf,
   keyAction,
+  NO_QUOTE,
   needsReveal,
   pagePresentation,
   readBookSession,
@@ -84,27 +85,34 @@ describe("cómo se muestra cada página (y qué fotos se cargan ya)", () => {
 });
 
 describe("la última página", () => {
-  it("closingKind: por confirmar, con un presupuesto abierto, confirmado, con cambios pedidos o ya cocinada", () => {
-    expect(closingKind(week(), null)).toBe("answer");
-    expect(closingKind(week(), "quote-accept")).toBe("quote");
-    expect(closingKind(week({ menu: menu({ state: "confirmed", confirmedAt: "2027-02-26T10:00:00Z" }) }), null)).toBe("confirmed");
-    expect(closingKind(week({ menu: menu({ state: "changesRequested", changesRequestedAt: "2027-02-26T10:00:00Z" }) }), "quote-accept")).toBe(
-      "changes",
-    );
-    expect(closingKind(week({ done: true }), "quote-accept")).toBe("done");
-    expect(closingKind(week({ menu: null }), null)).toBe("done");
+  it("closingKind: por confirmar, con un presupuesto (abierto, anterior o cerrado), confirmado, con cambios pedidos o ya cocinada", () => {
+    const open = { mode: "open", target: "quote-accept" } as const;
+    expect(closingKind(week(), NO_QUOTE)).toBe("answer");
+    expect(closingKind(week(), open)).toBe("quote");
+    // Abierto, pero ya no se puede aceptar (Evelyn prepara otra versión): se confirmará con el presupuesto, más adelante.
+    expect(closingKind(week(), { mode: "open", target: null })).toBe("later");
+    // Un envío anterior del mismo presupuesto, que quedó en otra semana: aceptar no lo confirma.
+    expect(closingKind(week(), { mode: "superseded", target: null })).toBe("later");
+    expect(closingKind(week(), { mode: "closed", target: null })).toBe("closedQuote");
+    expect(closingKind(week({ menu: menu({ state: "confirmed", confirmedAt: "2027-02-26T10:00:00Z" }) }), NO_QUOTE)).toBe("confirmed");
+    expect(closingKind(week({ menu: menu({ state: "confirmed", confirmedAt: "2027-02-26T10:00:00Z" }) }), { mode: "closed", target: null })).toBe("confirmed");
+    expect(closingKind(week({ menu: menu({ state: "changesRequested", changesRequestedAt: "2027-02-26T10:00:00Z" }) }), open)).toBe("changes");
+    expect(closingKind(week({ done: true }), open)).toBe("done");
+    expect(closingKind(week({ menu: null }), NO_QUOTE)).toBe("done");
   });
 
   it("closingTargets: vuelve a las acciones de la semana (confirmar, el mensaje a medio escribir o el estado) o al presupuesto", () => {
     const status = focusId({ kind: "status", session: SESSION_1 });
-    expect(closingTargets("answer", SESSION_1, null)).toEqual([
+    expect(closingTargets("answer", SESSION_1, NO_QUOTE)).toEqual([
       focusId({ kind: "confirm", session: SESSION_1 }),
       focusId({ kind: "textarea", session: SESSION_1 }),
       status,
     ]);
-    expect(closingTargets("quote", SESSION_1, "quote-accept")).toEqual(["quote-accept", status]);
-    expect(closingTargets("quote", SESSION_1, null)).toEqual([status]);
-    for (const kind of ["confirmed", "changes", "done"] as const) expect(closingTargets(kind, SESSION_1, null)).toEqual([status]);
+    expect(closingTargets("quote", SESSION_1, { mode: "open", target: "quote-accept" })).toEqual(["quote-accept", status]);
+    expect(closingTargets("quote", SESSION_1, { mode: "open", target: null })).toEqual([status]);
+    for (const kind of ["later", "closedQuote", "confirmed", "changes", "done"] as const) {
+      expect(closingTargets(kind, SESSION_1, NO_QUOTE)).toEqual([status]);
+    }
   });
 });
 
@@ -1108,15 +1116,17 @@ describe("el foco, el clic en el fondo y lo que cambia el libro", () => {
   });
 
   it("bookSignature: cambia con el envío, su estado, la semana o el idioma; no con lo demás de la reserva", () => {
-    const base = bookSignature(week(), "it", "Evelyn", null);
-    expect(bookSignature(week(), "it", "Evelyn", null)).toBe(base);
+    const base = bookSignature(week(), "it", "Evelyn", NO_QUOTE);
+    expect(bookSignature(week(), "it", "Evelyn", NO_QUOTE)).toBe(base);
     for (const other of [
-      bookSignature(week({ menu: menu({ sendId: "5e0d0000-0000-4000-8000-000000000009" }) }), "it", "Evelyn", null),
-      bookSignature(week({ menu: menu({ state: "confirmed", confirmedAt: "2027-02-26T10:00:00Z" }) }), "it", "Evelyn", null),
-      bookSignature(week({ date: "2027-03-02" }), "it", "Evelyn", null),
-      bookSignature(week({ done: true }), "it", "Evelyn", null),
-      bookSignature(week(), "es", "Evelyn", null),
-      bookSignature(week(), "it", "Evelyn", "quote-accept"),
+      bookSignature(week({ menu: menu({ sendId: "5e0d0000-0000-4000-8000-000000000009" }) }), "it", "Evelyn", NO_QUOTE),
+      bookSignature(week({ menu: menu({ state: "confirmed", confirmedAt: "2027-02-26T10:00:00Z" }) }), "it", "Evelyn", NO_QUOTE),
+      bookSignature(week({ date: "2027-03-02" }), "it", "Evelyn", NO_QUOTE),
+      bookSignature(week({ done: true }), "it", "Evelyn", NO_QUOTE),
+      bookSignature(week(), "es", "Evelyn", NO_QUOTE),
+      bookSignature(week(), "it", "Evelyn", { mode: "open", target: "quote-accept" }),
+      bookSignature(week(), "it", "Evelyn", { mode: "superseded", target: null }),
+      bookSignature(week(), "it", "Evelyn", { mode: "closed", target: null }),
     ]) {
       expect(other).not.toBe(base);
     }

@@ -7,12 +7,21 @@
 // - Lo que ve la clienta de cada semana es la foto del último envío del menú (menu_sends.snapshot), tal como
 //   salió y ya en su idioma. readMenuSnapshot la lee campo por campo: lo que no es del contrato no pasa (ni a
 //   la respuesta ni a la página), y una foto con otra forma no se muestra a medias.
-// - Nunca precios, pagos, dirección ni las alergias de la clienta: la foto no los tiene y nada de acá los lee.
+// - El presupuesto (SPEC 5.8): el último que salió de la reserva, con su estado y su plazo, y lo que vio la
+//   clienta (las semanas con su precio y el total), que sale de la foto del envío que lo llevó (el menú de la
+//   semana 1, quote_snapshot.ts). Lo acepta (con el menú de esa semana) o lo rechaza desde la página.
+// - Nunca pagos (ni cómo ni cuándo se paga), dirección ni las alergias de la clienta: la foto no los tiene y
+//   nada de acá los lee. Del precio, solo el del servicio que propone el presupuesto.
 // Solo sintaxis borrable (corre en Node, Deno y Vite sin compilar) e imports con extensión .ts.
 import { readStoragePhoto, type MenuPhoto } from "./menu.ts";
 import { ALLERGENS, DIETS, LOCALES, isIsoDate, isOneOf, isUuid, type Allergen, type Diet, type Locale } from "./public_request.ts";
+import { readSnapshotQuote } from "./quote_snapshot.ts";
 
-/** Versión de la respuesta de POST …/view. Si cambia su forma, se sube: la página vieja dice que hubo un problema. */
+/**
+ * Versión de la respuesta de POST …/view. Si cambia su forma, se sube: la página vieja dice que hubo un problema.
+ * Sumar campos no la cambia: el presupuesto (quote) y el presupuesto de cada envío (menu.quoteId) llegaron así, y
+ * la página los toma como ausentes si una función de antes no los manda.
+ */
 export const CLIENT_LINK_VERSION = 1;
 /** Versión de la foto de un envío (snapshot.v) que se sabe leer. */
 export const MENU_SNAPSHOT_VERSION = 1;
@@ -20,7 +29,7 @@ export const MENU_SNAPSHOT_VERSION = 1;
 /** Nombre de la Edge Function (la URL es …/functions/v1/client-link/<ruta>). */
 export const CLIENT_LINK_FUNCTION = "client-link";
 /** Las rutas, todas POST con un JSON chico. */
-export const CLIENT_LINK_ROUTES = { view: "/view", confirm: "/confirm", changes: "/changes" } as const;
+export const CLIENT_LINK_ROUTES = { view: "/view", confirm: "/confirm", changes: "/changes", accept: "/accept", decline: "/decline" } as const;
 export type ClientLinkRoute = (typeof CLIENT_LINK_ROUTES)[keyof typeof CLIENT_LINK_ROUTES];
 
 /** El cuerpo más grande que acepta la función: el mensaje de cambios (1000 caracteres) con holgura para el JSON. */
@@ -321,6 +330,13 @@ export interface ClientLinkMenu {
   state: MenuState;
   confirmedAt: string | null;
   changesRequestedAt: string | null;
+  /**
+   * El presupuesto que viaja con este envío (el menú de la semana 1 de un presupuesto), o null. Mientras ese
+   * presupuesto está abierto, el menú no se confirma solo (quotePending): el envío que lo lleva (quote.sendId) se
+   * acepta con el presupuesto, y uno anterior del mismo presupuesto que quedó en otra semana se confirma después de
+   * aceptarlo. Aceptado, se contesta como cualquier menú.
+   */
+  quoteId: string | null;
   /** null: la foto no se puede leer. La página lo dice y no deja contestar lo que no muestra. */
   content: MenuContent | null;
 }
@@ -345,6 +361,54 @@ export interface ClientLinkWeek {
   menu: ClientLinkMenu | null;
 }
 
+/**
+ * Estado del presupuesto (client_link_view): sent, por aceptar; changed, Evelyn cambió el precio o una semana
+ * después de mandarlo y todavía no lo reenvió (no se acepta: espera la versión nueva); accepted, declined
+ * (lo rechazó la clienta), withdrawn (lo retiró Evelyn) o expired (pasó el plazo).
+ */
+export const QUOTE_STATUSES = ["sent", "changed", "accepted", "declined", "withdrawn", "expired"] as const;
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+
+/** Por qué un presupuesto ya no se contesta (el DETAIL de quote_closed). */
+export const QUOTE_CLOSED_REASONS = ["accepted", "declined", "withdrawn", "expired"] as const;
+export type QuoteClosedReason = (typeof QUOTE_CLOSED_REASONS)[number];
+
+/** Una semana de lo que vio la clienta: la fecha, la llegada (Roma) y el precio del servicio de esa semana. */
+export interface QuoteSummaryWeek {
+  date: string;
+  start: string;
+  serviceCents: number;
+}
+
+/** Lo que vio la clienta en el envío que lleva el presupuesto: las semanas y el total, en centavos. */
+export interface QuoteSummary {
+  totalCents: number;
+  weeks: QuoteSummaryWeek[];
+}
+
+/** El último presupuesto que salió de la reserva. */
+export interface ClientLinkQuote {
+  id: string;
+  /**
+   * La que ve la clienta: 1 el primer presupuesto que le llega del pedido (un borrador que nunca salió no cuenta);
+   * cada reenvío, y uno nuevo después de otro que le llegó, la siguiente. Solo se acepta la última.
+   */
+  version: number;
+  status: QuoteStatus;
+  /** El último envío (timestamptz). */
+  sentAt: string;
+  /** Hasta cuándo se puede aceptar (timestamptz); null si la base no lo tiene. */
+  holdUntil: string | null;
+  acceptedAt: string | null;
+  /** El último envío que lo llevó (el menú de la semana 1): con ese sendId se acepta o se rechaza. */
+  sendId: string | null;
+  /**
+   * Lo que vio la clienta (la foto de ese envío), solo por aceptar (sent) o aceptado (accepted) y si la semana de
+   * ese envío está en la reserva; si no, null (la página dice el estado sin precios).
+   */
+  summary: QuoteSummary | null;
+}
+
 /** 200 de POST …/view. */
 export interface ClientLinkView {
   version: typeof CLIENT_LINK_VERSION;
@@ -356,6 +420,11 @@ export interface ClientLinkView {
    * (safeFirstName); si no, null. Nunca el nombre completo.
    */
   clientFirstName: string | null;
+  /**
+   * El último presupuesto que salió de la reserva, o null: una reserva sin presupuesto, o una que Evelyn confirmó
+   * sin él después de que se cerrara sin aceptarse (no queda un «Ritirato» arriba de la reserva confirmada).
+   */
+  quote: ClientLinkQuote | null;
   weeks: ClientLinkWeek[];
 }
 
@@ -370,6 +439,20 @@ export interface RequestChangesResponse {
   changesRequestedAt: string;
 }
 
+/**
+ * 200 de POST …/accept: aceptó el presupuesto (y el menú de la semana 1, confirmado a la misma hora). already: ya
+ * lo había aceptado (no se avisó otra vez a Evelyn).
+ */
+export interface AcceptQuoteResponse {
+  acceptedAt: string;
+  already: boolean;
+}
+
+/** 200 de POST …/decline. already: ya lo había rechazado. */
+export interface DeclineQuoteResponse {
+  already: boolean;
+}
+
 /** Los códigos de error ({ error }) de la función. */
 export type ClientLinkErrorCode =
   | "linkNotFound"
@@ -378,6 +461,11 @@ export type ClientLinkErrorCode =
   | "changesRequested"
   | "alreadyConfirmed"
   | "sessionCancelled"
+  | "quotePending"
+  | "quoteClosed"
+  | "quoteChanged"
+  | "notAQuote"
+  | "quoteEmpty"
   | "invalidText"
   | "invalidPayload"
   | "rateLimited"
@@ -387,6 +475,12 @@ export type ClientLinkErrorCode =
   | "notFound"
   | "unavailable"
   | "server";
+
+/** El cuerpo de un error: el código y, en quoteClosed, por qué (si la base lo dice). */
+export interface ClientLinkErrorBody {
+  error: ClientLinkErrorCode;
+  reason?: QuoteClosedReason;
+}
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -404,15 +498,66 @@ function isTimestampOrNull(value: unknown): value is string | null {
   return value === null || isTimestamp(value);
 }
 
+/** Un uuid en minúsculas, null (ausente o null) o undefined (otra cosa): para los campos que pueden faltar. */
+function optionalUuid(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return null;
+  return typeof value === "string" && isUuid(value) ? value.toLowerCase() : undefined;
+}
+
 function readMenu(value: unknown, storageOrigin: string | null): ClientLinkMenu | null {
   if (!isRecord(value)) return null;
   const { sendId, sentAt, state, confirmedAt, changesRequestedAt } = value;
-  if (typeof sendId !== "string" || !isUuid(sendId) || !isTimestamp(sentAt)) return null;
+  // Una función de antes no manda quoteId: sin presupuesto.
+  const quoteId = optionalUuid(value["quoteId"]);
+  if (typeof sendId !== "string" || !isUuid(sendId) || !isTimestamp(sentAt) || quoteId === undefined) return null;
   if (!isTimestampOrNull(confirmedAt) || !isTimestampOrNull(changesRequestedAt)) return null;
   if (!isOneOf(MENU_STATES, state) || state !== menuState(confirmedAt, changesRequestedAt)) return null;
   // Un contenido que esta página no puede leer no apaga la reserva: esa semana dice que no se puede mostrar.
   const content = readMenuContent(value["content"], storageOrigin);
-  return { sendId: sendId.toLowerCase(), sentAt, state, confirmedAt, changesRequestedAt, content };
+  return { sendId: sendId.toLowerCase(), sentAt, state, confirmedAt, changesRequestedAt, quoteId, content };
+}
+
+function readSummaryWeek(value: unknown): QuoteSummaryWeek | null {
+  if (!isRecord(value)) return null;
+  const { date, start, serviceCents } = value;
+  if (typeof date !== "string" || !isIsoDate(date) || !isTimeOfDay(start) || !isIntInRange(serviceCents, 0, Number.MAX_SAFE_INTEGER)) return null;
+  return { date, start, serviceCents };
+}
+
+/** El resumen del presupuesto en la respuesta: null (ausente o null) o undefined si tiene otra forma. */
+function readSummary(value: unknown): QuoteSummary | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return undefined;
+  const totalCents = value["totalCents"];
+  const weeks = readAll(value["weeks"], readSummaryWeek);
+  if (!isIntInRange(totalCents, 0, Number.MAX_SAFE_INTEGER) || !weeks || weeks.length === 0) return undefined;
+  if (weeks.reduce((sum, week) => sum + week.serviceCents, 0) !== totalCents) return undefined;
+  return { totalCents, weeks };
+}
+
+/** El presupuesto de la respuesta: null si no hay (o una función de antes no lo manda), undefined si tiene otra forma. */
+function readQuote(value: unknown): ClientLinkQuote | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return undefined;
+  const { id, version, status, sentAt, holdUntil, acceptedAt } = value;
+  const sendId = optionalUuid(value["sendId"]);
+  const summary = readSummary(value["summary"]);
+  if (typeof id !== "string" || !isUuid(id) || !isIntInRange(version, 1, 32_767) || !isOneOf(QUOTE_STATUSES, status)) return undefined;
+  if (!isTimestamp(sentAt) || !isTimestampOrNull(holdUntil) || !isTimestampOrNull(acceptedAt) || sendId === undefined || summary === undefined) return undefined;
+  if ((status === "accepted") !== (acceptedAt !== null)) return undefined;
+  return { id: id.toLowerCase(), version, status, sentAt, holdUntil, acceptedAt, sendId, summary };
+}
+
+/**
+ * Lo que vio la clienta del presupuesto, sacado de la foto del envío que lo lleva (su bloque quote): las semanas
+ * con su fecha, su llegada y su precio, y el total. null si la foto no lo tiene o no cierra (quote_snapshot.ts).
+ * Lo usa la función client-link para el resumen de POST …/view.
+ */
+export function quoteSummaryFromSnapshot(snapshot: unknown): QuoteSummary | null {
+  if (!isRecord(snapshot)) return null;
+  const quote = readSnapshotQuote(snapshot["quote"]);
+  if (!quote) return null;
+  return { totalCents: quote.totalCents, weeks: quote.weeks.map((week) => ({ date: week.date, start: week.start, serviceCents: week.serviceCents })) };
 }
 
 function readWeek(value: unknown, storageOrigin: string | null): ClientLinkWeek | null {
@@ -437,6 +582,8 @@ export function parseClientLinkView(json: unknown, storageOrigin: string | null)
   if (!isOneOf(LOCALES, locale) || !isText(chefName)) return null;
   if (clientFirstName !== null && !isText(clientFirstName)) return null;
   const weeks = readAll(json["weeks"], (item) => readWeek(item, storageOrigin));
-  if (!weeks) return null;
-  return { version: CLIENT_LINK_VERSION, locale, chefName, clientFirstName, weeks };
+  // Una función de antes no manda quote: una reserva sin presupuesto.
+  const quote = readQuote(json["quote"]);
+  if (!weeks || quote === undefined) return null;
+  return { version: CLIENT_LINK_VERSION, locale, chefName, clientFirstName, quote, weeks };
 }

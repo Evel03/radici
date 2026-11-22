@@ -77,7 +77,7 @@ as $$
     'quote', (select private.quote_terms(s.quote_id)
               from public.sessions s
               join public.quotes q on q.id = s.quote_id
-              where s.id = p_session_id and s.status = 'held' and private.quote_open(q))
+              where s.id = p_session_id and s.status = 'held' and private.quote_live(q))
   )::text)
 $$;
 

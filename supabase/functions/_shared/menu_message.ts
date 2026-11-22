@@ -9,14 +9,22 @@
 // lo que va q.b. aparte («para tener en casa»); la nota de Evelyn, tal como la escribió; el link para
 // ver el menú entero y confirmarlo (o pedir cambios) y cómo responder.
 //
-// Nunca lleva la dirección, el contacto, las alergias de la clienta, precios ni nada de pagos: la
-// entrada no los tiene. Del nombre de la clienta, solo el de pila si parece un nombre (safeFirstName):
-// el email o el teléfono pueden venir del formulario, sin verificar.
+// Si la foto lleva el presupuesto (la semana 1 de un presupuesto abierto, quote_snapshot.ts), el mensaje lo
+// presenta primero, sin dejar dudas: cuántas semanas, cada fecha con su llegada, el precio del servicio de
+// todas (y el de cada semana si no son iguales), hasta cuándo puede aceptarlo (las horas del plazo o, si la
+// primera llegada es antes, «antes del <día y hora>») y que desde el link acepta el presupuesto y el menú, pide
+// cambios o lo rechaza. El link y el botón dicen «aceptar».
+//
+// Nunca lleva la dirección, el contacto, las alergias de la clienta ni nada de pagos (ni cómo ni cuándo se
+// paga): la entrada no los tiene. Del precio, solo el del servicio que acordó con Evelyn, y solo con el
+// presupuesto. Del nombre de la clienta, solo el de pila si parece un nombre (safeFirstName): el email o el
+// teléfono pueden venir del formulario, sin verificar.
 // HTML con el diseño compartido de emails.ts (render), con todo el texto escapado; sin imágenes remotas
 // (las fotos de los platos quedan para la página del link). El texto plano y el WhatsApp se arman acá.
 // Solo sintaxis borrable (corre en Node, Deno y Vite sin compilar) e imports con extensión .ts.
 import {
   escapeHtml,
+  formatCents,
   formatDateLong,
   formatDayMonth,
   render as renderEmailDocument,
@@ -34,6 +42,7 @@ import {
   type ShoppingSection,
 } from "./menu_snapshot.ts";
 import type { Allergen, Diet, Locale } from "./public_request.ts";
+import { quoteDeadline, sameWeeklyPrice, type SnapshotQuote } from "./quote_snapshot.ts";
 
 export interface MenuMessageInput {
   /** Nombre de la marca (brandFromMailFrom de MAIL_FROM). */
@@ -50,6 +59,11 @@ export interface MenuMessageInput {
    * su texto de reemplazo (bookLinkPlaceholder); con link y sin bookLink, el mensaje sale sin el libro.
    */
   bookLink?: string | null;
+  /**
+   * Ahora (al armar la vista previa o al mandar): con el presupuesto, decide el plazo que dice el mensaje (las
+   * horas, o la primera llegada si es antes), como chef_complete_menu_send al marcarlo enviado.
+   */
+  now: Date;
 }
 
 export interface RenderedMenuMessage {
@@ -112,6 +126,36 @@ interface MenuMessages {
   footer: (brand: string) => string;
   decimal: string;
   thousands: string;
+  /** Lo que cambia cuando el envío lleva el presupuesto. */
+  quote: QuoteMessages;
+}
+
+/** Los textos del presupuesto (la semana 1 de un presupuesto abierto). Nunca hablan de pagos. */
+interface QuoteMessages {
+  /** day: la fecha corta ("30 nov"); updated: un reenvío (versión 2 o más). */
+  subject: (brand: string, day: string, updated: boolean) => string;
+  preheader: (chef: string) => string;
+  intro: (chef: string, weeks: number) => string;
+  title: string;
+  lead: (weeks: number, updated: boolean) => string;
+  weekLabel: (week: number) => string;
+  /** La etiqueta de la única semana de un presupuesto de una. */
+  whenLabel: string;
+  /** day: la fecha larga. */
+  when: (day: string, start: string) => string;
+  priceLabel: string;
+  /** Todas las semanas al mismo precio: el total y el de cada semana. */
+  priceEqual: (total: string, weekly: string) => string;
+  /** Semanas a distinto precio (cada una lleva el suyo): el total. */
+  priceTotal: (total: string) => string;
+  deadlineHours: (hours: number) => string;
+  /** El plazo es la llegada de la primera semana (day: la fecha larga). */
+  deadlineUntil: (day: string, start: string) => string;
+  /** Mientras tanto, el horario queda retenido: esas fechas o, con una sola semana, esa fecha. */
+  held: (weeks: number) => string;
+  cta: (weeks: number) => string;
+  confirm: string;
+  button: string;
 }
 
 /**
@@ -191,6 +235,34 @@ const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
     footer: (brand) => `Ricevi questa email per la tua prenotazione con ${brand}.`,
     decimal: ",",
     thousands: ".",
+    quote: {
+      subject: (brand, day, updated) =>
+        `${brand}: ${updated ? "il preventivo aggiornato" : "il tuo preventivo"} e il menù ${italianDateWithArticle("del", day)}`,
+      preheader: (chef) => `${chef} ti ha mandato il preventivo: guardalo e accettalo dal tuo link.`,
+      intro: (chef, weeks) =>
+        weeks > 1
+          ? `${chef} ha preparato il preventivo per le tue ${weeks} settimane e il menù della prima.`
+          : `${chef} ha preparato il preventivo e il tuo menù.`,
+      title: "Il preventivo",
+      lead: (weeks, updated) =>
+        `${updated ? "Ecco il preventivo aggiornato" : "Ecco il preventivo"}${weeks > 1 ? ` per le tue ${weeks} settimane` : ""}:`,
+      weekLabel: (week) => `Settimana ${week}`,
+      whenLabel: "Quando",
+      when: (day, start) => `${day}, arrivo alle ${start}`,
+      priceLabel: "Prezzo del servizio",
+      priceEqual: (total, weekly) => `${total} in totale (${weekly} a settimana)`,
+      priceTotal: (total) => `${total} in totale`,
+      deadlineHours: (hours) => (hours === 1 ? "Accettalo entro 1 ora." : `Accettalo entro ${hours} ore.`),
+      deadlineUntil: (day, start) => `Accettalo prima di ${day}, alle ${start}.`,
+      held: (weeks) => (weeks > 1 ? "Fino ad allora, queste date restano riservate per te." : "Fino ad allora, questa data resta riservata per te."),
+      cta: (weeks) =>
+        weeks > 1
+          ? "Dal tuo link puoi accettare il preventivo e il menù della prima settimana, chiedere dei cambi o rifiutarlo."
+          : "Dal tuo link puoi accettare il preventivo e il menù, chiedere dei cambi o rifiutarlo.",
+      confirm:
+        "Apri il tuo link per vedere il preventivo e il menù completo, con le foto dei piatti, e accettarli. Se vuoi cambiare qualcosa, puoi chiederlo da lì; puoi anche rifiutare il preventivo.",
+      button: "Vedi e accetta il preventivo",
+    },
   },
   es: {
     greeting: (first) => (first ? `¡Hola, ${first}!` : "¡Hola!"),
@@ -255,6 +327,33 @@ const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
     footer: (brand) => `Recibes este email por tu reserva con ${brand}.`,
     decimal: ",",
     thousands: ".",
+    quote: {
+      subject: (brand, day, updated) => `${brand}: tu presupuesto${updated ? " actualizado" : ""} y el menú del ${day}`,
+      preheader: (chef) => `${chef} te mandó el presupuesto: míralo y acéptalo desde tu enlace.`,
+      intro: (chef, weeks) =>
+        weeks > 1
+          ? `${chef} ha preparado el presupuesto para tus ${weeks} semanas y el menú de la primera.`
+          : `${chef} ha preparado el presupuesto y tu menú.`,
+      title: "El presupuesto",
+      lead: (weeks, updated) =>
+        `${updated ? "Este es el presupuesto actualizado" : "Este es el presupuesto"}${weeks > 1 ? ` para tus ${weeks} semanas` : ""}:`,
+      weekLabel: (week) => `Semana ${week}`,
+      whenLabel: "Cuándo",
+      when: (day, start) => `${day}, llegada a las ${start}`,
+      priceLabel: "Precio del servicio",
+      priceEqual: (total, weekly) => `${total} en total (${weekly} por semana)`,
+      priceTotal: (total) => `${total} en total`,
+      deadlineHours: (hours) => (hours === 1 ? "Acéptalo dentro de 1 hora." : `Acéptalo dentro de las próximas ${hours} horas.`),
+      deadlineUntil: (day, start) => `Acéptalo antes del ${day}, a las ${start}.`,
+      held: (weeks) => (weeks > 1 ? "Hasta entonces, estas fechas quedan reservadas para ti." : "Hasta entonces, esta fecha queda reservada para ti."),
+      cta: (weeks) =>
+        weeks > 1
+          ? "Desde tu enlace puedes aceptar el presupuesto y el menú de la primera semana, pedir cambios o rechazarlo."
+          : "Desde tu enlace puedes aceptar el presupuesto y el menú, pedir cambios o rechazarlo.",
+      confirm:
+        "Abre tu enlace para ver el presupuesto y el menú completo, con las fotos de los platos, y aceptarlos. Si quieres cambiar algo, puedes pedirlo desde ahí; también puedes rechazar el presupuesto.",
+      button: "Ver y aceptar el presupuesto",
+    },
   },
   en: {
     greeting: (first) => (first ? `Hi ${first}!` : "Hi!"),
@@ -319,6 +418,32 @@ const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
     footer: (brand) => `You're receiving this email about your booking with ${brand}.`,
     decimal: ".",
     thousands: ",",
+    quote: {
+      subject: (brand, day, updated) => `${brand}: your ${updated ? "updated " : ""}quote and menu for ${day}`,
+      preheader: (chef) => `${chef} has sent you the quote: take a look and accept it from your link.`,
+      intro: (chef, weeks) =>
+        weeks > 1
+          ? `${chef} has prepared the quote for your ${weeks} weeks and the menu for the first one.`
+          : `${chef} has prepared your quote and your menu.`,
+      title: "The quote",
+      lead: (weeks, updated) => `${updated ? "Here is the updated quote" : "Here is the quote"}${weeks > 1 ? ` for your ${weeks} weeks` : ""}:`,
+      weekLabel: (week) => `Week ${week}`,
+      whenLabel: "When",
+      when: (day, start) => `${day}, arriving at ${start}`,
+      priceLabel: "Service price",
+      priceEqual: (total, weekly) => `${total} in total (${weekly} per week)`,
+      priceTotal: (total) => `${total} in total`,
+      deadlineHours: (hours) => (hours === 1 ? "Please accept it within 1 hour." : `Please accept it within ${hours} hours.`),
+      deadlineUntil: (day, start) => `Please accept it before ${day} at ${start}.`,
+      held: (weeks) => (weeks > 1 ? "Until then, these dates are held for you." : "Until then, this date is held for you."),
+      cta: (weeks) =>
+        weeks > 1
+          ? "From your link you can accept the quote and the first week's menu, ask for changes or decline it."
+          : "From your link you can accept the quote and the menu, ask for changes or decline it.",
+      confirm:
+        "Open your link to see the quote and the full menu, with photos of the dishes, and accept them. If you'd like to change anything, you can ask from there; you can also decline the quote.",
+      button: "See and accept the quote",
+    },
   },
 };
 
@@ -433,6 +558,57 @@ function noteLines(note: string | null): string[] {
   return note === null ? [] : note.split("\n").map((line) => line.trim()).filter((line) => line !== "");
 }
 
+/** Un importe en el HTML, sin cortarse entre el número y el €. */
+function moneyHtml(text: string): string {
+  return escapeHtml(text).replace(/ €/g, "&nbsp;€");
+}
+
+/** La sección del presupuesto, ya en el idioma de la clienta. */
+interface QuoteText {
+  title: string;
+  lead: string;
+  /** Cada semana (fecha y llegada, y su precio si no son todos iguales) y el precio del servicio. */
+  rows: Row[];
+  /** Hasta cuándo puede aceptarlo y que mientras tanto el horario queda retenido. */
+  deadline: string;
+  cta: string;
+}
+
+/**
+ * El presupuesto como se lee: cuántas semanas, cada fecha con su llegada, el precio del servicio de todas (y el de
+ * cada semana si no son iguales) y el plazo para aceptarlo, que nunca pasa la primera llegada (quoteDeadline).
+ */
+function quoteText(quote: SnapshotQuote, locale: Locale, now: Date): QuoteText {
+  const texts = MESSAGES[locale].quote;
+  const money = (cents: number): string => formatCents(cents, locale);
+  const count = quote.weeks.length;
+  const equal = sameWeeklyPrice(quote);
+  const rows: Row[] = quote.weeks.map((week, index) => {
+    const when = texts.when(formatDateLong(week.date, locale), week.start);
+    const price = equal ? "" : ` · ${money(week.serviceCents)}`;
+    return {
+      label: count > 1 ? texts.weekLabel(index + 1) : texts.whenLabel,
+      value: `${when}${price}`,
+      valueHtml: `${escapeHtml(when)}${equal ? "" : ` · ${moneyHtml(money(week.serviceCents))}`}`,
+    };
+  });
+  const total = money(quote.totalCents);
+  const first = quote.weeks[0];
+  const price =
+    count === 1 ? total : equal && first ? texts.priceEqual(total, money(first.serviceCents)) : texts.priceTotal(total);
+  rows.push({ label: texts.priceLabel, value: price, valueHtml: `<strong>${moneyHtml(price)}</strong>` });
+  const deadline = quoteDeadline(quote, now);
+  const until =
+    deadline.kind === "hours" ? texts.deadlineHours(deadline.hours) : texts.deadlineUntil(formatDateLong(deadline.date, locale), deadline.start);
+  return {
+    title: texts.title,
+    lead: texts.lead(count, quote.version > 1),
+    rows,
+    deadline: `${until} ${texts.held(count)}`,
+    cta: texts.cta(count),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // El mensaje
 // ---------------------------------------------------------------------------
@@ -443,11 +619,16 @@ interface MessageParts {
   chef: string;
   greeting: string;
   intro: string;
+  /** null sin presupuesto. */
+  quote: QuoteText | null;
   when: Row[];
   dates: string[] | null;
   dishes: DishText[];
   shopping: ShoppingGroup[];
   note: string[];
+  /** El párrafo y el botón del final: confirmar el menú o, con el presupuesto, aceptarlo. */
+  confirm: string;
+  button: string;
   link: string | null;
   /** El libro del menú: null, no va; con link null, la vista previa (su texto de reemplazo). */
   book: { link: string | null } | null;
@@ -460,7 +641,9 @@ function messageParts(input: MenuMessageInput): MessageParts {
   const { session } = snapshot;
   const chef = input.chefName;
   const dayLong = formatDateLong(session.date, locale);
-  const dates = reservationDates(snapshot, locale);
+  const quote = snapshot.quote ? quoteText(snapshot.quote, locale, input.now) : null;
+  // Con el presupuesto, las fechas de cada semana ya van en él (con su llegada).
+  const dates = quote ? null : reservationDates(snapshot, locale);
   const when: Row[] = [];
   if (session.weeks > 1) when.push({ label: messages.weekLabel, value: messages.weekValue(session.week, session.weeks) });
   when.push({ label: messages.dayLabel, value: dayLong }, { label: messages.arrivalLabel, value: session.start });
@@ -477,12 +660,17 @@ function messageParts(input: MenuMessageInput): MessageParts {
     messages,
     chef,
     greeting: messages.greeting(safeFirstName(input.clientName ?? "")),
-    intro: messages.intro(chef, dayLong, session.start, session.week, session.weeks),
+    intro: snapshot.quote
+      ? messages.quote.intro(chef, snapshot.quote.weeks.length)
+      : messages.intro(chef, dayLong, session.start, session.week, session.weeks),
+    quote,
     when,
     dates,
     dishes: snapshot.dishes.map((dish) => dishText(dish, messages)),
     shopping: shoppingGroups(snapshot.items, locale),
     note: noteLines(snapshot.note),
+    confirm: quote ? messages.quote.confirm : messages.confirm,
+    button: quote ? messages.quote.button : messages.button,
     link: input.link,
     book: input.link === null ? { link: null } : input.bookLink ? { link: input.bookLink } : null,
   };
@@ -494,9 +682,18 @@ function htmlLines(lines: readonly string[]): string {
 
 /** El HTML, con el diseño compartido de los emails (emails.ts). Todo el texto va escapado. */
 function emailHtml(input: MenuMessageInput, parts: MessageParts, subject: string, preheader: string): string {
-  const { messages } = parts;
-  const blocks: Block[] = [
-    { kind: "paragraph", text: parts.intro },
+  const { messages, quote } = parts;
+  const blocks: Block[] = [{ kind: "paragraph", text: parts.intro }];
+  if (quote) {
+    blocks.push(
+      { kind: "title", text: quote.title },
+      { kind: "paragraph", text: quote.lead },
+      { kind: "rows", rows: quote.rows },
+      { kind: "paragraph", text: quote.deadline },
+      { kind: "paragraph", text: quote.cta },
+    );
+  }
+  blocks.push(
     { kind: "title", text: messages.whenTitle },
     { kind: "rows", rows: parts.when },
     { kind: "title", text: messages.menuTitle },
@@ -507,7 +704,7 @@ function emailHtml(input: MenuMessageInput, parts: MessageParts, subject: string
         return { label: dish.name, value: lines.join(" · "), valueHtml: htmlLines(lines) };
       }),
     },
-  ];
+  );
   if (parts.shopping.length > 0) {
     blocks.push(
       { kind: "title", text: messages.shoppingTitle },
@@ -536,10 +733,10 @@ function emailHtml(input: MenuMessageInput, parts: MessageParts, subject: string
     );
   }
   blocks.push(
-    { kind: "paragraph", text: messages.confirm },
+    { kind: "paragraph", text: parts.confirm },
     parts.link
-      ? { kind: "button", label: messages.button, href: parts.link }
-      : { kind: "paragraph", text: `${messages.button}: ${messages.linkPlaceholder}` },
+      ? { kind: "button", label: parts.button, href: parts.link }
+      : { kind: "paragraph", text: `${parts.button}: ${messages.linkPlaceholder}` },
     { kind: "paragraph", text: messages.replyEmail },
   );
   const doc: EmailDocument = {
@@ -557,8 +754,14 @@ function emailHtml(input: MenuMessageInput, parts: MessageParts, subject: string
 
 /** El texto plano del email: lo mismo que el HTML, con los platos y la lista en renglones. */
 function emailText(input: MenuMessageInput, parts: MessageParts): string {
-  const { messages } = parts;
-  const out: string[] = [parts.greeting, "", parts.intro, "", messages.whenTitle.toUpperCase()];
+  const { messages, quote } = parts;
+  const out: string[] = [parts.greeting, "", parts.intro];
+  if (quote) {
+    out.push("", quote.title.toUpperCase(), quote.lead);
+    for (const row of quote.rows) out.push(`${row.label}: ${row.value}`);
+    out.push(quote.deadline, quote.cta);
+  }
+  out.push("", messages.whenTitle.toUpperCase());
   for (const row of parts.when) out.push(`${row.label}: ${row.value}`);
   out.push("", messages.menuTitle.toUpperCase());
   parts.dishes.forEach((dish, index) => {
@@ -578,8 +781,8 @@ function emailText(input: MenuMessageInput, parts: MessageParts): string {
   if (parts.book) out.push("", `${messages.bookLink}: ${parts.book.link ?? messages.bookPlaceholder}`, messages.bookInvite);
   out.push(
     "",
-    messages.confirm,
-    `${messages.button}: ${parts.link ?? messages.linkPlaceholder}`,
+    parts.confirm,
+    `${parts.button}: ${parts.link ?? messages.linkPlaceholder}`,
     "",
     messages.replyEmail,
     "",
@@ -592,8 +795,15 @@ function emailText(input: MenuMessageInput, parts: MessageParts): string {
 
 /** El WhatsApp: compacto, con *negrita* y _cursiva_; un plato en dos renglones. */
 function whatsappText(parts: MessageParts): string {
-  const { messages } = parts;
+  const { messages, quote } = parts;
   const out: string[] = [parts.greeting, parts.intro];
+  if (quote) {
+    out.push("", `*${quote.title}*`, quote.lead);
+    const price = quote.rows[quote.rows.length - 1];
+    for (const row of quote.rows.slice(0, -1)) out.push(`• ${row.label}: ${row.value}`);
+    if (price) out.push(`*${price.label}:* ${price.value}`);
+    out.push(quote.deadline, quote.cta);
+  }
   if (parts.dates) out.push("", `*${messages.allDatesLabel}:* ${parts.dates.join(" · ")}`);
   out.push("", `*${messages.menuTitle}*`);
   for (const dish of parts.dishes) {
@@ -608,19 +818,24 @@ function whatsappText(parts: MessageParts): string {
   }
   if (parts.note.length > 0) out.push("", `*${messages.noteTitle(parts.chef)}*`, ...parts.note);
   if (parts.book) out.push("", `*${messages.bookLink}* · _${messages.bookInvite}_`, parts.book.link ?? messages.bookPlaceholder);
-  out.push("", messages.confirm, parts.link ?? messages.linkPlaceholder, "", messages.replyWhatsapp);
+  out.push("", parts.confirm, parts.link ?? messages.linkPlaceholder, "", messages.replyWhatsapp);
   return out.join("\n");
 }
 
-/** El email (asunto, HTML y texto) y el WhatsApp del menú de una semana, en el idioma de la foto. */
+/**
+ * El email (asunto, HTML y texto) y el WhatsApp del menú de una semana, en el idioma de la foto. Con el presupuesto,
+ * el asunto y el preheader lo dicen.
+ */
 export function renderMenuMessage(input: MenuMessageInput): RenderedMenuMessage {
   const { snapshot } = input;
   const locale = snapshot.locale;
   const messages = MESSAGES[locale];
-  const { session } = snapshot;
+  const { session, quote } = snapshot;
   const dayShort = formatDayMonth(session.date, locale, Number(session.date.slice(0, 4)));
-  const subject = messages.subject(input.brand, dayShort, session.week, session.weeks);
-  const preheader = messages.preheader(input.chefName, dayShort, session.start);
+  const subject = quote
+    ? messages.quote.subject(input.brand, dayShort, quote.version > 1)
+    : messages.subject(input.brand, dayShort, session.week, session.weeks);
+  const preheader = quote ? messages.quote.preheader(input.chefName) : messages.preheader(input.chefName, dayShort, session.start);
   const parts = messageParts(input);
   return {
     subject,

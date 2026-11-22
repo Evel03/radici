@@ -128,3 +128,20 @@ DateTime romeStartOfDay(CalendarDate date) {
   final utcMidnight = DateTime.utc(date.year, date.month, date.day);
   return utcMidnight.subtract(romeUtcOffset(utcMidnight));
 }
+
+/// Instante (UTC) en que un reloj de Roma marca [minutes] minutos desde la
+/// medianoche de [date] (la llegada de una sesión, por ejemplo). El desfase
+/// es el de ese momento: en un día de cambio de hora, el de antes o el de
+/// después según la hora (la hora que se salta o se repite, de 2:00 a 3:00,
+/// no la usa ninguna sesión).
+DateTime romeInstant(CalendarDate date, int minutes) {
+  final wall = DateTime.utc(
+    date.year,
+    date.month,
+    date.day,
+  ).add(Duration(minutes: minutes));
+  // Primero con el desfase de la hora de pared leída como UTC; después, con
+  // el del instante que da ese primer cálculo.
+  final guess = wall.subtract(romeUtcOffset(wall));
+  return wall.subtract(romeUtcOffset(guess));
+}

@@ -1,15 +1,17 @@
 // Página de la clienta (/prenotazione/, SPEC 5.8): su reserva con el menú que Evelyn mandó de cada semana, para
-// confirmarlo o pedir cambios (docs/contracts/client-link.md). Toda la lógica vive en src/reservation/ (pura y
-// testeada): acá se lee el token del fragmento, se pinta lo que dice el estado y se pasan los clics.
+// confirmarlo o pedir cambios, y el presupuesto, para aceptarlo o rechazarlo (docs/contracts/client-link.md). Toda
+// la lógica vive en src/reservation/ (pura y testeada): acá se lee el token del fragmento, se pinta lo que dice el
+// estado y se pasan los clics.
 // El idioma: el que eligió la visitante (?lang= o el guardado) o, si nunca eligió, el de su reserva.
 // Nunca se registran en la consola el token, la reserva ni el mensaje de la clienta.
 import "../styles/base.css";
 import "../styles/reservation.css";
 import "../styles/book.css";
+import type { ClientLinkWeek } from "../../../supabase/functions/_shared/client_link.ts";
 import { mount } from "../lib/vdom.ts";
-import { createBookHistory, createFocusReveal, type RevealTarget } from "../reservation/book/state.ts";
+import { NO_QUOTE, createBookHistory, createFocusReveal, type BookQuote, type RevealTarget } from "../reservation/book/state.ts";
 import { attachBookView, type BookView } from "../reservation/book/view.ts";
-import { createReservation, type ActionResult, type Focus, type Message } from "../reservation/controller.ts";
+import { createReservation, menuQuoteMode, quoteView, type ActionResult, type Focus, type Message } from "../reservation/controller.ts";
 import { changesCountText, focusId, messageText, reservationTree, weekDomId } from "../reservation/render.ts";
 import { hashChangeAction, readToken, tokenFragment } from "../reservation/token.ts";
 import { config } from "../site-config.ts";
@@ -85,6 +87,7 @@ function start(shell: Shell): void {
       state: reservation.state,
       ui: reservation.ui,
       i18n: shell.i18n,
+      quoteUi: reservation.quoteUi,
       retrying: reservation.retrying,
       pageNotice: reservation.pageNotice,
       failedPhotos,
@@ -137,6 +140,19 @@ function start(shell: Shell): void {
       case "open-book":
         book?.open(session, target.id || null);
         break;
+      // El presupuesto: aceptarlo, o rechazarlo después de confirmar.
+      case "accept-quote":
+        void reservation.acceptQuote().then(finish);
+        break;
+      case "decline-quote":
+        finish(reservation.openDecline());
+        break;
+      case "decline-quote-cancel":
+        finish(reservation.closeDecline());
+        break;
+      case "decline-quote-confirm":
+        void reservation.declineQuote().then(finish);
+        break;
     }
   });
 
@@ -179,6 +195,19 @@ function start(shell: Shell): void {
 
   paint();
 
+  /**
+   * Cómo va el menú de una semana con el presupuesto, para la última página del libro (la misma cuenta que la semana
+   * en la página: menuQuoteMode). Abierto, lleva a «Accetto il preventivo» si se puede aceptar, o a su estado.
+   */
+  const bookQuote = (week: ClientLinkWeek): BookQuote => {
+    const state = reservation.state;
+    if (state.kind !== "ready" || !week.menu) return NO_QUOTE;
+    const mode = menuQuoteMode(state.view, week.menu);
+    if (mode === "none") return NO_QUOTE;
+    if (mode !== "open") return { mode, target: null };
+    return { mode, target: focusId({ kind: quoteView(state.view)?.canAccept ? "quoteAccept" : "quoteStatus" }) };
+  };
+
   // El libro del menú: «Sfoglia il menù» en cada semana o libro=<sesión> en el fragmento (el link del mensaje).
   book = attachBookView({
     token,
@@ -189,6 +218,7 @@ function start(shell: Shell): void {
     onLanguageChange: (listener) => shell.onLanguageChange(() => listener()),
     history: bookHistory,
     reveal: focusReveal,
+    quote: bookQuote,
   });
 }
 

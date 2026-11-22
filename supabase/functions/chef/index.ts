@@ -1,7 +1,8 @@
 // Edge Function chef: el área de Evelyn (docs/contracts/chef-api.md). Reservas de 1 a 8 semanas,
 // mover y cancelar sesiones, con las funciones SQL chef_* (solo service_role), la traducción de los
-// platos con Claude (POST /translate) y el envío del menú de una semana a la clienta (POST
-// /menus/preview y /menus/send: el email sale con Resend).
+// platos con Claude (POST /translate), el envío del menú de una semana a la clienta (POST
+// /menus/preview y /menus/send: el email sale con Resend) y el presupuesto (POST /quotes,
+// /quotes/price y /quotes/withdraw).
 // Este archivo solo conecta lo real (Deno, supabase-js con la clave secreta, el traductor y Resend);
 // la lógica y sus tests están en handler.ts, translation.ts, menu_translation.ts y menu_send.ts.
 //
@@ -54,6 +55,9 @@ function createStore(): ChefStore {
       prepareMenuSend: () => fail("prepare_menu_send"),
       linkMenuSend: () => fail("link_menu_send"),
       completeMenuSend: () => fail("complete_menu_send"),
+      createQuote: () => fail("create_quote"),
+      updateQuote: () => fail("update_quote"),
+      withdrawQuote: () => fail("withdraw_quote"),
     };
   }
 
@@ -135,6 +139,25 @@ function createStore(): ChefStore {
     async completeMenuSend(params) {
       const { data, error } = await supabase.rpc("chef_complete_menu_send", params);
       if (error) throw storeErrorFrom("complete_menu_send", error);
+      return data;
+    },
+
+    // El presupuesto (migración 20261121120000_quotes.sql): tal cual al handler, que lo interpreta (quotes.ts).
+    async createQuote(params) {
+      const { data, error } = await supabase.rpc("chef_create_quote", params);
+      if (error) throw storeErrorFrom("create_quote", error);
+      return data;
+    },
+
+    async updateQuote(params) {
+      const { data, error } = await supabase.rpc("chef_update_quote", params);
+      if (error) throw storeErrorFrom("update_quote", error);
+      return data;
+    },
+
+    async withdrawQuote(params) {
+      const { data, error } = await supabase.rpc("chef_withdraw_quote", params);
+      if (error) throw storeErrorFrom("withdraw_quote", error);
       return data;
     },
   };

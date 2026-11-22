@@ -1493,6 +1493,24 @@
   "@sessionDirections": {
     "description": "Botón de la ficha de la sesión: abre la dirección de la clienta en Mapas, con el camino."
   },
+  "sessionDirectionsZone": "Come arrivare (zona)",
+  "@sessionDirectionsZone": {
+    "description": "Botón de la ficha de la sesión y de Hoy cuando la ficha de la clienta no tiene dirección pero hay zona (la del pedido o la de la ficha): abre Mapas con el camino hasta la zona, con «, Bergamo» si no lo nombra. «(zona)» dice que no lleva a una dirección verificada: la zona la escribió la clienta en el formulario web y puede ser solo un barrio."
+  },
+  "sessionDirectionsTo": "Come arrivare a {address}",
+  "@sessionDirectionsTo": {
+    "description": "Para el lector de pantalla: la dirección de la ficha de la sesión es un enlace que abre Mapas con el camino hasta ella, como «Come arrivare».",
+    "placeholders": {
+      "address": { "type": "String", "example": "Via Gombito 12, 24129 Bergamo" }
+    }
+  },
+  "sessionDirectionsToZone": "Come arrivare a {zone} (zona)",
+  "@sessionDirectionsToZone": {
+    "description": "Para el lector de pantalla: sin dirección en la ficha, la zona de la ficha de la sesión es un enlace que abre Mapas con el camino hasta la zona, como «Come arrivare (zona)». No es una dirección verificada.",
+    "placeholders": {
+      "zone": { "type": "String", "example": "Città Alta" }
+    }
+  },
   "sessionNoAddress": "Nessun indirizzo nella scheda: chiedilo alla cliente e aggiungilo.",
   "@sessionNoAddress": {
     "description": "La ficha de la clienta no tiene dirección (el formulario web no la pide): en lugar de «Come arrivare» va el botón para agregarla."
@@ -1947,6 +1965,13 @@
   "agendaDayCount": "{count, plural, =0{nessuna richiesta} =1{1 richiesta} other{{count} richieste}}",
   "@agendaDayCount": {
     "description": "Texto accesible de un día del calendario.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "agendaSummaryMore": "{count, plural, =1{e un'altra} other{e altre {count}}}",
+  "@agendaSummaryMore": {
+    "description": "Cartel con el resumen de un día del mes de la agenda (al pasar el mouse por la celda o al mantenerla apretada): cuántas sesiones o pedidos más tiene el día, además de los que muestra (como mucho 4). En femenino: sessioni e richieste.",
     "placeholders": {
       "count": { "type": "int", "example": "2" }
     }
@@ -2619,7 +2644,7 @@
   },
   "recipeDiscardTitle": "Scartare le modifiche?",
   "@recipeDiscardTitle": {
-    "description": "Confirmación al salir del editor con cambios sin guardar."
+    "description": "Confirmación al salir del editor de un plato o del menú de una semana con cambios sin guardar."
   },
   "recipeDiscardBody": "Quello che hai scritto non è stato salvato.",
   "@recipeDiscardBody": {
@@ -2855,5 +2880,805 @@
   "routeGoHome": "Torna all'inizio",
   "@routeGoHome": {
     "description": "Botón de la página no encontrada."
+  },
+
+  "weekMenuTitle": "Menù della settimana",
+  "@weekMenuTitle": {
+    "description": "Título del editor del menú de una semana y del bloque de la ficha de la sesión."
+  },
+  "weekMenuNone": "Non ha ancora un menù.",
+  "@weekMenuNone": {
+    "description": "Ficha de la sesión y semanas de la reserva: la semana todavía no tiene menú guardado."
+  },
+  "weekMenuDishCount": "{count, plural, =0{Nessun piatto} =1{1 piatto} other{{count} piatti}}",
+  "@weekMenuDishCount": {
+    "description": "Cuántos platos tiene el menú guardado de una semana (va antes de weekMenuItemCount).",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" }
+    }
+  },
+  "weekMenuItemCount": "{count, plural, =0{lista della spesa vuota} =1{1 voce nella lista della spesa} other{{count} voci nella lista della spesa}}",
+  "@weekMenuItemCount": {
+    "description": "Cuántos renglones tiene la lista de compras guardada de una semana (va después de weekMenuDishCount, tras « · »).",
+    "placeholders": {
+      "count": { "type": "int", "example": "23" }
+    }
+  },
+  "weekMenuLoadFailed": "Non è stato possibile caricare il menù. Controlla la connessione e riprova.",
+  "@weekMenuLoadFailed": {
+    "description": "El menú de una semana no se pudo leer (editor, ficha o semanas de la reserva)."
+  },
+  "weekMenuBuild": "Prepara il menù",
+  "@weekMenuBuild": {
+    "description": "Botón de la ficha de la sesión y de las semanas de la reserva: abre el editor de una semana sin menú."
+  },
+  "weekMenuEdit": "Modifica il menù",
+  "@weekMenuEdit": {
+    "description": "Botón de la ficha de la sesión: abre el editor de una semana que ya tiene menú."
+  },
+  "bookingMenusTitle": "Menù delle settimane",
+  "@bookingMenusTitle": {
+    "description": "Detalle de una reserva (pedido aceptado): título de la lista de sus semanas con el estado del menú de cada una."
+  },
+  "bookingDoneBuildMenu": "{weeks, plural, =1{Prepara il menù} other{Prepara il menù della settimana 1}}",
+  "@bookingDoneBuildMenu": {
+    "description": "Pantalla de reserva confirmada: abre el editor del menú de la primera semana.",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
+  },
+  "weekMenuDishesSection": "Piatti",
+  "@weekMenuDishesSection": {
+    "description": "Editor del menú: título de la sección de los platos."
+  },
+  "weekMenuFromWishes": "Sono i piatti che la cliente ha scelto sul sito. Controllali e salva il menù.",
+  "@weekMenuFromWishes": {
+    "description": "Editor del menú de la semana 1 sin guardar: los platos vienen de los que eligió la clienta en la web."
+  },
+  "weekMenuNoDishes": "Ancora nessun piatto.",
+  "@weekMenuNoDishes": {
+    "description": "Editor del menú sin platos."
+  },
+  "weekMenuAddDish": "Aggiungi piatti",
+  "@weekMenuAddDish": {
+    "description": "Editor del menú: abre la lista de platos del catálogo para elegir."
+  },
+  "weekMenuMaxDishes": "Al massimo {max} piatti a settimana.",
+  "@weekMenuMaxDishes": {
+    "description": "Editor y selector de platos: se llegó al tope de platos de una semana.",
+    "placeholders": {
+      "max": { "type": "int", "example": "30" }
+    }
+  },
+  "weekMenuPortions": "{count, plural, =1{1 porzione} other{{count} porzioni}}",
+  "@weekMenuPortions": {
+    "description": "Porciones de un plato en la semana, al lado de sus botones − y +.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" }
+    }
+  },
+  "weekMenuPortionsLess": "Meno porzioni di {name}",
+  "@weekMenuPortionsLess": {
+    "description": "Lector de pantalla: botón − de las porciones de un plato.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuPortionsMore": "Più porzioni di {name}",
+  "@weekMenuPortionsMore": {
+    "description": "Lector de pantalla: botón + de las porciones de un plato.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishUp": "Sposta su {name}",
+  "@weekMenuDishUp": {
+    "description": "Lector de pantalla: sube un plato en el menú.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishDown": "Sposta giù {name}",
+  "@weekMenuDishDown": {
+    "description": "Lector de pantalla: baja un plato en el menú.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishRemove": "Togli {name}",
+  "@weekMenuDishRemove": {
+    "description": "Lector de pantalla: quita un plato del menú.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishRemoved": "Piatto tolto dal menù.",
+  "@weekMenuDishRemoved": {
+    "description": "Aviso después de quitar un plato del menú (con «Annulla»)."
+  },
+  "weekMenuConflictAllergens": "Contiene: {allergens}",
+  "@weekMenuConflictAllergens": {
+    "description": "Un plato lleva alérgenos que la reserva evita (marcado en rojo en el menú y en el selector).",
+    "placeholders": {
+      "allergens": { "type": "String", "example": "Glutine · Latte e derivati" }
+    }
+  },
+  "weekMenuNotVegetarian": "Non è segnato come vegetariano",
+  "@weekMenuNotVegetarian": {
+    "description": "Un plato sin la dieta vegetariana (ni vegana) en una reserva vegetariana."
+  },
+  "weekMenuNotVegan": "Non è segnato come vegano",
+  "@weekMenuNotVegan": {
+    "description": "Un plato sin la dieta vegana en una reserva vegana."
+  },
+  "weekMenuPickerTitle": "Aggiungi piatti",
+  "@weekMenuPickerTitle": {
+    "description": "Título del selector de platos del catálogo para el menú."
+  },
+  "weekMenuPickerEmpty": "Non restano piatti attivi da aggiungere.",
+  "@weekMenuPickerEmpty": {
+    "description": "Selector de platos: todos los activos ya están en el menú (o no hay ninguno)."
+  },
+  "weekMenuPickerConflicts": "Quelli segnati in rosso sono in conflitto con le allergie o la dieta della prenotazione.",
+  "@weekMenuPickerConflicts": {
+    "description": "Selector de platos: explica la marca roja de los platos que chocan con las restricciones."
+  },
+  "weekMenuPickerAdd": "{count, plural, =0{Scegli i piatti} =1{Aggiungi 1 piatto} other{Aggiungi {count} piatti}}",
+  "@weekMenuPickerAdd": {
+    "description": "Botón del selector: agrega al menú los platos marcados (deshabilitado sin ninguno).",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "weekMenuDishCreated": "«{name}» salvato e aggiunto al menù.",
+  "@weekMenuDishCreated": {
+    "description": "Aviso en el editor del menú después de crear un plato nuevo desde ahí.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuListSection": "Lista della spesa",
+  "@weekMenuListSection": {
+    "description": "Editor del menú: título de la lista de compras para la cliente."
+  },
+  "weekMenuListAuto": "Si compone da sola con gli ingredienti dei piatti, per le loro porzioni. Se la modifichi, smette di seguire i piatti.",
+  "@weekMenuListAuto": {
+    "description": "Editor del menú: la lista sigue sola a los platos."
+  },
+  "weekMenuListManual": "L'hai modificata a mano: non segue più i piatti.",
+  "@weekMenuListManual": {
+    "description": "Editor del menú: la lista se cambió a mano."
+  },
+  "weekMenuListRebuild": "Rifai la lista dai piatti",
+  "@weekMenuListRebuild": {
+    "description": "Editor del menú: vuelve a armar la lista con los platos (pide confirmación)."
+  },
+  "weekMenuListRebuildTitle": "Rifare la lista?",
+  "@weekMenuListRebuildTitle": {
+    "description": "Confirmación de weekMenuListRebuild."
+  },
+  "weekMenuListRebuildBody": "La lista torna a uscire dai piatti, come sono oggi, e li segue di nuovo: quello che contiene adesso viene sostituito.",
+  "@weekMenuListRebuildBody": {
+    "description": "Confirmación de weekMenuListRebuild. Neutra: la lista pudo cambiarla la cocinera o pudo cambiar un plato del catálogo."
+  },
+  "weekMenuListRebuildConfirm": "Rifai",
+  "@weekMenuListRebuildConfirm": {
+    "description": "Botón que confirma weekMenuListRebuild."
+  },
+  "weekMenuListEmpty": "La lista è vuota.",
+  "@weekMenuListEmpty": {
+    "description": "Editor del menú: la lista de compras no tiene renglones."
+  },
+  "weekMenuListTruncated": "Uscivano più di {max} voci: sono rimaste le prime {max}.",
+  "@weekMenuListTruncated": {
+    "description": "Editor del menú: la lista que sale de los platos pasaba el tope de renglones.",
+    "placeholders": {
+      "max": { "type": "int", "example": "150" }
+    }
+  },
+  "weekMenuListNoIngredients": "Senza ingredienti: {names}. Aggiungili nel piatto e poi rifai la lista dai piatti, oppure scrivi qui quello che serve.",
+  "@weekMenuListNoIngredients": {
+    "description": "Editor del menú: platos del menú que no tienen ingredientes cargados (no suman nada a la lista).",
+    "placeholders": {
+      "names": { "type": "String", "example": "Lasagne alla bolognese, Minestrone" }
+    }
+  },
+  "weekMenuItemAdd": "Aggiungi alla lista",
+  "@weekMenuItemAdd": {
+    "description": "Editor del menú: agrega un renglón a la lista de compras; también título y botón de su diálogo."
+  },
+  "weekMenuItemEditTitle": "Modifica nella lista",
+  "@weekMenuItemEditTitle": {
+    "description": "Título del diálogo que cambia un renglón de la lista de compras."
+  },
+  "weekMenuItemEdit": "Modifica {name}",
+  "@weekMenuItemEdit": {
+    "description": "Lector de pantalla: botón que cambia un renglón de la lista.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Carne macinata" }
+    }
+  },
+  "weekMenuItemRemove": "Togli {name}",
+  "@weekMenuItemRemove": {
+    "description": "Lector de pantalla: botón que quita un renglón de la lista.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Carne macinata" }
+    }
+  },
+  "weekMenuItemRemoved": "Tolto dalla lista.",
+  "@weekMenuItemRemoved": {
+    "description": "Aviso después de quitar un renglón de la lista (con «Annulla»)."
+  },
+  "weekMenuItemMax": "Al massimo {max} voci nella lista.",
+  "@weekMenuItemMax": {
+    "description": "Editor del menú: la lista llegó a su tope de renglones.",
+    "placeholders": {
+      "max": { "type": "int", "example": "150" }
+    }
+  },
+  "shoppingAmount": "{quantity} {unit}",
+  "@shoppingAmount": {
+    "description": "Cantidad de un renglón de la lista: el número (con los decimales del idioma) y la unidad.",
+    "placeholders": {
+      "quantity": { "type": "String", "example": "1,25" },
+      "unit": { "type": "String", "example": "kg" }
+    }
+  },
+  "shoppingUnitKilograms": "kg",
+  "@shoppingUnitKilograms": {
+    "description": "Unidad: kilos (la lista muestra 1250 g como 1,25 kg)."
+  },
+  "shoppingUnitLiters": "l",
+  "@shoppingUnitLiters": {
+    "description": "Unidad: litros (la lista muestra 1500 ml como 1,5 l)."
+  },
+  "weekMenuNoteSection": "Nota per la cliente",
+  "@weekMenuNoteSection": {
+    "description": "Editor del menú: título de la nota para la cliente."
+  },
+  "weekMenuNoteLabel": "Nota (facoltativa)",
+  "@weekMenuNoteLabel": {
+    "description": "Campo de la nota para la cliente."
+  },
+  "weekMenuNoteHint": "Es.: tieni pronti 4 contenitori grandi.",
+  "@weekMenuNoteHint": {
+    "description": "Ejemplo dentro del campo de la nota."
+  },
+  "weekMenuNoteHelper": "La cliente la riceve così come la scrivi: scrivila nella sua lingua ({language}). Non scrivere dati di salute, indirizzi né altri dati personali.",
+  "@weekMenuNoteHelper": {
+    "description": "Ayuda debajo de la nota: llega a la cliente tal como la escribe la cocinera (no se traduce, decisión del 22/11/2026), en el idioma de la cliente.",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "weekMenuSave": "Salva il menù",
+  "@weekMenuSave": {
+    "description": "Botón de abajo del editor del menú."
+  },
+  "weekMenuSaved": "Menù salvato.",
+  "@weekMenuSaved": {
+    "description": "Aviso después de guardar el menú."
+  },
+  "weekMenuReadOnly": "Sessione «{status}»: il menù non si può più cambiare.",
+  "@weekMenuReadOnly": {
+    "description": "Editor del menú de una sesión cancelada, cocinada o cobrada.",
+    "placeholders": {
+      "status": { "type": "String", "example": "Cucinata" }
+    }
+  },
+  "weekMenuConflictsTitle": "Piatti in conflitto con la prenotazione",
+  "@weekMenuConflictsTitle": {
+    "description": "Confirmación al guardar un menú con platos que chocan con las alergias o la dieta de la reserva."
+  },
+  "weekMenuConflictsBody": "Controlla le allergie e la dieta della prenotazione prima di salvare:",
+  "@weekMenuConflictsBody": {
+    "description": "Confirmación de weekMenuConflictsTitle, antes de la lista de platos."
+  },
+  "weekMenuConflictLine": "{dish}: {reason}",
+  "@weekMenuConflictLine": {
+    "description": "Un plato de la confirmación de choques y por qué choca.",
+    "placeholders": {
+      "dish": { "type": "String", "example": "Lasagne alla bolognese" },
+      "reason": { "type": "String", "example": "Contiene: Glutine" }
+    }
+  },
+  "weekMenuConflictsConfirm": "Salva comunque",
+  "@weekMenuConflictsConfirm": {
+    "description": "Botón que guarda el menú con los choques confirmados."
+  },
+  "weekMenuConflictsReview": "Rivedi",
+  "@weekMenuConflictsReview": {
+    "description": "Botón que vuelve al menú sin guardar desde la confirmación de choques."
+  },
+  "weekMenuChangedTitle": "Un altro telefono ha cambiato questo menù",
+  "@weekMenuChangedTitle": {
+    "description": "Al guardar: alguien guardó el menú desde otro dispositivo mientras se editaba (menu_changed)."
+  },
+  "weekMenuChangedBody": "Qualcuno l'ha salvato mentre lo modificavi, quindi le tue modifiche non sono state salvate. Puoi caricare il menù salvato (le tue modifiche si perdono) o continuare a vedere le tue per ricopiarle.",
+  "@weekMenuChangedBody": {
+    "description": "Explicación de weekMenuChangedTitle."
+  },
+  "weekMenuChangedReload": "Carica quello salvato",
+  "@weekMenuChangedReload": {
+    "description": "Botón de weekMenuChangedTitle: carga el menú guardado y descarta lo cambiado."
+  },
+  "weekMenuChangedKeep": "Continua a vedere il mio",
+  "@weekMenuChangedKeep": {
+    "description": "Botón de weekMenuChangedTitle: cierra el aviso y deja lo cambiado en la pantalla."
+  },
+  "weekMenuReloadFailed": "Non è stato possibile caricare il menù salvato. Controlla la connessione e riprova.",
+  "@weekMenuReloadFailed": {
+    "description": "Falló la carga del menú guardado después de weekMenuChangedReload."
+  },
+  "weekMenuErrorNotEditable": "Questa sessione non accetta più modifiche al menù (è annullata, cucinata o pagata): non è stato salvato.",
+  "@weekMenuErrorNotEditable": {
+    "description": "Al guardar: session_not_editable."
+  },
+  "weekMenuErrorRecipeNotFound": "«{name}» non è più nel catalogo: toglilo e salva di nuovo.",
+  "@weekMenuErrorRecipeNotFound": {
+    "description": "Al guardar: recipe_not_found con el plato.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuErrorRecipeNotFoundUnknown": "Un piatto non è più nel catalogo: controlla i piatti e salva di nuovo.",
+  "@weekMenuErrorRecipeNotFoundUnknown": {
+    "description": "Al guardar: recipe_not_found sin saber cuál."
+  },
+  "weekMenuErrorInvalid": "Il server non ha accettato il menù. Controlla i dati e riprova.",
+  "@weekMenuErrorInvalid": {
+    "description": "Al guardar: invalid_payload o un check."
+  },
+  "weekMenuErrorForbidden": "Il tuo account non può cambiare i menù.",
+  "@weekMenuErrorForbidden": {
+    "description": "Al guardar: not_a_chef."
+  },
+  "weekMenuErrorUnavailable": "Non è stato possibile salvare. Controlla la connessione e riprova: quello che hai scritto è ancora qui.",
+  "@weekMenuErrorUnavailable": {
+    "description": "Al guardar: sin conexión o el servidor no responde."
+  },
+  "weekMenuListStale": "La lista salvata non è più quella che esce dai piatti: l'hai modificata a mano o è cambiato qualche piatto del catalogo. Controllala o rifalla dai piatti.",
+  "@weekMenuListStale": {
+    "description": "Editor del menú: al abrir, la lista guardada no coincide con la que sale hoy de los platos (no se sabe si la cambió la cocinera o cambió una receta)."
+  },
+  "weekMenuListTranslated": "La cliente riceve i nomi tradotti automaticamente nella sua lingua ({language}): non scrivere dati personali nella lista.",
+  "@weekMenuListTranslated": {
+    "description": "Editor del menú, debajo del título de la lista: los nombres se traducen solos al idioma de la cliente (decisión del 22/11/2026).",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "shoppingItemNameHelper": "Viene tradotto automaticamente nella lingua della cliente ({language}): non scrivere dati personali.",
+  "@shoppingItemNameHelper": {
+    "description": "Ayuda del nombre de un renglón de la lista de compras: se traduce solo al idioma de la cliente.",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "weekMenuErrorSessionNotFound": "La sessione non esiste più: il menù non è stato salvato.",
+  "@weekMenuErrorSessionNotFound": {
+    "description": "Al guardar: session_not_found (aviso y cartel fijo del editor, que queda bloqueado)."
+  },
+  "weekMenuDishCreatedUntranslated": "«{name}» salvato senza tradurre e aggiunto al menù: la traduzione automatica è spenta.",
+  "@weekMenuDishCreatedUntranslated": {
+    "description": "Aviso en el editor del menú: el plato nuevo se guardó sin traducir porque la traducción automática está apagada (501).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishCreatedUntranslatable": "«{name}» salvato senza tradurre e aggiunto al menù: la traduzione automatica non è riuscita a tradurlo.",
+  "@weekMenuDishCreatedUntranslatable": {
+    "description": "Aviso en el editor del menú: el plato nuevo se guardó sin traducir porque la traducción automática no pudo con el texto (422).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishCreatedMenuFull": "«{name}» è salvato nei piatti, ma il menù è già pieno: non è stato aggiunto.",
+  "@weekMenuDishCreatedMenuFull": {
+    "description": "Aviso en el editor del menú: el plato nuevo se guardó en el catálogo pero el menú ya tenía el máximo de platos.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "recipeLeaveSavedTitle": "Tornare al menù?",
+  "@recipeLeaveSavedTitle": {
+    "description": "Editor de un plato abierto desde el menú, con el plato ya guardado (la foto falló o cambió algo después): confirmación al salir."
+  },
+  "recipeLeaveSavedBody": "Il piatto è già salvato ed entra nel menù. Quello che hai cambiato dopo (per esempio la foto) non è stato salvato.",
+  "@recipeLeaveSavedBody": {
+    "description": "Cuerpo de recipeLeaveSavedTitle."
+  },
+  "recipeLeaveSavedConfirm": "Torna al menù",
+  "@recipeLeaveSavedConfirm": {
+    "description": "Botón de recipeLeaveSavedTitle: vuelve al menú con el plato guardado."
+  },
+  "menuSendSection": "Invio alla cliente",
+  "@menuSendSection": {
+    "description": "Título de la sección del editor del menú de una semana con el estado del envío a la clienta (SPEC 5.8)."
+  },
+  "menuSendAction": "Invia alla cliente",
+  "@menuSendAction": {
+    "description": "Botón del bloque «Menú de la semana» de la ficha de la sesión: abre la vista previa del mensaje para la clienta."
+  },
+  "menuSendAgain": "Invia di nuovo",
+  "@menuSendAgain": {
+    "description": "Botón del bloque «Menú de la semana» de la ficha cuando el menú ya se mandó alguna vez."
+  },
+  "menuSendShort": "Invia",
+  "@menuSendShort": {
+    "description": "Botón de abajo del editor del menú, al lado de «Guardar el menú»: abre la vista previa del mensaje para la clienta."
+  },
+  "menuSendNotSent": "Non è ancora stato inviato alla cliente.",
+  "@menuSendNotSent": {
+    "description": "Estado del envío: el menú de la semana nunca salió."
+  },
+  "menuSendViaEmail": "via email",
+  "@menuSendViaEmail": {
+    "description": "Por dónde salió un envío, dentro de menuSendSentOn, menuSendDone y menuSendButton."
+  },
+  "menuSendViaWhatsApp": "via WhatsApp",
+  "@menuSendViaWhatsApp": {
+    "description": "Por dónde salió un envío, dentro de menuSendSentOn, menuSendDone y menuSendButton."
+  },
+  "menuSendViaBoth": "via email e WhatsApp",
+  "@menuSendViaBoth": {
+    "description": "Por dónde salió un envío (los dos), dentro de menuSendSentOn, menuSendDone y menuSendButton."
+  },
+  "menuSendSentOn": "Inviato il {date} alle {time} {via}.",
+  "@menuSendSentOn": {
+    "description": "Estado del envío: cuándo salió el último (hora de Roma) y por dónde.",
+    "placeholders": {
+      "date": { "type": "String", "example": "25/11" },
+      "time": { "type": "String", "example": "14:32" },
+      "via": { "type": "String", "example": "via email e WhatsApp" }
+    }
+  },
+  "menuSendConfirmedOn": "La cliente l'ha confermato il {date} alle {time}.",
+  "@menuSendConfirmedOn": {
+    "description": "Estado del envío: la clienta confirmó el menú desde su link (hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "26/11" },
+      "time": { "type": "String", "example": "09:15" }
+    }
+  },
+  "menuSendChangesOn": "La cliente ha chiesto delle modifiche il {date} alle {time}:",
+  "@menuSendChangesOn": {
+    "description": "Estado del envío: la clienta pidió cambios desde su link (hora de Roma). Debajo va su mensaje entero, que solo se ve en la app (SPEC §6).",
+    "placeholders": {
+      "date": { "type": "String", "example": "26/11" },
+      "time": { "type": "String", "example": "09:15" }
+    }
+  },
+  "menuSendChangedSince": "Il menù è cambiato dopo l'invio: la cliente ha quello di prima. Invialo di nuovo.",
+  "@menuSendChangedSince": {
+    "description": "Estado del envío: el menú guardado es más nuevo que el que salió."
+  },
+  "menuSendStatusFailed": "Non è stato possibile sapere se il menù è stato inviato.",
+  "@menuSendStatusFailed": {
+    "description": "No se pudo leer el último envío del menú (con «Riprova»)."
+  },
+  "menuSendSaveFirstTitle": "Salvare prima di inviare?",
+  "@menuSendSaveFirstTitle": {
+    "description": "Editor del menú: «Mandar» con cambios sin guardar (o un menú que nunca se guardó)."
+  },
+  "menuSendSaveFirstBody": "La cliente riceve il menù così com'è salvato. Salvalo prima.",
+  "@menuSendSaveFirstBody": {
+    "description": "Cuerpo de menuSendSaveFirstTitle."
+  },
+  "menuSendSaveFirstConfirm": "Salva e continua",
+  "@menuSendSaveFirstConfirm": {
+    "description": "Botón de menuSendSaveFirstTitle: guarda el menú y abre la vista previa."
+  },
+  "menuSendTitle": "Invia il menù",
+  "@menuSendTitle": {
+    "description": "Título de la pantalla de la vista previa y el envío del menú a la clienta."
+  },
+  "menuSendPreviewing": "Preparo il messaggio nella lingua della cliente ({language})…",
+  "@menuSendPreviewing": {
+    "description": "Mientras se pide la vista previa (puede traducir la lista: hasta un minuto).",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "menuSendTo": "Per {name}",
+  "@menuSendTo": {
+    "description": "Vista previa: a quién va (el nombre del contacto del pedido o de la ficha).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Maria Rossi" }
+    }
+  },
+  "menuSendLanguage": "È nella lingua della cliente: {language}.",
+  "@menuSendLanguage": {
+    "description": "Vista previa: el idioma del mensaje (el del pedido).",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "menuSendTranslated": "I nomi della lista sono stati tradotti in automatico.",
+  "@menuSendTranslated": {
+    "description": "Vista previa: los nombres de la lista de compras se tradujeron con la traducción automática."
+  },
+  "menuSendNotTranslated": "La lista va così come l'hai scritta, senza traduzione.",
+  "@menuSendNotTranslated": {
+    "description": "Vista previa sin traducir (después de «Continua senza tradurre»), a una clienta que no lee español."
+  },
+  "menuSendLinkNote": "Il link per confermare si crea all'invio: nell'anteprima al suo posto c'è un testo.",
+  "@menuSendLinkNote": {
+    "description": "Vista previa: dónde va el link de la clienta (la función pone un texto de reemplazo)."
+  },
+  "menuSendMessageSection": "Cosa riceve",
+  "@menuSendMessageSection": {
+    "description": "Vista previa: título del mensaje (WhatsApp o email)."
+  },
+  "menuSendSubject": "Oggetto: {subject}",
+  "@menuSendSubject": {
+    "description": "Vista previa del email: el asunto.",
+    "placeholders": {
+      "subject": { "type": "String", "example": "Radici: il menù della settimana 1 di 4 (30 nov)" }
+    }
+  },
+  "menuSendChannelsSection": "Come inviarlo",
+  "@menuSendChannelsSection": {
+    "description": "Vista previa: título de la elección de email y WhatsApp."
+  },
+  "menuSendByEmail": "Via email",
+  "@menuSendByEmail": {
+    "description": "Vista previa: casilla para mandarlo por email."
+  },
+  "menuSendByWhatsApp": "Via WhatsApp",
+  "@menuSendByWhatsApp": {
+    "description": "Vista previa: casilla para mandarlo por WhatsApp."
+  },
+  "menuSendWhatsAppHint": "{phone} · si apre WhatsApp con il messaggio pronto da inviare.",
+  "@menuSendWhatsAppHint": {
+    "description": "Vista previa: debajo de la casilla de WhatsApp, el teléfono y qué pasa al mandar (WhatsApp sale del teléfono de quien manda).",
+    "placeholders": {
+      "phone": { "type": "String", "example": "+39 333 123 4567" }
+    }
+  },
+  "menuSendNoEmail": "Non c'è un'email nella richiesta né nella scheda.",
+  "@menuSendNoEmail": {
+    "description": "Vista previa: por qué no se puede mandar por email."
+  },
+  "menuSendBadEmail": "Questa email non sembra valida: {email}",
+  "@menuSendBadEmail": {
+    "description": "Vista previa: por qué no se puede mandar por email.",
+    "placeholders": {
+      "email": { "type": "String", "example": "maria@example" }
+    }
+  },
+  "menuSendNoPhone": "Non c'è un telefono nella richiesta né nella scheda.",
+  "@menuSendNoPhone": {
+    "description": "Vista previa: por qué no se puede mandar por WhatsApp."
+  },
+  "menuSendBadPhone": "Questo telefono non va bene per WhatsApp: {phone}",
+  "@menuSendBadPhone": {
+    "description": "Vista previa: por qué no se puede mandar por WhatsApp.",
+    "placeholders": {
+      "phone": { "type": "String", "example": "333 12" }
+    }
+  },
+  "menuSendNoChannel": "Non c'è un'email né un telefono validi: così non si può inviare.",
+  "@menuSendNoChannel": {
+    "description": "Vista previa: el contacto no tiene ni email ni teléfono que sirvan."
+  },
+  "menuSendButton": "Invia {via}",
+  "@menuSendButton": {
+    "description": "Botón de abajo de la vista previa, con los canales elegidos.",
+    "placeholders": {
+      "via": { "type": "String", "example": "via email e WhatsApp" }
+    }
+  },
+  "menuSendChooseChannel": "Scegli come inviarlo",
+  "@menuSendChooseChannel": {
+    "description": "Botón de abajo de la vista previa, deshabilitado, sin ningún canal elegido."
+  },
+  "menuSending": "Invio in corso…",
+  "@menuSending": {
+    "description": "Mientras se manda el menú (para el lector de pantalla, en lugar de la ruedita)."
+  },
+  "menuSendErrorUntranslatable": "La traduzione automatica non è riuscita a tradurre la lista.",
+  "@menuSendErrorUntranslatable": {
+    "description": "Vista previa: 422, la lista no se pudo traducir (reintentar igual no sirve)."
+  },
+  "menuSendErrorNotConfigured": "La traduzione automatica è spenta.",
+  "@menuSendErrorNotConfigured": {
+    "description": "Vista previa: 501, la traducción está apagada."
+  },
+  "menuSendErrorRateLimited": "È stato raggiunto il limite di traduzioni per ora: riprova tra un'ora o continua senza tradurre.",
+  "@menuSendErrorRateLimited": {
+    "description": "Vista previa: 429, la cocina pasó su límite de traducciones (la app no reintenta sola)."
+  },
+  "menuSendErrorPreviewUnavailable": "Non è stato possibile preparare l'anteprima. Controlla la connessione e riprova.",
+  "@menuSendErrorPreviewUnavailable": {
+    "description": "Vista previa: sin conexión, sin respuesta o un error pasajero (también de la traducción)."
+  },
+  "menuSendWithoutTranslation": "Continua senza tradurre",
+  "@menuSendWithoutTranslation": {
+    "description": "Vista previa: si la traducción de la lista falla, otra vista previa con la lista sin traducir (todavía no manda nada)."
+  },
+  "menuSendErrorMenuChanged": "Il menù è cambiato: è stato salvato su un altro telefono dopo che l'hai aperto.",
+  "@menuSendErrorMenuChanged": {
+    "description": "Vista previa: 409 menuChanged, la versión del menú ya no es la guardada."
+  },
+  "menuSendBackToMenu": "Torna al menù",
+  "@menuSendBackToMenu": {
+    "description": "Vista previa abierta desde el editor, con el menú cambiado: vuelve al editor, que carga el guardado."
+  },
+  "menuSendPreviewSaved": "Vedi quello salvato",
+  "@menuSendPreviewSaved": {
+    "description": "Vista previa abierta desde la ficha, con el menú cambiado: la vista previa del menú guardado de ahora."
+  },
+  "menuSendErrorNotEditable": "Questa settimana non si può più inviare: è «{status}».",
+  "@menuSendErrorNotEditable": {
+    "description": "409 sessionNotEditable: la sesión está cancelada, cocinada o cobrada.",
+    "placeholders": {
+      "status": { "type": "String", "example": "Annullata" }
+    }
+  },
+  "menuSendErrorNotEditableUnknown": "Questa settimana non si può più inviare: è annullata, cucinata o pagata.",
+  "@menuSendErrorNotEditableUnknown": {
+    "description": "409 sessionNotEditable sin el estado."
+  },
+  "menuSendErrorEmpty": "Il menù salvato non ha piatti: aggiungine qualcuno e salvalo.",
+  "@menuSendErrorEmpty": {
+    "description": "409 menuEmpty."
+  },
+  "menuSendErrorNoMenu": "Questa settimana non ha ancora un menù salvato.",
+  "@menuSendErrorNoMenu": {
+    "description": "404 menuNotFound."
+  },
+  "menuSendErrorNoRequest": "Questa sessione non ha una richiesta: non c'è un link da mandare alla cliente.",
+  "@menuSendErrorNoRequest": {
+    "description": "409 sessionWithoutRequest."
+  },
+  "menuSendErrorUnauthorized": "L'accesso è scaduto: esci e rientra.",
+  "@menuSendErrorUnauthorized": {
+    "description": "401 también después de renovar la sesión."
+  },
+  "menuSendErrorForbidden": "Il tuo account non può inviare menù.",
+  "@menuSendErrorForbidden": {
+    "description": "403: la cuenta no es de la cocina."
+  },
+  "menuSendErrorServer": "Qualcosa non ha funzionato sul server. Riprova più tardi.",
+  "@menuSendErrorServer": {
+    "description": "500, otro 409 o una respuesta que no se entiende: reintentar en el momento no lo arregla."
+  },
+  "menuSendErrorInvalid": "Il server non ha accettato la richiesta. Riprova più tardi.",
+  "@menuSendErrorInvalid": {
+    "description": "400 u otro 4xx: un pedido que la app no debería mandar."
+  },
+  "menuSendErrorUncertain": "Non si sa se è partito: la connessione si è interrotta o il server non ha risposto. Riprovare è sicuro: se è già partito, non viene inviato due volte.",
+  "@menuSendErrorUncertain": {
+    "description": "Envío sin respuesta (sin conexión, tiempo agotado o error pasajero): el reintento usa el mismo envío."
+  },
+  "menuSendErrorEmailFailed": "L'email non è partita: non è stato inviato niente.",
+  "@menuSendErrorEmailFailed": {
+    "description": "502 emailFailed: el envío quedó sin marcar."
+  },
+  "menuSendOnlyWhatsApp": "Invia solo via WhatsApp",
+  "@menuSendOnlyWhatsApp": {
+    "description": "Después de que el email no salió: manda el mismo envío solo por WhatsApp."
+  },
+  "menuSendOnlyEmail": "Invia solo via email",
+  "@menuSendOnlyEmail": {
+    "description": "Después de noPhone: manda el mismo envío solo por email."
+  },
+  "menuSendErrorEmailUnavailable": "L'email non è configurata sul server: per ora, invialo via WhatsApp.",
+  "@menuSendErrorEmailUnavailable": {
+    "description": "503 emailUnavailable: el servidor no tiene RESEND_API_KEY o MAIL_FROM."
+  },
+  "menuSendErrorNoEmailNow": "Il contatto della cliente non ha più un'email valida: non è stato inviato niente.",
+  "@menuSendErrorNoEmailNow": {
+    "description": "409 noEmail: el contacto cambió desde la vista previa."
+  },
+  "menuSendErrorNoPhoneNow": "Il contatto della cliente non ha più un telefono valido per WhatsApp: non è stato inviato niente.",
+  "@menuSendErrorNoPhoneNow": {
+    "description": "409 noPhone: el contacto cambió desde la vista previa."
+  },
+  "menuSendErrorChangedSincePreview": "Qualcosa è cambiato dopo l'anteprima (il menù, il giorno o l'ora, le settimane della prenotazione o un piatto del catalogo): non è stato inviato niente. Prepara una nuova anteprima per vedere cosa riceverà.",
+  "@menuSendErrorChangedSincePreview": {
+    "description": "409 menuChanged al mandar: hace falta otra vista previa."
+  },
+  "menuSendNewPreview": "Nuova anteprima",
+  "@menuSendNewPreview": {
+    "description": "Pide otra vista previa (otro envío) del mismo menú."
+  },
+  "menuSendErrorEmailSent": "L'email è partita, ma l'invio non è stato registrato: sulla pagina della cliente non risulta inviato.",
+  "@menuSendErrorEmailSent": {
+    "description": "Error al mandar con emailSent: el email salió y la base no marcó el envío."
+  },
+  "menuSendEmailSentRetry": "Se riprovi, le arriva un'altra email con un altro link (funzionano tutti e due).",
+  "@menuSendEmailSentRetry": {
+    "description": "Debajo de menuSendErrorEmailSent cuando se puede reintentar."
+  },
+  "menuSendWhatsAppLost": "È stato registrato, ma si è perso il testo di WhatsApp con il link. Per inviarlo via WhatsApp, prepara una nuova anteprima.",
+  "@menuSendWhatsAppLost": {
+    "description": "Ya había salido (la respuesta se perdió) y se pidió WhatsApp: el link solo viaja en la respuesta."
+  },
+  "menuSendDone": "Inviato a {name} il {date} alle {time} {via}.",
+  "@menuSendDone": {
+    "description": "Después de mandar: a quién, cuándo (hora de Roma) y por dónde.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Maria Rossi" },
+      "date": { "type": "String", "example": "25/11" },
+      "time": { "type": "String", "example": "14:32" },
+      "via": { "type": "String", "example": "via email e WhatsApp" }
+    }
+  },
+  "menuSendDoneWhatsApp": "Manca toccare «Invia» su WhatsApp: lì c'è il messaggio con il link.",
+  "@menuSendDoneWhatsApp": {
+    "description": "Después de mandar por WhatsApp, con WhatsApp ya abierto en el teléfono."
+  },
+  "menuSendDoneOpenWhatsApp": "Tocca «Apri WhatsApp» e invia il messaggio: contiene il link per confermare.",
+  "@menuSendDoneOpenWhatsApp": {
+    "description": "Después de mandar por WhatsApp sin que se abriera solo (en /gestione/, o si no se pudo)."
+  },
+  "menuSendOpenWhatsApp": "Apri WhatsApp",
+  "@menuSendOpenWhatsApp": {
+    "description": "Botón después de mandar por WhatsApp: abre WhatsApp con el mensaje y el link."
+  },
+  "menuSendDoneRecovered": "Era già partito: la risposta del primo tentativo si era persa.",
+  "@menuSendDoneRecovered": {
+    "description": "Después de reintentar un envío cuya respuesta se perdió (alreadySent): salió una sola vez."
+  },
+  "todayMenusTitle": "Menù da inviare",
+  "@todayMenusTitle": {
+    "description": "Hoy: título de las semanas de los próximos 7 días que esperan algo con su menú (sin menú, sin mandar o con cambios pedidos)."
+  },
+  "todayMenusHint": "Le settimane dei prossimi 7 giorni: il menù si invia alla cliente entro 48 ore prima dell'arrivo.",
+  "@todayMenusHint": {
+    "description": "Hoy: debajo de todayMenusTitle, de dónde salen esas semanas y el límite para mandar el menú."
+  },
+  "todayMenusArrives": "arrivo alle {time}",
+  "@todayMenusArrives": {
+    "description": "Hoy, en «Menús para mandar»: la hora de llegada, al final de «Semana k de N · día».",
+    "placeholders": {
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "todayMenuNoMenu": "Senza menù",
+  "@todayMenuNoMenu": {
+    "description": "Hoy, en «Menús para mandar»: la semana todavía no tiene menú guardado (o no tiene platos)."
+  },
+  "todayMenuNotSent": "Pronto, non inviato",
+  "@todayMenuNotSent": {
+    "description": "Hoy, en «Menús para mandar»: el menú está guardado pero nunca se mandó."
+  },
+  "todayMenuChangedSinceSent": "Cambiato, non inviato",
+  "@todayMenuChangedSinceSent": {
+    "description": "Hoy, en «Menús para mandar»: el menú se mandó y después cambió; la clienta tiene el de antes."
+  },
+  "todayMenuChangesRequested": "Modifiche richieste",
+  "@todayMenuChangesRequested": {
+    "description": "Hoy, en «Menús para mandar»: la clienta pidió cambios en el último envío."
+  },
+  "todayMenuDeadline": "Limite: {date}, {time}",
+  "@todayMenuDeadline": {
+    "description": "Hoy, en «Menús para mandar»: hasta cuándo mandar el menú (48 h antes de la llegada, hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 23 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "todayMenuDeadlinePassed": "Limite scaduto: {date}, {time}",
+  "@todayMenuDeadlinePassed": {
+    "description": "Hoy, en «Menús para mandar»: el límite para mandar el menú (48 h antes de la llegada) ya pasó.",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 23 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "todayMenuDeadlineNearA11y": "Limite: {date}, {time}. Mancano meno di 24 ore.",
+  "@todayMenuDeadlineNearA11y": {
+    "description": "Hoy, en «Menús para mandar», solo para el lector de pantalla: lo que se ve es todayMenuDeadline, resaltado con color y un ícono de aviso porque faltan menos de 24 h para el límite (el color y el ícono no se leen).",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 23 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "todayMenusError": "Non è stato possibile sapere quali menù mancano da inviare.",
+  "@todayMenusError": {
+    "description": "Hoy: no se pudieron leer los menús de las semanas próximas (con «Riprova»)."
   }
 }
