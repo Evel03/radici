@@ -1,7 +1,8 @@
 // El libro del menú (SPEC 5.8, «Libro del menú»): el menú que Evelyn mandó para una semana, como el libro de un
 // restaurante, un plato por página. Acá está la lógica pura (sin DOM, con tests): las páginas, a cuál se puede ir,
-// qué hace cada tecla, cómo se muestra cada página (y qué fotos se cargan ya), qué ofrece la última página y el
-// fragmento de la URL (#t=<token>&libro=<sesión>). El token nunca sale del fragmento.
+// qué hace cada tecla, cómo se muestra cada página (y qué fotos se cargan ya), qué ofrece la última página, el
+// fragmento de la URL (#t=<token>&libro=<sesión>) con su entrada del historial y el clic en el fondo. El token nunca
+// sale del fragmento.
 import {
   BOOK_FRAGMENT_PARAM,
   type ClientLinkWeek,
@@ -152,8 +153,43 @@ export function bookFragment(token: string, session: string): string {
   return `${tokenFragment(token)}&${BOOK_FRAGMENT_PARAM}=${session.toLowerCase()}`;
 }
 
+/** Lo que usa createBookHistory de window (en los tests, uno falso). */
+export interface HistoryWindow {
+  readonly history: Pick<History, "state" | "scrollRestoration" | "pushState">;
+  readonly location: Pick<Location, "hash">;
+  addEventListener(type: "hashchange", listener: () => void): void;
+}
+
+/**
+ * La entrada del historial del libro abierto con el botón de una semana (cerrarlo vuelve atrás). Al volver, el
+ * navegador restaura el scroll guardado de la página (donde estaba el botón) después de popstate, y pisaba el que
+ * dejó el foco al cerrar: confirmar, desde la última página, quedaba fuera de la pantalla. Por eso la entrada de la
+ * página no restaura mientras el libro está encima. scrollRestoration vale por entrada y cuenta el de la entrada a la
+ * que se vuelve: va antes del pushState (que lo copia; la del libro vuelve a como estaba) y se devuelve recién en el
+ * hashchange de la vuelta, que llega después de la restauración (en popstate todavía no). Así recargar la página, o
+ * volver a ella desde otra, sigue restaurando su scroll.
+ */
+export function createBookHistory(win: HistoryWindow): { push(url: string): void } {
+  /** El scrollRestoration de la entrada de la página mientras el libro está encima (null: no se tocó). */
+  let held: ScrollRestoration | null = null;
+  win.addEventListener("hashchange", () => {
+    if (held === null || readBookSession(win.location.hash) !== null) return;
+    win.history.scrollRestoration = held;
+    held = null;
+  });
+  return {
+    push(url) {
+      const mode = held ?? win.history.scrollRestoration;
+      win.history.scrollRestoration = "manual";
+      win.history.pushState(win.history.state, "", url);
+      win.history.scrollRestoration = mode;
+      held = mode;
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
-// El foco dentro del libro
+// El foco dentro del libro y el clic en el fondo
 // ---------------------------------------------------------------------------
 
 /**
@@ -165,6 +201,41 @@ export function trapFocus<T>(items: readonly T[], active: T | null, backwards: b
   const index = active === null ? -1 : items.indexOf(active);
   if (backwards) return index <= 0 ? (items[items.length - 1] ?? null) : null;
   return index === -1 || index === items.length - 1 ? (items[0] ?? null) : null;
+}
+
+/**
+ * El clic en el fondo oscuro (fuera del libro, en la computadora), que lo cierra: solo si se apretó y se soltó ahí,
+ * como el cierre liviano de un <dialog>. Un arrastre que empieza en la hoja (al seleccionar texto) y termina en el
+ * fondo también le manda el click al fondo, el ancestro común de los dos; y uno del fondo a la hoja, también: ninguno
+ * cierra. Cada clic cuenta una vez.
+ */
+export interface BackdropClick {
+  /** pointerdown: si fue en el fondo. */
+  down(onBackdrop: boolean): void;
+  /** pointerup: si fue en el fondo. */
+  up(onBackdrop: boolean): void;
+  /** Llegó un click al fondo: si cierra el libro. */
+  click(): boolean;
+}
+
+export function createBackdropClick(): BackdropClick {
+  let pressed = false;
+  let released = false;
+  return {
+    down(onBackdrop) {
+      pressed = onBackdrop;
+      released = false;
+    },
+    up(onBackdrop) {
+      released = onBackdrop;
+    },
+    click() {
+      const closes = pressed && released;
+      pressed = false;
+      released = false;
+      return closes;
+    },
+  };
 }
 
 /** Lo que cambia en el libro cuando cambia esto (la semana, su envío y su estado, el idioma): hay que pintarlo de nuevo. */

@@ -4,7 +4,9 @@
 // - Un diálogo modal: el resto de la página queda inert (y aria-hidden), Tab no sale del libro y, al cerrarlo, el foco
 //   vuelve al botón que lo abrió (o a donde lleve la última página: confirmar, el presupuesto o la semana).
 // - Abierto desde el botón de una semana, agrega una entrada al historial: «atrás» lo cierra, como se espera en el
-//   teléfono. Abierto desde el link del mensaje, cerrarlo solo saca libro del fragmento. El token nunca sale de ahí.
+//   teléfono, y la vuelta no restaura el scroll viejo de la página (createBookHistory). Abierto desde el link del
+//   mensaje, cerrarlo solo saca libro del fragmento. El token nunca sale de ahí.
+// - En la computadora, un clic en el fondo lo cierra; un arrastre que solo empieza o termina ahí, no.
 // - Pasar de página da vuelta la hoja (book.css), salvo con prefers-reduced-motion: ahí cambia sin animación.
 // - Las fotos: la de la página actual y la de la siguiente se cargan ya; las demás páginas van con hidden (sus fotos
 //   esperan a que se acerquen). Una foto que no carga deja la lámina con la inicial del plato.
@@ -37,6 +39,8 @@ import {
   clampPage,
   closingKind,
   closingTargets,
+  createBackdropClick,
+  createBookHistory,
   directionOf,
   keyAction,
   pagePresentation,
@@ -102,6 +106,10 @@ export function attachBookView(deps: BookViewDeps): BookView {
   const win = window;
   /** Fotos que no cargaron (no se vuelven a pedir mientras la página está abierta). */
   const failedPhotos = new Set<string>();
+  /** La entrada que agrega el botón de una semana (cerrarlo vuelve atrás sin mover la página). */
+  const bookHistory = createBookHistory(win);
+  /** Dónde empezó y terminó el clic que llega al fondo. */
+  const backdrop = createBackdropClick();
   let root: HTMLElement | null = null;
   let book: OpenBook | null = null;
 
@@ -320,7 +328,7 @@ export function attachBookView(deps: BookViewDeps): BookView {
     let pushed = false;
     if (win.location.hash !== fragment) {
       if (push) {
-        win.history.pushState(win.history.state, "", urlWith(fragment));
+        bookHistory.push(urlWith(fragment));
         pushed = true;
       } else {
         win.history.replaceState(win.history.state, "", urlWith(fragment));
@@ -332,6 +340,9 @@ export function attachBookView(deps: BookViewDeps): BookView {
       root = doc.createElement("div");
       root.id = "book-root";
       root.addEventListener("click", onClick);
+      // Dónde se aprieta y dónde se suelta, para el clic en el fondo (los gestos del visor no cortan la propagación).
+      root.addEventListener("pointerdown", (event) => backdrop.down(isBackdrop(event.target)));
+      root.addEventListener("pointerup", (event) => backdrop.up(isBackdrop(event.target)));
       // Una foto que no carga deja la lámina (el evento error no sube: se escucha en la captura).
       root.addEventListener("error", onImageError, true);
       doc.body.appendChild(root);
@@ -439,12 +450,17 @@ export function attachBookView(deps: BookViewDeps): BookView {
   // Eventos dentro del libro
   // ---------------------------------------------------------------------------
 
+  /** El fondo oscuro, fuera del libro (en la computadora): el elemento del diálogo. */
+  function isBackdrop(target: EventTarget | null): boolean {
+    return target instanceof Element && target.id === BOOK_ID;
+  }
+
   function onClick(event: MouseEvent): void {
     const open = book;
     if (!open || !(event.target instanceof Element)) return;
-    // Un clic en el fondo, fuera del libro (en la computadora), lo cierra.
-    if (event.target.id === BOOK_ID) {
-      close({ fromHistory: false });
+    // Un clic en el fondo lo cierra, si se apretó y se soltó ahí (seleccionar texto y soltar afuera, no).
+    if (isBackdrop(event.target)) {
+      if (backdrop.click()) close({ fromHistory: false });
       return;
     }
     const target = event.target.closest<HTMLElement>("[data-book]");

@@ -11,6 +11,8 @@ import {
   clampPage,
   closingKind,
   closingTargets,
+  createBackdropClick,
+  createBookHistory,
   directionOf,
   keyAction,
   pagePresentation,
@@ -123,7 +125,96 @@ describe("el fragmento de la URL", () => {
   });
 });
 
-describe("el foco y lo que cambia el libro", () => {
+/**
+ * Un navegador falso con lo que importa del historial (HTML, «session history»): cada entrada guarda su scroll y su
+ * scrollRestoration (history.scrollRestoration es el de la entrada activa) y pushState le copia el suyo a la nueva.
+ * Volver atrás dispara popstate, después restaura el scroll de la entrada a la que vuelve si dice "auto" y recién
+ * después hashchange.
+ */
+function fakeWindow(hash: string) {
+  interface Entry {
+    hash: string;
+    mode: ScrollRestoration;
+    scroll: number;
+  }
+  const entries: Entry[] = [{ hash, mode: "auto", scroll: 0 }];
+  let index = 0;
+  const listeners = new Map<string, (() => void)[]>();
+  const current = (): Entry => entries[index] as Entry;
+  const fire = (type: string): void => {
+    for (const listener of listeners.get(type) ?? []) listener();
+  };
+  const win = {
+    scrollY: 0,
+    location: {
+      get hash(): string {
+        return current().hash;
+      },
+    },
+    history: {
+      state: null,
+      get scrollRestoration(): ScrollRestoration {
+        return current().mode;
+      },
+      set scrollRestoration(mode: ScrollRestoration) {
+        current().mode = mode;
+      },
+      pushState(_data: unknown, _unused: string, url?: string | URL | null): void {
+        current().scroll = win.scrollY;
+        entries.splice(index + 1, entries.length, { hash: new URL(String(url), "https://radici.test/").hash, mode: current().mode, scroll: win.scrollY });
+        index += 1;
+      },
+    },
+    addEventListener(type: string, listener: () => void): void {
+      listeners.set(type, [...(listeners.get(type) ?? []), listener]);
+    },
+    back(): void {
+      current().scroll = win.scrollY;
+      index -= 1;
+      fire("popstate");
+      if (current().mode === "auto") win.scrollY = current().scroll;
+      fire("hashchange");
+    },
+  };
+  return win;
+}
+
+describe("la entrada del historial del libro (abierto con el botón de la semana)", () => {
+  const bookUrl = `/prenotazione/${bookFragment(TOKEN, SESSION_1)}`;
+
+  it("cerrarlo vuelve atrás sin restaurar el scroll guardado: la página queda donde la llevó el foco (confirmar)", () => {
+    const win = fakeWindow(`#t=${TOKEN}`);
+    const bookHistory = createBookHistory(win);
+    // «Sfoglia il menù», en el medio de la página.
+    win.scrollY = 1600;
+    bookHistory.push(bookUrl);
+    expect(readBookSession(win.location.hash)).toBe(SESSION_1);
+    // «Vai alla conferma»: el foco baja la página hasta «Confermo il menù» y después se vuelve atrás.
+    win.scrollY = 3300;
+    win.back();
+    expect(win.location.hash).toBe(`#t=${TOKEN}`);
+    expect(win.scrollY).toBe(3300);
+  });
+
+  it("solo esa vuelta: el libro abierto y la página, después del hashchange, restauran su scroll como siempre", () => {
+    const win = fakeWindow(`#t=${TOKEN}`);
+    const bookHistory = createBookHistory(win);
+    bookHistory.push(bookUrl);
+    // Recargar con el libro abierto restaura como siempre.
+    expect(win.history.scrollRestoration).toBe("auto");
+    win.back();
+    // Recargar la página, o volver a ella desde otra, también.
+    expect(win.history.scrollRestoration).toBe("auto");
+    // Y la próxima vez que se abre y se cierra, lo mismo.
+    win.scrollY = 900;
+    bookHistory.push(bookUrl);
+    win.scrollY = 2400;
+    win.back();
+    expect([win.scrollY, win.history.scrollRestoration]).toEqual([2400, "auto"]);
+  });
+});
+
+describe("el foco, el clic en el fondo y lo que cambia el libro", () => {
   it("trapFocus: del último al primero, del primero al último; en el medio sigue el navegador", () => {
     const items = ["close", "prev", "dot", "next"];
     expect(trapFocus(items, "next", false)).toBe("close");
@@ -134,6 +225,29 @@ describe("el foco y lo que cambia el libro", () => {
     expect(trapFocus(items, null, false)).toBe("close");
     expect(trapFocus(items, null, true)).toBe("next");
     expect(trapFocus([], null, false)).toBeNull();
+  });
+
+  it("el clic en el fondo cierra el libro solo si se apretó y se soltó ahí (como el cierre liviano de un <dialog>)", () => {
+    const backdrop = createBackdropClick();
+    // Apretar, soltar y el clic en el fondo: cierra.
+    backdrop.down(true);
+    backdrop.up(true);
+    expect(backdrop.click()).toBe(true);
+    // Seleccionar texto de la hoja y soltar en el fondo: el clic le llega al fondo (el ancestro común), y no cierra.
+    backdrop.down(false);
+    backdrop.up(true);
+    expect(backdrop.click()).toBe(false);
+    // Al revés, de fondo a la hoja: tampoco.
+    backdrop.down(true);
+    backdrop.up(false);
+    expect(backdrop.click()).toBe(false);
+    // Cada clic cuenta una vez: otro sin apretar de nuevo no cierra.
+    backdrop.down(true);
+    backdrop.up(true);
+    backdrop.click();
+    expect(backdrop.click()).toBe(false);
+    // Un clic sin puntero (sin apretar nada), tampoco.
+    expect(createBackdropClick().click()).toBe(false);
   });
 
   it("bookSignature: cambia con el envío, su estado, la semana o el idioma; no con lo demás de la reserva", () => {
