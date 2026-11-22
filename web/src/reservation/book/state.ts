@@ -327,9 +327,12 @@ export const REVEAL_SETTLE_MS = 700;
 export const REVEAL_QUIET_MS = 150;
 /**
  * Cuánto se sigue mirando desde el último aviso: un scroll que el navegador empieza tarde (con la máquina cargada, se
- * vio después de REVEAL_SETTLE_MS) y deja el foco afuera, también lo trae a la vista. Al final se mira una última vez.
+ * vio después de REVEAL_SETTLE_MS) y deja el foco afuera, también lo trae a la vista. Si a esa altura un scroll sigue
+ * (una restauración animada llegó a terminar 2,8 s después de popstate), se espera a que termine.
  */
 export const REVEAL_WATCH_MS = 3000;
+/** Y si un scroll no termina nunca, se mira por última vez a lo sumo a esta altura del último aviso. */
+export const REVEAL_CAP_MS = 10_000;
 /** Las teclas que mueven la página: la persona la lleva a otro lado (Espacio, si el foco no está en un botón o un campo). */
 const PAGE_SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
@@ -340,9 +343,9 @@ const PAGE_SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", 
  * vista (centrado y sin animación). Así un «Confermo il menù» con el foco nunca queda fuera de la pantalla por algo
  * que hizo el navegador después: la restauración del scroll de una entrada en "auto" (createBookHistory no la puede
  * evitar ahí) o su animación con scroll-behavior: smooth, que sigue moviendo la página después del foco.
- * - Se mira cada vez que termina un scroll (scrollend, o REVEAL_QUIET_MS sin otro), un cuadro después; a los
- *   REVEAL_SETTLE_MS del último aviso, aunque nada se haya movido; y una última vez a los REVEAL_WATCH_MS, cuando deja
- *   de esperar (si un scroll todavía no terminó, igual).
+ * - Se mira cada vez que termina un scroll (scrollend, o REVEAL_QUIET_MS sin otro), un cuadro después, y a los
+ *   REVEAL_SETTLE_MS del último aviso aunque nada se haya movido. Deja de esperar a los REVEAL_WATCH_MS, con una última
+ *   mirada; si un scroll sigue, cuando termine (y si no termina nunca, a los REVEAL_CAP_MS).
  * - Mientras espera, Espacio o Enter sobre un botón que no se ve, o con la página todavía moviéndose, no lo tocan: lo
  *   dejan quieto a la vista (scrollIntoView sin animación corta la que hubiera). Quieto y a la vista, lo tocan; sobre un
  *   campo de texto escriben. Nada de eso mueve la página, así que se sigue esperando.
@@ -351,13 +354,16 @@ const PAGE_SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", 
  * Se crea al cargar la página (antes de pedir nada a la red), así escucha popstate y hashchange desde el principio.
  */
 export function createFocusReveal(win: RevealWindow, focused: () => RevealTarget | null): FocusReveal {
-  /** Esperando (después de cerrar el libro, de popstate o de hashchange), hasta REVEAL_WATCH_MS del último aviso. */
+  /** Esperando (después de cerrar el libro, de popstate o de hashchange). */
   let armed = false;
   /** Llegó un scroll que todavía no terminó. */
   let scrolling = false;
+  /** Pasó REVEAL_WATCH_MS: cuando termine el scroll en curso, la última mirada. */
+  let watchOver = false;
   let settleTimer: number | null = null;
   let quietTimer: number | null = null;
   let watchTimer: number | null = null;
+  let capTimer: number | null = null;
 
   const stop = (timer: number | null): null => {
     if (timer !== null) win.clearTimeout(timer);
@@ -375,22 +381,33 @@ export function createFocusReveal(win: RevealWindow, focused: () => RevealTarget
   const disarm = (): void => {
     armed = false;
     scrolling = false;
+    watchOver = false;
     settleTimer = stop(settleTimer);
     quietTimer = stop(quietTimer);
     watchTimer = stop(watchTimer);
+    capTimer = stop(capTimer);
   };
 
-  /** El scroll terminó: un cuadro después (con el layout al día), se mira. */
+  /** La última mirada. */
+  const finish = (): void => {
+    look();
+    disarm();
+  };
+
+  /** El scroll terminó: un cuadro después (con el layout al día), se mira; si ya pasó REVEAL_WATCH_MS, por última vez. */
   const settled = (): void => {
     scrolling = false;
     quietTimer = stop(quietTimer);
     win.requestAnimationFrame(() => {
-      if (armed && !scrolling) look();
+      if (!armed || scrolling) return;
+      if (watchOver) finish();
+      else look();
     });
   };
 
   const arm = (): void => {
     armed = true;
+    watchOver = false;
     settleTimer = stop(settleTimer);
     settleTimer = win.setTimeout(() => {
       settleTimer = null;
@@ -399,9 +416,11 @@ export function createFocusReveal(win: RevealWindow, focused: () => RevealTarget
     watchTimer = stop(watchTimer);
     watchTimer = win.setTimeout(() => {
       watchTimer = null;
-      look();
-      disarm();
+      watchOver = true;
+      if (!scrolling) finish();
     }, REVEAL_WATCH_MS);
+    capTimer = stop(capTimer);
+    capTimer = win.setTimeout(finish, REVEAL_CAP_MS);
   };
 
   win.addEventListener("popstate", arm);

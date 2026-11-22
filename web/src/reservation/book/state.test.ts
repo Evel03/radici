@@ -4,6 +4,7 @@ import { focusId } from "../render.ts";
 import { readToken } from "../token.ts";
 import {
   MAX_DOTS,
+  REVEAL_CAP_MS,
   REVEAL_QUIET_MS,
   REVEAL_SETTLE_MS,
   REVEAL_WATCH_MS,
@@ -209,6 +210,8 @@ function fakeWindow(
   let animation: { from: number; to: number; start: number } | null = null;
   let pendingRestore: { at: number; y: number } | null = null;
   let focused: PageElement | "book" | null = null;
+  /** Contenido que apareció arriba (una foto que cargó): corre la página hacia abajo, sin scroll. */
+  let layoutShift = 0;
   const smoothMs = options.smoothMs ?? SMOOTH_MS;
   const current = (): Entry => entries[index] as Entry;
   const hashOf = (url?: string | URL | null): string => new URL(String(url), "https://radici.test/").hash;
@@ -276,10 +279,11 @@ function fakeWindow(
     moved = false;
     scrolling = false;
     focused = null;
+    layoutShift = 0;
   };
   const seen = (): boolean => {
     if (focused === null || focused === "book") return false;
-    const top = PAGE[focused].top - win.scrollY;
+    const top = PAGE[focused].top + layoutShift - win.scrollY;
     return top >= 0 && top + PAGE[focused].height <= VIEW.height;
   };
   const win = {
@@ -357,16 +361,27 @@ function fakeWindow(
       if (focused === null || focused === "book") return null;
       const el = PAGE[focused];
       return {
-        rect: () => ({ top: el.top - win.scrollY, bottom: el.top + el.height - win.scrollY, left: 16, right: VIEW.width - 16 }),
+        rect: () => {
+          const top = el.top + layoutShift - win.scrollY;
+          return { top, bottom: top + el.height, left: 16, right: VIEW.width - 16 };
+        },
         reveal: () => {
           animation = null;
-          scrollTo(el.top + el.height / 2 - VIEW.height / 2);
+          scrollTo(el.top + layoutShift + el.height / 2 - VIEW.height / 2);
         },
         kind: el.kind,
       };
     },
     /** Si lo que tiene el foco se ve entero. */
     seen,
+    /** Contenido que aparece arriba: todo baja dy px, sin scroll (ni evento). */
+    shiftLayout(dy: number): void {
+      layoutShift += dy;
+    },
+    /** Un scroll de la página misma (scrollTo), sin la persona: no corta nada, pero manda scroll. */
+    scrollProgrammatic(y: number): void {
+      scrollTo(y);
+    },
     /** La rueda del mouse (o el dedo): la persona mueve la página; corta una animación. */
     wheel(dy: number): void {
       fire("wheel");
@@ -913,10 +928,44 @@ describe("el foco a la vista cuando la página se queda quieta (createFocusRevea
     }
   });
 
-  it("si un scroll no termina nunca, a lo sumo REVEAL_WATCH_MS después del último aviso", () => {
-    const { win } = duplicateEntry({ smooth: true, smoothMs: 10_000 });
+  it("un scroll que sigue cuando termina REVEAL_WATCH_MS: espera a que termine (no deja de mirar a la mitad)", () => {
+    // Con la máquina cargada, la restauración animada de Chromium terminó hasta 2,8 s después de popstate (en vivo).
+    const { win } = duplicateEntry({ smooth: true, smoothMs: 4000 });
     win.back();
-    win.advance(REVEAL_WATCH_MS - 100);
+    win.advance(REVEAL_WATCH_MS + 100);
+    expect(win.seen()).toBe(false);
+    expect(win.scrollY).toBeGreaterThan(0);
+    win.advance(1200);
+    expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
+  });
+
+  it("al terminar REVEAL_WATCH_MS mira por última vez: también si un cambio de layout lo empujó afuera sin scroll", () => {
+    const { win, page } = duplicateEntry();
+    page.reveal.bookClosed();
+    win.advance(REVEAL_SETTLE_MS + 100);
+    expect(win.seen()).toBe(true);
+    // Una foto que carga arriba corre todo 600 px: confirmar queda abajo, afuera, sin ningún scroll.
+    win.shiftLayout(600);
+    win.advance(REVEAL_WATCH_MS - REVEAL_SETTLE_MS - 200);
+    expect(win.seen()).toBe(false);
+    win.advance(200);
+    expect(win.seen()).toBe(true);
+  });
+
+  it("después de la última mirada deja de esperar: un scroll posterior de la página ya no se corrige", () => {
+    const { win } = duplicateEntry({ smooth: true, smoothMs: 4000 });
+    win.back();
+    win.advance(5000);
+    expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
+    win.scrollProgrammatic(0);
+    win.advance(1000);
+    expect([win.scrollY, win.seen()]).toEqual([0, false]);
+  });
+
+  it("si un scroll no termina nunca, a lo sumo REVEAL_CAP_MS después del último aviso", () => {
+    const { win } = duplicateEntry({ smooth: true, smoothMs: 60_000 });
+    win.back();
+    win.advance(REVEAL_CAP_MS - 100);
     expect(win.seen()).toBe(false);
     win.advance(200);
     expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
