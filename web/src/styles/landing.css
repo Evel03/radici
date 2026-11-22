@@ -473,15 +473,28 @@
   outline-color: var(--crema);
 }
 
+/* Si el texto del link no entra en un renglón (en italiano es más largo), la flecha baja pegada a la última palabra
+   y no queda sola contra el borde: inline-block en lugar del inline-flex de .link-arrow, con un espacio duro. */
+.card--cta .link-arrow {
+  display: inline-block;
+  padding-block: 0.65rem;
+}
+
+.card--cta .link-arrow::after {
+  content: "\00a0\2192";
+  content: "\00a0\2192" / "";
+}
+
 @media (min-width: 48rem) {
   .price-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
+/* Cuatro tarjetas iguales: la del ejemplo con la tabla de precios, que pedía más ancho, ya no está. */
 @media (min-width: 64rem) {
   .price-grid {
-    grid-template-columns: 1fr 1fr 1fr 1.25fr;
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
