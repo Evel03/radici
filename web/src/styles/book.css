@@ -255,9 +255,8 @@
   }
 }
 
-/* La tapa y la última página: centradas, con el doble filete de una carta de restaurante. La hoja (con su scroll) va
-   adentro del filete: si el texto no entra (un teléfono apaisado o chico), se corta en la línea de adentro y corre
-   dentro del marco, sin pisarlo. */
+/* La tapa y la última página: centradas, con el doble filete de una carta de restaurante. Si el texto no entra (un
+   teléfono apaisado o chico), corre adentro del marco y se corta en su línea de adentro, sin pisarlo. */
 .book__page--cover,
 .book__page--closing {
   /* Del borde de la página al filete, y a su línea de adentro (1 px terra, 4 px crema y 1 px lino). */
@@ -265,18 +264,22 @@
   --book-frame-in: calc(var(--book-frame-out) + 6px);
 }
 
+/* La hoja ocupa toda la página, con un borde transparente hasta la línea de adentro del filete: el scroll recorta el
+   texto ahí y la banda del marco sigue siendo de la hoja (el dedo o la rueda la mueven también desde ahí). */
 .book__page--cover .book__sheet,
 .book__page--closing .book__sheet {
-  position: absolute;
-  inset: var(--book-frame-in);
   display: flex;
-  height: auto;
+  border: var(--book-frame-in) solid transparent;
 }
 
+/* top/right/bottom/left y no inset: con var(), el build no puede bajar inset para Safari 14.0, que no lo conoce. */
 .book__page--cover::before,
 .book__page--closing::before {
   position: absolute;
-  inset: var(--book-frame-out);
+  top: var(--book-frame-out);
+  right: var(--book-frame-out);
+  bottom: var(--book-frame-out);
+  left: var(--book-frame-out);
   border: 1px solid var(--terra);
   box-shadow: inset 0 0 0 4px var(--crema-light), inset 0 0 0 5px var(--lino);
   content: "";
@@ -286,8 +289,8 @@
 .book__cover,
 .book__closing {
   width: 100%;
-  /* Las medidas de siempre desde el borde de la página (30rem de ancho, 3rem y 1.75rem de aire), ahora que la hoja
-     empieza en el filete: el texto queda igual que antes. */
+  /* Las medidas de siempre desde el borde de la página (30rem de ancho, 3rem y 1.75rem de aire), ahora que lo de
+     adentro de la hoja empieza en la línea de adentro del filete: el texto queda igual que antes. */
   max-width: calc(30rem - 2 * var(--book-frame-in));
   margin: auto;
   padding: calc(3rem - var(--book-frame-in)) calc(1.75rem - var(--book-frame-in));
