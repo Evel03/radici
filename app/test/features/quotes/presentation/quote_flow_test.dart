@@ -2,10 +2,11 @@
 // preventivo» con la hoja de la reserva (el precio de todo el presupuesto,
 // con su reparto exacto) y, al crearlo, el menú de la semana 1 con el aviso
 // de que sale junto con el presupuesto; al volver, el pedido muestra el
-// borrador. El menú de otra semana del presupuesto no se manda todavía. La
-// vista previa traduce cada error del presupuesto con el paso que sigue. Y la
-// bandeja dice qué pedidos tienen el presupuesto mandado, rechazado o
-// vencido.
+// borrador. Si la primera llegada pasa con la hoja abierta, no lo crea y lo
+// dice (también al lector de pantalla). El menú de otra semana del
+// presupuesto no se manda todavía. La vista previa traduce cada error del
+// presupuesto con el paso que sigue. Y la bandeja dice qué pedidos tienen el
+// presupuesto mandado, rechazado o vencido.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
@@ -112,6 +113,55 @@ void main() {
         textOf(tester, 'quote-week-quote-1-3-detail'),
         'Arrivo 10:00 · 166,66 €',
       );
+    },
+  );
+
+  testWidgets(
+    'si la primera llegada pasa con la hoja abierta, «Crea il preventivo» no lo crea: la semana y la barra dicen por qué, y el lector de pantalla lo oye',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      // Ahora: lunes 19/10 a las 14:00. El pedido prefiere el martes 20/10.
+      var now = testNow;
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository([
+          buildRequest(
+            weeks: 2,
+            preferredDate: CalendarDate(2026, 10, 20),
+            estimate: null,
+            seenAt: testNow,
+          ),
+        ]),
+        location: '/richieste/req-1',
+        size: const Size(400, 1000),
+        clock: () => now,
+      );
+      await tester.tap(byKey('action-prepare-quote'));
+      await tester.pumpAndSettle();
+      await tester.enterText(byKey('booking-price'), '280');
+      await tester.pumpAndSettle();
+      // El martes a las 10:00 (la sugerida): se puede crear.
+      expect(onPressedOf(tester, 'booking-confirm'), isNotNull);
+
+      // La hoja quedó abierta hasta el martes a las 10:30.
+      now = DateTime.utc(2026, 10, 20, 8, 30);
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(app.quotes.creations, isEmpty);
+      const arrivalPassed =
+          "L'arrivo è già passato: la cliente accetta il preventivo prima "
+          "dell'arrivo. Scegli una data futura.";
+      expect(textOf(tester, 'booking-week-0-status'), arrivalPassed);
+      expect(textOf(tester, 'booking-blocker'), 'Settimana 1 · $arrivalPassed');
+      // El botón queda gris sin que nada más cambie a la vista: la línea de
+      // la barra se anuncia.
+      expect(
+        tester.getSemantics(byKey('booking-blocker')),
+        isSemantics(isLiveRegion: true),
+      );
+      expect(onPressedOf(tester, 'booking-confirm'), isNull);
+      semantics.dispose();
     },
   );
 

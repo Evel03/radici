@@ -89,9 +89,17 @@ enum QuoteToWithdraw {
 
 /// El presupuesto abierto que «Confirmar sin presupuesto» retiraría: si ya
 /// salió ([kind]), cuántas semanas retenidas tiene ([weeks]; 0 si no se
-/// sabe) y si la semana 1 tiene un menú guardado ([hasMenu]): se va con esa
-/// semana cancelada y hay que volver a armarlo y mandarlo.
-typedef OpenQuoteToWithdraw = ({QuoteToWithdraw kind, int weeks, bool hasMenu});
+/// sabe), si la semana 1 tiene un menú guardado ([hasMenu]: se va con esa
+/// semana cancelada y hay que volver a armarlo y mandarlo) y si la clienta
+/// todavía lo puede aceptar desde su enlace ([clientCanAccept]: mandado, a
+/// tiempo y sin cambios pedidos ni cambios sin reenviar; con ese menú, la
+/// otra salida).
+typedef OpenQuoteToWithdraw = ({
+  QuoteToWithdraw kind,
+  int weeks,
+  bool hasMenu,
+  bool clientCanAccept,
+});
 
 /// A quién es la reserva: el encabezado de la hoja y el WhatsApp final. Tiene
 /// datos de contacto: toString no los muestra.
@@ -478,15 +486,23 @@ final bookingSeedProvider = FutureProvider.autoDispose
     });
 
 /// El presupuesto abierto del pedido que la reserva retiraría (SPEC 5.8): un
-/// borrador o uno mandado, con sus semanas y si la semana 1 tiene un menú
-/// guardado. Si no se puede leer (o no hay uno leído para un pedido con el
+/// borrador o uno mandado, con sus semanas, si la semana 1 tiene un menú
+/// guardado y si la clienta todavía lo puede aceptar desde su enlace (su
+/// estado de ahora es «mandado»: no con cambios pedidos, cambiado sin
+/// reenviar ni con el plazo vencido, aunque el cron todavía no lo haya
+/// cerrado). Si no se puede leer (o no hay uno leído para un pedido con el
 /// presupuesto mandado: un dato viejo), lo que dice el pedido: uno con el
 /// presupuesto mandado (`quoted`) tiene uno abierto; uno nuevo, no se sabe
 /// (la base igual lo retira).
 Future<OpenQuoteToWithdraw?> _openQuoteOf(Ref ref, ChefRequest request) async {
   if (!request.canConfirmBooking) return null;
   final OpenQuoteToWithdraw? fallback = request.status == RequestStatus.quoted
-      ? (kind: QuoteToWithdraw.sent, weeks: 0, hasMenu: false)
+      ? (
+          kind: QuoteToWithdraw.sent,
+          weeks: 0,
+          hasMenu: false,
+          clientCanAccept: false,
+        )
       : null;
   final RequestQuote? quote;
   try {
@@ -509,10 +525,12 @@ Future<OpenQuoteToWithdraw?> _openQuoteOf(Ref ref, ChefRequest request) async {
       hasMenu = false;
     }
   }
+  final now = ref.read(clockProvider)();
   return (
     kind: quote.wasSent ? QuoteToWithdraw.sent : QuoteToWithdraw.draft,
     weeks: quote.currentTerms.weeks.length,
     hasMenu: hasMenu,
+    clientCanAccept: quote.statusAt(now) == QuoteStatus.sent,
   );
 }
 

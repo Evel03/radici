@@ -261,6 +261,9 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         key: const ValueKey('booking-withdraw-quote-dialog'),
+        // Hasta cuatro frases: con el texto grande en un teléfono, se desliza
+        // (sin esto, el final se recortaría sin aviso).
+        scrollable: true,
         title: Text(l10n.bookingWithdrawQuoteTitle),
         content: Text(
           l10n.bookingWithdrawsQuoteText(withdraw),
@@ -1094,10 +1097,14 @@ class _ConfirmBar extends StatelessWidget {
             textKey: 'booking-blocker',
             text: l10n.bookingBlockerText(state, blocker, locale: locale),
             color: theme.colorScheme.error,
-            // El choque llega cuando vuelve el dryRun: el lector de pantalla
-            // lo anuncia (el comienzo, «Controllo le date…», también). El
-            // precio no, que cambia con cada tecla.
-            liveRegion: blocker.kind == BookingBlockKind.clash,
+            // El choque llega cuando vuelve el dryRun y, en el presupuesto, la
+            // llegada que ya pasó puede aparecer al tocar «Crear» (la hora se
+            // mira en ese momento): el lector de pantalla los anuncia (el
+            // comienzo del dryRun, «Controllo le date…», también). El precio
+            // no, que cambia con cada tecla.
+            liveRegion:
+                blocker.kind == BookingBlockKind.clash ||
+                blocker.kind == BookingBlockKind.arrival,
             actionKey: 'booking-blocker-show',
             actionLabel: l10n.bookingShowProblem,
             onAction: switch (blocker) {

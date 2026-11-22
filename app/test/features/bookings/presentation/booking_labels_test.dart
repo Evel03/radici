@@ -1,7 +1,8 @@
 // Textos de la hoja «Conferma prenotazione» en italiano: cada estado de una
 // semana, cada falla, la barra de abajo (el precio que se confirma o lo que
 // impide confirmar: en el presupuesto, también una llegada que ya pasó) y el
-// presupuesto abierto que se retira al confirmar sin presupuesto.
+// presupuesto abierto que se retira al confirmar sin presupuesto (la salida
+// del enlace, solo si la clienta todavía lo puede aceptar).
 // arb_keys_test vigila que las claves existan; esto, qué texto sale en cada
 // caso.
 import 'package:flutter/widgets.dart';
@@ -259,6 +260,7 @@ void main() {
           kind: QuoteToWithdraw.draft,
           weeks: 1,
           hasMenu: false,
+          clientCanAccept: false,
         )),
         'Questa richiesta ha una bozza di preventivo: confermando, viene '
         'ritirata e la sua data bloccata si annulla.',
@@ -268,6 +270,7 @@ void main() {
           kind: QuoteToWithdraw.sent,
           weeks: 0,
           hasMenu: false,
+          clientCanAccept: false,
         )),
         'Questa richiesta ha un preventivo già inviato: confermando, viene '
         'ritirato, le sue settimane bloccate si annullano e la cliente non '
@@ -275,14 +278,56 @@ void main() {
       );
       expect(
         it.bookingWithdrawsQuoteText((
+          kind: QuoteToWithdraw.sent,
+          weeks: 1,
+          hasMenu: false,
+          clientCanAccept: true,
+        )),
+        'Questa richiesta ha un preventivo già inviato: confermando, viene '
+        'ritirato, la sua data bloccata si annulla e la cliente non potrà '
+        'più accettarlo dal suo link.',
+      );
+      expect(
+        it.bookingWithdrawsQuoteText((
           kind: QuoteToWithdraw.draft,
           weeks: 1,
           hasMenu: true,
+          clientCanAccept: false,
         )),
         'Questa richiesta ha una bozza di preventivo: confermando, viene '
         'ritirata e la sua data bloccata si annulla. Il menù che hai '
         'preparato se ne va con la data annullata. Dopo aver confermato '
         'dovrai prepararlo e inviarlo di nuovo.',
+      );
+    });
+
+    test('la salida del enlace (que la clienta lo acepte), solo si todavía lo puede aceptar', () {
+      const withMenu =
+          'Questa richiesta ha un preventivo già inviato: confermando, viene '
+          'ritirato, le sue settimane bloccate si annullano e la cliente non '
+          'potrà più accettarlo dal suo link. Il menù della settimana 1 che '
+          'hai preparato se ne va con la settimana annullata. Dopo aver '
+          'confermato dovrai prepararlo e inviarlo di nuovo.';
+      expect(
+        it.bookingWithdrawsQuoteText((
+          kind: QuoteToWithdraw.sent,
+          weeks: 4,
+          hasMenu: true,
+          clientCanAccept: true,
+        )),
+        '$withMenu Se invece la cliente accetta il preventivo dal suo link, '
+        "il menù resta confermato così com'è.",
+      );
+      // Con cambios pedidos, cambiado sin reenviar o con el plazo vencido no
+      // lo puede aceptar: esa salida no existe.
+      expect(
+        it.bookingWithdrawsQuoteText((
+          kind: QuoteToWithdraw.sent,
+          weeks: 4,
+          hasMenu: true,
+          clientCanAccept: false,
+        )),
+        withMenu,
       );
     });
   });

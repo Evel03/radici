@@ -222,6 +222,9 @@ class _QuoteBlock extends ConsumerWidget {
         final colors = Theme.of(dialogContext).colorScheme;
         return AlertDialog(
           key: const ValueKey('quote-withdraw-dialog'),
+          // Con el texto grande en un teléfono, se desliza (sin esto, el
+          // final se recortaría sin aviso).
+          scrollable: true,
           title: Text(l10n.quoteWithdrawTitle),
           content: Text(
             [

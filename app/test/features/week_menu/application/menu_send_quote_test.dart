@@ -147,8 +147,9 @@ void main() {
         .value!
         .singleWhere((r) => r.id == 'req-1');
     expect(request.status, RequestStatus.quoted);
-    // Al mandarlo y, otra vez, porque el pedido cambió de estado.
-    expect(quotes.fetches.length, greaterThan(reads));
+    // Dos lecturas, ni una más (nada de vueltas): al mandarlo y, otra vez,
+    // porque el pedido cambió de estado (nuevo → «Presupuesto enviado»).
+    expect(quotes.fetches.length, reads + 2);
   });
 
   test('la respuesta se pierde pero el servidor lo mandó: el presupuesto y el pedido se vuelven a leer, al fallar y al cerrar', () async {
@@ -169,7 +170,8 @@ void main() {
     await pumpEventQueue();
 
     expect(state().step, MenuSendStep.sendFailed);
-    expect(quotes.fetches.length, greaterThan(reads));
+    // Al fallar y, otra vez, porque el pedido cambió de estado.
+    expect(quotes.fetches.length, reads + 2);
     final quote = container.read(requestQuoteProvider('req-1')).value!;
     expect(quote.wasSent, isTrue);
     final request = container
@@ -178,11 +180,12 @@ void main() {
         .singleWhere((r) => r.id == 'req-1');
     expect(request.status, RequestStatus.quoted);
 
-    // Al cerrar la pantalla, otra vez (el servidor pudo terminar después).
+    // Al cerrar la pantalla, otra vez (el servidor pudo terminar después); el
+    // pedido ya no cambia.
     final afterFailure = quotes.fetches.length;
     flow().closed();
     await pumpEventQueue();
-    expect(quotes.fetches.length, greaterThan(afterFailure));
+    expect(quotes.fetches.length, afterFailure + 1);
   });
 
   test('un presupuesto que la clienta rechazó (sus semanas, canceladas): la base contesta sessionNotEditable y el presupuesto se vuelve a leer', () async {

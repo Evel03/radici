@@ -7,10 +7,14 @@
 // puede hacer en cada uno: «Invia» abajo cuando es lo que falta (o por qué
 // todavía no, también si el menú de la semana 1 no se pudo leer), otro
 // precio con su reparto exacto y retirarlo con confirmación (avisando si se
-// va el menú de la semana 1). Con una sola semana, «la fecha». El bloque
-// sigue al pedido: rechazarlo retira el presupuesto. Las horas, de Roma.
+// va el menú de la semana 1, y con la salida del enlace solo si la clienta
+// todavía lo puede aceptar; la pregunta se lee entera con el texto grande).
+// Con una sola semana, «la fecha». El bloque sigue al pedido: rechazarlo
+// retira el presupuesto. Las horas, de Roma.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/quotes/data/quotes_repository.dart';
 import 'package:radici/features/quotes/domain/request_quote.dart';
@@ -74,15 +78,45 @@ void main() {
       ),
   ];
 
+  /// El cuerpo [body] del diálogo [dialog] se lee entero: el texto no se
+  /// recorta (tiene el alto de todo el texto) y, deslizando el diálogo, se
+  /// llega a su última línea.
+  Future<void> expectWholeBody(
+    WidgetTester tester, {
+    required String dialog,
+    required String body,
+  }) async {
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.descendant(of: byKey(body), matching: find.byType(RichText)),
+    );
+    expect(
+      paragraph.size.height,
+      moreOrLessEquals(paragraph.getMaxIntrinsicHeight(paragraph.size.width)),
+    );
+    final scrollable = find.descendant(
+      of: byKey(dialog),
+      matching: find.byType(Scrollable),
+    );
+    expect(scrollable, findsOneWidget);
+    await tester.drag(scrollable, const Offset(0, -3000));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getBottomLeft(byKey(body)).dy,
+      lessThanOrEqualTo(tester.getBottomLeft(scrollable).dy + 0.5),
+    );
+  }
+
   /// El detalle del pedido `req-1` con [quote] (y sus semanas como sesiones)
   /// y el menú de la semana 1 ([weekOneMenu], por defecto guardado con un
-  /// plato; con [menuFailure], los menús no se pueden leer).
+  /// plato; con [menuFailure], los menús no se pueden leer). [size]: por
+  /// defecto, alto como para tener todo el detalle a la vista.
   Future<ChefApp> openDetail(
     WidgetTester tester, {
     ChefRequest? request,
     RequestQuote? quote,
     bool weekOneMenu = true,
     MenuFailure? menuFailure,
+    Size size = const Size(400, 3000),
   }) async {
     final requests = FakeChefRequestsRepository([request ?? weekly()]);
     final sessions = FakeSessionsRepository(
@@ -108,7 +142,7 @@ void main() {
       ),
       location: '/richieste/req-1',
       // Todo el detalle a la vista: la lista arma solo lo que se ve.
-      size: const Size(400, 3000),
+      size: size,
     );
   }
 
@@ -709,6 +743,35 @@ void main() {
         "Le settimane bloccate vengono annullate e la richiesta torna nuova. Se l'hai già inviato, nel suo link la cliente vede che l'hai ritirato.",
       );
     });
+
+    testWidgets(
+      'a 375×667 con el texto al doble, la pregunta se lee entera: el diálogo se desliza hasta la última frase',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await openDetail(
+          tester,
+          quote: buildQuote(),
+          size: const Size(375, 667),
+        );
+        // La lista arma solo lo que se ve: hasta el botón, deslizando.
+        await tester.scrollUntilVisible(
+          byKey('quote-withdraw'),
+          200,
+          scrollable: find.descendant(
+            of: byKey('request-detail'),
+            matching: find.byType(Scrollable),
+          ),
+        );
+        await tapVisible(tester, 'quote-withdraw');
+        expect(byKey('quote-withdraw-dialog'), findsOneWidget);
+        await expectWholeBody(
+          tester,
+          dialog: 'quote-withdraw-dialog',
+          body: 'quote-withdraw-body',
+        );
+      },
+    );
   });
 
   group('el presupuesto sigue al pedido', () {
@@ -878,6 +941,134 @@ void main() {
         'La data resta bloccata mentre prepari il menù: il preventivo parte con lui e la cliente lo accetta dal suo link.',
       );
     });
+
+    testWidgets('al crearlo, «Apro il menù…», sin «della settimana 1»', (
+      tester,
+    ) async {
+      final app = await openDetail(tester, request: extra);
+      await tester.tap(byKey('action-prepare-quote'));
+      await tester.pumpAndSettle();
+      await tester.enterText(byKey('booking-price'), '140');
+      await tester.pumpAndSettle();
+      await tester.tap(byKey('booking-confirm'));
+      await tester.pump();
+
+      expect(app.quotes.creations, hasLength(1));
+      expect(textOf(tester, 'quote-created-text'), 'Apro il menù…');
+      await tester.pumpAndSettle();
+    });
+
+    final quotedExtra = buildRequest(
+      type: RequestType.extra,
+      weeks: 1,
+      status: RequestStatus.quoted,
+      seenAt: testNow,
+    );
+
+    testWidgets('mandado: la ayuda dice que después va rimandato', (
+      tester,
+    ) async {
+      await openDetail(
+        tester,
+        request: quotedExtra,
+        quote: buildQuote(sent: true, sessions: oneWeek),
+      );
+      expect(
+        textOf(tester, 'quote-weeks-hint'),
+        'Tocca la data per spostarla o annullarla: poi va rimandato.',
+      );
+    });
+
+    testWidgets('con cambios pedidos: hasta cuándo reenviarlo', (tester) async {
+      await openDetail(
+        tester,
+        request: quotedExtra,
+        quote: buildQuote(
+          sent: true,
+          sessions: oneWeek,
+          lastSend: quoteSend(
+            changesRequestedAt: DateTime.utc(2026, 11, 22, 16, 5),
+            changesText: 'Preferirei il martedì.',
+          ),
+        ),
+      );
+      expect(
+        textOf(tester, 'quote-expires-unless-resent'),
+        'Se non glielo rimandi entro il 24/11 alle 14:32, scade e la data viene liberata.',
+      );
+    });
+
+    final at = DateTime.utc(2026, 11, 23, 8, 15);
+    for (final (name, quote, text) in [
+      (
+        'vencido sin respuesta',
+        buildQuote(sent: true, sessions: oneWeek, expiredAt: at),
+        'Scaduto il 23/11 alle 09:15 senza risposta: la data viene liberata.',
+      ),
+      (
+        'un borrador que venció',
+        buildQuote(sessions: oneWeek, expiredAt: at),
+        'La bozza è scaduta il 23/11 alle 09:15 senza essere inviata: la data viene liberata.',
+      ),
+      (
+        'vencido después de pedir cambios',
+        buildQuote(
+          sent: true,
+          sessions: oneWeek,
+          expiredAt: at,
+          lastSend: quoteSend(
+            changesRequestedAt: DateTime.utc(2026, 11, 22, 16, 5),
+            changesText: 'Preferirei il martedì.',
+          ),
+        ),
+        'Scaduto il 23/11 alle 09:15 senza che le mandassi la versione con le modifiche che aveva chiesto: la data viene liberata.',
+      ),
+    ]) {
+      testWidgets('$name: «la data viene liberata»', (tester) async {
+        await openDetail(
+          tester,
+          request: buildRequest(
+            type: RequestType.extra,
+            weeks: 1,
+            status: quote.wasSent
+                ? RequestStatus.expired
+                : RequestStatus.newRequest,
+            seenAt: testNow,
+          ),
+          quote: quote,
+        );
+        expect(textOf(tester, 'quote-state'), text);
+      });
+    }
+
+    testWidgets(
+      'la vista previa, si la llegada es antes de las 48 h: tiene tiempo hasta la hora de llegada',
+      (tester) async {
+        // Mañana, martes 20/10, a las 10:00 (ahora: lunes 19/10, 14:00).
+        final tomorrow = CalendarDate(2026, 10, 20);
+        final app = await openDetail(
+          tester,
+          request: extra,
+          quote: buildQuote(
+            sessions: quoteSessions(weeks: 1, first: tomorrow),
+            holdUntil: DateTime.utc(2026, 10, 20, 8),
+          ),
+        );
+        app.menuSends.previewQuotes[quoteSessionId(1)] = PreviewQuote.tryParse(
+          snapshotQuoteJson(
+            weeks: [(date: '2026-10-20', start: '10:00', cents: 14000)],
+          ),
+        )!;
+
+        await tester.tap(byKey('quote-send'));
+        await tester.pumpAndSettle();
+
+        expect(
+          textOf(tester, 'menu-send-quote-deadline'),
+          "Ha tempo fino a mar 20 ott alle 10:00 per accettarlo (l'ora di arrivo).",
+        );
+      },
+    );
   });
 
   testWidgets('si no se puede leer el presupuesto, lo dice con «Riprova»', (
@@ -987,6 +1178,85 @@ void main() {
         expect(
           tester.widget<Text>(byKey('booking-withdraw-quote-body')).data,
           notice,
+        );
+      },
+    );
+
+    for (final (name, quote) in [
+      (
+        'con cambios pedidos',
+        buildQuote(
+          sent: true,
+          lastSend: quoteSend(
+            changesRequestedAt: DateTime.utc(2026, 11, 22, 16, 5),
+            changesText: 'Preferirei il martedì.',
+          ),
+        ),
+      ),
+      (
+        'cambiado sin reenviar',
+        buildQuote(
+          sent: true,
+          sentTerms: termsOf(quoteSessions()),
+          sessions: quoteSessions(serviceCents: 15000),
+        ),
+      ),
+    ]) {
+      testWidgets(
+        '$name la clienta no lo puede aceptar desde su enlace: ni el aviso ni la pregunta le ofrecen esa salida',
+        (tester) async {
+          await openDetail(
+            tester,
+            request: weekly(status: RequestStatus.quoted),
+            quote: quote,
+          );
+          await tester.tap(byKey('action-confirm-booking'));
+          await tester.pumpAndSettle();
+          const notice =
+              'Questa richiesta ha un preventivo già inviato: confermando, viene ritirato, le sue settimane bloccate si annullano e la cliente non potrà più accettarlo dal suo link. '
+              'Il menù della settimana 1 che hai preparato se ne va con la settimana annullata. '
+              'Dopo aver confermato dovrai prepararlo e inviarlo di nuovo.';
+          expect(
+            tester.widget<Text>(byKey('booking-withdraws-quote')).data,
+            notice,
+          );
+
+          await tester.enterText(byKey('booking-price'), '560');
+          await tester.pumpAndSettle();
+          await tester.tap(byKey('booking-confirm'));
+          await tester.pumpAndSettle();
+          expect(
+            tester.widget<Text>(byKey('booking-withdraw-quote-body')).data,
+            notice,
+          );
+        },
+      );
+    }
+
+    testWidgets(
+      'a 375×667 con el texto a 1,5, la pregunta se lee entera: el diálogo se desliza hasta la última frase',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        // El texto más largo: mandado, con menú y la salida del enlace.
+        await openDetail(
+          tester,
+          request: weekly(status: RequestStatus.quoted),
+          quote: buildQuote(sent: true),
+          size: const Size(375, 667),
+        );
+        await tester.tap(byKey('action-confirm-booking'));
+        await tester.pumpAndSettle();
+        await tester.enterText(byKey('booking-price'), '560');
+        await tester.pumpAndSettle();
+        await tester.tap(byKey('booking-confirm'));
+        await tester.pumpAndSettle();
+
+        expect(byKey('booking-withdraw-quote-dialog'), findsOneWidget);
+        await expectWholeBody(
+          tester,
+          dialog: 'booking-withdraw-quote-dialog',
+          body: 'booking-withdraw-quote-body',
         );
       },
     );

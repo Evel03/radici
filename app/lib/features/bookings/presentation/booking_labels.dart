@@ -152,9 +152,11 @@ extension BookingLabels on AppLocalizations {
   /// Arriba de la hoja «Confirmar sin presupuesto» (y en la pregunta antes de
   /// confirmar): el presupuesto abierto del pedido se retira y sus semanas
   /// retenidas se cancelan; si la semana 1 tiene un menú guardado, se va con
-  /// ella y hay que volver a armarlo y mandarlo (si ya salió, la clienta
-  /// todavía lo puede aceptar desde su enlace, con ese menú). Con una sola
-  /// semana habla de una fecha; sin saber cuántas, en plural.
+  /// ella y hay que volver a armarlo y mandarlo (si la clienta todavía lo
+  /// puede aceptar desde su enlace, también que aceptarlo deja ese menú
+  /// confirmado; con cambios pedidos, cambiado sin reenviar o vencido, esa
+  /// salida no existe). Con una sola semana habla de una fecha; sin saber
+  /// cuántas, en plural.
   String bookingWithdrawsQuoteText(OpenQuoteToWithdraw quote) => [
     switch (quote.kind) {
       QuoteToWithdraw.sent => bookingWithdrawsQuoteSent(quote.weeks),
@@ -163,7 +165,7 @@ extension BookingLabels on AppLocalizations {
     if (quote.hasMenu) ...[
       quoteMenuGoesWithWeek(quote.weeks),
       bookingQuoteMenuRedo,
-      if (quote.kind == QuoteToWithdraw.sent) bookingQuoteMenuAccept,
+      if (quote.clientCanAccept) bookingQuoteMenuAccept,
     ],
   ].join(' ');
 

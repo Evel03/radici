@@ -23,18 +23,19 @@
 // queda sin respuesta, el reintento recibe quoteExists cuando el presupuesto
 // ya se había creado; la hoja lo busca y, si es el que mandó (un borrador con
 // esas fechas, esa hora, esos minutos y ese precio), lo toma como creado. Un
-// presupuesto no se crea con una llegada que ya pasó (una fecha pasada, u
-// hoy con la hora ya pasada, mirada al tocar «Crear»): nacería vencido. En
-// la reserva eso es solo un aviso.
+// presupuesto no se crea con una llegada que ya pasó o es de este mismo
+// minuto (una fecha pasada, u hoy con esa hora, mirada al tocar «Crear»):
+// nacería vencido. En la reserva eso es solo un aviso.
 //
 // «Confirmar sin presupuesto» desde un pedido con un presupuesto abierto
 // (borrador, o mandado: el pedido en `quoted`) también se puede: la base lo
 // retira en la misma transacción. El seed trae cuál es
-// (ConfirmBookingState.openQuote: si salió, sus semanas y si se va el menú de
-// la semana 1) para que la pantalla lo avise y lo pregunte antes de
-// confirmar; al confirmar, el detalle lo vuelve a leer. Desde un pedido la
-// hoja se puede cerrar mientras espera: el controller sigue vivo hasta la
-// respuesta, así el pedido y su presupuesto se releen igual.
+// (ConfirmBookingState.openQuote: si salió, sus semanas, si se va el menú de
+// la semana 1 y si la clienta todavía lo puede aceptar desde su enlace) para
+// que la pantalla lo avise y lo pregunte antes de confirmar; al confirmar, el
+// detalle lo vuelve a leer. Desde un pedido la hoja se puede cerrar mientras
+// espera: el controller sigue vivo hasta la respuesta, así el pedido y su
+// presupuesto se releen igual.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -114,10 +115,10 @@ enum BookingBlockKind {
   /// Una fecha que no se puede mandar (misma semana, orden o muy lejos).
   date,
 
-  /// Solo en el presupuesto: la llegada de la semana ya pasó (una fecha
-  /// pasada, o hoy con la hora ya pasada). La clienta lo acepta antes de la
-  /// primera llegada: crearlo así lo dejaría vencido al nacer. En una reserva
-  /// es un aviso (sirve para cargar lo ya hecho).
+  /// Solo en el presupuesto: la llegada de la semana ya pasó o es de este
+  /// mismo minuto (una fecha pasada, u hoy con esa hora). La clienta lo
+  /// acepta antes de la primera llegada: crearlo así lo dejaría vencido al
+  /// nacer. En una reserva es un aviso (sirve para cargar lo ya hecho).
   arrival,
 
   /// Una semana choca con otra sesión.
@@ -242,8 +243,9 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
     QuoteDraft? quote,
 
     /// Desde un pedido con un presupuesto abierto: el que la base retira al
-    /// confirmar, con sus semanas y si se va el menú de la semana 1 (la
-    /// pantalla lo avisa y lo hace confirmar antes).
+    /// confirmar, con sus semanas, si se va el menú de la semana 1 y si la
+    /// clienta todavía lo puede aceptar (la pantalla lo avisa y lo hace
+    /// confirmar antes).
     OpenQuoteToWithdraw? openQuote,
   }) = _ConfirmBookingState;
 
@@ -327,14 +329,23 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
         );
   }
 
-  /// La llegada de la semana [index] ya pasó: una fecha anterior a hoy o, hoy,
-  /// una llegada ya pasada ([arrivalPassed]). En el presupuesto impide
-  /// crearlo ([BookingBlockKind.arrival]); en una reserva, la hoja lo avisa.
-  bool arrivalGone(int index) =>
-      index < weeks && (dates[index].isBefore(today) || arrivalPassed(index));
+  /// La llegada de la semana [index] ya pasó o es de este mismo minuto: una
+  /// fecha anterior a hoy o, hoy, una llegada que no es posterior a la hora
+  /// de ahora (la base da por vencido un plazo `<= now()`, y el de un
+  /// presupuesto nunca pasa de la primera llegada). En el presupuesto impide
+  /// crearlo ([BookingBlockKind.arrival]); en una reserva, la hoja avisa solo
+  /// la que ya pasó ([arrivalPassed]).
+  bool arrivalGone(int index) {
+    if (index >= weeks) return false;
+    final date = dates[index];
+    final arrival = start;
+    return date.isBefore(today) ||
+        (date == today && arrival != null && arrival.compareTo(openedAt) <= 0);
+  }
 
-  /// Solo en el presupuesto: la primera semana cuya llegada ya pasó
-  /// ([arrivalGone]), o -1. Las fechas van en orden: es la primera.
+  /// Solo en el presupuesto: la primera semana cuya llegada ya pasó o es de
+  /// este mismo minuto ([arrivalGone]), o -1. Las fechas van en orden: es la
+  /// primera.
   int get _quoteArrivalGoneWeek {
     if (!isQuote) return -1;
     for (var i = 0; i < weeks; i++) {

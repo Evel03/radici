@@ -4,11 +4,12 @@
 // que impide crearlo, el presupuesto creado y, si la creación se quedó sin
 // respuesta, el reintento que encuentra el que ya se había creado. Un
 // presupuesto no nace vencido: la primera fecha empieza mañana y una primera
-// llegada que ya pasó (a la hora de tocar «Crear») no deja crearlo. El
-// presupuesto del pedido sigue al pedido (otro teléfono lo mandó, la clienta
-// lo rechazó) y se vuelve a leer aunque la hoja ya no esté. «Confirmar sin
-// presupuesto» con uno abierto avisa que lo retira, y «Rinnova» de esa reserva
-// no cuenta las semanas del presupuesto retirado.
+// llegada que ya pasó o es de este mismo minuto (a la hora de tocar «Crear»)
+// no deja crearlo. El presupuesto del pedido sigue al pedido (otro teléfono lo
+// mandó, la clienta lo rechazó, ya no está) y se vuelve a leer aunque la hoja
+// ya no esté. «Confirmar sin presupuesto» con uno abierto avisa que lo retira
+// (y si la clienta todavía lo puede aceptar desde su enlace), y «Rinnova» de
+// esa reserva no cuenta las semanas del presupuesto retirado.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +27,7 @@ import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/quotes/application/quote_providers.dart';
 import 'package:radici/features/quotes/data/quotes_repository.dart';
+import 'package:radici/features/quotes/domain/request_quote.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
@@ -99,6 +101,11 @@ void main() {
       ..listen(requestQuoteProvider(request.id), (_, _) {});
     await container.read(chefRequestProvider(request.id).future);
     if (beforeSheet != null) {
+      // Todo leído antes del cambio (la bandeja, ya con la sesión de Evelyn,
+      // y el presupuesto): la hoja arranca con el pedido de antes y es el
+      // servidor el que dice que cambió.
+      await pumpEventQueue();
+      await container.read(chefInboxProvider.future);
       await container.read(requestQuoteProvider(request.id).future);
       beforeSheet();
     }
@@ -330,6 +337,27 @@ void main() {
       },
     );
 
+    test('una llegada en este mismo minuto: tampoco (la base da el plazo por vencido apenas llega)', () async {
+      // Las 14:00 y 30 segundos: la llegada de las 14:00 es ahora.
+      now = testNow.add(const Duration(seconds: 30));
+      await open(weekly());
+      controller()
+        ..setDate(0, today)
+        ..setStart(const ClockTime.hm(14, 0));
+      await pumpEventQueue();
+      expect(state().canConfirm, isFalse);
+      expect(state().blocker, (kind: BookingBlockKind.arrival, week: 0));
+
+      await controller().confirm();
+      expect(quotes.creations, isEmpty);
+
+      // Un minuto más tarde, sí.
+      controller().setStart(const ClockTime.hm(14, 1));
+      await pumpEventQueue();
+      expect(state().blocker, isNull);
+      expect(state().canConfirm, isTrue);
+    });
+
     test(
       'mira la hora al tocar «Crear», no la de cuando se abrió la hoja',
       () async {
@@ -372,6 +400,8 @@ void main() {
       );
 
       expect(state().failure!.kind, BookingFailureKind.requestNotNew);
+      // Lo dijo el servidor (el dryRun), no el pedido de la bandeja.
+      expect(quotes.dryRuns, hasLength(1));
       final local = container
           .read(chefInboxProvider)
           .value!
@@ -380,6 +410,36 @@ void main() {
       final quote = container.read(requestQuoteProvider('req-1')).value;
       expect(quote?.id, testQuoteId);
       expect(quote!.wasSent, isTrue);
+    });
+
+    test('el servidor ya no encuentra el pedido (notFound): la bandeja se queda como estaba, pero el presupuesto se vuelve a leer', () async {
+      // Uno retirado, que el detalle muestra.
+      quotes.quotes['req-1'] = buildQuote(withdrawnAt: testNow);
+      late int reads;
+      await open(
+        weekly(),
+        beforeSheet: () {
+          // Ya no está en el servidor, ni su presupuesto.
+          requests.requests.remove('req-1');
+          quotes.quotes.remove('req-1');
+          quotes.checksFailure = const BookingFailure(
+            BookingFailureKind.notFound,
+          );
+          reads = quotes.fetches.length;
+        },
+      );
+
+      expect(state().failure!.kind, BookingFailureKind.notFound);
+      expect(quotes.dryRuns, hasLength(1));
+      // La relectura no lo encuentra: el pedido de la bandeja no cambia de
+      // estado (nada lo vuelve a leer por ese lado)...
+      expect(
+        container.read(chefRequestProvider('req-1')).value?.status,
+        RequestStatus.newRequest,
+      );
+      // ...y el presupuesto igual se vuelve a leer: ya no está.
+      expect(quotes.fetches.length, greaterThan(reads));
+      expect(container.read(requestQuoteProvider('req-1')).value, isNull);
     });
 
     test('si la hoja se cierra mientras lo crea, el pedido igual vuelve a leer su presupuesto al crearse', () async {
@@ -428,6 +488,8 @@ void main() {
       );
 
       expect(sheet.failure!.kind, BookingFailureKind.requestNotNew);
+      // Lo dijo el servidor (el dryRun), no el pedido de la bandeja.
+      expect(bookings.dryRuns, hasLength(1));
       final quote = container.read(requestQuoteProvider('req-1')).value;
       expect(quote!.declinedAt, isNotNull);
       expect(quote.isOpen, isFalse);
@@ -450,6 +512,61 @@ void main() {
       quotes.quotes['req-1'] = buildQuote();
       final sheet = await openBooking(weekly());
       expect(sheet.quoteToWithdraw, QuoteToWithdraw.draft);
+    });
+
+    test('la clienta todavía lo puede aceptar desde su enlace solo si salió, está a tiempo y no tiene cambios pedidos ni cambios sin reenviar', () async {
+      Future<bool?> clientCanAccept(RequestQuote quote) async {
+        quotes.quotes['req-1'] = quote;
+        final sheet = await openBooking(
+          weekly(
+            status: quote.wasSent
+                ? RequestStatus.quoted
+                : RequestStatus.newRequest,
+          ),
+        );
+        return sheet.openQuote?.clientCanAccept;
+      }
+
+      expect(await clientCanAccept(buildQuote(sent: true)), isTrue);
+      // Pidió cambios: no lo puede aceptar hasta recibirlo de nuevo.
+      expect(
+        await clientCanAccept(
+          buildQuote(
+            sent: true,
+            lastSend: quoteSend(
+              changesRequestedAt: DateTime.utc(2026, 10, 19, 10),
+              changesText: 'Il martedì?',
+            ),
+          ),
+        ),
+        isFalse,
+      );
+      // Cambiado después de mandarlo, sin reenviar.
+      expect(
+        await clientCanAccept(
+          buildQuote(
+            sent: true,
+            sentTerms: termsOf(quoteSessions()),
+            sessions: quoteSessions(serviceCents: 15000),
+          ),
+        ),
+        isFalse,
+      );
+      // El plazo ya pasó, aunque el cron todavía no lo cerró.
+      expect(
+        await clientCanAccept(
+          buildQuote(sent: true, holdUntil: DateTime.utc(2026, 10, 19, 11)),
+        ),
+        isFalse,
+      );
+      // Un borrador nunca le llegó.
+      expect(await clientCanAccept(buildQuote()), isFalse);
+    });
+
+    test('un pedido «Presupuesto enviado» sin presupuesto leído: no sabe si la clienta lo puede aceptar (ni si tiene menú)', () async {
+      final sheet = await openBooking(weekly(status: RequestStatus.quoted));
+      expect(sheet.openQuote!.clientCanAccept, isFalse);
+      expect(sheet.openQuote!.hasMenu, isFalse);
     });
 
     test('sin uno abierto (o con uno cerrado), nada que avisar', () async {
@@ -484,6 +601,36 @@ void main() {
       expect(bookings.confirmations, hasLength(1));
       expect(requests.requests['req-1']!.status, RequestStatus.accepted);
       final quote = await container.read(requestQuoteProvider('req-1').future);
+      expect(quote!.withdrawnAt, isNotNull);
+    });
+
+    test('si la hoja se cierra mientras confirma, el presupuesto del pedido igual se vuelve a leer, retirado', () async {
+      bookings = FakeBookingsRepository(
+        requests: requests,
+        onBookedFromRequest: quotes.withdrawOpen,
+      );
+      quotes.quotes['req-1'] = buildQuote();
+      await open(weekly());
+      final bookingSheet = container.listen(
+        confirmBookingProvider(booking),
+        (_, _) {},
+      );
+      await pumpEventQueue();
+      final reads = quotes.fetches.length;
+      bookings.pendingConfirm = Completer<void>();
+      final confirming = container
+          .read(confirmBookingProvider(booking).notifier)
+          .confirm();
+      // El atrás del navegador saca la hoja mientras espera.
+      bookingSheet.close();
+      await pumpEventQueue();
+      bookings.pendingConfirm!.complete();
+      await confirming;
+      await pumpEventQueue();
+
+      expect(bookings.confirmations, hasLength(1));
+      expect(quotes.fetches.length, greaterThan(reads));
+      final quote = container.read(requestQuoteProvider('req-1')).value;
       expect(quote!.withdrawnAt, isNotNull);
     });
 

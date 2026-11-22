@@ -4047,7 +4047,7 @@
   },
   "quoteBlockArrivalPassed": "L'arrivo è già passato: la cliente accetta il preventivo prima dell'arrivo. Scegli una data futura.",
   "@quoteBlockArrivalPassed": {
-    "description": "Hoja «Preparar presupuesto»: la llegada de la semana ya pasó (una fecha pasada, u hoy con la hora ya pasada); el presupuesto nacería vencido, así que no se crea. También en la barra de abajo, con «Semana k ·» delante si hay varias."
+    "description": "Hoja «Preparar presupuesto»: la llegada de la semana ya pasó o es de este mismo minuto (una fecha pasada, u hoy con esa hora); el presupuesto nacería vencido, así que no se crea. También en la barra de abajo, con «Semana k ·» delante si hay varias."
   },
   "todayMenuQuoteExpires": "Il preventivo scade: {date}, {time}",
   "@todayMenuQuoteExpires": {
@@ -4086,7 +4086,7 @@
   },
   "bookingQuoteMenuAccept": "Se invece la cliente accetta il preventivo dal suo link, il menù resta confermato così com'è.",
   "@bookingQuoteMenuAccept": {
-    "description": "Hoja «Confirmar sin presupuesto» con un presupuesto ya mandado cuya semana 1 tiene menú: la otra salida, que la clienta lo acepte desde su enlace."
+    "description": "Hoja «Confirmar sin presupuesto» con un presupuesto que la clienta todavía puede aceptar desde su enlace (mandado, a tiempo, sin cambios pedidos ni cambios sin reenviar) cuya semana 1 tiene menú: la otra salida, que lo acepte. Con cambios pedidos, cambiado o vencido no va: esa salida no existe."
   },
   "todayMenuSentWithOldQuote": "Da rimandare (preventivo precedente)",
   "@todayMenuSentWithOldQuote": {
