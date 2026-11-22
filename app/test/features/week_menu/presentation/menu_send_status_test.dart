@@ -2,8 +2,11 @@
 // sesión, el editor y las semanas de la reserva (con una sola lectura para
 // todas). Sin mandar; mandado el día y la hora y por dónde; confirmado por la
 // clienta; cambios pedidos, con su mensaje entero, en varios renglones y
-// seleccionable; y el menú que cambió después de mandarlo (también al
-// guardar en el editor). Si no se puede leer, lo dice con «Reintentar».
+// seleccionable; el menú que cambió después de mandarlo (también al guardar
+// en el editor); y, en una semana confirmada, el envío que salió con una
+// versión anterior del presupuesto y nadie confirmó (hay que mandarlo de
+// nuevo, como dicen los avisos). Si no se puede leer, lo dice con
+// «Reintentar».
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
@@ -260,6 +263,71 @@ void main() {
       ]);
     },
   );
+
+  group('salió con una versión anterior del presupuesto', () {
+    // El envío de la semana 2 llevaba el presupuesto; después salió otro de
+    // ese presupuesto desde la semana 1 (la que pasó a ser la primera) y la
+    // clienta lo aceptó sin confirmar el de la semana 2.
+    final sent = [
+      sentMenu(
+        id: 'send-a',
+        sessionId: session,
+        menuVersion: 2,
+        quoteId: 'f0000000-0000-4000-8000-000000000001',
+        sentAt: DateTime.utc(2026, 11, 18, 9),
+      ),
+      sentMenu(
+        id: 'send-b',
+        sessionId: sessionId(1),
+        quoteId: 'f0000000-0000-4000-8000-000000000001',
+        sentAt: DateTime.utc(2026, 11, 19, 9),
+        confirmedAt: answeredAt,
+      ),
+    ];
+
+    testWidgets(
+      'la ficha de la semana confirmada dice que hay que mandarlo de nuevo',
+      (tester) async {
+        await open(tester, location: '/sessioni/$session', sent: sent);
+        await tester.ensureVisible(byKey('session-menu-status'));
+        expect(
+          textOf(tester, 'session-menu-status-earlier-quote'),
+          'Salió con una versión anterior del presupuesto y nadie lo confirmó: mándalo de nuevo.',
+        );
+      },
+    );
+
+    testWidgets('las semanas de la reserva también lo dicen', (tester) async {
+      final request = buildRequest(
+        id: bookingRequestId,
+        status: RequestStatus.accepted,
+        weeks: 4,
+        seenAt: testNow,
+      );
+      final app = await open(
+        tester,
+        location: '/richieste/$bookingRequestId',
+        requests: FakeChefRequestsRepository([request]),
+        otherSaved: {sessionId(1): 1},
+        sent: sent,
+      );
+      await tester.ensureVisible(byKey('booking-menus'));
+      final second = 'booking-menu-status-$session';
+      await tester.ensureVisible(byKey(second));
+      expect(
+        textOf(tester, '$second-earlier-quote'),
+        'Salió con una versión anterior del presupuesto y nadie lo confirmó: mándalo de nuevo.',
+      );
+      // La que lo llevó después, confirmada, no.
+      expect(
+        byKey('booking-menu-status-${sessionId(1)}-earlier-quote'),
+        findsNothing,
+      );
+      expect(app.menuSends.quoteSendCalls, [
+        ['f0000000-0000-4000-8000-000000000001'],
+      ]);
+    });
+  });
 
   testWidgets(
     'una sesión sin pedido no tiene estado ni «Mandar a la clienta»',

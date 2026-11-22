@@ -61,26 +61,66 @@ final latestMenuSendProvider = FutureProvider.autoDispose
       return sends[sessionId];
     }, retry: (_, _) => null);
 
-/// Una semana viva de una reserva con su menú: la [week] de [weeks], y el
-/// último envío de su menú que salió ([send], null si nunca salió).
+/// El último envío del menú de la sesión [sessionId] llevaba un presupuesto
+/// que después salió en otro envío (desde otra semana) y nadie lo confirmó
+/// ([sentWithEarlierQuote]): la ficha y el editor de una semana confirmada
+/// la dan por pendiente, como los avisos de la base. Solo lee los envíos del
+/// presupuesto si hace falta. false si no se puede leer: es un aviso más.
+final earlierQuoteSendProvider = FutureProvider.autoDispose
+    .family<bool, String>((ref, sessionId) async {
+      final chefId = ref.watch(
+        currentChefProvider.select((chef) => chef?.chefId),
+      );
+      if (chefId == null) return false;
+      final MenuSendRecord? send;
+      try {
+        send = await ref.watch(latestMenuSendProvider(sessionId).future);
+      } on MenuSendFailure {
+        return false;
+      }
+      final quoteId = send?.quoteId;
+      if (send == null || quoteId == null || send.confirmedAt != null) {
+        return false;
+      }
+      try {
+        final latest = await ref
+            .watch(menuSendsRepositoryProvider)
+            .fetchLatestQuoteSends(chefId: chefId, quoteIds: [quoteId]);
+        return sentWithEarlierQuote(send, latest[quoteId]);
+      } on MenuSendFailure {
+        return false;
+      }
+    }, retry: (_, _) => null);
+
+/// Una semana viva de una reserva con su menú: la [week] de [weeks], el
+/// último envío de su menú que salió ([send], null si nunca salió) y si ese
+/// envío salió con una versión anterior del presupuesto que nadie confirmó
+/// ([sentWithEarlierQuote], solo en una semana confirmada).
 typedef BookingWeekMenu = ({
   CookingSession session,
   int week,
   int weeks,
   WeekMenuSummary summary,
   MenuSendRecord? send,
+  bool sentWithEarlierQuote,
 });
 
 /// El estado del envío del menú de una semana de la reserva.
 WeekMenuSendStatus bookingWeekSendStatus(BookingWeekMenu week) =>
-    WeekMenuSendStatus(send: week.send, savedVersion: week.summary.version);
+    WeekMenuSendStatus(
+      send: week.send,
+      savedVersion: week.summary.version,
+      sentWithEarlierQuote: week.sentWithEarlierQuote,
+    );
 
 /// Las semanas vivas de la reserva [requestId] (las canceladas no cuentan),
 /// por fecha, con cuántos platos y renglones tiene el menú de cada una y su
 /// último envío: una consulta para las sesiones y, juntas, una para los
-/// menús y otra para los envíos de todas. Se vuelve a leer si una sesión se
-/// mueve o se cancela. Error si no se puede leer ([SessionFailure],
-/// [MenuFailure] o [MenuSendFailure]), sin reintentar solo.
+/// menús y otra para los envíos de todas (y, si el último envío de una semana
+/// confirmada llevaba un presupuesto que nadie confirmó, otra para los envíos
+/// de ese presupuesto). Se vuelve a leer si una sesión se mueve o se cancela.
+/// Error si no se puede leer ([SessionFailure], [MenuFailure] o
+/// [MenuSendFailure]), sin reintentar solo.
 final bookingWeekMenusProvider = FutureProvider.autoDispose
     .family<List<BookingWeekMenu>, String>((ref, requestId) async {
       final chefId = ref.watch(
@@ -110,6 +150,18 @@ final bookingWeekMenusProvider = FutureProvider.autoDispose
       ]);
       final summaries = results[0] as Map<String, WeekMenuSummary>;
       final sends = results[1] as Map<String, MenuSendRecord>;
+      // Como menu_reminders_due: solo las semanas confirmadas.
+      bool confirmed(CookingSession session) =>
+          session.status.shown == SessionStatus.confirmed;
+      final quoteIds = unconfirmedQuoteIds([
+        for (final session in live)
+          if (confirmed(session)) ?sends[session.id],
+      ]).toList();
+      final quoteSends = quoteIds.isEmpty
+          ? const <String, MenuSendRecord>{}
+          : await ref
+                .watch(menuSendsRepositoryProvider)
+                .fetchLatestQuoteSends(chefId: chefId, quoteIds: quoteIds);
       return [
         for (final (index, session) in live.indexed)
           (
@@ -118,6 +170,13 @@ final bookingWeekMenusProvider = FutureProvider.autoDispose
             weeks: live.length,
             summary: summaries[session.id] ?? const WeekMenuSummary(),
             send: sends[session.id],
+            sentWithEarlierQuote: switch (sends[session.id]) {
+              final send? when confirmed(session) => sentWithEarlierQuote(
+                send,
+                quoteSends[send.quoteId],
+              ),
+              _ => false,
+            },
           ),
       ];
     }, retry: (_, _) => null);

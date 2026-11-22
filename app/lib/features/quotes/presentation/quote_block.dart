@@ -4,20 +4,26 @@
 // - [QuoteSection], en el cuerpo: el bloque «Presupuesto» con su estado
 //   (borrador sin mandar y hasta cuándo retiene las fechas; mandado, con la
 //   versión, cuándo y hasta cuándo puede aceptarlo la clienta; los cambios que
-//   pidió, con su mensaje entero; cambiado sin reenviar; aceptado, rechazado,
-//   retirado o vencido), sus semanas (fecha, llegada y precio; cada una abre
-//   su ficha para moverla o cancelarla), el total y lo que se puede hacer: el
-//   menú de la semana 1, mandarlo de nuevo, otro precio y retirarlo.
+//   pidió, con su mensaje entero; cambiado sin reenviar; con cambios pedidos
+//   o cambiado, hasta cuándo hay que reenviarlo antes de que venza; aceptado,
+//   rechazado, retirado o vencido, sin perder el mensaje de la clienta si lo
+//   había), sus semanas (fecha, llegada y precio; cada una abre su ficha para
+//   moverla o cancelarla), el total y lo que se puede hacer: el menú de la
+//   semana 1, mandarlo de nuevo, otro precio y retirarlo. Con una sola
+//   semana, los textos hablan de una fecha.
 // - [RequestActionsBar], abajo: en un pedido nuevo sin presupuesto abierto,
 //   «Preparar presupuesto»; con uno abierto al que le falta salir (borrador,
 //   cambiado o con cambios pedidos), «Mandar», que abre la vista previa del
-//   menú de la semana 1, que lo lleva. Y, en un pedido nuevo o con el
-//   presupuesto mandado, «Confirmar sin presupuesto»: con uno abierto, la
-//   base lo retira al confirmar y la hoja lo avisa antes.
+//   menú de la semana 1, que lo lleva (deshabilitado, con el porqué, si falta
+//   ese menú o no se pudo leer: con «Reintentar»). Y, en un pedido nuevo o
+//   con el presupuesto mandado, «Confirmar sin presupuesto»: con uno abierto,
+//   la base lo retira al confirmar y la hoja lo avisa antes.
 //
 // Solo muestra providers (quote_providers.dart y week_menu_summaries.dart):
-// la lógica está en RequestQuote, QuoteCommands y MenuSendController. Lleva
-// el mensaje de la clienta: nada se loguea.
+// la lógica está en RequestQuote, QuoteCommands y MenuSendController. Si el
+// presupuesto se cerró en otro lado, la agenda vuelve a leer sus semanas
+// (QuoteCommands.closedElsewhere). Lleva el mensaje de la clienta: nada se
+// loguea.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -46,15 +52,27 @@ import 'package:radici/l10n/app_localizations.dart';
 /// El pedido admite presupuesto (no es un cambio de una sesión).
 bool _quotable(ChefRequest request) => request.type != RequestType.change;
 
-/// El menú de la semana 1 está guardado con algún plato: se puede mandar
-/// (null mientras no se sabe).
-typedef _WeekOneMenu = ({bool ready, int? version});
+/// El menú de la semana 1: si está guardado con algún plato (se puede
+/// mandar) y su versión; [failed], que no se pudo leer (el bloque y la barra
+/// lo dicen, con «Reintentar»: no se sabe si está listo). null mientras se
+/// lee por primera vez.
+typedef _WeekOneMenu = ({bool ready, int? version, bool failed});
 
 _WeekOneMenu? _weekOneMenu(WidgetRef ref, String? sessionId) {
   if (sessionId == null) return null;
-  final summary = ref.watch(weekMenuSummaryProvider(sessionId)).value;
-  if (summary == null) return null;
-  return (ready: summary.saved && summary.dishes > 0, version: summary.version);
+  final summary = ref.watch(weekMenuSummaryProvider(sessionId));
+  // Con error, aunque quede un resumen de antes (una relectura que falló
+  // después de guardar): ese ya no dice si está listo.
+  if (summary.hasError && !summary.isLoading) {
+    return (ready: false, version: null, failed: true);
+  }
+  final value = summary.value;
+  if (value == null) return null;
+  return (
+    ready: value.saved && value.dishes > 0,
+    version: value.version,
+    failed: false,
+  );
 }
 
 /// Abre la vista previa del menú de la semana 1 de [quote], que lo lleva.
@@ -92,6 +110,11 @@ class QuoteSection extends ConsumerWidget {
     ref.listen(provider, (previous, next) {
       final quote = next.value;
       if (quote == null || quote == previous?.value) return;
+      // Se cerró en otro lado (lo aceptó o lo rechazó la clienta, venció, o
+      // se retiró al rechazar el pedido): sus semanas ya no están retenidas.
+      if (quoteClosedSince(previous?.value, quote)) {
+        ref.read(quoteCommandsProvider).closedElsewhere();
+      }
       final status = quote.statusAt(ref.read(todayNowProvider));
       if (requestLooksStale(request.status, quote, status)) {
         unawaited(ref.read(chefInboxProvider.notifier).reload(request.id));
@@ -182,10 +205,17 @@ class _QuoteBlock extends ConsumerWidget {
     }
   }
 
-  Future<void> _withdraw(BuildContext context, WidgetRef ref) async {
+  /// Retirarlo, con confirmación. [menuSaved]: la semana 1 tiene un menú
+  /// guardado, que se va con la semana cancelada (el diálogo lo dice).
+  Future<void> _withdraw(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool menuSaved,
+  }) async {
     final l10n = AppLocalizations.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final persist = _persist(context);
+    final weeks = quote.currentTerms.weeks.length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -193,7 +223,13 @@ class _QuoteBlock extends ConsumerWidget {
         return AlertDialog(
           key: const ValueKey('quote-withdraw-dialog'),
           title: Text(l10n.quoteWithdrawTitle),
-          content: Text(l10n.quoteWithdrawBody),
+          content: Text(
+            [
+              l10n.quoteWithdrawBody(weeks),
+              if (menuSaved) l10n.quoteMenuGoesWithWeek(weeks),
+            ].join(' '),
+            key: const ValueKey('quote-withdraw-body'),
+          ),
           actionsOverflowButtonSpacing: 8,
           actions: [
             TextButton(
@@ -251,11 +287,27 @@ class _QuoteBlock extends ConsumerWidget {
       quoteBusyProvider.select((ids) => ids.contains(quote.id)),
     );
     final validUntil = l10n.quoteValidUntilText(quote, status, formats);
+    final expiresUnlessResent = l10n.quoteExpiresUnlessResentText(
+      quote,
+      status,
+      formats,
+    );
     final send = quote.lastSend;
+    // Lo que pidió la clienta: abierto, con cambios pedidos o cambiado
+    // después; cerrado sin aceptar (vencido, rechazado o retirado) también,
+    // para que su mensaje no se pierda.
     final showChanges =
         send?.changesText != null &&
-        (status == QuoteStatus.changesRequested ||
-            status == QuoteStatus.changed);
+        switch (status) {
+          QuoteStatus.changesRequested ||
+          QuoteStatus.changed ||
+          QuoteStatus.expired ||
+          QuoteStatus.declined ||
+          QuoteStatus.withdrawn => true,
+          QuoteStatus.draft ||
+          QuoteStatus.sent ||
+          QuoteStatus.accepted => false,
+        };
 
     final (icon, color) = switch (status) {
       QuoteStatus.draft => (Icons.edit_note_outlined, colors.onSurfaceVariant),
@@ -292,6 +344,19 @@ class _QuoteBlock extends ConsumerWidget {
               validUntil,
               key: const ValueKey('quote-valid-until'),
               style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        // Con cambios pedidos o cambiado, la clienta no lo puede aceptar:
+        // el plazo es el que tiene Evelyn para reenviarlo.
+        if (expiresUnlessResent != null)
+          _Indented(
+            child: Text(
+              expiresUnlessResent,
+              key: const ValueKey('quote-expires-unless-resent'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.error,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         if (showChanges && send != null) ...[
@@ -369,7 +434,10 @@ class _QuoteBlock extends ConsumerWidget {
           if (open)
             MergeSemantics(
               child: Text(
-                l10n.quoteWeeksHint,
+                // Un borrador todavía no salió: no hay que «mandarlo de nuevo».
+                quote.wasSent
+                    ? l10n.quoteWeeksHint(weeks.length)
+                    : l10n.quoteWeeksHintDraft(weeks.length),
                 key: const ValueKey('quote-weeks-hint'),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colors.onSurfaceVariant,
@@ -386,18 +454,25 @@ class _QuoteBlock extends ConsumerWidget {
             ),
           ),
         ],
-        if (actions.editMenu && menu != null && !menu.ready) ...[
-          const SizedBox(height: 8),
-          MergeSemantics(
-            child: Text(
-              l10n.quoteMenuMissing,
-              key: const ValueKey('quote-menu-missing'),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
+        if (actions.editMenu && firstWeek != null && menu != null)
+          if (menu.failed) ...[
+            const SizedBox(height: 8),
+            _WeekOneMenuFailed(
+              sessionId: firstWeek.sessionId,
+              keyPrefix: 'quote-menu',
+            ),
+          ] else if (!menu.ready) ...[
+            const SizedBox(height: 8),
+            MergeSemantics(
+              child: Text(
+                l10n.quoteMenuMissing(weeks.length),
+                key: const ValueKey('quote-menu-missing'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
         if (open) ...[
           const SizedBox(height: 8),
           Wrap(
@@ -415,11 +490,15 @@ class _QuoteBlock extends ConsumerWidget {
                           ),
                         ),
                   icon: const Icon(Icons.restaurant_menu),
-                  label: Text(
-                    (menu?.version != null)
-                        ? l10n.weekMenuEdit
-                        : l10n.bookingDoneBuildMenu(weeks.length),
-                  ),
+                  // Mientras no se sabe (o no se pudo leer), sin decir si
+                  // tiene menú.
+                  label: Text(switch (menu) {
+                    null ||
+                    (failed: true, ready: _, version: _) => l10n.weekMenuTitle,
+                    (failed: false, ready: _, version: _?) => l10n.weekMenuEdit,
+                    (failed: false, ready: _, version: null) =>
+                      l10n.bookingDoneBuildMenu(weeks.length),
+                  }),
                 ),
               // Mandado y sin novedades, mandarlo de nuevo va acá (no abajo).
               if (actions.resend && !actions.sendIsPrimary && firstWeek != null)
@@ -456,7 +535,13 @@ class _QuoteBlock extends ConsumerWidget {
                   ),
                   onPressed: busy
                       ? null
-                      : () => unawaited(_withdraw(context, ref)),
+                      : () => unawaited(
+                          _withdraw(
+                            context,
+                            ref,
+                            menuSaved: menu?.version != null,
+                          ),
+                        ),
                   icon: const Icon(Icons.block),
                   label: Text(l10n.quoteActionWithdraw),
                 ),
@@ -515,18 +600,28 @@ class RequestActionsBar extends ConsumerWidget {
           )
         : null;
     if (primary == null && confirm == null) return const SizedBox.shrink();
+    final firstWeek = toSend?.firstWeek;
     return SessionBottomBar(
       children: [
-        if (toSend != null && menu != null && !menu.ready) ...[
-          MergeSemantics(
-            child: Text(
-              l10n.quoteMenuMissing,
-              key: const ValueKey('quote-send-needs-menu'),
-              style: theme.textTheme.bodyMedium,
+        // Por qué «Mandar» está deshabilitado: el menú de la semana 1 no se
+        // pudo leer (con «Reintentar») o le falta.
+        if (toSend != null && firstWeek != null && menu != null)
+          if (menu.failed) ...[
+            _WeekOneMenuFailed(
+              sessionId: firstWeek.sessionId,
+              keyPrefix: 'quote-send-menu',
             ),
-          ),
-          const SizedBox(height: 8),
-        ],
+            const SizedBox(height: 8),
+          ] else if (!menu.ready) ...[
+            MergeSemantics(
+              child: Text(
+                l10n.quoteMenuMissing(toSend.currentTerms.weeks.length),
+                key: const ValueKey('quote-send-needs-menu'),
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
         // Una al lado de la otra: con el texto grande, en un teléfono, dos
         // botones apilados tapaban medio pedido.
         // Del mismo alto aunque un texto ocupe más renglones.
@@ -592,6 +687,42 @@ class _QuoteSendButton extends ConsumerWidget {
             : l10n.quoteActionResend,
         textAlign: TextAlign.center,
       ),
+    );
+  }
+}
+
+/// El menú de la semana 1 ([sessionId]) no se pudo leer: «Mandar» queda
+/// deshabilitado y esto dice por qué, con «Reintentar». Claves
+/// `<keyPrefix>-error` y `<keyPrefix>-retry`.
+class _WeekOneMenuFailed extends ConsumerWidget {
+  const _WeekOneMenuFailed({required this.sessionId, required this.keyPrefix});
+
+  final String sessionId;
+  final String keyPrefix;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return Wrap(
+      spacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        MergeSemantics(
+          child: Text(
+            l10n.weekMenuLoadFailed,
+            key: ValueKey('$keyPrefix-error'),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+        ),
+        TextButton(
+          key: ValueKey('$keyPrefix-retry'),
+          onPressed: () => ref.invalidate(weekMenuSummaryProvider(sessionId)),
+          child: Text(l10n.actionRetry),
+        ),
+      ],
     );
   }
 }
@@ -755,7 +886,11 @@ class _QuotePriceDialogState extends State<QuotePriceDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(l10n.quotePriceHelp, style: theme.textTheme.bodyMedium),
+              Text(
+                l10n.quotePriceHelp(widget.weeks),
+                key: const ValueKey('quote-price-help'),
+                style: theme.textTheme.bodyMedium,
+              ),
               const SizedBox(height: 12),
               TextField(
                 key: const ValueKey('quote-price-field'),

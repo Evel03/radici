@@ -28,9 +28,11 @@
 // la vista previa se lee de `menu_sends` (con la RLS de la cocina) el
 // presupuesto de su foto, lo que va a ver la clienta, para mostrarlo arriba
 // del mensaje (la respuesta de la vista previa no lo trae). Al mandarlo, el
-// pedido y su presupuesto se vuelven a leer. Si el presupuesto se cerró,
-// cambió o la semana no es la primera, lo dice (quoteClosed, quoteChanged,
-// quoteWeekNotFirst).
+// pedido y su presupuesto se vuelven a leer; sin respuesta también, al fallar
+// y al cerrar (pudo haber salido). Si el presupuesto se cerró, cambió o la
+// semana no es la primera, lo dice (quoteClosed, quoteChanged,
+// quoteWeekNotFirst); uno que se cerró sin aceptarse llega como la semana
+// cancelada (sessionNotEditable), y también se vuelve a leer.
 //
 // Nada se loguea: ni el contacto, ni el mensaje.
 import 'dart:async';
@@ -459,12 +461,17 @@ class MenuSendController extends Notifier<MenuSendState> {
     // salió (sin respuesta: pudo quedar marcado): lo que se muestra vuelve a
     // leerse.
     if (failure.emailSent || failure.kind.canRetry) _refreshSendStatus();
+    // Sin respuesta, el servidor pudo terminar: el presupuesto que llevaba
+    // quedó mandado y el pedido en «Presupuesto enviado». El detalle no los
+    // sigue ofreciendo como sin mandar.
+    if (failure.kind.canRetry) _refreshQuote(quoteSent: state.quote != null);
     _set(state.copyWith(step: MenuSendStep.sendFailed, failure: failure));
   }
 
   /// La pantalla se cerró. Si el último envío quedó sin respuesta, lo que se
-  /// muestra vuelve a leer el envío: el servidor pudo terminar (y marcarlo)
-  /// después de la lectura de la falla, o esa lectura falló sin conexión.
+  /// muestra vuelve a leer el envío (y el presupuesto que llevaba, con su
+  /// pedido): el servidor pudo terminar (y marcarlo) después de la lectura de
+  /// la falla, o esa lectura falló sin conexión.
   void closed() {
     if (!ref.mounted) return;
     final failure = state.failure;
@@ -473,6 +480,7 @@ class MenuSendController extends Notifier<MenuSendState> {
         failure.kind.canRetry &&
         !failure.emailSent) {
       _refreshSendStatus();
+      _refreshQuote(quoteSent: state.quote != null);
     }
   }
 
@@ -488,6 +496,11 @@ class MenuSendController extends Notifier<MenuSendState> {
         if (ref.exists(detail)) {
           unawaited(ref.read(detail.notifier).reloadQuietly());
         }
+        // Así llega un presupuesto que se cerró sin aceptarse (rechazado,
+        // retirado o vencido): sus semanas se cancelaron y la base contesta
+        // por la sesión antes que por el presupuesto. El bloque del pedido lo
+        // vuelve a leer (y, con él, el pedido y la agenda).
+        _refreshQuote(quoteSent: false);
       case MenuSendFailureKind.menuChanged ||
           MenuSendFailureKind.menuEmpty ||
           MenuSendFailureKind.menuNotFound:

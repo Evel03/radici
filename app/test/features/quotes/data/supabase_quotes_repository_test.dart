@@ -148,6 +148,62 @@ void main() {
     });
   });
 
+  group('fetchOpenQuoteHolds', () {
+    test('el plazo de los presupuestos abiertos de varios pedidos, en una sola consulta de quotes', () async {
+      server.handler = (_) async => jsonResponse([
+        {'request_id': 'req-1', 'hold_until': '2026-11-24T09:00:00+00:00'},
+        {'request_id': 'req-2', 'hold_until': null},
+      ]);
+
+      final holds = await repository.fetchOpenQuoteHolds(
+        chefId: testChefId,
+        requestIds: ['req-1', 'req-2'],
+      );
+
+      expect(holds, {'req-1': DateTime.utc(2026, 11, 24, 9)});
+      final request = server.requests.single;
+      expect(request.url.path, '/rest/v1/quotes');
+      final query = request.url.queryParameters;
+      expect(query['select'], 'request_id,hold_until');
+      expect(query['chef_id'], 'eq.$testChefId');
+      expect(query['request_id'], 'in.("req-1","req-2")');
+      // Solo los abiertos.
+      for (final column in [
+        'accepted_at',
+        'declined_at',
+        'withdrawn_at',
+        'expired_at',
+      ]) {
+        expect(query[column], 'is.null', reason: column);
+      }
+    });
+
+    test(
+      'sin pedidos no pregunta nada; una fila rota da unavailable',
+      () async {
+        expect(
+          await repository.fetchOpenQuoteHolds(
+            chefId: testChefId,
+            requestIds: [],
+          ),
+          isEmpty,
+        );
+        expect(server.requests, isEmpty);
+
+        server.handler = (_) async => jsonResponse([
+          {'request_id': 'req-1', 'hold_until': 'mañana'},
+        ]);
+        await expectLater(
+          repository.fetchOpenQuoteHolds(
+            chefId: testChefId,
+            requestIds: ['req-1'],
+          ),
+          _quoteFailure(QuoteFailureKind.unavailable),
+        );
+      },
+    );
+  });
+
   group('createQuote', () {
     test('POST a /functions/v1/chef/quotes con la sesión, la región en la URL y las claves del contrato', () async {
       server.handler = (_) async => jsonResponse(createdBody(), status: 201);

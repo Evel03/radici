@@ -4,8 +4,10 @@
 // mandó; cuándo y por dónde salió el último envío (hora de Roma); si la
 // clienta lo confirmó o pidió cambios, con su mensaje entero (en varios
 // renglones y seleccionable: solo se ve en la app, nunca va por email ni por
-// push, SPEC §6), y si el menú cambió después de mandarlo (hay que mandarlo
-// de nuevo). Solo muestra providers (week_menu_summaries.dart).
+// push, SPEC §6), si el menú cambió después de mandarlo (hay que mandarlo de
+// nuevo) y, en una semana confirmada, si salió con una versión anterior del
+// presupuesto que nadie confirmó (también hay que mandarlo de nuevo, como
+// dicen los avisos). Solo muestra providers (week_menu_summaries.dart).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
@@ -18,13 +20,16 @@ import 'package:radici/l10n/app_localizations.dart';
 /// ficha y el editor: el estado ([savedVersion] es la versión del menú
 /// guardado, para saber si cambió después de mandarlo), una barra mientras
 /// carga y, si no se puede leer, el aviso con «Reintentar». Nada mientras no
-/// hay menú guardado ni envío.
+/// hay menú guardado ni envío. [confirmedWeek]: la semana está confirmada,
+/// así que también mira si el envío salió con una versión anterior del
+/// presupuesto (earlierQuoteSendProvider).
 class SessionMenuSendStatus extends ConsumerWidget {
   const SessionMenuSendStatus({
     super.key,
     required this.sessionId,
     required this.savedVersion,
     required this.keyPrefix,
+    this.confirmedWeek = false,
   });
 
   final String sessionId;
@@ -32,11 +37,15 @@ class SessionMenuSendStatus extends ConsumerWidget {
 
   /// El comienzo de las claves de sus textos ([MenuSendStatusView.keyPrefix]).
   final String keyPrefix;
+  final bool confirmedWeek;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final latest = ref.watch(latestMenuSendProvider(sessionId));
+    final earlierQuote =
+        confirmedWeek &&
+        (ref.watch(earlierQuoteSendProvider(sessionId)).value ?? false);
     return latest.when(
       data: (send) => send == null && savedVersion == null
           ? const SizedBox.shrink()
@@ -44,6 +53,7 @@ class SessionMenuSendStatus extends ConsumerWidget {
               status: WeekMenuSendStatus(
                 send: send,
                 savedVersion: savedVersion,
+                sentWithEarlierQuote: earlierQuote,
               ),
               keyPrefix: keyPrefix,
             ),
@@ -162,6 +172,19 @@ class MenuSendStatusView extends StatelessWidget {
                 color: colors.onSurfaceVariant,
               ),
             ),
+          ),
+        ),
+      // Salió con una versión anterior del presupuesto y nadie lo confirmó:
+      // para los avisos sigue pendiente.
+      if (status.sentWithEarlierQuote)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: _StatusLine(
+            icon: Icons.update,
+            color: colors.error,
+            text: l10n.menuSendOldQuote,
+            textKey: ValueKey('$keyPrefix-earlier-quote'),
+            strong: true,
           ),
         ),
       if (status.changedSinceSent)

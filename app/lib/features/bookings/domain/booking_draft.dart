@@ -54,6 +54,19 @@ CalendarDate initialBookingDate(
   required CalendarDate today,
 }) => request.preferredDate ?? today.addDays(1);
 
+/// Primera fecha de un presupuesto: la de la reserva ([initialBookingDate]),
+/// pero nunca antes de mañana. Una preferida de hoy o que ya pasó (un pedido
+/// atendido tarde) daría un presupuesto vencido al nacer: la clienta lo acepta
+/// antes de la primera llegada.
+CalendarDate initialQuoteDate(
+  ChefRequest request, {
+  required CalendarDate today,
+}) {
+  final first = initialBookingDate(request, today: today);
+  final tomorrow = today.addDays(1);
+  return first.isBefore(tomorrow) ? tomorrow : first;
+}
+
 /// [weeks] fechas, cada 7 días desde [first].
 List<CalendarDate> weeklyDates(CalendarDate first, int weeks) => [
   for (var week = 0; week < weeks; week++) first.addDays(7 * week),

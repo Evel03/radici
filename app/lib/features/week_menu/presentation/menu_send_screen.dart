@@ -659,7 +659,11 @@ class _PreviewQuoteView extends StatelessWidget {
         ),
         MergeSemantics(
           child: Text(
-            l10n.quoteDeadlineText(quote.deadlineAt(now), formats),
+            l10n.quoteDeadlineText(
+              quote.deadlineAt(now),
+              formats,
+              weeks: weeks.length,
+            ),
             key: const ValueKey('menu-send-quote-deadline'),
             style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w600,
@@ -669,7 +673,7 @@ class _PreviewQuoteView extends StatelessWidget {
         const SizedBox(height: 4),
         MergeSemantics(
           child: Text(
-            l10n.menuSendQuoteHint,
+            l10n.menuSendQuoteHint(weeks.length),
             key: const ValueKey('menu-send-quote-hint'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,

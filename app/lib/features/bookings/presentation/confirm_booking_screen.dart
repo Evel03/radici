@@ -244,7 +244,7 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
   Future<void> _confirm() async {
     final provider = confirmBookingProvider(_source);
     final state = ref.read(provider);
-    final withdraw = state.quoteToWithdraw;
+    final withdraw = state.openQuote;
     if (withdraw != null && !state.retryPending) {
       final go = await _confirmWithdraw(withdraw);
       if (!go || !mounted) return;
@@ -252,19 +252,20 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
     await ref.read(provider.notifier).confirm();
   }
 
-  /// «¿Confirmar sin presupuesto?»: el presupuesto abierto se retira. true si
-  /// se eligió seguir.
-  Future<bool> _confirmWithdraw(QuoteToWithdraw withdraw) async {
+  /// «¿Confirmar sin presupuesto?»: el presupuesto abierto se retira (y, si
+  /// la semana 1 tiene menú, el menú se va con ella). true si se eligió
+  /// seguir.
+  Future<bool> _confirmWithdraw(OpenQuoteToWithdraw withdraw) async {
     final l10n = AppLocalizations.of(context);
     final go = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         key: const ValueKey('booking-withdraw-quote-dialog'),
         title: Text(l10n.bookingWithdrawQuoteTitle),
-        content: Text(switch (withdraw) {
-          QuoteToWithdraw.sent => l10n.bookingWithdrawsQuoteSent,
-          QuoteToWithdraw.draft => l10n.bookingWithdrawsQuoteDraft,
-        }),
+        content: Text(
+          l10n.bookingWithdrawsQuoteText(withdraw),
+          key: const ValueKey('booking-withdraw-quote-body'),
+        ),
         actionsOverflowButtonSpacing: 8,
         actions: [
           TextButton(
@@ -676,9 +677,10 @@ class _BookingForm extends StatelessWidget {
   }
 
   /// Ícono, color y texto de la semana [index], en este orden: lo que impide
-  /// mandar la fecha; un choque o un aviso del servidor; los avisos de la app
-  /// (la llegada de hoy que ya pasó y el feriado, que el servidor no marca);
-  /// «libre» o «verifica in corso».
+  /// mandar la fecha (en el presupuesto, también una llegada que ya pasó); un
+  /// choque o un aviso del servidor; los avisos de la app (la llegada de hoy
+  /// que ya pasó y el feriado, que el servidor no marca); «libre» o «verifica
+  /// in corso».
   _WeekStatus? _weekStatus(
     BuildContext context,
     int index,
@@ -694,6 +696,14 @@ class _BookingForm extends StatelessWidget {
       );
     }
     if (state.blocked) return null;
+    // Un presupuesto con una llegada que ya pasó nacería vencido: no se crea.
+    if (state.isQuote && state.arrivalGone(index)) {
+      return (
+        icon: Icons.error_outline,
+        color: colors.error,
+        text: l10n.quoteBlockArrivalPassed,
+      );
+    }
     final check = state.checkFor(index);
     if (check != null && check.status != BookingDayStatus.ok) {
       return check.status == BookingDayStatus.busy
@@ -833,14 +843,12 @@ class _Header extends StatelessWidget {
             key: const ValueKey('booking-subtitle'),
             style: secondary,
           ),
-          // Tiene un presupuesto abierto: confirmar sin presupuesto lo retira.
-          if (state.quoteToWithdraw case final withdraw?) ...[
+          // Tiene un presupuesto abierto: confirmar sin presupuesto lo retira
+          // (y, si la semana 1 tiene menú, el menú se va con ella).
+          if (state.openQuote case final withdraw?) ...[
             const SizedBox(height: 8),
             Text(
-              switch (withdraw) {
-                QuoteToWithdraw.sent => l10n.bookingWithdrawsQuoteSent,
-                QuoteToWithdraw.draft => l10n.bookingWithdrawsQuoteDraft,
-              },
+              l10n.bookingWithdrawsQuoteText(withdraw),
               key: const ValueKey('booking-withdraws-quote'),
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.error,
@@ -852,7 +860,7 @@ class _Header extends StatelessWidget {
           if (state.isQuote) ...[
             const SizedBox(height: 8),
             Text(
-              l10n.quoteFormIntro,
+              l10n.quoteFormIntro(state.weeks),
               key: const ValueKey('quote-form-intro'),
               style: theme.textTheme.bodyMedium,
             ),
@@ -1295,7 +1303,12 @@ class _QuoteCreated extends StatelessWidget {
             Semantics(
               liveRegion: true,
               child: Text(
-                opening ? l10n.quoteOpeningMenu : l10n.bookingErrorQuoteExists,
+                opening
+                    ? l10n.quoteOpeningMenu(
+                        state.result?.weeks.length ?? state.weeks,
+                      )
+                    : l10n.bookingErrorQuoteExists,
+                key: const ValueKey('quote-created-text'),
                 textAlign: TextAlign.center,
               ),
             ),

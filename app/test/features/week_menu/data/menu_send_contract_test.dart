@@ -15,6 +15,11 @@ String _migration() =>
     findRepoFile('supabase/migrations/20261121100000_menu_sends.sql')
         .readAsStringSync();
 
+/// La del presupuesto, que suma `quote_id` y `quote_terms` a menu_sends.
+String _quotesMigration() =>
+    findRepoFile('supabase/migrations/20261121120000_quotes.sql')
+        .readAsStringSync();
+
 String _chefApi() =>
     findRepoFile('supabase/functions/_shared/chef_api.ts').readAsStringSync();
 
@@ -36,11 +41,19 @@ void main() {
     final table = RegExp(r'create table public\.menu_sends \(([\s\S]*?)\n\);')
         .firstMatch(sql);
     expect(table, isNotNull);
+    // Las que suma la migración del presupuesto (alter table … add column).
+    final added = _quotesMigration()
+        .split('alter table public.menu_sends')[1]
+        .split(';')
+        .first;
     final columns = {
       for (final line in table!.group(1)!.split('\n'))
         if (RegExp(r'^\s+([a-z_]+)\s').firstMatch(line) case final m?)
           m.group(1)!,
+      for (final m in RegExp(r'add column ([a-z_]+)\s').allMatches(added))
+        m.group(1)!,
     };
+    expect(columns, containsAll(['quote_id', 'quote_terms']));
     final read = menuSendColumns.split(',').map((c) => c.trim()).toSet();
     expect(
       columns.containsAll(read),

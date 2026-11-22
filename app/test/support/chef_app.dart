@@ -74,8 +74,10 @@ class ChefApp {
 /// sin bloqueos). [bookings] es la Edge Function de las reservas (por
 /// defecto, todo libre y la llegada sugerida a las 10:00; al confirmar, el
 /// pedido pasa a `accepted` en [requests], su presupuesto abierto se retira
-/// en [quotes] y una reserva a mano o una renovación agrega sus sesiones a
-/// [sessions]). [sessions] son sus sesiones
+/// en [quotes] y la reserva agrega sus sesiones a [sessions]). Rechazar un
+/// pedido en [requests] también retira su presupuesto abierto en [quotes]
+/// (como el trigger de la base), salvo que [requests] ya tenga otro
+/// `onRejected`. [sessions] son sus sesiones
 /// y la Edge Function para moverlas y cancelarlas (por defecto, ninguna).
 /// [recipes] es su catálogo de platos (por defecto, vacío). [clients] son sus
 /// fichas, las del directorio de «Nuova prenotazione» (por defecto, ninguna;
@@ -124,6 +126,7 @@ Future<ChefApp> pumpChefApp(
   final quoteServer =
       quotes ??
       FakeQuotesRepository(requests: requests, sessions: sessionsRepository);
+  requests.onRejected ??= quoteServer.withdrawOpen;
   final booking =
       bookings ??
       FakeBookingsRepository(

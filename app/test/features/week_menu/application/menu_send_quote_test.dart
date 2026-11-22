@@ -2,9 +2,11 @@
 // la vista previa lee de menu_sends el presupuesto de su foto (lo que va a
 // ver la clienta) y, si no puede, sigue igual (el mensaje ya lo trae); al
 // mandarlo, el pedido (que pasa a «Presupuesto enviado») y su presupuesto se
-// vuelven a leer; si el presupuesto se cerró, cambió o la semana no es la
-// primera, lo dice y vuelve a leer lo que cambió, sin reintentar el mismo
-// envío.
+// vuelven a leer, también si la respuesta se pierde (al fallar y al cerrar);
+// si el presupuesto se cerró, cambió o la semana no es la primera, lo dice y
+// vuelve a leer lo que cambió, sin reintentar el mismo envío. Uno que se
+// cerró sin aceptarse llega como la semana cancelada (sessionNotEditable),
+// como en la base.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/link_launcher.dart';
@@ -145,7 +147,65 @@ void main() {
         .value!
         .singleWhere((r) => r.id == 'req-1');
     expect(request.status, RequestStatus.quoted);
+    // Al mandarlo y, otra vez, porque el pedido cambió de estado.
+    expect(quotes.fetches.length, greaterThan(reads));
+  });
+
+  test('la respuesta se pierde pero el servidor lo mandó: el presupuesto y el pedido se vuelven a leer, al fallar y al cerrar', () async {
+    await setUpFlow();
+    await flow().start(2);
+    // Lo que hace la base al marcar el envío (chef_complete_menu_send).
+    sends
+      ..onSent = (_) {
+        requests.requests['req-1'] = requests.requests['req-1']!.copyWith(
+          status: RequestStatus.quoted,
+        );
+        quotes.quotes['req-1'] = buildQuote(sent: true);
+      }
+      ..loseSendResponse = const MenuSendFailure(MenuSendFailureKind.timeout);
+    final reads = quotes.fetches.length;
+
+    await flow().send();
+    await pumpEventQueue();
+
+    expect(state().step, MenuSendStep.sendFailed);
+    expect(quotes.fetches.length, greaterThan(reads));
+    final quote = container.read(requestQuoteProvider('req-1')).value!;
+    expect(quote.wasSent, isTrue);
+    final request = container
+        .read(chefInboxProvider)
+        .value!
+        .singleWhere((r) => r.id == 'req-1');
+    expect(request.status, RequestStatus.quoted);
+
+    // Al cerrar la pantalla, otra vez (el servidor pudo terminar después).
+    final afterFailure = quotes.fetches.length;
+    flow().closed();
+    await pumpEventQueue();
+    expect(quotes.fetches.length, greaterThan(afterFailure));
+  });
+
+  test('un presupuesto que la clienta rechazó (sus semanas, canceladas): la base contesta sessionNotEditable y el presupuesto se vuelve a leer', () async {
+    await setUpFlow();
+    // Como la base: al rechazarlo, la semana 1 quedó cancelada.
+    menus.statuses[session] = SessionStatus.cancelled;
+    quotes.quotes['req-1'] = buildQuote(
+      sent: true,
+      declinedAt: DateTime.utc(2026, 11, 23, 8),
+    );
+    final reads = quotes.fetches.length;
+
+    await flow().start(2);
+    await pumpEventQueue();
+
+    expect(state().step, MenuSendStep.previewFailed);
+    expect(state().failure!.kind, MenuSendFailureKind.sessionNotEditable);
+    expect(state().failure!.status, SessionStatus.cancelled);
     expect(quotes.fetches.length, reads + 1);
+    expect(
+      container.read(requestQuoteProvider('req-1')).value!.declinedAt,
+      isNotNull,
+    );
   });
 
   for (final kind in [

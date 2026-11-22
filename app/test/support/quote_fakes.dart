@@ -96,6 +96,25 @@ class FakeQuotesRepository implements QuotesRepository {
     return quote == null ? null : _withSessionsOfNow(quote);
   }
 
+  /// Cada lectura de los plazos de varios pedidos, en orden.
+  final List<List<String>> holdCalls = [];
+
+  @override
+  Future<Map<String, DateTime>> fetchOpenQuoteHolds({
+    required String chefId,
+    required List<String> requestIds,
+  }) async {
+    holdCalls.add(List.of(requestIds));
+    final failure = fetchFailure;
+    if (failure != null) throw failure;
+    return {
+      for (final requestId in requestIds)
+        if (quotes[requestId] case final quote?
+            when quote.isOpen && quote.holdUntil != null)
+          requestId: quote.holdUntil!,
+    };
+  }
+
   /// [quote] con sus semanas como están ahora en [sessions] (movidas o
   /// canceladas por la ficha).
   RequestQuote _withSessionsOfNow(RequestQuote quote) {

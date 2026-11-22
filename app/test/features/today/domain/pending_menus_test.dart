@@ -1,17 +1,22 @@
 // «Menús para mandar» de Hoy en Dart puro: qué semanas entran (confirmadas,
 // de una reserva, de hoy y los 6 días siguientes de Roma, que todavía no
 // empezaron), qué le falta a cada una (sin menú, armado sin mandar, cambiado
-// después de mandarlo o con cambios pedidos), el límite de 48 h antes de la
-// llegada con la hora de Roma (también cuando en el medio cambia la hora) y
-// cuándo se resalta (faltan menos de 24 h o ya pasó).
+// después de mandarlo, con cambios pedidos o, en una confirmada, mandado con
+// una versión anterior del presupuesto que nadie confirmó, como la regla 8 de
+// menu_reminders_due), el límite de 48 h antes de la llegada con la hora de
+// Roma (también cuando en el medio cambia la hora; en la semana 1 de un
+// presupuesto, su plazo si vence antes) y cuándo se resalta (faltan menos de
+// 24 h o ya pasó).
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/today/domain/pending_menus.dart';
+import 'package:radici/features/week_menu/domain/menu_send.dart';
 import 'package:radici/features/week_menu/domain/week_menu.dart';
 
 import '../../../support/menu_send_fakes.dart';
+import '../../../support/quote_fixtures.dart';
 import '../../../support/session_fixtures.dart';
 
 void main() {
@@ -240,6 +245,154 @@ void main() {
       // El límite de la de hoy a las 12:00 ya pasó (el viernes 20).
       expect(menus.first.deadlinePassed(now), isTrue);
       expect(menus.first.toString(), isNot(contains('Giulia')));
+    });
+  });
+
+  group(
+    'la semana 1 de un presupuesto: el límite es su plazo si vence antes',
+    () {
+      const quoteRequest = 'b0000000-0000-4000-8000-0000000000bb';
+      // Lunes 23 a las 10:00 de Roma.
+      final now = DateTime.utc(2026, 11, 23, 9);
+      // El sábado 28 a las 10:00: el menú vence el jueves 26 a las 10:00.
+      final weekOne = week(
+        6,
+        status: SessionStatus.held,
+        requestId: quoteRequest,
+      );
+
+      List<PendingMenu> withHold(DateTime hold) => pendingMenus(
+        [weekOne],
+        summaries: const {},
+        sends: const {},
+        positions: const {},
+        now: now,
+        quoteHolds: {quoteRequest: hold},
+      );
+
+      test('el borrador retiene 24 h (hasta el martes 24 a las 10:00): ese es el límite, y se resalta desde ya', () {
+        final hold = DateTime.utc(2026, 11, 24, 9);
+        final menu = withHold(hold).single;
+        expect(menu.deadline, hold);
+        expect(menu.quoteExpires, isTrue);
+        expect(menu.deadlineNear(now), isTrue);
+      });
+
+      test('mandado con cambios pedidos: vence a las 48 h del envío (el miércoles 25), antes que el menú', () {
+        final hold = DateTime.utc(2026, 11, 25, 9);
+        final menu = withHold(hold).single;
+        expect(menu.deadline, hold);
+        expect(menu.quoteExpires, isTrue);
+      });
+
+      test(
+        'si el plazo vence después del límite del menú, manda el del menú',
+        () {
+          final menu = withHold(DateTime.utc(2026, 11, 27, 9)).single;
+          expect(menu.deadline, menuDeadlineOf(weekOne));
+          expect(menu.quoteExpires, isFalse);
+        },
+      );
+
+      test('una semana confirmada no mira el plazo de un presupuesto', () {
+        expect(
+          pendingDeadlineOf(week(6), hold: DateTime.utc(2026, 11, 24, 9)),
+          (deadline: menuDeadlineOf(week(6)), quoteExpires: false),
+        );
+      });
+    },
+  );
+
+  group('mandado con una versión anterior del presupuesto (la regla 8 de menu_reminders_due)', () {
+    final now = DateTime.utc(2026, 11, 22, 9, 30);
+    const menu = WeekMenuSummary(saved: true, dishes: 2, version: 1);
+    // El envío de la semana 3, con el presupuesto, el miércoles 18.
+    final earlier = sentMenu(
+      id: 'send-1',
+      sessionId: sessionId(3),
+      quoteId: testQuoteId,
+      sentAt: DateTime.utc(2026, 11, 18, 9),
+    );
+    // Después lo reenvió desde otra semana (la que pasó a ser la primera).
+    final later = sentMenu(
+      id: 'send-2',
+      sessionId: sessionId(9),
+      quoteId: testQuoteId,
+      sentAt: DateTime.utc(2026, 11, 19, 9),
+    );
+
+    List<PendingMenu> pendingFor(
+      CookingSession session,
+      MenuSendRecord send, {
+      Map<String, MenuSendRecord> quoteSends = const {},
+    }) => pendingMenus(
+      [session],
+      summaries: {session.id: menu},
+      sends: {session.id: send},
+      positions: const {},
+      now: now,
+      quoteSends: quoteSends,
+    );
+
+    test('una semana confirmada cuyo último envío lo llevaba, nadie lo confirmó y salió otro después: pendiente', () {
+      final pending = pendingFor(
+        week(3),
+        earlier,
+        quoteSends: {testQuoteId: later},
+      ).single;
+      expect(pending.state, PendingMenuState.sentWithEarlierQuote);
+      expect(pending.deadline, menuDeadlineOf(week(3)));
+    });
+
+    test('si la clienta lo confirmó, si es el último del presupuesto o si la semana es retenida: nada', () {
+      expect(
+        pendingFor(
+          week(3),
+          earlier.copyWith(confirmedAt: testSentAt),
+          quoteSends: {testQuoteId: later},
+        ),
+        isEmpty,
+      );
+      expect(
+        pendingFor(week(3), earlier, quoteSends: {testQuoteId: earlier}),
+        isEmpty,
+      );
+      expect(
+        pendingFor(
+          week(3, status: SessionStatus.held),
+          earlier,
+          quoteSends: {testQuoteId: later},
+        ),
+        isEmpty,
+      );
+      // Sin presupuesto, nada que mirar.
+      expect(pendingFor(week(3), sentMenu(sessionId: sessionId(3))), isEmpty);
+    });
+
+    test('los cambios pedidos van primero; después, el presupuesto anterior; después, el menú cambiado', () {
+      expect(
+        pendingMenuState(menu, earlier, sentWithEarlierQuote: true),
+        PendingMenuState.sentWithEarlierQuote,
+      );
+      expect(
+        pendingMenuState(
+          menu,
+          earlier.copyWith(
+            changesRequestedAt: testSentAt,
+            changesText: 'Sin cebolla',
+          ),
+          sentWithEarlierQuote: true,
+        ),
+        PendingMenuState.changesRequested,
+      );
+      expect(
+        pendingMenuState(
+          const WeekMenuSummary(saved: true, dishes: 2, version: 2),
+          earlier,
+          sentWithEarlierQuote: true,
+        ),
+        PendingMenuState.sentWithEarlierQuote,
+      );
     });
   });
 }

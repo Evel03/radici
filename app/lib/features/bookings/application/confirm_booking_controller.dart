@@ -22,13 +22,19 @@
 // es el de todo el presupuesto. Esa ruta no tiene clave: si la creación se
 // queda sin respuesta, el reintento recibe quoteExists cuando el presupuesto
 // ya se había creado; la hoja lo busca y, si es el que mandó (un borrador con
-// esas fechas, esa hora, esos minutos y ese precio), lo toma como creado.
+// esas fechas, esa hora, esos minutos y ese precio), lo toma como creado. Un
+// presupuesto no se crea con una llegada que ya pasó (una fecha pasada, u
+// hoy con la hora ya pasada, mirada al tocar «Crear»): nacería vencido. En
+// la reserva eso es solo un aviso.
 //
 // «Confirmar sin presupuesto» desde un pedido con un presupuesto abierto
 // (borrador, o mandado: el pedido en `quoted`) también se puede: la base lo
 // retira en la misma transacción. El seed trae cuál es
-// (ConfirmBookingState.quoteToWithdraw) para que la pantalla lo avise y lo
-// pregunte antes de confirmar; al confirmar, el detalle lo vuelve a leer.
+// (ConfirmBookingState.openQuote: si salió, sus semanas y si se va el menú de
+// la semana 1) para que la pantalla lo avise y lo pregunte antes de
+// confirmar; al confirmar, el detalle lo vuelve a leer. Desde un pedido la
+// hoja se puede cerrar mientras espera: el controller sigue vivo hasta la
+// respuesta, así el pedido y su presupuesto se releen igual.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -108,6 +114,12 @@ enum BookingBlockKind {
   /// Una fecha que no se puede mandar (misma semana, orden o muy lejos).
   date,
 
+  /// Solo en el presupuesto: la llegada de la semana ya pasó (una fecha
+  /// pasada, o hoy con la hora ya pasada). La clienta lo acepta antes de la
+  /// primera llegada: crearlo así lo dejaría vencido al nacer. En una reserva
+  /// es un aviso (sirve para cargar lo ya hecho).
+  arrival,
+
   /// Una semana choca con otra sesión.
   clash,
 
@@ -116,7 +128,8 @@ enum BookingBlockKind {
 }
 
 /// Lo primero que impide confirmar: [week] es la semana (desde 0) de
-/// [BookingBlockKind.date] y [BookingBlockKind.clash]; null en el precio.
+/// [BookingBlockKind.date], [BookingBlockKind.arrival] y
+/// [BookingBlockKind.clash]; null en el precio.
 typedef BookingBlocker = ({BookingBlockKind kind, int? week});
 
 /// Fallas después de las cuales la hoja no puede confirmar nada.
@@ -132,11 +145,14 @@ const Set<BookingFailureKind> _blockingFailures = {
 @Freezed(toStringOverride: false)
 abstract class ConfirmBookingState with _$ConfirmBookingState {
   const factory ConfirmBookingState({
-    /// Hoy en Roma, al abrir la hoja.
+    /// Hoy en Roma, al abrir la hoja (en el presupuesto, también al tocar
+    /// «Crear»).
     required CalendarDate today,
 
     /// La hora de Roma al abrir la hoja (para la llegada de hoy que ya pasó;
-    /// la medianoche, si no se sabe: ninguna llegada pasó).
+    /// la medianoche, si no se sabe: ninguna llegada pasó). En el
+    /// presupuesto se vuelve a tomar al tocar «Crear»: una llegada que pasó
+    /// con la hoja abierta no deja crearlo.
     @Default(ClockTime(0)) ClockTime openedAt,
 
     /// Hasta que llega el seed, la hoja tiene valores de relleno y no deja
@@ -226,11 +242,15 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
     QuoteDraft? quote,
 
     /// Desde un pedido con un presupuesto abierto: el que la base retira al
-    /// confirmar (la pantalla lo avisa y lo hace confirmar antes).
-    QuoteToWithdraw? quoteToWithdraw,
+    /// confirmar, con sus semanas y si se va el menú de la semana 1 (la
+    /// pantalla lo avisa y lo hace confirmar antes).
+    OpenQuoteToWithdraw? openQuote,
   }) = _ConfirmBookingState;
 
   const ConfirmBookingState._();
+
+  /// El borrador o el mandado de [openQuote].
+  QuoteToWithdraw? get quoteToWithdraw => openQuote?.kind;
 
   int get weeks => dates.length;
 
@@ -307,6 +327,22 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
         );
   }
 
+  /// La llegada de la semana [index] ya pasó: una fecha anterior a hoy o, hoy,
+  /// una llegada ya pasada ([arrivalPassed]). En el presupuesto impide
+  /// crearlo ([BookingBlockKind.arrival]); en una reserva, la hoja lo avisa.
+  bool arrivalGone(int index) =>
+      index < weeks && (dates[index].isBefore(today) || arrivalPassed(index));
+
+  /// Solo en el presupuesto: la primera semana cuya llegada ya pasó
+  /// ([arrivalGone]), o -1. Las fechas van en orden: es la primera.
+  int get _quoteArrivalGoneWeek {
+    if (!isQuote) return -1;
+    for (var i = 0; i < weeks; i++) {
+      if (arrivalGone(i)) return i;
+    }
+    return -1;
+  }
+
   /// El servidor rechazó los datos de la ficha nueva (un 400 con campos
   /// `newClient.*`): se corrigen en el formulario, no en la hoja.
   bool get newClientRejected {
@@ -374,18 +410,21 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
       !blocked &&
       datesValid &&
       start != null &&
+      _quoteArrivalGoneWeek < 0 &&
       priceIssue == null &&
       checksCurrent &&
       !hasClash;
 
   /// Lo primero que impide confirmar y que Evelyn tiene que arreglar, en el
-  /// orden de la hoja: una fecha que no se puede mandar, una semana que choca
-  /// o el precio. La barra de abajo lo dice, porque en un teléfono la causa
-  /// puede quedar fuera de la vista. null si no hay (también mientras el
-  /// dryRun no volvió).
+  /// orden de la hoja: una fecha que no se puede mandar, en el presupuesto una
+  /// llegada que ya pasó, una semana que choca o el precio. La barra de abajo
+  /// lo dice, porque en un teléfono la causa puede quedar fuera de la vista.
+  /// null si no hay (también mientras el dryRun no volvió).
   BookingBlocker? get blocker {
     final date = dateIssues.indexWhere((issue) => issue != null);
     if (date >= 0) return (kind: BookingBlockKind.date, week: date);
+    final gone = _quoteArrivalGoneWeek;
+    if (gone >= 0) return (kind: BookingBlockKind.arrival, week: gone);
     if (hasClash) {
       return (
         kind: BookingBlockKind.clash,
@@ -509,7 +548,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
       portions: value.portions,
       suggestedPriceCents: value.priceRule.suggestedFor(weeks),
       failure: value.initialFailure,
-      quoteToWithdraw: value.quoteToWithdraw,
+      openQuote: value.openQuote,
     );
   }
 
@@ -630,9 +669,16 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
   /// [ConfirmBookingState.failure] y se puede reintentar: con la misma clave
   /// y, si se quedó sin respuesta, con lo mismo que se mandó.
   Future<void> confirm() async {
-    final current = state;
     final seed = _seed;
-    if (!current.canConfirm || seed == null) return;
+    if (seed == null) return;
+    var current = state;
+    if (seed.kind == BookingSourceKind.quote && !current.retryPending) {
+      // Con la hora de ahora, no la de cuando se abrió la hoja: si la primera
+      // llegada pasó mientras tanto, el presupuesto nacería vencido.
+      current = _atClockNow(current);
+      if (current != state) state = current;
+    }
+    if (!current.canConfirm) return;
     final retrying = current.retryPending;
     final booking = retrying
         ? current.sent!
@@ -653,6 +699,10 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     final refreshSessions = agendaSessionsRefresher(ref);
     final chefId = ref.read(currentChefProvider)?.chefId ?? '';
     final now = ref.read(clockProvider)().toUtc();
+    // Desde un pedido la hoja se puede cerrar mientras espera (el atrás del
+    // navegador): el controller sigue vivo hasta la respuesta, así lo que hay
+    // que volver a leer (el presupuesto del pedido) se relee igual.
+    final keepAlive = ref.keepAlive();
     state = current.copyWith(sending: true, failure: null, sent: booking);
     try {
       final result = await _repository.createBooking(booking);
@@ -709,7 +759,20 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
           failure.kind == BookingFailureKind.conflict) {
         unawaited(_runChecks());
       }
+    } finally {
+      keepAlive.close();
     }
+  }
+
+  /// [current] con hoy y la hora de Roma de ahora: la llegada que ya pasó
+  /// ([ConfirmBookingState.arrivalGone]) se mira con la hora de cada intento.
+  ConfirmBookingState _atClockNow(ConfirmBookingState current) {
+    final now = ref.read(clockProvider)();
+    final wall = romeWallClock(now);
+    return current.copyWith(
+      today: romeToday(now),
+      openedAt: ClockTime.hm(wall.hour, wall.minute),
+    );
   }
 
   /// Crea el presupuesto ([BookingSourceKind.quote]) con [booking], lo mismo
@@ -727,44 +790,55 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     final refreshSessions = agendaSessionsRefresher(ref);
     final chefId = ref.read(currentChefProvider)?.chefId;
     final requestId = booking.requestId!;
+    // La hoja se puede cerrar mientras espera (el atrás del navegador): el
+    // controller sigue vivo hasta la respuesta, así el pedido igual vuelve a
+    // leer su presupuesto.
+    final keepAlive = ref.keepAlive();
     state = current.copyWith(sending: true, failure: null, sent: booking);
-    QuoteDraft? draft;
-    BookingFailure? failure;
-    var duplicate = false;
     try {
-      draft = await quotes.createQuote(CreateQuoteRequest.fromBooking(booking));
-    } on BookingFailure catch (error) {
-      failure = error;
-      if (error.kind == BookingFailureKind.quoteExists && chefId != null) {
-        draft = await _ownQuote(quotes, chefId: chefId, sent: booking);
-        duplicate = draft != null;
+      QuoteDraft? draft;
+      BookingFailure? failure;
+      var duplicate = false;
+      try {
+        draft = await quotes.createQuote(
+          CreateQuoteRequest.fromBooking(booking),
+        );
+      } on BookingFailure catch (error) {
+        failure = error;
+        if (error.kind == BookingFailureKind.quoteExists && chefId != null) {
+          draft = await _ownQuote(quotes, chefId: chefId, sent: booking);
+          duplicate = draft != null;
+        }
       }
-    }
-    if (draft != null) {
-      // Sus semanas aparecen en la agenda y el pedido muestra el borrador.
-      if (refreshSessions != null) unawaited(refreshSessions());
+      if (draft != null) {
+        // Sus semanas aparecen en la agenda y el pedido muestra el borrador.
+        if (refreshSessions != null) unawaited(refreshSessions());
+        if (!ref.mounted) return;
+        ref.invalidate(requestQuoteProvider(requestId));
+        state = state.copyWith(
+          sending: false,
+          result: draft.toBookingResult(duplicate: duplicate),
+          quote: draft,
+        );
+        return;
+      }
+      final error = failure!;
+      _afterBlockingFailure(error, seed, inbox);
       if (!ref.mounted) return;
-      ref.invalidate(requestQuoteProvider(requestId));
       state = state.copyWith(
         sending: false,
-        result: draft.toBookingResult(duplicate: duplicate),
-        quote: draft,
+        failure: error,
+        retryUnanswered:
+            retrying && error.kind == BookingFailureKind.unavailable,
       );
-      return;
-    }
-    final error = failure!;
-    _afterBlockingFailure(error, seed, inbox);
-    if (!ref.mounted) return;
-    state = state.copyWith(
-      sending: false,
-      failure: error,
-      retryUnanswered: retrying && error.kind == BookingFailureKind.unavailable,
-    );
-    // Un choque: el dryRun marca la semana que choca.
-    if (error.kind == BookingFailureKind.slotTaken ||
-        error.kind == BookingFailureKind.weekTaken ||
-        error.kind == BookingFailureKind.conflict) {
-      unawaited(_runChecks());
+      // Un choque: el dryRun marca la semana que choca.
+      if (error.kind == BookingFailureKind.slotTaken ||
+          error.kind == BookingFailureKind.weekTaken ||
+          error.kind == BookingFailureKind.conflict) {
+        unawaited(_runChecks());
+      }
+    } finally {
+      keepAlive.close();
     }
   }
 
@@ -911,10 +985,11 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     );
   }
 
-  /// Con una falla que bloquea, lo que hay que volver a leer: el pedido
-  /// (cambió en otro dispositivo) o, a mano o al renovar, el directorio (la
-  /// ficha ya no está). [inbox] se toma antes de esperar al servidor: la hoja
-  /// puede cerrarse mientras tanto.
+  /// Con una falla que bloquea, lo que hay que volver a leer: el pedido y su
+  /// presupuesto (siguió por otro lado: la clienta aceptó o rechazó, venció,
+  /// otro teléfono lo mandó) o, a mano o al renovar, el directorio (la ficha
+  /// ya no está). [inbox] se toma antes de esperar al servidor: la hoja puede
+  /// cerrarse mientras tanto.
   void _afterBlockingFailure(
     BookingFailure failure,
     BookingSeed seed,
@@ -937,6 +1012,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     }
     if (seed.request case final request?) {
       unawaited(inbox.reload(request.id));
+      if (ref.mounted) ref.invalidate(requestQuoteProvider(request.id));
     } else if (kind == BookingFailureKind.notFound && ref.mounted) {
       ref.invalidate(clientDirectoryProvider);
     }

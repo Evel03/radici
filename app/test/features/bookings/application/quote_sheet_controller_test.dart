@@ -2,7 +2,15 @@
 // pedido nuevo, con el dryRun y la creación en POST chef/quotes (nunca en
 // chef/bookings): lo que se prellena, el precio de todo el presupuesto, lo
 // que impide crearlo, el presupuesto creado y, si la creación se quedó sin
-// respuesta, el reintento que encuentra el que ya se había creado.
+// respuesta, el reintento que encuentra el que ya se había creado. Un
+// presupuesto no nace vencido: la primera fecha empieza mañana y una primera
+// llegada que ya pasó (a la hora de tocar «Crear») no deja crearlo. El
+// presupuesto del pedido sigue al pedido (otro teléfono lo mandó, la clienta
+// lo rechazó) y se vuelve a leer aunque la hoja ya no esté. «Confirmar sin
+// presupuesto» con uno abierto avisa que lo retira, y «Rinnova» de esa reserva
+// no cuenta las semanas del presupuesto retirado.
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock.dart';
@@ -29,6 +37,7 @@ import '../../../support/pump_app.dart';
 import '../../../support/quote_fakes.dart';
 import '../../../support/quote_fixtures.dart';
 import '../../../support/request_fixtures.dart';
+import '../../../support/session_fixtures.dart';
 
 void main() {
   final monday = CalendarDate(2026, 11, 23);
@@ -41,21 +50,31 @@ void main() {
   late FakeQuotesRepository quotes;
   late ProviderContainer container;
 
+  /// "Ahora": por defecto, lunes 19/10/2026 a las 14:00 en Roma.
+  late DateTime now;
+
+  /// La hoja abierta (cerrarla es como sacarla de la pantalla).
+  late ProviderSubscription<ConfirmBookingState> sheet;
+
   ChefRequest weekly({
     int weeks = 4,
     RequestEstimate? estimate = fourWeeksEstimate,
     RequestStatus status = RequestStatus.newRequest,
     RequestType type = RequestType.week,
+    CalendarDate? preferredDate,
   }) => buildRequest(
     weeks: weeks,
-    preferredDate: monday,
+    preferredDate: preferredDate ?? monday,
     estimate: estimate,
     status: status,
     type: type,
     seenAt: testNow,
   );
 
-  Future<void> open(ChefRequest request) async {
+  /// Abre la hoja del presupuesto de [request], con la bandeja y el
+  /// presupuesto del pedido leídos. [beforeSheet] cambia "el servidor" justo
+  /// antes de abrirla (lo que hizo otro teléfono o la clienta mientras tanto).
+  Future<void> open(ChefRequest request, {void Function()? beforeSheet}) async {
     requests.requests[request.id] = request;
     container = ProviderContainer.test(
       retry: noRetry,
@@ -70,7 +89,7 @@ void main() {
         bookingsRepositoryProvider.overrideWithValue(bookings),
         sessionsRepositoryProvider.overrideWithValue(sessions),
         quotesRepositoryProvider.overrideWithValue(quotes),
-        clockProvider.overrideWithValue(() => testNow),
+        clockProvider.overrideWithValue(() => now),
         newIdProvider.overrideWithValue(() => 'key-1'),
       ],
     );
@@ -79,7 +98,11 @@ void main() {
       ..listen(chefRequestProvider(request.id), (_, _) {})
       ..listen(requestQuoteProvider(request.id), (_, _) {});
     await container.read(chefRequestProvider(request.id).future);
-    container.listen(confirmBookingProvider(source), (_, _) {});
+    if (beforeSheet != null) {
+      await container.read(requestQuoteProvider(request.id).future);
+      beforeSheet();
+    }
+    sheet = container.listen(confirmBookingProvider(source), (_, _) {});
     await pumpEventQueue();
   }
 
@@ -88,6 +111,7 @@ void main() {
       container.read(confirmBookingProvider(source).notifier);
 
   setUp(() {
+    now = testNow;
     requests = FakeChefRequestsRepository(const []);
     bookings = FakeBookingsRepository(requests: requests);
     sessions = FakeSessionsRepository();
@@ -260,15 +284,159 @@ void main() {
     },
   );
 
+  group('la primera llegada ya pasó: un presupuesto nace vencido (solo en el presupuesto)', () {
+    // "Ahora": lunes 19/10/2026 a las 14:00 en Roma.
+    final today = CalendarDate(2026, 10, 19);
+
+    test('una fecha preferida que ya pasó (un pedido atendido tarde) o la de hoy: empieza mañana', () async {
+      await open(weekly(preferredDate: CalendarDate(2026, 10, 12)));
+      expect(state().dates.first, today.addDays(1));
+      expect(state().dates, weeklyDates(today.addDays(1), 4));
+      expect(state().canConfirm, isTrue);
+    });
+
+    test('la preferida de hoy también empieza mañana', () async {
+      await open(weekly(preferredDate: today));
+      expect(state().dates.first, today.addDays(1));
+    });
+
+    test('una primera semana pasada, elegida a mano: no se crea, y la barra dice por qué', () async {
+      await open(weekly());
+      controller().setDate(0, CalendarDate(2026, 10, 12));
+      await pumpEventQueue();
+      expect(state().checksCurrent, isTrue);
+      expect(state().canConfirm, isFalse);
+      expect(state().blocker, (kind: BookingBlockKind.arrival, week: 0));
+
+      await controller().confirm();
+      expect(quotes.creations, isEmpty);
+    });
+
+    test(
+      'hoy, con la llegada que ya pasó: tampoco; con una llegada más tarde, sí',
+      () async {
+        await open(weekly());
+        controller().setDate(0, today);
+        await pumpEventQueue();
+        // La llegada sugerida, las 10:00, ya pasó (son las 14:00).
+        expect(state().start, const ClockTime.hm(10, 0));
+        expect(state().canConfirm, isFalse);
+        expect(state().blocker, (kind: BookingBlockKind.arrival, week: 0));
+
+        controller().setStart(const ClockTime.hm(15, 0));
+        await pumpEventQueue();
+        expect(state().blocker, isNull);
+        expect(state().canConfirm, isTrue);
+      },
+    );
+
+    test(
+      'mira la hora al tocar «Crear», no la de cuando se abrió la hoja',
+      () async {
+        await open(weekly());
+        controller()
+          ..setDate(0, today)
+          ..setStart(const ClockTime.hm(14, 30));
+        await pumpEventQueue();
+        expect(state().canConfirm, isTrue);
+
+        // Pasaron 40 minutos con la hoja abierta: las 14:30 ya pasaron.
+        now = now.add(const Duration(minutes: 40));
+        await controller().confirm();
+        expect(quotes.creations, isEmpty);
+        expect(state().canConfirm, isFalse);
+        expect(state().blocker, (kind: BookingBlockKind.arrival, week: 0));
+      },
+    );
+
+    test('la reserva desde el pedido sigue aceptando fechas pasadas (lo hecho en Fase 0)', () async {
+      const booking = BookingSource.request('req-1');
+      await open(weekly(preferredDate: CalendarDate(2026, 10, 12)));
+      container.listen(confirmBookingProvider(booking), (_, _) {});
+      await pumpEventQueue();
+      final sheet = container.read(confirmBookingProvider(booking));
+      expect(sheet.dates.first, CalendarDate(2026, 10, 12));
+      expect(sheet.blocker, isNull);
+      expect(sheet.canConfirm, isTrue);
+    });
+  });
+
+  group('el presupuesto del pedido sigue al pedido', () {
+    test('otro teléfono lo mandó mientras tanto (requestNotNew, quoted): el pedido y su presupuesto se vuelven a leer', () async {
+      await open(
+        weekly(),
+        beforeSheet: () {
+          requests.requests['req-1'] = weekly(status: RequestStatus.quoted);
+          quotes.quotes['req-1'] = buildQuote(sent: true);
+        },
+      );
+
+      expect(state().failure!.kind, BookingFailureKind.requestNotNew);
+      final local = container
+          .read(chefInboxProvider)
+          .value!
+          .singleWhere((r) => r.id == 'req-1');
+      expect(local.status, RequestStatus.quoted);
+      final quote = container.read(requestQuoteProvider('req-1')).value;
+      expect(quote?.id, testQuoteId);
+      expect(quote!.wasSent, isTrue);
+    });
+
+    test('si la hoja se cierra mientras lo crea, el pedido igual vuelve a leer su presupuesto al crearse', () async {
+      await open(weekly());
+      final reads = quotes.fetches.length;
+      quotes.pendingCreate = Completer<void>();
+      final creating = controller().confirm();
+      // El atrás del navegador saca la hoja mientras espera.
+      sheet.close();
+      await pumpEventQueue();
+      quotes.pendingCreate!.complete();
+      await creating;
+      await pumpEventQueue();
+
+      expect(quotes.creations, hasLength(1));
+      expect(quotes.fetches.length, greaterThan(reads));
+      final quote = container.read(requestQuoteProvider('req-1')).value;
+      expect(quote?.id, 'quote-1');
+    });
+  });
+
   group('«Confirmar sin presupuesto» con uno abierto (la base lo retira al confirmar)', () {
     const booking = BookingSource.request('req-1');
 
-    Future<ConfirmBookingState> openBooking(ChefRequest request) async {
-      await open(request);
+    Future<ConfirmBookingState> openBooking(
+      ChefRequest request, {
+      void Function()? beforeSheet,
+    }) async {
+      await open(request, beforeSheet: beforeSheet);
       container.listen(confirmBookingProvider(booking), (_, _) {});
       await pumpEventQueue();
       return container.read(confirmBookingProvider(booking));
     }
+
+    test('la clienta lo rechazó mientras tanto (requestNotNew, declined): el presupuesto del pedido se vuelve a leer, rechazado', () async {
+      quotes.quotes['req-1'] = buildQuote(sent: true);
+      final sheet = await openBooking(
+        weekly(status: RequestStatus.quoted),
+        beforeSheet: () {
+          requests.requests['req-1'] = weekly(status: RequestStatus.declined);
+          quotes.quotes['req-1'] = buildQuote(
+            sent: true,
+            declinedAt: DateTime.utc(2026, 10, 19, 11),
+          );
+        },
+      );
+
+      expect(sheet.failure!.kind, BookingFailureKind.requestNotNew);
+      final quote = container.read(requestQuoteProvider('req-1')).value;
+      expect(quote!.declinedAt, isNotNull);
+      expect(quote.isOpen, isFalse);
+    });
+
+    test('un pedido «Presupuesto enviado» sin presupuesto leído (dato viejo): avisa igual que retira el mandado', () async {
+      final sheet = await openBooking(weekly(status: RequestStatus.quoted));
+      expect(sheet.quoteToWithdraw, QuoteToWithdraw.sent);
+    });
 
     test('con uno mandado (el pedido en «Presupuesto enviado»): la hoja se puede confirmar y avisa que lo retira', () async {
       quotes.quotes['req-1'] = buildQuote(sent: true);
@@ -317,6 +485,54 @@ void main() {
       expect(requests.requests['req-1']!.status, RequestStatus.accepted);
       final quote = await container.read(requestQuoteProvider('req-1').future);
       expect(quote!.withdrawnAt, isNotNull);
+    });
+
+    test('«Rinnova» de esa reserva: sus 4 semanas y su precio, sin las semanas del presupuesto retirado', () async {
+      bookings = FakeBookingsRepository(
+        requests: requests,
+        sessions: sessions,
+        onBookedFromRequest: quotes.withdrawOpen,
+      );
+      // El presupuesto mandado, con sus 4 semanas retenidas de 140 €.
+      final sent = buildQuote(sent: true);
+      quotes.quotes['req-1'] = sent;
+      for (final week in sent.sessions) {
+        sessions.sessions[week.id] = buildSession(
+          id: week.id,
+          date: week.date,
+          start: week.start,
+          serviceCents: week.serviceCents,
+          status: SessionStatus.held,
+          requestId: 'req-1',
+          requestStatus: RequestStatus.quoted,
+        );
+      }
+      await openBooking(weekly(status: RequestStatus.quoted));
+      await container.read(confirmBookingProvider(booking).notifier).confirm();
+      await pumpEventQueue();
+
+      // Las 4 retenidas, canceladas al retirarlo; las 4 de la reserva,
+      // confirmadas.
+      final ofRequest = sessions.sessions.values.where(
+        (s) => s.requestId == 'req-1',
+      );
+      expect(
+        ofRequest.where((s) => s.cancelReason == 'quote_withdrawn'),
+        hasLength(4),
+      );
+      final confirmed = [
+        for (final s in ofRequest)
+          if (s.status == SessionStatus.confirmed) s,
+      ]..sort((a, b) => a.date.compareTo(b.date));
+      expect(confirmed, hasLength(4));
+
+      final renewal = BookingSource.renewal(confirmed.last.id);
+      container.listen(confirmBookingProvider(renewal), (_, _) {});
+      await pumpEventQueue();
+      final sheet = container.read(confirmBookingProvider(renewal));
+      expect(sheet.seedStatus, BookingSeedStatus.ready);
+      expect(sheet.weeks, 4);
+      expect(sheet.serviceTotalCents, 56000);
     });
   });
 }

@@ -145,6 +145,10 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
   /// Instante que devuelve [markSeen].
   DateTime seenAt = DateTime.utc(2026, 10, 19, 12);
 
+  /// Al rechazar un pedido, como la base: el trigger requests_close_open_quotes
+  /// retira su presupuesto abierto (FakeQuotesRepository.withdrawOpen).
+  void Function(String requestId)? onRejected;
+
   bool failFetch = false;
   bool failMarkSeen = false;
   bool failReject = false;
@@ -236,6 +240,7 @@ class FakeChefRequestsRepository implements ChefRequestsRepository {
     }
     rejected.add(id);
     requests[id] = request.copyWith(status: RequestStatus.rejected);
+    onRejected?.call(id);
   }
 
   @override
@@ -467,9 +472,9 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
 /// la misma clave devuelve lo guardado con `duplicate`. Con [requests] agrega
 /// el pedido `accepted`, de la app y visto, con los datos de la ficha (de
 /// [clients] o de newClient), y una ficha prospecto pasa a trial. Con
-/// [sessions], una confirmación a mano agrega sus sesiones `confirmed` (con
-/// la ficha de otra sesión suya, si hay). Las fallas y las respuestas lentas
-/// se controlan por campo.
+/// [sessions], una confirmación (a mano o desde un pedido) agrega sus
+/// sesiones `confirmed` (con la ficha de otra sesión suya, si hay). Las fallas
+/// y las respuestas lentas se controlan por campo.
 class FakeBookingsRepository implements BookingsRepository {
   FakeBookingsRepository({
     this.requests,
@@ -488,7 +493,7 @@ class FakeBookingsRepository implements BookingsRepository {
   /// Las fichas "en el servidor" de una reserva a mano.
   final FakeClientsRepository? clients;
 
-  /// Las sesiones "en el servidor" que crea una reserva a mano.
+  /// Las sesiones "en el servidor" que crea una reserva.
   final FakeSessionsRepository? sessions;
 
   /// Reservas guardadas, por pedido.
@@ -583,7 +588,10 @@ class FakeBookingsRepository implements BookingsRepository {
       _accept(request);
       if (request.requestId case final requestId?) {
         saved[requestId] = result.copyWith(duplicate: false);
+        // Como la base: primero retira el presupuesto abierto, después crea
+        // las semanas.
         onBookedFromRequest?.call(requestId);
+        _createRequestSessions(requestId, request, result);
       }
       if (loseNextConfirmResponse) {
         loseNextConfirmResponse = false;
@@ -683,6 +691,51 @@ class FakeBookingsRepository implements BookingsRepository {
             : existing.status,
       ),
     );
+  }
+
+  /// Con [sessions], las sesiones `confirmed` de una reserva desde el pedido
+  /// [requestId], una por semana, con los ids y el servicio de [result], el
+  /// pedido ya aceptado y la ficha de otra sesión de la misma clienta (si no
+  /// hay, una con los datos del pedido).
+  void _createRequestSessions(
+    String requestId,
+    BookingRequest request,
+    BookingResult result,
+  ) {
+    final repository = sessions;
+    if (repository == null) return;
+    final booked = requests?.requests[requestId];
+    final clientId = booked?.clientId ?? result.clientId ?? testClientId;
+    final client =
+        repository.sessions.values
+            .where((s) => s.clientId == clientId)
+            .firstOrNull
+            ?.client ??
+        SessionClient(
+          displayName: booked?.client.displayName ?? '',
+          contactPhone: booked?.client.contactPhone,
+          zone: booked?.client.zone,
+          status: booked?.client.status,
+        );
+    for (final (i, week) in result.weeks.indexed) {
+      final id = week.sessionId ?? '$requestId-${i + 1}';
+      repository.sessions[id] = CookingSession(
+        id: id,
+        chefId: testChefId,
+        clientId: clientId,
+        requestId: requestId,
+        date: week.date,
+        start: week.start ?? request.start ?? const ClockTime.hm(9, 0),
+        cookMinutes: request.cookMinutes,
+        shopMinutes: 0,
+        gapMinutes: 30,
+        portions: request.portions ?? 0,
+        status: SessionStatus.confirmed,
+        serviceCents: week.serviceCents,
+        client: client,
+        request: booked,
+      );
+    }
   }
 
   /// Con [sessions], las sesiones `confirmed` de una reserva a mano, una por

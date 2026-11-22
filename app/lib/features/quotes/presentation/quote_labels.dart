@@ -1,8 +1,10 @@
 // Textos del presupuesto de un pedido: su estado (cuándo salió, hasta cuándo
-// puede aceptarlo la clienta, qué pasó), por qué no se pudo cambiar el precio
-// o retirarlo y, en la vista previa del menú de la semana 1, hasta cuándo lo
-// puede aceptar si sale ahora. Fechas y horas en hora de Roma. Solo
-// presentación: los textos salen del ARB.
+// puede aceptarlo la clienta o, si no puede hasta que se lo manden de nuevo,
+// hasta cuándo hay que reenviarlo; qué pasó), por qué no se pudo cambiar el
+// precio o retirarlo y, en la vista previa del menú de la semana 1, hasta
+// cuándo lo puede aceptar si sale ahora. Con una sola semana hablan de una
+// fecha. Fechas y horas en hora de Roma. Solo presentación: los textos salen
+// del ARB.
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/quotes/data/quotes_repository.dart';
 import 'package:radici/features/quotes/domain/request_quote.dart';
@@ -15,8 +17,9 @@ enum QuoteOperation { changePrice, withdraw }
 extension QuoteLabels on AppLocalizations {
   /// El renglón del estado de [quote] en [status]: «Borrador sin mandar…»,
   /// «Mandado el 22/11 a las 14:32 (versión 2).», «Lo cambiaste después de
-  /// mandarlo…», «La clienta lo aceptó el…»… [formats] escribe las fechas y
-  /// las horas (Roma).
+  /// mandarlo…», «La clienta lo aceptó el…»… Vencido después de que la
+  /// clienta pidió cambios no dice «sin respuesta»: dice que no le llegó la
+  /// versión con los cambios. [formats] escribe las fechas y las horas (Roma).
   String quoteStateText(
     RequestQuote quote,
     QuoteStatus status,
@@ -25,9 +28,10 @@ extension QuoteLabels on AppLocalizations {
     String date(DateTime instant) => formats.instantDayMonth(instant);
     String time(DateTime instant) => formats.instantTime(instant);
     final closed = quote.closedOn(status);
+    final weeks = quote.weekCountFor(status);
     return switch (status) {
       QuoteStatus.draft => switch (quote.holdUntil) {
-        final hold? => quoteStateDraft(date(hold), time(hold)),
+        final hold? => quoteStateDraft(date(hold), time(hold), weeks),
         null => quoteStateDraftShort,
       },
       QuoteStatus.sent ||
@@ -47,11 +51,15 @@ extension QuoteLabels on AppLocalizations {
       QuoteStatus.withdrawn when closed != null => quoteStateWithdrawn(
         date(closed),
         time(closed),
+        weeks,
       ),
       QuoteStatus.expired when closed != null =>
-        quote.wasSent
-            ? quoteStateExpired(date(closed), time(closed))
-            : quoteStateDraftExpired(date(closed), time(closed)),
+        !quote.wasSent
+            ? quoteStateDraftExpired(date(closed), time(closed), weeks)
+            // La clienta contestó: pidió cambios y le tocaba a Evelyn.
+            : quote.changesRequested
+            ? quoteStateExpiredChanges(date(closed), time(closed), weeks)
+            : quoteStateExpired(date(closed), time(closed), weeks),
       // Cerrado sin la fecha (no debería pasar): el estado del pedido.
       QuoteStatus.accepted => requestStatusAccepted,
       QuoteStatus.declined => requestStatusDeclined,
@@ -60,33 +68,64 @@ extension QuoteLabels on AppLocalizations {
     };
   }
 
-  /// Hasta cuándo puede aceptarlo la clienta (mandado y a tiempo); null si
-  /// no aplica.
+  /// Hasta cuándo puede aceptarlo la clienta: solo mandado, a tiempo y sin
+  /// novedades ([QuoteStatus.sent]). Con cambios pedidos o cambiado no lo
+  /// puede aceptar hasta recibirlo de nuevo ([quoteExpiresUnlessResentText]).
+  /// null si no aplica.
   String? quoteValidUntilText(
     RequestQuote quote,
     QuoteStatus status,
     RequestFormats formats,
   ) {
     final hold = quote.holdUntil;
-    if (hold == null ||
-        !(status == QuoteStatus.sent ||
-            status == QuoteStatus.changesRequested)) {
-      return null;
-    }
+    if (hold == null || status != QuoteStatus.sent) return null;
     return quoteValidUntil(
       formats.instantDayMonth(hold),
       formats.instantTime(hold),
     );
   }
 
+  /// Con cambios pedidos o cambiado después de mandarlo, la clienta no lo
+  /// puede aceptar, pero el plazo sigue corriendo: si Evelyn no se lo manda
+  /// de nuevo antes, vence y las fechas se liberan. Para Evelyn, con la hora
+  /// de Roma. null en los demás estados.
+  String? quoteExpiresUnlessResentText(
+    RequestQuote quote,
+    QuoteStatus status,
+    RequestFormats formats,
+  ) {
+    final hold = quote.holdUntil;
+    if (hold == null ||
+        !(status == QuoteStatus.changesRequested ||
+            status == QuoteStatus.changed)) {
+      return null;
+    }
+    return quoteExpiresUnlessResent(
+      formats.instantDayMonth(hold),
+      formats.instantTime(hold),
+      quote.weekCountFor(status),
+    );
+  }
+
   /// Hasta cuándo puede aceptarlo si sale ahora ([deadline]): las horas, o
-  /// la llegada de la primera semana si es antes.
-  String quoteDeadlineText(QuoteDeadline deadline, RequestFormats formats) =>
-      switch (deadline) {
-        QuoteDeadlineHours(:final hours) => menuSendQuoteDeadlineHours(hours),
-        QuoteDeadlineFirstArrival(:final date, :final start) =>
-          menuSendQuoteDeadlineFirst(formats.shortDate(date), start.toHhMm()),
-      };
+  /// la llegada de la primera semana si es antes. [weeks]: las del
+  /// presupuesto (con una, «la fecha»).
+  String quoteDeadlineText(
+    QuoteDeadline deadline,
+    RequestFormats formats, {
+    required int weeks,
+  }) => switch (deadline) {
+    QuoteDeadlineHours(:final hours) => menuSendQuoteDeadlineHours(
+      hours,
+      weeks,
+    ),
+    QuoteDeadlineFirstArrival(:final date, :final start) =>
+      menuSendQuoteDeadlineFirst(
+        formats.shortDate(date),
+        start.toHhMm(),
+        weeks,
+      ),
+  };
 
   /// Por qué no se pudo cambiar el precio o retirarlo.
   String quoteFailure(

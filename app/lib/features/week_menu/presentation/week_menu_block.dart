@@ -114,6 +114,7 @@ class WeekMenuBlock extends ConsumerWidget {
               sessionId: session.id,
               savedVersion: version,
               keyPrefix: 'session-menu-status',
+              confirmedWeek: session.status.shown == SessionStatus.confirmed,
             ),
           ),
         if (editable) ...[

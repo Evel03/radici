@@ -52,9 +52,10 @@ enum QuoteStatus {
   /// sin presupuesto).
   withdrawn,
 
-  /// Pasó el plazo sin respuesta (o el borrador, sin mandarse). También
-  /// mientras el cron de la base todavía no lo cerró, como la página de la
-  /// clienta.
+  /// Pasó el plazo sin que la clienta lo aceptara: sin respuesta, o después
+  /// de pedir cambios que no le llegaron (o el borrador, sin mandarse).
+  /// También mientras el cron de la base todavía no lo cerró, como la página
+  /// de la clienta.
   expired;
 
   /// Se puede mandar, cambiar o retirar.
@@ -388,6 +389,12 @@ abstract class RequestQuote with _$RequestQuote {
   QuoteTerms? termsFor(QuoteStatus status) =>
       status.isOpen ? currentTerms : sentTerms;
 
+  /// Cuántas semanas tiene con [status], para los textos (con una sola, se
+  /// habla de una fecha): las de [termsFor]; si nunca salió y se cerró, todas
+  /// las que tuvo.
+  int weekCountFor(QuoteStatus status) =>
+      termsFor(status)?.weeks.length ?? sessions.length;
+
   /// Cuándo se cerró (aceptado, rechazado, retirado o vencido; vencido sin
   /// el cron, el plazo); null si está abierto y a tiempo.
   DateTime? closedOn(QuoteStatus status) => switch (status) {
@@ -477,6 +484,25 @@ enum QuotePriceIssue {
 // ---------------------------------------------------------------------
 // Lectura
 // ---------------------------------------------------------------------
+
+/// El plazo de cada presupuesto abierto, por pedido, de las filas
+/// `{request_id, hold_until}` de `quotes`. Una sin plazo no está. Lanza
+/// [FormatException] si una fila está rota.
+Map<String, DateTime> openQuoteHoldsFromRows(
+  Iterable<Map<String, dynamic>> rows,
+) {
+  final holds = <String, DateTime>{};
+  for (final row in rows) {
+    final requestId = row['request_id'];
+    final hold = row['hold_until'];
+    if (requestId is! String ||
+        (hold != null && _instantOrNull(hold) == null)) {
+      throw const FormatException('Fila de quotes inválida');
+    }
+    if (_instantOrNull(hold) case final until?) holds[requestId] = until;
+  }
+  return holds;
+}
 
 bool _isCents(Object? value) =>
     value is int && value >= 0 && value <= maxQuoteCents;

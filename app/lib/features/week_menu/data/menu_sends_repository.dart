@@ -39,6 +39,16 @@ abstract interface class MenuSendsRepository {
     required List<String> sessionIds,
   });
 
+  /// El último envío que salió con cada presupuesto de [quoteIds] (por
+  /// `quote_id`, desde cualquier semana), en una sola consulta: para saber
+  /// si el último envío de una semana salió con una versión anterior
+  /// (sentWithEarlierQuote). Lanza [MenuSendFailure]
+  /// ([MenuSendFailureKind.unavailable]).
+  Future<Map<String, MenuSendRecord>> fetchLatestQuoteSends({
+    required String chefId,
+    required List<String> quoteIds,
+  });
+
   /// El envío [sendId] si ya salió; null si no existe (para esta cocina) o
   /// todavía no salió. Lanza [MenuSendFailure].
   Future<MenuSendRecord?> fetchSend({
@@ -224,6 +234,24 @@ class SupabaseMenuSendsRepository implements MenuSendsRepository {
         .order('id', ascending: false)
         .limit(menuSendsPageSize);
     return latestSendsBySession(rows.map(MenuSendRecord.fromRow));
+  });
+
+  @override
+  Future<Map<String, MenuSendRecord>> fetchLatestQuoteSends({
+    required String chefId,
+    required List<String> quoteIds,
+  }) => _read(() async {
+    if (quoteIds.isEmpty) return const {};
+    final rows = await _client
+        .from(_table)
+        .select(menuSendColumns)
+        .eq('chef_id', chefId)
+        .inFilter('quote_id', quoteIds)
+        .not('sent_at', 'is', null)
+        .order('sent_at', ascending: false)
+        .order('id', ascending: false)
+        .limit(menuSendsPageSize);
+    return latestSendsByQuote(rows.map(MenuSendRecord.fromRow));
   });
 
   @override
@@ -427,6 +455,12 @@ class _NoBackendMenuSendsRepository implements MenuSendsRepository {
   Future<Map<String, MenuSendRecord>> fetchLatestSends({
     required String chefId,
     required List<String> sessionIds,
+  }) => Future.error(_failure);
+
+  @override
+  Future<Map<String, MenuSendRecord>> fetchLatestQuoteSends({
+    required String chefId,
+    required List<String> quoteIds,
   }) => Future.error(_failure);
 
   @override

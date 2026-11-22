@@ -3668,12 +3668,13 @@
   "@quoteBlockTitle": {
     "description": "Título del bloque del presupuesto en el detalle del pedido."
   },
-  "quoteStateDraft": "Bozza non ancora inviata: le date restano bloccate fino al {date} alle {time}.",
+  "quoteStateDraft": "{weeks, plural, =1{Bozza non ancora inviata: la data resta bloccata fino al {date} alle {time}.} other{Bozza non ancora inviata: le date restano bloccate fino al {date} alle {time}.}}",
   "@quoteStateDraft": {
-    "description": "Bloque del presupuesto: preparado y sin mandar; hasta cuándo retiene las fechas (hora de Roma).",
+    "description": "Bloque del presupuesto: preparado y sin mandar; hasta cuándo retiene las fechas (hora de Roma). weeks: sus semanas vivas (con una, «la fecha»).",
     "placeholders": {
       "date": { "type": "String", "example": "23/11" },
-      "time": { "type": "String", "example": "14:32" }
+      "time": { "type": "String", "example": "14:32" },
+      "weeks": { "type": "int", "example": "4" }
     }
   },
   "quoteStateSent": "Inviato il {date} alle {time} (versione {version}).",
@@ -3687,7 +3688,7 @@
   },
   "quoteValidUntil": "La cliente può accettarlo fino al {date} alle {time}.",
   "@quoteValidUntil": {
-    "description": "Bloque del presupuesto mandado: hasta cuándo puede aceptarlo la clienta (hora de Roma).",
+    "description": "Bloque del presupuesto mandado, a tiempo y sin novedades: hasta cuándo puede aceptarlo la clienta (hora de Roma). Con cambios pedidos o cambiado no lo puede aceptar: quoteExpiresUnlessResent.",
     "placeholders": {
       "date": { "type": "String", "example": "24/11" },
       "time": { "type": "String", "example": "14:32" }
@@ -3725,28 +3726,31 @@
       "time": { "type": "String", "example": "09:10" }
     }
   },
-  "quoteStateWithdrawn": "Ritirato il {date} alle {time}: le settimane bloccate sono state annullate.",
+  "quoteStateWithdrawn": "{weeks, plural, =1{Ritirato il {date} alle {time}: la data bloccata è stata annullata.} other{Ritirato il {date} alle {time}: le settimane bloccate sono state annullate.}}",
   "@quoteStateWithdrawn": {
-    "description": "Bloque del presupuesto: se retiró (hora de Roma); sus semanas retenidas se cancelaron.",
+    "description": "Bloque del presupuesto: se retiró (hora de Roma); sus semanas retenidas se cancelaron. weeks: las que tuvo (con una, «la fecha»).",
     "placeholders": {
       "date": { "type": "String", "example": "23/11" },
-      "time": { "type": "String", "example": "09:10" }
+      "time": { "type": "String", "example": "09:10" },
+      "weeks": { "type": "int", "example": "4" }
     }
   },
-  "quoteStateExpired": "Scaduto il {date} alle {time} senza risposta: le date vengono liberate.",
+  "quoteStateExpired": "{weeks, plural, =1{Scaduto il {date} alle {time} senza risposta: la data viene liberata.} other{Scaduto il {date} alle {time} senza risposta: le date vengono liberate.}}",
   "@quoteStateExpired": {
-    "description": "Bloque del presupuesto mandado que venció sin respuesta (hora de Roma).",
+    "description": "Bloque del presupuesto mandado que venció sin que la clienta contestara (hora de Roma); si había pedido cambios, quoteStateExpiredChanges. weeks: las que salieron (con una, «la fecha»).",
     "placeholders": {
       "date": { "type": "String", "example": "24/11" },
-      "time": { "type": "String", "example": "14:32" }
+      "time": { "type": "String", "example": "14:32" },
+      "weeks": { "type": "int", "example": "4" }
     }
   },
-  "quoteStateDraftExpired": "La bozza è scaduta il {date} alle {time} senza essere inviata: le date vengono liberate.",
+  "quoteStateDraftExpired": "{weeks, plural, =1{La bozza è scaduta il {date} alle {time} senza essere inviata: la data viene liberata.} other{La bozza è scaduta il {date} alle {time} senza essere inviata: le date vengono liberate.}}",
   "@quoteStateDraftExpired": {
-    "description": "Bloque del presupuesto: el borrador venció sin mandarse (hora de Roma).",
+    "description": "Bloque del presupuesto: el borrador venció sin mandarse (hora de Roma). weeks: las que tuvo (con una, «la fecha»).",
     "placeholders": {
       "date": { "type": "String", "example": "23/11" },
-      "time": { "type": "String", "example": "14:32" }
+      "time": { "type": "String", "example": "14:32" },
+      "weeks": { "type": "int", "example": "4" }
     }
   },
   "quoteWeekDetail": "Arrivo {time} · {amount}",
@@ -3761,17 +3765,23 @@
   "@quoteNoWeeks": {
     "description": "Bloque del presupuesto (y error al cambiar el precio): ya no le quedan semanas vivas."
   },
-  "quoteMenuMissing": "Manca il menù della settimana 1: parte insieme al preventivo.",
+  "quoteMenuMissing": "{weeks, plural, =1{Manca il menù: parte insieme al preventivo.} other{Manca il menù della settimana 1: parte insieme al preventivo.}}",
   "@quoteMenuMissing": {
-    "description": "Bloque del presupuesto abierto: el menú de la semana 1 todavía no tiene platos guardados (también el porqué de «Mandar» deshabilitado)."
+    "description": "Bloque del presupuesto abierto: el menú de la semana 1 todavía no tiene platos guardados (también el porqué de «Mandar» deshabilitado). weeks: las del presupuesto (con una, sin «semana 1»).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
   },
   "quoteLoadFailed": "Non è stato possibile leggere il preventivo.",
   "@quoteLoadFailed": {
     "description": "Detalle del pedido: no se pudo leer el presupuesto (con «Riprova»)."
   },
-  "quoteWeeksHint": "Tocca una settimana per spostarla o annullarla: poi va rimandato.",
+  "quoteWeeksHint": "{weeks, plural, =1{Tocca la data per spostarla o annullarla: poi va rimandato.} other{Tocca una settimana per spostarla o annullarla: poi va rimandato.}}",
   "@quoteWeeksHint": {
-    "description": "Bloque del presupuesto abierto, debajo de las semanas."
+    "description": "Bloque del presupuesto abierto que ya salió, debajo de las semanas (un borrador usa quoteWeeksHintDraft). weeks: sus semanas vivas (con una, «la fecha»).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
   },
   "quoteActionSend": "Invia il preventivo",
   "@quoteActionSend": {
@@ -3793,9 +3803,12 @@
   "@quotePriceTitle": {
     "description": "Título del diálogo para cambiar el precio del presupuesto."
   },
-  "quotePriceHelp": "Il prezzo del servizio di tutte le settimane, diviso fra di loro. Se l'hai già inviato, poi va rimandato.",
+  "quotePriceHelp": "{weeks, plural, =1{Il prezzo del servizio. Se l'hai già inviato, poi va rimandato.} other{Il prezzo del servizio di tutte le settimane, diviso fra di loro. Se l'hai già inviato, poi va rimandato.}}",
   "@quotePriceHelp": {
-    "description": "Diálogo del precio del presupuesto: qué es y qué pasa después."
+    "description": "Diálogo del precio del presupuesto: qué es y qué pasa después. weeks: sus semanas vivas (con una, sin «todas las semanas» ni el reparto).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
   },
   "quotePriceSave": "Salva il prezzo",
   "@quotePriceSave": {
@@ -3820,9 +3833,12 @@
   "@quoteWithdrawTitle": {
     "description": "Diálogo para retirar el presupuesto."
   },
-  "quoteWithdrawBody": "Le settimane bloccate vengono annullate e la richiesta torna nuova. Se l'hai già inviato, nel suo link la cliente vede che l'hai ritirato.",
+  "quoteWithdrawBody": "{weeks, plural, =1{La data bloccata viene annullata e la richiesta torna nuova. Se l'hai già inviato, nel suo link la cliente vede che l'hai ritirato.} other{Le settimane bloccate vengono annullate e la richiesta torna nuova. Se l'hai già inviato, nel suo link la cliente vede che l'hai ritirato.}}",
   "@quoteWithdrawBody": {
-    "description": "Diálogo para retirar el presupuesto: qué pasa."
+    "description": "Diálogo para retirar el presupuesto: qué pasa. weeks: sus semanas vivas (con una, «la fecha»).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
   },
   "quoteWithdrawConfirm": "Ritira",
   "@quoteWithdrawConfirm": {
@@ -3856,9 +3872,12 @@
   "@quoteErrorForbidden": {
     "description": "La cuenta no puede manejar presupuestos."
   },
-  "quoteFormIntro": "Le settimane restano bloccate mentre prepari il menù della settimana 1: il preventivo parte con lui e la cliente lo accetta dal suo link.",
+  "quoteFormIntro": "{weeks, plural, =1{La data resta bloccata mentre prepari il menù: il preventivo parte con lui e la cliente lo accetta dal suo link.} other{Le settimane restano bloccate mentre prepari il menù della settimana 1: il preventivo parte con lui e la cliente lo accetta dal suo link.}}",
   "@quoteFormIntro": {
-    "description": "Hoja «Preparar presupuesto», debajo del pedido: qué pasa al crearlo."
+    "description": "Hoja «Preparar presupuesto», debajo del pedido: qué pasa al crearlo. weeks: las de la hoja (con una, «la fecha»).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
   },
   "quoteCreateAction": "Crea il preventivo",
   "@quoteCreateAction": {
@@ -3868,9 +3887,12 @@
   "@quoteCreating": {
     "description": "Botón de la hoja «Preparar presupuesto» mientras se crea."
   },
-  "quoteOpeningMenu": "Apro il menù della settimana 1…",
+  "quoteOpeningMenu": "{weeks, plural, =1{Apro il menù…} other{Apro il menù della settimana 1…}}",
   "@quoteOpeningMenu": {
-    "description": "Hoja «Preparar presupuesto»: ya se creó y se abre el editor del menú de la semana 1."
+    "description": "Hoja «Preparar presupuesto»: ya se creó y se abre el editor del menú de la semana 1. weeks: las del presupuesto creado.",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
   },
   "bookingErrorQuoteExists": "Questa richiesta ha già un preventivo aperto: lo trovi nella richiesta.",
   "@bookingErrorQuoteExists": {
@@ -3884,9 +3906,12 @@
   "@quoteErrorCreateUnavailable": {
     "description": "Hoja «Preparar presupuesto»: no se pudo crear (sin conexión o sin respuesta)."
   },
-  "weekMenuQuoteFirstWeek": "Il menù della settimana 1 parte insieme al preventivo: salvalo e tocca «Invia» per mandare alla cliente entrambe le cose.",
+  "weekMenuQuoteFirstWeek": "{weeks, plural, =1{Il menù parte insieme al preventivo: salvalo e tocca «Invia» per mandare alla cliente entrambe le cose.} other{Il menù della settimana 1 parte insieme al preventivo: salvalo e tocca «Invia» per mandare alla cliente entrambe le cose.}}",
   "@weekMenuQuoteFirstWeek": {
-    "description": "Editor del menú de la semana 1 de un presupuesto sin aceptar: el menú sale junto con el presupuesto. «Invia» es el botón de abajo (menuSendShort)."
+    "description": "Editor del menú de la semana 1 de un presupuesto sin aceptar: el menú sale junto con el presupuesto. «Invia» es el botón de abajo (menuSendShort). weeks: las semanas vivas de la reserva (con una, sin «semana 1»).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
   },
   "weekMenuQuoteLaterWeek": "Settimana del preventivo: il suo menù si invia quando la cliente lo accetta (prima parte solo quello della settimana 1).",
   "@weekMenuQuoteLaterWeek": {
@@ -3896,9 +3921,12 @@
   "@menuSendAfterQuote": {
     "description": "Ficha de una semana de un presupuesto que no es la primera: por qué «Invia» está deshabilitado."
   },
-  "sessionQuoteHeldHint": "Settimana di un preventivo non ancora accettato: se la sposti o la annulli, il preventivo cambia (se è già partito, va rimandato alla cliente).",
+  "sessionQuoteHeldHint": "{weeks, plural, =1{Data di un preventivo non ancora accettato: se la sposti o la annulli, il preventivo cambia (se è già partito, va rimandato alla cliente).} other{Settimana di un preventivo non ancora accettato: se la sposti o la annulli, il preventivo cambia (se è già partito, va rimandato alla cliente).}}",
   "@sessionQuoteHeldHint": {
-    "description": "Ficha de una semana retenida por un presupuesto sin aceptar: qué pasa si se mueve o se cancela."
+    "description": "Ficha de una semana retenida por un presupuesto sin aceptar: qué pasa si se mueve o se cancela. weeks: las semanas vivas de la reserva (con una, «fecha»).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
   },
   "menuSendQuoteSection": "Preventivo (versione {version})",
   "@menuSendQuoteSection": {
@@ -3907,23 +3935,28 @@
       "version": { "type": "int", "example": "1" }
     }
   },
-  "menuSendQuoteHint": "Va con il menù: dal link la cliente accetta il preventivo e il menù della settimana 1, chiede modifiche o lo rifiuta.",
+  "menuSendQuoteHint": "{weeks, plural, =1{Va con il menù: dal link la cliente accetta il preventivo e il menù, chiede modifiche o lo rifiuta.} other{Va con il menù: dal link la cliente accetta il preventivo e il menù della settimana 1, chiede modifiche o lo rifiuta.}}",
   "@menuSendQuoteHint": {
-    "description": "Vista previa del menú de la semana 1 con el presupuesto: qué puede hacer la clienta."
-  },
-  "menuSendQuoteDeadlineHours": "{hours, plural, =1{Ha 1 ora per accettarlo da quando lo invii; intanto le date restano riservate a lei.} other{Ha {hours} ore per accettarlo da quando lo invii; intanto le date restano riservate a lei.}}",
-  "@menuSendQuoteDeadlineHours": {
-    "description": "Vista previa con el presupuesto: las horas que tiene la clienta para aceptarlo desde que sale.",
+    "description": "Vista previa del menú de la semana 1 con el presupuesto: qué puede hacer la clienta. weeks: las del presupuesto de la foto.",
     "placeholders": {
-      "hours": { "type": "int", "example": "48" }
+      "weeks": { "type": "int", "example": "4" }
     }
   },
-  "menuSendQuoteDeadlineFirst": "Ha tempo fino a {date} alle {time} per accettarlo (l'arrivo della prima settimana).",
+  "menuSendQuoteDeadlineHours": "{weeks, plural, =1{{hours, plural, =1{Ha 1 ora per accettarlo da quando lo invii; intanto la data resta riservata a lei.} other{Ha {hours} ore per accettarlo da quando lo invii; intanto la data resta riservata a lei.}}} other{{hours, plural, =1{Ha 1 ora per accettarlo da quando lo invii; intanto le date restano riservate a lei.} other{Ha {hours} ore per accettarlo da quando lo invii; intanto le date restano riservate a lei.}}}}",
+  "@menuSendQuoteDeadlineHours": {
+    "description": "Vista previa con el presupuesto: las horas que tiene la clienta para aceptarlo desde que sale. weeks: las del presupuesto (con una, «la fecha»).",
+    "placeholders": {
+      "hours": { "type": "int", "example": "48" },
+      "weeks": { "type": "int", "example": "4" }
+    }
+  },
+  "menuSendQuoteDeadlineFirst": "{weeks, plural, =1{Ha tempo fino a {date} alle {time} per accettarlo (l'ora di arrivo).} other{Ha tempo fino a {date} alle {time} per accettarlo (l'arrivo della prima settimana).}}",
   "@menuSendQuoteDeadlineFirst": {
-    "description": "Vista previa con el presupuesto: el plazo no alcanza las horas de siempre antes de la primera llegada, así que vence a esa hora (Roma).",
+    "description": "Vista previa con el presupuesto: el plazo no alcanza las horas de siempre antes de la primera llegada, así que vence a esa hora (Roma). weeks: las del presupuesto.",
     "placeholders": {
       "date": { "type": "String", "example": "lun 30 nov" },
-      "time": { "type": "String", "example": "10:00" }
+      "time": { "type": "String", "example": "10:00" },
+      "weeks": { "type": "int", "example": "4" }
     }
   },
   "menuSendDoneQuote": "Il preventivo (versione {version}) è partito con il menù.",
@@ -3965,13 +3998,19 @@
   "@quoteStateDraftShort": {
     "description": "Bloque del presupuesto: preparado y sin mandar, sin plazo conocido."
   },
-  "bookingWithdrawsQuoteSent": "Questa richiesta ha un preventivo già inviato: confermando, viene ritirato, le sue settimane bloccate si annullano e la cliente non potrà più accettarlo dal suo link.",
+  "bookingWithdrawsQuoteSent": "{weeks, plural, =1{Questa richiesta ha un preventivo già inviato: confermando, viene ritirato, la sua data bloccata si annulla e la cliente non potrà più accettarlo dal suo link.} other{Questa richiesta ha un preventivo già inviato: confermando, viene ritirato, le sue settimane bloccate si annullano e la cliente non potrà più accettarlo dal suo link.}}",
   "@bookingWithdrawsQuoteSent": {
-    "description": "Hoja «Conferma prenotazione» desde un pedido con un presupuesto ya mandado (y el diálogo antes de confirmar): la base lo retira al confirmar."
+    "description": "Hoja «Conferma prenotazione» desde un pedido con un presupuesto ya mandado (y el diálogo antes de confirmar): la base lo retira al confirmar. weeks: sus semanas retenidas (con una, «la fecha»; sin saberlo, 0: en plural).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
   },
-  "bookingWithdrawsQuoteDraft": "Questa richiesta ha una bozza di preventivo: confermando, viene ritirata e le sue settimane bloccate si annullano.",
+  "bookingWithdrawsQuoteDraft": "{weeks, plural, =1{Questa richiesta ha una bozza di preventivo: confermando, viene ritirata e la sua data bloccata si annulla.} other{Questa richiesta ha una bozza di preventivo: confermando, viene ritirata e le sue settimane bloccate si annullano.}}",
   "@bookingWithdrawsQuoteDraft": {
-    "description": "Hoja «Conferma prenotazione» desde un pedido con un borrador de presupuesto (y el diálogo antes de confirmar): la base lo retira al confirmar."
+    "description": "Hoja «Conferma prenotazione» desde un pedido con un borrador de presupuesto (y el diálogo antes de confirmar): la base lo retira al confirmar. weeks: sus semanas retenidas (con una, «la fecha»).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
   },
   "bookingWithdrawQuoteTitle": "Confermare senza preventivo?",
   "@bookingWithdrawQuoteTitle": {
@@ -3980,5 +4019,81 @@
   "bookingWithdrawQuoteConfirm": "Conferma e ritira il preventivo",
   "@bookingWithdrawQuoteConfirm": {
     "description": "Botón del diálogo: confirma la reserva y retira el presupuesto abierto."
+  },
+  "quoteWeeksHintDraft": "{weeks, plural, =1{Tocca la data per spostarla o annullarla.} other{Tocca una settimana per spostarla o annullarla.}}",
+  "@quoteWeeksHintDraft": {
+    "description": "Bloque de un borrador de presupuesto (todavía no salió), debajo de las semanas. weeks: sus semanas vivas (con una, «la fecha»).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
+  },
+  "quoteExpiresUnlessResent": "{weeks, plural, =1{Se non glielo rimandi entro il {date} alle {time}, scade e la data viene liberata.} other{Se non glielo rimandi entro il {date} alle {time}, scade e le date vengono liberate.}}",
+  "@quoteExpiresUnlessResent": {
+    "description": "Bloque del presupuesto con cambios pedidos o cambiado después de mandarlo, para Evelyn: la clienta no lo puede aceptar hasta recibirlo de nuevo, pero el plazo sigue (hora de Roma). weeks: sus semanas vivas (con una, «la fecha»).",
+    "placeholders": {
+      "date": { "type": "String", "example": "24/11" },
+      "time": { "type": "String", "example": "14:32" },
+      "weeks": { "type": "int", "example": "4" }
+    }
+  },
+  "quoteStateExpiredChanges": "{weeks, plural, =1{Scaduto il {date} alle {time} senza che le mandassi la versione con le modifiche che aveva chiesto: la data viene liberata.} other{Scaduto il {date} alle {time} senza che le mandassi la versione con le modifiche che aveva chiesto: le date vengono liberate.}}",
+  "@quoteStateExpiredChanges": {
+    "description": "Bloque del presupuesto mandado que venció después de que la clienta pidió cambios en el último envío y no le llegó otra versión (hora de Roma): ella sí contestó. weeks: las que salieron (con una, «la fecha»).",
+    "placeholders": {
+      "date": { "type": "String", "example": "24/11" },
+      "time": { "type": "String", "example": "14:32" },
+      "weeks": { "type": "int", "example": "4" }
+    }
+  },
+  "quoteBlockArrivalPassed": "L'arrivo è già passato: la cliente accetta il preventivo prima dell'arrivo. Scegli una data futura.",
+  "@quoteBlockArrivalPassed": {
+    "description": "Hoja «Preparar presupuesto»: la llegada de la semana ya pasó (una fecha pasada, u hoy con la hora ya pasada); el presupuesto nacería vencido, así que no se crea. También en la barra de abajo, con «Semana k ·» delante si hay varias."
+  },
+  "todayMenuQuoteExpires": "Il preventivo scade: {date}, {time}",
+  "@todayMenuQuoteExpires": {
+    "description": "Hoy, en «Menús para mandar», la semana 1 de un presupuesto: su plazo (el borrador, 24 h; mandado, 48 h desde el último envío) vence antes que el límite del menú, así que es el límite que importa (hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 23 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "todayMenuQuoteExpired": "Preventivo scaduto: {date}, {time}",
+  "@todayMenuQuoteExpired": {
+    "description": "Hoy, en «Menús para mandar», la semana 1 de un presupuesto cuyo plazo ya pasó (las fechas se liberan en unos minutos).",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 23 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "todayMenuQuoteExpiresNearA11y": "Il preventivo scade: {date}, {time}. Mancano meno di 24 ore.",
+  "@todayMenuQuoteExpiresNearA11y": {
+    "description": "Hoy, en «Menús para mandar», solo para el lector de pantalla: lo que se ve es todayMenuQuoteExpires, resaltado porque faltan menos de 24 h (el color y el ícono no se leen).",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 23 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "quoteMenuGoesWithWeek": "{weeks, plural, =1{Il menù che hai preparato se ne va con la data annullata.} other{Il menù della settimana 1 che hai preparato se ne va con la settimana annullata.}}",
+  "@quoteMenuGoesWithWeek": {
+    "description": "Al retirar el presupuesto o confirmar sin él, si la semana 1 tiene un menú guardado: el menú vive en esa sesión, que se cancela. weeks: las del presupuesto (con una, «la fecha»).",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
+  },
+  "bookingQuoteMenuRedo": "Dopo aver confermato dovrai prepararlo e inviarlo di nuovo.",
+  "@bookingQuoteMenuRedo": {
+    "description": "Hoja «Confirmar sin presupuesto» (y su diálogo), después de quoteMenuGoesWithWeek: la reserva nueva no trae ese menú."
+  },
+  "bookingQuoteMenuAccept": "Se invece la cliente accetta il preventivo dal suo link, il menù resta confermato così com'è.",
+  "@bookingQuoteMenuAccept": {
+    "description": "Hoja «Confirmar sin presupuesto» con un presupuesto ya mandado cuya semana 1 tiene menú: la otra salida, que la clienta lo acepte desde su enlace."
+  },
+  "todayMenuSentWithOldQuote": "Da rimandare (preventivo precedente)",
+  "@todayMenuSentWithOldQuote": {
+    "description": "Hoy, en «Menús para mandar»: el último envío de la semana salió con una versión anterior del presupuesto y nadie lo confirmó (para los avisos sigue pendiente)."
+  },
+  "menuSendOldQuote": "È partito con una versione precedente del preventivo e nessuno l'ha confermato: invialo di nuovo.",
+  "@menuSendOldQuote": {
+    "description": "Estado del envío del menú de una semana confirmada (ficha, editor y semanas de la reserva): su último envío salió con una versión anterior del presupuesto y nadie lo confirmó."
   }
 }

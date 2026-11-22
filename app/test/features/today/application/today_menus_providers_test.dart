@@ -3,10 +3,14 @@
 // cosa para todas (los menús, los últimos envíos y las semanas vivas de sus
 // reservas: nunca una por semana), con «Semana k de N» de la reserva entera
 // aunque empiece antes de lo que lee la agenda y el límite de 48 h antes de
-// la llegada. Cargando hasta la primera lectura con la agenda leída. La hora
-// solo descarta y resalta (no vuelve a leer); guardar, mandar, «Ricarica» y
-// una semana que entra sí, y mientras se vuelve a leer queda lo de antes. Si
-// una lectura falla, el error, sin reintentar solo.
+// la llegada (en la semana 1 de un presupuesto, su plazo si vence antes, con
+// una consulta de los plazos). Una semana confirmada cuyo último envío salió
+// con una versión anterior del presupuesto sigue pendiente, como en los
+// avisos (con una consulta más, solo entonces). Cargando hasta la primera
+// lectura con la agenda leída. La hora solo descarta y resalta (no vuelve a
+// leer); guardar, mandar, «Ricarica» y una semana que entra sí, y mientras se
+// vuelve a leer queda lo de antes. Si una lectura falla, el error, sin
+// reintentar solo.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,7 +21,9 @@ import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/quotes/data/quotes_repository.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/today/application/today_menus_providers.dart';
@@ -26,6 +32,7 @@ import 'package:radici/features/today/domain/pending_menus.dart';
 import 'package:radici/features/week_menu/application/week_menu_summaries.dart';
 import 'package:radici/features/week_menu/data/menu_sends_repository.dart';
 import 'package:radici/features/week_menu/data/session_menus_repository.dart';
+import 'package:radici/features/week_menu/domain/menu_send.dart';
 import 'package:radici/features/week_menu/domain/week_menu.dart';
 
 import '../../../support/fakes.dart';
@@ -33,6 +40,8 @@ import '../../../support/menu_fakes.dart';
 import '../../../support/menu_fixtures.dart';
 import '../../../support/menu_send_fakes.dart';
 import '../../../support/pump_app.dart';
+import '../../../support/quote_fakes.dart';
+import '../../../support/quote_fixtures.dart';
 import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
 
@@ -48,16 +57,18 @@ void main() {
   late FakeSessionsRepository sessions;
   late FakeSessionMenusRepository menus;
   late FakeMenuSendsRepository sends;
+  late FakeQuotesRepository quotes;
   late ProviderContainer container;
 
   /// [agenda]: si no es null, la lectura de la agenda espera a que se
-  /// complete.
+  /// complete. [sent]: los envíos que ya salieron.
   Future<void> start(
     List<CookingSession> booking, {
     Completer<void>? agenda,
+    List<MenuSendRecord> sent = const [],
   }) async {
     sessions = FakeSessionsRepository(booking)..pendingAgendaFetch = agenda;
-    sends = FakeMenuSendsRepository(menus: menus);
+    sends = FakeMenuSendsRepository(menus: menus, sent: sent);
     container = ProviderContainer.test(
       retry: noRetry,
       overrides: [
@@ -70,6 +81,7 @@ void main() {
         sessionsRepositoryProvider.overrideWithValue(sessions),
         sessionMenusRepositoryProvider.overrideWithValue(menus),
         menuSendsRepositoryProvider.overrideWithValue(sends),
+        quotesRepositoryProvider.overrideWithValue(quotes),
         clockProvider.overrideWithValue(() => now),
       ],
     );
@@ -86,6 +98,118 @@ void main() {
   setUp(() {
     now = DateTime.utc(2026, 11, 22, 9, 30);
     menus = FakeSessionMenusRepository();
+    quotes = FakeQuotesRepository();
+  });
+
+  group('el presupuesto', () {
+    const quoteRequest = 'b0000000-0000-4000-8000-0000000000bb';
+
+    test('la semana 1 de un presupuesto: si su plazo vence antes que el límite del menú, el límite es el plazo (una lectura de los plazos, solo de los pedidos con una semana retenida)', () async {
+      // El borrador, preparado el lunes 23 a las 10:00, retiene hasta el
+      // martes 24 a las 10:00; el menú del sábado 28 a las 10:00 vencería el
+      // jueves 26.
+      final hold = DateTime.utc(2026, 11, 24, 9);
+      quotes = FakeQuotesRepository(
+        quotes: [buildQuote(requestId: quoteRequest, holdUntil: hold)],
+      );
+      await start([
+        buildSession(
+          n: 20,
+          date: CalendarDate(2026, 11, 28),
+          status: SessionStatus.held,
+          requestId: quoteRequest,
+          requestStatus: RequestStatus.newRequest,
+        ),
+        ...buildBooking(weeks: 1, first: CalendarDate(2026, 11, 25)),
+      ]);
+
+      final byId = {for (final m in pending()) m.session.id: m};
+      expect(byId[sessionId(20)]!.deadline, hold);
+      expect(byId[sessionId(20)]!.quoteExpires, isTrue);
+      // La de la reserva, con el límite del menú.
+      expect(byId[sessionId(1)]!.deadline, DateTime.utc(2026, 11, 23, 9));
+      expect(byId[sessionId(1)]!.quoteExpires, isFalse);
+      expect(quotes.holdCalls, [
+        [quoteRequest],
+      ]);
+    });
+
+    test(
+      'si el plazo del presupuesto vence después, manda el límite del menú',
+      () async {
+        quotes = FakeQuotesRepository(
+          quotes: [
+            buildQuote(
+              requestId: quoteRequest,
+              holdUntil: DateTime.utc(2026, 11, 27, 9),
+            ),
+          ],
+        );
+        await start([
+          buildSession(
+            n: 20,
+            date: CalendarDate(2026, 11, 28),
+            status: SessionStatus.held,
+            requestId: quoteRequest,
+            requestStatus: RequestStatus.newRequest,
+          ),
+        ]);
+        final menu = pending().single;
+        expect(menu.deadline, DateTime.utc(2026, 11, 26, 9));
+        expect(menu.quoteExpires, isFalse);
+      },
+    );
+
+    test('una semana confirmada cuyo último envío llevaba el presupuesto, que después salió desde otra semana, y nadie lo confirmó: pendiente, como en los avisos', () async {
+      menus = FakeSessionMenusRepository(
+        menus: {sessionId(1): savedLasagneMenu(version: 1)},
+      );
+      await start(
+        buildBooking(weeks: 2, first: CalendarDate(2026, 11, 25)),
+        sent: [
+          sentMenu(
+            id: 'send-1',
+            sessionId: sessionId(1),
+            quoteId: testQuoteId,
+            sentAt: DateTime.utc(2026, 11, 18, 9),
+          ),
+          // Lo reenvió desde la semana que pasó a ser la primera.
+          sentMenu(
+            id: 'send-2',
+            sessionId: sessionId(2),
+            quoteId: testQuoteId,
+            sentAt: DateTime.utc(2026, 11, 19, 9),
+          ),
+        ],
+      );
+
+      final menu = pending().single;
+      expect(menu.session.id, sessionId(1));
+      expect(menu.state, PendingMenuState.sentWithEarlierQuote);
+      expect(sends.quoteSendCalls, [
+        [testQuoteId],
+      ]);
+    });
+
+    test('si lo confirmó la clienta, o es el último envío del presupuesto, nada pendiente y ninguna lectura de más', () async {
+      menus = FakeSessionMenusRepository(
+        menus: {sessionId(1): savedLasagneMenu(version: 1)},
+      );
+      await start(
+        buildBooking(weeks: 1, first: CalendarDate(2026, 11, 25)),
+        sent: [
+          sentMenu(
+            id: 'send-1',
+            sessionId: sessionId(1),
+            quoteId: testQuoteId,
+            confirmedAt: DateTime.utc(2026, 11, 19, 9),
+          ),
+        ],
+      );
+      expect(pending(), isEmpty);
+      expect(sends.quoteSendCalls, isEmpty);
+      expect(quotes.holdCalls, isEmpty);
+    });
   });
 
   test('la semana sin menú de los próximos días, con «Semana k de N» de la reserva entera y el límite de 48 h', () async {

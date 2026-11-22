@@ -40,6 +40,15 @@ abstract interface class QuotesRepository {
     required String requestId,
   });
 
+  /// Hasta cuándo retiene las fechas el presupuesto abierto de cada pedido de
+  /// [requestIds] (`quotes.hold_until`: el borrador, 24 h; mandado, el plazo
+  /// de la clienta), en una sola consulta; los pedidos sin uno abierto no
+  /// están. Lanza [QuoteFailure] ([QuoteFailureKind.unavailable]).
+  Future<Map<String, DateTime>> fetchOpenQuoteHolds({
+    required String chefId,
+    required List<String> requestIds,
+  });
+
   /// POST chef/quotes: lo prepara (o, con `dryRun`, devuelve el estado de
   /// cada fecha sin escribir nada). Lanza [BookingFailure].
   Future<QuoteDraft> createQuote(CreateQuoteRequest request);
@@ -140,6 +149,29 @@ class SupabaseQuotesRepository implements QuotesRepository {
     } on Object {
       // Red, PostgREST o una fila rota: nada del detalle (puede traer el
       // mensaje de la clienta).
+      throw const QuoteFailure(QuoteFailureKind.unavailable);
+    }
+  }
+
+  @override
+  Future<Map<String, DateTime>> fetchOpenQuoteHolds({
+    required String chefId,
+    required List<String> requestIds,
+  }) async {
+    if (requestIds.isEmpty) return const {};
+    try {
+      // Abierto: sin aceptar, rechazar, retirar ni vencer (uno por pedido).
+      final rows = await _client
+          .from('quotes')
+          .select('request_id, hold_until')
+          .eq('chef_id', chefId)
+          .inFilter('request_id', requestIds)
+          .isFilter('accepted_at', null)
+          .isFilter('declined_at', null)
+          .isFilter('withdrawn_at', null)
+          .isFilter('expired_at', null);
+      return openQuoteHoldsFromRows(rows);
+    } on Object {
       throw const QuoteFailure(QuoteFailureKind.unavailable);
     }
   }
@@ -266,6 +298,12 @@ class _NoBackendQuotesRepository implements QuotesRepository {
   Future<RequestQuote?> fetchLatestQuote({
     required String chefId,
     required String requestId,
+  }) => Future.error(const QuoteFailure(QuoteFailureKind.unavailable));
+
+  @override
+  Future<Map<String, DateTime>> fetchOpenQuoteHolds({
+    required String chefId,
+    required List<String> requestIds,
   }) => Future.error(const QuoteFailure(QuoteFailureKind.unavailable));
 
   @override

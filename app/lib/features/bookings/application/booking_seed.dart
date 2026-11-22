@@ -29,6 +29,7 @@ import 'package:radici/features/requests/application/chef_inbox_controller.dart'
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
+import 'package:radici/features/week_menu/application/week_menu_summaries.dart';
 
 part 'booking_seed.freezed.dart';
 
@@ -85,6 +86,12 @@ enum QuoteToWithdraw {
   /// enlace.
   sent,
 }
+
+/// El presupuesto abierto que «Confirmar sin presupuesto» retiraría: si ya
+/// salió ([kind]), cuántas semanas retenidas tiene ([weeks]; 0 si no se
+/// sabe) y si la semana 1 tiene un menú guardado ([hasMenu]): se va con esa
+/// semana cancelada y hay que volver a armarlo y mandarlo.
+typedef OpenQuoteToWithdraw = ({QuoteToWithdraw kind, int weeks, bool hasMenu});
 
 /// A quién es la reserva: el encabezado de la hoja y el WhatsApp final. Tiene
 /// datos de contacto: toString no los muestra.
@@ -176,7 +183,8 @@ final class NoSuggestedPrice extends BookingPriceRule {
 
 /// «Rinnova»: el total de la reserva con las mismas semanas; con otras, el de
 /// las tarifas de [estimate] si el total era el de esas tarifas, o ninguno
-/// (renewalPriceFor).
+/// (renewalPriceFor). Sin total (RenewalPlan.serviceTotalCents null),
+/// ninguno: lo escribe Evelyn.
 final class RenewalPriceRule extends BookingPriceRule {
   const RenewalPriceRule({
     required this.totalCents,
@@ -184,17 +192,21 @@ final class RenewalPriceRule extends BookingPriceRule {
     this.estimate,
   });
 
-  final int totalCents;
+  final int? totalCents;
   final int weeks;
   final RequestEstimate? estimate;
 
   @override
-  int? suggestedFor(int weeks) => renewalPriceFor(
-    originalTotal: totalCents,
-    originalWeeks: this.weeks,
-    weeks: weeks,
-    estimate: estimate,
-  );
+  int? suggestedFor(int weeks) {
+    final total = totalCents;
+    if (total == null) return null;
+    return renewalPriceFor(
+      originalTotal: total,
+      originalWeeks: this.weeks,
+      weeks: weeks,
+      estimate: estimate,
+    );
+  }
 }
 
 /// Lo que trae la hoja al abrirse. Tiene datos de la clienta: toString no
@@ -223,16 +235,16 @@ final class BookingSeed {
     this.renewedRequestId,
     this.lastDiffers = false,
     this.otherRequestPhone,
-    this.quoteToWithdraw,
+    this.openQuote,
   });
 
   /// Desde un pedido: lo mismo que armaba la hoja del PR 5.
-  /// [quoteToWithdraw]: el presupuesto abierto del pedido, que la base retira
-  /// al confirmar (SPEC 5.8): la hoja lo avisa.
+  /// [openQuote]: el presupuesto abierto del pedido, que la base retira al
+  /// confirmar (SPEC 5.8): la hoja lo avisa.
   factory BookingSeed.fromRequest(
     ChefRequest request, {
     required CalendarDate today,
-    QuoteToWithdraw? quoteToWithdraw,
+    OpenQuoteToWithdraw? openQuote,
   }) {
     final weeks = initialBookingWeeks(request);
     return BookingSeed(
@@ -246,7 +258,7 @@ final class BookingSeed {
       cookMinutes: suggestedCookMinutes(request.estimate?.cookMinutes),
       priceRule: EstimatePriceRule(request.estimate),
       portions: request.estimate?.portions,
-      quoteToWithdraw: request.canConfirmBooking ? quoteToWithdraw : null,
+      openQuote: request.canConfirmBooking ? openQuote : null,
       // Ya no es un pedido nuevo (ni tiene el presupuesto mandado): ni se
       // pregunta al servidor.
       initialFailure: request.canConfirmBooking
@@ -262,8 +274,10 @@ final class BookingSeed {
 
   /// El presupuesto de un pedido: lo mismo que desde un pedido (las semanas,
   /// la fecha preferida, los minutos, las porciones y el precio de la
-  /// estimación). Un pedido que no lo admite ya no se pregunta al servidor:
-  /// uno de cambios (requestNotQuotable) o uno que ya no está nuevo.
+  /// estimación), salvo que empieza mañana como muy pronto
+  /// ([initialQuoteDate]): la clienta lo acepta antes de la primera llegada.
+  /// Un pedido que no lo admite ya no se pregunta al servidor: uno de cambios
+  /// (requestNotQuotable) o uno que ya no está nuevo.
   factory BookingSeed.forQuote(
     ChefRequest request, {
     required CalendarDate today,
@@ -275,7 +289,7 @@ final class BookingSeed {
       request: request,
       locale: request.locale,
       maxWeeks: maxWeeksFor(request.type),
-      dates: weeklyDates(initialBookingDate(request, today: today), weeks),
+      dates: weeklyDates(initialQuoteDate(request, today: today), weeks),
       today: today,
       cookMinutes: suggestedCookMinutes(request.estimate?.cookMinutes),
       priceRule: EstimatePriceRule(request.estimate),
@@ -405,7 +419,10 @@ final class BookingSeed {
 
   /// Desde un pedido con un presupuesto abierto: el que la base retira al
   /// confirmar sin presupuesto (el borrador o el mandado).
-  final QuoteToWithdraw? quoteToWithdraw;
+  final OpenQuoteToWithdraw? openQuote;
+
+  /// El borrador o el mandado de [openQuote].
+  QuoteToWithdraw? get quoteToWithdraw => openQuote?.kind;
 
   @override
   String toString() => 'BookingSeed(${kind.name}, weeks: ${dates.length})';
@@ -426,7 +443,7 @@ final bookingSeedProvider = FutureProvider.autoDispose
           return BookingSeed.fromRequest(
             request,
             today: today,
-            quoteToWithdraw: await _openQuoteOf(ref, request),
+            openQuote: await _openQuoteOf(ref, request),
           );
         case QuoteBookingSource(:final requestId):
           final request = await ref.watch(
@@ -461,13 +478,15 @@ final bookingSeedProvider = FutureProvider.autoDispose
     });
 
 /// El presupuesto abierto del pedido que la reserva retiraría (SPEC 5.8): un
-/// borrador o uno mandado. Si no se puede leer, lo que dice el pedido: uno
-/// con el presupuesto mandado (`quoted`) tiene uno abierto; uno nuevo, no se
-/// sabe (la base igual lo retira).
-Future<QuoteToWithdraw?> _openQuoteOf(Ref ref, ChefRequest request) async {
+/// borrador o uno mandado, con sus semanas y si la semana 1 tiene un menú
+/// guardado. Si no se puede leer (o no hay uno leído para un pedido con el
+/// presupuesto mandado: un dato viejo), lo que dice el pedido: uno con el
+/// presupuesto mandado (`quoted`) tiene uno abierto; uno nuevo, no se sabe
+/// (la base igual lo retira).
+Future<OpenQuoteToWithdraw?> _openQuoteOf(Ref ref, ChefRequest request) async {
   if (!request.canConfirmBooking) return null;
-  final fallback = request.status == RequestStatus.quoted
-      ? QuoteToWithdraw.sent
+  final OpenQuoteToWithdraw? fallback = request.status == RequestStatus.quoted
+      ? (kind: QuoteToWithdraw.sent, weeks: 0, hasMenu: false)
       : null;
   final RequestQuote? quote;
   try {
@@ -475,8 +494,26 @@ Future<QuoteToWithdraw?> _openQuoteOf(Ref ref, ChefRequest request) async {
   } on Object {
     return fallback;
   }
-  if (quote == null || !quote.isOpen) return null;
-  return quote.wasSent ? QuoteToWithdraw.sent : QuoteToWithdraw.draft;
+  if (quote == null) return fallback;
+  if (!quote.isOpen) return null;
+  // El menú de la semana 1 vive en su sesión retenida: al confirmar se va
+  // con ella. Si no se puede leer, la hoja no lo dice.
+  var hasMenu = false;
+  if (quote.firstWeek case final first?) {
+    try {
+      final summary = await ref.watch(
+        weekMenuSummaryProvider(first.sessionId).future,
+      );
+      hasMenu = summary.saved;
+    } on Object {
+      hasMenu = false;
+    }
+  }
+  return (
+    kind: quote.wasSent ? QuoteToWithdraw.sent : QuoteToWithdraw.draft,
+    weeks: quote.currentTerms.weeks.length,
+    hasMenu: hasMenu,
+  );
 }
 
 BookingSeed _clientSeed(

@@ -33,7 +33,8 @@ final DateTime testSentAt = DateTime.utc(2026, 11, 22, 13, 32);
 /// función).
 const String testLinkPlaceholder = '[link personale per confermare]';
 
-/// Un envío que salió, de la sesión [sessionId].
+/// Un envío que salió, de la sesión [sessionId] ([quoteId]: el presupuesto
+/// que llevaba).
 MenuSendRecord sentMenu({
   String id = 'send-0',
   required String sessionId,
@@ -43,6 +44,7 @@ MenuSendRecord sentMenu({
   DateTime? confirmedAt,
   DateTime? changesRequestedAt,
   String? changesText,
+  String? quoteId,
 }) => MenuSendRecord(
   id: id,
   sessionId: sessionId,
@@ -52,6 +54,7 @@ MenuSendRecord sentMenu({
   confirmedAt: confirmedAt,
   changesRequestedAt: changesRequestedAt,
   changesText: changesText,
+  quoteId: quoteId,
 );
 
 class FakeMenuSendsRepository implements MenuSendsRepository {
@@ -104,6 +107,11 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
   /// ejemplo, timeout). Se usa una vez.
   MenuSendFailure? loseSendResponse;
 
+  /// Lo demás que hace la base al marcar un envío (chef_complete_menu_send):
+  /// si lleva un presupuesto, lo deja mandado y el pedido en `quoted`. Se
+  /// llama con cada envío que sale, también si su respuesta se pierde.
+  void Function(MenuSendRecord sent)? onSent;
+
   /// Si no son null, la respuesta espera a que se completen (la lectura de
   /// los últimos envíos devuelve lo que había al llegar el pedido).
   Completer<void>? pendingPreview;
@@ -133,6 +141,24 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
     );
     final pending = pendingLatest;
     if (pending != null) await pending.future;
+    final failure = readFailure;
+    if (failure != null) throw failure;
+    return latest;
+  }
+
+  /// Cada lectura de los envíos de varios presupuestos, en orden.
+  final List<List<String>> quoteSendCalls = [];
+
+  @override
+  Future<Map<String, MenuSendRecord>> fetchLatestQuoteSends({
+    required String chefId,
+    required List<String> quoteIds,
+  }) async {
+    quoteSendCalls.add(List.of(quoteIds));
+    final ids = quoteIds.toSet();
+    final latest = latestSendsByQuote(
+      sent.where((record) => ids.contains(record.quoteId)),
+    );
     final failure = readFailure;
     if (failure != null) throw failure;
     return latest;
@@ -227,15 +253,15 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
     );
     final sentAt = now();
     if (refused == null && draft != null) {
-      sent.add(
-        MenuSendRecord(
-          id: request.sendId,
-          sessionId: draft.sessionId,
-          menuVersion: draft.menuVersion,
-          sentAt: sentAt,
-          via: via,
-        ),
+      final record = MenuSendRecord(
+        id: request.sendId,
+        sessionId: draft.sessionId,
+        menuVersion: draft.menuVersion,
+        sentAt: sentAt,
+        via: via,
       );
+      sent.add(record);
+      onSent?.call(record);
     }
     final pending = pendingSend;
     if (pending != null) await pending.future;

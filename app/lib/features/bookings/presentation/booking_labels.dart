@@ -1,10 +1,12 @@
 // Textos de la hoja «Conferma prenotazione» (también «Preparar
 // presupuesto»): lo que dijo el servidor de cada semana, lo que impide mandar
-// una fecha, las fallas, el reparto del precio y la barra de abajo (el precio
-// que se va a confirmar o lo que impide confirmar). Solo presentación: los
-// textos salen del ARB.
+// una fecha, las fallas, el reparto del precio, el presupuesto abierto que se
+// retira al confirmar sin presupuesto y la barra de abajo (el precio que se va
+// a confirmar o lo que impide confirmar). Solo presentación: los textos salen
+// del ARB.
 import 'package:radici/core/money.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
@@ -137,6 +139,8 @@ extension BookingLabels on AppLocalizations {
         };
       case BookingBlockKind.date:
         problem = bookingDateIssue(state.dateIssues[blocker.week!]!);
+      case BookingBlockKind.arrival:
+        problem = quoteBlockArrivalPassed;
       case BookingBlockKind.clash:
         problem = bookingBlockClash;
     }
@@ -144,6 +148,24 @@ extension BookingLabels on AppLocalizations {
         ? bookingWeekProblem(blocker.week! + 1, problem)
         : problem;
   }
+
+  /// Arriba de la hoja «Confirmar sin presupuesto» (y en la pregunta antes de
+  /// confirmar): el presupuesto abierto del pedido se retira y sus semanas
+  /// retenidas se cancelan; si la semana 1 tiene un menú guardado, se va con
+  /// ella y hay que volver a armarlo y mandarlo (si ya salió, la clienta
+  /// todavía lo puede aceptar desde su enlace, con ese menú). Con una sola
+  /// semana habla de una fecha; sin saber cuántas, en plural.
+  String bookingWithdrawsQuoteText(OpenQuoteToWithdraw quote) => [
+    switch (quote.kind) {
+      QuoteToWithdraw.sent => bookingWithdrawsQuoteSent(quote.weeks),
+      QuoteToWithdraw.draft => bookingWithdrawsQuoteDraft(quote.weeks),
+    },
+    if (quote.hasMenu) ...[
+      quoteMenuGoesWithWeek(quote.weeks),
+      bookingQuoteMenuRedo,
+      if (quote.kind == QuoteToWithdraw.sent) bookingQuoteMenuAccept,
+    ],
+  ].join(' ');
 
   /// La barra de abajo: el precio del servicio que se va a confirmar (después
   /// ninguna ruta lo cambia), lo que queda por semana y la llegada:

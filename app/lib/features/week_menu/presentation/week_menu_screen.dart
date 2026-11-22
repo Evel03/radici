@@ -693,15 +693,23 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
                           child: _Banner(
                             key: ValueKey('week-menu-quote-${quoteRole.name}'),
                             text: switch (quoteRole) {
+                              // Con una sola semana, sin «semana 1».
                               QuoteWeekRole.first =>
-                                l10n.weekMenuQuoteFirstWeek,
+                                l10n.weekMenuQuoteFirstWeek(
+                                  detail.position?.weeks ?? 1,
+                                ),
                               QuoteWeekRole.later =>
                                 l10n.weekMenuQuoteLaterWeek,
                             },
                           ),
                         ),
                       SessionAllergies(session: session),
-                      if (session.requestId != null) ..._sendStatus(state),
+                      if (session.requestId != null)
+                        ..._sendStatus(
+                          state,
+                          confirmedWeek:
+                              session.status.shown == SessionStatus.confirmed,
+                        ),
                       ..._dishes(state, conflicts, enabled: enabled),
                       ..._list(state, enabled: enabled),
                       ..._noteField(state, session),
@@ -730,8 +738,13 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
   }
 
   /// El envío a la clienta: si ya salió y qué contestó, o que el menú cambió
-  /// después de mandarlo. Nada mientras no hay menú guardado ni envío.
-  List<Widget> _sendStatus(WeekMenuEditorState state) {
+  /// después de mandarlo (en una semana confirmada, [confirmedWeek], también
+  /// si salió con una versión anterior del presupuesto). Nada mientras no hay
+  /// menú guardado ni envío.
+  List<Widget> _sendStatus(
+    WeekMenuEditorState state, {
+    required bool confirmedWeek,
+  }) {
     final l10n = AppLocalizations.of(context);
     final everSent = ref.watch(
       latestMenuSendProvider(_sessionId).select((send) => send.value != null),
@@ -743,6 +756,7 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
         sessionId: _sessionId,
         savedVersion: state.version,
         keyPrefix: 'week-menu-status',
+        confirmedWeek: confirmedWeek,
       ),
     ];
   }

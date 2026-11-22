@@ -1,9 +1,11 @@
 // El presupuesto de un pedido para su detalle (SPEC 5.8, «Presupuesto»): se
 // lee con la RLS de la cocina y se vuelve a leer cuando algo lo cambia desde
 // este teléfono (mover o cancelar una de sus semanas, mandarlo con el menú de
-// la semana 1, otro precio, retirarlo). Otro precio y retirarlo pasan por la
-// Edge Function chef (QuoteCommands); prepararlo, por la hoja de «Confirmar
-// reserva» (confirm_booking_controller.dart). Nada se loguea.
+// la semana 1, otro precio, retirarlo) y cuando cambia el estado del pedido
+// (rechazarlo retira el presupuesto; una relectura de la bandeja trae lo que
+// hizo la clienta, el cron u otro teléfono). Otro precio y retirarlo pasan por
+// la Edge Function chef (QuoteCommands); prepararlo, por la hoja de
+// «Confirmar reserva» (confirm_booking_controller.dart). Nada se loguea.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,8 +18,9 @@ import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 
 /// El último presupuesto del pedido [requestId] (null si nunca tuvo). Se
-/// vuelve a leer si se mueve o se cancela una sesión. Error ([QuoteFailure])
-/// si no se puede leer, sin reintentar solo: el detalle ofrece «Reintentar».
+/// vuelve a leer si se mueve o se cancela una sesión y si cambia el estado
+/// del pedido. Error ([QuoteFailure]) si no se puede leer, sin reintentar
+/// solo: el detalle ofrece «Reintentar».
 final requestQuoteProvider = FutureProvider.autoDispose
     .family<RequestQuote?, String>((ref, requestId) async {
       final chefId = ref.watch(
@@ -29,10 +32,35 @@ final requestQuoteProvider = FutureProvider.autoDispose
       ref.listen(sessionChangesProvider, (_, change) {
         if (change != null) ref.invalidateSelf();
       });
+      // El presupuesto sigue al pedido: rechazarlo lo retira (la base,
+      // requests_close_open_quotes) y un pedido que siguió por otro lado (la
+      // clienta aceptó o rechazó, venció, otro teléfono lo mandó) llega con la
+      // relectura de la bandeja. Sin bucle: el presupuesto releído igual al de
+      // antes no vuelve a leer el pedido (QuoteSection).
+      ref.listen(
+        chefRequestProvider(requestId)
+            .select((request) => request.value?.status),
+        (previous, next) {
+          if (previous != null && next != null && previous != next) {
+            ref.invalidateSelf();
+          }
+        },
+      );
       return ref
           .watch(quotesRepositoryProvider)
           .fetchLatestQuote(chefId: chefId, requestId: requestId);
     }, retry: (_, _) => null);
+
+/// El presupuesto se cerró entre dos lecturas: [before] estaba abierto y
+/// [after], el mismo, ya no (lo aceptó o lo rechazó la clienta, venció o se
+/// retiró, también al rechazar el pedido o confirmarlo sin presupuesto). Sus
+/// semanas retenidas cambiaron (confirmadas o canceladas).
+bool quoteClosedSince(RequestQuote? before, RequestQuote? after) =>
+    before != null &&
+    after != null &&
+    after.id == before.id &&
+    before.isOpen &&
+    !after.isOpen;
 
 /// El estado del pedido que corresponde a un presupuesto en [status] (lo que
 /// hace la base al mandarlo, aceptarlo, rechazarlo, retirarlo o vencerlo):
@@ -115,6 +143,15 @@ class QuoteCommands {
     final withdrawn = await _run(quote, () => _repository.withdraw(quote.id));
     if (refreshSessions != null) unawaited(refreshSessions());
     return withdrawn;
+  }
+
+  /// El presupuesto del detalle se cerró en otro lado ([quoteClosedSince]: lo
+  /// aceptó o lo rechazó la clienta, venció, o se retiró al rechazar el
+  /// pedido): sus semanas retenidas ya no lo están, así que la agenda (y con
+  /// ella «Menús para mandar» en Hoy) las vuelve a leer.
+  void closedElsewhere() {
+    final refreshSessions = agendaSessionsRefresher(_ref);
+    if (refreshSessions != null) unawaited(refreshSessions());
   }
 
   Future<T> _run<T>(RequestQuote quote, Future<T> Function() body) async {

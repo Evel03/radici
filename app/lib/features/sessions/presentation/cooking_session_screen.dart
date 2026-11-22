@@ -153,13 +153,15 @@ class _SessionView extends ConsumerWidget {
             children: [
               _Header(detail: detail),
               // Una semana de un presupuesto sin aceptar: moverla o
-              // cancelarla cambia el presupuesto (SPEC 5.8).
+              // cancelarla cambia el presupuesto (SPEC 5.8). Con una sola
+              // semana viva, «una fecha».
               if (session.status == SessionStatus.held)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: MergeSemantics(
                     child: Text(
-                      AppLocalizations.of(context).sessionQuoteHeldHint,
+                      AppLocalizations.of(context)
+                          .sessionQuoteHeldHint(detail.position?.weeks ?? 1),
                       key: const ValueKey('session-quote-held'),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
