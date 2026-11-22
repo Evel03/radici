@@ -119,6 +119,18 @@ as $$
      and p_quote.withdrawn_at is null and p_quote.expired_at is null
 $$;
 
+-- quote_live: abierto y a tiempo. Un presupuesto cuyo plazo (hold_until) ya pasó está cerrado (vencido)
+-- aunque private.expire_quotes (cada 15 minutos) todavía no lo haya escrito: todo lo que manda o
+-- contesta lo pregunta con esto. quote_open queda para lo que no depende del reloj (retirar, cambiar).
+create function private.quote_live(p_quote public.quotes)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select private.quote_open(p_quote) and (p_quote.hold_until is null or p_quote.hold_until > now())
+$$;
+
 create function private.quote_terms(p_quote_id uuid)
 returns jsonb
 language sql
@@ -137,6 +149,7 @@ as $$
 $$;
 
 revoke all on function private.quote_open(public.quotes) from public, anon, authenticated, service_role;
+revoke all on function private.quote_live(public.quotes) from public, anon, authenticated, service_role;
 revoke all on function private.quote_terms(uuid) from public, anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------
@@ -209,6 +222,12 @@ begin
       raise exception 'invalid_dates' using errcode = '22023', detail = 'En orden.';
     end if;
   end loop;
+  -- La primera semana no puede estar en el pasado: llegada (fecha + hora, Roma) a más tardar ahora es
+  -- inválida; sin hora (dryRun), basta con que el día ya haya pasado.
+  if (p_start is not null and ((v_dates[1] + p_start) at time zone 'Europe/Rome') <= now())
+     or (p_start is null and v_dates[1] < v_today) then
+    raise exception 'invalid_dates' using errcode = '22023', detail = 'La primera semana ya pasó.';
+  end if;
   if p_start is null and not p_dry_run then
     raise exception 'invalid_start' using errcode = '22023';
   end if;
@@ -457,7 +476,7 @@ as $$
     'terms', private.quote_terms(q.id))
   from public.quotes q
   join public.chef_settings cs on cs.chef_id = q.chef_id
-  where q.id = p_session.quote_id and p_session.status = 'held' and private.quote_open(q)
+  where q.id = p_session.quote_id and p_session.status = 'held' and private.quote_live(q)
 $$;
 
 revoke all on function private.session_quote(public.sessions) from public, anon, authenticated, service_role;
@@ -493,7 +512,7 @@ as $$
     'quote', (select private.quote_terms(s.quote_id)
               from public.sessions s
               join public.quotes q on q.id = s.quote_id
-              where s.id = p_session_id and s.status = 'held' and private.quote_open(q))
+              where s.id = p_session_id and s.status = 'held' and private.quote_live(q))
   )::text)
 $$;
 
@@ -691,7 +710,7 @@ begin
     return;
   end if;
   select q.* into v_quote from public.quotes q where q.id = p_send.quote_id for update;
-  if not found or not private.quote_open(v_quote) then
+  if not found or not private.quote_live(v_quote) then
     raise exception 'quote_closed' using errcode = '55000';
   end if;
   if private.quote_terms(v_quote.id) is distinct from p_send.quote_terms then
