@@ -109,6 +109,10 @@ void main() {
       'unauthorized',
       'forbidden',
       'server',
+      // La semana 1 de un presupuesto (§13 y §14).
+      'quoteClosed',
+      'quoteWeekNotFirst',
+      'quoteChanged',
     };
     expect(
       codes.containsAll(read),

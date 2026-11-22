@@ -2,7 +2,8 @@
 // próximos días que esperan algo de Evelyn con su menú. Dart puro.
 //
 // Entran las semanas confirmadas de una reserva (una sesión con pedido, que
-// todavía se arma: confirmed o una vieja en shopping_done) de hoy y los 6
+// todavía se arma: confirmed o una vieja en shopping_done) y la semana 1 de
+// un presupuesto sin aceptar (su menú sale con él) de hoy y los 6
 // días siguientes (los 7 de la tira, días de Roma) que todavía no empezaron,
 // cuyo menú no tiene platos, no se mandó, cambió después de mandarlo o
 // recibió un pedido de cambios de la clienta en su último envío. El menú se
@@ -89,8 +90,9 @@ DateTime menuDeadlineOf(CookingSession session) =>
     sessionArrival(session).subtract(menuSendDeadline);
 
 /// Las semanas que pueden esperar su menú: de [sessions], las confirmadas de
-/// una reserva (con pedido; held, la de un presupuesto enviado, todavía no
-/// es una reserva) de [today] y los días siguientes de la tira
+/// una reserva (con pedido) y la semana 1 de un presupuesto sin aceptar
+/// (held: su menú sale con él; las demás semanas del presupuesto salen
+/// después de que lo acepte), de [today] y los días siguientes de la tira
 /// ([todayWindowDays] en total), por fecha y llegada. Las que ya empezaron
 /// se descartan con la hora ([pendingMenus]).
 List<CookingSession> pendingMenuCandidates(
@@ -98,9 +100,11 @@ List<CookingSession> pendingMenuCandidates(
   required CalendarDate today,
 }) {
   final until = today.addDays(todayWindowDays - 1);
+  final all = sessions.toList();
   return [
-    for (final session in sessions)
-      if (session.status.shown == SessionStatus.confirmed &&
+    for (final session in all)
+      if ((session.status.shown == SessionStatus.confirmed ||
+              quoteWeekRole(session, all) == QuoteWeekRole.first) &&
           isMenuSendable(session) &&
           !session.date.isBefore(today) &&
           !session.date.isAfter(until))

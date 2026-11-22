@@ -15,6 +15,7 @@ import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/week_menu/data/menu_sends_repository.dart';
 import 'package:radici/features/week_menu/domain/menu_send.dart';
 
+import '../../../support/quote_fixtures.dart';
 import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
 import '../../../support/supabase_http_fake.dart';
@@ -203,6 +204,88 @@ void main() {
         await repository.fetchSend(chefId: testChefId, sendId: sendId),
         isNull,
       );
+    });
+  });
+
+  group('fetchPreviewQuote', () {
+    test('de la vista previa, su pedido y solo el bloque quote de la foto (la RLS de la cocina)', () async {
+      server.handler = (_) async => jsonResponse([
+        {
+          'request_id': 'req-1',
+          'quote_id': testQuoteId,
+          'quote': snapshotQuoteJson(version: 2),
+        },
+      ]);
+      final preview = await repository.fetchPreviewQuote(
+        chefId: testChefId,
+        sendId: sendId,
+      );
+      expect(preview!.requestId, 'req-1');
+      expect(preview.quote!.version, 2);
+      expect(preview.quote!.totalCents, 28000);
+      final request = server.last;
+      expect(request.url.path, '/rest/v1/menu_sends');
+      final query = request.url.queryParameters;
+      expect(query['select'], 'request_id,quote_id,quote:snapshot->quote');
+      expect(query['id'], 'eq.$sendId');
+      expect(query['chef_id'], 'eq.$testChefId');
+    });
+
+    test('sin presupuesto (o con una foto que no cierra): el pedido sin presupuesto', () async {
+      server.handler = (_) async => jsonResponse([
+        {'request_id': 'req-1', 'quote_id': null, 'quote': null},
+      ]);
+      final none = await repository.fetchPreviewQuote(
+        chefId: testChefId,
+        sendId: sendId,
+      );
+      expect(none!.quote, isNull);
+      server.handler = (_) async => jsonResponse([
+        {
+          'request_id': 'req-1',
+          'quote_id': testQuoteId,
+          'quote': {...snapshotQuoteJson(), 'totalCents': 1},
+        },
+      ]);
+      final broken = await repository.fetchPreviewQuote(
+        chefId: testChefId,
+        sendId: sendId,
+      );
+      expect(broken!.quote, isNull);
+    });
+
+    test('null si el envío no existe; un 500, unavailable', () async {
+      expect(
+        await repository.fetchPreviewQuote(chefId: testChefId, sendId: sendId),
+        isNull,
+      );
+      server.handler = (_) async => jsonResponse({
+        'code': 'XX000',
+        'message': 'error',
+        'details': null,
+        'hint': null,
+      }, status: 500);
+      await expectLater(
+        repository.fetchPreviewQuote(chefId: testChefId, sendId: sendId),
+        _failure(MenuSendFailureKind.unavailable),
+      );
+    });
+
+    test('los 409 del presupuesto a su tipo', () {
+      expect(
+        menuSendFailureFromResponse(409, {'error': 'quoteClosed'}).kind,
+        MenuSendFailureKind.quoteClosed,
+      );
+      expect(
+        menuSendFailureFromResponse(409, {'error': 'quoteWeekNotFirst'}).kind,
+        MenuSendFailureKind.quoteWeekNotFirst,
+      );
+      final changed = menuSendFailureFromResponse(409, {
+        'error': 'quoteChanged',
+        'emailSent': true,
+      });
+      expect(changed.kind, MenuSendFailureKind.quoteChanged);
+      expect(changed.emailSent, isTrue);
     });
   });
 

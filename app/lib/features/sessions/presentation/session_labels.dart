@@ -56,11 +56,17 @@ extension SessionLabels on AppLocalizations {
     CancelReason.chefCancelled => cancelReasonOther,
   };
 
-  /// El motivo guardado de una sesión cancelada, si es uno de la app; null
-  /// si no (por ejemplo, un presupuesto vencido).
-  String? cancelReasonOf(String? code) => switch (CancelReason.fromCode(code)) {
-    final reason? => cancelReason(reason),
-    null => null,
+  /// El motivo guardado de una sesión cancelada, si es uno de la app o el de
+  /// una semana de un presupuesto que se retiró, venció o la clienta rechazó
+  /// (SPEC 5.8); null si no es ninguno.
+  String? cancelReasonOf(String? code) => switch (code) {
+    'quote_withdrawn' => cancelReasonQuoteWithdrawn,
+    'hold_expired' => cancelReasonQuoteExpired,
+    'declined' => cancelReasonQuoteDeclined,
+    _ => switch (CancelReason.fromCode(code)) {
+      final reason? => cancelReason(reason),
+      null => null,
+    },
   };
 
   /// Qué pasó y qué hacer; [formatDate] escribe la fecha del choque.

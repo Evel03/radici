@@ -352,6 +352,30 @@ bool isFirstWeekOfBooking(
   return live.isNotEmpty && live.first.id == session.id;
 }
 
+/// Qué es una semana de un presupuesto sin aceptar (SPEC 5.8).
+enum QuoteWeekRole {
+  /// La primera viva: su menú sale junto con el presupuesto.
+  first,
+
+  /// Otra: su menú sale después de que la clienta lo acepte
+  /// (`quote_week_not_first`).
+  later,
+}
+
+/// El papel de [session] en su presupuesto, o null si no es de uno sin
+/// aceptar. Una semana `held` es siempre de un presupuesto (las reservas
+/// nacen confirmadas) y sus semanas son las vivas de su pedido: la primera es
+/// la que lo lleva, como `private.session_quote`.
+QuoteWeekRole? quoteWeekRole(
+  CookingSession session,
+  Iterable<CookingSession> booking,
+) {
+  if (session.status != SessionStatus.held) return null;
+  return isFirstWeekOfBooking(session, booking)
+      ? QuoteWeekRole.first
+      : QuoteWeekRole.later;
+}
+
 /// Los platos que eligió la clienta en la web ([wishes], en orden), con
 /// [portions] cada uno: solo los que siguen en [catalog] y están activos, sin
 /// repetir y como mucho [maxMenuDishes].

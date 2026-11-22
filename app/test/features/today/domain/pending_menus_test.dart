@@ -105,6 +105,40 @@ void main() {
         [sessionId(2), sessionId(1), sessionId(3), sessionId(6)],
       );
     });
+
+    test('la semana 1 de un presupuesto sin aceptar también (su menú sale con él); las demás de ese presupuesto, no', () {
+      const quoteRequest = 'b0000000-0000-4000-8000-0000000000bb';
+      final candidates = pendingMenuCandidates([
+        week(
+          20,
+          date: today.addDays(1),
+          status: SessionStatus.held,
+          requestId: quoteRequest,
+        ),
+        week(
+          21,
+          date: today.addDays(8),
+          status: SessionStatus.held,
+          requestId: quoteRequest,
+        ),
+        // Otra semana del mismo presupuesto dentro de la tira: sale después
+        // de que lo acepte.
+        week(
+          22,
+          date: today.addDays(5),
+          status: SessionStatus.held,
+          requestId: quoteRequest,
+        ),
+        // La primera viva cuenta: con la 1 cancelada, la que sigue lleva el
+        // presupuesto.
+        week(30, date: today.addDays(1), status: SessionStatus.cancelled),
+        week(31, date: today.addDays(3), status: SessionStatus.held),
+      ], today: today);
+      expect(
+        [for (final s in candidates) s.id],
+        [sessionId(20), sessionId(31)],
+      );
+    });
   });
 
   group('qué le falta al menú', () {

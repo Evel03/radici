@@ -68,13 +68,17 @@ void main() {
     expect(' '.allMatches(line), hasLength(1));
   });
 
-  test('los motivos: los de la app tienen texto; los de otros caminos, no', () {
+  test('los motivos: los de la app y los de un presupuesto tienen texto; los demás, no', () {
     expect(
       [for (final r in CancelReason.values) it.cancelReason(r)],
       ['Altro motivo', "L'ha chiesto la cliente", 'Non posso andare'],
     );
     expect(es.cancelReasonOf('client_cancelled'), 'La pidió la clienta');
-    expect(it.cancelReasonOf('hold_expired'), isNull);
+    // Las semanas de un presupuesto retirado, vencido o rechazado (SPEC 5.8).
+    expect(es.cancelReasonOf('quote_withdrawn'), 'Presupuesto retirado');
+    expect(it.cancelReasonOf('hold_expired'), 'Preventivo scaduto');
+    expect(es.cancelReasonOf('declined'), 'Presupuesto rechazado');
+    expect(it.cancelReasonOf('otro_motivo'), isNull);
     expect(it.cancelReasonOf(null), isNull);
   });
 

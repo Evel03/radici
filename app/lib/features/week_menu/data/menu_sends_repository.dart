@@ -46,6 +46,17 @@ abstract interface class MenuSendsRepository {
     required String sendId,
   });
 
+  /// El presupuesto que lleva la vista previa [sendId] (la semana 1 de un
+  /// presupuesto abierto: `menu_sends.snapshot.quote`) y su pedido; null si
+  /// el envío no existe para esta cocina. [PreviewSendQuote.quote] es null si
+  /// el envío no lleva presupuesto (o si no se puede leer: el mensaje lo
+  /// muestra igual). Lanza [MenuSendFailure]
+  /// ([MenuSendFailureKind.unavailable]).
+  Future<PreviewSendQuote?> fetchPreviewQuote({
+    required String chefId,
+    required String sendId,
+  });
+
   /// POST chef/menus/preview. Lanza [MenuSendFailure].
   Future<MenuPreview> preview(MenuPreviewRequest request);
 
@@ -91,6 +102,19 @@ enum MenuSendFailureKind {
 
   /// 409: el menú no tiene platos.
   menuEmpty,
+
+  /// 409: la semana es de un presupuesto que ya no está abierto (aceptado,
+  /// rechazado, retirado o vencido): su menú ya no sale con él.
+  quoteClosed,
+
+  /// 409: la semana es de un presupuesto sin aceptar y no es la primera:
+  /// antes de que lo acepte solo sale la semana 1.
+  quoteWeekNotFirst,
+
+  /// 409: cambiaron los términos del presupuesto (otro precio, una semana
+  /// movida o cancelada) desde la vista previa o mientras se armaba: hace
+  /// falta otra vista previa.
+  quoteChanged,
 
   /// 404: la semana no tiene menú guardado.
   menuNotFound,
@@ -215,6 +239,20 @@ class SupabaseMenuSendsRepository implements MenuSendsRepository {
         .not('sent_at', 'is', null)
         .maybeSingle();
     return row == null ? null : MenuSendRecord.fromRow(row);
+  });
+
+  @override
+  Future<PreviewSendQuote?> fetchPreviewQuote({
+    required String chefId,
+    required String sendId,
+  }) => _read(() async {
+    final row = await _client
+        .from(_table)
+        .select(previewQuoteColumns)
+        .eq('chef_id', chefId)
+        .eq('id', sendId)
+        .maybeSingle();
+    return row == null ? null : previewSendQuoteFromRow(row);
   });
 
   @override
@@ -344,6 +382,9 @@ MenuSendFailure menuSendFailureFromResponse(int status, Object? body) {
         'alreadySent' => failure(MenuSendFailureKind.alreadySent),
         'noEmail' => failure(MenuSendFailureKind.noEmail),
         'noPhone' => failure(MenuSendFailureKind.noPhone),
+        'quoteClosed' => failure(MenuSendFailureKind.quoteClosed),
+        'quoteWeekNotFirst' => failure(MenuSendFailureKind.quoteWeekNotFirst),
+        'quoteChanged' => failure(MenuSendFailureKind.quoteChanged),
         _ => failure(MenuSendFailureKind.conflict),
       };
     case 422 when error == 'untranslatable':
@@ -390,6 +431,12 @@ class _NoBackendMenuSendsRepository implements MenuSendsRepository {
 
   @override
   Future<MenuSendRecord?> fetchSend({
+    required String chefId,
+    required String sendId,
+  }) => Future.error(_failure);
+
+  @override
+  Future<PreviewSendQuote?> fetchPreviewQuote({
     required String chefId,
     required String sendId,
   }) => Future.error(_failure);

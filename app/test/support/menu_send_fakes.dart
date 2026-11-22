@@ -9,6 +9,7 @@
 // lenta, y [loseSendResponse] aplica el envío y pierde la respuesta.
 import 'dart:async';
 
+import 'package:radici/features/quotes/domain/preview_quote.dart';
 import 'package:radici/features/requests/domain/chef_request.dart'
     show ClientLocale;
 import 'package:radici/features/sessions/domain/cooking_session.dart';
@@ -86,6 +87,19 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
   /// Si no es null, las lecturas de `menu_sends` fallan con esto.
   MenuSendFailure? readFailure;
 
+  /// El presupuesto que lleva la vista previa de cada sesión (la semana 1 de
+  /// uno sin aceptar), como queda en la foto; y el pedido de cada sesión
+  /// (por defecto, `req-1`).
+  final Map<String, PreviewQuote> previewQuotes = {};
+  final Map<String, String> requestOf = {};
+
+  /// Si no es null, la lectura del presupuesto de la vista previa falla con
+  /// esto.
+  MenuSendFailure? previewQuoteFailure;
+
+  /// Cada lectura del presupuesto de una vista previa, en orden.
+  final List<String> previewQuoteReads = [];
+
   /// El envío se aplica pero la respuesta no llega: falla con esto (por
   /// ejemplo, timeout). Se usa una vez.
   MenuSendFailure? loseSendResponse;
@@ -128,6 +142,22 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
     final failure = readFailure;
     if (failure != null) throw failure;
     return sent.where((record) => record.id == sendId).firstOrNull;
+  }
+
+  @override
+  Future<PreviewSendQuote?> fetchPreviewQuote({
+    required String chefId,
+    required String sendId,
+  }) async {
+    previewQuoteReads.add(sendId);
+    final failure = previewQuoteFailure;
+    if (failure != null) throw failure;
+    final draft = prepared[sendId];
+    if (draft == null) return null;
+    return (
+      requestId: requestOf[draft.sessionId] ?? 'req-1',
+      quote: previewQuotes[draft.sessionId],
+    );
   }
 
   @override
