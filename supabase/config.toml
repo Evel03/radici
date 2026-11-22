@@ -430,6 +430,14 @@ verify_jwt = false
 enabled = true
 verify_jwt = true
 
+# Link de la clienta (docs/contracts/client-link.md): la página /prenotazione/ de la web muestra la
+# reserva con el menú de cada semana y la clienta lo confirma o pide cambios. Sin JWT: la clienta no
+# tiene cuenta (M2). La llave es el token del link (la base guarda solo su hash), más límite por IP y
+# validación dentro de la función. Usa las mismas variables que public-request.
+[functions.client-link]
+enabled = true
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

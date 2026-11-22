@@ -181,8 +181,48 @@ describe("public/_headers real", () => {
     expect([...form.keys()].filter((d) => !base.has(d))).toEqual(["frame-src"]);
   });
 
+  it("/prenotazione/: la función de Supabase en connect-src y las fotos en img-src; sin Turnstile ni nada de terceros", () => {
+    for (const path of ["/prenotazione/", "/prenotazione/index.html"]) {
+      const policy = csp(path);
+      expect(policy.get("script-src")).toEqual(["'self'"]);
+      expect(policy.get("connect-src")).toEqual(["'self'", origin]);
+      expect(policy.get("img-src")).toEqual(["'self'", "data:", origin]);
+      expect(policy.has("frame-src")).toBe(false);
+      expect(policy.get("frame-ancestors")).toEqual(["'none'"]);
+    }
+  });
+
+  it("/prenotazione/ es la CSP base más el origen de Supabase (no se desalinean)", () => {
+    const base = csp("/");
+    const page = csp("/prenotazione/");
+    for (const [directive, sources] of base) {
+      const extra = (page.get(directive) ?? []).filter((s) => !sources.includes(s));
+      if (directive === "connect-src" || directive === "img-src") expect(extra, directive).toEqual([origin]);
+      else expect(page.get(directive), directive).toEqual(sources);
+    }
+    expect([...page.keys()].filter((d) => !base.has(d))).toEqual([]);
+  });
+
+  it("/prenotazione/ sin Supabase configurado: solo lo propio", () => {
+    const bare = parseHeadersFile(renderHeadersFile(headersFile, null));
+    const policy = cspDirectives(headersFor(bare, "/prenotazione/").get("Content-Security-Policy") ?? "");
+    expect(policy.get("connect-src")).toEqual(["'self'"]);
+    expect(policy.get("img-src")).toEqual(["'self'", "data:"]);
+  });
+
+  it("/prenotazione/ nunca se indexa (se abre con un link personal), con las cabeceras de seguridad de /*", () => {
+    for (const path of ["/prenotazione/", "/prenotazione/index.html"]) {
+      const headers = headersFor(rules, path, "radicicucina.app");
+      expect(headers.get("X-Robots-Tag"), path).toBe("noindex, nofollow");
+      expect(headers.get("X-Frame-Options")).toBe("DENY");
+      expect(headers.get("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
+      expect(headers.has("Cache-Control")).toBe(false);
+    }
+    expect(headersFor(rules, "/prenotazionex", "radicicucina.app").has("X-Robots-Tag")).toBe(false);
+  });
+
   it("páginas públicas: nada de 'unsafe-inline', 'unsafe-eval' ni comodines", () => {
-    for (const path of ["/", "/privacy/", "/richiesta/", "/no-existe"]) {
+    for (const path of ["/", "/privacy/", "/richiesta/", "/prenotazione/", "/no-existe"]) {
       const value = headersFor(rules, path).get("Content-Security-Policy") ?? "";
       expect(value, path).not.toContain("unsafe-inline");
       expect(value, path).not.toContain("unsafe-eval");

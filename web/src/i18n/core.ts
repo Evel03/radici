@@ -78,6 +78,15 @@ export function resolveLang(search: string, stored: string | null): Lang {
   return DEFAULT_LANG;
 }
 
+/**
+ * El href de un link de idioma del encabezado: "?lang=xx" con el fragmento actual. Una URL con solo query
+ * descarta el fragmento, y en /prenotazione/ el fragmento es el token del link (#t=…): así abrirlo en otra
+ * pestaña o copiarlo no lo pierde (el fragmento nunca llega a un servidor).
+ */
+export function langHref(lang: Lang, hash: string): string {
+  return `?lang=${lang}${hash}`;
+}
+
 export function createI18n(lang: Lang, dict: Dict, globals: Params = {}): I18n {
   const text = (key: string, params?: Params): string => {
     const template = dict[key];

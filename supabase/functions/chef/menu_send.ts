@@ -9,6 +9,7 @@
 // El token (32 bytes al azar, base64url) va solo en el link del mensaje, en el fragmento (#t=…): la base
 // guarda su hash (sha-256 en hexadecimal) y nada de esto lo loguea ni lo guarda.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
+import { CLIENT_LINK_TOKEN_BYTES, hashClientLinkToken, newClientLinkToken, reservationPageUrl } from "../_shared/client_link.ts";
 import { SESSION_STATUSES, isTimeOfDay, type MenuSendChannel, type MenuSendContact, type SessionStatus } from "../_shared/chef_api.ts";
 import { recipePhotoUrls } from "../_shared/menu.ts";
 import {
@@ -254,25 +255,16 @@ export function buildMenuSnapshot(context: MenuSendContext, options: SnapshotOpt
 // El link de la clienta
 // ---------------------------------------------------------------------------
 
-/** Bytes al azar del token: 256 bits. */
-export const CLIENT_TOKEN_BYTES = 32;
-
-function base64Url(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
+/** Bytes al azar del token: 256 bits (los mismos que usa la página de la clienta). */
+export const CLIENT_TOKEN_BYTES = CLIENT_LINK_TOKEN_BYTES;
 
 /** SHA-256 de un texto (UTF-8) en hexadecimal, en minúsculas: lo que guarda client_links.token_hash. */
-export async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
+export const sha256Hex = hashClientLinkToken;
 
-/** Un token nuevo (WebCrypto, base64url sin relleno: 43 caracteres) y su hash. */
+/** Un token nuevo (WebCrypto, base64url sin relleno: 43 caracteres) y su hash (_shared/client_link.ts). */
 export async function newClientToken(): Promise<{ token: string; hash: string }> {
-  const token = base64Url(crypto.getRandomValues(new Uint8Array(CLIENT_TOKEN_BYTES)));
-  return { token, hash: await sha256Hex(token) };
+  const token = newClientLinkToken();
+  return { token, hash: await hashClientLinkToken(token) };
 }
 
 /**
@@ -280,7 +272,7 @@ export async function newClientToken(): Promise<{ token: string; hash: string }>
  * navegador no manda a ningún servidor ni pone en el Referer. Nunca en la query.
  */
 export function clientLinkUrl(siteUrl: string, token: string): string {
-  return `${siteUrl.replace(/\/+$/, "")}/prenotazione/#t=${token}`;
+  return reservationPageUrl(siteUrl, token);
 }
 
 /** La dirección del contacto si sirve para mandar un email; null si no hay o no tiene forma de email. */

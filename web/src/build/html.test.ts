@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import notFoundHtml from "../../404.html?raw";
 import indexHtml from "../../index.html?raw";
+import reservationHtml from "../../prenotazione/index.html?raw";
 import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
 import type { AppConfig } from "../config.ts";
@@ -9,7 +10,7 @@ import itJson from "../i18n/it.json";
 import { createSiteI18n } from "../i18n/site.ts";
 import footer from "../partials/footer.html?raw";
 import header from "../partials/header.html?raw";
-import { NOT_FOUND_PATH, buildJsonLd, fillTranslations, pagePathFromHtmlPath, renderPage } from "./html.ts";
+import { NOT_FOUND_PATH, buildJsonLd, fillTranslations, pagePathFromHtmlPath, renderPage, withoutLangHrefs } from "./html.ts";
 import { OG_IMAGE } from "./images.ts";
 
 const baseConfig: AppConfig = {
@@ -47,6 +48,7 @@ describe("renderPage con las páginas reales", () => {
     ["/", indexHtml],
     ["/richiesta/", requestHtml],
     ["/privacy/", privacyHtml],
+    ["/prenotazione/", reservationHtml],
   ] as const;
 
   for (const [path, html] of pages) {
@@ -213,6 +215,45 @@ describe("vista previa al compartir (Open Graph y X)", () => {
       expect(out).not.toContain("og:image");
       expect(out).toContain('<meta name="twitter:card" content="summary">');
     }
+  });
+});
+
+describe("página de la clienta (/prenotazione/)", () => {
+  const render = (config: AppConfig) => renderPage(reservationHtml, { i18n, config, pagePath: "/prenotazione/", partials });
+
+  it("nunca se indexa ni declara una URL propia (la suya lleva el token), ni con el sitio indexable", () => {
+    const out = render({ ...baseConfig, noindex: false, siteUrl: "https://radicicucina.app" });
+    expect(out).toContain('<meta name="robots" content="noindex, nofollow">');
+    expect(out).not.toMatch(/rel="canonical"|og:url|application\/ld\+json/);
+    // La vista previa del link en WhatsApp sí muestra la imagen.
+    expect(out).toContain(`<meta property="og:image" content="https://radicicucina.app${OG_IMAGE.path}">`);
+  });
+
+  it("el script de la página, la región en vivo y el aviso sin JS; sin estilos ni scripts inline", () => {
+    const out = render(baseConfig);
+    expect(out).toContain('<script type="module" src="/src/pages/prenotazione.ts"></script>');
+    expect(out).toMatch(/<p id="reservation-live" class="visually-hidden" role="status" aria-live="polite"><\/p>/);
+    expect(out).toContain('id="reservation"');
+    expect(out).toMatch(/<noscript>\s*<p class="notice notice--warn" data-i18n="reservation.noscript">Per vedere la tua prenotazione/);
+    expect(out).not.toMatch(/\sstyle=/);
+    expect(out).not.toMatch(/<style/);
+  });
+
+  it("los links de idioma salen sin href (un «?lang=xx» perdería el token del fragmento); el shell se los pone", () => {
+    const out = render(baseConfig);
+    expect(out).not.toContain('href="?lang=');
+    const links = [...out.matchAll(/<a\s[^>]*data-lang="(\w+)"[^>]*>/g)];
+    expect(links.map((match) => match[1])).toEqual(["it", "es", "en"]);
+    for (const [tag] of links) expect(tag).not.toMatch(/\shref=/);
+    // Las páginas públicas los conservan: sin JS, cambian de idioma igual.
+    for (const [path, html] of [["/", indexHtml], ["/richiesta/", requestHtml], ["/privacy/", privacyHtml]] as const) {
+      expect(renderPage(html, { i18n, config: baseConfig, pagePath: path, partials }), path).toContain('href="?lang=es"');
+    }
+  });
+
+  it("withoutLangHrefs: solo los links de idioma", () => {
+    const html = '<a href="?lang=es" hreflang="es" data-lang="es">ES</a><a href="?lang=es#x">otro</a><a href="/">casa</a>';
+    expect(withoutLangHrefs(html)).toBe('<a hreflang="es" data-lang="es">ES</a><a href="?lang=es#x">otro</a><a href="/">casa</a>');
   });
 });
 
