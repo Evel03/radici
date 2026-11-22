@@ -829,7 +829,9 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
               helperText: l10n.weekMenuNoteHelper(
                 l10n.language(session.locale),
               ),
-              helperMaxLines: 3,
+              // La ayuda dice en qué idioma escribirla y qué no escribir: entera, también con letra
+              // grande en un teléfono angosto.
+              helperMaxLines: 8,
               errorText: tooLong ? l10n.recipeTextTooLong(max) : null,
               errorMaxLines: 2,
               counterText: '$length/$max',
