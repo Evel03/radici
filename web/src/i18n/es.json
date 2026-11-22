@@ -530,7 +530,9 @@
         "closedWithdrawn": "No pudimos registrar tu respuesta: el presupuesto ya se había retirado.",
         "closedExpired": "No pudimos registrar tu respuesta: ya había terminado el plazo para aceptarlo.",
         "unavailable": "Este presupuesto ya no está disponible. Aquí abajo tienes tu reserva actualizada.",
-        "empty": "Este presupuesto ya no tiene semanas para aceptar. Escribe a {chef}."
+        "empty": "Este presupuesto ya no tiene semanas para aceptar. Escribe a {chef}.",
+        "goneBooked": "No pudimos registrar tu respuesta al presupuesto: mientras tanto, {chef} confirmó directamente tu reserva. Si tienes alguna duda, escribe a {chef}.",
+        "goneReplaced": "No pudimos registrar tu respuesta: mientras tanto, {chef} te mandó un presupuesto nuevo, que tienes aquí abajo."
       }
     }
   }

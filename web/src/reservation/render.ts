@@ -1,9 +1,10 @@
 // Lo que se ve en /prenotazione/, como árbol de elementos (lib/vdom.ts): puro, sin DOM. Todo texto que llega de
 // la función (los platos, la lista, la nota de Evelyn) va como texto, nunca como HTML.
 // Orden de la página: el saludo y, si lo hay, un aviso de la página (una semana que se canceló, o una respuesta
-// que no salió porque su semana ya no está); después, si Evelyn lo mandó, el presupuesto (las semanas con su
-// llegada y su precio, el total, el estado con el plazo y «Accetto il preventivo» / «Rifiuto», con un paso para
-// confirmar el rechazo que se abre debajo de «Rifiuto», sin mover nada de lo de arriba); después las semanas. Cada
+// que no salió porque su semana o su presupuesto ya no están); después, si Evelyn lo mandó, el presupuesto (las
+// semanas con su llegada y su precio, el total, el estado con el plazo y «Accetto il preventivo» / «Rifiuto», con
+// un paso para confirmar el rechazo que se abre debajo de «Rifiuto», sin mover nada de lo de arriba: tampoco los
+// avisos ni el error de aceptar, que el controlador no borra al abrirlo); después las semanas. Cada
 // semana: la fecha y la hora de llegada y, si Evelyn mandó el menú, su estado, los platos, la lista de compras y la
 // nota, con los botones si está por confirmar (el menú que va con el presupuesto abierto no se confirma solo, ni
 // uno anterior del mismo presupuesto que quedó en otra semana: solo «Chiedo dei cambi»). Con una sola semana, los
@@ -50,13 +51,13 @@ export interface RenderInput {
   quoteUi?: Readonly<QuoteUi>;
   /** «Riprova» en camino. */
   retrying?: boolean;
-  /** Aviso de la página entera (una semana que se canceló), o null. */
+  /** Aviso de la página entera (una semana o un presupuesto que ya no está), o null. */
   pageNotice?: Message | null;
   /** Miniaturas que no cargaron: se pintan sin foto. */
   failedPhotos?: ReadonlySet<string>;
 }
 
-const EMPTY_QUOTE_UI: QuoteUi = { declineOpen: false, declineFor: null, busy: null, error: null, notice: null };
+const EMPTY_QUOTE_UI: QuoteUi = { declineOpen: false, declineFor: null, busy: null, error: null, declineError: null, notice: null };
 
 /** El prefijo de los ids de una semana: la sesión, que no cambia aunque cambie el número o la fecha. */
 export function weekDomId(session: string): string {
@@ -497,9 +498,10 @@ function quoteSummaryNode(qv: QuoteView, ctx: Context): VNode | null {
 
 /**
  * Los botones del presupuesto y el paso para confirmar el rechazo. El paso se abre debajo de «Rifiuto», que queda
- * en su lugar (abierto: tocarlo de nuevo lo cierra), y todo lo de arriba sigue igual: un doble toque en «Rifiuto»
- * cae otra vez en «Rifiuto», nunca en «Sì, rifiuto il preventivo», sea cual sea el largo de los textos de cada
- * idioma. «Sì» va al final, después de «No, torna indietro» (y el controlador no lo deja responder enseguida).
+ * en su lugar (abierto: tocarlo de nuevo lo cierra), y todo lo de arriba sigue igual (también el aviso y el error de
+ * aceptar, si los hay): un doble toque en «Rifiuto» cae otra vez en «Rifiuto», nunca en «Sì, rifiuto il
+ * preventivo», sea cual sea el largo de los textos de cada idioma. «Sì» va al final, después de «No, torna
+ * indietro» (y el controlador no lo deja responder enseguida).
  */
 function quoteActionsNode(qv: QuoteView, quoteUi: Readonly<QuoteUi>, ctx: Context, single: boolean): VNode | null {
   const { i18n } = ctx;
@@ -508,12 +510,15 @@ function quoteActionsNode(qv: QuoteView, quoteUi: Readonly<QuoteUi>, ctx: Contex
   const disabled = busy ? "true" : null;
   const open = quoteUi.declineOpen;
   const error = quoteUi.error && h("p", { class: "quote__error", id: "quote-error" }, messageText(quoteUi.error, i18n, ctx.state));
+  const declineError =
+    quoteUi.declineError && h("p", { class: "quote__error", id: "quote-decline-error" }, messageText(quoteUi.declineError, i18n, ctx.state));
   return h(
     "div",
     { class: "quote__actions" },
     qv.canAccept && h("p", { class: "quote__hint" }, i18n.t(single ? "reservation.quote.acceptHintOne" : "reservation.quote.acceptHint")),
-    // El error de aceptar, arriba de los botones; con el paso abierto, el del rechazo va junto a «Sì» (abajo).
-    !open && error,
+    // El error de aceptar, arriba de los botones, también con el paso abierto (no se mueve nada al abrirlo); el de
+    // rechazar va en el paso, junto a «Sì».
+    error,
     h(
       "div",
       { class: "actions" },
@@ -549,7 +554,7 @@ function quoteActionsNode(qv: QuoteView, quoteUi: Readonly<QuoteUi>, ctx: Contex
           { class: "quote__question", id: "quote-decline-question", tabindex: -1 },
           i18n.t(single ? "reservation.quote.declineQuestionOne" : "reservation.quote.declineQuestion", { chef: ctx.chef }),
         ),
-        error,
+        declineError,
         h(
           "div",
           { class: "actions" },
@@ -616,8 +621,8 @@ function readyNode(view: ClientLinkView, input: RenderInput): VNode {
       ),
       h("p", { class: "reservation__lead" }, i18n.t(lead, { chef: ctx.chef })),
     ),
-    // Una semana que ya no está en la lista (se canceló, o se cerró su presupuesto, mientras la clienta contestaba):
-    // el aviso va acá, con su fecha.
+    // Lo que contestó ya no está: una semana (se canceló, o se cerró su presupuesto, mientras la clienta contestaba;
+    // con su fecha) o el presupuesto (Evelyn confirmó la reserva sin él, o mandó otro, que va justo debajo).
     notice && h("p", { class: "notice notice--warn reservation__notice", id: "reservation-notice", tabindex: -1 }, messageText(notice, i18n, state)),
     // El presupuesto, antes de las semanas.
     qv && quoteNode(qv, input.quoteUi ?? EMPTY_QUOTE_UI, ctx, single),

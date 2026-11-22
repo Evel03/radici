@@ -9,7 +9,7 @@ import { DISH_PHOTO_SIZE, changesCountText, focusId, messageText, reservationTre
 
 const NBSP = String.fromCharCode(0xa0);
 const EMPTY_UI: WeekUi = { formOpen: false, draft: "", draftFor: null, busy: null, error: null, textError: null, notice: null };
-const EMPTY_QUOTE_UI: QuoteUi = { declineOpen: false, declineFor: null, busy: null, error: null, notice: null };
+const EMPTY_QUOTE_UI: QuoteUi = { declineOpen: false, declineFor: null, busy: null, error: null, declineError: null, notice: null };
 const W1 = weekDomId(SESSION_1);
 const W2 = weekDomId(SESSION_2);
 
@@ -376,6 +376,37 @@ describe("aviso de la página", () => {
       expect(textOf(byId(tree, "reservation-notice") ?? ""), lang).toBe(expected[lang]);
     }
   });
+
+  it("una respuesta al presupuesto que no se registró porque el presupuesto ya no está: arriba, dice por qué (Evelyn confirmó la reserva o mandó otro)", () => {
+    const expected: Record<"goneBooked" | "goneReplaced", Record<Lang, string>> = {
+      goneBooked: {
+        it: "Non abbiamo potuto registrare la tua risposta al preventivo: nel frattempo Evelyn ha confermato direttamente la tua prenotazione. Per qualsiasi dubbio scrivi a Evelyn.",
+        es: "No pudimos registrar tu respuesta al presupuesto: mientras tanto, Evelyn confirmó directamente tu reserva. Si tienes alguna duda, escribe a Evelyn.",
+        en: "We couldn't record your answer to the quote: in the meantime, Evelyn confirmed your booking directly. If you have any questions, write to Evelyn.",
+      },
+      goneReplaced: {
+        it: "Non abbiamo potuto registrare la tua risposta: nel frattempo Evelyn ti ha mandato un nuovo preventivo, che trovi qui sotto.",
+        es: "No pudimos registrar tu respuesta: mientras tanto, Evelyn te mandó un presupuesto nuevo, que tienes aquí abajo.",
+        en: "We couldn't record your answer: in the meantime, Evelyn sent you a new quote, which you'll find below.",
+      },
+    };
+    const NEW_QUOTE = "9a0e0000-0000-4000-8000-000000000002";
+    for (const lang of ["it", "es", "en"] as const) {
+      // Confirmada sin el presupuesto: /view ya no lo trae, así que no hay recuadro.
+      const booked = render(ready(view()), { lang, pageNotice: { key: "reservation.quote.notices.goneBooked" } });
+      expect(textOf(byId(booked, "reservation-notice") ?? ""), lang).toBe(expected.goneBooked[lang]);
+      expect(byId(booked, "quote"), lang).toBeNull();
+      // Otro presupuesto: el aviso, arriba del recuadro nuevo («qui sotto»).
+      const replaced = render(ready(quoteView({ id: NEW_QUOTE, version: 2 }, { quoteId: NEW_QUOTE })), {
+        lang,
+        pageNotice: { key: "reservation.quote.notices.goneReplaced" },
+      });
+      expect(textOf(byId(replaced, "reservation-notice") ?? ""), lang).toBe(expected.goneReplaced[lang]);
+      const html = toHtml(replaced);
+      expect(html.indexOf('id="reservation-notice"'), lang).toBeLessThan(html.indexOf('id="quote"'));
+      expect(html.indexOf('id="quote"'), lang).toBeGreaterThan(-1);
+    }
+  });
 });
 
 describe("página sin reserva", () => {
@@ -693,36 +724,60 @@ describe("el presupuesto: acciones", () => {
     expect(find(closed, (node) => node.attrs["role"] === "group")).toBeNull();
   });
 
-  it("un doble toque en «Rifiuto» no cae en «Sì»: lo de arriba de «Rifiuto» no cambia al abrir el paso (en cada idioma, con o sin «Accetto») y lo destructivo va debajo", () => {
-    /** El recuadro del presupuesto hasta «Rifiuto»: si es igual, «Rifiuto» queda en el mismo lugar, sea cual sea el largo de los textos. */
+  it("un doble toque en «Rifiuto» no cae en «Sì»: lo de arriba de «Rifiuto» no cambia al abrir el paso (en cada idioma, con o sin «Accetto», y con un aviso o un error a la vista) y lo destructivo va debajo", () => {
+    /** La página hasta «Rifiuto»: si es igual, «Rifiuto» queda en el mismo lugar, sea cual sea el largo de los textos. */
     const upToDecline = (tree: VNode): string => {
-      const html = toHtml(byId(tree, "quote") ?? "");
+      const html = toHtml(tree);
       const at = html.indexOf('id="quote-decline"');
       expect(at).toBeGreaterThan(-1);
       return html.slice(0, at);
     };
     const changesRequested = quoteView({}, { state: "changesRequested", changesRequestedAt: "2027-02-26T10:00:00+00:00" });
+    // Lo que puede estar a la vista arriba de «Rifiuto» cuando lo toca: nada, o el aviso de la página, el del recuadro y
+    // el error de aceptar (el controlador no los borra al abrir el paso).
+    const shown: RenderOptions[] = [
+      {},
+      {
+        pageNotice: { key: "reservation.notices.sessionCancelled", date: "2027-03-15" },
+        quoteUi: { notice: { key: "reservation.quote.notices.outdated" }, error: { key: "reservation.errors.network" } },
+      },
+    ];
     for (const value of [quoteView(), changesRequested]) {
       for (const lang of ["it", "es", "en"] as const) {
-        const closed = render(ready(value), { lang });
-        const open = render(ready(value), { lang, quoteUi: { declineOpen: true, declineFor: SEND_1 } });
-        expect(upToDecline(open), lang).toBe(upToDecline(closed));
-        const html = toHtml(byId(open, "quote") ?? "");
-        const at = (id: string): number => html.indexOf(`id="${id}"`);
-        expect(at("quote-decline"), lang).toBeLessThan(at("quote-decline-question"));
-        expect(at("quote-decline-question"), lang).toBeLessThan(at("quote-decline-cancel"));
-        expect(at("quote-decline-cancel"), lang).toBeLessThan(at("quote-decline-confirm"));
+        for (const [index, extra] of shown.entries()) {
+          const label = `${lang} ${value.weeks[0]?.menu?.state} ${index}`;
+          const closed = render(ready(value), { ...extra, lang });
+          const open = render(ready(value), { ...extra, lang, quoteUi: { ...extra.quoteUi, declineOpen: true, declineFor: SEND_1 } });
+          expect(upToDecline(open), label).toBe(upToDecline(closed));
+          if (index > 0) {
+            for (const id of ["reservation-notice", "quote-error"]) expect(upToDecline(open), `${label} ${id}`).toContain(`id="${id}"`);
+            expect(upToDecline(open), label).toContain('class="quote__notice"');
+          }
+          const html = toHtml(byId(open, "quote") ?? "");
+          const at = (id: string): number => html.indexOf(`id="${id}"`);
+          expect(at("quote-decline"), label).toBeLessThan(at("quote-decline-question"));
+          expect(at("quote-decline-question"), label).toBeLessThan(at("quote-decline-cancel"));
+          expect(at("quote-decline-cancel"), label).toBeLessThan(at("quote-decline-confirm"));
+        }
       }
     }
   });
 
-  it("el error del rechazo va junto a «Sì» (en la confirmación); el de aceptar, arriba de los botones", () => {
-    const declining = render(ready(quoteView()), { quoteUi: { declineOpen: true, declineFor: SEND_1, error: { key: "reservation.errors.network" } } });
+  it("el error del rechazo va en el paso, junto a «Sì»; el de aceptar, arriba de los botones (también con el paso abierto)", () => {
+    const network = { key: "reservation.errors.network" } as const;
+    const declining = render(ready(quoteView()), { quoteUi: { declineOpen: true, declineFor: SEND_1, declineError: network } });
     const group = byId(declining, "quote-confirm");
-    expect(group && textOf(byId(group, "quote-error") ?? "")).toBe("Non riusciamo a collegarci. Controlla la connessione e riprova.");
-    const accepting = render(ready(quoteView()), { quoteUi: { error: { key: "reservation.errors.network" } } });
-    const html = toHtml(byId(accepting, "quote") ?? "");
-    expect(html.indexOf('id="quote-error"')).toBeLessThan(html.indexOf('id="quote-accept"'));
+    expect(group && textOf(byId(group, "quote-decline-error") ?? "")).toBe("Non riusciamo a collegarci. Controlla la connessione e riprova.");
+    expect(byId(declining, "quote-error")).toBeNull();
+    const html = toHtml(group ?? "");
+    expect(html.indexOf('id="quote-decline-error"')).toBeLessThan(html.indexOf('id="quote-decline-confirm"'));
+    for (const declineOpen of [false, true]) {
+      const accepting = render(ready(quoteView()), { quoteUi: { declineOpen, declineFor: declineOpen ? SEND_1 : null, error: network } });
+      const box = toHtml(byId(accepting, "quote") ?? "");
+      expect(box.indexOf('id="quote-error"'), String(declineOpen)).toBeGreaterThan(-1);
+      expect(box.indexOf('id="quote-error"'), String(declineOpen)).toBeLessThan(box.indexOf('id="quote-accept"'));
+      expect(byId(accepting, "quote-decline-error")).toBeNull();
+    }
   });
 
   it("con una respuesta en camino, los botones quedan aria-disabled (conservan el foco) y dicen «Un momento…»", () => {

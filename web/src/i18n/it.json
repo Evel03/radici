@@ -530,7 +530,9 @@
         "closedWithdrawn": "Non abbiamo potuto registrare la tua risposta: il preventivo era già stato ritirato.",
         "closedExpired": "Non abbiamo potuto registrare la tua risposta: il tempo per accettarlo era già finito.",
         "unavailable": "Questo preventivo non è più disponibile. Qui sotto trovi la tua prenotazione aggiornata.",
-        "empty": "Questo preventivo non ha più settimane da accettare. Scrivi a {chef}."
+        "empty": "Questo preventivo non ha più settimane da accettare. Scrivi a {chef}.",
+        "goneBooked": "Non abbiamo potuto registrare la tua risposta al preventivo: nel frattempo {chef} ha confermato direttamente la tua prenotazione. Per qualsiasi dubbio scrivi a {chef}.",
+        "goneReplaced": "Non abbiamo potuto registrare la tua risposta: nel frattempo {chef} ti ha mandato un nuovo preventivo, che trovi qui sotto."
       }
     }
   }

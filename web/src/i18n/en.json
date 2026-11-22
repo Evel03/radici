@@ -530,7 +530,9 @@
         "closedWithdrawn": "We couldn't record your answer: this quote had already been withdrawn.",
         "closedExpired": "We couldn't record your answer: the time to accept it had already run out.",
         "unavailable": "This quote is no longer available. Your updated booking is below.",
-        "empty": "This quote no longer has any weeks to accept. Write to {chef}."
+        "empty": "This quote no longer has any weeks to accept. Write to {chef}.",
+        "goneBooked": "We couldn't record your answer to the quote: in the meantime, {chef} confirmed your booking directly. If you have any questions, write to {chef}.",
+        "goneReplaced": "We couldn't record your answer: in the meantime, {chef} sent you a new quote, which you'll find below."
       }
     }
   }
