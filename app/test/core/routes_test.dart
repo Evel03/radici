@@ -227,6 +227,17 @@ void main() {
     );
   });
 
+  test('el menú de la semana cuelga de la ficha de la sesión y es del área de la cocinera', () {
+    expect(AppRoutes.sessionMenu('x'), '/sessioni/x/menu');
+    expect(AppRoutes.sessionMenu('a/b'), '/sessioni/a%2Fb/menu');
+    expect(isChefPath('/sessioni/x/menu'), isTrue);
+    expect(_redirect(chef, '/sessioni/x/menu'), isNull);
+    expect(
+      _redirect(signedOut, '/sessioni/x/menu'),
+      '/accedi?from=%2Fsessioni%2Fx%2Fmenu',
+    );
+  });
+
   test('rutas del catálogo de platos', () {
     expect(AppRoutes.more, '/altro');
     expect(AppRoutes.recipes, '/altro/piatti');

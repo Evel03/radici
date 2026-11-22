@@ -11,7 +11,7 @@ Evelyn le manda a la clienta el menú de cada semana de su reserva (por email, W
 
 - `https://<sitio>/prenotazione/#t=<token>` (`reservationPageUrl`). El token son 32 bytes al azar en base64url, sin relleno: 43 caracteres (`newClientLinkToken`, `isClientLinkToken`).
 - Va en el **fragmento**: el navegador no lo manda a ningún servidor (tampoco a Cloudflare Pages) ni en el `Referer`. La página lo lee de `location.hash` y lo manda en el cuerpo de un `POST`; nunca en una URL, en la consola ni en analytics (no hay).
-- La base guarda solo su hash: sha-256 del token en UTF-8, en hexadecimal minúscula (`hashClientLinkToken`, igual a `encode(sha256(convert_to(token, 'UTF8')), 'hex')`), en `client_links.token_hash`. Lo crea la función `chef` al enviar un menú (`chef_link_menu_send`). Cada envío crea un link; todos los de una reserva valen a la vez y vencen a los 120 días.
+- La base guarda solo su hash: sha-256 del token en UTF-8, en hexadecimal minúscula (`hashClientLinkToken`, igual a `encode(sha256(convert_to(token, 'UTF8')), 'hex')`), en `client_links.token_hash`. Lo crea la función `chef` al enviar un menú (`chef_link_menu_send`). Cada envío crea un link; todos los de una reserva valen a la vez y cada uno vence a los 15 días (migración `20261121105000_client_links_15_days.sql`; decisión de Nicolas del 22/11/2026: la semana termina y ese link no se usa más, y el mensaje siguiente trae uno nuevo).
 - Un token con otra forma, que no existe o vencido son lo mismo para la clienta: `linkNotFound`.
 
 ## 3. Formato común

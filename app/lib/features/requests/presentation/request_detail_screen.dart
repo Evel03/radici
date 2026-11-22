@@ -3,8 +3,9 @@
 // alergias), los platos que eligió el cliente en la web (arriba y destacados),
 // la estimación guardada y las acciones: WhatsApp, llamar, email, rechazar,
 // deshacer el rechazo y marcar a la persona como clienta (así no se borra a
-// los 90 días). Un pedido nuevo, además, «Conferma prenotazione» (abajo). Al
-// abrirlo se marca como visto.
+// los 90 días). Un pedido nuevo, además, «Conferma prenotazione» (abajo); una
+// reserva, sus semanas con el menú de cada una. Al abrirlo se marca como
+// visto.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/requests/presentation/inbox_screen.dart';
 import 'package:radici/features/requests/presentation/request_labels.dart';
+import 'package:radici/features/week_menu/presentation/week_menu_block.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 class RequestDetailScreen extends ConsumerStatefulWidget {
@@ -367,6 +369,9 @@ class _RequestDetail extends ConsumerWidget {
             // Los platos que eligió en la web: el aviso que pidió Evelyn, por
             // eso va arriba y destacado. Sin platos elegidos, nada.
             if (request.hasMenu) _ChosenMenu(request: request),
+
+            // Una reserva: sus semanas con el menú de cada una (SPEC 5.8).
+            if (request.isBooking) BookingWeekMenus(requestId: request.id),
 
             _Section(title: l10n.detailSectionRequest),
             _InfoRow(label: l10n.detailType, value: l10n.requestType(request.type)),
