@@ -4,7 +4,8 @@
 // resaltado si faltan menos de 24 h o ya pasó (el lector de pantalla también
 // lo oye); tocar una abre su menú y, después de mandarlo, ya no está. Sin
 // ninguna, la sección no sale; si no se puede leer, lo dice con
-// «Reintentar». «Ricarica» no la hace desaparecer mientras vuelve a leer.
+// «Reintentar». Al abrir la app, «Nada pendiente» espera a la primera
+// lectura; «Ricarica» no hace desaparecer la sección mientras vuelve a leer.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -200,6 +201,51 @@ void main() {
         'Límite: lun 23 de nov, 10:00',
       );
       semantics.dispose();
+    },
+  );
+
+  testWidgets(
+    'al abrir la app, «Nada pendiente» no sale mientras se leen los menús por primera vez, aunque la agenda ya llegó',
+    (tester) async {
+      // La semana 2 de 8 (el miércoles 25), sin menú: lo único pendiente.
+      final sessions = FakeSessionsRepository(
+        buildBooking(weeks: 8, first: CalendarDate(2026, 11, 18)),
+      )..pendingAgendaFetch = Completer<void>();
+      final menus = FakeSessionMenusRepository();
+      final sends = FakeMenuSendsRepository(menus: menus)
+        ..pendingLatest = Completer<void>();
+      await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        sessions: sessions,
+        recipes: FakeRecipesRepository(sampleRecipes()),
+        menus: menus,
+        menuSends: sends,
+        clock: () => now,
+        deviceLocales: const [Locale('es')],
+        settle: false,
+      );
+      // Hoy se abre con la agenda cargando (su rueda no se asienta).
+      for (var i = 0; i < 10; i++) {
+        await tester.pump();
+      }
+      expect(find.byType(TodayScreen), findsOneWidget);
+      expect(byKey('today-pending-empty'), findsNothing);
+
+      sessions.pendingAgendaFetch!.complete();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump();
+        expect(byKey('today-pending-empty'), findsNothing);
+      }
+      expect(sends.latestCalls, [
+        [sessionId(2)],
+      ]);
+      expect(byKey('today-menus'), findsNothing);
+
+      sends.pendingLatest!.complete();
+      await tester.pumpAndSettle();
+      expect(byKey('today-menu-${sessionId(2)}'), findsOneWidget);
+      expect(byKey('today-pending-empty'), findsNothing);
     },
   );
 

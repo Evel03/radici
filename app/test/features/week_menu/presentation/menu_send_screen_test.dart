@@ -7,13 +7,16 @@
 // puede hacer: seguir sin traducir (también con un 500 mientras traducía),
 // reintentar, solo por WhatsApp, volver al menú (desde el editor) o ver lo
 // guardado (desde la ficha); la falla del envío se trae a la vista aunque la
-// vista previa esté desplazada. Al mandar con WhatsApp se abre solo en el
-// teléfono y con «Abrir WhatsApp» en la web.
+// vista previa esté desplazada, y si no se sabe si salió, cerrar la pantalla
+// vuelve a leer el envío. Al mandar con WhatsApp se abre solo en el teléfono
+// y con «Abrir WhatsApp» en la web.
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/features/requests/domain/chef_request.dart'
     show ClientLocale;
 import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
+import 'package:radici/features/week_menu/application/week_menu_summaries.dart';
 import 'package:radici/features/week_menu/data/menu_sends_repository.dart';
 import 'package:radici/features/week_menu/domain/menu_send.dart';
 import 'package:radici/features/week_menu/domain/week_menu.dart';
@@ -323,6 +326,7 @@ void main() {
           'Algo falló en el servidor. Vuelve a intentarlo más tarde.',
         );
         expect(byKey('menu-send-retry-preview'), findsNothing);
+        expect(byKey('menu-send-without-translation'), findsOneWidget);
         await tapVisible(tester, byKey('menu-send-without-translation'));
         expect(app.menuSends.previews, hasLength(2));
         expect(app.menuSends.previews.last.translate, isFalse);
@@ -418,17 +422,31 @@ void main() {
     );
 
     testWidgets(
-      'sin saber si salió, cerrar con la X vuelve a leer el envío: el editor dice que salió',
+      'sin saber si salió y sin poder leer el envío al fallar (sin conexión), cerrar con la X lo vuelve a leer: el editor dice que salió',
       (tester) async {
         final app = await open(tester);
-        await tapVisible(tester, byKey('week-menu-send'));
-        app.menuSends.loseSendResponse = const MenuSendFailure(
-          MenuSendFailureKind.timeout,
+        // El estado del envío, escuchado también mientras la pantalla tapa al
+        // editor (tapado, Riverpod lo pausa y no lee hasta que vuelve a
+        // verse): así la lectura de la falla ocurre con la pantalla abierta.
+        final status = app.container.listen(
+          latestMenuSendProvider(session),
+          (_, _) {},
         );
+        addTearDown(status.close);
+        await tapVisible(tester, byKey('week-menu-send'));
+        app.menuSends
+          ..loseSendResponse = const MenuSendFailure(
+            MenuSendFailureKind.timeout,
+          )
+          ..readFailure = const MenuSendFailure(MenuSendFailureKind.offline);
         await tapVisible(tester, byKey('menu-send-submit'));
         expect(byKey('menu-send-error'), findsOneWidget);
+        // Esa lectura también falló: sin volver a leer al cerrar, el editor
+        // diría que no se pudo leer.
+        expect(status.read().hasError, isTrue);
         final reads = app.menuSends.latestCalls.length;
 
+        app.menuSends.readFailure = null;
         await tapVisible(tester, byKey('menu-send-close'));
         expect(find.byType(MenuSendScreen), findsNothing);
         expect(app.menuSends.latestCalls.length, greaterThan(reads));

@@ -3,9 +3,10 @@
 // cosa para todas (los menús, los últimos envíos y las semanas vivas de sus
 // reservas: nunca una por semana), con «Semana k de N» de la reserva entera
 // aunque empiece antes de lo que lee la agenda y el límite de 48 h antes de
-// la llegada. La hora solo descarta y resalta (no vuelve a leer); guardar,
-// mandar, «Ricarica» y una semana que entra sí, y mientras se vuelve a leer
-// queda lo de antes. Si una lectura falla, el error, sin reintentar solo.
+// la llegada. Cargando hasta la primera lectura con la agenda leída. La hora
+// solo descarta y resalta (no vuelve a leer); guardar, mandar, «Ricarica» y
+// una semana que entra sí, y mientras se vuelve a leer queda lo de antes. Si
+// una lectura falla, el error, sin reintentar solo.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -49,8 +50,13 @@ void main() {
   late FakeMenuSendsRepository sends;
   late ProviderContainer container;
 
-  Future<void> start(List<CookingSession> booking) async {
-    sessions = FakeSessionsRepository(booking);
+  /// [agenda]: si no es null, la lectura de la agenda espera a que se
+  /// complete.
+  Future<void> start(
+    List<CookingSession> booking, {
+    Completer<void>? agenda,
+  }) async {
+    sessions = FakeSessionsRepository(booking)..pendingAgendaFetch = agenda;
     sends = FakeMenuSendsRepository(menus: menus);
     container = ProviderContainer.test(
       retry: noRetry,
@@ -193,6 +199,27 @@ void main() {
     await pumpEventQueue();
     expect([for (final m in pending()) m.session.id], [sessionId(2)]);
     expect(sends.latestCalls, hasLength(1));
+  });
+
+  test('la primera lectura: con la agenda recién leída, carga hasta leer los menús (lo de antes, de una agenda sin leer, no cuenta como «nada que mandar»)', () async {
+    final agenda = Completer<void>();
+    await start(longBooking(), agenda: agenda);
+    // Sin la agenda no hay semanas: no se lee nada.
+    expect(sends.latestCalls, isEmpty);
+
+    sends.pendingLatest = Completer<void>();
+    agenda.complete();
+    await pumpEventQueue();
+    expect(sends.latestCalls, [
+      [sessionId(8)],
+    ]);
+    final reading = container.read(todayPendingMenusProvider);
+    expect(reading.isLoading, isTrue);
+    expect(reading.hasValue, isFalse);
+
+    sends.pendingLatest!.complete();
+    await pumpEventQueue();
+    expect(pending().single.session.id, sessionId(8));
   });
 
   test('guardar, mandar o «Ricarica» (la revisión) vuelve a leer', () async {
