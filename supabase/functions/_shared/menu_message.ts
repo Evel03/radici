@@ -141,8 +141,8 @@ interface QuoteMessages {
   deadlineHours: (hours: number) => string;
   /** El plazo es la llegada de la primera semana (day: la fecha larga). */
   deadlineUntil: (day: string, start: string) => string;
-  /** Mientras tanto, el horario queda retenido. */
-  held: string;
+  /** Mientras tanto, el horario queda retenido: esas fechas o, con una sola semana, esa fecha. */
+  held: (weeks: number) => string;
   cta: (weeks: number) => string;
   confirm: string;
   button: string;
@@ -241,7 +241,7 @@ const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
       priceTotal: (total) => `${total} in totale`,
       deadlineHours: (hours) => (hours === 1 ? "Accettalo entro 1 ora." : `Accettalo entro ${hours} ore.`),
       deadlineUntil: (day, start) => `Accettalo prima di ${day}, alle ${start}.`,
-      held: "Fino ad allora, queste date restano riservate per te.",
+      held: (weeks) => (weeks > 1 ? "Fino ad allora, queste date restano riservate per te." : "Fino ad allora, questa data resta riservata per te."),
       cta: (weeks) =>
         weeks > 1
           ? "Dal tuo link puoi accettare il preventivo e il menù della prima settimana, chiedere dei cambi o rifiutarlo."
@@ -329,7 +329,7 @@ const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
       priceTotal: (total) => `${total} en total`,
       deadlineHours: (hours) => (hours === 1 ? "Acéptalo dentro de 1 hora." : `Acéptalo dentro de las próximas ${hours} horas.`),
       deadlineUntil: (day, start) => `Acéptalo antes del ${day}, a las ${start}.`,
-      held: "Hasta entonces, estas fechas quedan reservadas para ti.",
+      held: (weeks) => (weeks > 1 ? "Hasta entonces, estas fechas quedan reservadas para ti." : "Hasta entonces, esta fecha queda reservada para ti."),
       cta: (weeks) =>
         weeks > 1
           ? "Desde tu enlace puedes aceptar el presupuesto y el menú de la primera semana, pedir cambios o rechazarlo."
@@ -416,7 +416,7 @@ const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
       priceTotal: (total) => `${total} in total`,
       deadlineHours: (hours) => (hours === 1 ? "Please accept it within 1 hour." : `Please accept it within ${hours} hours.`),
       deadlineUntil: (day, start) => `Please accept it before ${day} at ${start}.`,
-      held: "Until then, these dates are held for you.",
+      held: (weeks) => (weeks > 1 ? "Until then, these dates are held for you." : "Until then, this date is held for you."),
       cta: (weeks) =>
         weeks > 1
           ? "From your link you can accept the quote and the first week's menu, ask for changes or decline it."
@@ -580,7 +580,7 @@ function quoteText(quote: SnapshotQuote, locale: Locale, now: Date): QuoteText {
     title: texts.title,
     lead: texts.lead(count, quote.version > 1),
     rows,
-    deadline: `${until} ${texts.held}`,
+    deadline: `${until} ${texts.held(count)}`,
     cta: texts.cta(count),
   };
 }

@@ -570,6 +570,19 @@ textarea.input {
   margin: 0.75rem 0 0;
 }
 
+/* «Rifiuto» con el paso de la confirmación abierto debajo: queda en su lugar, marcado como abierto. */
+.quote__actions .btn--ghost[aria-expanded="true"] {
+  background: var(--olive-soft);
+  color: var(--oliva-dark);
+}
+
+/* El paso para confirmar el rechazo, debajo de los botones: nada de lo de arriba se mueve al abrirlo. */
+.quote__confirm {
+  margin-top: 1.25rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border);
+}
+
 .quote__question {
   font-weight: 600;
 }

@@ -789,7 +789,7 @@ async function notifyChef(deps: ClientLinkHandlerDeps, kind: MenuAnswerKind, ans
  * Le avisa a Evelyn (CHEF_NOTIFY_EMAIL, en CHEF_LOCALE) que la clienta aceptó el presupuesto (con las semanas y el
  * precio del servicio) o lo rechazó, con el link al pedido. Sin texto libre. La clave de idempotencia de Resend:
  * una por presupuesto y respuesta (aceptar y rechazar son definitivos). Al rechazar, las semanas ya se cancelaron:
- * la fecha y la hora son las de la primera semana propuesta (la del envío).
+ * la fecha y la hora son las de la semana del envío (la primera que proponía), y no se sabe cuántas eran.
  */
 async function notifyChefQuote(deps: ClientLinkHandlerDeps, kind: QuoteAnswerKind, answer: QuoteAnswer): Promise<void> {
   const { config, log } = deps;

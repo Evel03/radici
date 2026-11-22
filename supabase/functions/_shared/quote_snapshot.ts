@@ -29,7 +29,10 @@ export interface SnapshotQuoteWeek {
 }
 
 export interface SnapshotQuote {
-  /** La versión que sale con este envío: 1 la primera vez; cada reenvío, la siguiente (chef_complete_menu_send). */
+  /**
+   * La versión que sale con este envío, la que ve la clienta: 1 el primer presupuesto que le llega del pedido; cada
+   * reenvío, y uno nuevo después de otro que le llegó, la siguiente (chef_complete_menu_send). Desde la 2, «aggiornato».
+   */
   version: number;
   /** El precio del servicio de todas las semanas, en centavos: la suma de las semanas. */
   totalCents: number;

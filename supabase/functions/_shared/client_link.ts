@@ -280,7 +280,9 @@ export interface ClientLinkMenu {
   changesRequestedAt: string | null;
   /**
    * El presupuesto que viaja con este envío (el menú de la semana 1 de un presupuesto), o null. Mientras ese
-   * presupuesto está abierto, el menú no se confirma solo: se acepta el presupuesto (quotePending).
+   * presupuesto está abierto, el menú no se confirma solo (quotePending): el envío que lo lleva (quote.sendId) se
+   * acepta con el presupuesto, y uno anterior del mismo presupuesto que quedó en otra semana se confirma después de
+   * aceptarlo. Aceptado, se contesta como cualquier menú.
    */
   quoteId: string | null;
   /** null: la foto no se puede leer. La página lo dice y no deja contestar lo que no muestra. */
@@ -335,7 +337,10 @@ export interface QuoteSummary {
 /** El último presupuesto que salió de la reserva. */
 export interface ClientLinkQuote {
   id: string;
-  /** 1 la primera vez; cada reenvío, la siguiente. Solo se acepta la última. */
+  /**
+   * La que ve la clienta: 1 el primer presupuesto que le llega del pedido (un borrador que nunca salió no cuenta);
+   * cada reenvío, y uno nuevo después de otro que le llegó, la siguiente. Solo se acepta la última.
+   */
   version: number;
   status: QuoteStatus;
   /** El último envío (timestamptz). */
@@ -363,7 +368,10 @@ export interface ClientLinkView {
    * (safeFirstName); si no, null. Nunca el nombre completo.
    */
   clientFirstName: string | null;
-  /** El último presupuesto que salió de la reserva, o null (una reserva sin presupuesto). */
+  /**
+   * El último presupuesto que salió de la reserva, o null: una reserva sin presupuesto, o una que Evelyn confirmó
+   * sin él después de que se cerrara sin aceptarse (no queda un «Ritirato» arriba de la reserva confirmada).
+   */
   quote: ClientLinkQuote | null;
   weeks: ClientLinkWeek[];
 }

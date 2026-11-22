@@ -400,6 +400,7 @@
     "greetingNoName": "¡Hola!",
     "intro": "Aquí tienes las semanas de tu reserva con {chef} y el menú que te mandó para cada una. Revísalo y confírmalo, o pide cambios.",
     "introQuote": "Aquí tienes el presupuesto de {chef}, con las semanas que te propone y el menú de la primera. Acéptalo, o pide cambios.",
+    "introQuoteOne": "Aquí tienes el presupuesto de {chef}, con la fecha que te propone y su menú. Acéptalo, o pide cambios.",
     "noWeeks": "Esta reserva no tiene semanas programadas. Si tienes alguna duda, escribe a {chef}.",
     "weekTitle": "Semana {week} de {weeks}",
     "weekTitleOne": "Tu semana",
@@ -419,6 +420,7 @@
       "changesRequestedDoneText": "Pediste cambios el {date}.",
       "quotePending": "Con el presupuesto",
       "quotePendingText": "{chef} te mandó este menú junto con el presupuesto el {date}. Lo confirmas cuando aceptas el presupuesto, aquí arriba.",
+      "quoteSupersededText": "{chef} te mandó este menú el {date}, con una versión anterior del presupuesto. Podrás confirmarlo cuando hayas aceptado el presupuesto, aquí arriba.",
       "quoteClosedText": "{chef} te mandó este menú junto con el presupuesto el {date}."
     },
     "dishesTitle": "Platos",
@@ -462,7 +464,8 @@
       "sendNotFound": "Este menú ya no está disponible. Aquí abajo tienes el actual.",
       "sessionCancelled": "La semana del {date} se canceló, así que ya no puedes responder a su menú. Si tienes alguna duda, escribe a {chef}.",
       "quotePending": "Este menú va con el presupuesto: lo confirmas aceptando el presupuesto, aquí arriba.",
-      "quoteClosed": "El presupuesto de este menú ya no es válido. Si tienes alguna duda, escribe a {chef}."
+      "quoteClosed": "El presupuesto de este menú ya no es válido. Si tienes alguna duda, escribe a {chef}.",
+      "quoteClosedGone": "Tu respuesta al menú del {date} no se envió: el presupuesto con el que llegó ya no es válido. Si tienes alguna duda, escribe a {chef}."
     },
     "errors": {
       "invalidLinkTitle": "Este enlace no funciona",
@@ -489,6 +492,7 @@
       "state": {
         "pending": "Por aceptar",
         "pendingText": "Puedes aceptarlo hasta el {date} a las {time}. Hasta entonces, estas fechas quedan reservadas para ti.",
+        "pendingTextOne": "Puedes aceptarlo hasta el {date} a las {time}. Hasta entonces, esta fecha queda reservada para ti.",
         "pendingNoDeadline": "{chef} te mandó este presupuesto el {date}.",
         "changesRequested": "Cambios pedidos",
         "changesRequestedText": "Pediste cambios el {date}: {chef} te mandará el presupuesto actualizado.",
@@ -510,6 +514,7 @@
       "accept": "Acepto el presupuesto",
       "decline": "Rechazo",
       "declineQuestion": "¿Quieres rechazar el presupuesto? Las fechas propuestas dejarán de estar reservadas para ti y ya no podrás aceptarlo desde aquí.",
+      "declineQuestionOne": "¿Quieres rechazar el presupuesto? La fecha propuesta dejará de estar reservada para ti y ya no podrás aceptarlo desde aquí.",
       "declineConfirm": "Sí, rechazo el presupuesto",
       "declineCancel": "No, volver",
       "notices": {
@@ -522,8 +527,8 @@
         "changed": "{chef} acaba de cambiar el presupuesto: te mandará la nueva versión.",
         "closedAccepted": "Este presupuesto ya estaba aceptado.",
         "closedDeclined": "Ya habías rechazado este presupuesto.",
-        "closedWithdrawn": "Este presupuesto se retiró. Si tienes alguna duda, escribe a {chef}.",
-        "closedExpired": "Se terminó el plazo para aceptar este presupuesto. Si todavía te interesa, escribe a {chef}.",
+        "closedWithdrawn": "No pudimos registrar tu respuesta: el presupuesto ya se había retirado.",
+        "closedExpired": "No pudimos registrar tu respuesta: ya había terminado el plazo para aceptarlo.",
         "unavailable": "Este presupuesto ya no está disponible. Aquí abajo tienes tu reserva actualizada.",
         "empty": "Este presupuesto ya no tiene semanas para aceptar. Escribe a {chef}."
       }

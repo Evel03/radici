@@ -400,6 +400,7 @@
     "greetingNoName": "Hi!",
     "intro": "Here are the weeks of your booking with {chef} and the menu for each one. Check it and confirm it, or ask for changes.",
     "introQuote": "Here you'll find {chef}'s quote, with the proposed weeks and the menu for the first one. Accept it, or ask for changes.",
+    "introQuoteOne": "Here you'll find {chef}'s quote, with the proposed date and its menu. Accept it, or ask for changes.",
     "noWeeks": "There are no weeks scheduled in this booking. If you have any questions, write to {chef}.",
     "weekTitle": "Week {week} of {weeks}",
     "weekTitleOne": "Your week",
@@ -419,6 +420,7 @@
       "changesRequestedDoneText": "You asked for changes on {date}.",
       "quotePending": "With the quote",
       "quotePendingText": "{chef} sent you this menu with the quote on {date}. You confirm it when you accept the quote, above.",
+      "quoteSupersededText": "{chef} sent you this menu on {date}, with an earlier version of the quote. You'll be able to confirm it once you've accepted the quote, above.",
       "quoteClosedText": "{chef} sent you this menu with the quote on {date}."
     },
     "dishesTitle": "Dishes",
@@ -462,7 +464,8 @@
       "sendNotFound": "This menu is no longer available. The current one is below.",
       "sessionCancelled": "The week of {date} was cancelled, so you can no longer reply to its menu. If you have any questions, write to {chef}.",
       "quotePending": "This menu goes with the quote: you confirm it by accepting the quote, above.",
-      "quoteClosed": "The quote for this menu is no longer valid. If you have any questions, write to {chef}."
+      "quoteClosed": "The quote for this menu is no longer valid. If you have any questions, write to {chef}.",
+      "quoteClosedGone": "Your reply to the menu for {date} wasn't sent: the quote it came with is no longer valid. If you have any questions, write to {chef}."
     },
     "errors": {
       "invalidLinkTitle": "This link doesn't work",
@@ -489,6 +492,7 @@
       "state": {
         "pending": "To accept",
         "pendingText": "You can accept it until {date} at {time}. Until then, these dates are held for you.",
+        "pendingTextOne": "You can accept it until {date} at {time}. Until then, this date is held for you.",
         "pendingNoDeadline": "{chef} sent you this quote on {date}.",
         "changesRequested": "Changes requested",
         "changesRequestedText": "You asked for changes on {date}: {chef} will send you the updated quote.",
@@ -510,6 +514,7 @@
       "accept": "I accept the quote",
       "decline": "I decline",
       "declineQuestion": "Do you want to decline the quote? The proposed dates will no longer be held for you and you won't be able to accept it from here.",
+      "declineQuestionOne": "Do you want to decline the quote? The proposed date will no longer be held for you and you won't be able to accept it from here.",
       "declineConfirm": "Yes, I decline the quote",
       "declineCancel": "No, go back",
       "notices": {
@@ -522,8 +527,8 @@
         "changed": "{chef} has just changed the quote and will send you the new version.",
         "closedAccepted": "This quote had already been accepted.",
         "closedDeclined": "You had already declined this quote.",
-        "closedWithdrawn": "This quote has been withdrawn. If you have any questions, write to {chef}.",
-        "closedExpired": "The time to accept this quote is over. If you're still interested, write to {chef}.",
+        "closedWithdrawn": "We couldn't record your answer: this quote had already been withdrawn.",
+        "closedExpired": "We couldn't record your answer: the time to accept it had already run out.",
         "unavailable": "This quote is no longer available. Your updated booking is below.",
         "empty": "This quote no longer has any weeks to accept. Write to {chef}."
       }
