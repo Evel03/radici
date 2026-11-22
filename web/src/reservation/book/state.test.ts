@@ -401,6 +401,17 @@ function fakeWindow(
       const clicked = !prevented && el !== null && PAGE[el].kind === "button" && (key === " " || key === "Enter") ? el : null;
       return { prevented, clicked, seen: seen() };
     },
+    /** Soltar la tecla (keyup): si alguien lo frenó. Firefox toca el botón con Espacio al soltar aunque keydown se frenó. */
+    release(key: string): { prevented: boolean } {
+      let prevented = false;
+      fire("keyup", {
+        key,
+        preventDefault: () => {
+          prevented = true;
+        },
+      });
+      return { prevented };
+    },
     back(): void {
       traverse(-1);
     },
@@ -804,21 +815,21 @@ describe("el foco a la vista cuando la página se queda quieta (createFocusRevea
     expect(page.bookHistory.onBookEntry()).toBe(true);
     win.advance(48);
     // Esc enseguida: el foco vuelve a «Sfoglia il menù», todavía a la vista, y se vuelve atrás (a una entrada en
-    // "manual", que no restaura); la animación sigue y lo deja afuera…
+    // "manual", que no restaura); la animación lo deja afuera y vuelve enseguida…
     page.close("opener", true);
     expect(win.seen()).toBe(true);
     win.advance(300);
-    expect(win.seen()).toBe(false);
-    // …hasta que termina: ahí vuelve a la vista, sin cortarla antes.
+    expect(win.seen()).toBe(true);
+    // …sin esperar a que la animación termine (la corta).
     win.advance(500);
     expect([win.scrollY, win.seen()]).toEqual([CENTERED.opener, true]);
   });
 
-  it("una animación más larga que REVEAL_SETTLE_MS: espera a que termine, no la corta a la mitad", () => {
+  it("una animación más larga que REVEAL_SETTLE_MS: lo trae a la vista en cuanto se va, sin esperar al final", () => {
     const { win } = duplicateEntry({ smooth: true, smoothMs: 1200 });
     win.back();
     win.advance(REVEAL_SETTLE_MS + 100);
-    expect(win.seen()).toBe(false);
+    expect(win.seen()).toBe(true);
     expect(win.scrollY).toBeGreaterThan(0);
     win.advance(600);
     expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
@@ -828,7 +839,7 @@ describe("el foco a la vista cuando la página se queda quieta (createFocusRevea
     const { win } = duplicateEntry({ scrollend: false });
     win.back();
     win.advance(REVEAL_QUIET_MS - 20);
-    expect(win.seen()).toBe(false);
+    expect(win.seen()).toBe(true);
     win.advance(80);
     expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
   });
@@ -886,6 +897,55 @@ describe("el foco a la vista cuando la página se queda quieta (createFocusRevea
     expect(text.press(" ")).toEqual({ prevented: false, clicked: null, seen: true });
   });
 
+  it("Espacio frenado en keydown sobre un botón que no se veía: el keyup de esa tecla tampoco lo toca (Firefox)", () => {
+    const { win } = duplicateEntry();
+    win.back();
+    expect(win.press(" ")).toEqual({ prevented: true, clicked: null, seen: true });
+    // Firefox activa el botón enfocado al soltar Espacio aunque keydown se frenó: ese keyup se traga, una sola vez.
+    expect(win.release(" ")).toEqual({ prevented: true });
+    expect(win.release(" ")).toEqual({ prevented: false });
+    // Otra tecla soltada no se traga.
+    expect(win.press("Enter")).toEqual({ prevented: false, clicked: "confirm", seen: true });
+    expect(win.release("Enter")).toEqual({ prevented: false });
+    // Un keydown que no se frenó (quieto y a la vista): su keyup toca el botón.
+    win.advance(1000);
+    expect(win.press(" ")).toEqual({ prevented: false, clicked: "confirm", seen: true });
+    expect(win.release(" ")).toEqual({ prevented: false });
+  });
+
+  it("el keyup frenado se traga aunque el guardia haya dejado de esperar entre la tecla y su soltada", () => {
+    const { win } = duplicateEntry({ smooth: true });
+    win.back();
+    win.advance(2 * FRAME_MS);
+    expect(win.press(" ")).toEqual({ prevented: true, clicked: null, seen: true });
+    win.advance(REVEAL_WATCH_MS + 500);
+    expect(win.release(" ")).toEqual({ prevented: true });
+  });
+
+  it("un scroll que no es de la persona y saca el foco de la pantalla: se lo trae a la vista enseguida, sin esperar a que termine", () => {
+    // La restauración animada del navegador lo va sacando de la pantalla cuadro a cuadro: en cuanto se va, vuelve (y la
+    // animación se corta), no cuando el scroll termina.
+    const { win } = duplicateEntry({ smooth: true, smoothMs: 4000 });
+    win.back();
+    for (let frame = 0; frame < 40; frame += 1) {
+      win.advance(FRAME_MS);
+      expect(win.seen()).toBe(true);
+    }
+    // Un scroll de la página misma, a lo lejos, dentro de la ventana de espera.
+    win.scrollProgrammatic(0);
+    win.advance(FRAME_MS);
+    expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
+  });
+
+  it("lo mismo sin scrollend (Safari) y con la máquina lenta: el foco no queda afuera ni un cuadro", () => {
+    const { win } = duplicateEntry({ smooth: true, scrollend: false, restoreDelayMs: 300 });
+    win.back();
+    for (let frame = 0; frame < 80; frame += 1) {
+      win.advance(FRAME_MS);
+      expect(win.seen()).toBe(true);
+    }
+  });
+
   it("Espacio sobre un botón con la página todavía moviéndose (aunque se vea) no lo toca: lo deja quieto a la vista", () => {
     // La entrada de antes restaura su scroll con una animación (scroll suave) y Espacio llega apenas empieza, con
     // confirmar todavía a la vista. En vivo (390 × 844), la tecla se decidía en keydown, el clic salía en keyup con el
@@ -928,12 +988,12 @@ describe("el foco a la vista cuando la página se queda quieta (createFocusRevea
     }
   });
 
-  it("un scroll que sigue cuando termina REVEAL_WATCH_MS: espera a que termine (no deja de mirar a la mitad)", () => {
+  it("un scroll que sigue cuando termina REVEAL_WATCH_MS: lo trae de vuelta apenas se va, no al final", () => {
     // Con la máquina cargada, la restauración animada de Chromium terminó hasta 2,8 s después de popstate (en vivo).
     const { win } = duplicateEntry({ smooth: true, smoothMs: 4000 });
     win.back();
     win.advance(REVEAL_WATCH_MS + 100);
-    expect(win.seen()).toBe(false);
+    expect(win.seen()).toBe(true);
     expect(win.scrollY).toBeGreaterThan(0);
     win.advance(1200);
     expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
@@ -966,7 +1026,7 @@ describe("el foco a la vista cuando la página se queda quieta (createFocusRevea
     const { win } = duplicateEntry({ smooth: true, smoothMs: 60_000 });
     win.back();
     win.advance(REVEAL_CAP_MS - 100);
-    expect(win.seen()).toBe(false);
+    expect(win.seen()).toBe(true);
     win.advance(200);
     expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
   });
@@ -979,13 +1039,13 @@ describe("el foco a la vista cuando la página se queda quieta (createFocusRevea
     win.advance(REVEAL_SETTLE_MS + 100);
     expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
     win.advance(800);
-    expect(win.seen()).toBe(false);
+    expect(win.seen()).toBe(true);
     win.advance(600);
-    expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
+    // Espacio mientras la restauración tardía empieza a moverse no toca el botón: la ventana sigue abierta hasta REVEAL_WATCH_MS.
     // Espacio en ese rato no habría tocado el botón: la ventana sigue abierta hasta REVEAL_WATCH_MS.
     const space = duplicateEntry({ smooth: true, restoreDelayMs: 1200 }).win;
     space.back();
-    space.advance(1500);
+    space.advance(1230);
     expect(space.press(" ")).toEqual({ prevented: true, clicked: null, seen: true });
   });
 
@@ -995,7 +1055,7 @@ describe("el foco a la vista cuando la página se queda quieta (createFocusRevea
     const { win } = duplicateEntry({ smooth: true, scrollend: "lost" });
     win.back();
     win.advance(SMOOTH_MS);
-    expect(win.seen()).toBe(false);
+    expect(win.seen()).toBe(true);
     win.advance(REVEAL_QUIET_MS + 3 * FRAME_MS);
     expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
   });

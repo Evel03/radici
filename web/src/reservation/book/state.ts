@@ -288,7 +288,7 @@ export interface RevealTarget {
   readonly kind: "button" | "text" | "other";
 }
 
-/** Una tecla (keydown): cuál, y cómo frenar lo que haría. */
+/** Una tecla (keydown o keyup): cuál, y cómo frenar lo que haría. */
 export interface RevealKey {
   readonly key: string;
   preventDefault(): void;
@@ -303,7 +303,7 @@ export interface RevealWindow {
     listener: () => void,
     options?: AddEventListenerOptions,
   ): void;
-  addEventListener(type: "keydown", listener: (event: RevealKey) => void, options?: AddEventListenerOptions): void;
+  addEventListener(type: "keydown" | "keyup", listener: (event: RevealKey) => void, options?: AddEventListenerOptions): void;
   requestAnimationFrame(callback: () => void): number;
   setTimeout(callback: () => void, ms: number): number;
   clearTimeout(id: number): void;
@@ -346,7 +346,9 @@ const PAGE_SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", 
  * - Se mira cada vez que termina un scroll (scrollend, o REVEAL_QUIET_MS sin otro), un cuadro después, y a los
  *   REVEAL_SETTLE_MS del último aviso aunque nada se haya movido. Deja de esperar a los REVEAL_WATCH_MS, con una última
  *   mirada; si un scroll sigue, cuando termine (y si no termina nunca, a los REVEAL_CAP_MS).
- * - Mientras espera, Espacio o Enter sobre un botón que no se ve, o con la página todavía moviéndose, no lo tocan: lo
+ * - Un scroll que no es de la persona y saca el foco de la pantalla lo trae de vuelta enseguida, sin esperar a que termine.
+ * - Mientras espera, Espacio o Enter sobre un botón que no se ve, o con la página todavía moviéndose, no lo tocan (ni el
+ *   keyup de esa tecla, que Firefox usa para tocar con Espacio): lo
  *   dejan quieto a la vista (scrollIntoView sin animación corta la que hubiera). Quieto y a la vista, lo tocan; sobre un
  *   campo de texto escriben. Nada de eso mueve la página, así que se sigue esperando.
  * - Si la persona mueve la página mientras espera (rueda, dedo, la barra, un clic, las teclas de scroll, Espacio con el
@@ -364,6 +366,8 @@ export function createFocusReveal(win: RevealWindow, focused: () => RevealTarget
   let quietTimer: number | null = null;
   let watchTimer: number | null = null;
   let capTimer: number | null = null;
+  /** La tecla (Espacio o Enter) que se frenó en keydown sobre un botón: su keyup tampoco lo toca. */
+  let swallowKeyup: string | null = null;
 
   const stop = (timer: number | null): null => {
     if (timer !== null) win.clearTimeout(timer);
@@ -430,6 +434,9 @@ export function createFocusReveal(win: RevealWindow, focused: () => RevealTarget
     () => {
       if (!armed) return;
       scrolling = true;
+      // Un scroll que no es de la persona (ella desarma antes, con la rueda, el dedo, un clic o las teclas): si saca el
+      // foco de la pantalla, vuelve ya (sin animación, que corta la del navegador), no cuando el scroll termine.
+      look();
       quietTimer = stop(quietTimer);
       quietTimer = win.setTimeout(settled, REVEAL_QUIET_MS);
     },
@@ -453,6 +460,7 @@ export function createFocusReveal(win: RevealWindow, focused: () => RevealTarget
         if (scrolling || hidden(target)) {
           target.reveal();
           event.preventDefault();
+          swallowKeyup = event.key;
         }
         return;
       }
@@ -462,6 +470,17 @@ export function createFocusReveal(win: RevealWindow, focused: () => RevealTarget
         return;
       }
       if (PAGE_SCROLL_KEYS.has(event.key)) disarm();
+    },
+    { capture: true },
+  );
+  // Firefox activa el botón enfocado al soltar Espacio aunque keydown se frenó: ese keyup se traga también (aunque el
+  // guardia ya haya dejado de esperar entre la tecla y su soltada).
+  win.addEventListener(
+    "keyup",
+    (event) => {
+      if (swallowKeyup === null || event.key !== swallowKeyup) return;
+      swallowKeyup = null;
+      event.preventDefault();
     },
     { capture: true },
   );
