@@ -367,7 +367,15 @@ La privacy promete acceso, rectificación, supresión, portabilidad, oposición 
     'pedidos',         (select jsonb_agg(to_jsonb(r)) from public.requests r where r.client_id in (select id from persona)),
     'sesiones',        (select jsonb_agg(to_jsonb(s) order by s.date, s.start_time) from public.sessions s where s.client_id in (select id from persona)),
     'consentimientos', (select jsonb_agg(to_jsonb(c)) from public.consents c where c.client_id in (select id from persona)),
-    'restricciones',   (select jsonb_agg(to_jsonb(cr)) from public.client_restrictions cr where cr.client_id in (select id from persona))));
+    'restricciones',   (select jsonb_agg(to_jsonb(cr)) from public.client_restrictions cr where cr.client_id in (select id from persona)),
+    -- Los menús que le mandó Evelyn y sus respuestas desde la página de la reserva (privacy 2026-11-22).
+    'menus_enviados',  (select jsonb_agg(jsonb_build_object(
+                          'sesion', ms.session_id, 'enviado', ms.sent_at, 'por', ms.sent_via, 'idioma', ms.locale,
+                          'menu', ms.snapshot, 'confirmado', ms.client_confirmed_at,
+                          'cambios_pedidos', ms.changes_requested_at, 'mensaje', ms.changes_text) order by ms.sent_at)
+                        from public.menu_sends ms
+                        where ms.sent_at is not null
+                          and ms.request_id in (select r.id from public.requests r where r.client_id in (select id from persona)))));
   ```
 
 - Rectificación: la ficha y, si hace falta, la copia de un pedido (es lo que muestra la app):
@@ -384,7 +392,9 @@ La privacy promete acceso, rectificación, supresión, portabilidad, oposición 
   `update public.requests set restrictions = null, no_allergies = null where id = '<request_id>';`
 - Datos de salud escritos en las notas libres (sin consentimiento; la privacy §5 dice que se borran):
   `update public.requests set notes = null where id = '<request_id>';`
-- Borrar a una persona (supresión; también un pedido de prueba). En cascada se van sus pedidos, presupuestos, consentimientos, restricciones y todas sus sesiones, no solo las canceladas: también las semanas por venir de una reserva, cuyos días vuelven a quedar libres en el calendario de la web. Si tiene pagos registrados falla (son registro contable): conservar solo eso y consultar. Un cliente con cuenta se borra con su cuenta (M2).
+  Si los escribió en el mensaje de cambios de un menú (la página de la reserva pide no hacerlo), se reemplaza el texto por un marcador: el pedido de cambios queda registrado y el check `menu_sends_cambios_con_texto` exige un texto mientras haya `changes_requested_at`.
+  `update public.menu_sends set changes_text = '[texto borrado a pedido de la clienta]' where id = '<menu_send_id>';`
+- Borrar a una persona (supresión; también un pedido de prueba). En cascada se van sus pedidos, presupuestos, consentimientos, restricciones, los menús que le mandó Evelyn con sus respuestas y sus links (`menu_sends` y `client_links`), y todas sus sesiones, no solo las canceladas: también las semanas por venir de una reserva, cuyos días vuelven a quedar libres en el calendario de la web. Si tiene pagos registrados falla (son registro contable): conservar solo eso y consultar. Un cliente con cuenta se borra con su cuenta (M2).
 
   ```sql
   begin;
