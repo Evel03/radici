@@ -3,9 +3,9 @@
 // render.ts (puras, con tests); acá solo el DOM.
 // - Un diálogo modal: el resto de la página queda inert (y aria-hidden), Tab no sale del libro y, al cerrarlo, el foco
 //   vuelve al botón que lo abrió (o a donde lleve la última página: confirmar, el presupuesto o la semana).
-// - Al cerrarlo (por cualquier camino), lo que recibe el foco queda a la vista: ya mismo, sin animación, y otra vez
-//   cuando la página se queda quieta, por si el navegador restaura un scroll viejo después (createFocusReveal). Si la
-//   persona mueve la página mientras tanto, queda donde ella la llevó.
+// - Al cerrarlo (por cualquier camino), lo que recibe el foco queda a la vista: ya mismo, sin animación, y otra vez cada
+//   vez que la página se queda quieta en los segundos siguientes, por si el navegador restaura un scroll viejo después
+//   (createFocusReveal). Si la persona mueve la página mientras tanto, queda donde ella la llevó.
 // - Abierto desde el botón de una semana, agrega una entrada al historial: «atrás» lo cierra, como se espera en el
 //   teléfono, y volver a la entrada de la página, que esta carga dejó en "manual", no la mueve (createBookHistory).
 //   Esa entrada queda marcada: abierto otra vez desde ella (al recargar, o con «adelante»), cerrarlo también vuelve

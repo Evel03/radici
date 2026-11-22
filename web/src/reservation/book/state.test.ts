@@ -4,9 +4,9 @@ import { focusId } from "../render.ts";
 import { readToken } from "../token.ts";
 import {
   MAX_DOTS,
-  REVEAL_CAP_MS,
   REVEAL_QUIET_MS,
   REVEAL_SETTLE_MS,
+  REVEAL_WATCH_MS,
   bookFragment,
   bookPages,
   bookSignature,
@@ -173,12 +173,16 @@ interface FakeEvent {
  *
  * Y lo que usa createFocusReveal, con el tiempo en las manos del test (advance): un cuadro cada 16 ms avanza la
  * animación de scroll, despacha scroll si la página se movió y scrollend en el primer cuadro quieto después (sin él
- * con scrollend: false, como Safari), y corre los requestAnimationFrame; los setTimeout vencen en orden. Con smooth,
- * la restauración del historial se anima (Chromium con scroll-behavior: smooth, comprobado en vivo) y sigue aunque
- * cambie la entrada; un scroll instantáneo o uno de la persona la cortan. focus() dice qué tiene el foco (un elemento
- * de la página, "book" si está adentro del libro, o nada); target() es lo que ve createFocusReveal.
+ * con scrollend: false, como Safari; con "lost", el navegador lo tiene pero no llega), y corre los
+ * requestAnimationFrame; los setTimeout vencen en orden. Con smooth, la restauración del historial se anima (Chromium
+ * con scroll-behavior: smooth, comprobado en vivo) y sigue aunque cambie la entrada; un scroll instantáneo o uno de la
+ * persona la cortan. restoreDelayMs: la restauración empieza tarde (la máquina cargada). focus() dice qué tiene el
+ * foco (un elemento de la página, "book" si está adentro del libro, o nada); target() es lo que ve createFocusReveal.
  */
-function fakeWindow(hash: string, options: { smooth?: boolean; smoothMs?: number; scrollend?: boolean } = {}) {
+function fakeWindow(
+  hash: string,
+  options: { smooth?: boolean; smoothMs?: number; scrollend?: boolean | "lost"; restoreDelayMs?: number } = {},
+) {
   interface Entry {
     hash: string;
     state: unknown;
@@ -203,6 +207,7 @@ function fakeWindow(hash: string, options: { smooth?: boolean; smoothMs?: number
   let moved = false;
   let scrolling = false;
   let animation: { from: number; to: number; start: number } | null = null;
+  let pendingRestore: { at: number; y: number } | null = null;
   let focused: PageElement | "book" | null = null;
   const smoothMs = options.smoothMs ?? SMOOTH_MS;
   const current = (): Entry => entries[index] as Entry;
@@ -217,12 +222,20 @@ function fakeWindow(hash: string, options: { smooth?: boolean; smoothMs?: number
     win.scrollY = next;
     moved = true;
   };
-  /** La restauración del scroll de una entrada en "auto": con smooth, animada. */
-  const restore = (y: number): void => {
+  /** La restauración del scroll de una entrada en "auto": con smooth, animada; con restoreDelayMs, más tarde. */
+  const startRestore = (y: number): void => {
     if (options.smooth) animation = { from: win.scrollY, to: y, start: now };
     else scrollTo(y);
   };
+  const restore = (y: number): void => {
+    if (options.restoreDelayMs) pendingRestore = { at: now + options.restoreDelayMs, y };
+    else startRestore(y);
+  };
   const frame = (): void => {
+    if (pendingRestore && now >= pendingRestore.at) {
+      startRestore(pendingRestore.y);
+      pendingRestore = null;
+    }
     if (animation) {
       const progress = Math.min((now - animation.start) / smoothMs, 1);
       scrollTo(animation.from + (animation.to - animation.from) * progress);
@@ -234,7 +247,7 @@ function fakeWindow(hash: string, options: { smooth?: boolean; smoothMs?: number
       fire("scroll");
     } else if (scrolling && !animation) {
       scrolling = false;
-      if (options.scrollend !== false) fire("scrollend");
+      if (options.scrollend === undefined || options.scrollend === true) fire("scrollend");
     }
     const due = frames;
     frames = [];
@@ -259,6 +272,7 @@ function fakeWindow(hash: string, options: { smooth?: boolean; smoothMs?: number
     timers = [];
     frames = [];
     animation = null;
+    pendingRestore = null;
     moved = false;
     scrolling = false;
     focused = null;
@@ -665,7 +679,7 @@ describe("el foco a la vista cuando la página se queda quieta (createFocusRevea
    * Dos entradas #t= iguales en "auto" (la repetida que deja cerrar el libro sin volver atrás) y el foco en
    * «Confermo il menù», a la vista: «atrás» vuelve a la primera, que restaura su scroll (arriba).
    */
-  function duplicateEntry(options: { smooth?: boolean; smoothMs?: number; scrollend?: boolean } = {}) {
+  function duplicateEntry(options: Parameters<typeof fakeWindow>[1] = {}) {
     const win = fakeWindow(`#t=${TOKEN}`, options);
     const page = startPage(win);
     win.history.pushState(win.history.state, "", `/prenotazione/#t=${TOKEN}`);
@@ -899,12 +913,41 @@ describe("el foco a la vista cuando la página se queda quieta (createFocusRevea
     }
   });
 
-  it("si un scroll no termina nunca (scrollend no llega), a lo sumo REVEAL_CAP_MS", () => {
+  it("si un scroll no termina nunca, a lo sumo REVEAL_WATCH_MS después del último aviso", () => {
     const { win } = duplicateEntry({ smooth: true, smoothMs: 10_000 });
     win.back();
-    win.advance(REVEAL_CAP_MS - 100);
+    win.advance(REVEAL_WATCH_MS - 100);
     expect(win.seen()).toBe(false);
     win.advance(200);
+    expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
+  });
+
+  it("una restauración que el navegador empieza tarde (después de REVEAL_SETTLE_MS, con la máquina cargada) también", () => {
+    // Pasó en vivo con cuatro pestañas a la vez (390 × 844, scroll suave): el guardia miraba a los 700 ms, todavía con
+    // confirmar a la vista, dejaba de esperar y la restauración lo sacaba de la pantalla después.
+    const { win } = duplicateEntry({ smooth: true, restoreDelayMs: 1200 });
+    win.back();
+    win.advance(REVEAL_SETTLE_MS + 100);
+    expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
+    win.advance(800);
+    expect(win.seen()).toBe(false);
+    win.advance(600);
+    expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
+    // Espacio en ese rato no habría tocado el botón: la ventana sigue abierta hasta REVEAL_WATCH_MS.
+    const space = duplicateEntry({ smooth: true, restoreDelayMs: 1200 }).win;
+    space.back();
+    space.advance(1500);
+    expect(space.press(" ")).toEqual({ prevented: true, clicked: null, seen: true });
+  });
+
+  it("si scrollend no llega (lo tiene el navegador, pero se pierde), basta con REVEAL_QUIET_MS sin scroll", () => {
+    // Pasó en vivo: una animación que siguió después de una vuelta del historial terminó sin scrollend, y el guardia
+    // esperaba hasta el tope.
+    const { win } = duplicateEntry({ smooth: true, scrollend: "lost" });
+    win.back();
+    win.advance(SMOOTH_MS);
+    expect(win.seen()).toBe(false);
+    win.advance(REVEAL_QUIET_MS + 3 * FRAME_MS);
     expect([win.scrollY, win.seen()]).toEqual([CENTERED.confirm, true]);
   });
 
