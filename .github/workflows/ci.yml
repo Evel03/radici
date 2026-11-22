@@ -12,7 +12,8 @@ permissions:
 
 jobs:
   # Gasta pocos minutos (los de Actions son limitados): en un PR, cada job pesado corre solo si cambió
-  # algo de lo que usa (reglas en .github/scripts/ci-changes.sh, con tests). En push a main corren todos.
+  # algo de lo que usa (reglas en .github/scripts/ci-changes.sh, con tests; si algo falla, corren todos).
+  # En push a main corren todos.
   changes:
     name: Qué cambió
     runs-on: ubuntu-latest
@@ -33,14 +34,27 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          set -euo pipefail
-          if [ "${EVENT}" = "pull_request" ]; then
-            git diff --name-only "${BASE_SHA}...${HEAD_SHA}" > "${RUNNER_TEMP}/changed.txt"
-            cat "${RUNNER_TEMP}/changed.txt"
-            bash .github/scripts/ci-changes.sh < "${RUNNER_TEMP}/changed.txt" | tee -a "${GITHUB_OUTPUT}"
-          else
-            printf '%s\n' quote=true edge=true web=true app=true database=true | tee -a "${GITHUB_OUTPUT}"
+          # A prueba de fallos: sin base, con un git diff roto o con un script que falla, corre todo.
+          set -uo pipefail
+          all() { printf '%s\n' quote=true edge=true web=true app=true database=true | tee -a "${GITHUB_OUTPUT}"; }
+          if [ "${EVENT}" != "pull_request" ]; then
+            all
+            exit 0
           fi
+          # quotepath=off: nombres con acentos tal cual (si no, git los escapa y no coinciden con nada);
+          # --no-renames: un archivo movido cuenta con su ruta vieja y con la nueva.
+          if ! git -c core.quotepath=off diff --name-only --no-renames "${BASE_SHA}...${HEAD_SHA}" > "${RUNNER_TEMP}/changed.txt"; then
+            echo "::warning::No se pudo calcular qué cambió: corren todos los jobs."
+            all
+            exit 0
+          fi
+          cat "${RUNNER_TEMP}/changed.txt"
+          if ! areas=$(bash .github/scripts/ci-changes.sh < "${RUNNER_TEMP}/changed.txt"); then
+            echo "::warning::ci-changes.sh falló: corren todos los jobs."
+            all
+            exit 0
+          fi
+          echo "${areas}" | tee -a "${GITHUB_OUTPUT}"
 
   quote:
     name: Motor de presupuesto (TS)
