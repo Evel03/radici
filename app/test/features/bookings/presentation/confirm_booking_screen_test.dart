@@ -489,6 +489,35 @@ void main() {
     },
   );
 
+  for (final (locale, label) in [
+    (const Locale('it', 'IT'), 'Riferimento tariffa'),
+    (const Locale('es', 'ES'), 'Referencia de la tarifa'),
+    (const Locale('en', 'GB'), 'Rate reference'),
+  ]) {
+    testWidgets(
+      'a 375×667 y con letra grande el campo arranca vacío y la referencia se ve sin desbordes (${locale.languageCode})',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await openSheet(
+          tester,
+          size: const Size(375, 667),
+          locale: locale,
+          typePrice: false,
+        );
+        await tester.ensureVisible(byKey('booking-rate-reference'));
+        await tester.pumpAndSettle();
+        expect(priceText(tester), '');
+        expect(
+          textOf(tester, 'booking-rate-reference'),
+          allOf(startsWith('$label: '), contains('560')),
+        );
+        expect(confirmButton(tester).onPressed, isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     '«+» suma una semana 7 días después; el precio queda vacío, la referencia de la tarifa sigue a las semanas y el botón espera el precio',
     (tester) async {

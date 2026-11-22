@@ -152,6 +152,29 @@ void main() {
     expect(state().canConfirm, isTrue);
   });
 
+  test('el precio arranca vacío, la tarifa es solo referencia y sin precio escrito no se crea (0 vale si ella lo escribe)', () async {
+    await open(weekly(), typePrice: false);
+
+    expect(state().priceEdited, isFalse);
+    expect(state().suggestedPriceCents, isNull);
+    expect(state().serviceTotalCents, isNull);
+    expect(state().priceText, isEmpty);
+    expect(state().rateReferenceCents, 56000);
+    expect(state().priceIssue, BookingPriceIssue.required);
+    expect(state().canConfirm, isFalse);
+    await controller().confirm();
+    expect(quotes.creations, isEmpty);
+
+    controller().setWeeks(2);
+    expect(state().rateReferenceCents, 30000, reason: '2 × 150 €');
+    expect(state().serviceTotalCents, isNull);
+
+    await pumpEventQueue();
+    controller().setPriceText('0');
+    expect(state().serviceTotalCents, 0);
+    expect(state().canConfirm, isTrue);
+  });
+
   test('los avisos de cada fecha como en la reserva: solo un choque impide crearlo', () async {
     quotes.statuses[mondays[1]] = BookingDayStatus.blocked;
     await open(weekly());

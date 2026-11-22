@@ -716,7 +716,7 @@ class _Estimate extends StatelessWidget {
         if (estimate.isLegacy) ...[
           if (estimate.serviceCents case final cents?)
             _InfoRow(
-              label: l10n.quoteService,
+              label: l10n.rateReferenceLabel,
               value: money(cents),
               valueKey: const ValueKey('detail-estimate-total'),
               emphasized: true,

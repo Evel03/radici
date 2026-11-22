@@ -118,6 +118,19 @@ void main() {
       expect(seed.party.phoneE164, '+393331234567');
     });
 
+    test('el presupuesto del pedido: precio vacío y la tarifa solo como referencia', () async {
+      requests.requests['req-1'] = buildRequest(
+        weeks: 4,
+        preferredDate: monday,
+        estimate: fourWeeksEstimate,
+      );
+      final seed = (await seedOf(const BookingSource.quote('req-1')))!;
+      expect(seed.kind, BookingSourceKind.quote);
+      expect(seed.priceRule.suggestedFor(4), isNull);
+      expect(seed.referenceRule.suggestedFor(4), 56000);
+      expect(seed.referenceRule.suggestedFor(2), 30000);
+    });
+
     test('un pedido que ya es una reserva: la falla de entrada, sin preguntarle al servidor', () async {
       requests.requests['req-1'] = buildRequest(status: RequestStatus.accepted);
       final seed = (await seedOf(const BookingSource.request('req-1')))!;
