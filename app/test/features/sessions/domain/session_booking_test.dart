@@ -77,6 +77,32 @@ void main() {
       final booking = buildBooking(weeks: 3);
       expect(bookingPosition(booking[2], booking.take(2)), (week: 3, weeks: 3));
     });
+
+    test('bookingWeekPositions: de las semanas vivas de varias reservas, en el orden de la ficha; las de una sola semana no están', () {
+      BookingWeekRef ref(String id, String request, int day, [int hour = 10]) =>
+          (
+            id: id,
+            requestId: request,
+            date: CalendarDate(2026, 11, day),
+            start: ClockTime.hm(hour, 0),
+          );
+      final positions = bookingWeekPositions([
+        ref('c', 'r1', 25),
+        ref('a', 'r1', 11),
+        ref('b', 'r1', 18),
+        ref('solo', 'r2', 20),
+        // Mismo día: por la llegada.
+        ref('y', 'r3', 21, 12),
+        ref('x', 'r3', 21, 9),
+      ]);
+      expect(positions, {
+        'a': (week: 1, weeks: 3),
+        'b': (week: 2, weeks: 3),
+        'c': (week: 3, weeks: 3),
+        'x': (week: 1, weeks: 2),
+        'y': (week: 2, weeks: 2),
+      });
+    });
   });
 
   group('las siguientes', () {

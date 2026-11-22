@@ -991,7 +991,9 @@ void main() {
           ),
         ],
       );
-      await reveal(tester, byKey('today-pending-empty'));
+      // La semana del 18/11 todavía espera su menú: está entre los menús
+      // para mandar, no entre las reservas que terminan.
+      await reveal(tester, byKey('today-menu-${sessionId(4)}'));
       expect(byKey('today-ending-$bookingRequestId'), findsNothing);
       expect(byKey('today-ending-renovacion'), findsNothing);
     });

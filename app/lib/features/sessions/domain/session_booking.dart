@@ -5,6 +5,7 @@
 //
 // Una reserva es un pedido aceptado más sus sesiones, como mucho una viva por
 // semana (`sessions_una_por_semana`). Las canceladas no cuentan.
+import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
@@ -40,6 +41,41 @@ BookingWeekPosition? bookingPosition(
   if (live.length < 2) return null;
   final index = live.indexWhere((other) => other.id == session.id);
   return (week: index + 1, weeks: live.length);
+}
+
+/// Una semana viva de una reserva, solo lo que hace falta para saber qué
+/// semana es («Semana k de N») sin leer la ficha entera.
+typedef BookingWeekRef = ({
+  String id,
+  String requestId,
+  CalendarDate date,
+  ClockTime start,
+});
+
+/// «Semana k de N» de cada semana de [weeks] (las vivas de una o varias
+/// reservas), por id, con el orden de [compareSessions]. Las de una reserva
+/// de una sola semana no están (como en [bookingPosition]).
+Map<String, BookingWeekPosition> bookingWeekPositions(
+  Iterable<BookingWeekRef> weeks,
+) {
+  final byRequest = <String, List<BookingWeekRef>>{};
+  for (final week in weeks) {
+    byRequest.putIfAbsent(week.requestId, () => []).add(week);
+  }
+  final positions = <String, BookingWeekPosition>{};
+  for (final booking in byRequest.values) {
+    if (booking.length < 2) continue;
+    booking.sort((a, b) {
+      final byDate = a.date.compareTo(b.date);
+      if (byDate != 0) return byDate;
+      final byStart = a.start.compareTo(b.start);
+      return byStart != 0 ? byStart : a.id.compareTo(b.id);
+    });
+    for (final (index, week) in booking.indexed) {
+      positions[week.id] = (week: index + 1, weeks: booking.length);
+    }
+  }
+  return positions;
 }
 
 /// Las semanas de la reserva después de [session] que todavía se pueden
