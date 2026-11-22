@@ -601,13 +601,13 @@ const FONT_DISPLAY = `Cinzel,'Trajan Pro',${FONT}`;
 const BRAND_TAGLINE = "Cucina privata";
 
 /** Fila etiqueta / valor. `valueHtml` ya viene escapado (puede traer un link). */
-interface Row {
+export interface Row {
   label: string;
   value: string;
   valueHtml?: string;
 }
 
-type Block =
+export type Block =
   | { kind: "paragraph"; text: string }
   | { kind: "title"; text: string }
   | { kind: "rows"; rows: Row[] }
@@ -615,7 +615,7 @@ type Block =
   | { kind: "button"; label: string; href: string }
   | { kind: "link"; label: string; href: string };
 
-interface EmailDocument {
+export interface EmailDocument {
   locale: Locale;
   subject: string;
   preheader: string;
@@ -630,7 +630,9 @@ interface EmailDocument {
 function blockHtml(block: Block): string {
   switch (block.kind) {
     case "paragraph":
-      return `<p style="margin:0 0 16px;font-size:17px;line-height:1.55;">${escapeHtml(block.text)}</p>`;
+      // Puede llevar texto libre (el nombre del formulario, la nota de Evelyn con un link): una palabra que
+      // no entra se parte, como en las filas, para no ensanchar la tarjeta más allá del teléfono.
+      return `<p style="margin:0 0 16px;font-size:17px;line-height:1.55;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(block.text)}</p>`;
     case "title":
       // Rótulo como los de la web: mayúsculas espaciadas en oliva.
       return (
@@ -723,7 +725,7 @@ function logoHtml(brand: string): string {
   );
 }
 
-function render(doc: EmailDocument): RenderedEmail {
+export function render(doc: EmailDocument): RenderedEmail {
   const slogan = doc.slogan
     ? `<p style="margin:0 0 10px;font-size:17px;line-height:1.4;font-style:italic;color:${COLOR.text};">${escapeHtml(doc.slogan)}</p>`
     : "";

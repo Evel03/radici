@@ -1,26 +1,44 @@
 // Lógica de la Edge Function chef: el área de Evelyn (docs/contracts/chef-api.md). Es la única puerta
 // para crear, mover y cancelar sesiones: los estados de sesión solo cambian vía Edge Functions.
-// También traduce los platos con Claude. No depende de Deno, de supabase-js ni del SDK de Anthropic:
-// index.ts arma las dependencias reales y los tests (handler.test.ts, en Node) las simulan.
+// También traduce los platos con Claude y manda a la clienta el menú de cada semana (SPEC 5.8). No
+// depende de Deno, de supabase-js, de Resend ni del SDK de Anthropic: index.ts arma las dependencias
+// reales y los tests (handler.test.ts, en Node) las simulan.
 //
 // Rutas, todas POST: /bookings (chef_create_booking), /sessions/move (chef_move_session),
-// /sessions/cancel (chef_cancel_sessions) y /translate (el traductor). Orden: CORS → ruta (404) →
-// método (405) → configuración (500) → token (401) → usuario, con auth.getUser (401; 503 si Auth no
-// responde) → su cocina, con public.chef_id_for_user: la de la que es dueña o colaborador (403 si no
-// es de ninguna) → tipo (415) → tamaño (413) → JSON y validación (400) → función SQL con la cocina del
-// token → 200 o 201, o el error de la base traducido (400, 404, 409, 500 o 503). /translate, después
-// de la validación: traductor configurado (503) → límite por cocina (429) → traductor (200 o 503).
+// /sessions/cancel (chef_cancel_sessions), /translate (el traductor) y el envío del menú de una semana:
+// /menus/preview (chef_menu_send_context y chef_prepare_menu_send) y /menus/send (chef_link_menu_send,
+// el email y chef_complete_menu_send). Orden: CORS → ruta (404) → método (405) → configuración (500) →
+// token (401) → usuario, con auth.getUser (401; 503 si Auth no responde) → su cocina, con
+// public.chef_id_for_user: la de la que es dueña o colaborador (403 si no es de ninguna) → tipo (415) →
+// tamaño (413) → JSON y validación (400) → función SQL con la cocina del token → 200 o 201, o el error
+// de la base traducido (400, 404, 409, 500 o 503).
+// - /translate, después de la validación: traductor configurado (501) → límite por cocina (429) →
+//   traductor (200, 422, 503 o 500).
+// - /menus/preview: lo necesario para el mensaje (chef_menu_send_context: 404, o 409 si la semana ya
+//   no se manda; otra versión del menú o un menú sin platos, 409, antes de gastar una traducción) → si la
+//   clienta no lee español y hay lista, la traducción de sus renglones (nunca la nota), como /translate y
+//   con el mismo límite → la foto del envío y el envío sin salir (chef_prepare_menu_send, con la huella
+//   del contexto: si algo cambió mientras tanto, 409) → 200 con el mensaje sin el link.
+// - /menus/send: la web del link configurada (500) → el email configurado, si lo pidió (503) → el link
+//   (un token nuevo; la base guarda su hash: chef_link_menu_send) → el contacto (409 sin email o sin
+//   teléfono) → el email (502 si no sale: el envío queda sin marcar) → chef_complete_menu_send → 200,
+//   con el texto del WhatsApp si lo pidió (lo abre la app; el servidor nunca manda WhatsApp).
 //
 // Los logs llevan solo evento, ruta, códigos, contadores, largos e ids: nunca nombres, teléfonos,
-// emails, direcciones, notas, restricciones, fechas ni el texto de un plato.
+// emails, direcciones, notas, restricciones, fechas, el texto de un plato o de la lista, el mensaje
+// ni el token del link.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import {
   CHEF_MAX_PAYLOAD_BYTES,
   CHEF_ROUTES,
   DAY_STATUSES,
   MAX_CANCEL_SESSIONS,
+  SESSION_STATUSES,
+  menuSendChannels,
   parseBookingRequest,
   parseCancelSessionsRequest,
+  parseMenuPreviewRequest,
+  parseMenuSendRequest,
   parseMoveSessionRequest,
   parseTranslateRequest,
   textLength,
@@ -34,6 +52,9 @@ import {
   type ChefErrorBody,
   type ChefErrorCode,
   type ChefRoute,
+  type MenuPreviewResponse,
+  type MenuSendChannel,
+  type MenuSendResponse,
   type MoveSessionResponse,
   type NormalizedBooking,
   type TranslationSource,
@@ -49,7 +70,30 @@ import {
   type LogFields,
   type Logger,
 } from "../_shared/edge.ts";
+import { brandFromMailFrom, safeHttpUrl } from "../_shared/emails.ts";
+import { photoOrigin } from "../_shared/menu.ts";
+import { renderMenuMessage } from "../_shared/menu_message.ts";
+import { readMenuSnapshot, type MenuSnapshot } from "../_shared/menu_snapshot.ts";
 import { isIsoDate, isOneOf, isUuid, romeToday, type Locale, type Meal, type RequestType } from "../_shared/public_request.ts";
+import type { EmailMessage, SendOutcome } from "../_shared/resend.ts";
+import {
+  buildMenuSnapshot,
+  clientLinkUrl,
+  completedSendFromRpc,
+  linkedSendFromRpc,
+  menuSendContextFromRpc,
+  newClientToken,
+  preparedSendIdFromRpc,
+  sendableEmail,
+  whatsappPhone,
+  type MenuSendContext,
+} from "./menu_send.ts";
+import {
+  menuTextSource,
+  readMenuTranslationOutput,
+  translatedItemNames,
+  type MenuTextTranslation,
+} from "./menu_translation.ts";
 import {
   TRANSLATE_RATE_LIMITS,
   TRANSLATE_RETRY_AFTER_SECONDS,
@@ -85,11 +129,30 @@ export interface ChefConfig {
   translation: TranslationMode;
   /** TRANSLATE_TRANSPORT=fake fuera de un Supabase local: ignorado (error al arrancar y en cada pedido). */
   translationFakeIgnored: boolean;
+  /**
+   * El origen de las URL de las fotos de los platos en la foto del envío del menú (photoOrigin de
+   * SUPABASE_URL, como el menù de la web); null con functions serve (http://kong:8000): sin fotos.
+   */
+  photoOrigin: string | null;
+  /** EMAIL_TRANSPORT: resend (por defecto) o log (desarrollo: no manda nada, registra solo metadatos). */
+  emailTransport: "resend" | "log";
+  /** MAIL_FROM, el remitente de los emails (el mismo que public-request). */
+  mailFrom: string | null;
+  /** A dónde van las respuestas de la clienta: MAIL_REPLY_TO o, si falta, CHEF_NOTIFY_EMAIL (Evelyn). */
+  mailReplyTo: string | null;
+  /** Hay RESEND_API_KEY. La clave no queda acá: la lee solo index.ts para armar el Mailer. */
+  resendConfigured: boolean;
+  /** PUBLIC_SITE_URL (http o https): la web del link de la clienta. Sin ella, POST /menus/send da 500. */
+  publicSiteUrl: string | null;
 }
 
 export function readChefConfig(get: (name: string) => string | undefined): ChefConfig {
+  const value = (name: string): string | null => {
+    const raw = get(name)?.trim();
+    return raw ? raw : null;
+  };
   const missing: string[] = [];
-  if (!get("SUPABASE_URL")?.trim()) missing.push("SUPABASE_URL");
+  if (!value("SUPABASE_URL")) missing.push("SUPABASE_URL");
   if (!resolveServiceKey(get)) missing.push("SUPABASE_SECRET_KEYS");
   const translation = readTranslationConfig(get);
   return {
@@ -97,18 +160,32 @@ export function readChefConfig(get: (name: string) => string | undefined): ChefC
     missing,
     translation: translation.mode,
     translationFakeIgnored: translation.fakeIgnored,
+    photoOrigin: photoOrigin(value("SUPABASE_URL")),
+    emailTransport: value("EMAIL_TRANSPORT")?.toLowerCase() === "log" ? "log" : "resend",
+    mailFrom: value("MAIL_FROM"),
+    mailReplyTo: value("MAIL_REPLY_TO") ?? value("CHEF_NOTIFY_EMAIL"),
+    resendConfigured: value("RESEND_API_KEY") !== null,
+    publicSiteUrl: safeHttpUrl(value("PUBLIC_SITE_URL")),
   };
 }
 
 /**
  * Lo que falta sin cortar todo, para el aviso del arranque (solo nombres de variables): sin
  * ALLOWED_ORIGINS la bandeja web (/gestione/) no puede llamar a la función (la app nativa sí); sin
- * ANTHROPIC_API_KEY la traducción de los platos queda apagada.
+ * ANTHROPIC_API_KEY la traducción queda apagada; sin PUBLIC_SITE_URL no se puede mandar el menú (no hay
+ * link); con Resend, sin RESEND_API_KEY o MAIL_FROM el menú no sale por email (solo por WhatsApp); sin
+ * MAIL_REPLY_TO ni CHEF_NOTIFY_EMAIL, las respuestas de la clienta van al remitente.
  */
 export function chefConfigWarnings(config: ChefConfig): string[] {
   const warnings: string[] = [];
   if (config.allowedOrigins.length === 0) warnings.push("ALLOWED_ORIGINS");
   if (config.translation === "off") warnings.push("ANTHROPIC_API_KEY");
+  if (!config.publicSiteUrl) warnings.push("PUBLIC_SITE_URL");
+  if (config.emailTransport === "resend") {
+    if (!config.resendConfigured) warnings.push("RESEND_API_KEY");
+    if (!config.mailFrom) warnings.push("MAIL_FROM");
+  }
+  if (!config.mailReplyTo) warnings.push("MAIL_REPLY_TO");
   return warnings;
 }
 
@@ -154,6 +231,29 @@ export type CancelSessionsParams = {
   p_allow_with_payments: boolean;
 };
 
+/** Argumentos de public.chef_menu_send_context. */
+export type MenuSendContextParams = { p_chef_id: string; p_session_id: string };
+
+/**
+ * Argumentos de public.chef_prepare_menu_send. p_translated: se tradujo la lista; p_fingerprint: la
+ * huella del contexto con que se armó la foto (si ya no es la de la base, menu_changed).
+ */
+export type PrepareMenuSendParams = {
+  p_chef_id: string;
+  p_session_id: string;
+  p_menu_version: number;
+  p_locale: Locale;
+  p_snapshot: MenuSnapshot;
+  p_translated: boolean;
+  p_fingerprint: string;
+};
+
+/** Argumentos de public.chef_link_menu_send: el hash sha-256 (hexadecimal) del token, nunca el token. */
+export type LinkMenuSendParams = { p_chef_id: string; p_send_id: string; p_token_hash: string };
+
+/** Argumentos de public.chef_complete_menu_send. */
+export type CompleteMenuSendParams = { p_chef_id: string; p_send_id: string; p_via: MenuSendChannel[] };
+
 export interface ChefStore {
   /** auth.getUser: el id del usuario del token; null si Auth lo rechaza. Lanza StoreError si Auth no responde. */
   userIdFromToken(token: string): Promise<string | null>;
@@ -174,6 +274,19 @@ export interface ChefStore {
    * registra el intento y dice si está dentro de los topes.
    */
   hitRateLimit(key: string, maxPerHour: number, maxPerDay: number): Promise<boolean>;
+  /** public.chef_menu_send_context: el jsonb tal cual (lo interpreta menuSendContextFromRpc). */
+  menuSendContext(params: MenuSendContextParams): Promise<unknown>;
+  /** public.chef_prepare_menu_send: el jsonb tal cual ({sendId}). */
+  prepareMenuSend(params: PrepareMenuSendParams): Promise<unknown>;
+  /** public.chef_link_menu_send: el jsonb tal cual. */
+  linkMenuSend(params: LinkMenuSendParams): Promise<unknown>;
+  /** public.chef_complete_menu_send: el jsonb tal cual ({sendId, sentAt, sentVia}). */
+  completeMenuSend(params: CompleteMenuSendParams): Promise<unknown>;
+}
+
+/** Manda un email: index.ts lo arma con Resend y RESEND_API_KEY (sendWithResend); null sin la clave. */
+export interface Mailer {
+  send(message: EmailMessage): Promise<SendOutcome>;
 }
 
 export function toCreateBookingParams(chefId: string, value: NormalizedBooking): CreateBookingParams {
@@ -210,7 +323,6 @@ export interface DbErrorLike {
 }
 
 const REQUEST_STATUSES = ["new", "quoted", "accepted", "declined", "rejected", "expired", "resolved"] as const;
-const SESSION_STATUSES = ["held", "confirmed", "shopping_done", "cooked", "paid", "cancelled"] as const;
 const DATE_DETAIL_CODES = new Set(["slot_taken", "week_taken", "dates_same_week"]);
 
 /**
@@ -223,7 +335,7 @@ export function safeDbDetail(message: string | null, detail: unknown): string | 
   if (message === null || typeof detail !== "string") return null;
   if (DATE_DETAIL_CODES.has(message)) return isIsoDate(detail) ? detail : null;
   if (message === "request_not_new") return isOneOf(REQUEST_STATUSES, detail) ? detail : null;
-  if (message === "session_not_movable") return isOneOf(SESSION_STATUSES, detail) ? detail : null;
+  if (message === "session_not_movable" || message === "session_not_editable") return isOneOf(SESSION_STATUSES, detail) ? detail : null;
   if (message === "invalid_transition") return isUuid(detail) ? detail.toLowerCase() : null;
   if (message === "has_payments") {
     const ids = detail.split(",");
@@ -257,7 +369,15 @@ const NOT_FOUND = new Map<string, ChefErrorCode>([
   ["request_not_found", "requestNotFound"],
   ["client_not_found", "clientNotFound"],
   ["session_not_found", "sessionNotFound"],
+  ["menu_not_found", "menuNotFound"],
+  ["send_not_found", "sendNotFound"],
 ]);
+
+/**
+ * Validaciones de las funciones del envío del menú (22023) que nunca son culpa de la app: la función
+ * armó mal el pedido (la foto, el hash del token o los canales). 500, no 400.
+ */
+const SERVER_SIDE_INVALID = new Set(["invalid_snapshot", "invalid_token", "invalid_via"]);
 
 /** Validaciones de las funciones SQL (22023) → campo y código del 400. La función valida antes: es la defensa. */
 const FIELD_ERRORS = new Map<string, readonly [ChefApiField, ChefApiErrorCode]>([
@@ -296,6 +416,9 @@ export function dbErrorReply(error: unknown): ErrorReply {
   if (!(error instanceof StoreError)) return { status: 500, body: { error: "server" } };
   const { code, safeMessage: message, safeDetail: detail } = error;
 
+  // El menú cambió desde la vista previa (40001, la clase de los reintentos): reintentar igual no sirve.
+  if (code === "40001" && message === "menu_changed") return { status: 409, body: { error: "menuChanged" } };
+
   if (code === "23P01" || code === "23505") {
     if (detail && message === "slot_taken") return { status: 409, body: { error: "slotTaken", date: detail } };
     if (detail && message === "week_taken") return { status: 409, body: { error: "weekTaken", date: detail } };
@@ -312,6 +435,11 @@ export function dbErrorReply(error: unknown): ErrorReply {
     if (message === "has_payments") {
       return { status: 409, body: detail ? { error: "hasPayments", sessionIds: detail.split(",") } : { error: "hasPayments" } };
     }
+    if (message === "session_not_editable") {
+      return { status: 409, body: detail ? { error: "sessionNotEditable", status: detail } : { error: "sessionNotEditable" } };
+    }
+    if (message === "session_without_request") return { status: 409, body: { error: "sessionWithoutRequest" } };
+    if (message === "already_sent") return { status: 409, body: { error: "alreadySent" } };
     return { status: 409, body: { error: "conflict" } };
   }
   if (code === "P0002") {
@@ -320,6 +448,8 @@ export function dbErrorReply(error: unknown): ErrorReply {
     return notFound ? { status: 404, body: { error: notFound } } : { status: 500, body: { error: "server" } };
   }
   if (code === "22023") {
+    if (message === "menu_empty") return { status: 409, body: { error: "menuEmpty" } };
+    if (message !== null && SERVER_SIDE_INVALID.has(message)) return { status: 500, body: { error: "server" } };
     const field = message === null ? undefined : FIELD_ERRORS.get(message);
     const errors: ChefApiErrors = {};
     if (field) errors[field[0]] = field[1];
@@ -478,8 +608,10 @@ export function bearerToken(header: string | null): string | null {
 export interface ChefHandlerDeps {
   config: ChefConfig;
   store: ChefStore;
-  /** Claude (claude_translator.ts), el de mentira o null si la traducción está apagada (503). */
+  /** Claude (claude_translator.ts), el de mentira o null si la traducción está apagada (501). */
   translator: Translator | null;
+  /** Resend (index.ts) o null sin RESEND_API_KEY: el menú no sale por email (503 emailUnavailable). */
+  mailer: Mailer | null;
   now: () => Date;
   log: Logger;
 }
@@ -700,23 +832,25 @@ export function translateFailure(outcome: Exclude<TranslatorReply, { kind: "text
   }
 }
 
-/**
- * POST /translate: el plato en español → italiano e inglés (contrato §12). Sin traductor, 501 sin
- * gastar el cupo; pasado el límite de la cocina, 429; si el traductor falla, 503, 422 o 500 según el
- * motivo (translateFailure). Nunca una traducción a medias. El log lleva largos y duración, nunca el
- * texto.
- */
-async function translateRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller, input: unknown, reply: Reply): Promise<Response> {
-  const { log } = deps;
-  const route = CHEF_ROUTES.translate;
-  const parsed = parseTranslateRequest(input);
-  if (!parsed.ok) return invalidPayload(log, route, parsed, reply);
+/** Una traducción: la ruta (para el log), qué llamar del traductor y cómo leer su salida. */
+interface TranslationJob<T> {
+  route: ChefRoute;
+  /** Largos y cantidades del texto para los logs translated y translate_failed: nunca el texto. */
+  lengths: LogFields;
+  call: (translator: Translator) => Promise<TranslatorReply>;
+  /** La salida validada entera, o null (422 invalidOutput). */
+  read: (text: string) => T | null;
+}
 
-  const source: TranslationSource = parsed.value;
-  const lengths: LogFields = {
-    nameLength: textLength(source.name),
-    descriptionLength: source.description === null ? null : textLength(source.description),
-  };
+/**
+ * Lo común de /translate y de la traducción de /menus/preview (contrato §12 y §13): sin traductor, 501
+ * sin gastar el cupo; pasado el límite de la cocina (uno solo para las dos), 429; si el traductor falla,
+ * 503, 422 o 500 según el motivo (translateFailure). Nunca una traducción a medias. El log lleva largos
+ * y duración, nunca el texto. Devuelve la traducción o la respuesta con que corta.
+ */
+async function runTranslation<T>(deps: ChefHandlerDeps, { chefId, userId }: Caller, job: TranslationJob<T>, reply: Reply): Promise<T | Response> {
+  const { log } = deps;
+  const { route, lengths } = job;
   const fail = (failure: TranslateFailure, extra: LogFields = {}): Response => {
     log(failure.level, "translate_failed", { route, ...failure.fields, ...extra, ...lengths });
     return reply(failure.status, failure.body);
@@ -746,18 +880,294 @@ async function translateRoute(deps: ChefHandlerDeps, { chefId, userId }: Caller,
   const started = deps.now().getTime();
   let result: TranslatorReply;
   try {
-    result = await translator.translate(source);
+    result = await job.call(translator);
   } catch {
-    // Nunca el mensaje: podría traer el texto del plato.
+    // Nunca el mensaje: podría traer el texto del plato o de la lista.
     result = { kind: "failed", reason: "unexpected", status: null };
   }
   const ms = Math.max(0, deps.now().getTime() - started);
 
   if (result.kind !== "text") return fail(translateFailure(result), { ms });
-  const translation = readTranslationOutput(result.text, source);
-  if (!translation) return fail(translateFailure({ kind: "invalidOutput" }), { ms });
+  const translation = job.read(result.text);
+  if (translation === null) return fail(translateFailure({ kind: "invalidOutput" }), { ms });
   log("info", "translated", { route, ms, ...lengths, userId });
-  return reply(200, translation);
+  return translation;
+}
+
+/** POST /translate: el plato en español → italiano e inglés (contrato §12), con runTranslation. */
+async function translateRoute(deps: ChefHandlerDeps, caller: Caller, input: unknown, reply: Reply): Promise<Response> {
+  const route = CHEF_ROUTES.translate;
+  const parsed = parseTranslateRequest(input);
+  if (!parsed.ok) return invalidPayload(deps.log, route, parsed, reply);
+
+  const source: TranslationSource = parsed.value;
+  const translation = await runTranslation(
+    deps,
+    caller,
+    {
+      route,
+      lengths: {
+        nameLength: textLength(source.name),
+        descriptionLength: source.description === null ? null : textLength(source.description),
+      },
+      call: (translator) => translator.translate(source),
+      read: (text) => readTranslationOutput(text, source),
+    },
+    reply,
+  );
+  return translation instanceof Response ? translation : reply(200, translation);
+}
+
+// ---------------------------------------------------------------------------
+// El menú de una semana para la clienta (contrato §13)
+// ---------------------------------------------------------------------------
+
+/** Un 409 del envío decidido por la función (antes de la base): al log como rejected, sin código de la base. */
+function menuRejected(log: Logger, route: ChefRoute, error: ChefErrorCode, reply: Reply, body: ChefErrorBody = { error }): Response {
+  log("info", "rejected", { route, status: 409, error, code: null, message: null });
+  return reply(409, body);
+}
+
+/**
+ * Lo que chef_prepare_menu_send vuelve a mirar, antes de gastar una traducción: otra versión del menú
+ * (Evelyn o un colaborador guardó después de que la app lo cargó) o un menú sin platos. Una semana que ya
+ * no se manda (cancelada, cocinada o cobrada) la rechaza antes chef_menu_send_context (409
+ * sessionNotEditable).
+ */
+function earlyMenuRejection(context: MenuSendContext, menuVersion: number): ChefErrorCode | null {
+  if (context.menu.version !== menuVersion) return "menuChanged";
+  if (context.menu.dishes.length === 0) return "menuEmpty";
+  return null;
+}
+
+/**
+ * POST /menus/preview: la vista previa del mensaje en el idioma de la clienta. Si no lee español y hay
+ * lista, los nombres de sus renglones se traducen con Claude (como /translate, con el mismo límite;
+ * translate: false los deja como están). La nota nunca se traduce: sale como la escribió Evelyn. Guarda
+ * el envío sin salir con la foto de lo que va a recibir y la huella del contexto, y devuelve el mensaje
+ * sin el link (se crea al enviar) y el contacto, para que Evelyn lo revise.
+ */
+async function menuPreviewRoute(deps: ChefHandlerDeps, caller: Caller, input: unknown, reply: Reply): Promise<Response> {
+  const { config, log } = deps;
+  const route = CHEF_ROUTES.menuPreview;
+  const parsed = parseMenuPreviewRequest(input);
+  if (!parsed.ok) return invalidPayload(log, route, parsed, reply);
+  const { sessionId, menuVersion, translate } = parsed.value;
+
+  let raw: unknown;
+  try {
+    raw = await deps.store.menuSendContext({ p_chef_id: caller.chefId, p_session_id: sessionId });
+  } catch (error) {
+    return dbFailure(log, route, "menu_send_context", error, reply);
+  }
+  const context = menuSendContextFromRpc(raw);
+  if (!context) return unexpectedResult(log, "menu_send_context", reply);
+  const early = earlyMenuRejection(context, menuVersion);
+  if (early) return menuRejected(log, route, early, reply);
+
+  // La lista la escribe Evelyn (en español): sus renglones, a otro idioma con Claude. Los platos ya tienen
+  // sus traducciones guardadas y la nota sale como ella la escribió (nunca va a Anthropic).
+  const locale = context.locale;
+  const itemNames = context.menu.items.map((item) => item.name);
+  let names: ReadonlyMap<string, string> | null = null;
+  let translated = false;
+  if (translate && locale !== "es" && itemNames.length > 0) {
+    const source = menuTextSource(locale, itemNames);
+    const translation = await runTranslation<MenuTextTranslation>(
+      deps,
+      caller,
+      {
+        route,
+        lengths: { items: source.items.length },
+        call: (translator) => translator.translateMenu(source),
+        read: (text) => readMenuTranslationOutput(text, source),
+      },
+      reply,
+    );
+    if (translation instanceof Response) return translation;
+    names = translatedItemNames(source, translation);
+    translated = true;
+  }
+
+  const snapshot = buildMenuSnapshot(context, { chefId: caller.chefId, photoOrigin: config.photoOrigin, itemNames: names });
+  let prepared: unknown;
+  try {
+    prepared = await deps.store.prepareMenuSend({
+      p_chef_id: caller.chefId,
+      p_session_id: sessionId,
+      p_menu_version: menuVersion,
+      p_locale: locale,
+      p_snapshot: snapshot,
+      p_translated: translated,
+      // Si el día, las semanas, el menú o un plato cambiaron mientras se armaba la foto, no se guarda.
+      p_fingerprint: context.fingerprint,
+    });
+  } catch (error) {
+    return dbFailure(log, route, "prepare_menu_send", error, reply);
+  }
+  const sendId = preparedSendIdFromRpc(prepared);
+  if (!sendId) return unexpectedResult(log, "prepare_menu_send", reply);
+
+  const message = renderMenuMessage({
+    brand: brandFromMailFrom(config.mailFrom),
+    chefName: context.chefName,
+    clientName: context.contact.name,
+    snapshot,
+    link: null,
+  });
+  log("info", "menu_previewed", {
+    route,
+    sendId,
+    sessionId,
+    locale,
+    translated,
+    dishes: snapshot.dishes.length,
+    items: snapshot.items.length,
+    hasNote: snapshot.note !== null,
+    userId: caller.userId,
+  });
+  const body: MenuPreviewResponse = {
+    sendId,
+    locale,
+    translated,
+    contact: context.contact,
+    message: { subject: message.subject, emailText: message.text, whatsappText: message.whatsapp },
+  };
+  return reply(200, body);
+}
+
+/** El email del menú se puede mandar: con EMAIL_TRANSPORT=log siempre (no sale); si no, con Resend y MAIL_FROM. */
+function emailReady(deps: ChefHandlerDeps): boolean {
+  return deps.config.emailTransport === "log" || (deps.mailer !== null && deps.config.mailFrom !== null);
+}
+
+/** Manda (o registra, con EMAIL_TRANSPORT=log) el email del menú. true si salió. El log, sin la dirección. */
+async function deliverMenuEmail(deps: ChefHandlerDeps, route: ChefRoute, sendId: string, message: EmailMessage): Promise<boolean> {
+  const { log } = deps;
+  if (deps.config.emailTransport === "log") {
+    log("info", "email_logged", { route, sendId, htmlChars: message.html.length, textChars: message.text.length });
+    return true;
+  }
+  if (!deps.mailer) return false;
+  let outcome: SendOutcome;
+  try {
+    outcome = await deps.mailer.send(message);
+  } catch {
+    outcome = { ok: false, status: null, errorName: "unexpected" };
+  }
+  if (outcome.ok) {
+    log("info", "email_sent", { route, sendId });
+    return true;
+  }
+  log("error", "email_failed", { route, sendId, status: outcome.status, errorName: outcome.errorName });
+  return false;
+}
+
+/** Un token repetido en client_links (no debería pasar: 256 bits al azar). */
+function isTokenCollision(error: unknown): boolean {
+  return error instanceof StoreError && error.code === "23505";
+}
+
+/**
+ * POST /menus/send: manda el envío de una vista previa. Crea el link (un token nuevo; la base guarda su
+ * hash), manda el email si lo pidió y lo marca enviado. Si el email no sale, 502 y el envío queda sin
+ * marcar (la app ofrece reintentar o mandarlo solo por WhatsApp). El WhatsApp lo abre la app con el texto
+ * que devuelve: el servidor nunca lo manda.
+ */
+async function menuSendRoute(deps: ChefHandlerDeps, caller: Caller, input: unknown, reply: Reply): Promise<Response> {
+  const { config, log } = deps;
+  const route = CHEF_ROUTES.menuSend;
+  const parsed = parseMenuSendRequest(input);
+  if (!parsed.ok) return invalidPayload(log, route, parsed, reply);
+  const { sendId, email, whatsapp } = parsed.value;
+
+  const siteUrl = config.publicSiteUrl;
+  if (!siteUrl) {
+    log("error", "config_missing", { missing: ["PUBLIC_SITE_URL"] });
+    return reply(500, { error: "server" });
+  }
+  if (email && !emailReady(deps)) {
+    log("warn", "email_skipped", { route, sendId, reason: "not_configured" });
+    return reply(503, { error: "emailUnavailable" });
+  }
+
+  // El link: el token va solo en el mensaje; la base guarda su hash. Si el hash ya existe, otro token.
+  const link = async (hash: string): Promise<unknown> =>
+    await deps.store.linkMenuSend({ p_chef_id: caller.chefId, p_send_id: sendId, p_token_hash: hash });
+  let token = await newClientToken();
+  let raw: unknown;
+  try {
+    raw = await link(token.hash);
+  } catch (error) {
+    if (!isTokenCollision(error)) return dbFailure(log, route, "link_menu_send", error, reply);
+    log("warn", "token_collision", { route, sendId });
+    token = await newClientToken();
+    try {
+      raw = await link(token.hash);
+    } catch (retryError) {
+      return dbFailure(log, route, "link_menu_send", retryError, reply);
+    }
+  }
+  const linked = linkedSendFromRpc(raw);
+  if (!linked || linked.sendId !== sendId) return unexpectedResult(log, "link_menu_send", reply);
+  const snapshot = readMenuSnapshot(linked.snapshot);
+  if (!snapshot) return unexpectedResult(log, "menu_snapshot", reply);
+
+  // El contacto de ahora (el del pedido de la web o el de la ficha), antes de mandar nada.
+  const to = sendableEmail(linked.contact.email);
+  if (email && !to) return menuRejected(log, route, "noEmail", reply);
+  const phone = whatsappPhone(linked.contact.phone);
+  if (whatsapp && !phone) return menuRejected(log, route, "noPhone", reply);
+
+  const message = renderMenuMessage({
+    brand: brandFromMailFrom(config.mailFrom),
+    chefName: linked.chefName,
+    clientName: linked.contact.name,
+    snapshot,
+    link: clientLinkUrl(siteUrl, token.token),
+  });
+  if (email && to) {
+    const sent = await deliverMenuEmail(deps, route, sendId, {
+      from: config.mailFrom ?? "",
+      to,
+      // Las respuestas de la clienta le llegan a Evelyn.
+      replyTo: config.mailReplyTo,
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+      // Una clave por link: el mismo intento se reintenta sin duplicar; otro intento es otro email (con otro link).
+      idempotencyKey: `menu-send-${sendId}-${token.hash.slice(0, 16)}`,
+    });
+    if (!sent) return reply(502, { error: "emailFailed" });
+  }
+
+  // Si el email ya salió y no se puede marcar, la respuesta lo dice (emailSent): reintentar manda otro.
+  const afterEmail = (status: number, body: ChefErrorBody): Response =>
+    reply(status, email && "error" in body ? { ...body, emailSent: true } : body);
+  let completed: unknown;
+  try {
+    completed = await deps.store.completeMenuSend({ p_chef_id: caller.chefId, p_send_id: sendId, p_via: menuSendChannels(parsed.value) });
+  } catch (error) {
+    const mapped = dbErrorReply(error);
+    if (email) {
+      const store = error instanceof StoreError ? error : null;
+      log("error", "menu_send_incomplete", { route, sendId, status: mapped.status, code: store?.code ?? null, message: store?.safeMessage ?? null });
+      return afterEmail(mapped.status, "error" in mapped.body ? mapped.body : { error: "server" });
+    }
+    return dbFailure(log, route, "complete_menu_send", error, reply);
+  }
+  const result = completedSendFromRpc(completed);
+  if (!result) {
+    log("error", "unexpected_result", { op: "complete_menu_send" });
+    return afterEmail(500, { error: "server" });
+  }
+  log("info", "menu_sent", { route, sendId, via: result.sentVia, userId: caller.userId });
+  const body: MenuSendResponse = { sentAt: result.sentAt, sentVia: result.sentVia };
+  if (whatsapp && phone) {
+    body.whatsappText = message.whatsapp;
+    body.whatsappPhone = phone;
+  }
+  return reply(200, body);
 }
 
 export function createChefHandler(deps: ChefHandlerDeps): (request: Request) => Promise<Response> {
@@ -816,6 +1226,10 @@ export function createChefHandler(deps: ChefHandlerDeps): (request: Request) => 
           return await cancelRoute(deps, auth, input, reply);
         case CHEF_ROUTES.translate:
           return await translateRoute(deps, auth, input, reply);
+        case CHEF_ROUTES.menuPreview:
+          return await menuPreviewRoute(deps, auth, input, reply);
+        case CHEF_ROUTES.menuSend:
+          return await menuSendRoute(deps, auth, input, reply);
         default:
           return reply(404, { error: "notFound" });
       }

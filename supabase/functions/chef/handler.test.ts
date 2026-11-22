@@ -1,13 +1,17 @@
 // Tests de la Edge Function chef con dependencias simuladas (docs/contracts/chef-api.md).
-// Correr con: npm test (node --test). La función real (index.ts) solo conecta Supabase, Deno y el SDK
-// de Anthropic; la base simulada imita lo que importa de chef_create_booking, chef_move_session,
-// chef_cancel_sessions y hit_public_request_rate (lo demás lo prueba supabase/tests/database/), y el
-// traductor simulado responde como claude_translator.ts (sus partes puras: translation.test.ts).
+// Correr con: npm test (node --test). La función real (index.ts) solo conecta Supabase, Deno, Resend y
+// el SDK de Anthropic; la base simulada imita lo que importa de chef_create_booking, chef_move_session,
+// chef_cancel_sessions, hit_public_request_rate y las funciones del envío del menú (chef_menu_send_context,
+// chef_prepare_menu_send, chef_link_menu_send y chef_complete_menu_send; lo demás lo prueba
+// supabase/tests/database/), el traductor simulado responde como claude_translator.ts (sus partes puras:
+// translation.test.ts y menu_translation.test.ts) y el Mailer simulado, como Resend.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { TranslationSource } from "../_shared/chef_api.ts";
 import { StoreError, type LogFields } from "../_shared/edge.ts";
+import type { EmailMessage, SendOutcome } from "../_shared/resend.ts";
 import {
   CHEF_CORS_METHODS,
   authFailureKind,
@@ -26,9 +30,15 @@ import {
   type CancelSessionsParams,
   type ChefHandlerDeps,
   type ChefStore,
+  type CompleteMenuSendParams,
   type CreateBookingParams,
+  type LinkMenuSendParams,
+  type Mailer,
+  type MenuSendContextParams,
   type MoveSessionParams,
+  type PrepareMenuSendParams,
 } from "./handler.ts";
+import type { MenuTextSource } from "./menu_translation.ts";
 import { fakeTranslator, translateRateKey, type Translator, type TranslatorReply } from "./translation.ts";
 
 const CHEF_ID = "cef00000-0000-4000-8000-000000000001";
@@ -51,6 +61,11 @@ const ENV: Record<string, string> = {
   SUPABASE_URL: "http://127.0.0.1:54321",
   SUPABASE_SECRET_KEYS: '{"default":"sb_secret_prueba"}',
   ALLOWED_ORIGINS: `${ORIGIN},http://localhost:8080`,
+  // Las del email y el link del menú (§13), compartidas con public-request.
+  RESEND_API_KEY: "re_prueba",
+  MAIL_FROM: "Radici <ciao@radicicucina.app>",
+  MAIL_REPLY_TO: "evelyn.reply@example.test",
+  PUBLIC_SITE_URL: "https://radicicucina.app",
 };
 
 /** Un JWT con la forma de los de Supabase (la firma es falsa: lo valida la base simulada, como Auth). */
@@ -73,7 +88,79 @@ function split(total: number, parts: number): number[] {
   return Array.from({ length: parts }, (_, i) => Math.floor(total / parts) + (i < total % parts ? 1 : 0));
 }
 
-type Op = "get_user" | "load_chef" | "create_booking" | "move_session" | "cancel_sessions" | "rate_limit";
+type Op =
+  | "get_user"
+  | "load_chef"
+  | "create_booking"
+  | "move_session"
+  | "cancel_sessions"
+  | "rate_limit"
+  | "menu_send_context"
+  | "prepare_menu_send"
+  | "link_menu_send"
+  | "complete_menu_send";
+
+// El menú de una semana (§13), con textos fáciles de buscar en los logs.
+const MENU_VERSION = 3;
+const RECIPE_ID = "aaaa0000-0000-4000-8000-000000000001";
+const PHOTO_ID = "bbbb0000-0000-4000-8000-000000000001";
+const MENU_NOTE = "NOTA-MENU-qqq: tené listos 4 táperes.";
+const LINK_CONTACT = { name: "Mariaxyz Bianchiqwe", email: "maria.pii@example.test", phone: "+393337654321" };
+const SENT_AT = "2026-11-16T10:00:00.123456+00:00";
+/** La huella de la foto (private.menu_send_fingerprint, md5): la de ahora y la de después de un cambio. */
+const FINGERPRINT = "0123456789abcdef0123456789abcdef";
+const MOVED_FINGERPRINT = "fedcba9876543210fedcba9876543210";
+
+/** Id del n-ésimo envío preparado por la base simulada. */
+function sendIdOf(n: number): string {
+  return `5e550000-0000-4000-8000-${String(900 + n).padStart(12, "0")}`;
+}
+
+/**
+ * Lo que devuelve chef_menu_send_context (la forma de la migración 20261121100000_menu_sends.sql), más
+ * datos que la base nunca manda (dirección, restricciones) para comprobar que tampoco salen.
+ */
+function menuContextRpc(overrides: Record<string, unknown> = {}, menu: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    session: { id: SESSION_ID, date: "2026-11-30", start: "10:00", status: "confirmed", requestId: REQUEST_ID, week: 1, weeks: 2 },
+    weeks: [
+      { sessionId: SESSION_ID, date: "2026-11-30", start: "10:00" },
+      { sessionId: OTHER_SESSION_ID, date: "2026-12-07", start: "10:00" },
+    ],
+    request: { id: REQUEST_ID, type: "week", locale: "it", adults: 2, kids: 0, days: 5, meals: ["dinner"], restrictions: "NOTA-SALUD-zzz" },
+    contact: { name: "Mariaxyz Bianchiqwe", email: "maria.pii@example.test", phone: "+39 333 765 4321", address: "Via Segretissima 42" },
+    chef: { displayName: "Evelyn" },
+    menu: {
+      version: MENU_VERSION,
+      note: MENU_NOTE,
+      allergensConfirmed: true,
+      dishes: [
+        {
+          recipeId: RECIPE_ID,
+          portions: 6,
+          nameIt: "Milanesaxyz alla napoletana",
+          nameEs: "Milanesaxyz a la napolitana",
+          nameEn: null,
+          descriptionIt: "Con DescripQwe pomodoro.",
+          descriptionEs: null,
+          descriptionEn: null,
+          diet: null,
+          photoId: PHOTO_ID,
+          allergens: ["gluten", "milk"],
+        },
+      ],
+      items: [
+        { name: "Zapallitoszzz", section: "produce", quantity: 1250, unit: "g" },
+        { name: "sal", section: "pantry", quantity: null, unit: null },
+        { name: "Zapallitoszzz", section: "produce", quantity: 250, unit: "g" },
+      ],
+      ...menu,
+    },
+    lastSend: null,
+    fingerprint: FINGERPRINT,
+    ...overrides,
+  };
+}
 
 interface FakeSession {
   id: string;
@@ -118,6 +205,27 @@ class FakeStore implements ChefStore {
   rateHits: Array<{ key: string; maxPerHour: number; maxPerDay: number }> = [];
   /** Lo que contesta hit_public_request_rate: dentro del límite o no. */
   rateAllowed = true;
+  /** Lo que devuelve chef_menu_send_context. */
+  menuContext: unknown = menuContextRpc();
+  contextCalls: MenuSendContextParams[] = [];
+  prepareCalls: PrepareMenuSendParams[] = [];
+  linkCalls: LinkMenuSendParams[] = [];
+  completeCalls: CompleteMenuSendParams[] = [];
+  /** Los envíos preparados: la foto (como la guarda la base, en JSON), el idioma, su huella y si ya salió. */
+  sends = new Map<string, { snapshot: unknown; locale: string; fingerprint: string; sent: boolean }>();
+  /**
+   * La huella de ahora (private.menu_send_fingerprint). Cambiarla simula que se movió la sesión, se
+   * canceló otra semana o cambió un plato: prepare, link y complete dan menu_changed.
+   */
+  fingerprint = FINGERPRINT;
+  /** El contacto de ahora que devuelve chef_link_menu_send. */
+  linkContact: unknown = { ...LINK_CONTACT };
+  /** Cuántas veces chef_link_menu_send responde 23505 (token repetido) antes de crear el link. */
+  linkCollisions = 0;
+  /** Respuestas crudas que reemplazan a las simuladas del envío. */
+  prepareRaw: unknown = undefined;
+  linkRaw: unknown = undefined;
+  completeRaw: unknown = undefined;
 
   private fail(op: Op): void {
     if (this.failures.has(op)) throw this.failures.get(op);
@@ -227,6 +335,84 @@ class FakeStore implements ChefStore {
     this.writes += params.p_session_ids.length;
     return { cancelled: params.p_session_ids, already_cancelled: [], with_payments: [], had_payments: false };
   }
+
+  async menuSendContext(params: MenuSendContextParams): Promise<unknown> {
+    this.contextCalls.push(params);
+    this.fail("menu_send_context");
+    return this.menuContext;
+  }
+
+  private menuChanged(op: Op): StoreError {
+    return storeErrorFrom(op, { code: "40001", message: "menu_changed" });
+  }
+
+  async prepareMenuSend(params: PrepareMenuSendParams): Promise<unknown> {
+    this.prepareCalls.push(params);
+    this.fail("prepare_menu_send");
+    if (this.prepareRaw !== undefined) return this.prepareRaw;
+    if (params.p_fingerprint !== this.fingerprint) throw this.menuChanged("prepare_menu_send");
+    const sendId = sendIdOf(this.sends.size);
+    this.sends.set(sendId, {
+      snapshot: JSON.parse(JSON.stringify(params.p_snapshot)),
+      locale: params.p_locale,
+      fingerprint: params.p_fingerprint,
+      sent: false,
+    });
+    return { sendId };
+  }
+
+  async linkMenuSend(params: LinkMenuSendParams): Promise<unknown> {
+    this.linkCalls.push(params);
+    if (this.linkCollisions > 0) {
+      this.linkCollisions--;
+      throw storeErrorFrom("link_menu_send", {
+        code: "23505",
+        message: 'duplicate key value violates unique constraint "client_links_pkey"',
+        details: `Key (token_hash)=(${params.p_token_hash}) already exists.`,
+      });
+    }
+    this.fail("link_menu_send");
+    if (this.linkRaw !== undefined) return this.linkRaw;
+    const send = this.sends.get(params.p_send_id);
+    if (!send) throw storeErrorFrom("link_menu_send", { code: "P0002", message: "send_not_found" });
+    if (send.sent) throw storeErrorFrom("link_menu_send", { code: "55000", message: "already_sent" });
+    if (send.fingerprint !== this.fingerprint) throw this.menuChanged("link_menu_send");
+    return {
+      sendId: params.p_send_id,
+      sessionId: SESSION_ID,
+      requestId: REQUEST_ID,
+      locale: send.locale,
+      snapshot: send.snapshot,
+      contact: this.linkContact,
+      chefName: "Evelyn",
+    };
+  }
+
+  async completeMenuSend(params: CompleteMenuSendParams): Promise<unknown> {
+    this.completeCalls.push(params);
+    this.fail("complete_menu_send");
+    if (this.completeRaw !== undefined) return this.completeRaw;
+    const send = this.sends.get(params.p_send_id);
+    if (send && send.fingerprint !== this.fingerprint) throw this.menuChanged("complete_menu_send");
+    if (send) send.sent = true;
+    return { sendId: params.p_send_id, sentAt: SENT_AT, sentVia: [...params.p_via].sort() };
+  }
+}
+
+/** El Mailer simulado: guarda los emails y responde como Resend (`outcome`); `throws` lo hace explotar. */
+class FakeMailer implements Mailer {
+  messages: EmailMessage[] = [];
+  outcome: SendOutcome = { ok: true, id: "re_123" };
+  throws: unknown = undefined;
+  /** Se llama mientras «manda» (para simular algo que cambia en la base en ese momento). */
+  during: () => void = () => {};
+
+  async send(message: EmailMessage): Promise<SendOutcome> {
+    this.messages.push(message);
+    this.during();
+    if (this.throws !== undefined) throw this.throws;
+    return this.outcome;
+  }
 }
 
 /**
@@ -237,6 +423,9 @@ class FakeTranslator implements Translator {
   calls: TranslationSource[] = [];
   reply: TranslatorReply | null = null;
   throws: unknown = undefined;
+  /** Los nombres de la lista de un menú: lo que recibió y lo que contesta (por defecto, el de mentira). */
+  menuCalls: MenuTextSource[] = [];
+  menuReply: TranslatorReply | null = null;
   /** Se llama mientras «traduce» (para simular el tiempo que tarda). */
   during: () => void = () => {};
 
@@ -246,30 +435,40 @@ class FakeTranslator implements Translator {
     if (this.throws !== undefined) throw this.throws;
     return this.reply ?? (await fakeTranslator.translate(source));
   }
+
+  async translateMenu(source: MenuTextSource): Promise<TranslatorReply> {
+    this.menuCalls.push(source);
+    this.during();
+    if (this.throws !== undefined) throw this.throws;
+    return this.menuReply ?? (await fakeTranslator.translateMenu(source));
+  }
 }
 
 interface Harness {
   handle: (request: Request) => Promise<Response>;
   store: FakeStore;
   translator: FakeTranslator;
+  mailer: FakeMailer;
   logs: Array<{ level: string; event: string; fields: LogFields }>;
 }
 
-function harness(options: { env?: Record<string, string | undefined>; now?: () => Date; translator?: null } = {}): Harness {
+function harness(options: { env?: Record<string, string | undefined>; now?: () => Date; translator?: null; mailer?: null } = {}): Harness {
   const env: Record<string, string | undefined> = { ...ENV, ...options.env };
   const store = new FakeStore();
   const translator = new FakeTranslator();
+  const mailer = new FakeMailer();
   const logs: Harness["logs"] = [];
   const deps: ChefHandlerDeps = {
     config: readChefConfig((name) => env[name]),
     store,
     translator: options.translator === null ? null : translator,
+    mailer: options.mailer === null ? null : mailer,
     now: options.now ?? (() => NOW),
     log: (level, event, fields = {}) => {
       logs.push({ level, event, fields });
     },
   };
-  return { handle: createChefHandler(deps), store, translator, logs };
+  return { handle: createChefHandler(deps), store, translator, mailer, logs };
 }
 
 interface PostOptions {
@@ -467,6 +666,8 @@ test("403 para un usuario válido que no es la cocinera, en todas las rutas, sin
     ["/sessions/move", { sessionId: SESSION_ID, date: "2026-11-25" }],
     ["/sessions/cancel", { sessionIds: [SESSION_ID] }],
     ["/translate", { name: "Locro" }],
+    ["/menus/preview", { sessionId: SESSION_ID, menuVersion: MENU_VERSION }],
+    ["/menus/send", { sendId: sendIdOf(0), email: true }],
   ];
   for (const [route, body] of routes) {
     const response = await handle(post(route, body, { token: TOKEN_CLIENT }));
@@ -474,9 +675,10 @@ test("403 para un usuario válido que no es la cocinera, en todas las rutas, sin
     assert.deepEqual(await json(response), { error: "forbidden" });
     assert.ok(logs.some((entry) => entry.event === "forbidden" && entry.fields["route"] === route && entry.fields["userId"] === USER_CLIENT));
   }
-  assert.deepEqual(store.chefLookups, [USER_CLIENT, USER_CLIENT, USER_CLIENT, USER_CLIENT], "la cocinera se busca por el usuario del token");
+  assert.deepEqual(store.chefLookups, Array(routes.length).fill(USER_CLIENT), "la cocinera se busca por el usuario del token");
   assert.equal(store.bookingCalls.length + store.moveCalls.length + store.cancelCalls.length, 0);
-  assert.equal(translator.calls.length + store.rateHits.length, 0, "ni traduce ni gasta el cupo de la cocina");
+  assert.equal(translator.calls.length + translator.menuCalls.length + store.rateHits.length, 0, "ni traduce ni gasta el cupo de la cocina");
+  assert.equal(store.contextCalls.length + store.prepareCalls.length + store.linkCalls.length + store.completeCalls.length, 0, "ni toca los envíos");
 });
 
 test("un colaborador de la cocinera entra con la cocina de la que es colaborador, en todas las rutas", async () => {
@@ -1409,8 +1611,10 @@ test("handler.ts no conoce el SDK de Anthropic: recibe un Translator (index.ts a
   for (const line of imports("./handler.ts")) {
     assert.doesNotMatch(line, /anthropic|claude_translator/, line);
   }
-  for (const line of imports("./translation.ts")) {
-    assert.doesNotMatch(line, /anthropic|claude_translator/, `las partes puras tampoco (corren en Node): ${line}`);
+  for (const file of ["./translation.ts", "./menu_translation.ts", "./menu_send.ts"]) {
+    for (const line of imports(file)) {
+      assert.doesNotMatch(line, /anthropic|claude_translator|npm:/, `las partes puras tampoco (corren en Node): ${file}: ${line}`);
+    }
   }
 });
 
@@ -1571,6 +1775,8 @@ test("readChefConfig: orígenes de ALLOWED_ORIGINS, lo que falta de Supabase y d
   assert.equal(withKey.translation, "claude");
   assert.deepEqual(chefConfigWarnings(withKey), []);
   assert.ok(!JSON.stringify(withKey).includes("sk-ant-prueba"), "la clave no queda en la configuración (la lee solo index.ts)");
+  assert.ok(!JSON.stringify(withKey).includes("re_prueba"), "la de Resend tampoco: solo si está (la lee index.ts)");
+  assert.equal(withKey.resendConfigured, true);
   const fake = readChefConfig((name) => ({ ...ENV, TRANSLATE_TRANSPORT: "fake" })[name]);
   assert.equal(fake.translation, "fake", "con el Supabase local de los tests (127.0.0.1)");
   assert.equal(fake.translationFakeIgnored, false);
@@ -1584,8 +1790,779 @@ test("readChefConfig: orígenes de ALLOWED_ORIGINS, lo que falta de Supabase y d
 
   const empty = readChefConfig(() => undefined);
   assert.deepEqual(empty.missing, ["SUPABASE_URL", "SUPABASE_SECRET_KEYS"]);
-  assert.deepEqual(chefConfigWarnings(empty), ["ALLOWED_ORIGINS", "ANTHROPIC_API_KEY"], "sin CORS la app web no la puede llamar (la nativa sí)");
+  assert.deepEqual(
+    chefConfigWarnings(empty),
+    ["ALLOWED_ORIGINS", "ANTHROPIC_API_KEY", "PUBLIC_SITE_URL", "RESEND_API_KEY", "MAIL_FROM", "MAIL_REPLY_TO"],
+    "sin CORS la app web no la puede llamar (la nativa sí); sin la web, el menú no sale; sin Resend, solo por WhatsApp",
+  );
 
   const legacy = readChefConfig((name) => ({ SUPABASE_URL: " http://x ", SUPABASE_SERVICE_ROLE_KEY: "legacy" })[name]);
   assert.deepEqual(legacy.missing, []);
+});
+
+// ---------------------------------------------------------------------------
+// POST /menus/preview y /menus/send: el menú de una semana para la clienta (§13)
+// ---------------------------------------------------------------------------
+
+function previewBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { sessionId: SESSION_ID, menuVersion: MENU_VERSION, ...overrides };
+}
+
+/** El token del link en un mensaje (#t=…, 43 caracteres base64url), o null. */
+function tokenIn(text: string): string | null {
+  return /\/prenotazione\/#t=([A-Za-z0-9_-]{43})(?![A-Za-z0-9_-])/.exec(text)?.[1] ?? null;
+}
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/** Una vista previa que salió bien: su respuesta. */
+// deno-lint-ignore no-explicit-any
+async function previewed(run: Harness, body: Record<string, unknown> = previewBody()): Promise<any> {
+  const response = await run.handle(post("/menus/preview", body));
+  assert.equal(response.status, 200, "la vista previa");
+  return await json(response);
+}
+
+test("vista previa: 200 con el mensaje en italiano sin link, el contacto, la lista traducida y la nota tal cual", async () => {
+  const run = harness();
+  const response = await run.handle(post("/menus/preview", previewBody()));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("access-control-allow-origin"), ORIGIN);
+  const body = await json(response);
+  assert.deepEqual(Object.keys(body).sort(), ["contact", "locale", "message", "sendId", "translated"]);
+  assert.equal(body.sendId, sendIdOf(0));
+  assert.equal(body.locale, "it");
+  assert.equal(body.translated, true);
+  assert.deepEqual(body.contact, { name: "Mariaxyz Bianchiqwe", email: "maria.pii@example.test", phone: "+39 333 765 4321" }, "para que Evelyn lo revise");
+  assert.deepEqual(Object.keys(body.message).sort(), ["emailText", "subject", "whatsappText"]);
+  assert.equal(body.message.subject, "Radici: il menù della settimana 1 di 2 (30 nov)");
+  for (const text of [body.message.emailText, body.message.whatsappText]) {
+    assert.ok(text.includes("Ciao Mariaxyz!"));
+    assert.ok(text.includes("Milanesaxyz alla napoletana"));
+    assert.ok(text.includes("[it] Zapallitoszzz: 1,25 kg"));
+    assert.ok(text.includes("[it] Zapallitoszzz: 250 g"));
+    assert.ok(text.includes(MENU_NOTE), "la nota, como la escribió Evelyn");
+    assert.ok(!text.includes("[it] NOTA"), "la nota nunca se traduce");
+    assert.ok(text.includes("[link personale per confermare]"), "sin link: se crea al enviar");
+    assert.equal(tokenIn(text), null);
+    for (const marker of ["Segretissima", "NOTA-SALUD", "maria.pii", "765 4321"]) assert.ok(!text.includes(marker), marker);
+  }
+
+  // A Claude, solo los nombres de la lista (sin repetir), nunca la nota; con el cupo de la cocina, el de /translate.
+  assert.deepEqual(run.translator.menuCalls, [{ target: "it", items: ["Zapallitoszzz", "sal"] }]);
+  assert.ok(!JSON.stringify(run.translator.menuCalls).includes("NOTA-MENU"));
+  assert.deepEqual(run.store.rateHits, [{ key: await translateRateKey(CHEF_ID), maxPerHour: 60, maxPerDay: 150 }]);
+  assert.deepEqual(run.store.contextCalls, [{ p_chef_id: CHEF_ID, p_session_id: SESSION_ID }]);
+
+  // La foto que guarda la base: en italiano, con la foto del plato de la web y la lista traducida.
+  const [prepare] = run.store.prepareCalls;
+  assert.ok(prepare);
+  assert.equal(prepare.p_chef_id, CHEF_ID);
+  assert.equal(prepare.p_session_id, SESSION_ID);
+  assert.equal(prepare.p_menu_version, MENU_VERSION);
+  assert.equal(prepare.p_locale, "it");
+  assert.equal(prepare.p_translated, true, "se tradujo la lista");
+  assert.equal(prepare.p_fingerprint, FINGERPRINT, "la huella del contexto con que se armó la foto");
+  assert.deepEqual(prepare.p_snapshot, {
+    v: 1,
+    locale: "it",
+    session: { date: "2026-11-30", start: "10:00", week: 1, weeks: 2 },
+    weeks: [
+      { date: "2026-11-30", start: "10:00" },
+      { date: "2026-12-07", start: "10:00" },
+    ],
+    dishes: [
+      {
+        name: "Milanesaxyz alla napoletana",
+        description: "Con DescripQwe pomodoro.",
+        allergens: ["gluten", "milk"],
+        diet: null,
+        portions: 6,
+        photo: {
+          thumb: `http://127.0.0.1:54321/storage/v1/object/public/recipe-photos/${CHEF_ID}/${RECIPE_ID}/${PHOTO_ID}-thumb.jpg`,
+          full: `http://127.0.0.1:54321/storage/v1/object/public/recipe-photos/${CHEF_ID}/${RECIPE_ID}/${PHOTO_ID}.jpg`,
+        },
+      },
+    ],
+    items: [
+      { name: "[it] Zapallitoszzz", section: "produce", quantity: 1250, unit: "g" },
+      { name: "[it] sal", section: "pantry", quantity: null, unit: null },
+      { name: "[it] Zapallitoszzz", section: "produce", quantity: 250, unit: "g" },
+    ],
+    note: MENU_NOTE,
+  });
+  const snapshotText = JSON.stringify(prepare.p_snapshot);
+  for (const marker of ["Mariaxyz", "maria.pii", "765", "Segretissima", "NOTA-SALUD", REQUEST_ID, FINGERPRINT]) assert.ok(!snapshotText.includes(marker), marker);
+
+  assert.deepEqual(run.logs.find((entry) => entry.event === "translated")?.fields, {
+    route: "/menus/preview",
+    ms: 0,
+    items: 2,
+    userId: USER_EVELYN,
+  });
+  assert.deepEqual(run.logs.find((entry) => entry.event === "menu_previewed")?.fields, {
+    route: "/menus/preview",
+    sendId: sendIdOf(0),
+    sessionId: SESSION_ID,
+    locale: "it",
+    translated: true,
+    dishes: 1,
+    items: 3,
+    hasNote: true,
+    userId: USER_EVELYN,
+  });
+});
+
+test("vista previa en español, sin traducir (translate: false) o sin lista (aunque haya nota): no llama a Claude ni gasta el cupo", async () => {
+  const spanish = harness();
+  spanish.store.menuContext = menuContextRpc({ request: { locale: "es" } });
+  const es = await previewed(spanish);
+  assert.equal(es.translated, false);
+  assert.equal(es.message.subject, "Radici: el menú de la semana 1 de 2 (30 nov)");
+  assert.ok(es.message.emailText.includes("Milanesaxyz a la napolitana"), "el nombre en español");
+  assert.ok(es.message.emailText.includes("Zapallitoszzz: 1,25 kg"));
+  assert.ok(es.message.emailText.includes(MENU_NOTE));
+
+  const untranslated = harness();
+  const it = await previewed(untranslated, previewBody({ translate: false }));
+  assert.equal(it.translated, false);
+  assert.equal(untranslated.store.prepareCalls[0]?.p_translated, false);
+  assert.deepEqual(untranslated.store.prepareCalls[0]?.p_snapshot.items.map((item) => item.name), ["Zapallitoszzz", "sal", "Zapallitoszzz"]);
+  assert.equal(untranslated.store.prepareCalls[0]?.p_snapshot.note, MENU_NOTE, "la nota como la escribió Evelyn");
+
+  const empty = harness();
+  empty.store.menuContext = menuContextRpc({}, { items: [] });
+  const noList = await previewed(empty);
+  assert.equal(noList.translated, false, "la nota sola no se traduce");
+  assert.ok(noList.message.emailText.includes(MENU_NOTE));
+
+  for (const run of [spanish, untranslated, empty]) {
+    assert.equal(run.translator.menuCalls.length + run.store.rateHits.length, 0);
+    assert.equal(run.store.prepareCalls.length, 1);
+  }
+});
+
+test("vista previa en inglés: el plato sin inglés va en italiano; la lista, a inglés; la nota, como está", async () => {
+  const run = harness();
+  run.store.menuContext = menuContextRpc({ request: { locale: "en" } });
+  const body = await previewed(run);
+  assert.equal(body.locale, "en");
+  assert.equal(run.translator.menuCalls[0]?.target, "en");
+  assert.ok(body.message.emailText.includes("• Milanesaxyz alla napoletana"));
+  assert.ok(body.message.emailText.includes("[en] Zapallitoszzz: 1.25 kg"));
+  assert.ok(body.message.emailText.includes(`A NOTE FROM EVELYN\n${MENU_NOTE}`), "la nota, en el idioma en que la escribió Evelyn");
+  assert.ok(body.message.emailText.includes("[personal link to confirm]"));
+});
+
+test("vista previa sin traductor: 501 notConfigured sin gastar el cupo ni guardar nada (la app ofrece mandar sin traducir)", async () => {
+  const run = harness({ translator: null });
+  const response = await run.handle(post("/menus/preview", previewBody()));
+  assert.equal(response.status, 501);
+  assert.deepEqual(await json(response), { error: "notConfigured" });
+  assert.equal(run.store.rateHits.length + run.store.prepareCalls.length, 0);
+  const entry = run.logs.find((log) => log.event === "translate_failed");
+  assert.equal(entry?.fields["route"], "/menus/preview");
+  assert.equal(entry?.fields["reason"], "notConfigured");
+  // Sin traducir sale igual.
+  assert.equal((await run.handle(post("/menus/preview", previewBody({ translate: false })))).status, 200);
+});
+
+test("vista previa pasado el límite de la cocina (el de /translate): 429 con Retry-After, sin traducir ni guardar", async () => {
+  const run = harness();
+  run.store.rateAllowed = false;
+  const response = await run.handle(post("/menus/preview", previewBody()));
+  assert.equal(response.status, 429);
+  assert.deepEqual(await json(response), { error: "rateLimited" });
+  assert.equal(response.headers.get("retry-after"), "3600");
+  assert.equal(run.translator.menuCalls.length + run.store.prepareCalls.length, 0);
+  assert.ok(run.logs.some((entry) => entry.event === "rate_limited" && entry.fields["route"] === "/menus/preview"));
+
+  const down = harness();
+  down.store.failures.set("rate_limit", storeErrorFrom("rate_limit", { code: "", message: "TypeError: fetch failed" }));
+  const downResponse = await down.handle(post("/menus/preview", previewBody()));
+  assert.equal(downResponse.status, 503);
+  assert.deepEqual(await json(downResponse), { error: "unavailable" });
+});
+
+test("vista previa sin traducción: 503, 422 o 500 como /translate; nunca una lista a medias ni un envío guardado", async () => {
+  const cases: Array<[string, TranslatorReply | Error, number, string, string]> = [
+    ["timeout", { kind: "failed", reason: "timeout", status: null }, 503, "unavailable", "timeout"],
+    ["sobrecargada", { kind: "failed", reason: "apiError", status: 529 }, 503, "unavailable", "apiError"],
+    ["negativa", { kind: "refusal", category: "cyber" }, 422, "untranslatable", "refusal"],
+    ["max_tokens", { kind: "maxTokens" }, 422, "untranslatable", "maxTokens"],
+    ["uno de menos", { kind: "text", text: JSON.stringify({ items: ["zucchine"] }) }, 422, "untranslatable", "invalidOutput"],
+    ["con una nota que nadie pidió", { kind: "text", text: JSON.stringify({ items: ["zucchine", "sale"], note: "Nota" }) }, 422, "untranslatable", "invalidOutput"],
+    ["clave inválida", { kind: "failed", reason: "apiError", status: 401 }, 500, "server", "apiError"],
+    ["explota", new Error("Zapallitoszzz NOTA-MENU-qqq"), 500, "server", "unexpected"],
+  ];
+  for (const [name, reply, status, error, reason] of cases) {
+    const run = harness();
+    if (reply instanceof Error) run.translator.throws = reply;
+    else run.translator.menuReply = reply;
+    const response = await run.handle(post("/menus/preview", previewBody()));
+    assert.equal(response.status, status, name);
+    assert.deepEqual(await json(response), { error }, name);
+    assert.equal(run.store.prepareCalls.length, 0, `${name}: no se guarda nada`);
+    const entry = run.logs.find((log) => log.event === "translate_failed");
+    assert.equal(entry?.fields["reason"], reason, name);
+    assert.equal(entry?.fields["route"], "/menus/preview");
+    assert.equal(entry?.fields["items"], 2);
+    assert.equal(entry?.fields["noteLength"], undefined, "la nota no entra en la traducción");
+  }
+});
+
+test("vista previa: lo que la base vuelve a mirar se rechaza antes de traducir (otra versión, sin platos)", async () => {
+  const cases: Array<[string, (run: Harness) => void, Record<string, unknown>, unknown]> = [
+    ["otra versión del menú", () => {}, previewBody({ menuVersion: MENU_VERSION - 1 }), { error: "menuChanged" }],
+    [
+      "sin platos",
+      (run) => {
+        run.store.menuContext = menuContextRpc({}, { dishes: [] });
+      },
+      previewBody(),
+      { error: "menuEmpty" },
+    ],
+  ];
+  for (const [name, setup, body, expected] of cases) {
+    const run = harness();
+    setup(run);
+    const response = await run.handle(post("/menus/preview", body));
+    assert.equal(response.status, 409, name);
+    assert.deepEqual(await json(response), expected, name);
+    assert.equal(run.translator.menuCalls.length + run.store.rateHits.length + run.store.prepareCalls.length, 0, `${name}: sin traducir ni guardar`);
+    assert.ok(run.logs.some((entry) => entry.event === "rejected" && entry.fields["route"] === "/menus/preview"), name);
+  }
+});
+
+test("vista previa de una semana cancelada, cocinada o cobrada: la base la rechaza (55000) y es 409 sessionNotEditable con el estado", async () => {
+  for (const status of ["cancelled", "cooked", "paid"]) {
+    const run = harness();
+    run.store.failures.set("menu_send_context", storeErrorFrom("menu_send_context", { code: "55000", message: "session_not_editable", details: status }));
+    const response = await run.handle(post("/menus/preview", previewBody()));
+    assert.equal(response.status, 409, status);
+    assert.deepEqual(await json(response), { error: "sessionNotEditable", status });
+    assert.equal(run.translator.menuCalls.length + run.store.rateHits.length + run.store.prepareCalls.length, 0, `${status}: sin traducir ni guardar`);
+    assert.ok(run.logs.some((entry) => entry.event === "rejected" && entry.fields["message"] === "session_not_editable"));
+  }
+});
+
+test("vista previa: si algo cambia mientras se traduce la lista (la semana se mueve, un plato), la base no guarda la foto: 409 menuChanged", async () => {
+  const run = harness();
+  run.translator.during = () => {
+    run.store.fingerprint = MOVED_FINGERPRINT;
+  };
+  const response = await run.handle(post("/menus/preview", previewBody()));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await json(response), { error: "menuChanged" });
+  assert.equal(run.store.prepareCalls[0]?.p_fingerprint, FINGERPRINT, "la huella con que se armó la foto");
+  assert.equal(run.store.sends.size, 0);
+
+  const missing = harness();
+  missing.store.menuContext = menuContextRpc({ fingerprint: undefined });
+  assert.equal((await missing.handle(post("/menus/preview", previewBody()))).status, 500, "un contexto sin huella no se usa");
+  assert.ok(missing.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "menu_send_context"));
+});
+
+test("vista previa: los errores de la base, traducidos (404, 409, 500, 503); una respuesta con otra forma, 500", async () => {
+  const cases: Array<[string, "menu_send_context" | "prepare_menu_send", Record<string, unknown>, number, unknown]> = [
+    ["sesión de otra cocina", "menu_send_context", { code: "P0002", message: "session_not_found" }, 404, { error: "sessionNotFound" }],
+    ["sin menú guardado", "menu_send_context", { code: "P0002", message: "menu_not_found" }, 404, { error: "menuNotFound" }],
+    ["sesión sin pedido", "menu_send_context", { code: "55000", message: "session_without_request" }, 409, { error: "sessionWithoutRequest" }],
+    ["la base no responde", "menu_send_context", { code: "", message: "TypeError: fetch failed" }, 503, { error: "unavailable" }],
+    ["sin permiso", "menu_send_context", { code: "42501", message: "permission denied" }, 500, { error: "server" }],
+    ["el menú cambió entretanto", "prepare_menu_send", { code: "40001", message: "menu_changed" }, 409, { error: "menuChanged" }],
+    [
+      "la sesión ya se cocinó",
+      "prepare_menu_send",
+      { code: "55000", message: "session_not_editable", details: "cooked" },
+      409,
+      { error: "sessionNotEditable", status: "cooked" },
+    ],
+    ["el menú quedó sin platos", "prepare_menu_send", { code: "22023", message: "menu_empty" }, 409, { error: "menuEmpty" }],
+    ["la foto rota (un error de la función)", "prepare_menu_send", { code: "22023", message: "invalid_snapshot" }, 500, { error: "server" }],
+    ["la base no responde al guardar", "prepare_menu_send", { code: "08006", message: "connection failure" }, 503, { error: "unavailable" }],
+  ];
+  for (const [name, op, error, status, expected] of cases) {
+    const run = harness();
+    run.store.failures.set(op, storeErrorFrom(op, error));
+    const response = await run.handle(post("/menus/preview", previewBody({ translate: false })));
+    assert.equal(response.status, status, name);
+    assert.deepEqual(await json(response), expected, name);
+  }
+
+  const shape = harness();
+  shape.store.menuContext = { session: { id: SESSION_ID } };
+  assert.equal((await shape.handle(post("/menus/preview", previewBody()))).status, 500);
+  assert.ok(shape.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "menu_send_context"));
+  assert.equal(shape.store.prepareCalls.length, 0);
+
+  const prepared = harness();
+  prepared.store.prepareRaw = { send_id: "x" };
+  assert.equal((await prepared.handle(post("/menus/preview", previewBody({ translate: false })))).status, 500);
+  assert.ok(prepared.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "prepare_menu_send"));
+});
+
+test("vista previa: 400 por campo o con una clave de más, sin tocar la base", async () => {
+  const run = harness();
+  const cases: Array<[unknown, unknown]> = [
+    [{}, { errors: { sessionId: "required", menuVersion: "required" } }],
+    [{ sessionId: SESSION_ID, menuVersion: 0 }, { errors: { menuVersion: "range" } }],
+    [{ sessionId: SESSION_ID, menuVersion: 1, translate: "sí" }, { errors: { translate: "invalid" } }],
+    [{ sessionId: SESSION_ID, menuVersion: 1, locale: "en" }, { errors: { payload: "invalid" } }],
+  ];
+  for (const [body, expected] of cases) {
+    const response = await run.handle(post("/menus/preview", body));
+    assert.equal(response.status, 400, JSON.stringify(body));
+    assert.deepEqual(await json(response), expected);
+  }
+  assert.equal(run.store.contextCalls.length, 0);
+});
+
+test("enviar por email: crea el link (la base guarda solo el hash), manda el email con el link y lo marca enviado", async () => {
+  const run = harness();
+  const preview = await previewed(run);
+  const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await json(response), { sentAt: SENT_AT, sentVia: ["email"] }, "sin el texto del WhatsApp");
+
+  const [link] = run.store.linkCalls;
+  assert.ok(link);
+  assert.equal(link.p_chef_id, CHEF_ID);
+  assert.equal(link.p_send_id, preview.sendId);
+  assert.match(link.p_token_hash, /^[0-9a-f]{64}$/);
+
+  const [mail] = run.mailer.messages;
+  assert.ok(mail);
+  assert.equal(mail.from, "Radici <ciao@radicicucina.app>");
+  assert.equal(mail.to, "maria.pii@example.test");
+  assert.equal(mail.replyTo, "evelyn.reply@example.test", "las respuestas le llegan a Evelyn");
+  assert.equal(mail.subject, preview.message.subject);
+  const token = tokenIn(mail.text);
+  assert.ok(token);
+  assert.equal(sha256(token), link.p_token_hash, "el link del email abre el hash que guardó la base");
+  const url = `https://radicicucina.app/prenotazione/#t=${token}`;
+  assert.ok(mail.html.includes(`href="${url}"`));
+  assert.equal(mail.idempotencyKey, `menu-send-${preview.sendId}-${link.p_token_hash.slice(0, 16)}`);
+  // Lo que salió es lo que Evelyn vio en la vista previa, con el link en lugar del texto de reemplazo.
+  assert.equal(mail.text, preview.message.emailText.replace("[link personale per confermare]", url));
+  assert.ok(!mail.html.includes("[link personale per confermare]"));
+
+  assert.deepEqual(run.store.completeCalls, [{ p_chef_id: CHEF_ID, p_send_id: preview.sendId, p_via: ["email"] }]);
+  assert.ok(run.logs.some((entry) => entry.event === "email_sent" && entry.fields["sendId"] === preview.sendId));
+  assert.deepEqual(run.logs.find((entry) => entry.event === "menu_sent")?.fields, {
+    route: "/menus/send",
+    sendId: preview.sendId,
+    via: ["email"],
+    userId: USER_EVELYN,
+  });
+});
+
+test("enviar por WhatsApp: el servidor no manda nada; devuelve el texto con el link y el teléfono en E.164", async () => {
+  const run = harness();
+  const preview = await previewed(run);
+  const response = await run.handle(post("/menus/send", { sendId: preview.sendId, whatsapp: true }));
+  assert.equal(response.status, 200);
+  const body = await json(response);
+  assert.deepEqual(Object.keys(body).sort(), ["sentAt", "sentVia", "whatsappPhone", "whatsappText"]);
+  assert.deepEqual(body.sentVia, ["whatsapp"]);
+  assert.equal(body.whatsappPhone, "+393337654321");
+  const token = tokenIn(body.whatsappText);
+  assert.ok(token);
+  assert.equal(sha256(token), run.store.linkCalls[0]?.p_token_hash);
+  assert.equal(body.whatsappText, preview.message.whatsappText.replace("[link personale per confermare]", `https://radicicucina.app/prenotazione/#t=${token}`));
+  assert.equal(run.mailer.messages.length, 0);
+  assert.deepEqual(run.store.completeCalls[0]?.p_via, ["whatsapp"]);
+});
+
+test("enviar por los dos: el email y el texto del WhatsApp con el mismo link; se marca con los dos", async () => {
+  const run = harness();
+  const preview = await previewed(run);
+  const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true, whatsapp: true }));
+  assert.equal(response.status, 200);
+  const body = await json(response);
+  assert.deepEqual(body.sentVia, ["email", "whatsapp"]);
+  assert.equal(run.mailer.messages.length, 1);
+  assert.equal(tokenIn(body.whatsappText), tokenIn(run.mailer.messages[0]?.text ?? ""));
+  assert.deepEqual(run.store.completeCalls[0]?.p_via, ["email", "whatsapp"]);
+});
+
+test("enviar con EMAIL_TRANSPORT=log: no sale ningún email (ni hace falta Resend), se registra solo el tamaño y se marca", async () => {
+  const run = harness({ env: { EMAIL_TRANSPORT: "log", RESEND_API_KEY: undefined }, mailer: null });
+  const preview = await previewed(run);
+  const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true }));
+  assert.equal(response.status, 200);
+  const entry = run.logs.find((log) => log.event === "email_logged");
+  assert.equal(entry?.fields["sendId"], preview.sendId);
+  assert.equal(typeof entry?.fields["htmlChars"], "number");
+  assert.equal(run.store.completeCalls.length, 1);
+});
+
+test("enviar por email sin Resend o sin MAIL_FROM: 503 emailUnavailable sin crear el link; por WhatsApp sale igual", async () => {
+  for (const options of [{ mailer: null }, { env: { MAIL_FROM: undefined } }] as const) {
+    const run = harness(options);
+    const preview = await previewed(run);
+    const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true, whatsapp: true }));
+    assert.equal(response.status, 503, JSON.stringify(options));
+    assert.deepEqual(await json(response), { error: "emailUnavailable" });
+    assert.equal(run.store.linkCalls.length + run.store.completeCalls.length, 0);
+    assert.ok(run.logs.some((entry) => entry.event === "email_skipped" && entry.fields["reason"] === "not_configured"));
+    assert.equal((await run.handle(post("/menus/send", { sendId: preview.sendId, whatsapp: true }))).status, 200);
+  }
+});
+
+test("enviar sin PUBLIC_SITE_URL (o con una que no es http): 500 sin crear el link, y el log dice qué falta", async () => {
+  for (const site of [undefined, "javascript:alert(1)"]) {
+    const run = harness({ env: { PUBLIC_SITE_URL: site } });
+    const preview = await previewed(run);
+    const response = await run.handle(post("/menus/send", { sendId: preview.sendId, whatsapp: true }));
+    assert.equal(response.status, 500, String(site));
+    assert.deepEqual(await json(response), { error: "server" });
+    assert.equal(run.store.linkCalls.length, 0);
+    assert.ok(run.logs.some((entry) => entry.event === "config_missing" && JSON.stringify(entry.fields["missing"]) === '["PUBLIC_SITE_URL"]'));
+  }
+});
+
+test("enviar sin email o sin teléfono en el contacto: 409 noEmail / noPhone, sin mandar nada ni marcar", async () => {
+  const cases: Array<[string, unknown, Record<string, unknown>, string]> = [
+    ["sin email", { ...LINK_CONTACT, email: null }, { email: true }, "noEmail"],
+    ["un email sin forma de email", { ...LINK_CONTACT, email: "maria-en-example" }, { email: true }, "noEmail"],
+    ["sin teléfono", { ...LINK_CONTACT, phone: null }, { whatsapp: true }, "noPhone"],
+    ["un teléfono que no se puede normalizar", { ...LINK_CONTACT, phone: "a la tarde" }, { whatsapp: true }, "noPhone"],
+    ["los dos sin teléfono: tampoco sale el email", { ...LINK_CONTACT, phone: null }, { email: true, whatsapp: true }, "noPhone"],
+  ];
+  for (const [name, contact, channels, error] of cases) {
+    const run = harness();
+    const preview = await previewed(run);
+    run.store.linkContact = contact;
+    const response = await run.handle(post("/menus/send", { sendId: preview.sendId, ...channels }));
+    assert.equal(response.status, 409, name);
+    assert.deepEqual(await json(response), { error }, name);
+    assert.equal(run.mailer.messages.length + run.store.completeCalls.length, 0, name);
+  }
+});
+
+test("enviar con el email que no sale: 502 emailFailed y el envío queda sin marcar; el reintento manda otro link", async () => {
+  const run = harness();
+  const preview = await previewed(run);
+  run.mailer.outcome = { ok: false, status: 422, errorName: "validation_error" };
+  const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true }));
+  assert.equal(response.status, 502);
+  assert.deepEqual(await json(response), { error: "emailFailed" });
+  assert.equal(run.store.completeCalls.length, 0, "no se marca");
+  assert.deepEqual(
+    run.logs.find((entry) => entry.event === "email_failed")?.fields,
+    { route: "/menus/send", sendId: preview.sendId, status: 422, errorName: "validation_error" },
+  );
+
+  run.mailer.outcome = { ok: true, id: "re_2" };
+  assert.equal((await run.handle(post("/menus/send", { sendId: preview.sendId, email: true }))).status, 200);
+  assert.equal(run.store.linkCalls.length, 2);
+  assert.notEqual(run.store.linkCalls[0]?.p_token_hash, run.store.linkCalls[1]?.p_token_hash, "otro token");
+  assert.notEqual(run.mailer.messages[0]?.idempotencyKey, run.mailer.messages[1]?.idempotencyKey, "otro email, con otra clave");
+
+  const crash = harness();
+  const crashPreview = await previewed(crash);
+  crash.mailer.throws = new Error("maria.pii@example.test");
+  assert.equal((await crash.handle(post("/menus/send", { sendId: crashPreview.sendId, email: true }))).status, 502);
+  assert.equal(crash.store.completeCalls.length, 0);
+});
+
+test("enviar con un token repetido (23505): genera otro una vez; si vuelve a chocar, 409", async () => {
+  const run = harness();
+  const preview = await previewed(run);
+  run.store.linkCollisions = 1;
+  const response = await run.handle(post("/menus/send", { sendId: preview.sendId, whatsapp: true }));
+  assert.equal(response.status, 200);
+  const body = await json(response);
+  assert.equal(run.store.linkCalls.length, 2);
+  assert.notEqual(run.store.linkCalls[0]?.p_token_hash, run.store.linkCalls[1]?.p_token_hash);
+  assert.equal(sha256(tokenIn(body.whatsappText) ?? ""), run.store.linkCalls[1]?.p_token_hash, "el link es el del segundo token");
+  assert.ok(run.logs.some((entry) => entry.event === "token_collision" && entry.fields["sendId"] === preview.sendId));
+
+  const twice = harness();
+  const twicePreview = await previewed(twice);
+  twice.store.linkCollisions = 2;
+  const conflict = await twice.handle(post("/menus/send", { sendId: twicePreview.sendId, whatsapp: true }));
+  assert.equal(conflict.status, 409);
+  assert.deepEqual(await json(conflict), { error: "conflict" });
+  assert.equal(twice.store.linkCalls.length, 2, "una sola vez otro");
+  assert.equal(twice.store.completeCalls.length, 0);
+});
+
+test("enviar: los errores de la base al crear el link, traducidos (404, 409, 503); el que ya salió no se vuelve a mandar", async () => {
+  const unknown = harness();
+  const missing = await unknown.handle(post("/menus/send", { sendId: sendIdOf(7), email: true }));
+  assert.equal(missing.status, 404);
+  assert.deepEqual(await json(missing), { error: "sendNotFound" });
+
+  const again = harness();
+  const preview = await previewed(again);
+  assert.equal((await again.handle(post("/menus/send", { sendId: preview.sendId, whatsapp: true }))).status, 200);
+  const repeated = await again.handle(post("/menus/send", { sendId: preview.sendId, email: true }));
+  assert.equal(repeated.status, 409);
+  assert.deepEqual(await json(repeated), { error: "alreadySent" });
+  assert.equal(again.mailer.messages.length, 0);
+
+  const cases: Array<[string, Record<string, unknown>, number, unknown]> = [
+    ["el menú cambió desde la vista previa", { code: "40001", message: "menu_changed" }, 409, { error: "menuChanged" }],
+    ["la sesión se canceló", { code: "55000", message: "session_not_editable", details: "cancelled" }, 409, { error: "sessionNotEditable", status: "cancelled" }],
+    ["un estado que no es de sesión en el detalle", { code: "55000", message: "session_not_editable", details: "Mariaxyz" }, 409, { error: "sessionNotEditable" }],
+    ["el hash con otra forma (un error de la función)", { code: "22023", message: "invalid_token" }, 500, { error: "server" }],
+    ["la base no responde", { code: "", message: "TypeError: fetch failed" }, 503, { error: "unavailable" }],
+  ];
+  for (const [name, error, status, expected] of cases) {
+    const run = harness();
+    const sendPreview = await previewed(run);
+    run.store.failures.set("link_menu_send", storeErrorFrom("link_menu_send", error));
+    const response = await run.handle(post("/menus/send", { sendId: sendPreview.sendId, email: true }));
+    assert.equal(response.status, status, name);
+    assert.deepEqual(await json(response), expected, name);
+    assert.equal(run.mailer.messages.length + run.store.completeCalls.length, 0, name);
+  }
+});
+
+test("enviar después de mover la semana, cancelar otra o cambiar un plato: 409 menuChanged sin mandar nada (hace falta otra vista previa)", async () => {
+  const run = harness();
+  const preview = await previewed(run);
+  run.store.fingerprint = MOVED_FINGERPRINT;
+  const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true, whatsapp: true }));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await json(response), { error: "menuChanged" });
+  assert.equal(run.mailer.messages.length + run.store.completeCalls.length, 0);
+
+  // Con otra vista previa (armada con la huella de ahora) sale.
+  run.store.menuContext = menuContextRpc({ fingerprint: MOVED_FINGERPRINT });
+  const again = await previewed(run);
+  assert.equal((await run.handle(post("/menus/send", { sendId: again.sendId, whatsapp: true }))).status, 200);
+
+  // Si cambia justo mientras sale el email: no se marca y la respuesta dice que el email salió.
+  const during = harness();
+  const duringPreview = await previewed(during);
+  during.mailer.during = () => {
+    during.store.fingerprint = MOVED_FINGERPRINT;
+  };
+  const late = await during.handle(post("/menus/send", { sendId: duringPreview.sendId, email: true }));
+  assert.equal(late.status, 409);
+  assert.deepEqual(await json(late), { error: "menuChanged", emailSent: true });
+  assert.ok(during.logs.some((entry) => entry.event === "menu_send_incomplete"));
+});
+
+test("enviar: si el email salió pero no se puede marcar, la respuesta lo dice (emailSent) y el log, menu_send_incomplete", async () => {
+  const cases: Array<[string, Record<string, unknown>, number, unknown]> = [
+    ["el menú cambió mientras salía el email", { code: "40001", message: "menu_changed" }, 409, { error: "menuChanged", emailSent: true }],
+    ["la base no responde", { code: "", message: "TypeError: fetch failed" }, 503, { error: "unavailable", emailSent: true }],
+    ["los canales (un error de la función)", { code: "22023", message: "invalid_via" }, 500, { error: "server", emailSent: true }],
+  ];
+  for (const [name, error, status, expected] of cases) {
+    const run = harness();
+    const preview = await previewed(run);
+    run.store.failures.set("complete_menu_send", storeErrorFrom("complete_menu_send", error));
+    const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true }));
+    assert.equal(response.status, status, name);
+    assert.deepEqual(await json(response), expected, name);
+    assert.equal(run.mailer.messages.length, 1);
+    const entry = run.logs.find((log) => log.event === "menu_send_incomplete");
+    assert.equal(entry?.level, "error", name);
+    assert.equal(entry?.fields["sendId"], preview.sendId);
+  }
+
+  // Solo por WhatsApp no salió nada: el error de siempre, sin emailSent.
+  const whatsapp = harness();
+  const preview = await previewed(whatsapp);
+  whatsapp.store.failures.set("complete_menu_send", storeErrorFrom("complete_menu_send", { code: "", message: "fetch failed" }));
+  const response = await whatsapp.handle(post("/menus/send", { sendId: preview.sendId, whatsapp: true }));
+  assert.equal(response.status, 503);
+  assert.deepEqual(await json(response), { error: "unavailable" });
+
+  // Una respuesta con otra forma después del email: 500 con emailSent.
+  const shape = harness();
+  const shapePreview = await previewed(shape);
+  shape.store.completeRaw = { sent_at: "ayer" };
+  const shapeResponse = await shape.handle(post("/menus/send", { sendId: shapePreview.sendId, email: true }));
+  assert.equal(shapeResponse.status, 500);
+  assert.deepEqual(await json(shapeResponse), { error: "server", emailSent: true });
+  assert.ok(shape.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "complete_menu_send"));
+});
+
+test("enviar: el link o la foto con otra forma, 500 sin mandar nada", async () => {
+  const link = harness();
+  const preview = await previewed(link);
+  link.store.linkRaw = { sendId: preview.sendId };
+  assert.equal((await link.handle(post("/menus/send", { sendId: preview.sendId, email: true }))).status, 500);
+  assert.ok(link.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "link_menu_send"));
+
+  const other = harness();
+  const otherPreview = await previewed(other);
+  other.store.linkRaw = { sendId: sendIdOf(5), locale: "it", snapshot: {}, contact: LINK_CONTACT, chefName: "Evelyn" };
+  assert.equal((await other.handle(post("/menus/send", { sendId: otherPreview.sendId, email: true }))).status, 500, "otro envío");
+
+  const snapshot = harness();
+  const snapshotPreview = await previewed(snapshot);
+  snapshot.store.linkRaw = { sendId: snapshotPreview.sendId, locale: "it", snapshot: { v: 2 }, contact: LINK_CONTACT, chefName: "Evelyn" };
+  assert.equal((await snapshot.handle(post("/menus/send", { sendId: snapshotPreview.sendId, email: true }))).status, 500);
+  assert.ok(snapshot.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "menu_snapshot"));
+  for (const run of [link, other, snapshot]) assert.equal(run.mailer.messages.length + run.store.completeCalls.length, 0);
+});
+
+test("enviar: 400 sin canal, con un canal que no es booleano o con una clave de más, sin tocar la base", async () => {
+  const run = harness();
+  const cases: Array<[unknown, unknown]> = [
+    [{ sendId: sendIdOf(0) }, { errors: { channels: "required" } }],
+    [{ sendId: sendIdOf(0), email: false, whatsapp: false }, { errors: { channels: "required" } }],
+    [{ sendId: sendIdOf(0), email: "true" }, { errors: { email: "invalid" } }],
+    [{ sendId: sendIdOf(0), email: true, to: "otra@example.test" }, { errors: { payload: "invalid" } }],
+    [{ email: true }, { errors: { sendId: "required" } }],
+  ];
+  for (const [body, expected] of cases) {
+    const response = await run.handle(post("/menus/send", body));
+    assert.equal(response.status, 400, JSON.stringify(body));
+    assert.deepEqual(await json(response), expected);
+  }
+  assert.equal(run.store.linkCalls.length, 0);
+});
+
+test("menús sin token válido: 401 sin leer el cuerpo; un colaborador trabaja con la cocina de ella y queda en el log", async () => {
+  const auth = harness();
+  for (const [route, body] of [
+    ["/menus/preview", previewBody()],
+    ["/menus/send", { sendId: sendIdOf(0), email: true }],
+  ] as const) {
+    const request = post(route, body, { token: null });
+    assert.equal((await auth.handle(request)).status, 401, route);
+    assert.equal(request.bodyUsed, false);
+  }
+  assert.equal(auth.store.contextCalls.length + auth.store.linkCalls.length, 0);
+
+  const member = harness();
+  const preview = await member.handle(post("/menus/preview", previewBody(), { token: TOKEN_MEMBER }));
+  assert.equal(preview.status, 200);
+  const { sendId } = await json(preview);
+  assert.equal((await member.handle(post("/menus/send", { sendId, email: true, whatsapp: true }, { token: TOKEN_MEMBER }))).status, 200);
+  assert.deepEqual(
+    [member.store.contextCalls[0]?.p_chef_id, member.store.prepareCalls[0]?.p_chef_id, member.store.linkCalls[0]?.p_chef_id, member.store.completeCalls[0]?.p_chef_id],
+    [CHEF_ID, CHEF_ID, CHEF_ID, CHEF_ID],
+  );
+  assert.equal(member.store.rateHits[0]?.key, await translateRateKey(CHEF_ID));
+  for (const event of ["menu_previewed", "menu_sent", "translated"]) {
+    assert.equal(member.logs.find((entry) => entry.event === event)?.fields["userId"], USER_MEMBER, event);
+  }
+});
+
+test("los logs del envío del menú nunca llevan nombres, emails, teléfonos, platos, la lista, la nota, fechas ni el link", async () => {
+  const runs: Harness[] = [];
+  const tokens: string[] = [];
+  const hashes: string[] = [];
+  const track = (run: Harness): Harness => {
+    runs.push(run);
+    return run;
+  };
+
+  // Lo que sale bien: vista previa traducida y envío por los dos.
+  const ok = track(harness());
+  const preview = await previewed(ok);
+  const sent = await ok.handle(post("/menus/send", { sendId: preview.sendId, email: true, whatsapp: true }));
+  const token = tokenIn((await json(sent)).whatsappText);
+  if (token) tokens.push(token);
+
+  // Con EMAIL_TRANSPORT=log, un email que no sale y un token repetido.
+  const logged = track(harness({ env: { EMAIL_TRANSPORT: "log" } }));
+  await logged.handle(post("/menus/send", { sendId: (await previewed(logged)).sendId, email: true }));
+  const failed = track(harness());
+  failed.mailer.outcome = { ok: false, status: 500, errorName: "application_error" };
+  await failed.handle(post("/menus/send", { sendId: (await previewed(failed)).sendId, email: true }));
+  failed.mailer.throws = new Error("maria.pii@example.test Mariaxyz");
+  await failed.handle(post("/menus/send", { sendId: (await previewed(failed)).sendId, email: true }));
+  const collision = track(harness());
+  collision.store.linkCollisions = 1;
+  await collision.handle(post("/menus/send", { sendId: (await previewed(collision)).sendId, whatsapp: true }));
+
+  // Sin Resend, sin web, sin contacto, ya enviado, y la base que falla con la fila en el mensaje.
+  const noMailer = track(harness({ mailer: null }));
+  await noMailer.handle(post("/menus/send", { sendId: (await previewed(noMailer)).sendId, email: true }));
+  const noSite = track(harness({ env: { PUBLIC_SITE_URL: undefined } }));
+  await noSite.handle(post("/menus/send", { sendId: (await previewed(noSite)).sendId, email: true }));
+  const noContact = track(harness());
+  noContact.store.linkContact = { name: "Mariaxyz Bianchiqwe", email: null, phone: null };
+  await noContact.handle(post("/menus/send", { sendId: (await previewed(noContact)).sendId, email: true }));
+  await noContact.handle(post("/menus/send", { sendId: (await previewed(noContact)).sendId, whatsapp: true }));
+  const dbErrors = track(harness());
+  dbErrors.store.failures.set(
+    "complete_menu_send",
+    storeErrorFrom("complete_menu_send", {
+      code: "23514",
+      message: "violates check constraint: Mariaxyz",
+      details: "Failing row contains (Mariaxyz, maria.pii@example.test, NOTA-MENU-qqq, 2026-11-30).",
+    }),
+  );
+  await dbErrors.handle(post("/menus/send", { sendId: (await previewed(dbErrors)).sendId, email: true }));
+  dbErrors.store.failures.set("menu_send_context", storeErrorFrom("menu_send_context", { code: "P0002", message: "session_not_found", details: "Mariaxyz" }));
+  await dbErrors.handle(post("/menus/preview", previewBody()));
+  const down = track(harness());
+  down.store.failures.set("prepare_menu_send", storeErrorFrom("prepare_menu_send", { code: "08006", message: "connection failure: Mariaxyz" }));
+  await down.handle(post("/menus/preview", previewBody()));
+
+  // La traducción que falla o devuelve el texto de vuelta, el límite y sin traductor.
+  const translation = track(harness());
+  for (const reply of [
+    { kind: "refusal", category: "cyber" },
+    { kind: "failed", reason: "timeout", status: null },
+    { kind: "text", text: JSON.stringify({ items: ["Zapallitoszzz"], note: MENU_NOTE }) },
+  ] as TranslatorReply[]) {
+    translation.translator.menuReply = reply;
+    await translation.handle(post("/menus/preview", previewBody()));
+  }
+  translation.translator.throws = new Error("Zapallitoszzz NOTA-MENU-qqq");
+  await translation.handle(post("/menus/preview", previewBody()));
+  translation.store.rateAllowed = false;
+  await translation.handle(post("/menus/preview", previewBody()));
+  const noTranslator = track(harness({ translator: null }));
+  await noTranslator.handle(post("/menus/preview", previewBody()));
+  const invalid = track(harness());
+  await invalid.handle(post("/menus/preview", { sessionId: "Mariaxyz", menuVersion: "NOTA-MENU-qqq" }));
+  await invalid.handle(post("/menus/send", { sendId: SESSION_ID, email: true, to: "maria.pii@example.test" }));
+
+  for (const run of runs) for (const call of run.store.linkCalls) hashes.push(call.p_token_hash);
+  assert.ok(tokens.length > 0 && hashes.length > 0);
+  const markers = [
+    "Mariaxyz", "Bianchiqwe", "maria.pii", "765", "4321", "Milanesaxyz", "napoletana", "DescripQwe", "Zapallitoszzz",
+    "NOTA-MENU", "táperes", "Segretissima", "NOTA-SALUD", "2026-11-30", "2026-12-07", "prenotazione", "evelyn.reply",
+    "ciao@radicicucina", ...tokens, ...hashes,
+  ];
+  for (const run of runs) {
+    const text = JSON.stringify(run.logs);
+    assert.ok(run.logs.length > 0);
+    for (const marker of markers) assert.ok(!text.includes(marker), `el log lleva ${marker}: ${text}`);
+  }
+  const events = new Set(runs.flatMap((run) => run.logs.map((entry) => entry.event)));
+  for (const event of [
+    "menu_previewed", "menu_sent", "email_sent", "email_logged", "email_failed", "email_skipped", "token_collision",
+    "menu_send_incomplete", "translated", "translate_failed", "rate_limited", "rejected", "db_error", "config_missing",
+    "invalid_payload",
+  ]) {
+    assert.ok(events.has(event), `falta el camino ${event}`);
+  }
+});
+
+test("index.ts: las cuatro funciones del envío con la clave secreta, sus errores sin datos, y el email con Resend", () => {
+  const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  for (const [fn, op] of [
+    ["chef_menu_send_context", "menu_send_context"],
+    ["chef_prepare_menu_send", "prepare_menu_send"],
+    ["chef_link_menu_send", "link_menu_send"],
+    ["chef_complete_menu_send", "complete_menu_send"],
+  ]) {
+    assert.match(
+      index,
+      new RegExp(`const \\{ data, error \\} = await supabase\\.rpc\\("${fn}", params\\);\\s*if \\(error\\) throw storeErrorFrom\\("${op}", error\\);\\s*return data;`),
+      fn,
+    );
+  }
+  assert.match(index, /return \{ send: \(message\) => sendWithResend\(message, \{ apiKey \}\) \};/);
+  assert.match(index, /mailer: createMailer\(\),/);
+  for (const line of index.split("\n").filter((text) => /consoleLogger|console\./.test(text))) {
+    assert.ok(!/apiKey|RESEND_API_KEY"\)/.test(line), `un log con la clave: ${line.trim()}`);
+  }
 });
