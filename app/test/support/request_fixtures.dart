@@ -151,6 +151,8 @@ ChefRequest buildRequest({
   List<String> wishes = const [],
   // Origen (requests.source): por defecto, la web; una reserva a mano es de la app.
   RequestSource source = RequestSource.web,
+  // Comidas de cada día (requests.meals).
+  List<Meal> meals = const [Meal.dinner],
 }) => ChefRequest(
   id: id,
   chefId: chefId,
@@ -160,7 +162,7 @@ ChefRequest buildRequest({
   adults: 2,
   kids: 2,
   days: days,
-  meals: const [Meal.dinner],
+  meals: meals,
   weeks: weeks,
   restrictions: restrictions,
   noAllergies: noAllergies,

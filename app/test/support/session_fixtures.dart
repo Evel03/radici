@@ -89,6 +89,8 @@ Map<String, dynamic> sessionRow({
 /// [lastAllergyAnswer] es la respuesta de su último pedido semanal de la web
 /// que se reservó (la que toma una sesión semanal cuyo pedido no responde).
 /// [zone] va en la ficha y en el pedido (null: ninguno la tiene).
+/// [wishes] son los platos que la clienta eligió en la web y [meals], las
+/// comidas de cada día del pedido (por defecto, la cena).
 CookingSession buildSession({
   int n = 1,
   String? id,
@@ -118,6 +120,8 @@ CookingSession buildSession({
   RequestType type = RequestType.week,
   RequestStatus requestStatus = RequestStatus.accepted,
   RequestSource requestSource = RequestSource.web,
+  List<String> wishes = const [],
+  List<Meal> meals = const [Meal.dinner],
 }) => CookingSession(
   id: id ?? sessionId(n),
   chefId: testChefId,
@@ -165,6 +169,8 @@ CookingSession buildSession({
           seenAt: DateTime.utc(2026, 10, 19, 12),
           type: type,
           source: requestSource,
+          wishes: wishes,
+          meals: meals,
         ),
 );
 
@@ -174,7 +180,7 @@ CookingSession buildSession({
 /// desde 1, y [serviceCents] es el servicio de cada semana. [address] null:
 /// una reserva que llegó por la web (el formulario no pide la dirección).
 /// [requestSource] app: una reserva cargada a mano. [estimate] es la del
-/// pedido. [lastAllergyAnswer] y [zone], los de buildSession.
+/// pedido. [lastAllergyAnswer], [zone] y [wishes], los de buildSession.
 List<CookingSession> buildBooking({
   int weeks = 4,
   CalendarDate? first,
@@ -194,6 +200,7 @@ List<CookingSession> buildBooking({
   ClientLocale locale = ClientLocale.it,
   RequestEstimate? estimate = legacyEstimate,
   RequestSource requestSource = RequestSource.web,
+  List<String> wishes = const [],
 }) {
   final start = first ?? CalendarDate(2026, 11, 25);
   return [
@@ -217,6 +224,7 @@ List<CookingSession> buildBooking({
         weeks: weeks,
         estimate: estimate,
         requestSource: requestSource,
+        wishes: wishes,
       ),
   ];
 }
