@@ -471,7 +471,16 @@ class FakeAvailabilityRepository implements AvailabilityRepository {
 /// la ficha de otra sesión suya, si hay). Las fallas y las respuestas lentas
 /// se controlan por campo.
 class FakeBookingsRepository implements BookingsRepository {
-  FakeBookingsRepository({this.requests, this.clients, this.sessions});
+  FakeBookingsRepository({
+    this.requests,
+    this.clients,
+    this.sessions,
+    this.onBookedFromRequest,
+  });
+
+  /// Al confirmar desde un pedido, como la base: retira su presupuesto
+  /// abierto (FakeQuotesRepository.withdrawOpen; SPEC 5.8).
+  final void Function(String requestId)? onBookedFromRequest;
 
   /// Los pedidos "en el servidor" que actualiza una confirmación.
   final FakeChefRequestsRepository? requests;
@@ -543,7 +552,11 @@ class FakeBookingsRepository implements BookingsRepository {
     if (failure != null) throw failure;
     if (request.requestId == null) return _manual(request);
     final current = requests?.requests[request.requestId];
-    if (current != null && current.status != RequestStatus.newRequest) {
+    // Como la base: desde un pedido nuevo o con el presupuesto mandado (que
+    // se retira al confirmar).
+    if (current != null &&
+        current.status != RequestStatus.newRequest &&
+        current.status != RequestStatus.quoted) {
       final booked = saved[request.requestId];
       if (!request.dryRun &&
           booked != null &&
@@ -570,6 +583,7 @@ class FakeBookingsRepository implements BookingsRepository {
       _accept(request);
       if (request.requestId case final requestId?) {
         saved[requestId] = result.copyWith(duplicate: false);
+        onBookedFromRequest?.call(requestId);
       }
       if (loseNextConfirmResponse) {
         loseNextConfirmResponse = false;

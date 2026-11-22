@@ -1,7 +1,8 @@
-// Textos de la hoja «Conferma prenotazione»: lo que dijo el servidor de cada
-// semana, lo que impide mandar una fecha, las fallas y la barra de abajo (el
-// precio que se va a confirmar o lo que impide confirmar). Solo presentación:
-// los textos salen del ARB.
+// Textos de la hoja «Conferma prenotazione» (también «Preparar
+// presupuesto»): lo que dijo el servidor de cada semana, lo que impide mandar
+// una fecha, las fallas, el reparto del precio y la barra de abajo (el precio
+// que se va a confirmar o lo que impide confirmar). Solo presentación: los
+// textos salen del ARB.
 import 'package:radici/core/money.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
@@ -78,7 +79,8 @@ extension BookingLabels on AppLocalizations {
 
   /// La falla de la barra de la hoja [state]: a mano, los datos de la ficha
   /// nueva que el servidor rechaza (se corrigen en el formulario); a mano o
-  /// al renovar, la ficha que ya no está; si no, [bookingFailure].
+  /// al renovar, la ficha que ya no está; al preparar un presupuesto, uno que
+  /// no se sabe si se creó; si no, [bookingFailure].
   String bookingFailureText(
     ConfirmBookingState state,
     BookingFailure failure, {
@@ -88,7 +90,32 @@ extension BookingLabels on AppLocalizations {
     if (state.createsRequest && failure.kind == BookingFailureKind.notFound) {
       return bookingErrorClientNotFound;
     }
+    if (state.isQuote && failure.kind == BookingFailureKind.unavailable) {
+      return quoteErrorCreateUnavailable;
+    }
     return bookingFailure(failure, formatDate: formatDate);
+  }
+
+  /// Debajo del precio de un presupuesto de varias semanas, cuánto queda en
+  /// cada una, exactamente como lo va a guardar la base
+  /// ([splitServiceCents]): «= 140,00 € por semana» si se divide justo; si
+  /// no, «Por semana: 166,67 € · 166,67 € · 166,66 €». null con una semana.
+  String? quotePriceSplitText(
+    int totalCents,
+    int weeks, {
+    required String locale,
+  }) {
+    if (weeks < 2) return null;
+    final split = splitServiceCents(totalCents, weeks);
+    if (split.toSet().length == 1) {
+      return bookingPricePerWeek(formatCents(split.first, locale: locale));
+    }
+    return quotePriceSplit(
+      [
+        for (final cents in split)
+          formatCents(cents, locale: locale).replaceAll(' ', ' '),
+      ].join(' · '),
+    );
   }
 
   /// La barra de abajo: lo que impide confirmar ([blocker], de

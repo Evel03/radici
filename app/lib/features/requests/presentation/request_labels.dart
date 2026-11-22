@@ -25,6 +25,20 @@ extension RequestLabels on AppLocalizations {
     RequestStatus.resolved => requestStatusResolved,
   };
 
+  /// El estado que la fila de la bandeja y de la agenda muestra aparte: el de
+  /// un pedido cuyo presupuesto salió (enviado, rechazado por la clienta o
+  /// vencido, SPEC 5.8) o el de uno resuelto; null en los demás (sus
+  /// pestañas ya dicen si es nuevo, visto, una reserva o rechazado).
+  String? requestTileStatus(ChefRequest request) => switch (request.status) {
+    RequestStatus.quoted => requestStatusQuoted,
+    RequestStatus.declined => requestStatusDeclined,
+    RequestStatus.expired => requestStatusExpired,
+    RequestStatus.resolved => requestStatusResolved,
+    RequestStatus.newRequest ||
+    RequestStatus.accepted ||
+    RequestStatus.rejected => null,
+  };
+
   String slot(PreferredSlot slot) => switch (slot) {
     PreferredSlot.morning => slotMorning,
     PreferredSlot.afternoon => slotAfternoon,

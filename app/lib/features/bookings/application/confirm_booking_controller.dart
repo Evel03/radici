@@ -15,6 +15,20 @@
 // guardado), la hoja no cambia hasta reintentarla con lo mismo; a mano o al
 // renovar, si el reintento tampoco tiene respuesta, Evelyn la puede cerrar
 // igual («Chiudi comunque»). Nada de esto se loguea.
+//
+// «Preparar presupuesto» (BookingSource.quote, SPEC 5.8) es la misma hoja
+// desde un pedido nuevo: el dryRun y la creación van a POST chef/quotes, que
+// crea sus semanas retenidas (`held`) y el presupuesto sin mandar. El precio
+// es el de todo el presupuesto. Esa ruta no tiene clave: si la creación se
+// queda sin respuesta, el reintento recibe quoteExists cuando el presupuesto
+// ya se había creado; la hoja lo busca y, si es el que mandó (un borrador con
+// esas fechas, esa hora, esos minutos y ese precio), lo toma como creado.
+//
+// «Confirmar sin presupuesto» desde un pedido con un presupuesto abierto
+// (borrador, o mandado: el pedido en `quoted`) también se puede: la base lo
+// retira en la misma transacción. El seed trae cuál es
+// (ConfirmBookingState.quoteToWithdraw) para que la pantalla lo avise y lo
+// pregunte antes de confirmar; al confirmar, el detalle lo vuelve a leer.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -32,6 +46,10 @@ import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
 import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/clients/application/client_directory_controller.dart';
+import 'package:radici/features/quotes/application/quote_providers.dart';
+import 'package:radici/features/quotes/data/quotes_repository.dart';
+import 'package:radici/features/quotes/domain/quote_api.dart';
+import 'package:radici/features/quotes/domain/request_quote.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/application/renewed_bookings.dart';
@@ -107,6 +125,8 @@ const Set<BookingFailureKind> _blockingFailures = {
   BookingFailureKind.notFound,
   BookingFailureKind.forbidden,
   BookingFailureKind.unauthorized,
+  BookingFailureKind.quoteExists,
+  BookingFailureKind.requestNotQuotable,
 };
 
 @Freezed(toStringOverride: false)
@@ -199,8 +219,15 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
     /// Evelyn eligió «Chiudi comunque»: la hoja ya no se retiene.
     @Default(false) bool leftAnyway,
 
-    /// La reserva confirmada.
+    /// La reserva confirmada (el presupuesto creado: sus semanas).
     BookingResult? result,
+
+    /// El presupuesto creado ([BookingSourceKind.quote]).
+    QuoteDraft? quote,
+
+    /// Desde un pedido con un presupuesto abierto: el que la base retira al
+    /// confirmar (la pantalla lo avisa y lo hace confirmar antes).
+    QuoteToWithdraw? quoteToWithdraw,
   }) = _ConfirmBookingState;
 
   const ConfirmBookingState._();
@@ -208,6 +235,9 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
   int get weeks => dates.length;
 
   bool get isManual => kind == BookingSourceKind.manual;
+
+  /// «Preparar presupuesto»: crea el presupuesto en lugar de la reserva.
+  bool get isQuote => kind == BookingSourceKind.quote;
 
   /// «Rinnova»: el pedido renovado traía otro teléfono y la ficha no tiene
   /// uno válido, así que no hay WhatsApp: el encabezado no puede decir que
@@ -217,8 +247,10 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
 
   /// La hoja crea el pedido (a mano o «Rinnova»): el servidor reconoce un
   /// reintento solo por la clave de la hoja, así que mientras espera uno no
-  /// se cierra, y un 404 es la ficha que ya no está.
-  bool get createsRequest => kind != BookingSourceKind.request;
+  /// se cierra, y un 404 es la ficha que ya no está. Desde un pedido (también
+  /// el presupuesto) no.
+  bool get createsRequest =>
+      kind == BookingSourceKind.manual || kind == BookingSourceKind.renewal;
 
   List<BookingDateIssue?> get dateIssues =>
       bookingDateIssues(dates, today: today);
@@ -477,6 +509,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
       portions: value.portions,
       suggestedPriceCents: value.priceRule.suggestedFor(weeks),
       failure: value.initialFailure,
+      quoteToWithdraw: value.quoteToWithdraw,
     );
   }
 
@@ -609,6 +642,10 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
             serviceTotalCents: current.serviceTotalCents,
             requestKey: _requestKey,
           );
+    if (seed.kind == BookingSourceKind.quote) {
+      await _createQuote(current, seed, booking, retrying: retrying);
+      return;
+    }
     // La bandeja, la agenda y las reservas renovadas se actualizan aunque la
     // hoja se cierre mientras tanto.
     final inbox = ref.read(chefInboxProvider.notifier);
@@ -622,6 +659,9 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
       switch (seed.request) {
         case final request?:
           inbox.applyBooking(request.id, weeks: result.weeks.length);
+          // Si tenía un presupuesto abierto, la base lo retiró: el detalle lo
+          // muestra así.
+          if (ref.mounted) ref.invalidate(requestQuoteProvider(request.id));
         case null:
           // A mano o al renovar: la reserva está en «Prenotazioni» aunque la
           // relectura tarde o falle.
@@ -670,6 +710,124 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
         unawaited(_runChecks());
       }
     }
+  }
+
+  /// Crea el presupuesto ([BookingSourceKind.quote]) con [booking], lo mismo
+  /// que mandaría la reserva (sin la clave: la ruta no la tiene). Si el pedido
+  /// ya tiene uno abierto (quoteExists) y es el que mandó esta hoja (una
+  /// creación anterior que se quedó sin respuesta), lo toma como creado.
+  Future<void> _createQuote(
+    ConfirmBookingState current,
+    BookingSeed seed,
+    BookingRequest booking, {
+    required bool retrying,
+  }) async {
+    final quotes = ref.read(quotesRepositoryProvider);
+    final inbox = ref.read(chefInboxProvider.notifier);
+    final refreshSessions = agendaSessionsRefresher(ref);
+    final chefId = ref.read(currentChefProvider)?.chefId;
+    final requestId = booking.requestId!;
+    state = current.copyWith(sending: true, failure: null, sent: booking);
+    QuoteDraft? draft;
+    BookingFailure? failure;
+    var duplicate = false;
+    try {
+      draft = await quotes.createQuote(CreateQuoteRequest.fromBooking(booking));
+    } on BookingFailure catch (error) {
+      failure = error;
+      if (error.kind == BookingFailureKind.quoteExists && chefId != null) {
+        draft = await _ownQuote(quotes, chefId: chefId, sent: booking);
+        duplicate = draft != null;
+      }
+    }
+    if (draft != null) {
+      // Sus semanas aparecen en la agenda y el pedido muestra el borrador.
+      if (refreshSessions != null) unawaited(refreshSessions());
+      if (!ref.mounted) return;
+      ref.invalidate(requestQuoteProvider(requestId));
+      state = state.copyWith(
+        sending: false,
+        result: draft.toBookingResult(duplicate: duplicate),
+        quote: draft,
+      );
+      return;
+    }
+    final error = failure!;
+    _afterBlockingFailure(error, seed, inbox);
+    if (!ref.mounted) return;
+    state = state.copyWith(
+      sending: false,
+      failure: error,
+      retryUnanswered: retrying && error.kind == BookingFailureKind.unavailable,
+    );
+    // Un choque: el dryRun marca la semana que choca.
+    if (error.kind == BookingFailureKind.slotTaken ||
+        error.kind == BookingFailureKind.weekTaken ||
+        error.kind == BookingFailureKind.conflict) {
+      unawaited(_runChecks());
+    }
+  }
+
+  /// El presupuesto abierto del pedido de [sent], si es el que mandó esta
+  /// hoja: un borrador con sus mismas fechas, hora, minutos y precio. null si
+  /// es otro (lo armó otro teléfono) o si no se puede leer.
+  Future<QuoteDraft?> _ownQuote(
+    QuotesRepository quotes, {
+    required String chefId,
+    required BookingRequest sent,
+  }) async {
+    final RequestQuote? quote;
+    try {
+      quote = await quotes.fetchLatestQuote(
+        chefId: chefId,
+        requestId: sent.requestId!,
+      );
+    } on QuoteFailure {
+      return null;
+    }
+    if (quote == null || !quote.isOpen || quote.wasSent) return null;
+    final terms = quote.currentTerms;
+    final weeks = terms.weeks;
+    if (weeks.length != sent.dates.length ||
+        terms.totalCents != sent.serviceTotalCents) {
+      return null;
+    }
+    for (final (i, week) in weeks.indexed) {
+      if (week.date != sent.dates[i] ||
+          week.start != sent.start ||
+          week.cookMinutes != sent.cookMinutes) {
+        return null;
+      }
+    }
+    return QuoteDraft(
+      dryRun: false,
+      quoteId: quote.id,
+      requestId: quote.requestId,
+      holdUntil: quote.holdUntil,
+      weeks: [
+        for (final week in weeks)
+          BookingWeek(
+            date: week.date,
+            start: week.start,
+            cookMinutes: week.cookMinutes,
+            status: BookingDayStatus.ok,
+            serviceCents: week.serviceCents,
+            sessionId: week.sessionId,
+          ),
+      ],
+    );
+  }
+
+  /// El dryRun de [request]: el de la reserva o, en el presupuesto, el de POST
+  /// chef/quotes (los mismos estados de cada fecha).
+  Future<BookingResult> _dryRun(BookingRequest request) async {
+    if (_seed?.kind != BookingSourceKind.quote) {
+      return _repository.createBooking(request);
+    }
+    final draft = await ref
+        .read(quotesRepositoryProvider)
+        .createQuote(CreateQuoteRequest.fromBooking(request));
+    return draft.toBookingResult();
   }
 
   /// «Chiudi comunque» ([ConfirmBookingState.canLeaveAnyway]): la hoja deja de
@@ -763,8 +921,18 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     ChefInboxController inbox,
   ) {
     final kind = failure.kind;
+    if (kind == BookingFailureKind.quoteExists) {
+      // Lo armó otro teléfono (o esta hoja, sin respuesta): el pedido lo
+      // muestra.
+      if (seed.request case final request?) {
+        unawaited(inbox.reload(request.id));
+        if (ref.mounted) ref.invalidate(requestQuoteProvider(request.id));
+      }
+      return;
+    }
     if (kind != BookingFailureKind.requestNotNew &&
-        kind != BookingFailureKind.notFound) {
+        kind != BookingFailureKind.notFound &&
+        kind != BookingFailureKind.requestNotQuotable) {
       return;
     }
     if (seed.request case final request?) {
@@ -806,7 +974,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
     final inbox = ref.read(chefInboxProvider.notifier);
     state = current.copyWith(checksStatus: BookingChecksStatus.loading);
     try {
-      final result = await _repository.createBooking(
+      final result = await _dryRun(
         _booking(current, start: sentStart, dryRun: true),
       );
       if (!ref.mounted || seq != _checksSeq) return;

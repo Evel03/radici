@@ -1,8 +1,9 @@
 // De dónde se abre la hoja «Conferma prenotazione» y lo que trae al abrirse:
 // un pedido de la bandeja (como el PR 5), una ficha existente elegida en
 // «Nuova prenotazione» (o desde «Nuova cliente», si el teléfono ya era de una
-// ficha), una ficha nueva (el borrador del formulario) o «Rinnova» (la
-// reserva de una sesión, con lo que copia renewalPlan). El seed tiene el
+// ficha), una ficha nueva (el borrador del formulario), «Rinnova» (la
+// reserva de una sesión, con lo que copia renewalPlan) o «Preparar
+// presupuesto» (un pedido nuevo, como el primero: SPEC 5.8). El seed tiene el
 // destinatario (para el encabezado y el WhatsApp), el destino del POST
 // (requestId, clientId o newClient) y lo inicial de la hoja. El controller
 // toma el primero y no mira los siguientes.
@@ -22,6 +23,8 @@ import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/bookings/domain/renewal.dart';
 import 'package:radici/features/clients/application/client_directory_controller.dart';
 import 'package:radici/features/clients/domain/chef_client.dart';
+import 'package:radici/features/quotes/application/quote_providers.dart';
+import 'package:radici/features/quotes/domain/request_quote.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
@@ -53,16 +56,35 @@ sealed class BookingSource with _$BookingSource {
   const factory BookingSource.renewal(String sessionId) =
       RenewalBookingSource;
 
+  /// «Preparar presupuesto» de un pedido nuevo de la bandeja (SPEC 5.8): la
+  /// misma hoja, con el precio de todo el presupuesto; crea sus semanas
+  /// retenidas (POST chef/quotes) en lugar de confirmarlas.
+  const factory BookingSource.quote(String requestId) = QuoteBookingSource;
+
   BookingSourceKind get kind => switch (this) {
     RequestBookingSource() => BookingSourceKind.request,
     ClientBookingSource() || NewClientBookingSource() =>
       BookingSourceKind.manual,
     RenewalBookingSource() => BookingSourceKind.renewal,
+    QuoteBookingSource() => BookingSourceKind.quote,
   };
 }
 
-/// Desde un pedido, a mano (ficha existente o nueva) o «Rinnova».
-enum BookingSourceKind { request, manual, renewal }
+/// Desde un pedido, a mano (ficha existente o nueva), «Rinnova» o el
+/// presupuesto de un pedido.
+enum BookingSourceKind { request, manual, renewal, quote }
+
+/// El presupuesto abierto de un pedido que «Confirmar sin presupuesto»
+/// retira (la base lo hace en la misma transacción, SPEC 5.8).
+enum QuoteToWithdraw {
+  /// Un borrador que nunca salió: se retira y sus semanas retenidas se
+  /// cancelan.
+  draft,
+
+  /// Uno que ya salió: además, la clienta ya no lo puede aceptar desde su
+  /// enlace.
+  sent,
+}
 
 /// A quién es la reserva: el encabezado de la hoja y el WhatsApp final. Tiene
 /// datos de contacto: toString no los muestra.
@@ -201,12 +223,16 @@ final class BookingSeed {
     this.renewedRequestId,
     this.lastDiffers = false,
     this.otherRequestPhone,
+    this.quoteToWithdraw,
   });
 
   /// Desde un pedido: lo mismo que armaba la hoja del PR 5.
+  /// [quoteToWithdraw]: el presupuesto abierto del pedido, que la base retira
+  /// al confirmar (SPEC 5.8): la hoja lo avisa.
   factory BookingSeed.fromRequest(
     ChefRequest request, {
     required CalendarDate today,
+    QuoteToWithdraw? quoteToWithdraw,
   }) {
     final weeks = initialBookingWeeks(request);
     return BookingSeed(
@@ -220,7 +246,9 @@ final class BookingSeed {
       cookMinutes: suggestedCookMinutes(request.estimate?.cookMinutes),
       priceRule: EstimatePriceRule(request.estimate),
       portions: request.estimate?.portions,
-      // Ya no es un pedido nuevo: ni se pregunta al servidor.
+      quoteToWithdraw: request.canConfirmBooking ? quoteToWithdraw : null,
+      // Ya no es un pedido nuevo (ni tiene el presupuesto mandado): ni se
+      // pregunta al servidor.
       initialFailure: request.canConfirmBooking
           ? null
           : BookingFailure(
@@ -229,6 +257,37 @@ final class BookingSeed {
                   ? 'new'
                   : request.status.name,
             ),
+    );
+  }
+
+  /// El presupuesto de un pedido: lo mismo que desde un pedido (las semanas,
+  /// la fecha preferida, los minutos, las porciones y el precio de la
+  /// estimación). Un pedido que no lo admite ya no se pregunta al servidor:
+  /// uno de cambios (requestNotQuotable) o uno que ya no está nuevo.
+  factory BookingSeed.forQuote(
+    ChefRequest request, {
+    required CalendarDate today,
+  }) {
+    final weeks = initialBookingWeeks(request);
+    return BookingSeed(
+      kind: BookingSourceKind.quote,
+      party: BookingParty.fromRequest(request),
+      request: request,
+      locale: request.locale,
+      maxWeeks: maxWeeksFor(request.type),
+      dates: weeklyDates(initialBookingDate(request, today: today), weeks),
+      today: today,
+      cookMinutes: suggestedCookMinutes(request.estimate?.cookMinutes),
+      priceRule: EstimatePriceRule(request.estimate),
+      portions: request.estimate?.portions,
+      initialFailure: request.type == RequestType.change
+          ? const BookingFailure(BookingFailureKind.requestNotQuotable)
+          : request.status != RequestStatus.newRequest
+          ? BookingFailure(
+              BookingFailureKind.requestNotNew,
+              requestStatus: request.status.name,
+            )
+          : null,
     );
   }
 
@@ -344,6 +403,10 @@ final class BookingSeed {
   /// «Rinnova»: el teléfono del pedido renovado, si no es el de la ficha.
   final String? otherRequestPhone;
 
+  /// Desde un pedido con un presupuesto abierto: el que la base retira al
+  /// confirmar sin presupuesto (el borrador o el mandado).
+  final QuoteToWithdraw? quoteToWithdraw;
+
   @override
   String toString() => 'BookingSeed(${kind.name}, weeks: ${dates.length})';
 }
@@ -359,9 +422,19 @@ final bookingSeedProvider = FutureProvider.autoDispose
           final request = await ref.watch(
             chefRequestProvider(requestId).future,
           );
+          if (request == null) return null;
+          return BookingSeed.fromRequest(
+            request,
+            today: today,
+            quoteToWithdraw: await _openQuoteOf(ref, request),
+          );
+        case QuoteBookingSource(:final requestId):
+          final request = await ref.watch(
+            chefRequestProvider(requestId).future,
+          );
           return request == null
               ? null
-              : BookingSeed.fromRequest(request, today: today);
+              : BookingSeed.forQuote(request, today: today);
         case ClientBookingSource(:final clientId, :final fromForm):
           final clients = await ref.watch(clientDirectoryProvider.future);
           final client = clients.where((c) => c.id == clientId).firstOrNull;
@@ -386,6 +459,25 @@ final bookingSeedProvider = FutureProvider.autoDispose
               : BookingSeed.renewal(plan, today: today);
       }
     });
+
+/// El presupuesto abierto del pedido que la reserva retiraría (SPEC 5.8): un
+/// borrador o uno mandado. Si no se puede leer, lo que dice el pedido: uno
+/// con el presupuesto mandado (`quoted`) tiene uno abierto; uno nuevo, no se
+/// sabe (la base igual lo retira).
+Future<QuoteToWithdraw?> _openQuoteOf(Ref ref, ChefRequest request) async {
+  if (!request.canConfirmBooking) return null;
+  final fallback = request.status == RequestStatus.quoted
+      ? QuoteToWithdraw.sent
+      : null;
+  final RequestQuote? quote;
+  try {
+    quote = await ref.watch(requestQuoteProvider(request.id).future);
+  } on Object {
+    return fallback;
+  }
+  if (quote == null || !quote.isOpen) return null;
+  return quote.wasSent ? QuoteToWithdraw.sent : QuoteToWithdraw.draft;
+}
 
 BookingSeed _clientSeed(
   ChefClient client, {

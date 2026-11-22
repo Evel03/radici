@@ -386,9 +386,18 @@ abstract class ChefRequest with _$ChefRequest {
   /// Un rechazo de la cocinera se puede deshacer (vuelve a `new`).
   bool get canUndoReject => status == RequestStatus.rejected;
 
-  /// «Confirmar reserva»: solo desde un pedido nuevo (chef_create_booking
-  /// exige `new`) y que no sea un cambio de una sesión.
+  /// «Confirmar sin presupuesto» (la reserva de siempre, chef_create_booking):
+  /// desde un pedido nuevo o con el presupuesto mandado (`quoted`), que no sea
+  /// un cambio de una sesión. Con un presupuesto abierto, la base lo retira en
+  /// la misma transacción (SPEC 5.8): la hoja lo avisa antes de confirmar.
   bool get canConfirmBooking =>
+      (status == RequestStatus.newRequest || status == RequestStatus.quoted) &&
+      type != RequestType.change;
+
+  /// «Preparar presupuesto» (chef_create_quote): solo desde un pedido nuevo,
+  /// semanal o extra (no un cambio). Si ya tiene uno abierto, primero se
+  /// retira (quoteExists).
+  bool get canPrepareQuote =>
       status == RequestStatus.newRequest && type != RequestType.change;
 
   /// Ya es una reserva confirmada (pestaña «Prenotazioni» de la bandeja).

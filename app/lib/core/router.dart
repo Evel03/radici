@@ -221,6 +221,21 @@ final routerProvider = Provider<GoRouter>((ref) {
                           ),
                         ),
                       ),
+                      // «Preparar presupuesto», la misma hoja (con X). Al
+                      // crearlo se reemplaza por el menú de la semana 1.
+                      GoRoute(
+                        path: AppRoutes.requestQuoteSegment,
+                        parentNavigatorKey: rootNavigatorKey,
+                        pageBuilder: (context, state) => MaterialPage<void>(
+                          key: state.pageKey,
+                          fullscreenDialog: true,
+                          child: ConfirmBookingScreen(
+                            source: BookingSource.quote(
+                              state.pathParameters['id']!,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -372,7 +387,8 @@ const String _sessionPath = '${AppRoutes.sessions}/:id';
 
 /// Hay en la pila de [router], a la vista o tapada por otra pantalla (por
 /// ejemplo, un pedido abierto desde el aviso), una hoja «Conferma
-/// prenotazione» (desde un pedido, a mano o «Rinnova»), el elegir de «Nuova
+/// prenotazione» (desde un pedido, a mano, «Rinnova» o «Preparar
+/// presupuesto»), el elegir de «Nuova
 /// prenotazione», su formulario «Nuova cliente» o la ficha de una sesión
 /// (sola, con su hoja «Sposta» o con el menú de la semana, que cuelga de ella
 /// también cuando se apila solo desde un pedido o una hoja de reserva). Un go
@@ -400,8 +416,8 @@ bool bookingOrSessionInStack(GoRouter router) {
       ImperativeRouteMatch(:final matches) => inStack(matches.matches),
       _ => switch (match.route) {
         GoRoute(
-          path:
-              AppRoutes.bookingSegment ||
+          path: AppRoutes.bookingSegment ||
+              AppRoutes.requestQuoteSegment ||
               AppRoutes.newBookingSegment ||
               AppRoutes.newClientSegment ||
               _sessionPath ||

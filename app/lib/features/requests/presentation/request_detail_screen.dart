@@ -3,18 +3,19 @@
 // alergias), los platos que eligió el cliente en la web (arriba y destacados),
 // la estimación guardada y las acciones: WhatsApp, llamar, email, rechazar,
 // deshacer el rechazo y marcar a la persona como clienta (así no se borra a
-// los 90 días). Un pedido nuevo, además, «Conferma prenotazione» (abajo); una
-// reserva, sus semanas con el menú de cada una. Al abrirlo se marca como
-// visto.
+// los 90 días). Un pedido nuevo, además, «Preparar presupuesto» y
+// «Confirmar sin presupuesto» (abajo); con un presupuesto, su bloque
+// (quote_block.dart: estado, semanas, total y acciones, y abajo «Mandar»
+// cuando falta que salga); una reserva, sus semanas con el menú de cada una.
+// Al abrirlo se marca como visto.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/money.dart';
-import 'package:radici/core/routes.dart';
 import 'package:radici/features/quote/domain/quote.dart' show defaultPricing;
+import 'package:radici/features/quotes/presentation/quote_block.dart';
 import 'package:radici/features/recipes/presentation/recipe_photo_thumbnail.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/application/chosen_menu_provider.dart';
@@ -80,53 +81,12 @@ class _RequestDetailScreenState extends ConsumerState<RequestDetailScreen> {
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
       ),
-      // Un pedido nuevo se confirma como reserva: la acción principal, abajo.
-      bottomNavigationBar: request != null && request.canConfirmBooking
-          ? _ConfirmBookingBar(requestId: request.id)
-          : null,
-    );
-  }
-}
-
-/// «Conferma prenotazione»: abre la hoja a pantalla completa.
-class _ConfirmBookingBar extends StatelessWidget {
-  const _ConfirmBookingBar({required this.requestId});
-
-  final String requestId;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final colors = Theme.of(context).colorScheme;
-    return Material(
-      color: colors.surface,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: colors.outlineVariant)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Center(
-            heightFactor: 1,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    key: const ValueKey('action-confirm-booking'),
-                    onPressed: () =>
-                        context.push(AppRoutes.requestBooking(requestId)),
-                    icon: const Icon(Icons.event_available),
-                    label: Text(l10n.actionConfirmBooking),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      // Un pedido nuevo: «Preparar presupuesto» y «Confirmar sin
+      // presupuesto»; con un presupuesto abierto, «Mandar» si falta que
+      // salga. La acción principal, abajo.
+      bottomNavigationBar: request == null
+          ? null
+          : RequestActionsBar(request: request),
     );
   }
 }
@@ -369,6 +329,11 @@ class _RequestDetail extends ConsumerWidget {
             // Los platos que eligió en la web: el aviso que pidió Evelyn, por
             // eso va arriba y destacado. Sin platos elegidos, nada.
             if (request.hasMenu) _ChosenMenu(request: request),
+
+            // El presupuesto (SPEC 5.8): su estado, sus semanas y lo que se
+            // puede hacer; en un pedido nuevo sin presupuesto, qué hace cada
+            // botón de abajo.
+            QuoteSection(request: request),
 
             // Una reserva: sus semanas con el menú de cada una (SPEC 5.8).
             if (request.isBooking) BookingWeekMenus(requestId: request.id),

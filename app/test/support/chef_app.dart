@@ -10,6 +10,7 @@ import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/availability/data/availability_repository.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/clients/data/clients_repository.dart';
+import 'package:radici/features/quotes/data/quotes_repository.dart';
 import 'package:radici/features/recipes/application/recipe_photo_providers.dart';
 import 'package:radici/features/recipes/data/recipe_photo_picker.dart';
 import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
@@ -24,6 +25,7 @@ import 'menu_fakes.dart';
 import 'menu_send_fakes.dart';
 import 'photo_fakes.dart';
 import 'pump_app.dart';
+import 'quote_fakes.dart';
 import 'request_fixtures.dart';
 
 class ChefApp {
@@ -42,6 +44,7 @@ class ChefApp {
     this.photoPicker,
     this.menus,
     this.menuSends,
+    this.quotes,
   );
 
   final ProviderContainer container;
@@ -58,6 +61,7 @@ class ChefApp {
   final FakeRecipePhotoPicker photoPicker;
   final FakeSessionMenusRepository menus;
   final FakeMenuSendsRepository menuSends;
+  final FakeQuotesRepository quotes;
 
   /// Navega como si se abriera un enlace a [location].
   void go(String location) => container.read(routerProvider).go(location);
@@ -69,8 +73,9 @@ class ChefApp {
 /// horario y sus días bloqueados (por defecto, lunes a viernes de 9 a 15 y
 /// sin bloqueos). [bookings] es la Edge Function de las reservas (por
 /// defecto, todo libre y la llegada sugerida a las 10:00; al confirmar, el
-/// pedido pasa a `accepted` en [requests] y una reserva a mano o una
-/// renovación agrega sus sesiones a [sessions]). [sessions] son sus sesiones
+/// pedido pasa a `accepted` en [requests], su presupuesto abierto se retira
+/// en [quotes] y una reserva a mano o una renovación agrega sus sesiones a
+/// [sessions]). [sessions] son sus sesiones
 /// y la Edge Function para moverlas y cancelarlas (por defecto, ninguna).
 /// [recipes] es su catálogo de platos (por defecto, vacío). [clients] son sus
 /// fichas, las del directorio de «Nuova prenotazione» (por defecto, ninguna;
@@ -80,6 +85,8 @@ class ChefApp {
 /// URL (por defecto, un JPEG chiquito en memoria: sin red). [menus] es el
 /// menú de cada semana (por defecto, ninguno) y [menuSends], su envío a la
 /// clienta (por defecto, ninguno salió; la vista previa mira [menus]).
+/// [quotes] es el presupuesto de cada pedido (por defecto, ninguno; al
+/// prepararlo, sus semanas `held` entran en [sessions]).
 /// [isWeb] simula la versión web (/gestione/). Con [settle] en false no
 /// espera a que la pantalla se asiente (una rueda que gira no se asienta
 /// nunca). [retry]: los reintentos automáticos de Riverpod (por defecto,
@@ -97,6 +104,7 @@ Future<ChefApp> pumpChefApp(
   FakeRecipePhotoPicker? photoPicker,
   FakeSessionMenusRepository? menus,
   FakeMenuSendsRepository? menuSends,
+  FakeQuotesRepository? quotes,
   ImageProvider<Object> Function(String url)? photoImage,
   bool isWeb = false,
   String? location,
@@ -113,12 +121,16 @@ Future<ChefApp> pumpChefApp(
   final days = availability ?? FakeAvailabilityRepository();
   final directory = clients ?? FakeClientsRepository();
   final sessionsRepository = sessions ?? FakeSessionsRepository();
+  final quoteServer =
+      quotes ??
+      FakeQuotesRepository(requests: requests, sessions: sessionsRepository);
   final booking =
       bookings ??
       FakeBookingsRepository(
         requests: requests,
         clients: directory,
         sessions: sessionsRepository,
+        onBookedFromRequest: quoteServer.withdrawOpen,
       );
   final catalog = recipes ?? FakeRecipesRepository();
   final bucket = photos ?? FakeRecipePhotosRepository();
@@ -146,6 +158,7 @@ Future<ChefApp> pumpChefApp(
       recipePhotoPickerProvider.overrideWithValue(picker),
       sessionMenusRepositoryProvider.overrideWithValue(weekMenus),
       menuSendsRepositoryProvider.overrideWithValue(sends),
+      quotesRepositoryProvider.overrideWithValue(quoteServer),
       recipePhotoProcessorProvider.overrideWithValue(fakeProcessRecipePhoto),
       recipePhotoImageProvider.overrideWith(
         (ref, url) => photoImage?.call(url) ?? MemoryImage(tinyJpeg),
@@ -169,6 +182,7 @@ Future<ChefApp> pumpChefApp(
     picker,
     weekMenus,
     sends,
+    quoteServer,
   );
   if (location != null) {
     app.go(location);

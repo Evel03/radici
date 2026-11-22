@@ -47,6 +47,14 @@ abstract final class AppRoutes {
   static String requestBooking(String id) =>
       '${requestDetail(id)}/$bookingSegment';
 
+  /// Hoja «Preparar presupuesto» de un pedido (a pantalla completa, sobre el
+  /// detalle): la de «Conferma prenotazione» con el precio de todo el
+  /// presupuesto (SPEC 5.8).
+  static const String requestQuoteSegment = 'preventivo';
+
+  static String requestQuote(String id) =>
+      '${requestDetail(id)}/$requestQuoteSegment';
+
   /// «Nuova prenotazione»: elegir la clienta de una reserva a mano (a
   /// pantalla completa, con X). Va antes que el detalle de un pedido.
   static const String newBookingSegment = 'nuova';
