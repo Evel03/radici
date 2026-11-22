@@ -71,7 +71,7 @@ Los 409:
 |---|---|
 | `{ "error": "slotTaken", "date": "AAAA-MM-DD" }` | la semana de esa fecha choca con otra sesión (`no_overlap`). En una reserva no se crea ninguna semana |
 | `{ "error": "weekTaken", "date": "AAAA-MM-DD" }` | esa semana ya tiene otra sesión viva de la misma reserva (una por semana). Al mover, la app ofrece pasarla al final de la reserva |
-| `{ "error": "requestNotNew", "status": "accepted" }` | el pedido ya no está `new` y no es un reintento; `status` es su estado actual |
+| `{ "error": "requestNotNew", "status": "accepted" }` | el pedido ya no está `new` y no es un reintento; `status` es su estado actual. En `/bookings` se confirma también uno `quoted` con su presupuesto abierto (§4) |
 | `{ "error": "sessionNotMovable", "status": "cooked" }` | solo se mueve una sesión `held` o `confirmed`; `status` es el actual |
 | `{ "error": "invalidTransition", "sessionId": uuid }` | al cancelar, esa sesión está `cooked` o `paid`; no se cancela ninguna |
 | `{ "error": "hasPayments", "sessionIds": [uuid] }` | al cancelar sin `allowWithPayments`, esas semanas ya están cobradas; no se cancela ninguna (§6) |
@@ -136,7 +136,7 @@ Las claves que el contrato no tiene se ignoran. Entre ellas `groceriesEstCents`,
 
 | `status` | Qué significa |
 |---|---|
-| `busy` | choca con otra sesión: la misma cuenta que `no_overlap` |
+| `busy` | choca con otra sesión: la misma cuenta que `no_overlap`. Desde un pedido con un presupuesto abierto, las semanas retenidas de ese presupuesto no cuentan: se retira al confirmar |
 | `past` | la fecha ya pasó (hoy no cuenta como pasado) |
 | `blocked` | día bloqueado (puede ser justo el que Evelyn bloqueó por la sesión acordada) |
 | `closed` | ese día de la semana no tiene horario |
@@ -145,7 +145,8 @@ Las claves que el contrato no tiene se ignoran. Entre ellas `groceriesEstCents`,
 
 ### Reglas
 
-- **Desde un pedido** (`requestId`): el pedido tiene que estar `new` (si no, `409 requestNotNew`, también en el `dryRun`). Pasa a `accepted`, con `weeks` = las semanas creadas y `seen_at`; la ficha, de `prospect` a `trial`.
+- **Desde un pedido** (`requestId`): el pedido tiene que estar `new`, o `quoted` con su presupuesto abierto (si no, `409 requestNotNew`, también en el `dryRun`). Pasa a `accepted`, con `weeks` = las semanas creadas y `seen_at`; la ficha, de `prospect` a `trial`.
+- **Con un presupuesto abierto** (un borrador, o uno que ya le llegó a la clienta: SPEC §5.8, «Presupuesto»): confirmar sin presupuesto lo retira antes de crear las semanas, en la misma transacción. Sus semanas retenidas se cancelan (`quote_withdrawn`) y no chocan con las nuevas, aunque sean las mismas fechas y hora; en el `dryRun` tampoco cuentan como `busy`. Si una semana choca con otra reserva, no se retira nada. No hace falta retirarlo antes (`chef_withdraw_quote`).
 - **A mano** (`clientId` o `newClient`): crea el pedido (`source = 'app'`, `accepted`) y, si es nueva, la ficha (`trial`, `pay_mode manual`). Una ficha existente no se modifica, salvo el paso de `prospect` a `trial`.
 - **Todo o nada**: si una semana choca no se crea ninguna, tampoco el pedido ni la ficha (`409` con la fecha).
 - **Idempotencia**: la app genera una `requestKey` por hoja «Confirmar reserva» (al abrirla) y la repite en cada envío de esa hoja (botón deshabilitado mientras envía); otra hoja, otra clave (ver «Uso desde la app»). A mano, la misma clave devuelve la reserva guardada con `duplicate: true` sin crear nada; es única por cocinera y compartida con las de la web (una clave ya usada por un pedido de la web da `400 requestKey: "conflict"`). Desde un pedido, el reintento se reconoce por el estado: el pedido ya `accepted` con esas mismas fechas y hora devuelve lo mismo con `duplicate: true`.
@@ -204,7 +205,7 @@ Respuesta `200`:
 
 Las funciones son de la migración `20261116150100_bookings.sql` (SPEC §4, «Reservas»): `security definer`, `search_path = ''`, ejecutables solo por `service_role`. Ninguna escribe en el log.
 
-- `public.chef_create_booking(p_chef_id, p_dates, p_start, p_cook_minutes, p_service_total_cents, p_portions, p_groceries_est_cents, p_request_id, p_client_id, p_new_client, p_type, p_household, p_locale, p_request_key, p_dry_run) → jsonb`. `p_service_total_cents` no tiene valor por defecto (null es `invalid_cents`). `p_groceries_est_cents` sigue en la firma, pero la Edge Function le pasa siempre 0 (sin compra desde el 19/11/2026); la columna `sessions.groceries_est_cents` queda en 0 en las reservas nuevas.
+- `public.chef_create_booking(p_chef_id, p_dates, p_start, p_cook_minutes, p_service_total_cents, p_portions, p_groceries_est_cents, p_request_id, p_client_id, p_new_client, p_type, p_household, p_locale, p_request_key, p_dry_run) → jsonb`. `p_service_total_cents` no tiene valor por defecto (null es `invalid_cents`). `p_groceries_est_cents` sigue en la firma, pero la Edge Function le pasa siempre 0 (sin compra desde el 19/11/2026); la columna `sessions.groceries_est_cents` queda en 0 en las reservas nuevas. La migración `20261121120000_quotes.sql` la rehace con la misma firma: desde un pedido con un presupuesto abierto, lo retira antes de crear las semanas (§4), sin errores nuevos.
 - `public.chef_move_session(p_chef_id, p_session_id, p_date, p_start, p_cook_minutes, p_dry_run) → jsonb`
 - `public.chef_cancel_sessions(p_chef_id, p_session_ids, p_reason, p_allow_with_payments) → jsonb`
 
