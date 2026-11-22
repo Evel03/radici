@@ -449,64 +449,28 @@
   color: var(--olive);
 }
 
-/* El ejemplo, en oliva como la tarjeta verde del manual. */
-.card--example {
+/* La invitación a pedir el presupuesto, en oliva como la tarjeta verde del manual. */
+.card--cta {
   border-color: var(--olive);
   background: var(--olive);
   color: var(--crema);
 }
 
-.card--example .card__title {
+.card--cta .card__title {
   color: var(--crema);
 }
 
 /* Crema al 85 % sobre oliva: 5.2:1. */
-.card--example p,
-.card--example .small,
-.card--example .example__row dt {
+.card--cta p {
   color: rgb(245 237 225 / 85%);
 }
 
-.card--example a {
+.card--cta a {
   color: var(--crema);
 }
 
-.card--example a:focus-visible {
+.card--cta a:focus-visible {
   outline-color: var(--crema);
-}
-
-.example {
-  margin: 1.25rem 0;
-}
-
-.example__row {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding-block: 0.5rem;
-  border-bottom: 1px solid rgb(245 237 225 / 30%);
-}
-
-.example__row dd {
-  margin: 0;
-  font-variant-numeric: lining-nums tabular-nums;
-  font-weight: 600;
-}
-
-.example__row--total {
-  border-bottom: 0;
-  font-size: 1.3rem;
-}
-
-.card--example .example__row--total dt {
-  color: var(--crema);
-  font-weight: 600;
-}
-
-.example__row--total dd {
-  font-size: 1.6rem;
-  font-weight: 600;
-  line-height: 1.1;
 }
 
 @media (min-width: 48rem) {

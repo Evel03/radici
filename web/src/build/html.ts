@@ -101,7 +101,6 @@ export function buildJsonLd(config: AppConfig, i18n: I18n): Record<string, unkno
     address: { "@type": "PostalAddress", addressLocality: "Bergamo", addressRegion: "BG", addressCountry: "IT" },
     areaServed,
     knowsLanguage: ["it", "es", "en"],
-    currenciesAccepted: "EUR",
     makesOffer: {
       "@type": "Offer",
       itemOffered: {

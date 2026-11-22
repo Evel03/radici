@@ -1,29 +1,15 @@
 // Resumen del pedido para la pantalla de gracias. Pura: devuelve textos, la página los pinta con textContent.
-// Solo datos del pedido (tipo, semanas, personas, días, comidas, fechas, platos elegidos, estimación) y qué
-// contestó sobre alergias (ninguna o indicadas, nunca cuáles): nada de contacto ni de salud.
+// Solo datos del pedido (tipo, semanas, personas, días, comidas, fechas, platos elegidos) y qué contestó sobre
+// alergias (ninguna o indicadas, nunca cuáles): nada de contacto ni de salud. Ningún precio: la web no los
+// muestra (decisión del 22/11/2026), el presupuesto lo prepara Evelyn a mano.
 import { localizedText, type MenuChoice } from "../../../supabase/functions/_shared/menu.ts";
 import type { I18n } from "../i18n/core.ts";
-import { formatCents, formatIsoDate, formatShortDate } from "../lib/format.ts";
-import { publicEstimate, weeklyDates, weeksOf, type PublicRequestEstimate, type RequestData } from "./model.ts";
-import { computeQuote } from "./quote.ts";
-
-/**
- * La estimación que muestra la pantalla de gracias: la del servidor (con las tarifas de la cocinera) o, si
- * no vino (o vino con otra forma), la de la calculadora con los datos de ese pedido. Sin los datos (no se
- * sabe qué guardó el servidor), ninguna.
- */
-export function doneEstimate(data: RequestData | null, fromServer: PublicRequestEstimate | null): PublicRequestEstimate | null {
-  if (!data) return null;
-  if (fromServer) return fromServer;
-  const local = computeQuote(data);
-  return local ? publicEstimate(local) : null;
-}
+import { formatIsoDate, formatShortDate } from "../lib/format.ts";
+import { weeklyDates, weeksOf, type RequestData } from "./model.ts";
 
 export interface SummaryRow {
   label: string;
   value: string;
-  /** El importe que se paga por el servicio (se destaca). */
-  total?: boolean;
 }
 
 export function peopleText(adults: number, kids: number, t: I18n["t"]): string {
@@ -32,29 +18,6 @@ export function peopleText(adults: number, kids: number, t: I18n["t"]): string {
   if (kids === 0) return a;
   if (adults === 0) return k;
   return t("request.summary.peopleJoin", { a, b: k });
-}
-
-/**
- * El precio: con precio automático, el servicio (por semana y de todas las semanas, y el ahorro si hay
- * descuento); sin él, que lo prepara Evelyn. La compra la hace el cliente con la lista de Evelyn (decisión del
- * 19/11/2026): no tiene fila.
- */
-export function priceRows(estimate: PublicRequestEstimate, i18n: I18n): SummaryRow[] {
-  const { t, locale } = i18n;
-  const money = (cents: number): string => formatCents(cents, locale);
-  const rows: SummaryRow[] = [];
-  if (!estimate.autoPrice) {
-    rows.push({ label: t("request.summary.service"), value: t("request.summary.servicePending") });
-  } else if (estimate.weeks > 1) {
-    rows.push({ label: t("request.summary.weeklyService"), value: money(estimate.weeklyServiceCents) });
-    rows.push({ label: t("request.summary.serviceWeeks", { weeks: estimate.weeks }), value: money(estimate.serviceCents), total: true });
-  } else {
-    rows.push({ label: t("request.summary.service"), value: money(estimate.serviceCents), total: true });
-  }
-  if (estimate.autoPrice && estimate.savingsCents > 0) {
-    rows.push({ label: t("request.summary.savings"), value: money(estimate.savingsCents) });
-  }
-  return rows;
 }
 
 /**
@@ -69,12 +32,10 @@ export function menuSummary(menu: readonly MenuChoice[], days: number, i18n: I18
 }
 
 /**
- * @param estimate la del servidor (con las tarifas de la cocinera) o, si no vino, la de la calculadora.
  * @param menu los platos que guardó el servidor (doneMenu en menu.ts); [] si el menù lo propone Evelyn.
  */
 export function summaryRows(
   data: RequestData,
-  estimate: PublicRequestEstimate | null,
   i18n: I18n,
   menu: readonly MenuChoice[] = [],
 ): SummaryRow[] {
@@ -107,6 +68,5 @@ export function summaryRows(
     label: t("request.summary.allergies"),
     value: t(data.noAllergies ? "request.summary.allergiesNone" : "request.summary.allergiesListed"),
   });
-  if (estimate) rows.push(...priceRows(estimate, i18n));
   return rows;
 }
