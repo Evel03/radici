@@ -6,7 +6,9 @@
 // - Los elementos con data-i18n / data-i18n-html / data-i18n-attr se rellenan con el italiano
 //   de it.json: así la página tiene contenido sin JS y para SEO, sin duplicar textos en el HTML.
 // - Se agregan noindex, canonical/og:url, la imagen para compartir (og:image, con URL absoluta) y el
-//   JSON-LD según la configuración. La 404 nunca se indexa ni declara una URL propia.
+//   JSON-LD según la configuración. La 404 nunca se indexa ni declara una URL propia. Las páginas privadas
+//   (la de la clienta, que se abre con su link) nunca se indexan ni declaran canonical, pero conservan la
+//   imagen: el link llega por WhatsApp y la vista previa la muestra.
 import type { AppConfig } from "../config.ts";
 import { parseAttrSpec, type I18n } from "../i18n/core.ts";
 import { OG_IMAGE } from "./images.ts";
@@ -14,13 +16,16 @@ import { OG_IMAGE } from "./images.ts";
 export interface RenderOptions {
   i18n: I18n;
   config: AppConfig;
-  /** Ruta pública de la página: "/", "/richiesta/", "/privacy/" o NOT_FOUND_PATH. */
+  /** Ruta pública de la página: "/", "/richiesta/", "/privacy/", "/prenotazione/" o NOT_FOUND_PATH. */
   pagePath: string;
   partials: Readonly<Record<string, string>>;
 }
 
 /** La página 404 (dist/404.html): Cloudflare Pages la sirve con estado 404 en cualquier ruta que no existe. */
 export const NOT_FOUND_PATH = "/404.html";
+
+/** Páginas que se abren solo con un link personal (/prenotazione/#t=…): nunca se indexan. */
+export const PRIVATE_PATHS: readonly string[] = ["/prenotazione/"];
 
 export function escapeHtml(value: string): string {
   return value
@@ -112,16 +117,17 @@ export function buildJsonLd(config: AppConfig, i18n: I18n): Record<string, unkno
 function headExtras(opts: RenderOptions): string[] {
   const { config, pagePath, i18n } = opts;
   const notFound = pagePath === NOT_FOUND_PATH;
+  const privatePage = PRIVATE_PATHS.includes(pagePath);
   const tags: string[] = [];
-  if (config.noindex) tags.push('<meta name="robots" content="noindex, nofollow">');
+  if (config.noindex || privatePage) tags.push('<meta name="robots" content="noindex, nofollow">');
   else if (notFound) tags.push('<meta name="robots" content="noindex">');
   if (notFound) return tags;
 
   if (config.siteUrl) {
     const url = escapeHtml(`${config.siteUrl}${pagePath}`);
+    // Una página privada no declara una URL propia: la suya es la del link, con el token.
+    if (!privatePage) tags.push(`<link rel="canonical" href="${url}">`, `<meta property="og:url" content="${url}">`);
     tags.push(
-      `<link rel="canonical" href="${url}">`,
-      `<meta property="og:url" content="${url}">`,
       // Las vistas previas (WhatsApp, Facebook…) piden la imagen con URL absoluta.
       `<meta property="og:image" content="${escapeHtml(`${config.siteUrl}${OG_IMAGE.path}`)}">`,
       `<meta property="og:image:type" content="${OG_IMAGE.type}">`,
@@ -142,10 +148,20 @@ function headExtras(opts: RenderOptions): string[] {
   return tags;
 }
 
+/**
+ * Los links de idioma del encabezado sin href (shell.ts se los pone con el fragmento actual). En una página
+ * privada el fragmento es el token del link (#t=…) y un href "?lang=xx" lo descarta: si se tocara antes de que
+ * cargue el JS, o se abriera en otra pestaña, la página diría que el link no funciona. Esa página no anda sin JS.
+ */
+export function withoutLangHrefs(html: string): string {
+  return html.replace(/<a href="\?lang=[a-z]{2}"(?=[^<>]*\sdata-lang=")/g, "<a");
+}
+
 export function renderPage(html: string, opts: RenderOptions): string {
   let out = insertPartials(html, opts.partials);
   out = out.replaceAll("__BRAND_NAME__", escapeHtml(opts.config.brandName));
   out = fillTranslations(out, opts.i18n);
+  if (PRIVATE_PATHS.includes(opts.pagePath)) out = withoutLangHrefs(out);
   const extras = headExtras(opts);
   return out.replace(/\n([ \t]*)<\/head>/, (_m, indent: string) =>
     `\n${extras.map((tag) => `${indent}  ${tag}\n`).join("")}${indent}</head>`,

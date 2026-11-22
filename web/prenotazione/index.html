@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="it" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="reservation.metaTitle"></title>
+    <meta name="description" data-i18n-attr="content:reservation.metaDescription" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f5ede1" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="__BRAND_NAME__" />
+    <meta property="og:locale" content="it_IT" />
+    <meta property="og:title" data-i18n-attr="content:reservation.metaTitle" />
+    <meta property="og:description" data-i18n-attr="content:reservation.metaDescription" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script type="module" src="/src/pages/prenotazione.ts"></script>
+  </head>
+  <body>
+    <!-- partial:header -->
+
+    <!-- La reserva de la clienta (SPEC 5.8): el token del link va en el fragmento (#t=…) y lo lee prenotazione.ts. -->
+    <main id="main" class="reservation-page">
+      <div class="container container--narrow">
+        <header class="page-head">
+          <h1 class="page-head__title" data-i18n="reservation.title"></h1>
+        </header>
+
+        <noscript>
+          <p class="notice notice--warn" data-i18n="reservation.noscript"></p>
+        </noscript>
+
+        <div id="reservation" class="reservation" aria-busy="true">
+          <div class="reservation__content">
+            <p class="reservation__loading" data-i18n="reservation.loading"></p>
+          </div>
+        </div>
+
+        <!-- Lo que pasó con una respuesta que no mueve el foco (un error de conexión, demasiados intentos). -->
+        <p id="reservation-live" class="visually-hidden" role="status" aria-live="polite"></p>
+      </div>
+    </main>
+
+    <!-- partial:footer -->
+  </body>
+</html>

@@ -120,18 +120,28 @@ function readPhotoUrl(value: unknown, origin: string): { chefId: string; recipeI
 }
 
 /**
- * La foto de GET …/menu: { thumb, full } del mismo plato y la misma foto, en el bucket recipe-photos del
- * origen de Supabase (photoOrigin). Cualquier otra cosa, o sin origen, es null: el plato se muestra sin foto.
+ * Una foto { thumb, full } como las de recipePhotoUrls: los dos archivos de la misma foto (la misma cocinera,
+ * el mismo plato y la misma foto) en el bucket recipe-photos del origen de Supabase (photoOrigin), con el plato
+ * de la foto (recipeId). Cualquier otra cosa, o sin origen, es null. Sirve también donde no se sabe el id del
+ * plato: los platos del menú que Evelyn le manda a la clienta (_shared/client_link.ts).
  */
-function readPhoto(value: unknown, dishId: string, origin: string | null): MenuPhoto | null {
+export function readStoragePhoto(value: unknown, origin: string | null): (MenuPhoto & { recipeId: string }) | null {
   const allowed = photoOrigin(origin);
   if (!allowed || !isRecord(value)) return null;
   const thumb = readPhotoUrl(value["thumb"], allowed);
   const full = readPhotoUrl(value["full"], allowed);
   if (!thumb || !full || !thumb.thumb || full.thumb) return null;
-  if (thumb.recipeId !== dishId || full.recipeId !== dishId) return null;
-  if (thumb.chefId !== full.chefId || thumb.photoId !== full.photoId) return null;
-  return { thumb: value["thumb"] as string, full: value["full"] as string };
+  if (thumb.recipeId !== full.recipeId || thumb.chefId !== full.chefId || thumb.photoId !== full.photoId) return null;
+  return { thumb: value["thumb"] as string, full: value["full"] as string, recipeId: thumb.recipeId };
+}
+
+/**
+ * La foto de GET …/menu: { thumb, full } del mismo plato y la misma foto, en el bucket recipe-photos del
+ * origen de Supabase (photoOrigin). Cualquier otra cosa, o sin origen, es null: el plato se muestra sin foto.
+ */
+function readPhoto(value: unknown, dishId: string, origin: string | null): MenuPhoto | null {
+  const photo = readStoragePhoto(value, origin);
+  return photo && photo.recipeId === dishId ? { thumb: photo.thumb, full: photo.full } : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
