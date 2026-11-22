@@ -10,7 +10,7 @@ import itJson from "../i18n/it.json";
 import { createSiteI18n } from "../i18n/site.ts";
 import footer from "../partials/footer.html?raw";
 import header from "../partials/header.html?raw";
-import { NOT_FOUND_PATH, buildJsonLd, fillTranslations, pagePathFromHtmlPath, renderPage } from "./html.ts";
+import { NOT_FOUND_PATH, buildJsonLd, fillTranslations, pagePathFromHtmlPath, renderPage, withoutLangHrefs } from "./html.ts";
 import { OG_IMAGE } from "./images.ts";
 
 const baseConfig: AppConfig = {
@@ -237,6 +237,23 @@ describe("página de la clienta (/prenotazione/)", () => {
     expect(out).toMatch(/<noscript>\s*<p class="notice notice--warn" data-i18n="reservation.noscript">Per vedere la tua prenotazione/);
     expect(out).not.toMatch(/\sstyle=/);
     expect(out).not.toMatch(/<style/);
+  });
+
+  it("los links de idioma salen sin href (un «?lang=xx» perdería el token del fragmento); el shell se los pone", () => {
+    const out = render(baseConfig);
+    expect(out).not.toContain('href="?lang=');
+    const links = [...out.matchAll(/<a\s[^>]*data-lang="(\w+)"[^>]*>/g)];
+    expect(links.map((match) => match[1])).toEqual(["it", "es", "en"]);
+    for (const [tag] of links) expect(tag).not.toMatch(/\shref=/);
+    // Las páginas públicas los conservan: sin JS, cambian de idioma igual.
+    for (const [path, html] of [["/", indexHtml], ["/richiesta/", requestHtml], ["/privacy/", privacyHtml]] as const) {
+      expect(renderPage(html, { i18n, config: baseConfig, pagePath: path, partials }), path).toContain('href="?lang=es"');
+    }
+  });
+
+  it("withoutLangHrefs: solo los links de idioma", () => {
+    const html = '<a href="?lang=es" hreflang="es" data-lang="es">ES</a><a href="?lang=es#x">otro</a><a href="/">casa</a>';
+    expect(withoutLangHrefs(html)).toBe('<a hreflang="es" data-lang="es">ES</a><a href="?lang=es#x">otro</a><a href="/">casa</a>');
   });
 });
 

@@ -85,21 +85,36 @@ export function textLength(text: string): number {
 }
 
 /**
- * Caracteres de control que la base no acepta en el mensaje: todos menos el salto de línea. Los separadores de
- * línea y de párrafo (U+2028, U+2029) se cambian antes por saltos: glibc los cuenta como control.
+ * Los saltos de línea que llegan pegados desde otros programas: \r\n y \r, la tabulación vertical y el salto de
+ * página (los saltos manuales de Word y PowerPoint), NEL y los separadores de línea y de párrafo de Unicode.
+ * Pasan a \n: es el único que acepta la base (glibc cuenta como control a los demás).
  */
-const CHANGES_TEXT_CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
+const LINE_BREAKS = /\r\n?|[\v\f\x85\u2028\u2029]/g;
+/** Los demás caracteres de control: no se ven y la base no los acepta, así que se sacan. La tabulación va aparte. */
+const OTHER_CONTROLS = /[\x00-\x08\x0e-\x1f\x7f-\x9f]/g;
 
 /**
- * El mensaje de cambios como lo acepta client_link_request_changes: los saltos de línea (\r\n, \r, U+2028 y
- * U+2029) pasan a \n y las tabulaciones a espacios; recortado; de 1 a 1000 caracteres y sin otros caracteres de
- * control. null si no se puede mandar.
+ * El mensaje limpio, como lo acepta client_link_request_changes: los saltos de línea pasan a \n, las tabulaciones
+ * a espacios, sin otros caracteres de control y recortado.
  */
+export function cleanChangesText(value: string): string {
+  return value.replace(LINE_BREAKS, "\n").replace(/\t/g, " ").replace(OTHER_CONTROLS, "").trim();
+}
+
+/** Lo que impide mandar un mensaje limpio: vacío o de más de 1000 caracteres. */
+export type ChangesTextProblem = "empty" | "tooLong";
+
+/** Lo que impide mandar un mensaje ya limpio (cleanChangesText), o null si se puede mandar. */
+export function changesTextProblem(text: string): ChangesTextProblem | null {
+  if (text === "") return "empty";
+  return textLength(text) > CHANGES_TEXT_MAX ? "tooLong" : null;
+}
+
+/** El mensaje de cambios limpio (cleanChangesText) si se puede mandar (de 1 a 1000 caracteres); si no, null. */
 export function normalizeChangesText(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const text = value.replace(/\r\n?|[\u2028\u2029]/g, "\n").replace(/\t/g, " ").trim();
-  if (text === "" || textLength(text) > CHANGES_TEXT_MAX || CHANGES_TEXT_CONTROL.test(text)) return null;
-  return text;
+  const text = cleanChangesText(value);
+  return changesTextProblem(text) === null ? text : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -260,6 +275,11 @@ export interface ClientLinkMenu {
 
 /** Una semana de la reserva (las sesiones no canceladas, por fecha). */
 export interface ClientLinkWeek {
+  /**
+   * La sesión (uuid): la identidad de la semana para la página. El número cambia si se cancela una semana
+   * anterior, y la fecha si Evelyn la mueve; el id, no. No abre nada: para contestar hacen falta el token y el envío.
+   */
+  sessionId: string;
   /** «Semana k de N». */
   week: number;
   weeks: number;
@@ -279,7 +299,10 @@ export interface ClientLinkView {
   /** El idioma de la reserva (requests.locale): la página lo usa si la visitante no eligió otro. */
   locale: Locale;
   chefName: string;
-  /** Solo un nombre de pila que parece un nombre (safeFirstName), o null. Nunca el nombre completo. */
+  /**
+   * El nombre de pila con que llegó el pedido (o, si no tiene, el de la ficha), solo si parece un nombre
+   * (safeFirstName); si no, null. Nunca el nombre completo.
+   */
   clientFirstName: string | null;
   weeks: ClientLinkWeek[];
 }
@@ -302,6 +325,7 @@ export type ClientLinkErrorCode =
   | "menuOutdated"
   | "changesRequested"
   | "alreadyConfirmed"
+  | "sessionCancelled"
   | "invalidText"
   | "invalidPayload"
   | "rateLimited"
@@ -341,13 +365,14 @@ function readMenu(value: unknown, storageOrigin: string | null): ClientLinkMenu 
 
 function readWeek(value: unknown, storageOrigin: string | null): ClientLinkWeek | null {
   if (!isRecord(value)) return null;
-  const { week, weeks, date, start, done } = value;
+  const { sessionId, week, weeks, date, start, done } = value;
+  if (typeof sessionId !== "string" || !isUuid(sessionId)) return null;
   if (!isIntInRange(weeks, 1, 1000) || !isIntInRange(week, 1, weeks)) return null;
   if (typeof date !== "string" || !isIsoDate(date) || !isTimeOfDay(start) || typeof done !== "boolean") return null;
   const menuRaw = value["menu"];
   const menu = menuRaw === null ? null : readMenu(menuRaw, storageOrigin);
   if (menuRaw !== null && menu === null) return null;
-  return { week, weeks, date, start, done, menu };
+  return { sessionId: sessionId.toLowerCase(), week, weeks, date, start, done, menu };
 }
 
 /**

@@ -12,6 +12,16 @@ export const SUPABASE_URL = "https://abcdefgh.supabase.co";
 export const TOKEN = "B_wWbkraJZQT6glUNfUKI2uxzam1sC16p8ZBTilzOWg";
 export const SEND_1 = "5e0d0000-0000-4000-8000-000000000001";
 export const SEND_NEW = "5e0d0000-0000-4000-8000-000000000002";
+export const SEND_2 = "5e0d0000-0000-4000-8000-000000000003";
+/** Las sesiones de la reserva: la identidad de cada semana en la página. */
+export const SESSION_1 = "5e550000-0000-4000-8000-000000000001";
+export const SESSION_2 = "5e550000-0000-4000-8000-000000000002";
+export const SESSION_3 = "5e550000-0000-4000-8000-000000000003";
+
+/** La sesión de la semana k de los tests (5e55…000k). */
+export function session(k: number): string {
+  return `5e550000-0000-4000-8000-${String(k).padStart(12, "0")}`;
+}
 const CHEF_ID = "cef00000-0000-4000-8000-000000000001";
 const RECIPE_ID = "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
 const PHOTO_ID = "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f";
@@ -59,7 +69,7 @@ export function menu(overrides: Partial<ClientLinkMenu> = {}): ClientLinkMenu {
 }
 
 export function week(overrides: Partial<ClientLinkWeek> = {}): ClientLinkWeek {
-  return { week: 1, weeks: 2, date: "2027-03-01", start: "10:00", done: false, menu: menu(), ...overrides };
+  return { sessionId: SESSION_1, week: 1, weeks: 2, date: "2027-03-01", start: "10:00", done: false, menu: menu(), ...overrides };
 }
 
 /** La reserva: la semana 1 con el menú por confirmar, la 2 sin menú todavía. */
@@ -69,7 +79,7 @@ export function view(overrides: Partial<ClientLinkView> = {}): ClientLinkView {
     locale: "it",
     chefName: "Evelyn",
     clientFirstName: "Anna",
-    weeks: [week(), week({ week: 2, date: "2027-03-08", menu: null })],
+    weeks: [week(), week({ sessionId: SESSION_2, week: 2, date: "2027-03-08", menu: null })],
     ...overrides,
   };
 }

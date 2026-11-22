@@ -48,6 +48,8 @@ export type ActionOutcome =
   | { kind: "changesRequested" }
   /** Ya lo confirmó: los cambios se hablan con Evelyn. */
   | { kind: "alreadyConfirmed" }
+  /** La semana se canceló después del envío: ya no hay menú que contestar. */
+  | { kind: "sessionCancelled" }
   | { kind: "sendNotFound" }
   | { kind: "linkNotFound" }
   | { kind: "invalidText" }
@@ -121,7 +123,9 @@ export async function fetchView(supabaseUrl: string, token: string, opts: ApiOpt
 function actionError(raw: RawResponse, opts: ApiOptions): ActionOutcome {
   const code = errorCode(raw.body);
   if (raw.status === 404 && (code === "linkNotFound" || code === "sendNotFound")) return { kind: code };
-  if (raw.status === 409 && (code === "menuOutdated" || code === "changesRequested" || code === "alreadyConfirmed")) return { kind: code };
+  if (raw.status === 409 && (code === "menuOutdated" || code === "changesRequested" || code === "alreadyConfirmed" || code === "sessionCancelled")) {
+    return { kind: code };
+  }
   if (raw.status === 400 && code === "invalidText") return { kind: "invalidText" };
   if (raw.status === 429) return { kind: "rateLimited", retryAfterSeconds: parseRetryAfter(raw.retryAfter, opts.now) };
   return { kind: "server" };

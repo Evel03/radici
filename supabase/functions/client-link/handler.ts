@@ -204,8 +204,9 @@ function menuFromRpc(value: unknown, storageOrigin: string | null, unreadable: s
 
 /**
  * public.client_link_view → la respuesta de POST …/view, o null si no tiene la forma esperada (500). Solo pasa lo
- * del contrato: de la clienta, un nombre de pila que parece un nombre (safeFirstName), nunca el nombre completo;
- * de cada semana, la fecha, la hora, si ya se cocinó y el último menú enviado.
+ * del contrato: de la clienta, el nombre de pila con que llegó el pedido (o el de la ficha) si parece un nombre
+ * (safeFirstName), nunca el nombre completo; de cada semana, su sesión, la fecha, la hora, si ya se cocinó y el
+ * último menú enviado.
  */
 export function viewFromRpc(data: unknown, storageOrigin: string | null): ViewFromRpc | null {
   if (!isRecord(data)) return null;
@@ -215,12 +216,21 @@ export function viewFromRpc(data: unknown, storageOrigin: string | null): ViewFr
   const out: ClientLinkWeek[] = [];
   for (const raw of weeks) {
     if (!isRecord(raw)) return null;
-    const { date, start, status, week, weeks: total } = raw;
+    const { sessionId, date, start, status, week, weeks: total } = raw;
+    if (typeof sessionId !== "string" || !isUuid(sessionId)) return null;
     if (typeof date !== "string" || !isIsoDate(date) || !isTimeOfDay(start) || typeof status !== "string") return null;
     if (!isPositiveInt(week) || !isPositiveInt(total) || week > total) return null;
     const menu = menuFromRpc(raw["send"], storageOrigin, unreadable);
     if (menu === undefined) return null;
-    out.push({ week, weeks: total, date, start, done: status === "cooked" || status === "paid", menu });
+    out.push({
+      sessionId: sessionId.toLowerCase(),
+      week,
+      weeks: total,
+      date,
+      start,
+      done: status === "cooked" || status === "paid",
+      menu,
+    });
   }
   const first = typeof clientName === "string" ? safeFirstName(clientName) : "";
   return {
@@ -247,10 +257,16 @@ export interface MenuAnswer {
   changesRequestedAt: string | null;
   date: string;
   start: string;
-  /** null: la semana se canceló después del envío (ya no tiene lugar en la reserva). */
+  /**
+   * null: la semana ya no tiene lugar en la reserva. La base de hoy no deja contestar una semana cancelada
+   * (session_cancelled), así que no debería llegar; si llega, no se avisa (no hay «semana k» que contar).
+   */
   week: number | null;
   weeks: number;
-  /** El nombre de la ficha: solo para el aviso a Evelyn, nunca a la página ni al log. */
+  /**
+   * El nombre con que llegó el pedido (o, si no tiene, el de la ficha): el mismo del mensaje y de la bandeja.
+   * Solo para el aviso a Evelyn, nunca a la página ni al log.
+   */
   clientName: string | null;
 }
 
@@ -293,6 +309,8 @@ const SQL_ERRORS: ReadonlyMap<string, { code: string; status: number; error: Cli
   ["menu_outdated", { code: "55000", status: 409, error: "menuOutdated" }],
   ["changes_requested", { code: "55000", status: 409, error: "changesRequested" }],
   ["already_confirmed", { code: "55000", status: 409, error: "alreadyConfirmed" }],
+  // La semana se canceló después del envío: ya no hay menú que contestar.
+  ["session_cancelled", { code: "55000", status: 409, error: "sessionCancelled" }],
   ["invalid_text", { code: "22023", status: 400, error: "invalidText" }],
 ]);
 
@@ -565,7 +583,7 @@ async function notifyChef(deps: ClientLinkHandlerDeps, kind: MenuAnswerKind, ans
     return;
   }
   if (answer.week === null) {
-    // La semana se canceló después del envío: no hay «semana k» que contar.
+    // La semana ya no está en la reserva (la base de hoy lo impide con session_cancelled): no hay «semana k».
     log("warn", "email_skipped", { ...ids, reason: "week_cancelled" });
     return;
   }

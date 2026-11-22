@@ -13,7 +13,7 @@ import { ALLERGENS, DIETS } from "../../../supabase/functions/_shared/public_req
 import { DATE_WINDOW, MEAL_OPTIONS, REQUEST_TYPES } from "../request/model.ts";
 import { exampleQuote, EXAMPLE_INPUT } from "../request/quote.ts";
 import { FIELD_ORDER, fieldError } from "../request/validate.ts";
-import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang, type Lang } from "./core.ts";
+import { LANGS, createI18n, flatten, interpolate, langHref, parseAttrSpec, placeholders, resolveLang, type Lang } from "./core.ts";
 import en from "./en.json";
 import es from "./es.json";
 import itJson from "./it.json";
@@ -378,6 +378,26 @@ describe("privacy", () => {
       }
     });
   }
+
+  // 2026-11-22: la página de la reserva (el link de la clienta, contrato client-link). Las respuestas al menú (la
+  // confirmación o el mensaje de cambios) son datos de la solicitud; las visitas y respuestas de esa página entran en
+  // el límite por IP, con la misma huella y conservación; y el aviso a Evelyn no lleva el mensaje.
+  const booking: Record<Lang, { page: string; limit: RegExp; email: string }> = {
+    it: { page: "pagina della tua prenotazione", limit: /visite e (le )?risposte nella pagina della prenotazione/, email: "non riporta il tuo messaggio" },
+    es: { page: "página de tu reserva", limit: /visitas y respuestas en la página de la reserva/, email: "no incluye tu mensaje" },
+    en: { page: "booking page", limit: /visits and replies on the booking page/, email: "doesn't include your message" },
+  };
+  for (const lang of LANGS) {
+    it(`${lang}: cuenta la página de la reserva (respuestas al menú, su límite por IP y el aviso a Evelyn sin el mensaje)`, () => {
+      for (const key of ["privacy.metaDescription", "privacy.intro", "privacy.dataBody", "privacy.purposeBody", "privacy.flowBody"]) {
+        expect(dicts[lang][key], key).toContain(booking[lang].page);
+      }
+      for (const key of ["privacy.legalBody", "privacy.flowBody", "privacy.retentionBody"]) {
+        expect(dicts[lang][key], key).toMatch(booking[lang].limit);
+      }
+      expect(dicts[lang]["privacy.flowBody"]).toContain(booking[lang].email);
+    });
+  }
 });
 
 describe("SEO y accesibilidad de los textos", () => {
@@ -436,6 +456,16 @@ describe("núcleo de i18n", () => {
     expect(resolveLang("?lang=fr", "en")).toBe("en");
     expect(resolveLang("", "xx")).toBe("it");
     expect(resolveLang("", null)).toBe("it");
+  });
+
+  it("langHref: el link de idioma conserva el fragmento (en /prenotazione/, el token del link)", () => {
+    expect(langHref("it", "")).toBe("?lang=it");
+    expect(langHref("es", "#t=abc")).toBe("?lang=es#t=abc");
+    // Como lo resuelve el navegador desde la página de la clienta: la query cambia, el token queda.
+    const page = "https://radicicucina.app/prenotazione/?lang=it#t=TOKEN";
+    expect(new URL(langHref("en", "#t=TOKEN"), page).href).toBe("https://radicicucina.app/prenotazione/?lang=en#t=TOKEN");
+    // Sin el fragmento, un "?lang=en" a secas lo perdería.
+    expect(new URL("?lang=en", page).hash).toBe("");
   });
 
   it("createI18n aplica los valores globales y devuelve la clave si falta", () => {

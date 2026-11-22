@@ -3,8 +3,9 @@
 // otros emails (_shared/emails.ts) y un botón al pedido en la bandeja (INBOX_URL).
 // - El mensaje de la clienta no va: es una nota libre, y las notas libres nunca salen por email (SPEC §6),
 //   aunque el aviso vaya a la dirección de Evelyn. Ella lo lee en la app, en el pedido.
-// - Del nombre de la clienta, en el asunto (se ve en las notificaciones del celular) solo el de pila, y solo si
-//   parece un nombre (safeFirstName); en el cuerpo, el de su ficha, escapado.
+// - El nombre de la clienta es el que llegó con el pedido (o, si no tiene, el de la ficha): el mismo del mensaje y
+//   de la bandeja. En el asunto (se ve en las notificaciones del celular) solo el de pila, y solo si parece un
+//   nombre (safeFirstName); en el cuerpo, entero y escapado.
 // - Nunca el token ni el link de la clienta, alergias, dirección ni nada de pagos.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import {
@@ -24,7 +25,7 @@ export type MenuAnswerKind = "confirmed" | "changes";
 export interface MenuAnswerNotice {
   kind: MenuAnswerKind;
   brand: string;
-  /** El nombre de la ficha de la clienta; null o vacío: «la clienta». */
+  /** El nombre de la clienta (el del pedido o el de la ficha); null o vacío: «la clienta». */
   clientName: string | null;
   requestId: string;
   /** «Semana k de N», la fecha ("AAAA-MM-DD") y la hora de llegada ("HH:MM") de esa semana. */
@@ -46,7 +47,7 @@ interface AnswerMessages {
 }
 
 interface Messages {
-  /** Sin nombre en la ficha. */
+  /** Sin nombre. */
   someone: string;
   confirmed: AnswerMessages;
   changes: AnswerMessages;

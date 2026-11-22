@@ -1,9 +1,11 @@
 // Lo que se ve en /prenotazione/, como árbol de elementos (lib/vdom.ts): puro, sin DOM. Todo texto que llega de
 // la función (los platos, la lista, la nota de Evelyn) va como texto, nunca como HTML.
-// Orden de la página: el saludo; después (cuando llegue) el presupuesto para aceptar; después las semanas. Cada
-// semana: la fecha y la hora de llegada y, si Evelyn mandó el menú, su estado, los platos, la lista de compras y
-// la nota, con los botones si está por confirmar. Nada de precios, pagos, dirección ni alergias de la clienta:
-// la página muestra solo lo que trae la foto del envío.
+// Orden de la página: el saludo y, si lo hay, un aviso de la página (una semana que se canceló); después (cuando
+// llegue) el presupuesto para aceptar; después las semanas. Cada semana: la fecha y la hora de llegada y, si
+// Evelyn mandó el menú, su estado, los platos, la lista de compras y la nota, con los botones si está por
+// confirmar. Una semana ya cocinada no promete nada que ya no puede pasar (que llegue el menú, que se reenvíe).
+// Nada de precios, pagos, dirección ni alergias de la clienta: la página muestra solo lo que trae la foto del envío.
+// Cada semana se identifica por su sesión (ids del DOM y data-session), no por su número.
 import {
   CHANGES_TEXT_MAX,
   type ClientLinkMenu,
@@ -13,10 +15,10 @@ import {
   type ShoppingItem,
   type SnapshotDish,
 } from "../../../supabase/functions/_shared/client_link.ts";
-import type { I18n } from "../i18n/core.ts";
+import type { I18n, MessageKey } from "../i18n/core.ts";
 import { formatIsoDate } from "../lib/format.ts";
 import { h, type VNode } from "../lib/vdom.ts";
-import type { Focus, Message, PageState, WeekUi } from "./controller.ts";
+import type { Focus, Message, PageState, TextError, WeekUi } from "./controller.ts";
 import { formatQuantity, formatRomeDay, shoppingList } from "./format.ts";
 
 /** Lado de la miniatura de un plato, en px CSS (el mismo de .dish__photo en reservation.css). */
@@ -24,23 +26,45 @@ export const DISH_PHOTO_SIZE = 72;
 
 export interface RenderInput {
   state: PageState;
-  ui: (week: number) => Readonly<WeekUi>;
+  ui: (session: string) => Readonly<WeekUi>;
   i18n: I18n;
+  /** «Riprova» en camino. */
+  retrying?: boolean;
+  /** Aviso de la página entera (una semana que se canceló), o null. */
+  pageNotice?: Message | null;
   /** Miniaturas que no cargaron: se pintan sin foto. */
   failedPhotos?: ReadonlySet<string>;
 }
 
-/** El id de lo que recibe el foco (Focus del controlador). */
-export function focusId(focus: Focus): string {
-  if (focus.kind === "problem") return "reservation-problem";
-  const suffix = { status: "status", confirm: "confirm", askChanges: "changes", submit: "submit", textarea: "text" }[focus.kind];
-  return `week-${focus.week}-${suffix}`;
+/** El prefijo de los ids de una semana: la sesión, que no cambia aunque cambie el número o la fecha. */
+export function weekDomId(session: string): string {
+  return `week-${session}`;
 }
 
-/** Un texto del controlador, con {chef} (el nombre de la cocinera de la reserva, o Evelyn sin reserva). */
+/** El id de lo que recibe el foco (Focus del controlador). */
+export function focusId(focus: Focus): string {
+  switch (focus.kind) {
+    case "problem":
+      return "reservation-problem";
+    case "greeting":
+      return "reservation-greeting";
+    case "notice":
+      return "reservation-notice";
+    default: {
+      const suffix = { status: "status", confirm: "confirm", askChanges: "changes", submit: "submit", textarea: "text" }[focus.kind];
+      return `${weekDomId(focus.session)}-${suffix}`;
+    }
+  }
+}
+
+/**
+ * Un texto del controlador, con {chef} (el nombre de la cocinera de la reserva, o Evelyn sin reserva) y, si trae
+ * un día, {date} escrito largo en el idioma de la página.
+ */
 export function messageText(message: Message, i18n: I18n, state: PageState): string {
   const chef = state.kind === "ready" ? state.view.chefName : "Evelyn";
-  return i18n.t(message.key, { chef, ...message.params });
+  const date = message.date ? { date: formatIsoDate(message.date, i18n.locale) } : {};
+  return i18n.t(message.key, { chef, ...message.params, ...date });
 }
 
 /** El contador del mensaje: lo que escribió sobre el tope (los dos en unidades UTF-16, como maxlength). */
@@ -48,8 +72,16 @@ export function changesCountText(length: number, i18n: I18n): string {
   return i18n.t("reservation.changesCount", { count: length, max: CHANGES_TEXT_MAX });
 }
 
+/** Qué dice el campo según lo que tiene de malo el mensaje. */
+const TEXT_ERRORS: Readonly<Record<TextError, MessageKey>> = {
+  empty: "reservation.errors.textEmpty",
+  tooLong: "reservation.errors.textTooLong",
+  invalid: "reservation.errors.textInvalid",
+};
+
 interface Context {
   i18n: I18n;
+  state: PageState;
   /** El nombre de la cocinera de la reserva ({chef} en los textos). */
   chef: string;
   failedPhotos: ReadonlySet<string>;
@@ -182,33 +214,56 @@ function contentNode(content: MenuContent, ctx: Context, idBase: string): VNode 
   );
 }
 
+/**
+ * Cómo se muestra el estado del último envío de una semana:
+ * - pending: por confirmar, con los botones (se ve y la semana no se cocinó);
+ * - sent: enviado, sin pedirle nada (ya cocinada, o un envío que la página no puede mostrar);
+ * - confirmed: confirmado, con la fecha;
+ * - changes: pidió cambios y Evelyn lo manda de nuevo; changesDone: pidió cambios, pero la semana ya se cocinó.
+ */
+type StatusKind = "pending" | "sent" | "confirmed" | "changes" | "changesDone";
+
+const STATUS: Readonly<Record<StatusKind, { modifier: string; badge: MessageKey; text: MessageKey }>> = {
+  pending: { modifier: "pending", badge: "reservation.state.pending", text: "reservation.state.pendingText" },
+  sent: { modifier: "sent", badge: "reservation.state.sent", text: "reservation.state.sentText" },
+  confirmed: { modifier: "confirmed", badge: "reservation.state.confirmed", text: "reservation.state.confirmedText" },
+  changes: { modifier: "changes", badge: "reservation.state.changesRequested", text: "reservation.state.changesRequestedText" },
+  changesDone: { modifier: "changes", badge: "reservation.state.changesRequested", text: "reservation.state.changesRequestedDoneText" },
+};
+
+function statusKind(week: ClientLinkWeek, menu: ClientLinkMenu): StatusKind {
+  if (menu.state === "confirmed") return "confirmed";
+  if (menu.state === "changesRequested") return week.done ? "changesDone" : "changes";
+  return menu.content !== null && !week.done ? "pending" : "sent";
+}
+
 function statusNode(week: ClientLinkWeek, menu: ClientLinkMenu, ui: Readonly<WeekUi>, ctx: Context): VNode {
   const { i18n } = ctx;
-  const date = formatRomeDay(
-    menu.state === "confirmed" ? (menu.confirmedAt ?? menu.sentAt) : menu.state === "changesRequested" ? (menu.changesRequestedAt ?? menu.sentAt) : menu.sentAt,
-    i18n.locale,
-  );
-  const modifier = { pending: "pending", confirmed: "confirmed", changesRequested: "changes" }[menu.state];
+  const kind = statusKind(week, menu);
+  const status = STATUS[kind];
+  const at = kind === "confirmed" ? menu.confirmedAt : kind === "changes" || kind === "changesDone" ? menu.changesRequestedAt : null;
+  const date = formatRomeDay(at ?? menu.sentAt, i18n.locale);
   return h(
     "div",
     // Recibe el foco después de una respuesta: el aviso y el estado nuevo se leen juntos.
-    { class: `week__status week__status--${modifier}`, id: `week-${week.week}-status`, tabindex: -1 },
-    ui.notice && h("p", { class: "week__notice" }, i18n.t(ui.notice.key, { chef: ctx.chef, ...ui.notice.params })),
+    { class: `week__status week__status--${status.modifier}`, id: `${weekDomId(week.sessionId)}-status`, tabindex: -1 },
+    ui.notice && h("p", { class: "week__notice" }, messageText(ui.notice, i18n, ctx.state)),
     h(
       "p",
       { class: "week__state" },
-      h("span", { class: "state-badge" }, i18n.t(`reservation.state.${menu.state}`)),
+      h("span", { class: "state-badge" }, i18n.t(status.badge)),
       " ",
-      i18n.t(`reservation.state.${menu.state}Text`, { chef: ctx.chef, date }),
+      i18n.t(status.text, { chef: ctx.chef, date }),
     ),
   );
 }
 
 function actionsNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): VNode {
   const { i18n } = ctx;
-  const n = week.week;
+  const id = weekDomId(week.sessionId);
+  const session = week.sessionId;
   const busy = ui.busy !== null;
-  const error = ui.error && h("p", { class: "week__error", id: `week-${n}-error` }, i18n.t(ui.error.key, { chef: ctx.chef, ...ui.error.params }));
+  const error = ui.error && h("p", { class: "week__error", id: `${id}-error` }, messageText(ui.error, i18n, ctx.state));
   if (!ui.formOpen) {
     return h(
       "div",
@@ -220,18 +275,18 @@ function actionsNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): 
         // aria-disabled y no disabled: el botón conserva el foco mientras espera la respuesta.
         h(
           "button",
-          { class: "btn btn--primary", type: "button", id: `week-${n}-confirm`, "data-action": "confirm", "data-week": n, "aria-disabled": busy ? "true" : null },
+          { class: "btn btn--primary", type: "button", id: `${id}-confirm`, "data-action": "confirm", "data-session": session, "aria-disabled": busy ? "true" : null },
           ui.busy === "confirm" ? i18n.t("reservation.sending") : i18n.t("reservation.confirm"),
         ),
         h(
           "button",
-          { class: "btn btn--ghost", type: "button", id: `week-${n}-changes`, "data-action": "open-changes", "data-week": n, "aria-disabled": busy ? "true" : null },
+          { class: "btn btn--ghost", type: "button", id: `${id}-changes`, "data-action": "open-changes", "data-session": session, "aria-disabled": busy ? "true" : null },
           i18n.t("reservation.askChanges"),
         ),
       ),
     );
   }
-  const describedBy = [`week-${n}-hint`, `week-${n}-count`, ui.textError ? `week-${n}-text-error` : null, ui.error ? `week-${n}-error` : null]
+  const describedBy = [`${id}-hint`, `${id}-count`, ui.textError ? `${id}-text-error` : null, ui.error ? `${id}-error` : null]
     .filter(Boolean)
     .join(" ");
   return h(
@@ -239,37 +294,38 @@ function actionsNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): 
     { class: "week__actions" },
     h(
       "form",
-      { class: "changes", id: `week-${n}-form`, "data-week": n, novalidate: true },
-      h("label", { class: "field__label", for: `week-${n}-text` }, i18n.t("reservation.changesLabel")),
-      h("p", { class: "field__hint", id: `week-${n}-hint` }, i18n.t("reservation.changesHint", { chef: ctx.chef })),
+      { class: "changes", id: `${id}-form`, "data-session": session, novalidate: true },
+      h("label", { class: "field__label", for: `${id}-text` }, i18n.t("reservation.changesLabel")),
+      h("p", { class: "field__hint", id: `${id}-hint` }, i18n.t("reservation.changesHint", { chef: ctx.chef })),
       h(
         "textarea",
         {
           class: "input",
-          id: `week-${n}-text`,
+          id: `${id}-text`,
           name: "changes",
           rows: 5,
           maxlength: CHANGES_TEXT_MAX,
-          "data-week": n,
+          "data-session": session,
           "aria-describedby": describedBy,
           "aria-invalid": ui.textError ? "true" : null,
         },
         ui.draft,
       ),
-      h("p", { class: "changes__count", id: `week-${n}-count` }, changesCountText(ui.draft.length, i18n)),
-      ui.textError && h("p", { class: "field__error", id: `week-${n}-text-error` }, i18n.t("reservation.errors.text", { max: CHANGES_TEXT_MAX })),
+      h("p", { class: "changes__count", id: `${id}-count` }, changesCountText(ui.draft.length, i18n)),
+      ui.textError &&
+        h("p", { class: "field__error", id: `${id}-text-error` }, i18n.t(TEXT_ERRORS[ui.textError], { max: CHANGES_TEXT_MAX, chef: ctx.chef })),
       error,
       h(
         "div",
         { class: "actions" },
         h(
           "button",
-          { class: "btn btn--primary", type: "submit", id: `week-${n}-submit`, "aria-disabled": busy ? "true" : null },
+          { class: "btn btn--primary", type: "submit", id: `${id}-submit`, "aria-disabled": busy ? "true" : null },
           ui.busy === "changes" ? i18n.t("reservation.sending") : i18n.t("reservation.changesSubmit"),
         ),
         h(
           "button",
-          { class: "btn btn--ghost", type: "button", "data-action": "close-changes", "data-week": n, "aria-disabled": busy ? "true" : null },
+          { class: "btn btn--ghost", type: "button", "data-action": "close-changes", "data-session": session, "aria-disabled": busy ? "true" : null },
           i18n.t("reservation.changesCancel"),
         ),
       ),
@@ -279,55 +335,62 @@ function actionsNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): 
 
 function weekNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): VNode {
   const { i18n } = ctx;
-  const idBase = `week-${week.week}`;
+  const id = weekDomId(week.sessionId);
   const title = week.weeks === 1 ? i18n.t("reservation.weekTitleOne") : i18n.t("reservation.weekTitle", { week: week.week, weeks: week.weeks });
   const menu = week.menu;
+  // Una semana ya cocinada sin menú enviado (por ejemplo, una que se arregló por WhatsApp): no se promete un menú.
+  const missing = week.done ? null : h("p", { class: "notice" }, i18n.t("reservation.menuNotSent", { chef: ctx.chef }));
+  const unreadable = week.done
+    ? h("p", { class: "notice notice--warn" }, i18n.t("reservation.menuUnreadableDone"))
+    : h("p", { class: "notice notice--warn" }, i18n.t("reservation.menuUnreadable", { chef: ctx.chef }));
   return h(
     "section",
-    { class: "week", id: idBase, "aria-labelledby": `${idBase}-title` },
+    { class: "week", id, "aria-labelledby": `${id}-title` },
     h(
       "header",
       { class: "week__head" },
-      h("h2", { class: "week__title", id: `${idBase}-title` }, title),
+      h("h2", { class: "week__title", id: `${id}-title` }, title),
       h("p", { class: "week__when" }, i18n.t("reservation.arrival", { date: formatIsoDate(week.date, i18n.locale), time: week.start })),
     ),
     week.done && h("p", { class: "week__done" }, i18n.t("reservation.weekDone", { chef: ctx.chef })),
     menu === null
-      ? h("p", { class: "notice" }, i18n.t("reservation.menuNotSent", { chef: ctx.chef }))
+      ? missing
       : [
           statusNode(week, menu, ui, ctx),
-          menu.content
-            ? contentNode(menu.content, ctx, idBase)
-            : h("p", { class: "notice notice--warn" }, i18n.t("reservation.menuUnreadable", { chef: ctx.chef })),
+          menu.content ? contentNode(menu.content, ctx, id) : unreadable,
           // Solo lo que se puede contestar: por confirmar, mostrado y antes de cocinar.
-          menu.state === "pending" && menu.content !== null && !week.done && actionsNode(week, ui, ctx),
+          statusKind(week, menu) === "pending" && actionsNode(week, ui, ctx),
         ],
   );
 }
 
 function readyNode(view: ClientLinkView, input: RenderInput): VNode {
-  const { i18n } = input;
-  const ctx: Context = { i18n, chef: view.chefName, failedPhotos: input.failedPhotos ?? new Set() };
+  const { i18n, state } = input;
+  const ctx: Context = { i18n, state, chef: view.chefName, failedPhotos: input.failedPhotos ?? new Set() };
+  const notice = input.pageNotice ?? null;
   return h(
     "div",
     { class: "reservation__content" },
     h(
       "div",
       { class: "reservation__intro" },
+      // Recibe el foco cuando «Riprova» trae la reserva.
       h(
         "p",
-        { class: "reservation__greeting" },
+        { class: "reservation__greeting", id: "reservation-greeting", tabindex: -1 },
         view.clientFirstName ? i18n.t("reservation.greeting", { name: view.clientFirstName }) : i18n.t("reservation.greetingNoName"),
       ),
       h("p", { class: "reservation__lead" }, i18n.t("reservation.intro", { chef: ctx.chef })),
     ),
+    // Una semana que se canceló mientras la clienta contestaba: ya no está en la lista, el aviso va acá.
+    notice && h("p", { class: "notice notice--warn reservation__notice", id: "reservation-notice", tabindex: -1 }, messageText(notice, i18n, state)),
     // Acá va, cuando llegue, el presupuesto para aceptar (antes de las semanas).
     view.weeks.length === 0
       ? h("p", { class: "notice" }, i18n.t("reservation.noWeeks", { chef: ctx.chef }))
       : h(
           "div",
           { class: "weeks" },
-          view.weeks.map((week) => weekNode(week, input.ui(week.week), ctx)),
+          view.weeks.map((week) => weekNode(week, input.ui(week.sessionId), ctx)),
         ),
   );
 }
@@ -358,7 +421,18 @@ export function reservationTree(input: RenderInput): VNode {
           "div",
           { class: "problem", id: "reservation-problem", tabindex: -1 },
           h("p", { class: "notice notice--error" }, messageText(state.message, i18n, state)),
-          h("button", { class: "btn btn--primary", type: "button", "data-action": "retry" }, i18n.t("reservation.errors.retry")),
+          // Con id y aria-disabled mientras reintenta: el foco no se pierde.
+          h(
+            "button",
+            {
+              class: "btn btn--primary",
+              type: "button",
+              id: "reservation-retry",
+              "data-action": "retry",
+              "aria-disabled": input.retrying ? "true" : null,
+            },
+            input.retrying ? i18n.t("reservation.errors.retrying") : i18n.t("reservation.errors.retry"),
+          ),
         ),
       );
     case "ready":

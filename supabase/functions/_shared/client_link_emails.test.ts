@@ -82,7 +82,7 @@ test("asunto: solo un nombre de pila que parece un nombre; sin nombre, «la clie
   assert.ok(changes.text.includes("La cliente ha chiesto dei cambi"));
 });
 
-test("el nombre de la ficha va escapado en el HTML", () => {
+test("el nombre de la clienta va escapado en el HTML", () => {
   const email = renderMenuAnswerNotification(notice({ clientName: 'Anna <img src=x onerror="alert(1)">' }), "es");
   assert.ok(!email.html.includes("<img src=x"));
   assert.ok(email.html.includes("Anna &lt;img src=x onerror=&quot;alert(1)&quot;&gt;"));

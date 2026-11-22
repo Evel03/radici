@@ -49,11 +49,11 @@ describe("shoppingList", () => {
 });
 
 describe("formatRomeDay", () => {
-  it("el día en Roma, no en UTC ni en el del dispositivo", () => {
+  it("el día en Roma (no en UTC ni en el del dispositivo), con el día de la semana", () => {
     // 23:30 UTC del 28/2 son las 0:30 del 1/3 en Roma.
-    expect(formatRomeDay("2027-02-28T23:30:00Z", "it-IT")).toBe("1 marzo 2027");
-    expect(formatRomeDay("2027-02-25T18:03:00.123456+00:00", "es-ES")).toBe("25 de febrero de 2027");
-    expect(formatRomeDay("2027-02-25T18:03:00Z", "en-IE")).toBe("25 February 2027");
+    expect(formatRomeDay("2027-02-28T23:30:00Z", "it-IT")).toBe("lunedì 1 marzo 2027");
+    expect(formatRomeDay("2027-02-25T18:03:00.123456+00:00", "es-ES")).toBe("jueves, 25 de febrero de 2027");
+    expect(formatRomeDay("2027-02-25T18:03:00Z", "en-IE")).toBe("Thursday 25 February 2027");
     expect(formatRomeDay("ayer", "it-IT")).toBe("ayer");
   });
 });

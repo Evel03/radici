@@ -1,6 +1,6 @@
 // Parte común de todas las páginas: idioma (URL > localStorage > el de la página, si lo da, > italiano),
 // selector, links internos y el aviso si no llegan los textos de un idioma.
-import { DEFAULT_LANG, isLang, resolveLang, type I18n, type Lang } from "../i18n/core.ts";
+import { DEFAULT_LANG, isLang, langHref, resolveLang, type I18n, type Lang } from "../i18n/core.ts";
 import { applyTranslations } from "../i18n/dom.ts";
 import { loadDict } from "../i18n/load.ts";
 import { createSiteI18n } from "../i18n/site.ts";
@@ -26,10 +26,16 @@ function pageLang(): Lang {
   return isLang(lang) ? lang : DEFAULT_LANG;
 }
 
+/**
+ * Marca el idioma actual y pone el href de cada link de idioma con el fragmento actual (langHref): en
+ * /prenotazione/ el fragmento es el token, y el build deja esos links sin href hasta que llega este código.
+ */
 function updateLangSwitch(lang: Lang): void {
   for (const link of document.querySelectorAll<HTMLAnchorElement>("a[data-lang]")) {
     if (link.dataset["lang"] === lang) link.setAttribute("aria-current", "true");
     else link.removeAttribute("aria-current");
+    const code = link.dataset["lang"];
+    if (isLang(code)) link.setAttribute("href", langHref(code, window.location.hash));
   }
 }
 
@@ -96,6 +102,9 @@ function setup(eager: boolean, onReady?: () => void, defaultLang?: Promise<Lang 
   const state: State = { current: null, listeners: [] };
   const fromUrl = new URLSearchParams(window.location.search).get("lang")?.toLowerCase();
   if (isLang(fromUrl)) storeLang(fromUrl);
+  // Los links de idioma, con su href desde ya (en /prenotazione/ el build los deja sin href, para que un toque
+  // antes de que cargue este código no lleve a una URL sin el token).
+  updateLangSwitch(pageLang());
 
   document.getElementById("load-error-reload")?.addEventListener("click", () => window.location.reload());
 

@@ -14,3 +14,23 @@ export function readToken(hash: string): string | null {
   if (value === null) return null;
   return TOKEN_AT_START.exec(value)?.[0] ?? null;
 }
+
+/** El fragmento con el token: "#t=<token>". */
+export function tokenFragment(token: string): string {
+  return `#t=${token}`;
+}
+
+/**
+ * Qué hacer cuando cambia el fragmento con la página abierta:
+ * - "reload": llegó otro token (otro link pegado en la misma pestaña): se carga de nuevo.
+ * - "restore": el fragmento ya no tiene token (por ejemplo, el link «Vai al contenuto», que lleva a #main): se
+ *   vuelve a poner #t=<token> en la URL sin navegar (history.replaceState), así recargar o guardar la página
+ *   sigue andando.
+ * - "ignore": el mismo token (o la página abrió sin token y sigue sin uno).
+ */
+export function hashChangeAction(current: string | null, newHash: string): "reload" | "restore" | "ignore" {
+  const next = readToken(newHash);
+  if (next !== null && next !== current) return "reload";
+  if (next === null && current !== null) return "restore";
+  return "ignore";
+}

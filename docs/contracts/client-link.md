@@ -1,6 +1,6 @@
 # Contrato: link de la clienta, Edge Function `client-link` y página `/prenotazione/`
 
-Estado: implementado el 21/11/2026 (proceso de presupuesto y menús, SPEC §5.8), sobre la migración `20261121100000_menu_sends.sql` (pgTAP `20_menu_sends`).
+Estado: implementado el 21/11/2026 (proceso de presupuesto y menús, SPEC §5.8), sobre la migración `20261121100000_menu_sends.sql` (pgTAP `20_menu_sends`). Actualizado el 22/11/2026 con la revisión: la semana va por su sesión, `sessionCancelled`, el nombre del pedido, los saltos de línea pegados, las semanas ya cocinadas y la privacy `2026-11-22`.
 Código del contrato: `supabase/functions/_shared/client_link.ts` (el token, el link, el mensaje de cambios, la lectura de la foto de un envío y de la respuesta; tests en `client_link.test.ts`). La función: `supabase/functions/client-link/` (`handler.ts`, con sus tests en `handler.test.ts`, e `index.ts`); el aviso a Evelyn: `_shared/client_link_emails.ts`. La página: `web/prenotazione/index.html`, `web/src/pages/prenotazione.ts` y `web/src/reservation/` (con sus tests). Si este documento y el código difieren, manda el código.
 
 ## 1. Para qué
@@ -28,10 +28,11 @@ Evelyn le manda a la clienta el menú de cada semana de su reserva (por email, W
 | `linkNotFound` | 404 | el link no existe, venció o el token no tiene la forma de uno |
 | `sendNotFound` | 404 | el envío no es de esa reserva o no salió |
 | `menuOutdated` | 409 | Evelyn mandó un menú más nuevo para esa semana: se contesta ese |
+| `sessionCancelled` | 409 | la semana se canceló después del envío: ya no hay menú que contestar (SQL `session_cancelled`) |
 | `changesRequested` | 409 | `/confirm` de un envío para el que ya pidió cambios: Evelyn manda otro |
 | `alreadyConfirmed` | 409 | `/changes` de un envío ya confirmado: los cambios se hablan con Evelyn |
-| `invalidText` | 400 | el mensaje está vacío, pasa de 1000 caracteres o tiene caracteres de control |
-| `invalidPayload` | 400 | el cuerpo no es un objeto JSON, sin `token` de texto o sin `sendId` uuid |
+| `invalidText` | 400 | el mensaje, ya limpio, está vacío o pasa de 1000 caracteres (o la base no lo aceptó) |
+| `invalidPayload` | 400 | el cuerpo no es un objeto JSON, sin `token` de texto, sin `sendId` uuid o sin `text` de texto |
 | `unavailable` | 503 | la base no respondió (se puede reintentar) |
 | `server` | 500 | configuración incompleta, una respuesta de la base con otra forma o cualquier otra cosa |
 
@@ -49,7 +50,7 @@ Respuesta `200` (`ClientLinkView`):
   "clientFirstName": "Anna",
   "weeks": [
     {
-      "week": 1, "weeks": 2, "date": "2027-03-01", "start": "10:00", "done": false,
+      "sessionId": "5e55…", "week": 1, "weeks": 2, "date": "2027-03-01", "start": "10:00", "done": false,
       "menu": {
         "sendId": "5e0d…", "sentAt": "2027-02-25T18:03:00.123456+00:00",
         "state": "pending", "confirmedAt": null, "changesRequestedAt": null,
@@ -61,14 +62,14 @@ Respuesta `200` (`ClientLinkView`):
         }
       }
     },
-    { "week": 2, "weeks": 2, "date": "2027-03-08", "start": "10:00", "done": false, "menu": null }
+    { "sessionId": "5e55…", "week": 2, "weeks": 2, "date": "2027-03-08", "start": "10:00", "done": false, "menu": null }
   ]
 }
 ```
 
 - `locale`: el idioma de la reserva (`requests.locale`); la página lo usa si la visitante no eligió otro.
-- `clientFirstName`: solo el nombre de pila de la ficha si parece un nombre (`safeFirstName`); si no, `null`. Nunca el nombre completo.
-- `weeks`: las sesiones no canceladas del pedido, por fecha («Semana k de N»). `done`: ya cocinada (`cooked` o `paid`); se ve el menú, sin botones. `menu`: el último envío que salió de esa semana, o `null` si Evelyn todavía no lo mandó. `state`: `pending`, `confirmed` o `changesRequested`, según `confirmedAt` y `changesRequestedAt` (la base guarda una sola de las dos).
+- `clientFirstName`: el nombre de pila con que llegó el pedido (`requests.contact`, el mismo del mensaje y de la bandeja) o, si no tiene, el de la ficha, solo si parece un nombre (`safeFirstName`); si no, `null`. Nunca el nombre completo.
+- `weeks`: las sesiones no canceladas del pedido, por fecha («Semana k de N»). `sessionId`: la identidad de la semana para la página (el número cambia si se cancela una semana anterior, y la fecha si Evelyn la mueve; el id, no); no abre nada: para contestar hacen falta el token y el envío. `done`: ya cocinada (`cooked` o `paid`); se ve el menú, sin botones. `menu`: el último envío que salió de esa semana, o `null` si Evelyn todavía no lo mandó. `state`: `pending`, `confirmed` o `changesRequested`, según `confirmedAt` y `changesRequestedAt` (la base guarda una sola de las dos).
 - `content`: la foto del envío (`menu_sends.snapshot`) tal como salió, ya en el idioma de la clienta, armada de nuevo campo por campo (`readMenuSnapshot`), o `null` si no se puede leer (la función lo deja en el log con el id del envío y la página dice que no puede mostrarlo, sin botones).
 
 ### La foto de un envío (versión 1)
@@ -78,22 +79,22 @@ La arma la función `chef` al preparar el envío. `client-link` lee solo esto, i
 - `v: 1` y `locale` (`it`, `es` o `en`).
 - `dishes` (al menos uno): `name` (texto), `description` (texto o null), `allergens` (los del Reg. UE 1169/2011 del enum `allergen`; se devuelven sin repetir, en su orden), `diet` (`vegetarian`, `vegan` o null), `portions` (entero de 1 a 500), `photo` (`{ thumb, full }` de recipe-photos en el origen de Supabase; con otra forma u otro origen, el plato sale sin foto: la foto nunca descarta un plato).
 - `items` (puede estar vacía): `name`, `section` (`produce`, `meat_fish`, `dairy_eggs`, `bakery`, `pantry`, `frozen`, `other`; una desconocida va a `other`), `quantity` (entero de 1 a 1.000.000) y `unit` (`g`, `ml`, `pcs`) juntas, o las dos null: «q.b.», algo para tener en casa.
-- `note`: texto (con sus saltos de línea) o null.
+- `note`: texto (con sus saltos de línea) o null. Sale como la escribió Evelyn (no se traduce); los nombres de la lista sí pueden venir traducidos.
 
 Nunca lleva precios, pagos, dirección ni las alergias de la clienta; nada de esto los lee.
 
 ## 5. `POST /confirm` y `POST /changes`: la respuesta de la clienta
 
-- `/confirm`, cuerpo `{ "token", "sendId" }` → `client_link_confirm_menu`. `200 { "confirmedAt": "<timestamptz>", "already": false }`. Idempotente: si ya estaba confirmado, la misma hora y `already: true`, sin aviso nuevo. Errores: `linkNotFound`, `sendNotFound`, `menuOutdated`, `changesRequested`.
-- `/changes`, cuerpo `{ "token", "sendId", "text" }` → `client_link_request_changes`. `200 { "changesRequestedAt": "<timestamptz>" }`. El texto se normaliza como lo acepta la base (`normalizeChangesText`): los saltos de línea (`\r\n`, `\r`, U+2028, U+2029) pasan a `\n` y las tabulaciones a espacios; recortado; de 1 a 1000 caracteres contados como Postgres (code points) y sin otros caracteres de control (si no, `400 invalidText` sin llamar a la base). Un pedido nuevo reemplaza al anterior y vuelve a avisar. Errores: `linkNotFound`, `sendNotFound`, `menuOutdated`, `alreadyConfirmed`, `invalidText`.
-- Solo se contesta el último envío de una semana: si Evelyn mandó otro, `409 menuOutdated` y la página muestra el nuevo.
+- `/confirm`, cuerpo `{ "token", "sendId" }` → `client_link_confirm_menu`. `200 { "confirmedAt": "<timestamptz>", "already": false }`. Idempotente: si ya estaba confirmado, la misma hora y `already: true`, sin aviso nuevo. Errores: `linkNotFound`, `sendNotFound`, `menuOutdated`, `sessionCancelled`, `changesRequested`.
+- `/changes`, cuerpo `{ "token", "sendId", "text" }` → `client_link_request_changes`. `200 { "changesRequestedAt": "<timestamptz>" }`. El texto se limpia como lo acepta la base (`cleanChangesText`): los saltos de línea que llegan pegados de otros programas (`\r\n`, `\r`, la tabulación vertical y el salto de página de Word y PowerPoint, NEL, U+2028 y U+2029) pasan a `\n`, las tabulaciones a espacios, los demás caracteres de control (no se ven) se sacan y se recorta. Después tiene que tener de 1 a 1000 caracteres contados como Postgres (code points); si no, `400 invalidText` sin llamar a la base (`changesTextProblem` dice si está vacío o es largo, y la página lo dice así). Un pedido nuevo reemplaza al anterior y vuelve a avisar. Errores: `linkNotFound`, `sendNotFound`, `menuOutdated`, `sessionCancelled`, `alreadyConfirmed`, `invalidText`.
+- Solo se contesta el último envío de una semana: si Evelyn mandó otro, `409 menuOutdated` y la página muestra el nuevo. Una semana cancelada después del envío ya no se contesta: `409 sessionCancelled`.
 
 ## 6. Avisos a Evelyn
 
 - Después de cada respuesta (salvo una confirmación repetida), en segundo plano (`EdgeRuntime.waitUntil`): un email que falla nunca cambia la respuesta de la clienta; queda en el log (`email_failed`).
-- A `CHEF_NOTIFY_EMAIL`, en `CHEF_LOCALE`, con el diseño de los otros emails: «Anna confirmó el menú de la semana 1» / «Anna pidió cambios en el menú de la semana 1», la semana «k de N», la fecha larga y la hora de llegada, y el botón al pedido en la bandeja (`INBOX_URL#/richieste/<id>`). En el asunto, del nombre solo el de pila si parece un nombre; en el cuerpo, el de la ficha, escapado.
+- A `CHEF_NOTIFY_EMAIL`, en `CHEF_LOCALE`, con el diseño de los otros emails: «Anna confirmó el menú de la semana 1» / «Anna pidió cambios en el menú de la semana 1», la semana «k de N», la fecha larga y la hora de llegada, y el botón al pedido en la bandeja (`INBOX_URL#/richieste/<id>`). El nombre es el con que llegó el pedido (o, si no tiene, el de la ficha), el mismo del mensaje y de la bandeja: en el asunto solo el de pila si parece un nombre; en el cuerpo, entero y escapado.
 - **El mensaje de la clienta no va en el email**: es una nota libre, y las notas libres nunca salen por email ni push (SPEC §6), aunque el aviso vaya a la dirección de Evelyn. El email le dice que lo lea en la app, en el pedido (`menu_sends.changes_text`, que la cocina lee con su RLS).
-- Clave de idempotencia de Resend: `menu-confirmed-<sendId>` y `menu-changes-<sendId>-<hora en ms>`. Con `EMAIL_TRANSPORT=log` no sale nada (solo los tamaños en el log). Sin `CHEF_NOTIFY_EMAIL`, o sin `RESEND_API_KEY` y `MAIL_FROM`, se saltea (`email_skipped`). Una semana que se canceló después del envío no tiene «semana k»: tampoco se avisa.
+- Clave de idempotencia de Resend: `menu-confirmed-<sendId>` y `menu-changes-<sendId>-<hora en ms>`. Con `EMAIL_TRANSPORT=log` no sale nada (solo los tamaños en el log). Sin `CHEF_NOTIFY_EMAIL`, o sin `RESEND_API_KEY` y `MAIL_FROM`, se saltea (`email_skipped`). Si la base devolviera una semana sin «semana k» (la de hoy no deja contestar una cancelada), tampoco se avisa.
 
 ## 7. Configuración
 
@@ -112,17 +113,19 @@ Los secretos que ya comparten las funciones (los carga «Secretos de la función
 
 - Solo el evento, la ruta, códigos e ids (del pedido y del envío): `link_viewed` (con la cantidad de semanas y de menús), `menu_confirmed`, `changes_requested`, `link_not_found`, `rejected`, `invalid_payload`, `rate_limited`, `snapshot_unreadable`, `email_*`, `db_error` (operación y SQLSTATE, nunca el mensaje de Postgres).
 - Nunca el token ni su hash, nombres, el mensaje de la clienta, los platos, la nota, direcciones de email ni la IP.
-- La función no guarda nada propio: las respuestas las guardan las funciones SQL en `menu_sends`.
+- Lo que se guarda: la huella de la IP de cada visita y de cada respuesta, para el límite (`private.public_request_hits`: el HMAC de la IP, que se borra a los 2 días como máximo, como el del formulario), y la respuesta de la clienta (la confirmación o el mensaje de cambios, con su hora), que guardan las funciones SQL en `menu_sends` y se conserva como la reserva. La privacy lo cuenta desde su versión `2026-11-22` (SPEC §6).
 
 ## 10. La página `/prenotazione/`
 
 - Italiano por defecto en el HTML; textos en `web/src/i18n/{it,es,en}.json` (`reservation.*`). Idioma: el que eligió la visitante (`?lang=` o el guardado) o, si nunca eligió, el de la reserva (`locale` de `/view`; `initShell({ defaultLang })`).
-- Arriba, el saludo con el nombre de pila (o sin nombre). Después (cuando llegue) el presupuesto para aceptar. Después cada semana: «Settimana k di N», la fecha y la hora de llegada y, si Evelyn mandó el menú, su estado (por confirmar, con la fecha del envío; confirmado, con la fecha; cambios pedidos, «Evelyn te lo vuelve a mandar»), los platos (miniatura si tiene, nombre, descripción, porciones, dieta y alérgenos con su nombre), la lista de compras por sección (1250 g → «1,25 kg» en it y es, «1.25 kg» en en; ml → l; piezas con su palabra) con lo «q.b.» aparte («Da avere in casa») y la nota de Evelyn (con sus saltos de línea, como texto). Sin menú: «te lo manda Evelyn».
-- Por confirmar (y antes de cocinar): «Confermo il menù» y «Chiedo dei cambi» (un campo de hasta 1000 caracteres con contador, que pide no escribir datos de salud). Después de responder, la semana muestra el resultado (el foco va a su estado) y la página vuelve a leer la reserva. `menuOutdated` muestra el menú nuevo sin perder el mensaje a medio escribir. Sin conexión, error o demasiados intentos: el error junto al botón, anunciado en una región en vivo. Link no válido o vencido: «escribe a Evelyn y te manda uno nuevo».
+- El token no se pierde de la URL: los links de idioma del encabezado salen del build sin `href` (un `?lang=xx` descartaría el fragmento) y el shell les pone `?lang=xx#t=…`; si un ancla interna cambia el fragmento (el «Vai al contenuto» lleva a `#main`), la página vuelve a poner `#t=…` sin navegar (`hashChangeAction`, `history.replaceState`), y otro link pegado en la misma pestaña recarga.
+- Arriba, el saludo con el nombre de pila (o sin nombre) y, si una semana se canceló mientras la clienta contestaba, un aviso con su fecha (la semana ya no está en la lista). Después (cuando llegue) el presupuesto para aceptar. Después cada semana: «Settimana k di N», la fecha y la hora de llegada y, si Evelyn mandó el menú, su estado (por confirmar, con el día del envío; confirmado, con el día; cambios pedidos, «Evelyn te lo vuelve a mandar»; las fechas llevan el día de la semana: en italiano, sin artículo), los platos (miniatura si tiene, nombre, descripción, porciones, dieta y alérgenos con su nombre), la lista de compras por sección (1250 g → «1,25 kg» en it y es, «1.25 kg» en en; ml → l; piezas con su palabra) con lo «q.b.» aparte («Da avere in casa») y la nota de Evelyn (con sus saltos de línea, como texto). Sin menú: «te lo manda Evelyn».
+- Una semana ya cocinada no promete nada: sin menú, solo «ya cocinó»; con el menú sin contestar, «Enviado» neutro (sin «por confirmar» ni botones); con cambios pedidos, sin el «te lo vuelve a mandar»; con un envío que no se puede mostrar, sin «te lo reenvía».
+- Por confirmar (y antes de cocinar): «Confermo il menù» y «Chiedo dei cambi» (un campo de hasta 1000 caracteres con contador, que pide no escribir datos de salud; el error dice si está vacío, si es largo o si no se pudo recibir). Después de responder, la semana muestra el resultado (el foco va a su estado) y la página vuelve a leer la reserva; las lecturas van numeradas y una que llega tarde no pisa una más nueva. El estado de cada semana (el formulario, el mensaje a medio escribir, el aviso) va por su sesión: si se cancela una semana anterior, nada cae en otra. `menuOutdated`, o un menú nuevo que llega mientras escribe, muestra el menú nuevo con un aviso, sin perder el mensaje. Sin conexión, error o demasiados intentos: el error junto al botón, anunciado en una región en vivo. «Riprova» no pasa por «cargando»: el botón espera con el foco y, al volver, el foco va al saludo o al recuadro del error. Link no válido o vencido: «escribe a Evelyn y te manda uno nuevo».
 - Todo texto que llega de la función se pinta como texto (`web/src/lib/vdom.ts`: nunca `innerHTML`). Sin precios, pagos, dirección ni alergias de la clienta: la página muestra solo la foto del envío.
 - Nunca se indexa (`<meta name="robots" content="noindex, nofollow">` y `X-Robots-Tag`), sin canonical; conserva la imagen para la vista previa del link en WhatsApp. CSP propia en `public/_headers`: la de `/*` más el origen de Supabase en `connect-src` (la función) e `img-src` (las fotos). Nada de terceros.
 
 ## 11. Pruebas
 
 - `npm test` (raíz): `client_link.test.ts`, `client_link_emails.test.ts` y `client-link/handler.test.ts` (rutas, errores, límite por IP, CORS, avisos por idioma, que un email que falla no rompa la respuesta y que los logs no lleven datos).
-- `cd web && npm test`: `src/reservation/*.test.ts` (fragmento, llamadas con un fetch simulado, formatos, estados y acciones, lo que se pinta en cada idioma y el escapado) y `src/lib/vdom.test.ts`.
+- `cd web && npm test`: `src/reservation/*.test.ts` (fragmento y qué hacer si cambia, llamadas con un fetch simulado, formatos, estados y acciones, lecturas en orden, semanas por su sesión, lo que se pinta en cada idioma y el escapado), `src/lib/vdom.test.ts`, el build sin links de idioma navegables en la página (`src/build/html.test.ts`) y la privacy en los tres idiomas (`src/i18n/i18n.test.ts`).

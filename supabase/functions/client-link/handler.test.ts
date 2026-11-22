@@ -110,11 +110,17 @@ interface FakeSend {
   changesText: string | null;
 }
 
-/** Como las funciones client_link_* de la migración 20261121100000_menu_sends.sql. */
+/**
+ * Como las funciones client_link_* de la migración 20261121100000_menu_sends.sql (con las correcciones de la rama
+ * de la base: el nombre del pedido y session_cancelled).
+ */
 class FakeStore implements ClientLinkStore {
   /** Hashes de los links vigentes de la reserva. */
   links = new Set<string>([TOKEN_HASH]);
+  /** El nombre con que llegó el pedido (requests.contact) o, si no tiene, el de la ficha: lo que devuelve la base. */
   clientName: string | null = CLIENT_NAME;
+  /** Para simular una base vieja que todavía deja contestar una semana cancelada (sin «semana k»). */
+  answerCancelledWeeks = false;
   sessions: FakeSession[] = [
     { id: SESSION_2, date: "2027-03-08", start: "10:00", status: "confirmed" },
     { id: SESSION_CANCELLED, date: "2027-03-04", start: "10:00", status: "cancelled" },
@@ -195,6 +201,8 @@ class FakeStore implements ClientLinkStore {
     const send = this.sends.find((s) => s.id === sendId && s.sentAt !== null);
     if (!send) throw new StoreError(op, "P0002", "send_not_found");
     if (this.latestSent(send.sessionId)?.id !== send.id) throw new StoreError(op, "55000", "menu_outdated");
+    const cancelled = this.sessions.find((s) => s.id === send.sessionId)?.status === "cancelled";
+    if (cancelled && !this.answerCancelledWeeks) throw new StoreError(op, "55000", "session_cancelled");
     return send;
   }
 
@@ -390,7 +398,7 @@ test("método, tipo, tamaño y JSON: 405, 415, 413 y 400 invalidPayload", async 
   // Sin texto (o que no es texto) es el cuerpo; un texto vacío, largo o con controles, invalidText.
   const noText = await handle(post("/changes", { token: TOKEN, sendId: SEND_A }));
   assert.deepEqual([noText.status, await json(noText)], [400, { error: "invalidPayload" }]);
-  for (const bad of ["", "   \n ", "a".repeat(1001), "hola\u0000"]) {
+  for (const bad of ["", "   \n ", "a".repeat(1001), "\u0000\u0001"]) {
     const response = await handle(post("/changes", { token: TOKEN, sendId: SEND_A, text: bad }));
     assert.equal(response.status, 400);
     assert.deepEqual(await json(response), { error: "invalidText" });
@@ -446,6 +454,7 @@ test("/view: la reserva con el último menú de cada semana, leído campo por ca
     clientFirstName: "Annaxyz",
     weeks: [
       {
+        sessionId: SESSION_1,
         week: 1,
         weeks: 2,
         date: "2027-03-01",
@@ -460,12 +469,12 @@ test("/view: la reserva con el último menú de cada semana, leído campo por ca
           content,
         },
       },
-      { week: 2, weeks: 2, date: "2027-03-08", start: "10:00", done: false, menu: null },
+      { sessionId: SESSION_2, week: 2, weeks: 2, date: "2027-03-08", start: "10:00", done: false, menu: null },
     ],
   });
   const body = JSON.stringify(await json(await handle(post("/view", { token: TOKEN }))));
-  // Lo que no es del contrato no sale: ni el nombre completo, ni los ids de sesión y receta, ni los ingredientes.
-  for (const hidden of ["Bianchiqwe", SESSION_1, RECIPE_ID + '"', "ingredients", "no tendría que pasar", "requestId"]) {
+  // Lo que no es del contrato no sale: ni el nombre completo, ni el pedido, ni el id de la receta, ni los ingredientes.
+  for (const hidden of ["Bianchiqwe", REQUEST_ID, RECIPE_ID + '"', "ingredients", "no tendría que pasar", "requestId"]) {
     assert.ok(!body.includes(hidden), hidden);
   }
   assert.ok(logs.some((log) => log.event === "link_viewed" && log.fields["requestId"] === REQUEST_ID && log.fields["weeks"] === 2 && log.fields["menus"] === 1));
@@ -551,9 +560,12 @@ test("/view: si falla la base, 503; con una forma inesperada, 500", async () => 
 test("viewFromRpc: el idioma y la cocinera con respaldo; semanas y envíos con otra forma, null", () => {
   const base = { requestId: REQUEST_ID, locale: "xx", chefName: " ", clientName: "Anna", weeks: [] };
   assert.deepEqual(viewFromRpc(base, STORAGE)?.view, { version: 1, locale: "it", chefName: "Evelyn", clientFirstName: "Anna", weeks: [] });
-  const week = { date: "2027-03-01", start: "10:00", status: "held", week: 1, weeks: 1, send: null };
+  const week = { sessionId: SESSION_1.toUpperCase(), date: "2027-03-01", start: "10:00", status: "held", week: 1, weeks: 1, send: null };
   assert.equal(viewFromRpc({ ...base, weeks: [week] }, STORAGE)?.view.weeks[0]?.done, false);
+  assert.equal(viewFromRpc({ ...base, weeks: [week] }, STORAGE)?.view.weeks[0]?.sessionId, SESSION_1);
   assert.equal(viewFromRpc({ ...base, weeks: [{ ...week, week: 2 }] }, STORAGE), null);
+  assert.equal(viewFromRpc({ ...base, weeks: [{ ...week, sessionId: undefined }] }, STORAGE), null);
+  assert.equal(viewFromRpc({ ...base, weeks: [{ ...week, sessionId: "semana-1" }] }, STORAGE), null);
   assert.equal(viewFromRpc({ ...base, weeks: [{ ...week, send: { id: "x", sentAt: "2027-02-25T18:03:00Z", snapshot: {} } }] }, STORAGE), null);
   assert.equal(viewFromRpc({ ...base, weeks: [{ ...week, send: { id: SEND_A, sentAt: "ayer", snapshot: {} } }] }, STORAGE), null);
   assert.equal(viewFromRpc({ ...base, requestId: "x" }, STORAGE), null);
@@ -590,11 +602,20 @@ test("/confirm: confirma el último menú, responde la hora y le avisa a Evelyn 
   assertNoLeaks(logs);
 });
 
-test("/confirm: errores de la base con su código (404 linkNotFound y sendNotFound, 409 menuOutdated y changesRequested)", async () => {
+test("/confirm: errores de la base con su código (404 linkNotFound y sendNotFound, 409 menuOutdated, sessionCancelled y changesRequested)", async () => {
   const cases: Array<[string, Record<string, unknown>, (store: FakeStore) => void, number, string]> = [
     ["link vencido", { token: UNKNOWN_TOKEN, sendId: SEND_A }, () => {}, 404, "linkNotFound"],
     ["envío de otra reserva o que no salió", { token: TOKEN, sendId: MISSING_SEND }, () => {}, 404, "sendNotFound"],
     ["hay un menú más nuevo", { token: TOKEN, sendId: SEND_OLD }, () => {}, 409, "menuOutdated"],
+    [
+      "la semana se canceló después del envío",
+      { token: TOKEN, sendId: SEND_A },
+      (store) => {
+        store.sessions.find((s) => s.id === SESSION_1)!.status = "cancelled";
+      },
+      409,
+      "sessionCancelled",
+    ],
     [
       "ya pidió cambios",
       { token: TOKEN, sendId: SEND_A },
@@ -656,7 +677,7 @@ test("/changes: guarda el mensaje normalizado y le avisa a Evelyn sin el mensaje
   assert.notEqual(emails[1]!.headers.get("idempotency-key"), email.headers.get("idempotency-key"));
 });
 
-test("/changes: 409 alreadyConfirmed y menuOutdated, 404 linkNotFound, 400 invalidText de la base", async () => {
+test("/changes: 409 alreadyConfirmed, menuOutdated y sessionCancelled, 404 linkNotFound, 400 invalidText de la base", async () => {
   const confirmed = harness();
   confirmed.store.sends.find((s) => s.id === SEND_A)!.confirmedAt = "2027-02-26T08:00:00+00:00";
   const already = await confirmed.handle(post("/changes", { token: TOKEN, sendId: SEND_A, text: "cambio" }));
@@ -665,6 +686,12 @@ test("/changes: 409 alreadyConfirmed y menuOutdated, 404 linkNotFound, 400 inval
   const outdated = harness();
   const old = await outdated.handle(post("/changes", { token: TOKEN, sendId: SEND_OLD, text: "cambio" }));
   assert.deepEqual([old.status, await json(old)], [409, { error: "menuOutdated" }]);
+
+  const cancelled = harness();
+  cancelled.store.sessions.find((s) => s.id === SESSION_1)!.status = "cancelled";
+  const gone1 = await cancelled.handle(post("/changes", { token: TOKEN, sendId: SEND_A, text: "cambio" }));
+  assert.deepEqual([gone1.status, await json(gone1)], [409, { error: "sessionCancelled" }]);
+  assert.ok(cancelled.logs.some((log) => log.event === "rejected" && log.fields["error"] === "sessionCancelled"));
 
   const expired = harness();
   const gone = await expired.handle(post("/changes", { token: UNKNOWN_TOKEN, sendId: SEND_A, text: "cambio" }));
@@ -675,7 +702,7 @@ test("/changes: 409 alreadyConfirmed y menuOutdated, 404 linkNotFound, 400 inval
   const rejected = await strict.handle(post("/changes", { token: TOKEN, sendId: SEND_A, text: "cambio" }));
   assert.deepEqual([rejected.status, await json(rejected)], [400, { error: "invalidText" }]);
 
-  for (const h of [confirmed, outdated, expired, strict]) {
+  for (const h of [confirmed, outdated, cancelled, expired, strict]) {
     await h.settle();
     assert.equal(h.emails.length, 0);
     assertNoLeaks(h.logs);
@@ -735,9 +762,10 @@ test("sin CHEF_NOTIFY_EMAIL o sin Resend configurado, el aviso se saltea (y la r
   }
 });
 
-test("una semana cancelada después del envío: la respuesta sale, el aviso no (no hay «semana k»)", async () => {
+test("una base vieja que deja contestar una semana cancelada: la respuesta sale, el aviso no (no hay «semana k»)", async () => {
   const { handle, store, logs, emails, settle } = harness();
-  store.sessions[2]!.status = "cancelled";
+  store.answerCancelledWeeks = true;
+  store.sessions.find((s) => s.id === SESSION_1)!.status = "cancelled";
   const response = await handle(post("/confirm", { token: TOKEN, sendId: SEND_A }));
   assert.equal(response.status, 200);
   await settle();
@@ -813,6 +841,7 @@ test("errorReply: cada error propio con su SQLSTATE; el resto, 503 si se puede r
     [new StoreError("x", "55000", "menu_outdated"), 409, "menuOutdated"],
     [new StoreError("x", "55000", "changes_requested"), 409, "changesRequested"],
     [new StoreError("x", "55000", "already_confirmed"), 409, "alreadyConfirmed"],
+    [new StoreError("x", "55000", "session_cancelled"), 409, "sessionCancelled"],
     [new StoreError("x", "22023", "invalid_text"), 400, "invalidText"],
     // El mensaje sin su código no alcanza.
     [new StoreError("x", "42501", "link_not_found"), 500, "server"],
@@ -854,4 +883,11 @@ test("answerFromRpc: la forma de private.client_link_answer; otra, null", () => 
   for (const bad of [null, [], { ...answer, sendId: "x" }, { ...answer, already: "no" }, { ...answer, date: "ayer" }, { ...answer, week: 0 }, { ...answer, confirmedAt: "x" }]) {
     assert.equal(answerFromRpc(bad), null, JSON.stringify(bad));
   }
+});
+
+test("/changes: los saltos de línea pegados desde Word (\\v, \\f) y NEL llegan a la base como \\n; los demás controles se sacan", async () => {
+  const { handle, store } = harness();
+  const response = await handle(post("/changes", { token: TOKEN, sendId: SEND_A, text: "Lasagne\vRisotto\fPollo\u0085Fine\u0007" }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(store.changesCalls.map((call) => call.text), ["Lasagne\nRisotto\nPollo\nFine"]);
 });

@@ -38,6 +38,18 @@
   font-size: 1.25rem;
 }
 
+/* El saludo y el aviso de la página reciben el foco por código (después de «Riprova» o de una semana cancelada). */
+.reservation__greeting:focus,
+.reservation__notice:focus {
+  outline: none;
+}
+
+.reservation__greeting:focus-visible,
+.reservation__notice:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
 /* El link no sirve o no se pudo leer la reserva. */
 .problem {
   padding: 1.5rem 1.25rem;
@@ -146,6 +158,16 @@
 
 .week__status--pending .state-badge {
   color: var(--terra-ink);
+}
+
+/* Enviado, sin nada que hacer (una semana ya cocinada, o un envío que la página no puede mostrar): neutro. */
+.week__status--sent {
+  border-left-color: var(--rule);
+  background: var(--crema-dark);
+}
+
+.week__status--sent .state-badge {
+  color: var(--muted);
 }
 
 /* Platos, lista y nota */

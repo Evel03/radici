@@ -59,9 +59,18 @@ export function shoppingList(items: readonly ShoppingItem[]): { toBuy: ShoppingG
   return { toBuy, atHome: items.filter((item) => item.quantity === null) };
 }
 
-/** Un instante (timestamptz) como día de Roma: «2 marzo 2027», «2 de marzo de 2027», «2 March 2027». */
+/**
+ * Un instante (timestamptz) como día de Roma, con el día de la semana: «martedì 2 marzo 2027», «martes, 2 de marzo
+ * de 2027», «Tuesday 2 March 2027». Con el día de la semana, el italiano no lleva artículo (nada de «il 8 marzo»).
+ */
 export function formatRomeDay(timestamp: string, locale: string): string {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return timestamp;
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: BUSINESS_TIME_ZONE }).format(date);
+  return new Intl.DateTimeFormat(locale, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: BUSINESS_TIME_ZONE,
+  }).format(date);
 }

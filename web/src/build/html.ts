@@ -148,10 +148,20 @@ function headExtras(opts: RenderOptions): string[] {
   return tags;
 }
 
+/**
+ * Los links de idioma del encabezado sin href (shell.ts se los pone con el fragmento actual). En una página
+ * privada el fragmento es el token del link (#t=…) y un href "?lang=xx" lo descarta: si se tocara antes de que
+ * cargue el JS, o se abriera en otra pestaña, la página diría que el link no funciona. Esa página no anda sin JS.
+ */
+export function withoutLangHrefs(html: string): string {
+  return html.replace(/<a href="\?lang=[a-z]{2}"(?=[^<>]*\sdata-lang=")/g, "<a");
+}
+
 export function renderPage(html: string, opts: RenderOptions): string {
   let out = insertPartials(html, opts.partials);
   out = out.replaceAll("__BRAND_NAME__", escapeHtml(opts.config.brandName));
   out = fillTranslations(out, opts.i18n);
+  if (PRIVATE_PATHS.includes(opts.pagePath)) out = withoutLangHrefs(out);
   const extras = headExtras(opts);
   return out.replace(/\n([ \t]*)<\/head>/, (_m, indent: string) =>
     `\n${extras.map((tag) => `${indent}  ${tag}\n`).join("")}${indent}</head>`,

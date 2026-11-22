@@ -10,6 +10,8 @@ import {
   CLIENT_LINK_VERSION,
   RESERVATION_PAGE_PATH,
   SHOPPING_SECTIONS,
+  changesTextProblem,
+  cleanChangesText,
   hashClientLinkToken,
   isClientLinkToken,
   menuState,
@@ -28,6 +30,8 @@ const CHEF_ID = "cef00000-0000-4000-8000-000000000001";
 const RECIPE_ID = "0a1b2c3d-4e5f-4a6b-8c7d-0123456789ab";
 const PHOTO_ID = "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f";
 const SEND_ID = "5e0d0000-0000-4000-8000-000000000001";
+const SESSION_1 = "5e550000-0000-4000-8000-000000000001";
+const SESSION_2 = "5e550000-0000-4000-8000-000000000002";
 const TOKEN = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCdE";
 
 /** Una foto de un envío como la arma la función chef (SPEC 5.8), con campos de más que hay que ignorar. */
@@ -104,16 +108,29 @@ test("rutas de la función: view, confirm y changes", () => {
 // Mensaje de cambios
 // ---------------------------------------------------------------------------
 
-test("normalizeChangesText: como lo acepta la base (\\r\\n → \\n, recortado, 1 a 1000 caracteres, sin controles)", () => {
+test("normalizeChangesText: como lo acepta la base (saltos de línea a \\n, recortado, 1 a 1000 caracteres, sin controles)", () => {
   assert.equal(normalizeChangesText("  Sin cebolla, por favor.\r\nGracias  "), "Sin cebolla, por favor.\nGracias");
-  // \r suelto, separadores de línea y párrafo (glibc los cuenta como control) y tabulaciones.
+  // Los saltos que llegan pegados desde otros programas: \r suelto, los manuales de Word y PowerPoint (\v y \f),
+  // NEL y los separadores de línea y de párrafo; las tabulaciones, a espacios.
   assert.equal(normalizeChangesText("uno\rdos\u2028tres\u2029cuatro\tcinco"), "uno\ndos\ntres\ncuatro cinco");
-  assert.equal(normalizeChangesText("\n\n  \t "), null);
+  assert.equal(normalizeChangesText("Lasagne\vRisotto\fPollo\u0085Fine"), "Lasagne\nRisotto\nPollo\nFine");
+  // Los demás caracteres de control no se ven y la base no los acepta: se sacan.
+  assert.equal(normalizeChangesText("hola\u0000"), "hola");
+  assert.equal(normalizeChangesText("hola\u0007chau\u009b"), "holachau");
+  assert.equal(normalizeChangesText("\n\n  \t \u000b"), null);
+  assert.equal(normalizeChangesText("\u0000\u0001"), null);
   assert.equal(normalizeChangesText(""), null);
-  assert.equal(normalizeChangesText("hola\u0000"), null);
-  assert.equal(normalizeChangesText("hola\u0007chau"), null);
-  assert.equal(normalizeChangesText("hola\u0085"), null);
   for (const bad of [null, undefined, 3, ["a"], { text: "a" }]) assert.equal(normalizeChangesText(bad), null);
+});
+
+test("changesTextProblem: vacío o demasiado largo (la página dice cuál)", () => {
+  assert.equal(changesTextProblem(cleanChangesText("  \n\u0000 ")), "empty");
+  assert.equal(changesTextProblem(cleanChangesText("a".repeat(CHANGES_TEXT_MAX + 1))), "tooLong");
+  assert.equal(changesTextProblem(cleanChangesText("Senza cipolla")), null);
+  // Lo que queda lo acepta la base: solo \n como salto, sin otros caracteres de control.
+  const cleaned = cleanChangesText("a\u0085b\u2028c\u0001d\te");
+  assert.equal(cleaned, "a\nb\ncd e");
+  assert.doesNotMatch(cleaned.replace(/\n/g, ""), /[\x00-\x1f\x7f-\x9f]/);
 });
 
 test("normalizeChangesText: el tope cuenta caracteres como Postgres (code points), no unidades UTF-16", () => {
@@ -231,6 +248,7 @@ function view(): ClientLinkView {
     clientFirstName: "Anna",
     weeks: [
       {
+        sessionId: SESSION_1,
         week: 1,
         weeks: 2,
         date: "2027-03-01",
@@ -245,7 +263,7 @@ function view(): ClientLinkView {
           content,
         },
       },
-      { week: 2, weeks: 2, date: "2027-03-08", start: "10:00", done: false, menu: null },
+      { sessionId: SESSION_2, week: 2, weeks: 2, date: "2027-03-08", start: "10:00", done: false, menu: null },
     ],
   };
 }
@@ -282,6 +300,8 @@ test("parseClientLinkView: con otra forma, null (la página dice que hubo un pro
     ["sin cocinera", mutate((v) => (v["chefName"] = ""))],
     ["nombre que no es texto", mutate((v) => (v["clientFirstName"] = 3))],
     ["semanas que no son una lista", mutate((v) => (v["weeks"] = {}))],
+    ["semana sin sesión", mutate((v) => delete v.weeks[0]!["sessionId"])],
+    ["sesión que no es un uuid", mutate((v) => (v.weeks[0]!["sessionId"] = "semana-1"))],
     ["fecha inválida", mutate((v) => (v.weeks[0]!["date"] = "2027-02-30"))],
     ["hora inválida", mutate((v) => (v.weeks[0]!["start"] = "25:00"))],
     ["semana 0", mutate((v) => (v.weeks[0]!["week"] = 0))],

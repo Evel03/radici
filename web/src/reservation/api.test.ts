@@ -100,6 +100,8 @@ describe("confirmMenu y requestChanges", () => {
       [json(409, { error: "menuOutdated" }), "menuOutdated"],
       [json(409, { error: "changesRequested" }), "changesRequested"],
       [json(409, { error: "alreadyConfirmed" }), "alreadyConfirmed"],
+      [json(409, { error: "sessionCancelled" }), "sessionCancelled"],
+      [json(404, { error: "sessionCancelled" }), "server"],
       [json(400, { error: "invalidText" }), "invalidText"],
       [json(400, { error: "invalidPayload" }), "server"],
       [json(409, { error: "otro" }), "server"],
