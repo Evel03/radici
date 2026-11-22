@@ -13,7 +13,8 @@
 // ninguna ruta lo cambia), «Controllo le date…» mientras corre el dryRun o lo
 // primero que impide confirmar, con un botón que lleva hasta ahí: en un
 // teléfono, el precio y las últimas semanas quedan fuera de la vista. Al
-// confirmar, el WhatsApp para la clienta, en su idioma.
+// confirmar, el WhatsApp para la clienta, en su idioma, y el botón para armar
+// el menú de la primera semana.
 //
 // Antes de la hoja, según su seed: la rueda, el error con «Riprova» o «no
 // está» (a mano, con «Nuova prenotazione» abajo). Una reserva a mano o una renovación no se cierra mientras espera el
@@ -1134,6 +1135,21 @@ class _BookingDone extends ConsumerWidget {
                     formats.shortDate(week.date),
                   ?week.start?.toHhMm(),
                 ].join(' · '),
+              ),
+            ),
+          // El paso siguiente (SPEC 5.8): el menú de la primera semana.
+          if (weeks.firstOrNull?.sessionId case final sessionId?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('booking-done-menu'),
+                  onPressed: () =>
+                      unawaited(context.push(AppRoutes.sessionMenu(sessionId))),
+                  icon: const Icon(Icons.restaurant_menu),
+                  label: Text(l10n.bookingDoneBuildMenu(weeks.length)),
+                ),
               ),
             ),
           const Divider(),
