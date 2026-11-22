@@ -7,6 +7,7 @@ import "../styles/base.css";
 import "../styles/reservation.css";
 import "../styles/book.css";
 import { mount } from "../lib/vdom.ts";
+import { createBookHistory, createFocusReveal, type RevealTarget } from "../reservation/book/state.ts";
 import { attachBookView, type BookView } from "../reservation/book/view.ts";
 import { createReservation, type ActionResult, type Focus, type Message } from "../reservation/controller.ts";
 import { changesCountText, focusId, messageText, reservationTree, weekDomId } from "../reservation/render.ts";
@@ -23,6 +24,36 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
 const root = byId("reservation");
 const live = byId("reservation-live");
 const token = readToken(window.location.hash);
+
+/** Lo que Espacio y Enter tocan (button) y donde escriben (text); en lo demás, Espacio mueve la página. */
+const BUTTON = "button, [role='button'], input[type='button'], input[type='submit'], input[type='reset'], input[type='checkbox'], input[type='radio']";
+const TEXT = "textarea, select, input, [contenteditable]:not([contenteditable='false'])";
+
+/** Lo que tiene el foco en la reserva, para createFocusReveal: su caja, cómo traerlo a la vista y qué es. */
+function focusedInReservation(): RevealTarget | null {
+  const el = document.activeElement;
+  if (!(el instanceof HTMLElement) || !root.contains(el)) return null;
+  return {
+    rect: () => el.getBoundingClientRect(),
+    reveal: () => {
+      try {
+        el.scrollIntoView({ block: "center", behavior: "instant" });
+      } catch {
+        // Un navegador que no conozca "instant" tira TypeError (WebIDL): centrado igual, con el scroll-behavior de la página.
+        el.scrollIntoView({ block: "center" });
+      }
+    },
+    kind: el.matches(BUTTON) ? "button" : el.matches(TEXT) ? "text" : "other",
+  };
+}
+
+// El libro del menú, desde el primer script, antes de pedir los textos y la reserva: «adelante» puede volver a la
+// entrada del libro antes de que la página termine de cargar, y createBookHistory tiene que haber visto la entrada de la
+// página para decidir si cerrarlo vuelve atrás (onBookEntry). createFocusReveal escucha popstate y hashchange desde ya:
+// después de cerrar el libro o de una vuelta del historial, lo que tiene el foco en la reserva queda a la vista.
+const bookHistory = createBookHistory(window);
+const focusReveal = createFocusReveal(window, focusedInReservation);
+
 const reservation = createReservation({ supabaseUrl: config.supabaseUrl, token });
 // La reserva se pide enseguida, junto con los textos: si la visitante nunca eligió un idioma, se usan los de la
 // reserva (y la página no se pinta dos veces).
@@ -156,6 +187,8 @@ function start(shell: Shell): void {
     state: () => reservation.state,
     onStateChange: (listener) => reservation.subscribe(listener),
     onLanguageChange: (listener) => shell.onLanguageChange(() => listener()),
+    history: bookHistory,
+    reveal: focusReveal,
   });
 }
 

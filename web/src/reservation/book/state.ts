@@ -1,8 +1,8 @@
 // El libro del menú (SPEC 5.8, «Libro del menú»): el menú que Evelyn mandó para una semana, como el libro de un
 // restaurante, un plato por página. Acá está la lógica pura (sin DOM, con tests): las páginas, a cuál se puede ir,
 // qué hace cada tecla, cómo se muestra cada página (y qué fotos se cargan ya), qué ofrece la última página, el
-// fragmento de la URL (#t=<token>&libro=<sesión>) con su entrada del historial y el clic en el fondo. El token nunca
-// sale del fragmento.
+// fragmento de la URL (#t=<token>&libro=<sesión>) con su entrada del historial, el foco a la vista después de cerrarlo
+// y el clic en el fondo. El token nunca sale del fragmento.
 import {
   BOOK_FRAGMENT_PARAM,
   type ClientLinkWeek,
@@ -167,10 +167,11 @@ export interface BookHistory {
   /**
    * El libro se abre desde el fragmento (se recargó con el libro abierto, el teléfono descartó la pestaña, o se volvió
    * a su entrada con «adelante»): si cerrarlo vuelve atrás, como si lo hubiera abierto el botón. Sí cuando la entrada
-   * de ahora la agregó push (queda marcada en history.state, también para otra carga del documento), salvo que esta
-   * carga haya empezado en la página: ahí su entrada quedó en "auto" (para restaurar su propio scroll) y volver a ella
-   * lo restauraría encima del foco. Entonces la entrada del libro pierde la marca y cerrarlo solo saca libro del
-   * fragmento, como el link del mensaje (queda otra entrada #t= repetida).
+   * de ahora la agregó push (queda marcada en history.state, también para otra carga del documento) y esta carga no
+   * estuvo en la entrada de la página con "auto". Si estuvo (la carga empezó ahí: su entrada restaura su propio scroll
+   * y desde la del libro ya no se puede cambiar), volver la restauraría encima del foco: la entrada del libro pierde
+   * la marca y cerrarlo solo saca libro del fragmento, como el link del mensaje. Queda otra entrada #t= repetida, en
+   * "auto": «atrás» desde ella también restaura (lo cubre createFocusReveal).
    */
   onBookEntry(): boolean;
 }
@@ -186,11 +187,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
  * cerrar: confirmar, desde la última página, quedaba fuera de la pantalla. scrollRestoration vale por entrada, cuenta
  * el de la entrada a la que se vuelve y solo se cambia el de la entrada activa: el de la página va a "manual" antes
  * del pushState (que lo copia; la del libro vuelve a "auto", así recargar con el libro abierto restaura) y queda así
- * mientras dure esta carga del documento. Ninguna vuelta desde el libro mueve la página: tampoco la de un libro abierto
- * otra vez con «adelante» (si la página volviera a "auto" al cerrarlo, ese segundo cierre restauraría). Vuelve a
- * "auto" al irse del documento sin quedar guardado entero (pagehide sin bfcache: recargar, otra página) y al cargar
- * sin libro en el fragmento (si no hubo pagehide: el teléfono descartó la pestaña), así la carga nueva restaura su
- * scroll.
+ * mientras dure esta carga del documento (también para un libro abierto otra vez con «adelante»). Vuelve a "auto" al
+ * irse del documento sin quedar guardado entero (pagehide sin bfcache: recargar, otra página) y al cargar sin libro
+ * en el fragmento (si no hubo pagehide: el teléfono descartó la pestaña), así la carga nueva restaura su scroll.
+ *
+ * Lo que garantiza: volver desde el libro a una entrada de la página que esta carga dejó en "manual" no mueve la
+ * página. Nada más: a una entrada que quedó en "auto" (la página recargada en su entrada, la #t= repetida que deja
+ * onBookEntry) el navegador la restaura, a veces animada. Se crea al cargar la página, antes de pedir nada a la red:
+ * si «adelante» llegara antes, no habría visto la entrada de la página y onBookEntry volvería atrás a una en "auto".
+ * Esto solo mueve la página lo menos posible; que el foco quede a la vista lo asegura createFocusReveal.
  */
 export function createBookHistory(win: HistoryWindow): BookHistory {
   const onPage = (): boolean => readBookSession(win.location.hash) === null;
@@ -200,6 +205,7 @@ export function createBookHistory(win: HistoryWindow): BookHistory {
   /**
    * El scrollRestoration de la entrada de la página: de la última sin libro en la que estuvo esta carga (cambia solo
    * mientras está activa). null si la carga empezó con el libro abierto: la dejó la carga que lo agregó, en "manual".
+   * popstate lo actualiza también entre dos entradas con el mismo fragmento (la #t= repetida), que no tienen hashchange.
    */
   let pageMode: ScrollRestoration | null = null;
   const look = (): void => {
@@ -228,6 +234,224 @@ export function createBookHistory(win: HistoryWindow): BookHistory {
       delete unmarked[BOOK_STATE_KEY];
       win.history.replaceState(unmarked, "");
       return false;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// El foco a la vista después de cerrar el libro
+// ---------------------------------------------------------------------------
+
+/** Una caja en el viewport (getBoundingClientRect): px desde el borde de arriba y desde el de la izquierda. */
+export interface ViewRect {
+  readonly top: number;
+  readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+}
+
+/** El tamaño del viewport (innerWidth × innerHeight). */
+export interface Viewport {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Lo que se tolera en cada borde (px): getBoundingClientRect da fracciones. */
+const REVEAL_TOLERANCE = 1;
+
+/** Si el tramo [start, end] se ve entero en [0, size]; si es más largo que size, si lo cubre (lo más que se ve). */
+function seenAlong(start: number, end: number, size: number): boolean {
+  if (end - start > size) return start <= REVEAL_TOLERANCE && end >= size - REVEAL_TOLERANCE;
+  return start >= -REVEAL_TOLERANCE && end <= size + REVEAL_TOLERANCE;
+}
+
+/**
+ * Si lo que tiene el foco hay que traerlo a la vista: no se ve entero en el viewport (si es más grande que el
+ * viewport, no lo cubre). Sin caja (display: none: todo en 0) o sin viewport, no: no hay adónde llevarlo.
+ */
+export function needsReveal(rect: ViewRect, viewport: Viewport): boolean {
+  if (viewport.width <= 0 || viewport.height <= 0) return false;
+  if (rect.bottom <= rect.top && rect.right <= rect.left) return false;
+  return !seenAlong(rect.top, rect.bottom, viewport.height) || !seenAlong(rect.left, rect.right, viewport.width);
+}
+
+/** Lo que tiene el foco en la reserva, para createFocusReveal (en los tests, uno falso). */
+export interface RevealTarget {
+  /** Su caja en el viewport (getBoundingClientRect). */
+  rect(): ViewRect;
+  /** Lo trae a la vista, centrado y sin animación (scrollIntoView con block: "center" y behavior: "instant"). */
+  reveal(): void;
+  /**
+   * Qué hacen Espacio y Enter con el foco ahí: button, lo tocan (un botón); text, escriben (un campo de texto);
+   * other, Espacio mueve la página (un link, un texto con tabindex).
+   */
+  readonly kind: "button" | "text" | "other";
+}
+
+/** Una tecla (keydown): cuál, y cómo frenar lo que haría. */
+export interface RevealKey {
+  readonly key: string;
+  preventDefault(): void;
+}
+
+/** Lo que usa createFocusReveal de window (en los tests, uno falso). Sin onscrollend, se espera REVEAL_QUIET_MS. */
+export interface RevealWindow {
+  readonly innerWidth: number;
+  readonly innerHeight: number;
+  addEventListener(
+    type: "popstate" | "hashchange" | "scroll" | "scrollend" | "wheel" | "touchstart" | "pointerdown",
+    listener: () => void,
+    options?: AddEventListenerOptions,
+  ): void;
+  addEventListener(type: "keydown", listener: (event: RevealKey) => void, options?: AddEventListenerOptions): void;
+  requestAnimationFrame(callback: () => void): number;
+  setTimeout(callback: () => void, ms: number): number;
+  clearTimeout(id: number): void;
+}
+
+export interface FocusReveal {
+  /**
+   * El libro se cerró y el foco ya está en su destino, movido sin scroll (cualquier camino: el botón de la última
+   * página, Esc, la X, el fondo, «atrás», «adelante», otro fragmento): si no se ve entero, ya mismo a la vista, y otra
+   * vez cuando la página se quede quieta (la vuelta atrás y la restauración del navegador llegan después).
+   */
+  bookClosed(): void;
+}
+
+/** Cuánto se espera, desde el último aviso, a que la página se quede quieta (también si nada se movió). */
+export const REVEAL_SETTLE_MS = 700;
+/** Sin scrollend (Safari viejo): un scroll terminó si pasa esto sin otro. */
+export const REVEAL_QUIET_MS = 150;
+/** Si un scroll no termina nunca (scrollend no llega), se mira igual a lo sumo esto después del primer aviso. */
+export const REVEAL_CAP_MS = 3000;
+/** Las teclas que mueven la página: la persona la lleva a otro lado (Espacio, si el foco no está en un botón o un campo). */
+const PAGE_SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+
+/**
+ * El foco a la vista (el invariante del libro): cada vez que se cierra el libro (bookClosed) y después de cada popstate
+ * o hashchange de la página (también una vuelta del historial mucho más tarde, como «atrás» desde la entrada #t=
+ * repetida), cuando la página se queda quieta, lo que tiene el foco en la reserva se ve entero; si no, se lo trae a la
+ * vista (centrado y sin animación). Así un «Confermo il menù» con el foco nunca queda fuera de la pantalla por algo
+ * que hizo el navegador después: la restauración del scroll de una entrada en "auto" (createBookHistory no la puede
+ * evitar ahí) o su animación con scroll-behavior: smooth, que sigue moviendo la página después del foco.
+ * - Quieta: terminó el último scroll (scrollend; sin scrollend, REVEAL_QUIET_MS sin otro) y pasó un cuadro. Además se
+ *   mira a los REVEAL_SETTLE_MS del último aviso (por si nada se movió) y, si un scroll no termina, a los REVEAL_CAP_MS.
+ * - Mientras espera, Espacio o Enter sobre un botón que no se ve, o con la página todavía moviéndose, no lo tocan: lo
+ *   dejan quieto a la vista (scrollIntoView sin animación corta la que hubiera). Quieto y a la vista, lo tocan; sobre un
+ *   campo de texto escriben. Nada de eso mueve la página, así que se sigue esperando.
+ * - Si la persona mueve la página mientras espera (rueda, dedo, la barra, un clic, las teclas de scroll, Espacio con el
+ *   foco fuera de un botón o un campo), deja de esperar: no se la lleva de vuelta.
+ * Se crea al cargar la página (antes de pedir nada a la red), así escucha popstate y hashchange desde el principio.
+ */
+export function createFocusReveal(win: RevealWindow, focused: () => RevealTarget | null): FocusReveal {
+  const hasScrollend = "onscrollend" in win;
+  /** Esperando que la página se quede quieta (después de cerrar el libro, de popstate o de hashchange). */
+  let armed = false;
+  /** Llegó un scroll que todavía no terminó. */
+  let scrolling = false;
+  /** Ya pasó REVEAL_SETTLE_MS desde el último aviso: cuando se quede quieta, se mira por última vez. */
+  let lastLook = false;
+  let settleTimer: number | null = null;
+  let quietTimer: number | null = null;
+  let capTimer: number | null = null;
+
+  const stop = (timer: number | null): null => {
+    if (timer !== null) win.clearTimeout(timer);
+    return null;
+  };
+
+  const hidden = (target: RevealTarget): boolean => needsReveal(target.rect(), { width: win.innerWidth, height: win.innerHeight });
+
+  /** Si lo que tiene el foco no se ve entero, lo trae a la vista. */
+  const look = (): void => {
+    const target = focused();
+    if (target && hidden(target)) target.reveal();
+  };
+
+  const disarm = (): void => {
+    armed = false;
+    scrolling = false;
+    lastLook = false;
+    settleTimer = stop(settleTimer);
+    quietTimer = stop(quietTimer);
+    capTimer = stop(capTimer);
+  };
+
+  const finish = (): void => {
+    look();
+    disarm();
+  };
+
+  /** El scroll terminó: un cuadro después (con el layout al día) se mira; si ya pasó el plazo, por última vez. */
+  const settled = (): void => {
+    scrolling = false;
+    quietTimer = stop(quietTimer);
+    win.requestAnimationFrame(() => {
+      if (!armed || scrolling) return;
+      if (lastLook) finish();
+      else look();
+    });
+  };
+
+  const arm = (): void => {
+    armed = true;
+    lastLook = false;
+    settleTimer = stop(settleTimer);
+    settleTimer = win.setTimeout(() => {
+      settleTimer = null;
+      lastLook = true;
+      if (!scrolling) finish();
+    }, REVEAL_SETTLE_MS);
+    capTimer ??= win.setTimeout(finish, REVEAL_CAP_MS);
+  };
+
+  win.addEventListener("popstate", arm);
+  win.addEventListener("hashchange", arm);
+  win.addEventListener(
+    "scroll",
+    () => {
+      if (!armed) return;
+      scrolling = true;
+      if (hasScrollend) return;
+      quietTimer = stop(quietTimer);
+      quietTimer = win.setTimeout(settled, REVEAL_QUIET_MS);
+    },
+    { passive: true },
+  );
+  win.addEventListener("scrollend", () => {
+    if (armed) settled();
+  });
+  // La persona mueve la página o hace clic: deja de esperar (en la captura, antes de que un clic cierre el libro).
+  for (const type of ["wheel", "touchstart", "pointerdown"] as const) win.addEventListener(type, disarm, { capture: true, passive: true });
+  win.addEventListener(
+    "keydown",
+    (event) => {
+      if (!armed) return;
+      const target = event.key === " " || event.key === "Enter" ? focused() : null;
+      if (target?.kind === "button") {
+        // Un botón con la página moviéndose o fuera de la pantalla: la tecla no lo toca (Espacio lo tocaría recién en
+        // keyup, quizás ya afuera), lo deja quieto a la vista; la clienta no confirma un menú que no vio. Quieto y a la
+        // vista, lo toca. La página no se mueve por eso: se sigue esperando.
+        if (scrolling || hidden(target)) {
+          target.reveal();
+          event.preventDefault();
+        }
+        return;
+      }
+      if (target?.kind === "text") {
+        // Un campo de texto: la tecla escribe (no mueve la página); si no se ve, lo trae a la vista.
+        look();
+        return;
+      }
+      if (PAGE_SCROLL_KEYS.has(event.key)) disarm();
+    },
+    { capture: true },
+  );
+
+  return {
+    bookClosed() {
+      look();
+      arm();
     },
   };
 }

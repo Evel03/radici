@@ -3,12 +3,15 @@
 // render.ts (puras, con tests); acá solo el DOM.
 // - Un diálogo modal: el resto de la página queda inert (y aria-hidden), Tab no sale del libro y, al cerrarlo, el foco
 //   vuelve al botón que lo abrió (o a donde lleve la última página: confirmar, el presupuesto o la semana).
+// - Al cerrarlo (por cualquier camino), lo que recibe el foco queda a la vista: ya mismo, sin animación, y otra vez
+//   cuando la página se queda quieta, por si el navegador restaura un scroll viejo después (createFocusReveal). Si la
+//   persona mueve la página mientras tanto, queda donde ella la llevó.
 // - Abierto desde el botón de una semana, agrega una entrada al historial: «atrás» lo cierra, como se espera en el
-//   teléfono, y ninguna vuelta desde el libro restaura el scroll viejo de la página mientras dure la carga
-//   (createBookHistory). Esa entrada queda marcada: abierto otra vez desde ella (al recargar, o con «adelante»),
-//   cerrarlo también vuelve atrás, salvo que la página se haya cargado de nuevo en su entrada (ahí volver restauraría:
-//   cerrarlo solo saca libro del fragmento). Abierto desde el link del mensaje, cerrarlo solo saca libro del fragmento.
-//   El token nunca sale de ahí.
+//   teléfono, y volver a la entrada de la página, que esta carga dejó en "manual", no la mueve (createBookHistory).
+//   Esa entrada queda marcada: abierto otra vez desde ella (al recargar, o con «adelante»), cerrarlo también vuelve
+//   atrás, salvo que la carga haya estado en la entrada de la página con "auto" (ahí volver restauraría: cerrarlo solo
+//   saca libro del fragmento). Abierto desde el link del mensaje, cerrarlo solo saca libro del fragmento. El token
+//   nunca sale de ahí.
 // - En la computadora, un clic en el fondo lo cierra; un arrastre que solo empieza o termina ahí, no.
 // - Pasar de página da vuelta la hoja (book.css), salvo con prefers-reduced-motion: ahí cambia sin animación.
 // - Las fotos: la de la página actual y la de la siguiente se cargan ya; las demás páginas van con hidden (sus fotos
@@ -43,15 +46,16 @@ import {
   closingKind,
   closingTargets,
   createBackdropClick,
-  createBookHistory,
   directionOf,
   keyAction,
   pagePresentation,
   readBookSession,
   step,
   trapFocus,
+  type BookHistory,
   type BookPage,
   type Direction,
+  type FocusReveal,
 } from "./state.ts";
 
 export interface BookViewDeps {
@@ -66,6 +70,13 @@ export interface BookViewDeps {
   onStateChange(listener: () => void): void;
   /** Avisa cada vez que cambia el idioma (Shell.onLanguageChange). */
   onLanguageChange(listener: () => void): void;
+  /**
+   * La entrada del historial del libro (createBookHistory), creada al cargar la página, antes de pedir nada a la red:
+   * «adelante» puede volver a la entrada del libro antes de que llegue la reserva.
+   */
+  history: BookHistory;
+  /** El foco a la vista después de cerrarlo (createFocusReveal), creado también al cargar la página. */
+  reveal: FocusReveal;
   /**
    * El id del botón con que se acepta el presupuesto, si el menú de esa semana va con uno abierto: la última página
    * lleva ahí. Sin esto (o con null), la última página vuelve a la semana.
@@ -109,8 +120,8 @@ export function attachBookView(deps: BookViewDeps): BookView {
   const win = window;
   /** Fotos que no cargaron (no se vuelven a pedir mientras la página está abierta). */
   const failedPhotos = new Set<string>();
-  /** La entrada que agrega el botón de una semana (cerrarlo vuelve atrás sin mover la página). */
-  const bookHistory = createBookHistory(win);
+  /** La entrada que agrega el botón de una semana (cerrarlo vuelve atrás). */
+  const bookHistory = deps.history;
   /** Dónde empezó y terminó el clic que llega al fondo. */
   const backdrop = createBackdropClick();
   let root: HTMLElement | null = null;
@@ -338,7 +349,8 @@ export function attachBookView(deps: BookViewDeps): BookView {
       }
     }
     // Abierto desde el fragmento de la entrada que agregó el botón (se recargó con el libro abierto, o se volvió con
-    // «adelante»): cerrarlo también vuelve atrás, a la página, si volver no restaura su scroll (onBookEntry).
+    // «adelante»): cerrarlo también vuelve atrás, salvo que esta carga haya estado en la entrada de la página con
+    // "auto" (onBookEntry).
     if (!pushed) pushed = bookHistory.onBookEntry();
     syncLangLinks();
 
@@ -380,7 +392,9 @@ export function attachBookView(deps: BookViewDeps): BookView {
   /**
    * Cierra el libro. fromHistory: el fragmento ya cambió (atrás, adelante, otro link): no se toca el historial. Si no,
    * se vuelve atrás si se abrió con una entrada nueva, o se saca libro del fragmento. El foco va al primero de targets
-   * que esté en la página, al botón que lo abrió o al de su semana.
+   * que esté en la página, al botón que lo abrió o al de su semana, sin el scroll del foco (con scroll-behavior: smooth
+   * sería animado y una restauración podía cortarlo): lo trae a la vista createFocusReveal, ya mismo y sin animación, y
+   * otra vez cuando la página se queda quieta (la vuelta atrás llega después).
    */
   function close(how: { fromHistory: boolean; targets?: readonly string[] }): void {
     const open = book;
@@ -404,10 +418,11 @@ export function attachBookView(deps: BookViewDeps): BookView {
     for (const id of candidates) {
       const el = id ? byId(id) : null;
       if (el) {
-        el.focus();
+        el.focus({ preventScroll: true });
         break;
       }
     }
+    deps.reveal.bookClosed();
   }
 
   /** Abre o cierra según el fragmento (al cargar la reserva y cuando cambia: atrás, adelante, otro link). */
