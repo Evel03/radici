@@ -83,7 +83,7 @@ Los 409:
 | `{ "error": "noEmail" }` \| `{ "error": "noPhone" }` | el contacto de la clienta no tiene un email o un teléfono que sirva para lo que se pidió; no salió nada (§13) |
 | `{ "error": "requestNotQuotable" }` | el pedido no admite presupuesto (uno de cambios): el cuerpo de `/quotes` no tiene `type`, es el del pedido (§14) |
 | `{ "error": "quoteExists" }` | el pedido ya tiene un presupuesto abierto: para preparar otro, primero se retira (§14) |
-| `{ "error": "quoteClosed" }` | el presupuesto ya está aceptado, rechazado, retirado o vencido; en `/menus/*`, la semana `held` ya no tiene su presupuesto abierto (§13, §14) |
+| `{ "error": "quoteClosed" }` | el presupuesto ya está aceptado, rechazado, retirado o vencido (también con el plazo ya pasado, aunque el cron de 15 minutos todavía no lo haya escrito: un borrador cuyas 24 h pasaron da `quoteClosed` en la vista previa y el envío); en `/menus/*`, la semana `held` ya no tiene su presupuesto abierto (§13, §14) |
 | `{ "error": "quoteEmpty" }` | el presupuesto no tiene semanas vivas (Evelyn las canceló todas) (§14) |
 | `{ "error": "quoteWeekNotFirst" }` | el menú de una semana `held` que no es la primera de su presupuesto: antes de aceptarlo solo sale la semana 1 (§13) |
 | `{ "error": "quoteChanged" }` | desde la vista previa cambiaron los términos del presupuesto (otro precio, una semana movida o cancelada): hace falta otra vista previa (§13) |
@@ -534,7 +534,7 @@ Respuesta `201` (en el `dryRun`, `200`):
 
 - Crea una sesión `held` por semana (`pay_mode` manual), con su parte del precio, y el presupuesto sin enviar, con la versión siguiente a la última que salió del pedido (la 1 si no salió ninguna: un borrador que venció o se retiró sin salir no gasta número, y la clienta ve la versión 1 en su primer presupuesto). El pedido sigue `new` (queda visto). La página de la clienta no muestra las semanas de un borrador.
 - `holdUntil`: el borrador retiene el horario 24 h, nunca más allá de la llegada de la primera semana. Al salir con el menú, el plazo pasa a ser el de la clienta: `quote_hold_hours` (48 h) desde el envío, tampoco más allá de esa llegada.
-- `weeks`: en el `dryRun`, el estado de cada fecha como en `/bookings` (`busy`, `past`, `blocked`, `closed`, `outside`, `ok`, con `suggestedStart`; solo `busy` impide crearlo) y `quoteId`, `holdUntil` y `sessionId` en null. Creado, cada semana con su sesión y `status: "free"` (retenida; los avisos eran los del `dryRun`).
+- `weeks`: en el `dryRun`, el estado de cada fecha como en `/bookings` (`busy`, `past`, `blocked`, `closed`, `outside`, `ok`, con `suggestedStart`; solo `busy` impide crearlo) y `quoteId`, `holdUntil` y `sessionId` en null. Un presupuesto no puede empezar en el pasado: con la llegada de la primera semana a más tardar ahora (o, sin hora, un día anterior a hoy) la base responde `400 { errors: { dates: "invalid" } }`, también en el `dryRun`; por eso `past` no sale. Creado, cada semana con su sesión y `status: "free"` (retenida; los avisos eran los del `dryRun`).
 - Todo o nada: si una semana choca no se crea ninguna (`409 slotTaken` / `weekTaken` con la fecha).
 
 ### `POST /quotes/price`: otro precio

@@ -32,7 +32,7 @@ Evelyn le manda a la clienta el menú de cada semana de su reserva (por email, W
 | `changesRequested` | 409 | `/confirm` o `/accept` de un envío para el que ya pidió cambios: Evelyn manda otro |
 | `alreadyConfirmed` | 409 | `/changes` de un envío ya confirmado: los cambios se hablan con Evelyn |
 | `quotePending` | 409 | `/confirm` de un menú que va con un presupuesto abierto: el envío que lo lleva se confirma aceptando el presupuesto (`/accept`); uno anterior del mismo presupuesto, que quedó en otra semana, después de aceptarlo |
-| `quoteClosed` | 409 | el presupuesto ya no se contesta: aceptado, rechazado, retirado o vencido (`reason`, cuando la base lo dice: en `/accept` y `/decline`). En `/confirm` y `/changes`, un menú que iba con un presupuesto cerrado sin aceptar |
+| `quoteClosed` | 409 | el presupuesto ya no se contesta: aceptado, rechazado, retirado o vencido, también con el plazo ya pasado aunque el cron de 15 minutos todavía no lo haya escrito (`reason`, cuando la base lo dice: en `/accept` y `/decline`). En `/confirm` y `/changes`, un menú que iba con un presupuesto cerrado sin aceptar |
 | `quoteChanged` | 409 | `/accept` de un presupuesto que Evelyn cambió (precio o semanas) y todavía no reenvió: no se acepta lo que ya no vale |
 | `notAQuote` | 409 | `/accept` o `/decline` de un envío que no lleva presupuesto |
 | `quoteEmpty` | 409 | `/accept` de un presupuesto sin semanas por aceptar |

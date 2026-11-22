@@ -14,16 +14,21 @@ extension RequestLabels on AppLocalizations {
   };
 
   /// Estado como lo ve la cocinera: un pedido nuevo ya abierto es "Vista".
-  String requestStatus(ChefRequest request) => switch (request.status) {
-    RequestStatus.newRequest =>
-      request.seenAt == null ? requestStatusNew : requestStatusSeen,
-    RequestStatus.quoted => requestStatusQuoted,
-    RequestStatus.accepted => requestStatusAccepted,
-    RequestStatus.declined => requestStatusDeclined,
-    RequestStatus.rejected => requestStatusRejected,
-    RequestStatus.expired => requestStatusExpired,
-    RequestStatus.resolved => requestStatusResolved,
-  };
+  String requestStatus(ChefRequest request) =>
+      requestStatusOf(request.status, seen: request.seenAt != null);
+
+  /// [requestStatus] de un pedido en [status] que la cocinera ya abrió
+  /// ([seen]) o no.
+  String requestStatusOf(RequestStatus status, {required bool seen}) =>
+      switch (status) {
+        RequestStatus.newRequest => seen ? requestStatusSeen : requestStatusNew,
+        RequestStatus.quoted => requestStatusQuoted,
+        RequestStatus.accepted => requestStatusAccepted,
+        RequestStatus.declined => requestStatusDeclined,
+        RequestStatus.rejected => requestStatusRejected,
+        RequestStatus.expired => requestStatusExpired,
+        RequestStatus.resolved => requestStatusResolved,
+      };
 
   /// El estado que la fila de la bandeja y de la agenda muestra aparte: el de
   /// un pedido cuyo presupuesto salió (enviado, rechazado por la clienta o

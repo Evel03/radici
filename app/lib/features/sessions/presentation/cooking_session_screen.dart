@@ -1,15 +1,17 @@
 // Ficha de una sesión de cocina (`/sessioni/:id`, a pantalla completa): el día
 // y las horas (salidas de la sesión), «Semana k de N» sin contar las
 // canceladas, «Come arrivare» (la dirección en Mapas), WhatsApp y llamar (sin
-// dirección, el botón para agregarla: el formulario web no la pide); las
+// dirección, el botón para agregarla: el formulario web no la pide; con la
+// zona del pedido, también «Come arrivare (zona)», que lleva hasta ella); las
 // alergias resaltadas (la nota del pedido y, con gluten, la de contaminación
 // cruzada, SPEC §5.6); el menú de la semana (cuántos platos y renglones, qué
 // pasó con su envío a la clienta y los botones para armarlo o editarlo y para
-// mandárselo, SPEC 5.8); los datos de la clienta y las semanas de su reserva;
-// en la última sesión viva de una reserva semanal, «Rinnova» al final. Una
-// semana de un presupuesto sin aceptar (`held`, SPEC 5.8) avisa que moverla o
-// cancelarla cambia el presupuesto (el detalle del pedido dice entonces que
-// hay que mandarlo de nuevo).
+// mandárselo, SPEC 5.8); los datos de la clienta (la dirección, o sin ella la
+// zona, es un enlace a Mapas, como «Come arrivare») y las semanas de su
+// reserva; en la última sesión viva de una reserva semanal, «Rinnova» al
+// final. Una semana de un presupuesto sin aceptar (`held`, SPEC 5.8) avisa
+// que moverla o cancelarla cambia el presupuesto (el detalle del pedido dice
+// entonces que hay que mandarlo de nuevo).
 // Abajo, Mover (con «Annulla» después) y Cancelar (con confirmación y
 // «también las siguientes»; si alguna ya está cobrada, el aviso dice cuál y
 // qué se puede hacer). Abierta con un enlace directo, la flecha de volver
@@ -34,6 +36,7 @@ import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_api.dart';
 import 'package:radici/features/sessions/domain/session_booking.dart';
+import 'package:radici/features/sessions/domain/session_links.dart';
 import 'package:radici/features/sessions/presentation/cancel_session_dialog.dart';
 import 'package:radici/features/sessions/presentation/client_address_dialog.dart';
 import 'package:radici/features/sessions/presentation/has_payments_dialog.dart';
@@ -269,24 +272,26 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// Abre [uri] (Mapas, WhatsApp o el teléfono) y, si no se puede, lo avisa.
+Future<void> _launchLink(BuildContext context, WidgetRef ref, Uri uri) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final message = AppLocalizations.of(context).launchFailed;
+  // Directo desde el toque: en la web, esperar algo antes haría que el
+  // navegador bloquee la ventana nueva.
+  final opened = await ref.read(linkLauncherProvider).launch(uri);
+  if (!opened && messenger.mounted) {
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
 /// «Come arrivare», WhatsApp y llamar. Sin dirección (las reservas que llegan
 /// por la web), WhatsApp pasa a ser el principal y en lugar de «Come
-/// arrivare» va «Aggiungi indirizzo».
+/// arrivare» va «Aggiungi indirizzo»; si hay zona, después también «Come
+/// arrivare (zona)», que lleva hasta la zona: no es una dirección verificada.
 class _ContactButtons extends ConsumerWidget {
   const _ContactButtons({required this.session});
 
   final CookingSession session;
-
-  Future<void> _launch(BuildContext context, WidgetRef ref, Uri uri) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final message = AppLocalizations.of(context).launchFailed;
-    // Directo desde el toque: en la web, esperar algo antes haría que el
-    // navegador bloquee la ventana nueva.
-    final opened = await ref.read(linkLauncherProvider).launch(uri);
-    if (!opened && messenger.mounted) {
-      messenger.showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -294,11 +299,14 @@ class _ContactButtons extends ConsumerWidget {
     final theme = Theme.of(context);
     final links = ref.watch(sessionLinksProvider(session.id));
     final directions = links?.directions;
+    final toZone = directions?.target == DirectionsTarget.zone
+        ? directions
+        : null;
     final whatsApp = links?.whatsApp;
     final call = links?.call;
     final hasAddress = session.address != null;
     VoidCallback? launch(Uri? uri) =>
-        uri == null ? null : () => _launch(context, ref, uri);
+        uri == null ? null : () => _launchLink(context, ref, uri);
     const whatsAppKey = ValueKey('session-whatsapp');
     const whatsAppIcon = Icon(Icons.chat_outlined);
     final whatsAppLabel = Text(l10n.actionWhatsApp);
@@ -313,7 +321,7 @@ class _ContactButtons extends ConsumerWidget {
             if (hasAddress) ...[
               FilledButton.icon(
                 key: const ValueKey('session-directions'),
-                onPressed: launch(directions),
+                onPressed: launch(directions?.uri),
                 icon: const Icon(Icons.directions_outlined),
                 label: Text(l10n.sessionDirections),
               ),
@@ -343,6 +351,15 @@ class _ContactButtons extends ConsumerWidget {
                 icon: const Icon(Icons.add_location_alt_outlined),
                 label: Text(l10n.sessionAddAddress),
               ),
+            // Al final: «Aggiungi indirizzo» queda donde estaba (en un
+            // teléfono chico, a la vista sin desplazar).
+            if (toZone != null)
+              OutlinedButton.icon(
+                key: const ValueKey('session-directions-zone'),
+                onPressed: launch(toZone.uri),
+                icon: const Icon(Icons.directions_outlined),
+                label: Text(l10n.sessionDirectionsZone),
+              ),
           ],
         ),
         if (!hasAddress) ...[
@@ -365,16 +382,38 @@ class _ContactButtons extends ConsumerWidget {
 }
 
 /// La dirección, la zona, el teléfono, el pedido, las porciones y las notas.
-class _Client extends StatelessWidget {
+/// La dirección es un enlace a Mapas, como «Come arrivare»; sin dirección, la
+/// zona, como «Come arrivare (zona)».
+class _Client extends ConsumerWidget {
   const _Client({required this.session});
 
   final CookingSession session;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final request = session.request;
     final notes = request?.notes?.trim() ?? '';
+    final directions = ref.watch(sessionLinksProvider(session.id))?.directions;
+
+    // La fila de la dirección o la de la zona: un enlace a Mapas si «Come
+    // arrivare» lleva hasta ella (target); si no, solo el texto.
+    Widget place(
+      DirectionsTarget target, {
+      required String label,
+      required String value,
+      required String linkLabel,
+      required Key valueKey,
+    }) => directions == null || directions.target != target
+        ? SessionInfoRow(label: label, value: value, valueKey: valueKey)
+        : SessionDirectionsRow(
+            label: label,
+            value: value,
+            semanticsLabel: linkLabel,
+            valueKey: valueKey,
+            onTap: () => unawaited(_launchLink(context, ref, directions.uri)),
+          );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -383,10 +422,11 @@ class _Client extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: SessionInfoRow(
+                child: place(
+                  DirectionsTarget.address,
                   label: l10n.sessionAddress,
                   value: address,
-                  selectable: true,
+                  linkLabel: l10n.sessionDirectionsTo(address),
                   valueKey: const ValueKey('session-address'),
                 ),
               ),
@@ -399,7 +439,13 @@ class _Client extends StatelessWidget {
             ],
           ),
         if (session.zone case final zone? when zone.isNotEmpty)
-          SessionInfoRow(label: l10n.detailZone, value: zone),
+          place(
+            DirectionsTarget.zone,
+            label: l10n.detailZone,
+            value: zone,
+            linkLabel: l10n.sessionDirectionsToZone(zone),
+            valueKey: const ValueKey('session-zone'),
+          ),
         if (session.contactPhone case final phone?)
           SessionInfoRow(
             label: l10n.detailPhone,

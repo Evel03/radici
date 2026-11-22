@@ -4,7 +4,8 @@
 // Edge Functions (CLAUDE.md): la app nunca escribe en `sessions`. Lo único que
 // escribe es la dirección de la ficha de la clienta (`clients.address`, con la
 // RLS «la cocinera gestiona los suyos» y el grant por columna de rls.sql): el
-// formulario web no la pide y sin ella no hay «Cómo llegar».
+// formulario web no la pide y sin ella «Cómo llegar» lleva, como mucho, hasta
+// la zona.
 //
 // El filtro explícito por chef_id es para el índice (sessions_chef_date_idx) y
 // para cuando haya más de una cocinera; en una sesión por id, también para que

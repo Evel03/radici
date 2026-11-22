@@ -1,6 +1,7 @@
 // Piezas de la ficha de la sesión, de la hoja «Sposta» y de Hoy: la barra de
 // abajo (la acción principal en el tercio inferior del teléfono), los títulos
-// de sección, una fila etiqueta–valor, el texto de ayuda y las alergias.
+// de sección, una fila etiqueta–valor (también con el valor como enlace a
+// Mapas), el texto de ayuda y las alergias.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -119,6 +120,94 @@ class SessionInfoRow extends StatelessWidget {
             else
               Text(value, key: valueKey, style: style),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Etiqueta y valor en una fila, como [SessionInfoRow], con el valor como
+/// enlace a Mapas («Come arrivare»): en el color de los enlaces, subrayado y
+/// con el ícono de la ruta. Se toca toda la fila, de 48 dp de alto como
+/// mínimo. Para el lector de pantalla, un solo nodo con [semanticsLabel]
+/// («Come arrivare a …»), enlace y con la acción de tocar (en /gestione/ el
+/// toque de VoiceOver solo llega a un nodo que la tiene).
+class SessionDirectionsRow extends StatelessWidget {
+  const SessionDirectionsRow({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.semanticsLabel,
+    required this.onTap,
+    this.valueKey,
+  });
+
+  final String label;
+  final String value;
+  final String semanticsLabel;
+  final VoidCallback onTap;
+
+  /// La del `Text` del valor.
+  final Key? valueKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return Semantics(
+      container: true,
+      link: true,
+      label: semanticsLabel,
+      excludeSemantics: true,
+      onTap: onTap,
+      child: InkWell(
+        onTap: onTap,
+        // La acción va en el nodo de arriba.
+        excludeFromSemantics: true,
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          constraints: const BoxConstraints(
+            minHeight: kMinInteractiveDimension,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          alignment: AlignmentDirectional.centerStart,
+          child: Wrap(
+            spacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 140),
+                child: Text(
+                  label,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.directions_outlined,
+                    size: 20,
+                    color: colors.primary,
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      value,
+                      key: valueKey,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: colors.primary,
+                        decoration: TextDecoration.underline,
+                        decorationColor: colors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
