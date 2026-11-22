@@ -1,7 +1,10 @@
 // Ficha de la sesión (/sessioni/:id) en la app: el día y las horas salidas de
 // la sesión, «Settimana k di N» sin contar las canceladas, «Come arrivare»
-// (Apple Maps en el iPhone, Google Maps en el resto; sin dirección, «Aggiungi
-// indirizzo» la guarda en la ficha), WhatsApp en el idioma de la clienta (con
+// (Apple Maps en el iPhone, Google Maps en el resto; la dirección también lo
+// abre y el lector de pantalla la lee como enlace; sin dirección, «Aggiungi
+// indirizzo» la guarda en la ficha y, si hay zona, «Come arrivare (zona)» y
+// la fila de la zona llevan hasta ella con «, Bergamo»; sin ninguna, ningún
+// enlace a Mapas), WhatsApp en el idioma de la clienta (con
 // la cuenta de un colaborador, de parte de la cocinera: «con arrivo di Evelyn
 // alle…», también en una sesión de hoy cuya llegada ya pasó; sin la hora de
 // llegada en una sesión de un día que ya pasó en Roma o cancelada), las
@@ -34,6 +37,7 @@ import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_api.dart';
 import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
 import 'package:radici/features/sessions/presentation/move_session_screen.dart';
+import 'package:radici/features/sessions/presentation/session_widgets.dart';
 
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
@@ -136,10 +140,8 @@ void main() {
     // Confirmada: sin etiqueta de estado.
     expect(byKey('session-status'), findsNothing);
     await reveal(tester, byKey('session-request-notes'));
-    expect(
-      tester.widget<SelectableText>(byKey('session-address')).data,
-      'Via Gombito 12, 24129 Bergamo',
-    );
+    expect(textOf(tester, 'session-address'), 'Via Gombito 12, 24129 Bergamo');
+    expect(textOf(tester, 'session-zone'), 'Città Alta');
     expect(textOf(tester, 'session-kitchen-notes'), 'Forno a gas');
     expect(textOf(tester, 'session-request-notes'), 'Citofono: Rossi');
     expect(
@@ -254,6 +256,8 @@ void main() {
   ) async {
     final app = await openSession(tester);
     expect(tester.widget(byKey('session-directions')), isA<FilledButton>());
+    // Con dirección, la zona no suma otro botón.
+    expect(byKey('session-directions-zone'), findsNothing);
     await tester.tap(byKey('session-directions'));
     await tester.pumpAndSettle();
     expect(
@@ -433,9 +437,10 @@ void main() {
     );
 
     testWidgets(
-      '«Aggiungi indirizzo» la guarda en la ficha y «Come arrivare» la abre',
+      '«Aggiungi indirizzo» la guarda en la ficha y «Come arrivare» la abre (ya no la zona)',
       (tester) async {
         final app = await openSession(tester, sessions: webBooking());
+        expect(byKey('session-directions-zone'), findsOneWidget);
         await tester.tap(byKey('session-add-address'));
         await tester.pumpAndSettle();
 
@@ -467,6 +472,7 @@ void main() {
         expect(find.text('Indirizzo salvato.'), findsOneWidget);
         expect(byKey('session-add-address'), findsNothing);
         expect(byKey('session-no-address'), findsNothing);
+        expect(byKey('session-directions-zone'), findsNothing);
         expect(tester.widget(byKey('session-directions')), isA<FilledButton>());
         await tester.tap(byKey('session-directions'));
         await tester.pumpAndSettle();
@@ -544,11 +550,167 @@ void main() {
       await tester.pumpAndSettle();
       expect(app.sessions.addressUpdates.single.$2, 'Via Gombito 14, 24129 Bergamo');
       expect(
-        tester.widget<SelectableText>(byKey('session-address')).data,
+        textOf(tester, 'session-address'),
         'Via Gombito 14, 24129 Bergamo',
       );
     },
   );
+
+  group('la dirección y la zona, enlaces a Mapas', () {
+    const toAddress =
+        'https://www.google.com/maps/dir/?api=1&destination=Via%20Gombito%2012%2C%2024129%20Bergamo';
+    const toZone =
+        'https://www.google.com/maps/dir/?api=1&destination=Via%20Gabriele%20Camozzi%2050%2C%20Bergamo';
+
+    /// Si el valor de la fila [key] es un enlace a Mapas.
+    bool isLink(String key) => find
+        .ancestor(of: byKey(key), matching: find.byType(SessionDirectionsRow))
+        .evaluate()
+        .isNotEmpty;
+
+    testWidgets(
+      'tocar la dirección abre el camino en Google Maps, como «Come arrivare»; con dirección, la zona es solo texto',
+      (tester) async {
+        final app = await openSession(tester);
+        await reveal(tester, byKey('session-address'));
+        expect(isLink('session-address'), isTrue);
+        await tester.tap(byKey('session-address'));
+        await tester.pumpAndSettle();
+        expect(app.launcher.launched.single.toString(), toAddress);
+
+        // Con dirección, la zona no lleva a ningún lado.
+        await reveal(tester, byKey('session-zone'));
+        expect(isLink('session-zone'), isFalse);
+        await tester.tap(byKey('session-zone'));
+        await tester.pumpAndSettle();
+        expect(app.launcher.launched, hasLength(1));
+      },
+    );
+
+    testWidgets('en el iPhone, la dirección va a Apple Maps', (tester) async {
+      final app = await openSession(tester, appleMaps: true);
+      await reveal(tester, byKey('session-address'));
+      await tester.tap(byKey('session-address'));
+      await tester.pumpAndSettle();
+      expect(
+        app.launcher.launched.single.toString(),
+        'https://maps.apple.com/?daddr=Via%20Gombito%2012%2C%2024129%20Bergamo',
+      );
+    });
+
+    testWidgets(
+      'con el lector de pantalla, la dirección es un solo nodo «Come arrivare a …», enlace y con la acción de tocar',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        final app = await openSession(tester);
+        await reveal(tester, byKey('session-address'));
+        expect(
+          tester.getSemantics(byKey('session-address')),
+          isSemantics(
+            label: 'Come arrivare a Via Gombito 12, 24129 Bergamo',
+            isLink: true,
+            hasTapAction: true,
+          ),
+        );
+        // La dirección sola no es otro nodo.
+        expect(
+          find.semantics.byLabel('Via Gombito 12, 24129 Bergamo'),
+          findsNothing,
+        );
+
+        tester.semantics.tap(
+          find.semantics.byLabel(
+            'Come arrivare a Via Gombito 12, 24129 Bergamo',
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(app.launcher.launched.single.toString(), toAddress);
+        semantics.dispose();
+      },
+    );
+
+    testWidgets('si no se puede abrir, lo avisa', (tester) async {
+      final app = await openSession(tester);
+      app.launcher.result = false;
+      await reveal(tester, byKey('session-address'));
+      await tester.tap(byKey('session-address'));
+      await tester.pumpAndSettle();
+      expect(find.text('Impossibile aprire il link.'), findsOneWidget);
+    });
+
+    testWidgets(
+      'sin dirección y con la zona del pedido: «Come arrivare (zona)» y la fila de la zona llevan hasta la zona con «, Bergamo»; siguen «Aggiungi indirizzo» y su aviso',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        final app = await openSession(
+          tester,
+          sessions: FakeSessionsRepository(
+            buildBooking(address: null, zone: 'Via Gabriele Camozzi 50'),
+          ),
+        );
+        expect(byKey('session-directions'), findsNothing);
+        expect(tester.widget(byKey('session-whatsapp')), isA<FilledButton>());
+        final button = byKey('session-directions-zone');
+        expect(tester.widget(button), isA<OutlinedButton>());
+        expect(
+          find.descendant(
+            of: button,
+            matching: find.text('Come arrivare (zona)'),
+          ),
+          findsOneWidget,
+        );
+        expect(onPressedOf(tester, 'session-add-address'), isNotNull);
+        expect(
+          textOf(tester, 'session-no-address'),
+          'Nessun indirizzo nella scheda: chiedilo alla cliente e aggiungilo.',
+        );
+
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+        expect(app.launcher.launched.single.toString(), toZone);
+
+        // La zona se ve como la escribió; el enlace le suma la ciudad.
+        await reveal(tester, byKey('session-zone'));
+        expect(textOf(tester, 'session-zone'), 'Via Gabriele Camozzi 50');
+        expect(isLink('session-zone'), isTrue);
+        expect(
+          tester.getSemantics(byKey('session-zone')),
+          isSemantics(
+            label: 'Come arrivare a Via Gabriele Camozzi 50 (zona)',
+            isLink: true,
+            hasTapAction: true,
+          ),
+        );
+        await tester.tap(byKey('session-zone'));
+        await tester.pumpAndSettle();
+        expect(
+          [for (final uri in app.launcher.launched) uri.toString()],
+          [toZone, toZone],
+        );
+        semantics.dispose();
+      },
+    );
+
+    testWidgets(
+      'sin dirección ni zona, ningún enlace a Mapas: WhatsApp, llamar y «Aggiungi indirizzo»',
+      (tester) async {
+        await openSession(
+          tester,
+          sessions: FakeSessionsRepository(
+            buildBooking(address: null, zone: null),
+          ),
+        );
+        expect(byKey('session-directions'), findsNothing);
+        expect(byKey('session-directions-zone'), findsNothing);
+        expect(tester.widget(byKey('session-whatsapp')), isA<FilledButton>());
+        expect(onPressedOf(tester, 'session-call'), isNotNull);
+        expect(onPressedOf(tester, 'session-add-address'), isNotNull);
+        await reveal(tester, byKey('session-request-notes'));
+        expect(byKey('session-zone'), findsNothing);
+        expect(find.byType(SessionDirectionsRow), findsNothing);
+      },
+    );
+  });
 
   group('alergias', () {
     testWidgets(
@@ -867,6 +1029,7 @@ void main() {
           indexOf((l) => l == 'WhatsApp'),
           indexOf((l) => l == 'Llamar'),
           indexOf((l) => l == 'Agregar dirección'),
+          indexOf((l) => l == 'Cómo llegar (zona)'),
         ];
         final noAddress = indexOf((l) => l.startsWith('Sin dirección'));
         final title = indexOf((l) => l == 'Alergias y dietas');
@@ -1544,6 +1707,7 @@ void main() {
             'session-whatsapp',
             'session-call',
             'session-add-address',
+            'session-directions-zone',
           ]) {
             expect(
               tester.getSize(byKey(key)).height,

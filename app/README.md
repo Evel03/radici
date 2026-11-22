@@ -116,7 +116,8 @@ repositorios falsos (`test/support/fakes.dart`).
   sin ningún dato o con solo una dieta, «Allergie: nessun dato nell'app, chiedile») y las notas de
   cocina, y abre la ficha. Abajo, en el tercio inferior del teléfono, «Come arrivare» (Apple Maps
   en el iPhone, Google Maps en el resto) y WhatsApp de la primera; sin dirección, WhatsApp y
-  «Aggiungi indirizzo», como la ficha (con varias, una línea dice de quién son, con la hora primero:
+  «Aggiungi indirizzo», como la ficha, y arriba, si hay zona, «Come arrivare (zona)», que lleva
+  hasta la zona (con varias, una línea dice de quién son, con la hora primero:
   «Arrivo 16:00 · Marco Bianchi»; si no entra, se corta el nombre). El WhatsApp es el de la ficha
   (`sessionLinksFor`, con el mismo día de Roma con que Hoy elige la sesión): lleva la hora de
   llegada salvo en una sesión cocinada o cobrada (en Hoy no hay canceladas ni de días pasados) y,
@@ -211,7 +212,12 @@ repositorios falsos (`test/support/fakes.dart`).
   no pide la dirección: sin ella, WhatsApp pasa a ser el botón principal y en lugar de «Come
   arrivare» va «Aggiungi indirizzo», que la guarda en la ficha (`clients.address`, con la RLS «la
   cocinera gestiona los suyos» y el grant por columna; vale para todas sus sesiones y se corrige
-  desde la fila de la dirección). Después, las alergias de la ficha y del pedido, con la nota del
+  desde la fila de la dirección). En esa fila, la dirección también es un enlace que abre el camino
+  en Mapas, como «Come arrivare» (para el lector de pantalla, «Come arrivare a …»). Sin dirección,
+  si hay zona (la del pedido o, si no, la de la ficha), «Come arrivare (zona)» y la fila de la zona,
+  también un enlace, llevan hasta la zona con «, Bergamo» (`serviceCity`) si no lo nombra: no es una
+  dirección verificada, así que siguen «Aggiungi indirizzo» y su aviso. Ni la dirección ni la zona
+  se loguean. Después, las alergias de la ficha y del pedido, con la nota del
   pedido resaltada (también sola, como llega de la web) y, con gluten, la de contaminación cruzada
   (SPEC §5.6). En una sesión semanal cuyo pedido no responde (ni alérgenos, ni nota, ni «nadie
   tiene»; por ejemplo, una renovación, que no guarda alergias), las del último pedido semanal de la

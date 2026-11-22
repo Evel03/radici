@@ -2,6 +2,42 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/rome_time.dart';
 
 void main() {
+  group('romeInstant: una hora de Roma de un día, como instante', () {
+    test('en invierno (UTC+1) y en verano (UTC+2)', () {
+      expect(
+        romeInstant(CalendarDate(2026, 11, 25), 10 * 60),
+        DateTime.utc(2026, 11, 25, 9),
+      );
+      expect(
+        romeInstant(CalendarDate(2026, 7, 15), 10 * 60 + 30),
+        DateTime.utc(2026, 7, 15, 8, 30),
+      );
+    });
+
+    test('el día del cambio de hora, con el desfase de esa hora', () {
+      // 29/3/2026: a las 2:00 de Roma (1:00 UTC) pasa a las 3:00.
+      expect(
+        romeInstant(CalendarDate(2026, 3, 29), 60),
+        DateTime.utc(2026, 3, 29, 0),
+      );
+      expect(
+        romeInstant(CalendarDate(2026, 3, 29), 10 * 60),
+        DateTime.utc(2026, 3, 29, 8),
+      );
+      // 25/10/2026: a las 3:00 de Roma (1:00 UTC) vuelve a las 2:00.
+      expect(
+        romeInstant(CalendarDate(2026, 10, 25), 10 * 60),
+        DateTime.utc(2026, 10, 25, 9),
+      );
+    });
+
+    test('es la inversa de romeWallClock', () {
+      final instant = romeInstant(CalendarDate(2026, 12, 2), 9 * 60 + 45);
+      final wall = romeWallClock(instant);
+      expect((wall.day, wall.hour, wall.minute), (2, 9, 45));
+    });
+  });
+
   group('romeToday (mismos casos que public_request.test.ts)', () {
     test('cambio a horario de verano: 23:30 UTC ya es el día siguiente', () {
       // 2026-03-28 23:30 UTC ya es 29 de marzo en Roma (UTC+1).

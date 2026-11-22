@@ -1,11 +1,13 @@
 // Por dónde se llega al menú de una semana:
 //
 // - [WeekMenuBlock], en la ficha de la sesión: «Menú de la semana», si ya
-//   tiene menú (cuántos platos y renglones) y el botón para armarlo o
-//   editarlo. Una sesión cocinada o cobrada muestra el que tiene, sin botón;
-//   una cancelada, nada.
+//   tiene menú (cuántos platos y renglones), qué pasó con su envío a la
+//   clienta y los botones para armarlo o editarlo y para mandárselo. Una
+//   sesión cocinada o cobrada muestra el que tiene, sin botones; una
+//   cancelada, nada.
 // - [BookingWeekMenus], en el detalle de una reserva (un pedido aceptado):
-//   sus semanas vivas con el menú de cada una; tocar una abre su menú.
+//   sus semanas vivas con el menú de cada una y su envío; tocar una abre su
+//   menú (y ahí se manda).
 //
 // Solo muestran providers (week_menu_summaries.dart).
 import 'dart:async';
@@ -20,6 +22,8 @@ import 'package:radici/features/sessions/presentation/session_labels.dart';
 import 'package:radici/features/sessions/presentation/session_widgets.dart';
 import 'package:radici/features/week_menu/application/week_menu_summaries.dart';
 import 'package:radici/features/week_menu/domain/week_menu.dart';
+import 'package:radici/features/week_menu/presentation/menu_send_screen.dart';
+import 'package:radici/features/week_menu/presentation/menu_send_status_view.dart';
 import 'package:radici/features/week_menu/presentation/week_menu_labels.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
@@ -39,6 +43,15 @@ class WeekMenuBlock extends ConsumerWidget {
     final saved = summary.value?.saved ?? false;
     // Una cocinada o cobrada sin menú no dice nada (son todas las de antes).
     if (!editable && !saved) return const SizedBox.shrink();
+    final version = summary.value?.version;
+    final everSent = ref.watch(
+      latestMenuSendProvider(session.id).select((send) => send.value != null),
+    );
+    // Se manda el menú guardado, con algún plato: su versión (null si no).
+    final sendVersion =
+        isMenuSendable(session) && (summary.value?.dishes ?? 0) > 0
+        ? version
+        : null;
 
     return Column(
       key: const ValueKey('session-menu'),
@@ -84,17 +97,46 @@ class WeekMenuBlock extends ConsumerWidget {
             ),
           ],
         ),
+        if (session.requestId != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: SessionMenuSendStatus(
+              sessionId: session.id,
+              savedVersion: version,
+              keyPrefix: 'session-menu-status',
+            ),
+          ),
         if (editable) ...[
           const SizedBox(height: 8),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: FilledButton.tonalIcon(
-              key: const ValueKey('session-menu-open'),
-              onPressed: () =>
-                  unawaited(context.push(AppRoutes.sessionMenu(session.id))),
-              icon: const Icon(Icons.restaurant_menu),
-              label: Text(saved ? l10n.weekMenuEdit : l10n.weekMenuBuild),
-            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                key: const ValueKey('session-menu-open'),
+                onPressed: () =>
+                    unawaited(context.push(AppRoutes.sessionMenu(session.id))),
+                icon: const Icon(Icons.restaurant_menu),
+                label: Text(saved ? l10n.weekMenuEdit : l10n.weekMenuBuild),
+              ),
+              if (isMenuSendable(session))
+                OutlinedButton.icon(
+                  key: const ValueKey('session-menu-send'),
+                  onPressed: sendVersion == null
+                      ? null
+                      : () => unawaited(
+                          showMenuSendScreen(
+                            context,
+                            sessionId: session.id,
+                            menuVersion: sendVersion,
+                          ),
+                        ),
+                  icon: const Icon(Icons.send_outlined),
+                  label: Text(
+                    everSent ? l10n.menuSendAgain : l10n.menuSendAction,
+                  ),
+                ),
+            ],
           ),
         ],
       ],
@@ -153,8 +195,9 @@ class BookingWeekMenus extends ConsumerWidget {
   }
 }
 
-/// Una semana de la reserva: la fecha y su menú. Abre el editor si todavía
-/// se puede armar.
+/// Una semana de la reserva: la fecha, su menú y qué pasó con su envío (con
+/// el mensaje de la clienta entero, si pidió cambios). Abre el editor si
+/// todavía se puede armar.
 class _WeekTile extends StatelessWidget {
   const _WeekTile({required this.week});
 
@@ -168,7 +211,7 @@ class _WeekTile extends StatelessWidget {
     final date = formats.shortDate(session.date);
     final editable = isMenuEditable(session.status);
     final summary = week.summary;
-    return ListTile(
+    final tile = ListTile(
       key: ValueKey('booking-menu-${session.id}'),
       contentPadding: EdgeInsets.zero,
       leading: Icon(
@@ -192,6 +235,23 @@ class _WeekTile extends StatelessWidget {
       onTap: editable
           ? () => unawaited(context.push(AppRoutes.sessionMenu(session.id)))
           : null,
+    );
+    // Sin menú guardado ni envío, el renglón ya lo dice todo.
+    if (!summary.saved && week.send == null) return tile;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        tile,
+        // Fuera del renglón que se toca: el mensaje de la clienta se puede
+        // seleccionar. Alineado con el título (ícono de 24 y espacio de 16).
+        Padding(
+          padding: const EdgeInsetsDirectional.only(start: 40, bottom: 8),
+          child: MenuSendStatusView(
+            status: bookingWeekSendStatus(week),
+            keyPrefix: 'booking-menu-status-${session.id}',
+          ),
+        ),
+      ],
     );
   }
 }
