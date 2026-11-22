@@ -4,8 +4,9 @@
 // - Un diálogo modal: el resto de la página queda inert (y aria-hidden), Tab no sale del libro y, al cerrarlo, el foco
 //   vuelve al botón que lo abrió (o a donde lleve la última página: confirmar, el presupuesto o la semana).
 // - Abierto desde el botón de una semana, agrega una entrada al historial: «atrás» lo cierra, como se espera en el
-//   teléfono, y la vuelta no restaura el scroll viejo de la página (createBookHistory). Abierto desde el link del
-//   mensaje, cerrarlo solo saca libro del fragmento. El token nunca sale de ahí.
+//   teléfono, y la vuelta no restaura el scroll viejo de la página (createBookHistory). Esa entrada queda marcada:
+//   abierto otra vez desde ella (al recargar, o con «adelante»), cerrarlo también vuelve atrás. Abierto desde el link
+//   del mensaje, cerrarlo solo saca libro del fragmento. El token nunca sale de ahí.
 // - En la computadora, un clic en el fondo lo cierra; un arrastre que solo empieza o termina ahí, no.
 // - Pasar de página da vuelta la hoja (book.css), salvo con prefers-reduced-motion: ahí cambia sin animación.
 // - Las fotos: la de la página actual y la de la siguiente se cargan ya; las demás páginas van con hidden (sus fotos
@@ -92,7 +93,7 @@ interface OpenBook {
   page: number;
   signature: string;
   openerId: string | null;
-  /** Se abrió con una entrada nueva en el historial (cerrarlo vuelve atrás). */
+  /** Su entrada del historial la agregó el botón de la semana (cerrarlo vuelve atrás). */
   pushed: boolean;
   background: Inerted[];
   unbindSwipe: () => void;
@@ -334,6 +335,9 @@ export function attachBookView(deps: BookViewDeps): BookView {
         win.history.replaceState(win.history.state, "", urlWith(fragment));
       }
     }
+    // Abierto desde el fragmento de la entrada que agregó el botón (se recargó con el libro abierto, o se volvió con
+    // «adelante»): cerrarlo también vuelve atrás, a la página.
+    if (!pushed) pushed = bookHistory.onBookEntry();
     syncLangLinks();
 
     if (!root) {
