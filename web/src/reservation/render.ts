@@ -499,9 +499,10 @@ function quoteSummaryNode(qv: QuoteView, ctx: Context): VNode | null {
 /**
  * Los botones del presupuesto y el paso para confirmar el rechazo. El paso se abre debajo de «Rifiuto», que queda
  * en su lugar (abierto: tocarlo de nuevo lo cierra), y todo lo de arriba sigue igual (también el aviso y el error de
- * aceptar, si los hay): un doble toque en «Rifiuto» cae otra vez en «Rifiuto», nunca en «Sì, rifiuto il
- * preventivo», sea cual sea el largo de los textos de cada idioma. «Sì» va al final, después de «No, torna
- * indietro» (y el controlador no lo deja responder enseguida).
+ * aceptar, si los hay): en general, el segundo toque de un doble toque cae otra vez en «Rifiuto». Cerca del borde
+ * de abajo de la ventana, el foco en la pregunta puede mover la página; lo que asegura que un doble toque nunca
+ * rechace es que el controlador no deja responder a «Sì, rifiuto il preventivo» hasta DECLINE_GUARD_MS después de
+ * abrir el paso. «Sì» va al final, después de «No, torna indietro».
  */
 function quoteActionsNode(qv: QuoteView, quoteUi: Readonly<QuoteUi>, ctx: Context, single: boolean): VNode | null {
   const { i18n } = ctx;
