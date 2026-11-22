@@ -443,25 +443,17 @@ Errores: `not_a_chef`, `invalid_payload` (con el campo), `session_not_found`, `r
 
 La lista y la nota son solo de la cocinera: la clienta las recibe en el mensaje y en su link. La política vieja que deja a una clienta con cuenta leer `session_menu` de sus sesiones se revisa en M2, para que vea solo los menús enviados.
 
+**Envío del menú** (migración `20261121100000_menu_sends.sql`, pgTAP `20_menu_sends`; función `chef`, contrato chef-api §13). En dos pasos, desde la app:
+1. **Vista previa** (`POST /chef/menus/preview`): la función arma el mensaje en el idioma de la clienta (el de su pedido) y guarda el envío todavía sin salir (`menu_sends`), con la foto de lo que va a recibir: los platos con sus traducciones guardadas, la lista, la nota y las fechas. La lista y la nota las escribe Evelyn en español: si la clienta lee italiano o inglés, se traducen ahí con Claude, con el mismo límite que los platos; si la traducción falla, la app ofrece mandarlas sin traducir. Evelyn ve el mensaje sin el link (en su lugar, un texto de reemplazo) y el contacto (el del pedido de la web o el de la ficha), y elige email, WhatsApp o los dos.
+2. **Envío** (`POST /chef/menus/send`): la función crea el link de la clienta (un token al azar en el fragmento de la URL, `/prenotazione/#t=…`; la base guarda solo su hash, `client_links`), manda el email (Resend; las respuestas le llegan a Evelyn) y marca el envío enviado. Si el email no sale, el envío queda sin marcar y la app ofrece reintentar o mandarlo solo por WhatsApp. El WhatsApp lo abre la app desde el teléfono de Evelyn, con el texto y el link que devuelve la función: el servidor nunca lo manda.
+
+La clienta recibe siempre la foto de la vista previa: si Evelyn cambia el menú antes de mandar, hace falta otra vista previa (`menu_changed`). El mensaje nunca lleva la dirección, el contacto, las alergias de la clienta ni nada de pagos, y de su nombre solo el de pila, si parece un nombre (el email o el teléfono pueden venir del formulario, sin verificar). La página del link es del PR siguiente.
+
 **Avisos a Evelyn** (migración `20261121110000_menu_reminders.sql`, tests pgTAP `21_menu_reminders`; Edge Function `menu-reminders`). Una semana está pendiente si:
 - es de una reserva y está confirmada (una `held` es de un presupuesto sin aceptar);
 - empieza dentro de 4 días;
 - no tiene ningún envío del menú que haya salido, o en el último la clienta pidió cambios;
 - se creó hace más de una hora.
-
-**Presupuesto** (migración `20261121120000_quotes.sql`, tests pgTAP `22_quotes`):
-- **Preparar.** Desde un pedido `new`, semanal o extra, sin otro presupuesto abierto, `chef_create_quote` crea una sesión `held` por semana (pago manual, como las reservas) y el presupuesto, sin enviar. Valida fechas, hora, minutos, porciones y precio como `chef_create_booking` y reparte el precio entre las semanas. El borrador retiene el horario 24 h; el pedido sigue `new`.
-- **Enviar.** Sale con el menú de la semana 1: el envío de esa semana lleva el presupuesto (`menu_sends.quote_id`) y sus términos (`quote_terms`: semanas, horas y precio, calculados por la base). Si cambian antes de mandarlo, el envío no sale (`quote_changed`). Al salir, el pedido pasa a `quoted` y el horario queda retenido `quote_hold_hours` (48 h). Cada reenvío es otra versión y el plazo vuelve a empezar. Mientras no lo acepte, solo la semana 1 sale (`quote_week_not_first`).
-- **Cambiar o retirar.** Evelyn cambia el precio con `chef_update_quote` y las fechas y semanas con `chef_move_session` y `chef_cancel_sessions`. `chef_withdraw_quote` cancela las semanas (`quote_withdrawn`) y el pedido vuelve a `new`.
-- **La clienta, en su link:**
-  - acepta la última versión (`client_link_accept_quote`): las semanas pasan a `confirmed`, el pedido a `accepted`, la ficha de prospecto a `trial` y el menú de la semana 1 queda confirmado;
-  - la rechaza (`client_link_decline_quote`): semanas canceladas (`declined`) y pedido `declined`;
-  - o pide cambios con un mensaje, como con cualquier menú.
-
-  Un menú que va con un presupuesto abierto no se confirma solo (`quote_pending`): se acepta el presupuesto.
-- **Vencer.** Pasado el plazo no se acepta, y `private.expire_quotes` (pg_cron, cada 15 minutos) cancela las semanas (`hold_expired`) y pasa el pedido `quoted` a `expired`. Un borrador que nunca salió deja el pedido en `new`.
-
-«Confirmar sin presupuesto» (`chef_create_booking`) sigue igual, para lo que se acordó por fuera. Nada de esto toca los pagos.
 
 Para una semana pendiente, Evelyn recibe un email a `CHEF_NOTIFY_EMAIL`, en `CHEF_LOCALE`:
 - 4 días antes de la cocina;
@@ -479,6 +471,20 @@ Cómo funciona:
 4. Recién entonces marca los avisos con `menu_reminders_mark`. Si el email falla, el turno siguiente lo reintenta.
 
 Los avisos se prenden con el primer despliegue que guarda la URL y el secreto en Vault. Por eso este cambio se mergea después de la pantalla de envío de la app: si no, a Evelyn le llegarían avisos de semanas que todavía no puede mandar.
+
+**Presupuesto** (migración `20261121120000_quotes.sql`, tests pgTAP `22_quotes`):
+- **Preparar.** Desde un pedido `new`, semanal o extra, sin otro presupuesto abierto, `chef_create_quote` crea una sesión `held` por semana (pago manual, como las reservas) y el presupuesto, sin enviar. Valida fechas, hora, minutos, porciones y precio como `chef_create_booking` y reparte el precio entre las semanas. El borrador retiene el horario 24 h; el pedido sigue `new`.
+- **Enviar.** Sale con el menú de la semana 1: el envío de esa semana lleva el presupuesto (`menu_sends.quote_id`) y sus términos (`quote_terms`: semanas, horas y precio, calculados por la base). Si cambian antes de mandarlo, el envío no sale (`quote_changed`). Al salir, el pedido pasa a `quoted` y el horario queda retenido `quote_hold_hours` (48 h). Cada reenvío es otra versión y el plazo vuelve a empezar. Mientras no lo acepte, solo la semana 1 sale (`quote_week_not_first`).
+- **Cambiar o retirar.** Evelyn cambia el precio con `chef_update_quote` y las fechas y semanas con `chef_move_session` y `chef_cancel_sessions`. `chef_withdraw_quote` cancela las semanas (`quote_withdrawn`) y el pedido vuelve a `new`.
+- **La clienta, en su link:**
+  - acepta la última versión (`client_link_accept_quote`): las semanas pasan a `confirmed`, el pedido a `accepted`, la ficha de prospecto a `trial` y el menú de la semana 1 queda confirmado;
+  - la rechaza (`client_link_decline_quote`): semanas canceladas (`declined`) y pedido `declined`;
+  - o pide cambios con un mensaje, como con cualquier menú.
+
+  Un menú que va con un presupuesto abierto no se confirma solo (`quote_pending`): se acepta el presupuesto.
+- **Vencer.** Pasado el plazo no se acepta, y `private.expire_quotes` (pg_cron, cada 15 minutos) cancela las semanas (`hold_expired`) y pasa el pedido `quoted` a `expired`. Un borrador que nunca salió deja el pedido en `new`.
+
+«Confirmar sin presupuesto» (`chef_create_booking`) sigue igual, para lo que se acordó por fuera. Nada de esto toca los pagos.
 ---
 
 ## 6. Seguridad, privacidad y RGPD

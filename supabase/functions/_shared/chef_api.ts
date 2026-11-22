@@ -1,8 +1,10 @@
-// Contrato de la Edge Function chef: la app de Evelyn → reservas, mover y cancelar sesiones, y la
-// traducción de los platos (docs/contracts/chef-api.md). Tipos de los cuerpos y de las respuestas, y
-// la validación del servidor con los mismos límites que las funciones SQL (chef_create_booking,
-// chef_move_session y chef_cancel_sessions, migración 20261116150100_bookings.sql), que vuelven a
-// validar todo, y que los checks de recipes (los textos de un plato).
+// Contrato de la Edge Function chef: la app de Evelyn → reservas, mover y cancelar sesiones, la
+// traducción de los platos y el envío del menú de una semana a la clienta (docs/contracts/chef-api.md).
+// Tipos de los cuerpos y de las respuestas, y la validación del servidor con los mismos límites que las
+// funciones SQL (chef_create_booking, chef_move_session y chef_cancel_sessions, migración
+// 20261116150100_bookings.sql; chef_prepare_menu_send y chef_link_menu_send, migración
+// 20261121100000_menu_sends.sql), que vuelven a validar todo, y que los checks de recipes (los textos
+// de un plato).
 // La app (Dart) arma los cuerpos con estos nombres: si el contrato cambia, cambian los dos.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import {
@@ -29,6 +31,8 @@ export const CHEF_ROUTES = {
   moveSession: "/sessions/move",
   cancelSessions: "/sessions/cancel",
   translate: "/translate",
+  menuPreview: "/menus/preview",
+  menuSend: "/menus/send",
 } as const;
 export type ChefRoute = (typeof CHEF_ROUTES)[keyof typeof CHEF_ROUTES];
 
@@ -59,6 +63,11 @@ export const RECIPE_DESCRIPTION_MAX = 200;
 export const RECIPE_TEXT_CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 /** Las claves del cuerpo de POST /translate: cualquier otra es un 400. */
 const TRANSLATE_KEYS: readonly string[] = ["name", "description"];
+/** Las claves de POST /menus/preview y /menus/send: cualquier otra es un 400 (los arma solo la app). */
+const MENU_PREVIEW_KEYS: readonly string[] = ["sessionId", "menuVersion", "translate"];
+const MENU_SEND_KEYS: readonly string[] = ["sendId", "email", "whatsapp"];
+/** Versión del menú: session_menus.version, un int de Postgres desde 1. */
+export const MAX_MENU_VERSION = 2_147_483_647;
 /** Largo máximo de la dirección de una ficha nueva. */
 export const ADDRESS_MAX = 200;
 /**
@@ -78,6 +87,12 @@ const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
  */
 export const DAY_STATUSES = ["busy", "past", "blocked", "closed", "outside", "ok"] as const;
 export type DayStatus = (typeof DAY_STATUSES)[number];
+
+/** Estados de una sesión (el enum session_status). */
+export const SESSION_STATUSES = ["held", "confirmed", "shopping_done", "cooked", "paid", "cancelled"] as const;
+export type SessionStatus = (typeof SESSION_STATUSES)[number];
+/** Solo se arma y se manda el menú de una sesión held o confirmed (o una vieja en shopping_done), como save_session_menu. */
+export const MENU_EDITABLE_STATUSES: readonly SessionStatus[] = ["held", "confirmed", "shopping_done"];
 
 // ---------------------------------------------------------------------------
 // Cuerpos (JSON, camelCase)
@@ -167,6 +182,30 @@ export interface TranslatePayload {
   description?: string | null;
 }
 
+/**
+ * POST /menus/preview: la vista previa del mensaje con el menú de una semana, en el idioma de la
+ * clienta. Guarda el envío (todavía sin salir) con la foto de lo que va a recibir.
+ */
+export interface MenuPreviewPayload {
+  sessionId: string;
+  /** session_menus.version que la app tiene cargada: si Evelyn (o un colaborador) guardó otra, 409 menuChanged. */
+  menuVersion: number;
+  /**
+   * Traducir la lista de compras y la nota al idioma de la clienta (por defecto true). false: van como
+   * las escribió Evelyn (la app lo ofrece si la traducción falla).
+   */
+  translate?: boolean;
+}
+
+/** POST /menus/send: manda el envío de una vista previa por email, por WhatsApp o por los dos. */
+export interface MenuSendPayload {
+  sendId: string;
+  /** Mandar el email desde el servidor (ausente = false). */
+  email?: boolean;
+  /** Devolver el texto para que la app abra WhatsApp desde el teléfono de Evelyn (ausente = false). */
+  whatsapp?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Valores validados
 // ---------------------------------------------------------------------------
@@ -231,6 +270,23 @@ export interface TranslationSource {
   description: string | null;
 }
 
+export interface NormalizedMenuPreview {
+  /** En minúsculas. */
+  sessionId: string;
+  menuVersion: number;
+  translate: boolean;
+}
+
+/** Por dónde sale un envío, en el orden de la base: 'email' antes que 'whatsapp'. */
+export type MenuSendChannel = "email" | "whatsapp";
+
+export interface NormalizedMenuSend {
+  /** En minúsculas. */
+  sendId: string;
+  email: boolean;
+  whatsapp: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Errores
 // ---------------------------------------------------------------------------
@@ -280,7 +336,13 @@ export type ChefApiField =
   | "reason"
   | "allowWithPayments"
   | "name"
-  | "description";
+  | "description"
+  | "menuVersion"
+  | "translate"
+  | "sendId"
+  | "email"
+  | "whatsapp"
+  | "channels";
 
 export type ChefApiErrors = Partial<Record<ChefApiField, ChefApiErrorCode>>;
 
@@ -353,6 +415,43 @@ export interface TranslateResponse {
   en: TranslatedDish;
 }
 
+/** El contacto de la clienta para el envío: el del pedido de la web o, si no lo tiene, el de la ficha. */
+export interface MenuSendContact {
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
+/** El mensaje como lo ve Evelyn en la vista previa, en el idioma de la clienta y sin el link. */
+export interface MenuPreviewMessage {
+  subject: string;
+  /** El texto del email (el HTML sale igual, con el diseño de los emails). */
+  emailText: string;
+  whatsappText: string;
+}
+
+/** 200 de POST /menus/preview. */
+export interface MenuPreviewResponse {
+  sendId: string;
+  locale: Locale;
+  /** La lista y la nota se tradujeron solas al idioma de la clienta. */
+  translated: boolean;
+  /** Para que Evelyn lo revise antes de mandar: a dónde va a salir. */
+  contact: MenuSendContact;
+  message: MenuPreviewMessage;
+}
+
+/** 200 de POST /menus/send. */
+export interface MenuSendResponse {
+  /** timestamptz de la base (ISO 8601). */
+  sentAt: string;
+  sentVia: MenuSendChannel[];
+  /** Solo si pidió WhatsApp: el texto con el link, para abrir WhatsApp desde el teléfono de Evelyn. */
+  whatsappText?: string;
+  /** Solo si pidió WhatsApp: el teléfono en E.164 ("+393331234567"; wa.me lo quiere sin el "+"). */
+  whatsappPhone?: string;
+}
+
 export type ChefErrorCode =
   | "unauthorized"
   | "forbidden"
@@ -374,12 +473,26 @@ export type ChefErrorCode =
   | "untranslatable"
   | "notConfigured"
   | "server"
-  | "unavailable";
+  | "unavailable"
+  | "menuNotFound"
+  | "sendNotFound"
+  | "sessionNotEditable"
+  | "sessionWithoutRequest"
+  | "menuChanged"
+  | "menuEmpty"
+  | "alreadySent"
+  | "noEmail"
+  | "noPhone"
+  | "emailUnavailable"
+  | "emailFailed";
 
-/** Cuerpo de un error: `errors` por campo (400) o un `error` con, según el caso, la fecha, el estado o las sesiones. */
+/**
+ * Cuerpo de un error: `errors` por campo (400) o un `error` con, según el caso, la fecha, el estado o las
+ * sesiones. `emailSent`: en POST /menus/send, el email ya salió pero el envío no quedó marcado.
+ */
 export type ChefErrorBody =
   | { errors: ChefApiErrors; date?: string }
-  | { error: ChefErrorCode; date?: string; status?: string; sessionId?: string; sessionIds?: string[] };
+  | { error: ChefErrorCode; date?: string; status?: string; sessionId?: string; sessionIds?: string[]; emailSent?: boolean };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -762,4 +875,53 @@ export function parseTranslateRequest(input: unknown): ChefParseResult<Translati
   const description = readRecipeText(errors, "description", input["description"], RECIPE_DESCRIPTION_MAX, false);
   if (Object.keys(errors).length > 0 || name === null) return failure(errors);
   return { ok: true, value: { name, description } };
+}
+
+/** true/false; ausente o null: `fallback`. Otro tipo: invalid. */
+function readBoolean(errors: ChefApiErrors, field: ChefApiField, value: unknown, fallback: boolean): boolean {
+  if (absent(value)) return fallback;
+  if (typeof value === "boolean") return value;
+  errors[field] = "invalid";
+  return fallback;
+}
+
+/**
+ * Valida y normaliza el cuerpo de POST /menus/preview. Una clave que el contrato no tiene es payload
+ * invalid (como en /translate: el pedido es corto y lo arma solo la app).
+ */
+export function parseMenuPreviewRequest(input: unknown): ChefParseResult<NormalizedMenuPreview> {
+  if (!isRecord(input)) return failure({ payload: "invalid" });
+  const errors: ChefApiErrors = {};
+  if (Object.keys(input).some((key) => !MENU_PREVIEW_KEYS.includes(key))) errors.payload = "invalid";
+  const sessionId = readUuid(errors, "sessionId", input["sessionId"]);
+  let menuVersion: number | null = null;
+  if (absent(input["menuVersion"])) errors.menuVersion = "required";
+  else menuVersion = readInt(errors, "menuVersion", input["menuVersion"], 1, MAX_MENU_VERSION);
+  const translate = readBoolean(errors, "translate", input["translate"], true);
+  if (Object.keys(errors).length > 0 || sessionId === null || menuVersion === null) return failure(errors);
+  return { ok: true, value: { sessionId, menuVersion, translate } };
+}
+
+/**
+ * Valida y normaliza el cuerpo de POST /menus/send: el envío y por dónde sale, al menos uno (si no,
+ * channels required). Una clave que el contrato no tiene es payload invalid.
+ */
+export function parseMenuSendRequest(input: unknown): ChefParseResult<NormalizedMenuSend> {
+  if (!isRecord(input)) return failure({ payload: "invalid" });
+  const errors: ChefApiErrors = {};
+  if (Object.keys(input).some((key) => !MENU_SEND_KEYS.includes(key))) errors.payload = "invalid";
+  const sendId = readUuid(errors, "sendId", input["sendId"]);
+  const email = readBoolean(errors, "email", input["email"], false);
+  const whatsapp = readBoolean(errors, "whatsapp", input["whatsapp"], false);
+  if (!email && !whatsapp && !errors.email && !errors.whatsapp) errors.channels = "required";
+  if (Object.keys(errors).length > 0 || sendId === null) return failure(errors);
+  return { ok: true, value: { sendId, email, whatsapp } };
+}
+
+/** Los canales de un envío en el orden de la base (chef_complete_menu_send los ordena igual). */
+export function menuSendChannels(value: Pick<NormalizedMenuSend, "email" | "whatsapp">): MenuSendChannel[] {
+  const channels: MenuSendChannel[] = [];
+  if (value.email) channels.push("email");
+  if (value.whatsapp) channels.push("whatsapp");
+  return channels;
 }

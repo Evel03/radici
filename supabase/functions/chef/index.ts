@@ -1,8 +1,9 @@
 // Edge Function chef: el área de Evelyn (docs/contracts/chef-api.md). Reservas de 1 a 8 semanas,
-// mover y cancelar sesiones, con las funciones SQL chef_* (solo service_role), y la traducción de los
-// platos con Claude (POST /translate).
-// Este archivo solo conecta lo real (Deno, supabase-js con la clave secreta y el traductor); la
-// lógica y sus tests están en handler.ts y translation.ts.
+// mover y cancelar sesiones, con las funciones SQL chef_* (solo service_role), la traducción de los
+// platos con Claude (POST /translate) y el envío del menú de una semana a la clienta (POST
+// /menus/preview y /menus/send: el email sale con Resend).
+// Este archivo solo conecta lo real (Deno, supabase-js con la clave secreta, el traductor y Resend);
+// la lógica y sus tests están en handler.ts, translation.ts, menu_translation.ts y menu_send.ts.
 //
 // Con JWT: verify_jwt = true en supabase/config.toml ([functions.chef]). Ese chequeo de la
 // plataforma también deja pasar las claves de API, así que la función valida además el token con
@@ -11,6 +12,7 @@
 // la misma variable que public-request.
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { StoreError, consoleLogger, resolveServiceKey } from "../_shared/edge.ts";
+import { sendWithResend } from "../_shared/resend.ts";
 import {
   authFailureKind,
   chefConfigWarnings,
@@ -18,6 +20,7 @@ import {
   readChefConfig,
   storeErrorFrom,
   type ChefStore,
+  type Mailer,
 } from "./handler.ts";
 // claude_translator.ts (el SDK de Anthropic) no se importa acá: se carga en la primera traducción
 // (createTranslator), así una falla al cargarlo nunca tumba /bookings ni /sessions/*.
@@ -47,6 +50,10 @@ function createStore(): ChefStore {
       moveSession: () => fail("move_session"),
       cancelSessions: () => fail("cancel_sessions"),
       hitRateLimit: () => fail("rate_limit"),
+      menuSendContext: () => fail("menu_send_context"),
+      prepareMenuSend: () => fail("prepare_menu_send"),
+      linkMenuSend: () => fail("link_menu_send"),
+      completeMenuSend: () => fail("complete_menu_send"),
     };
   }
 
@@ -103,7 +110,45 @@ function createStore(): ChefStore {
       if (error) throw storeErrorFrom("rate_limit", error);
       return data === true;
     },
+
+    // El envío del menú (migración 20261121100000_menu_sends.sql). Las respuestas van tal cual al
+    // handler, que las interpreta (menu_send.ts); los errores, sin el mensaje de Postgres ni el detalle.
+    async menuSendContext(params) {
+      const { data, error } = await supabase.rpc("chef_menu_send_context", params);
+      if (error) throw storeErrorFrom("menu_send_context", error);
+      return data;
+    },
+
+    async prepareMenuSend(params) {
+      const { data, error } = await supabase.rpc("chef_prepare_menu_send", params);
+      if (error) throw storeErrorFrom("prepare_menu_send", error);
+      return data;
+    },
+
+    async linkMenuSend(params) {
+      // Solo el hash del token: el token no sale de la función más que en el mensaje.
+      const { data, error } = await supabase.rpc("chef_link_menu_send", params);
+      if (error) throw storeErrorFrom("link_menu_send", error);
+      return data;
+    },
+
+    async completeMenuSend(params) {
+      const { data, error } = await supabase.rpc("chef_complete_menu_send", params);
+      if (error) throw storeErrorFrom("complete_menu_send", error);
+      return data;
+    },
   };
+}
+
+/**
+ * El email del menú con Resend y RESEND_API_KEY (el mismo secreto que public-request); null sin la
+ * clave: POST /menus/send con email responde 503 emailUnavailable (con EMAIL_TRANSPORT=log no hace
+ * falta: el handler no lo llama). La clave no sale de acá.
+ */
+function createMailer(): Mailer | null {
+  const apiKey = env("RESEND_API_KEY")?.trim();
+  if (!apiKey) return null;
+  return { send: (message) => sendWithResend(message, { apiKey }) };
 }
 
 /**
@@ -129,6 +174,7 @@ Deno.serve(
     config,
     store: createStore(),
     translator: createTranslator(),
+    mailer: createMailer(),
     now: () => new Date(),
     log: consoleLogger,
   }),
