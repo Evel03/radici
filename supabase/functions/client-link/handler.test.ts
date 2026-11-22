@@ -1210,7 +1210,7 @@ test("/decline: rechaza el presupuesto (las semanas se liberan), responde y le a
   const email = emails[0]!;
   assert.equal(email.body["subject"], "Annaxyz rechazó el presupuesto");
   assert.ok(String(email.body["text"]).includes("Annaxyz Bianchiqwe rechazó el presupuesto."));
-  assert.ok(String(email.body["text"]).includes("La primera semana propuesta era el lunes, 1 de marzo de 2027, con llegada a las 10:00."));
+  assert.ok(String(email.body["text"]).includes("El presupuesto empezaba el lunes, 1 de marzo de 2027, con llegada a las 10:00."));
   assert.ok(!String(email.body["text"]).includes("€"));
   assert.equal(email.headers.get("idempotency-key"), `quote-declined-${QUOTE_ID}`);
   assert.ok(logs.some((log) => log.event === "quote_declined" && log.fields["quoteId"] === QUOTE_ID && log.fields["already"] === false));

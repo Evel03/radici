@@ -130,13 +130,64 @@ test("aceptó el presupuesto: las semanas y el precio del servicio, la primera s
   assert.ok(email.html.startsWith('<!doctype html><html lang="es">'));
 });
 
-test("rechazó el presupuesto: lo dice, con la primera semana propuesta y que se liberaron (es)", () => {
+test("rechazó el presupuesto: lo dice, con el día en que empezaba y que lo propuesto quedó libre, sin contar semanas (es)", () => {
   const email = renderQuoteAnswerNotification(quoteNotice({ kind: "declined", weeks: null, totalCents: null }), "es");
   assert.equal(email.subject, "Anna rechazó el presupuesto");
   assert.ok(email.text.includes("Anna Bianchi rechazó el presupuesto."));
-  assert.ok(email.text.includes("La primera semana propuesta era el lunes, 1 de marzo de 2027, con llegada a las 10:00."));
-  assert.ok(email.text.includes("Las semanas propuestas quedaron libres en la agenda."));
+  assert.ok(email.text.includes("El presupuesto empezaba el lunes, 1 de marzo de 2027, con llegada a las 10:00."));
+  assert.ok(email.text.includes("Lo que le propusiste quedó libre en la agenda."));
+  assert.ok(email.html.includes("Lo que le propusiste quedó libre."), "el preheader");
   assert.ok(!email.text.includes("€"));
+  // Al rechazar no se sabe cuántas semanas eran (pueden ser una): nada de «la primera semana» ni «las semanas».
+  assert.ok(!/semanas?\b/i.test(email.text + email.html), email.text);
+});
+
+test("aceptó un presupuesto de una sola semana: el día y que quedaron confirmados la fecha y el menú, en singular (CHEF_LOCALE)", () => {
+  const expected = {
+    it: {
+      preheader: "La data è confermata in agenda.",
+      first: "Il giorno è lunedì 1 marzo 2027, con arrivo alle 10:00.",
+      note: "La data è confermata in agenda, e anche il menù.",
+      plural: /prima settimana|le settimane|settimana 1/i,
+    },
+    es: {
+      preheader: "La fecha quedó confirmada en la agenda.",
+      first: "El día es el lunes, 1 de marzo de 2027, con llegada a las 10:00.",
+      note: "La fecha quedó confirmada en la agenda, y el menú también.",
+      plural: /primera semana|las semanas|semana 1/i,
+    },
+    en: {
+      preheader: "The date is confirmed in the calendar.",
+      first: "The day is Monday 1 March 2027, arriving at 10:00.",
+      note: "The date is confirmed in the calendar, and so is the menu.",
+      plural: /first week|the weeks|week 1\b/i,
+    },
+  } as const;
+  for (const locale of LOCALES) {
+    const email = renderQuoteAnswerNotification(quoteNotice({ weeks: 1, totalCents: 15000 }), locale);
+    assert.ok(email.text.includes(expected[locale].first), `${locale}: ${email.text}`);
+    assert.ok(email.text.includes(expected[locale].note), `${locale}: ${email.text}`);
+    assert.ok(email.html.includes(expected[locale].preheader), `${locale}: el preheader`);
+    assert.ok(!expected[locale].plural.test(email.text + email.html), `${locale}: ${expected[locale].plural.exec(email.text + email.html)?.[0]}`);
+  }
+  // Con varias semanas, el plural de siempre.
+  const several = renderQuoteAnswerNotification(quoteNotice(), "it");
+  assert.ok(several.text.includes("La prima settimana è lunedì 1 marzo 2027, con arrivo alle 10:00."));
+  assert.ok(several.text.includes("Le settimane sono confermate in agenda, e anche il menù della settimana 1."));
+  assert.ok(several.html.includes("Le settimane sono confermate in agenda."));
+});
+
+test("rechazó, en los tres idiomas: sin contar semanas (la base no lo dice)", () => {
+  const expected = {
+    it: ["Il preventivo cominciava lunedì 1 marzo 2027, con arrivo alle 10:00.", "Quello che le avevi proposto è di nuovo libero in agenda."],
+    es: ["El presupuesto empezaba el lunes, 1 de marzo de 2027, con llegada a las 10:00.", "Lo que le propusiste quedó libre en la agenda."],
+    en: ["The quote started on Monday 1 March 2027, arriving at 10:00.", "What you proposed is free again in the calendar."],
+  } as const;
+  for (const locale of LOCALES) {
+    const email = renderQuoteAnswerNotification(quoteNotice({ kind: "declined", weeks: null, totalCents: null }), locale);
+    for (const line of expected[locale]) assert.ok(email.text.includes(line), `${locale}: ${line}\n${email.text}`);
+    assert.ok(!/settiman|semana|week/i.test(email.text), `${locale}: ${email.text}`);
+  }
 });
 
 test("presupuesto en los tres idiomas (CHEF_LOCALE), una semana en singular, y nunca nada de pagos", () => {

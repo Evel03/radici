@@ -2,12 +2,15 @@
 // página (pages/prenotazione.ts) pinta lo que dice el estado (render.ts) y le pasa los clics.
 // - Al abrirse: lee la reserva del link (POST …/view). Sin token, o con un link que no existe o venció, lo dice.
 // - El presupuesto (si Evelyn lo mandó, con el menú de la semana 1): aceptarlo (y con él ese menú) o rechazarlo,
-//   con un paso de confirmación. Mientras está abierto, el menú que va con él no se confirma solo; los cambios se
-//   piden como con cualquier menú.
+//   con un paso de confirmación que un doble toque nunca atraviesa («Sì, rifiuto» no responde hasta
+//   DECLINE_GUARD_MS después de abrirlo, y abrirlo o cerrarlo no borra nada de lo de arriba de «Rifiuto»).
+//   Mientras está abierto, el menú que va con él no se confirma solo, ni uno anterior del mismo presupuesto que
+//   quedó en otra semana; los cambios se piden como con cualquier menú.
 // - Por semana: confirmar el menú o pedir cambios con un mensaje. Después de cada respuesta, el estado de esa
 //   semana (o del presupuesto) se actualiza con lo que devolvió la función y la reserva se vuelve a leer (por si
-//   Evelyn mandó otro menú mientras tanto). Lo que pasó queda como aviso; un error (sin conexión, demasiados
-//   intentos) queda junto a los botones y se anuncia.
+//   Evelyn mandó otro menú mientras tanto). Lo que pasó queda como aviso; va arriba si lo que contestó ya no está
+//   (la semana, con su fecha; el presupuesto, si Evelyn confirmó la reserva sin él o mandó otro). Un error (sin
+//   conexión, demasiados intentos) queda junto a los botones y se anuncia.
 // - Las lecturas de la reserva van numeradas: solo vale la última que se pidió, así una respuesta que llega tarde
 //   no pisa una más nueva.
 // El estado de cada semana (el formulario abierto, el mensaje a medio escribir, el aviso) va por su sesión
@@ -72,9 +75,17 @@ export interface QuoteUi {
   declineFor: string | null;
   /** Una respuesta en camino: los botones no hacen nada hasta que vuelva. */
   busy: "accept" | "decline" | null;
-  /** El último error de una respuesta (sin conexión, demasiados intentos…), junto a los botones. */
+  /**
+   * El último error de aceptar (sin conexión, demasiados intentos…), arriba de los botones. Abrir o cerrar el paso
+   * del rechazo no lo borra (si se fuera, «Rifiuto» subiría bajo el dedo): se va con la próxima respuesta.
+   */
   error: Message | null;
-  /** Lo que pasó con la última respuesta (aceptado, rechazado, hay una versión más nueva…). */
+  /** El último error de rechazar, en el paso, junto a «Sì, rifiuto il preventivo»: se va con el paso. */
+  declineError: Message | null;
+  /**
+   * Lo que pasó con la última respuesta (aceptado, rechazado, hay una versión más nueva…). Como el error de aceptar,
+   * abrir o cerrar el paso no lo borra.
+   */
   notice: Message | null;
 }
 
@@ -112,16 +123,26 @@ export function quoteView(view: ClientLinkView): QuoteView | null {
 }
 
 /**
- * Cómo va el menú de un envío con el presupuesto: none (no lleva presupuesto), open (lleva el presupuesto abierto:
- * se confirma aceptándolo, los cambios se piden como siempre) o closed (lleva uno que ya no se contesta, o uno que
- * la página no conoce: ni se confirma ni se piden cambios).
+ * Cómo va el menú de un envío con el presupuesto, como lo ve la base (private.client_send_quote_state):
+ * - none: no lleva presupuesto, o lleva uno aceptado: se confirma o se le piden cambios como cualquier menú (el
+ *   envío con el que se aceptó ya quedó confirmado);
+ * - open: es el envío que lleva el presupuesto abierto (quote.sendId): se confirma aceptándolo; los cambios se
+ *   piden como siempre;
+ * - superseded: un envío anterior del mismo presupuesto, todavía abierto, que quedó en otra semana (la que lo
+ *   llevaba pasó al final y Evelyn lo reenvió desde la nueva primera): no se confirma (quote_pending), y aceptar el
+ *   presupuesto no lo confirma; los cambios sí se piden;
+ * - closed: lleva uno rechazado, retirado o vencido, o uno que la página no conoce: ni se confirma ni se piden
+ *   cambios.
  */
-export type MenuQuoteMode = "none" | "open" | "closed";
+export type MenuQuoteMode = "none" | "open" | "superseded" | "closed";
 
 export function menuQuoteMode(view: ClientLinkView, menu: ClientLinkMenu): MenuQuoteMode {
   if (menu.quoteId === null) return "none";
   const quote = view.quote;
-  return quote && quote.id === menu.quoteId && (quote.status === "sent" || quote.status === "changed") ? "open" : "closed";
+  if (!quote || quote.id !== menu.quoteId) return "closed";
+  if (quote.status === "accepted") return "none";
+  if (quote.status !== "sent" && quote.status !== "changed") return "closed";
+  return menu.sendId === quote.sendId ? "open" : "superseded";
 }
 
 /** A dónde va el foco después de una acción (render.ts sabe el id de cada cosa). */
@@ -141,13 +162,24 @@ export interface ReservationDeps {
   /** El token del fragmento (readToken), o null. */
   token: string | null;
   api?: ApiOptions;
+  /** Un reloj monótono, en ms (por defecto performance.now): el resguardo del rechazo. Los tests lo mueven a mano. */
+  now?: () => number;
 }
+
+/**
+ * Lo que tiene que pasar entre «Rifiuto» y «Sì, rifiuto il preventivo»: antes, el toque no hace nada. El segundo
+ * toque de un doble toque (o el segundo clic de un doble clic) llega antes, aunque la página se haya movido.
+ */
+export const DECLINE_GUARD_MS = 600;
 
 export interface Reservation {
   readonly state: PageState;
   /** «Riprova» en camino: el error queda a la vista, con el botón esperando. */
   readonly retrying: boolean;
-  /** Un aviso de la página entera (una semana que se canceló y ya no está en la lista), o null. */
+  /**
+   * Un aviso de la página entera, o null: lo que pasó con una respuesta cuando lo que contestó ya no está en la
+   * reserva (una semana que se canceló, o el presupuesto, si Evelyn confirmó la reserva sin él o mandó otro).
+   */
   readonly pageNotice: Message | null;
   /** El estado del recuadro del presupuesto. */
   readonly quoteUi: Readonly<QuoteUi>;
@@ -166,11 +198,15 @@ export interface Reservation {
   submitChanges(session: string): Promise<ActionResult>;
   /** «Accetto il preventivo»: acepta el presupuesto, y con él el menú de la semana 1. */
   acceptQuote(): Promise<ActionResult>;
-  /** «Rifiuto»: abre el paso de la confirmación. */
+  /**
+   * «Rifiuto»: abre el paso de la confirmación (debajo; «Rifiuto» queda en su lugar, y los avisos y el error de
+   * arriba también). Con el paso abierto, lo cierra, salvo un toque enseguida (el segundo de un doble toque), que
+   * no hace nada.
+   */
   openDecline(): ActionResult;
   /** «No, torna indietro»: lo cierra sin rechazar nada. */
   closeDecline(): ActionResult;
-  /** «Sì, rifiuto il preventivo»: lo rechaza. */
+  /** «Sì, rifiuto il preventivo»: lo rechaza, si pasaron DECLINE_GUARD_MS desde que se abrió el paso. */
   declineQuote(): Promise<ActionResult>;
 }
 
@@ -190,10 +226,11 @@ const CLOSED_NOTICES: Readonly<Record<QuoteClosedReason, MessageKey>> = {
 };
 
 const EMPTY_UI: WeekUi = { formOpen: false, draft: "", draftFor: null, busy: null, error: null, textError: null, notice: null };
-const EMPTY_QUOTE_UI: QuoteUi = { declineOpen: false, declineFor: null, busy: null, error: null, notice: null };
+const EMPTY_QUOTE_UI: QuoteUi = { declineOpen: false, declineFor: null, busy: null, error: null, declineError: null, notice: null };
 const NOTHING: ActionResult = { focus: null, announce: null };
 
 export function createReservation(deps: ReservationDeps): Reservation {
+  const now = deps.now ?? ((): number => performance.now());
   let state: PageState = { kind: "loading" };
   let retrying = false;
   let pageNotice: Message | null = null;
@@ -203,6 +240,8 @@ export function createReservation(deps: ReservationDeps): Reservation {
   let quoteUi: QuoteUi = EMPTY_QUOTE_UI;
   /** El presupuesto al que se refiere quoteUi. */
   let quoteUiFor: string | null = null;
+  /** Cuándo se abrió el paso del rechazo (now()): antes de DECLINE_GUARD_MS, «Sì, rifiuto» no hace nada. */
+  let declineOpenedAt = 0;
   const listeners: Array<() => void> = [];
 
   const emit = (): void => {
@@ -244,7 +283,7 @@ export function createReservation(deps: ReservationDeps): Reservation {
         quoteUi = EMPTY_QUOTE_UI;
         quoteUiFor = quote?.id ?? null;
       } else if (quoteUi.declineOpen && quote && quote.sendId !== quoteUi.declineFor) {
-        quoteUi = { ...quoteUi, declineOpen: false, declineFor: null, notice: { key: "reservation.quote.notices.outdated" } };
+        quoteUi = { ...quoteUi, declineOpen: false, declineFor: null, declineError: null, notice: { key: "reservation.quote.notices.outdated" } };
       }
     }
     emit();
@@ -255,8 +294,8 @@ export function createReservation(deps: ReservationDeps): Reservation {
 
   /**
    * El último envío de una semana, si se puede contestar desde la página: por confirmar, mostrado y no cocinada. Un
-   * menú que va con el presupuesto abierto no se confirma solo (se acepta el presupuesto), pero sí se piden cambios;
-   * uno que va con un presupuesto cerrado no se contesta.
+   * menú que va con el presupuesto abierto no se confirma solo (se acepta el presupuesto), ni uno anterior del mismo
+   * presupuesto (superseded), pero sí se piden cambios; uno que va con un presupuesto cerrado no se contesta.
    */
   const answerable = (session: string, action: "confirm" | "changes"): ClientLinkMenu | null => {
     const week = findWeek(session);
@@ -331,6 +370,20 @@ export function createReservation(deps: ReservationDeps): Reservation {
       update(session, { error: message });
       return { focus: { kind: action === "confirm" ? "confirm" : "submit", session }, announce: message };
     };
+    /**
+     * Vuelve a leer la reserva y dice a dónde va el foco: al estado de la semana, que lleva el aviso. Si la semana
+     * ya no está (se canceló mientras tanto, también al cerrarse su presupuesto), lo de esa semana se olvida y el
+     * aviso va arriba, con su fecha (gone: lo que pasó); si el link venció, al recuadro del problema.
+     */
+    const reread = async (gone: MessageKey = "reservation.notices.sessionCancelled"): Promise<ActionResult> => {
+      await refresh();
+      if (state.kind === "invalidLink") return { focus: { kind: "problem" }, announce: null };
+      if (findWeek(session)) return status;
+      weeks.delete(session);
+      pageNotice = { key: gone, date };
+      emit();
+      return { focus: { kind: "notice" }, announce: null };
+    };
     switch (outcome.kind) {
       case "confirmed":
         patchMenu(session, { state: "confirmed", confirmedAt: outcome.confirmedAt });
@@ -338,39 +391,33 @@ export function createReservation(deps: ReservationDeps): Reservation {
           formOpen: false,
           notice: { key: outcome.already ? "reservation.notices.alreadyConfirmed" : "reservation.notices.confirmed" },
         });
-        await refresh();
-        return status;
+        return reread();
       case "changesSent":
         patchMenu(session, { state: "changesRequested", changesRequestedAt: outcome.changesRequestedAt });
         update(session, { formOpen: false, draft: "", draftFor: null, textError: null, notice: { key: "reservation.notices.changesSent" } });
-        await refresh();
-        return status;
+        return reread();
       case "menuOutdated":
         // El mensaje a medio escribir queda: sirve para el menú nuevo.
         update(session, { notice: { key: "reservation.notices.menuOutdated" } });
-        await refresh();
-        return status;
+        return reread();
       case "changesRequested":
         update(session, { formOpen: false, notice: { key: "reservation.notices.changesAlreadyRequested" } });
-        await refresh();
-        return status;
+        return reread();
       case "alreadyConfirmed":
         update(session, { formOpen: false, notice: { key: "reservation.notices.alreadyConfirmedChanges" } });
-        await refresh();
-        return status;
+        return reread();
       case "quotePending":
         // Va con el presupuesto abierto (la página no lo sabía): se confirma aceptando el presupuesto.
         update(session, { formOpen: false, notice: { key: "reservation.notices.quotePending" } });
-        await refresh();
-        return status;
+        return reread();
       case "quoteClosed":
+        // Su presupuesto se cerró sin aceptarse: sus semanas se cancelaron, así que al volver a leer esta ya no
+        // suele estar (el aviso va arriba y dice que su respuesta no salió).
         update(session, { formOpen: false, notice: { key: "reservation.notices.quoteClosed" } });
-        await refresh();
-        return status;
+        return reread("reservation.notices.quoteClosedGone");
       case "sendNotFound":
         update(session, { notice: { key: "reservation.notices.sendNotFound" } });
-        await refresh();
-        return status;
+        return reread();
       case "sessionCancelled":
         // La semana se canceló: al volver a leer ya no está en la lista, así que el aviso va arriba, con su fecha.
         weeks.delete(session);
@@ -395,27 +442,45 @@ export function createReservation(deps: ReservationDeps): Reservation {
     }
   };
 
-  /** Lo que pasa después de aceptar o rechazar el presupuesto. El foco va a su estado; un error, junto al botón. */
-  const settleQuote = async (action: "accept" | "decline", outcome: ActionOutcome, week: ClientLinkWeek | null): Promise<ActionResult> => {
+  /**
+   * Lo que pasa después de aceptar o rechazar el presupuesto (answered: el que tenía a la vista). El foco va a su
+   * estado, que lleva el aviso; un error, junto al botón que mandó la respuesta.
+   */
+  const settleQuote = async (action: "accept" | "decline", outcome: ActionOutcome, answered: QuoteView): Promise<ActionResult> => {
     const status: ActionResult = { focus: { kind: "quoteStatus" }, announce: null };
     const failed = (message: Message): ActionResult => {
-      updateQuote({ error: message });
-      return { focus: { kind: action === "accept" ? "quoteAccept" : "quoteDeclineConfirm" }, announce: message };
+      if (action === "accept") {
+        updateQuote({ error: message });
+        return { focus: { kind: "quoteAccept" }, announce: message };
+      }
+      updateQuote({ declineError: message });
+      return { focus: { kind: "quoteDeclineConfirm" }, announce: message };
     };
-    const noticed = async (key: MessageKey): Promise<ActionResult> => {
-      updateQuote({ declineOpen: false, declineFor: null, notice: { key } });
+    /**
+     * El aviso va al recuadro y se vuelve a leer la reserva. Si el presupuesto que contestó ya no está (Evelyn
+     * confirmó la reserva sin él, o mandó otro), su recuadro ya no se pinta o es el del nuevo: el aviso va arriba y
+     * recibe el foco. Si la respuesta no se registró, dice por qué (recorded: sí se registró, el mismo aviso). Si
+     * el link venció, el foco va al recuadro del problema.
+     */
+    const noticed = async (key: MessageKey, recorded = false): Promise<ActionResult> => {
+      updateQuote({ declineOpen: false, declineFor: null, declineError: null, notice: { key } });
       await refresh();
-      return status;
+      if (state.kind === "invalidLink") return { focus: { kind: "problem" }, announce: null };
+      if (state.kind !== "ready" || state.view.quote?.id === answered.quote.id) return status;
+      const gone: MessageKey = state.view.quote ? "reservation.quote.notices.goneReplaced" : "reservation.quote.notices.goneBooked";
+      pageNotice = { key: recorded ? key : gone };
+      emit();
+      return { focus: { kind: "notice" }, announce: null };
     };
     switch (outcome.kind) {
       case "quoteAccepted":
         patchQuote({ status: "accepted", acceptedAt: outcome.acceptedAt });
         // El menú de la semana del envío quedó confirmado a la misma hora.
-        if (week) patchMenu(week.sessionId, { state: "confirmed", confirmedAt: outcome.acceptedAt });
-        return noticed(outcome.already ? "reservation.quote.notices.alreadyAccepted" : "reservation.quote.notices.accepted");
+        if (answered.week) patchMenu(answered.week.sessionId, { state: "confirmed", confirmedAt: outcome.acceptedAt });
+        return noticed(outcome.already ? "reservation.quote.notices.alreadyAccepted" : "reservation.quote.notices.accepted", true);
       case "quoteDeclined":
         patchQuote({ status: "declined", summary: null });
-        return noticed(outcome.already ? "reservation.quote.notices.alreadyDeclined" : "reservation.quote.notices.declined");
+        return noticed(outcome.already ? "reservation.quote.notices.alreadyDeclined" : "reservation.quote.notices.declined", true);
       case "menuOutdated":
         return noticed("reservation.quote.notices.outdated");
       case "changesRequested":
@@ -425,6 +490,8 @@ export function createReservation(deps: ReservationDeps): Reservation {
         // Evelyn cambió el precio o las semanas (también si canceló la del envío): manda una versión nueva.
         return noticed("reservation.quote.notices.changed");
       case "quoteClosed":
+        // Cerrado sin aceptar: el estado ya lo dice aunque no se pueda volver a leer (sin precios ni botones).
+        if (outcome.reason && outcome.reason !== "accepted") patchQuote({ status: outcome.reason, summary: null });
         return noticed(outcome.reason ? CLOSED_NOTICES[outcome.reason] : "reservation.quote.notices.unavailable");
       case "quoteEmpty":
         return noticed("reservation.quote.notices.empty");
@@ -536,24 +603,33 @@ export function createReservation(deps: ReservationDeps): Reservation {
       const sendId = current?.quote.sendId ?? null;
       if (!current || !current.canAccept || sendId === null || quoteUi.busy || !deps.supabaseUrl || !deps.token) return NOTHING;
       pageNotice = null;
-      updateQuote({ busy: "accept", declineOpen: false, declineFor: null, error: null, notice: null });
+      updateQuote({ busy: "accept", declineOpen: false, declineFor: null, error: null, declineError: null, notice: null });
       const outcome = await acceptQuote(deps.supabaseUrl, deps.token, sendId, deps.api);
       updateQuote({ busy: null });
-      return settleQuote("accept", outcome, current.week);
+      return settleQuote("accept", outcome, current);
     },
 
     openDecline() {
       const current = currentQuote();
       if (!current || !current.canDecline || quoteUi.busy) return NOTHING;
-      pageNotice = null;
-      updateQuote({ declineOpen: true, declineFor: current.quote.sendId, error: null, notice: null });
+      if (quoteUi.declineOpen) {
+        // «Rifiuto» otra vez: el segundo toque de un doble toque no hace nada; uno después cierra el paso.
+        if (now() - declineOpenedAt < DECLINE_GUARD_MS) return { focus: { kind: "quoteDeclineQuestion" }, announce: null };
+        updateQuote({ declineOpen: false, declineFor: null, declineError: null });
+        return { focus: { kind: "quoteDecline" }, announce: null };
+      }
+      declineOpenedAt = now();
+      // Lo de arriba de «Rifiuto» queda (el aviso de la página, el del recuadro y el error de aceptar): si se
+      // borrara, «Rifiuto» subiría justo bajo el dedo. Se va con la próxima respuesta.
+      updateQuote({ declineOpen: true, declineFor: current.quote.sendId, declineError: null });
       // El foco va a la pregunta (se lee entera) y no a «Sì, rifiuto»: un Intro de más no rechaza nada.
       return { focus: { kind: "quoteDeclineQuestion" }, announce: null };
     },
 
     closeDecline() {
       if (quoteUi.busy) return NOTHING;
-      updateQuote({ declineOpen: false, declineFor: null, error: null });
+      // Con el paso se va su error; lo de arriba de «Rifiuto» queda, como al abrirlo.
+      updateQuote({ declineOpen: false, declineFor: null, declineError: null });
       return { focus: { kind: "quoteDecline" }, announce: null };
     },
 
@@ -563,11 +639,13 @@ export function createReservation(deps: ReservationDeps): Reservation {
       // Solo desde la confirmación, y para la versión que tenía a la vista al abrirla.
       if (!current || !current.canDecline || sendId === null || !quoteUi.declineOpen || quoteUi.declineFor !== sendId) return NOTHING;
       if (quoteUi.busy || !deps.supabaseUrl || !deps.token) return NOTHING;
+      // Un toque que llega enseguida de abrir el paso es el segundo de un doble toque en «Rifiuto»: no rechaza.
+      if (now() - declineOpenedAt < DECLINE_GUARD_MS) return NOTHING;
       pageNotice = null;
-      updateQuote({ busy: "decline", error: null, notice: null });
+      updateQuote({ busy: "decline", error: null, declineError: null, notice: null });
       const outcome = await declineQuote(deps.supabaseUrl, deps.token, sendId, deps.api);
       updateQuote({ busy: null });
-      return settleQuote("decline", outcome, current.week);
+      return settleQuote("decline", outcome, current);
     },
   };
 }

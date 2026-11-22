@@ -518,11 +518,31 @@ test("semanas a distinto precio: cada una con el suyo y el total; una sola seman
   for (const expected of [
     "Evelyn ha preparato il preventivo e il tuo menù.",
     "IL PREVENTIVO\nEcco il preventivo:\nQuando: lunedì 30 novembre 2026, arrivo alle 10:00\nPrezzo del servizio: 150,00 €\n",
+    "Accettalo entro 48 ore. Fino ad allora, questa data resta riservata per te.\n",
     "Dal tuo link puoi accettare il preventivo e il menù, chiedere dei cambi o rifiutarlo.",
   ]) {
     assert.ok(one.text.includes(expected), `falta: ${expected}\n${one.text}`);
   }
   assert.ok(!one.text.includes("Settimana"), "una sola semana: ni «Settimana 1» ni «1 di 1»");
+});
+
+test("una sola semana: el plazo dice que esa fecha queda reservada, en singular, en los tres idiomas y en los tres formatos", () => {
+  const single = quote({ totalCents: 15000, weeks: [{ date: "2026-11-30", start: "10:00", serviceCents: 15000 }] });
+  const expected: Record<Locale, string> = {
+    it: "Accettalo entro 48 ore. Fino ad allora, questa data resta riservata per te.",
+    es: "Acéptalo dentro de las próximas 48 horas. Hasta entonces, esta fecha queda reservada para ti.",
+    en: "Please accept it within 48 hours. Until then, this date is held for you.",
+  };
+  for (const locale of LOCALES) {
+    const message = renderMenuMessage(input({ snapshot: quoteSnapshot(locale, single) }));
+    for (const text of [message.text, message.whatsapp, message.html]) {
+      assert.ok(text.includes(expected[locale]), `${locale}: ${expected[locale]}\n${text}`);
+      assert.ok(!/queste date|estas fechas|these dates/.test(text), `${locale}: sin el plural`);
+    }
+  }
+  // Con el plazo en la primera llegada, igual.
+  const late = renderMenuMessage(input({ snapshot: quoteSnapshot("it", single), now: new Date("2026-11-28T19:00:00Z") }));
+  assert.ok(late.text.includes("Accettalo prima di lunedì 30 novembre 2026, alle 10:00. Fino ad allora, questa data resta riservata per te."), late.text);
 });
 
 test("un reenvío (versión 2 o más): el asunto y el texto dicen que es el presupuesto actualizado", () => {

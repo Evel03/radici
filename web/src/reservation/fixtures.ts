@@ -1,5 +1,6 @@
-// Datos de prueba de la página /prenotazione/: una reserva de dos semanas, la primera con el menú enviado; y la
-// misma con el presupuesto por aceptar (quoteView), que viaja con el menú de la semana 1.
+// Datos de prueba de la página /prenotazione/: una reserva de dos semanas, la primera con el menú enviado; la
+// misma con el presupuesto por aceptar (quoteView), que viaja con el menú de la semana 1; y un presupuesto que
+// Evelyn reenvió desde otra semana 1, con el envío viejo en la semana que pasó al final (resentQuoteView).
 import {
   CLIENT_LINK_VERSION,
   type ClientLinkMenu,
@@ -119,5 +120,35 @@ export function quoteView(quoteOverrides: Partial<ClientLinkQuote> = {}, menuOve
   return view({
     quote: quote(quoteOverrides),
     weeks: [week({ menu: menu({ quoteId: QUOTE_ID, ...menuOverrides }) }), week({ sessionId: SESSION_2, week: 2, date: "2027-03-08", menu: null })],
+  });
+}
+
+/**
+ * Un presupuesto de 3 semanas cuya semana 1 (SESSION_1, con el envío SEND_1) Evelyn pasó al final (chef-api §14,
+ * /sessions/move) y que reenvió desde la nueva semana 1 (SESSION_2, envío SEND_NEW, versión 2). El envío viejo
+ * sigue siendo el último de su semana: la página lo muestra en la semana 3, con el mismo presupuesto.
+ */
+export function resentQuoteView(quoteOverrides: Partial<ClientLinkQuote> = {}, oldMenuOverrides: Partial<ClientLinkMenu> = {}): ClientLinkView {
+  return view({
+    quote: quote({
+      version: 2,
+      sendId: SEND_NEW,
+      sentAt: "2027-02-26T09:00:00+00:00",
+      holdUntil: "2027-02-28T09:00:00+00:00",
+      summary: {
+        totalCents: 45000,
+        weeks: [
+          { date: "2027-03-08", start: "10:00", serviceCents: 15000 },
+          { date: "2027-03-15", start: "10:00", serviceCents: 15000 },
+          { date: "2027-03-22", start: "10:00", serviceCents: 15000 },
+        ],
+      },
+      ...quoteOverrides,
+    }),
+    weeks: [
+      week({ sessionId: SESSION_2, week: 1, weeks: 3, date: "2027-03-08", menu: menu({ sendId: SEND_NEW, sentAt: "2027-02-26T09:00:00+00:00", quoteId: QUOTE_ID }) }),
+      week({ sessionId: SESSION_3, week: 2, weeks: 3, date: "2027-03-15", menu: null }),
+      week({ sessionId: SESSION_1, week: 3, weeks: 3, date: "2027-03-22", menu: menu({ quoteId: QUOTE_ID, ...oldMenuOverrides }) }),
+    ],
   });
 }
