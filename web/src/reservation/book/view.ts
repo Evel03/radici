@@ -4,9 +4,11 @@
 // - Un diálogo modal: el resto de la página queda inert (y aria-hidden), Tab no sale del libro y, al cerrarlo, el foco
 //   vuelve al botón que lo abrió (o a donde lleve la última página: confirmar, el presupuesto o la semana).
 // - Abierto desde el botón de una semana, agrega una entrada al historial: «atrás» lo cierra, como se espera en el
-//   teléfono, y la vuelta no restaura el scroll viejo de la página (createBookHistory). Esa entrada queda marcada:
-//   abierto otra vez desde ella (al recargar, o con «adelante»), cerrarlo también vuelve atrás. Abierto desde el link
-//   del mensaje, cerrarlo solo saca libro del fragmento. El token nunca sale de ahí.
+//   teléfono, y ninguna vuelta desde el libro restaura el scroll viejo de la página mientras dure la carga
+//   (createBookHistory). Esa entrada queda marcada: abierto otra vez desde ella (al recargar, o con «adelante»),
+//   cerrarlo también vuelve atrás, salvo que la página se haya cargado de nuevo en su entrada (ahí volver restauraría:
+//   cerrarlo solo saca libro del fragmento). Abierto desde el link del mensaje, cerrarlo solo saca libro del fragmento.
+//   El token nunca sale de ahí.
 // - En la computadora, un clic en el fondo lo cierra; un arrastre que solo empieza o termina ahí, no.
 // - Pasar de página da vuelta la hoja (book.css), salvo con prefers-reduced-motion: ahí cambia sin animación.
 // - Las fotos: la de la página actual y la de la siguiente se cargan ya; las demás páginas van con hidden (sus fotos
@@ -93,7 +95,7 @@ interface OpenBook {
   page: number;
   signature: string;
   openerId: string | null;
-  /** Su entrada del historial la agregó el botón de la semana (cerrarlo vuelve atrás). */
+  /** Cerrarlo vuelve atrás: su entrada la agregó el botón de la semana (al abrirlo, o antes: onBookEntry). */
   pushed: boolean;
   background: Inerted[];
   unbindSwipe: () => void;
@@ -336,7 +338,7 @@ export function attachBookView(deps: BookViewDeps): BookView {
       }
     }
     // Abierto desde el fragmento de la entrada que agregó el botón (se recargó con el libro abierto, o se volvió con
-    // «adelante»): cerrarlo también vuelve atrás, a la página.
+    // «adelante»): cerrarlo también vuelve atrás, a la página, si volver no restaura su scroll (onBookEntry).
     if (!pushed) pushed = bookHistory.onBookEntry();
     syncLangLinks();
 

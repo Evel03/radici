@@ -155,17 +155,22 @@ export function bookFragment(token: string, session: string): string {
 
 /** Lo que usa createBookHistory de window (en los tests, uno falso). */
 export interface HistoryWindow {
-  readonly history: Pick<History, "state" | "scrollRestoration" | "pushState">;
+  readonly history: Pick<History, "state" | "scrollRestoration" | "pushState" | "replaceState">;
   readonly location: Pick<Location, "hash">;
-  addEventListener(type: "hashchange", listener: () => void): void;
+  addEventListener(type: "popstate" | "hashchange", listener: () => void): void;
+  addEventListener(type: "pagehide", listener: (event: { readonly persisted: boolean }) => void): void;
 }
 
 export interface BookHistory {
-  /** Agrega la entrada del libro (el botón de una semana). */
+  /** Agrega la entrada del libro (el botón de una semana): cerrarlo vuelve atrás. */
   push(url: string): void;
   /**
-   * Si la entrada de ahora la agregó push, también en otra carga del documento (se recargó con el libro abierto, o el
-   * teléfono descartó la pestaña) o al volver a ella con «adelante»: cerrar el libro vuelve atrás.
+   * El libro se abre desde el fragmento (se recargó con el libro abierto, el teléfono descartó la pestaña, o se volvió
+   * a su entrada con «adelante»): si cerrarlo vuelve atrás, como si lo hubiera abierto el botón. Sí cuando la entrada
+   * de ahora la agregó push (queda marcada en history.state, también para otra carga del documento), salvo que esta
+   * carga haya empezado en la página: ahí su entrada quedó en "auto" (para restaurar su propio scroll) y volver a ella
+   * lo restauraría encima del foco. Entonces la entrada del libro pierde la marca y cerrarlo solo saca libro del
+   * fragmento, como el link del mensaje (queda otra entrada #t= repetida).
    */
   onBookEntry(): boolean;
 }
@@ -178,29 +183,51 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 /**
  * La entrada del historial del libro abierto con el botón de una semana (cerrarlo vuelve atrás). Al volver, el
  * navegador restauraba el scroll guardado de la página (donde estaba el botón) y pisaba el que dejó el foco al
- * cerrar: confirmar, desde la última página, quedaba fuera de la pantalla. Por eso la entrada de la página no
- * restaura mientras el libro está encima. scrollRestoration vale por entrada y cuenta el de la entrada a la que se
- * vuelve: va antes del pushState (que lo copia; la del libro vuelve a "auto") y la página vuelve a "auto" recién en el
- * hashchange de la vuelta, después de la restauración (Chromium decide si restaura antes de popstate). Solo el libro
- * pone "manual": sin libro en el fragmento, la entrada vuelve a "auto", también si la dejó así otra carga del
- * documento (la marca en history.state hace que cerrar el libro vuelva atrás igual) o al cargar la página.
+ * cerrar: confirmar, desde la última página, quedaba fuera de la pantalla. scrollRestoration vale por entrada, cuenta
+ * el de la entrada a la que se vuelve y solo se cambia el de la entrada activa: el de la página va a "manual" antes
+ * del pushState (que lo copia; la del libro vuelve a "auto", así recargar con el libro abierto restaura) y queda así
+ * mientras dure esta carga del documento. Ninguna vuelta desde el libro mueve la página: tampoco la de un libro abierto
+ * otra vez con «adelante» (si la página volviera a "auto" al cerrarlo, ese segundo cierre restauraría). Vuelve a
+ * "auto" al irse del documento sin quedar guardado entero (pagehide sin bfcache: recargar, otra página) y al cargar
+ * sin libro en el fragmento (si no hubo pagehide: el teléfono descartó la pestaña), así la carga nueva restaura su
+ * scroll.
  */
 export function createBookHistory(win: HistoryWindow): BookHistory {
-  const settle = (): void => {
-    if (readBookSession(win.location.hash) === null && win.history.scrollRestoration === "manual") win.history.scrollRestoration = "auto";
+  const onPage = (): boolean => readBookSession(win.location.hash) === null;
+  const toAuto = (): void => {
+    if (onPage() && win.history.scrollRestoration === "manual") win.history.scrollRestoration = "auto";
   };
-  settle();
-  win.addEventListener("hashchange", settle);
+  /**
+   * El scrollRestoration de la entrada de la página: de la última sin libro en la que estuvo esta carga (cambia solo
+   * mientras está activa). null si la carga empezó con el libro abierto: la dejó la carga que lo agregó, en "manual".
+   */
+  let pageMode: ScrollRestoration | null = null;
+  const look = (): void => {
+    if (onPage()) pageMode = win.history.scrollRestoration;
+  };
+  toAuto();
+  look();
+  win.addEventListener("popstate", look);
+  win.addEventListener("hashchange", look);
+  win.addEventListener("pagehide", (event) => {
+    if (!event.persisted) toAuto();
+  });
   return {
     push(url) {
       const state: unknown = win.history.state;
       win.history.scrollRestoration = "manual";
+      pageMode = "manual";
       win.history.pushState({ ...(isRecord(state) ? state : {}), [BOOK_STATE_KEY]: true }, "", url);
       win.history.scrollRestoration = "auto";
     },
     onBookEntry() {
       const state: unknown = win.history.state;
-      return isRecord(state) && state[BOOK_STATE_KEY] === true;
+      if (!isRecord(state) || state[BOOK_STATE_KEY] !== true) return false;
+      if (pageMode !== "auto") return true;
+      const unmarked: Record<string, unknown> = { ...state };
+      delete unmarked[BOOK_STATE_KEY];
+      win.history.replaceState(unmarked, "");
+      return false;
     },
   };
 }

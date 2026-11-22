@@ -128,8 +128,10 @@ describe("el fragmento de la URL", () => {
 /**
  * Un navegador falso con lo que importa del historial (HTML, «session history»): cada entrada guarda su estado, su
  * scroll y su scrollRestoration (history.state y history.scrollRestoration son los de la entrada activa) y pushState
- * le copia el modo a la nueva. Volver atrás dispara popstate, después restaura el scroll de la entrada a la que vuelve
- * si dice "auto" (el estándar; Chromium ya lo decide antes de popstate, comprobado en vivo) y recién después hashchange.
+ * le copia el modo a la nueva. Ir atrás o adelante en el mismo documento dispara popstate, después restaura el scroll
+ * de la entrada a la que llega si dice "auto" (el estándar; Chromium ya lo decide antes de popstate, comprobado en
+ * vivo) y recién después hashchange, si cambió el fragmento. Irse del documento dispara pagehide (persisted: queda
+ * guardado entero, en el bfcache).
  */
 function fakeWindow(hash: string) {
   interface Entry {
@@ -138,13 +140,28 @@ function fakeWindow(hash: string) {
     mode: ScrollRestoration;
     scroll: number;
   }
+  type Listener = (event: { persisted: boolean }) => void;
   const entries: Entry[] = [{ hash, state: null, mode: "auto", scroll: 0 }];
   let index = 0;
-  let listeners = new Map<string, (() => void)[]>();
+  let listeners = new Map<string, Listener[]>();
   const current = (): Entry => entries[index] as Entry;
   const hashOf = (url?: string | URL | null): string => new URL(String(url), "https://radici.test/").hash;
-  const fire = (type: string): void => {
-    for (const listener of listeners.get(type) ?? []) listener();
+  const fire = (type: string, persisted = false): void => {
+    for (const listener of listeners.get(type) ?? []) listener({ persisted });
+  };
+  const traverse = (delta: number): void => {
+    const from = current();
+    from.scroll = win.scrollY;
+    index += delta;
+    fire("popstate");
+    if (current().mode === "auto") win.scrollY = current().scroll;
+    if (current().hash !== from.hash) fire("hashchange");
+  };
+  /** Otra carga del documento: lo que sabía la de antes (sus listeners) se pierde; las entradas quedan como estaban. */
+  const unload = (pagehide: boolean): void => {
+    current().scroll = win.scrollY;
+    if (pagehide) fire("pagehide");
+    listeners = new Map();
   };
   const win = {
     scrollY: 0,
@@ -168,32 +185,42 @@ function fakeWindow(hash: string) {
         entries.splice(index + 1, entries.length, { hash: hashOf(url), state: data, mode: current().mode, scroll: win.scrollY });
         index += 1;
       },
+      replaceState(data: unknown, _unused: string, url?: string | URL | null): void {
+        current().state = data;
+        if (url !== undefined && url !== null) current().hash = hashOf(url);
+      },
     },
-    addEventListener(type: string, listener: () => void): void {
+    addEventListener(type: string, listener: Listener): void {
       listeners.set(type, [...(listeners.get(type) ?? []), listener]);
     },
     back(): void {
-      current().scroll = win.scrollY;
-      index -= 1;
-      fire("popstate");
-      if (current().mode === "auto") win.scrollY = current().scroll;
-      fire("hashchange");
+      traverse(-1);
+    },
+    forward(): void {
+      traverse(1);
     },
     /**
-     * Otra carga del documento en la misma entrada (recargar, o la pestaña que el teléfono descartó): lo que sabía la
-     * carga de antes (sus listeners) se pierde; las entradas, con su estado, quedan como estaban. Volver atrás sigue
-     * siendo del mismo documento (popstate y hashchange), como en Chromium, comprobado en vivo.
+     * Recargar: pagehide y otra carga del documento en la misma entrada. Ir atrás o adelante sigue siendo del mismo
+     * documento (popstate y hashchange), como en Chromium, comprobado en vivo.
      */
     reload(): void {
-      listeners = new Map();
+      unload(true);
+    },
+    /** El teléfono descartó la pestaña y la carga de nuevo: como recargar, pero sin pagehide. */
+    discard(): void {
+      unload(false);
     },
     /** Volver atrás cargando la página de nuevo (otro documento): corre su script y después restaura, sin popstate. */
     backToNewDocument(load: () => void): void {
-      current().scroll = win.scrollY;
+      unload(true);
       index -= 1;
-      listeners = new Map();
       load();
       if (current().mode === "auto") win.scrollY = current().scroll;
+    },
+    /** Ir a otra página y volver a esta guardada entera (bfcache): el mismo documento, con pagehide y pageshow. */
+    awayAndBackFromCache(): void {
+      fire("pagehide", true);
+      fire("pageshow", true);
     },
   };
   return win;
@@ -216,21 +243,85 @@ describe("la entrada del historial del libro (abierto con el botón de la semana
     expect(win.scrollY).toBe(3300);
   });
 
-  it("solo esa vuelta: el libro abierto y la página, después del hashchange, restauran su scroll como siempre", () => {
+  it("mientras dura la carga, la entrada de la página queda en manual: ninguna vuelta desde el libro la mueve", () => {
     const win = fakeWindow(`#t=${TOKEN}`);
     const bookHistory = createBookHistory(win);
     bookHistory.push(bookUrl);
-    // Recargar con el libro abierto restaura como siempre.
+    // La del libro restaura como siempre (recargar con el libro abierto).
     expect(win.history.scrollRestoration).toBe("auto");
     win.back();
-    // Recargar la página, o volver a ella desde otra, también.
-    expect(win.history.scrollRestoration).toBe("auto");
-    // Y la próxima vez que se abre y se cierra, lo mismo.
+    expect(win.history.scrollRestoration).toBe("manual");
+    // La próxima vez que se abre y se cierra, lo mismo.
     win.scrollY = 900;
     bookHistory.push(bookUrl);
     win.scrollY = 2400;
     win.back();
-    expect([win.scrollY, win.history.scrollRestoration]).toEqual([2400, "auto"]);
+    expect([win.scrollY, win.history.scrollRestoration]).toEqual([2400, "manual"]);
+  });
+
+  it("abierto otra vez con «adelante», «Vai alla conferma» lo cierra volviendo atrás y confirmar queda a la vista", () => {
+    const win = fakeWindow(`#t=${TOKEN}`);
+    const bookHistory = createBookHistory(win);
+    // «Sfoglia il menù» en 1600 y Esc (o el «atrás» del navegador): el foco vuelve al botón y se vuelve atrás.
+    win.scrollY = 1600;
+    bookHistory.push(bookUrl);
+    win.back();
+    expect([win.location.hash, win.scrollY]).toEqual([`#t=${TOKEN}`, 1600]);
+    // «Adelante»: el libro se abre desde el fragmento de su entrada, y cerrarlo vuelve atrás.
+    win.forward();
+    expect(readBookSession(win.location.hash)).toBe(SESSION_1);
+    expect(bookHistory.onBookEntry()).toBe(true);
+    // «Vai alla conferma»: el foco baja la página hasta «Confermo il menù» y se vuelve atrás.
+    win.scrollY = 3300;
+    win.back();
+    expect([win.location.hash, win.scrollY]).toEqual([`#t=${TOKEN}`, 3300]);
+  });
+
+  it("y Esc después de «adelante», con la página movida mientras estaba cerrado: «Sfoglia il menù» queda a la vista", () => {
+    const win = fakeWindow(`#t=${TOKEN}`);
+    const bookHistory = createBookHistory(win);
+    win.scrollY = 1600;
+    bookHistory.push(bookUrl);
+    win.back();
+    // Sube hasta 900 y «adelante».
+    win.scrollY = 900;
+    win.forward();
+    expect(bookHistory.onBookEntry()).toBe(true);
+    // Esc: el foco vuelve a «Sfoglia il menù» (en 1600: la página va hasta ahí si no estaba) y se vuelve atrás.
+    win.scrollY = 1600;
+    win.back();
+    expect(win.scrollY).toBe(1600);
+  });
+
+  it("recargar o irse a otra página la deja en auto antes de la carga nueva (pagehide); guardada entera (bfcache), no", () => {
+    const win = fakeWindow(`#t=${TOKEN}`);
+    const bookHistory = createBookHistory(win);
+    win.scrollY = 1600;
+    bookHistory.push(bookUrl);
+    win.back();
+    // A otra página y de vuelta desde el bfcache: el mismo documento; «adelante» y «Vai alla conferma» siguen igual.
+    win.awayAndBackFromCache();
+    expect(win.history.scrollRestoration).toBe("manual");
+    win.forward();
+    expect(bookHistory.onBookEntry()).toBe(true);
+    win.scrollY = 3300;
+    win.back();
+    expect(win.scrollY).toBe(3300);
+    // Recargar: la entrada ya está en auto cuando empieza la carga nueva (antes de su script) y así queda.
+    win.reload();
+    expect(win.history.scrollRestoration).toBe("auto");
+    createBookHistory(win);
+    expect(win.history.scrollRestoration).toBe("auto");
+  });
+
+  it("si el teléfono descartó la pestaña (sin pagehide), la carga nueva deja la página en auto igual", () => {
+    const win = fakeWindow(`#t=${TOKEN}`);
+    createBookHistory(win).push(bookUrl);
+    win.back();
+    win.discard();
+    expect(win.history.scrollRestoration).toBe("manual");
+    createBookHistory(win);
+    expect(win.history.scrollRestoration).toBe("auto");
   });
 
   it("la entrada que agrega el botón queda marcada, también para otra carga del documento; la del link del mensaje, no", () => {
@@ -248,19 +339,29 @@ describe("la entrada del historial del libro (abierto con el botón de la semana
     expect(createBookHistory(fakeWindow(bookFragment(TOKEN, SESSION_1))).onBookEntry()).toBe(false);
   });
 
-  it("recargada con el libro abierto, cerrarlo vuelve atrás igual (sin restaurar el scroll) y la página vuelve a auto, aunque esta carga no la tocó", () => {
+  it("recargada con el libro abierto, cerrarlo vuelve atrás igual sin restaurar el scroll, también después de «adelante»", () => {
     const win = fakeWindow(`#t=${TOKEN}`);
     win.scrollY = 1600;
     createBookHistory(win).push(bookUrl);
     win.reload();
     // La página arranca arriba y el libro se abre desde el fragmento.
     win.scrollY = 0;
-    createBookHistory(win);
+    const bookHistory = createBookHistory(win);
+    expect(bookHistory.onBookEntry()).toBe(true);
     // Esc, la X o «Vai alla conferma» (o el «atrás» del navegador): el foco lleva la página al botón o a confirmar.
     win.scrollY = 3300;
     win.back();
     expect(win.location.hash).toBe(`#t=${TOKEN}`);
-    expect([win.scrollY, win.history.scrollRestoration]).toEqual([3300, "auto"]);
+    expect([win.scrollY, win.history.scrollRestoration]).toEqual([3300, "manual"]);
+    // «Adelante» y Esc: el foco vuelve a «Sfoglia il menù», en 1600.
+    win.forward();
+    expect(bookHistory.onBookEntry()).toBe(true);
+    win.scrollY = 1600;
+    win.back();
+    expect(win.scrollY).toBe(1600);
+    // Recargar la página la deja en auto.
+    win.reload();
+    expect(win.history.scrollRestoration).toBe("auto");
   });
 
   it("y si la vuelta carga la página de nuevo (otro documento), su entrada vuelve a restaurar desde que carga", () => {
@@ -270,7 +371,26 @@ describe("la entrada del historial del libro (abierto con el botón de la semana
     win.reload();
     createBookHistory(win);
     win.backToNewDocument(() => createBookHistory(win));
-    expect(win.history.scrollRestoration).toBe("auto");
+    expect([win.scrollY, win.history.scrollRestoration]).toEqual([1600, "auto"]);
+  });
+
+  it("si esta carga empezó en la página (se recargó: restaura), «adelante» abre el libro y cerrarlo no vuelve atrás", () => {
+    const win = fakeWindow(`#t=${TOKEN}`);
+    win.scrollY = 1600;
+    createBookHistory(win).push(bookUrl);
+    win.back();
+    // Recargar la deja en auto: volver a ella desde el libro restauraría su scroll sobre el foco.
+    win.reload();
+    const bookHistory = createBookHistory(win);
+    win.forward();
+    expect(bookHistory.onBookEntry()).toBe(false);
+    // La entrada perdió la marca: recargar con el libro abierto, tampoco vuelve atrás.
+    win.reload();
+    expect(createBookHistory(win).onBookEntry()).toBe(false);
+    // «Vai alla conferma»: el foco baja la página y libro sale del fragmento sin navegar (como el link del mensaje).
+    win.scrollY = 3300;
+    win.history.replaceState(win.history.state, "", `/prenotazione/#t=${TOKEN}`);
+    expect([win.location.hash, win.scrollY]).toEqual([`#t=${TOKEN}`, 3300]);
   });
 });
 
