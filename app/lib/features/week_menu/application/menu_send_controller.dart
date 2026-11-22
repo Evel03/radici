@@ -16,10 +16,13 @@
 // Un toque doble o una respuesta perdida nunca mandan dos veces: mientras
 // manda no acepta otro envío, y reintentar usa el mismo `sendId`; si ya había
 // salido, la función dice alreadySent y la app lo confirma leyendo
-// `menu_sends` (lo que salió, sin el texto del WhatsApp: el link solo viaja en
-// la respuesta). Si el email salió pero el envío no quedó registrado
-// (`emailSent`), lo dice y vuelve a leer el estado. Después de mandar, la
-// ficha, el editor y la reserva vuelven a leer el último envío.
+// `menu_sends` (lo que salió, por los canales de ese intento y no los del
+// reintento, sin el texto del WhatsApp: el link solo viaja en la respuesta).
+// Si el email salió pero el envío no quedó registrado (`emailSent`), o no se
+// sabe si salió (sin respuesta), lo dice y vuelve a leer el estado; sin
+// respuesta, también al cerrar la pantalla (el servidor pudo terminar
+// después). Después de mandar, la ficha, el editor y la reserva vuelven a
+// leer el último envío.
 //
 // La semana 1 de un presupuesto sin aceptar lo lleva (SPEC 5.8): después de
 // la vista previa se lee de `menu_sends` (con la RLS de la cocina) el
@@ -81,6 +84,11 @@ abstract class MenuSendState with _$MenuSendState {
 
     /// La versión guardada del menú que se manda (null hasta empezar).
     int? menuVersion,
+
+    /// La próxima vista previa vuelve a leer la versión guardada: «Ver lo
+    /// guardado» no pudo leerla (sin conexión), y reintentar o seguir sin
+    /// traducir no tiene que pedir [menuVersion], que el servidor ya rechazó.
+    @Default(false) bool rereadVersion,
     @Default(MenuSendStep.idle) MenuSendStep step,
 
     /// Traducir los nombres de la lista (false después de «Seguir sin
@@ -112,9 +120,6 @@ abstract class MenuSendState with _$MenuSendState {
     /// Se supo que salió leyendo `menu_sends` (la respuesta se perdió): sin el
     /// texto del WhatsApp.
     @Default(false) bool recovered,
-
-    /// Se pidió WhatsApp en el envío que salió.
-    @Default(false) bool sentWithWhatsapp,
 
     /// WhatsApp se abrió solo después de mandar (null: no se intentó, como en
     /// la web).
@@ -169,7 +174,13 @@ abstract class MenuSendState with _$MenuSendState {
   /// El link de WhatsApp de lo que salió (null si no se pidió o se perdió).
   Uri? get whatsAppLink => result?.whatsAppLink;
 
-  /// Se pidió WhatsApp pero el texto con el link se perdió con la respuesta:
+  /// Salió por WhatsApp, según lo que salió ([result]: la respuesta o, si se
+  /// perdió, `menu_sends`) y no según el último pedido: después de una
+  /// respuesta perdida, el reintento puede llevar otros canales.
+  bool get sentWithWhatsapp =>
+      result?.via.contains(MenuSendChannel.whatsapp) ?? false;
+
+  /// Salió por WhatsApp pero el texto con el link se perdió con la respuesta:
   /// para mandarlo por WhatsApp hace falta otra vista previa.
   bool get whatsAppLost =>
       step == MenuSendStep.sent && sentWithWhatsapp && whatsAppLink == null;
@@ -205,11 +216,12 @@ class MenuSendController extends Notifier<MenuSendState> {
     await _preview(translate: true);
   }
 
-  /// Vuelve a pedir la vista previa igual (después de una falla pasajera).
+  /// Vuelve a pedir la vista previa igual (después de una falla pasajera; si
+  /// fue al leer la versión guardada, la vuelve a leer).
   Future<void> retryPreview() => _preview(translate: state.translate);
 
   /// «Seguir sin traducir»: la vista previa con la lista como la escribió
-  /// Evelyn.
+  /// Evelyn (con la versión guardada, si había que volver a leerla).
   Future<void> previewWithoutTranslation() => _preview(translate: false);
 
   /// Otra vista previa (otro envío) con la misma versión: después de que
@@ -240,13 +252,18 @@ class MenuSendController extends Notifier<MenuSendState> {
         failure: null,
         result: null,
         recovered: false,
-        sentWithWhatsapp: false,
         whatsAppOpened: null,
       ),
     );
     var version = current.menuVersion;
+    // Hasta que se lea, la versión guardada queda por leer: si la lectura
+    // falla, el próximo intento la vuelve a leer.
+    var reread = latestVersion || current.rereadVersion;
     try {
-      if (latestVersion) version = await _savedVersion();
+      if (reread) {
+        version = await _savedVersion();
+        reread = false;
+      }
       if (version == null) {
         throw const MenuSendFailure(MenuSendFailureKind.menuNotFound);
       }
@@ -266,6 +283,7 @@ class MenuSendController extends Notifier<MenuSendState> {
         state.copyWith(
           step: MenuSendStep.ready,
           menuVersion: version,
+          rereadVersion: false,
           preview: preview,
           quote: quote?.quote,
           requestId: quote?.requestId ?? state.requestId,
@@ -280,6 +298,7 @@ class MenuSendController extends Notifier<MenuSendState> {
         state.copyWith(
           step: MenuSendStep.previewFailed,
           menuVersion: version,
+          rereadVersion: reread,
           failure: failure,
         ),
       );
@@ -373,10 +392,10 @@ class MenuSendController extends Notifier<MenuSendState> {
     _set(current.copyWith(step: MenuSendStep.sending, failure: null));
     try {
       final result = await _repository.send(request);
-      await _sent(result, recovered: false, whatsapp: request.whatsapp);
+      await _sent(result, recovered: false);
     } on MenuSendFailure catch (failure) {
       if (failure.kind == MenuSendFailureKind.alreadySent) {
-        await _recover(preview.sendId, whatsapp: request.whatsapp);
+        await _recover(preview.sendId);
       } else {
         _sendFailed(failure);
       }
@@ -386,8 +405,9 @@ class MenuSendController extends Notifier<MenuSendState> {
   }
 
   /// alreadySent: ese envío ya había salido (la respuesta de un intento
-  /// anterior se perdió). Se confirma leyendo `menu_sends`.
-  Future<void> _recover(String sendId, {required bool whatsapp}) async {
+  /// anterior se perdió). Se confirma leyendo `menu_sends`, que dice por
+  /// dónde salió: el reintento pudo pedir otros canales.
+  Future<void> _recover(String sendId) async {
     final chefId = ref.read(currentChefProvider)?.chefId;
     if (chefId == null) {
       _sendFailed(const MenuSendFailure(MenuSendFailureKind.forbidden));
@@ -408,15 +428,10 @@ class MenuSendController extends Notifier<MenuSendState> {
     await _sent(
       MenuSendResult(sentAt: record.sentAt, via: record.via),
       recovered: true,
-      whatsapp: whatsapp,
     );
   }
 
-  Future<void> _sent(
-    MenuSendResult result, {
-    required bool recovered,
-    required bool whatsapp,
-  }) async {
+  Future<void> _sent(MenuSendResult result, {required bool recovered}) async {
     if (!ref.mounted) return;
     _refreshSendStatus();
     _refreshQuote(quoteSent: state.quote != null);
@@ -426,7 +441,6 @@ class MenuSendController extends Notifier<MenuSendState> {
         result: result,
         failure: null,
         recovered: recovered,
-        sentWithWhatsapp: whatsapp,
         whatsAppOpened: null,
       ),
     );
@@ -441,10 +455,25 @@ class MenuSendController extends Notifier<MenuSendState> {
   void _sendFailed(MenuSendFailure failure) {
     if (!ref.mounted) return;
     _afterFailure(failure);
-    // El email salió aunque el envío no quedó registrado: lo que se muestra
-    // vuelve a leerse.
-    if (failure.emailSent) _refreshSendStatus();
+    // El email salió aunque el envío no quedó registrado, o no se sabe si
+    // salió (sin respuesta: pudo quedar marcado): lo que se muestra vuelve a
+    // leerse.
+    if (failure.emailSent || failure.kind.canRetry) _refreshSendStatus();
     _set(state.copyWith(step: MenuSendStep.sendFailed, failure: failure));
+  }
+
+  /// La pantalla se cerró. Si el último envío quedó sin respuesta, lo que se
+  /// muestra vuelve a leer el envío: el servidor pudo terminar (y marcarlo)
+  /// después de la lectura de la falla, o esa lectura falló sin conexión.
+  void closed() {
+    if (!ref.mounted) return;
+    final failure = state.failure;
+    if (state.step == MenuSendStep.sendFailed &&
+        failure != null &&
+        failure.kind.canRetry &&
+        !failure.emailSent) {
+      _refreshSendStatus();
+    }
   }
 
   /// Si la falla dice que la sesión o el menú cambiaron, la ficha, el editor

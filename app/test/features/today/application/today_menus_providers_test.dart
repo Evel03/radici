@@ -3,9 +3,12 @@
 // cosa para todas (los menús, los últimos envíos y las semanas vivas de sus
 // reservas: nunca una por semana), con «Semana k de N» de la reserva entera
 // aunque empiece antes de lo que lee la agenda y el límite de 48 h antes de
-// la llegada. La hora solo descarta y resalta (no vuelve a leer); guardar,
-// mandar y «Ricarica» sí. Si una lectura falla, el error, sin reintentar
-// solo.
+// la llegada. Cargando hasta la primera lectura con la agenda leída. La hora
+// solo descarta y resalta (no vuelve a leer); guardar, mandar, «Ricarica» y
+// una semana que entra sí, y mientras se vuelve a leer queda lo de antes. Si
+// una lectura falla, el error, sin reintentar solo.
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock.dart';
@@ -14,6 +17,7 @@ import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
+import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/today/application/today_menus_providers.dart';
@@ -46,8 +50,13 @@ void main() {
   late FakeMenuSendsRepository sends;
   late ProviderContainer container;
 
-  Future<void> start(List<CookingSession> booking) async {
-    sessions = FakeSessionsRepository(booking);
+  /// [agenda]: si no es null, la lectura de la agenda espera a que se
+  /// complete.
+  Future<void> start(
+    List<CookingSession> booking, {
+    Completer<void>? agenda,
+  }) async {
+    sessions = FakeSessionsRepository(booking)..pendingAgendaFetch = agenda;
     sends = FakeMenuSendsRepository(menus: menus);
     container = ProviderContainer.test(
       retry: noRetry,
@@ -192,6 +201,27 @@ void main() {
     expect(sends.latestCalls, hasLength(1));
   });
 
+  test('la primera lectura: con la agenda recién leída, carga hasta leer los menús (lo de antes, de una agenda sin leer, no cuenta como «nada que mandar»)', () async {
+    final agenda = Completer<void>();
+    await start(longBooking(), agenda: agenda);
+    // Sin la agenda no hay semanas: no se lee nada.
+    expect(sends.latestCalls, isEmpty);
+
+    sends.pendingLatest = Completer<void>();
+    agenda.complete();
+    await pumpEventQueue();
+    expect(sends.latestCalls, [
+      [sessionId(8)],
+    ]);
+    final reading = container.read(todayPendingMenusProvider);
+    expect(reading.isLoading, isTrue);
+    expect(reading.hasValue, isFalse);
+
+    sends.pendingLatest!.complete();
+    await pumpEventQueue();
+    expect(pending().single.session.id, sessionId(8));
+  });
+
   test('guardar, mandar o «Ricarica» (la revisión) vuelve a leer', () async {
     await start(longBooking());
     expect(pending().single.state, PendingMenuState.noMenu);
@@ -200,6 +230,57 @@ void main() {
     await pumpEventQueue();
     expect(sends.latestCalls, hasLength(2));
     expect(pending().single.state, PendingMenuState.notSent);
+  });
+
+  test(
+    'mientras vuelve a leer (guardar, mandar o «Ricarica»), queda lo de antes',
+    () async {
+      await start(longBooking());
+      expect(pending().single.state, PendingMenuState.noMenu);
+      menus.menus[sessionId(8)] = savedLasagneMenu();
+      sends.pendingLatest = Completer<void>();
+      container.read(weekMenusRevisionProvider.notifier).bump();
+      await pumpEventQueue();
+      expect(sends.latestCalls, hasLength(2));
+      expect(container.read(todayPendingMenusProvider).isLoading, isTrue);
+      expect(pending().single.state, PendingMenuState.noMenu);
+
+      sends.pendingLatest!.complete();
+      await pumpEventQueue();
+      expect(container.read(todayPendingMenusProvider).isLoading, isFalse);
+      expect(pending().single.state, PendingMenuState.notSent);
+    },
+  );
+
+  test('una semana que entra (la medianoche de Roma) también deja lo de antes mientras se lee, y aparece cuando se leyó', () async {
+    await start([
+      // El miércoles 25.
+      ...longBooking(),
+      // El domingo 29: fuera de la tira del domingo 22, dentro de la del 23.
+      buildSession(
+        n: 21,
+        date: CalendarDate(2026, 11, 29),
+        requestId: 'b0000000-0000-4000-8000-0000000000c1',
+        name: 'Marta Bianchi',
+      ),
+    ]);
+    expect([for (final m in pending()) m.session.id], [sessionId(8)]);
+    sends.pendingLatest = Completer<void>();
+    now = DateTime.utc(2026, 11, 23, 9, 30);
+    container
+      ..invalidate(romeTodayProvider)
+      ..invalidate(todayNowProvider);
+    await pumpEventQueue();
+    expect(sends.latestCalls.last, [sessionId(8), sessionId(21)]);
+    expect(container.read(todayPendingMenusProvider).isLoading, isTrue);
+    expect([for (final m in pending()) m.session.id], [sessionId(8)]);
+
+    sends.pendingLatest!.complete();
+    await pumpEventQueue();
+    expect(
+      [for (final m in pending()) m.session.id],
+      [sessionId(8), sessionId(21)],
+    );
   });
 
   test('si una lectura falla: el error, sin reintentar solo; volver a pedirla la lee', () async {

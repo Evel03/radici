@@ -762,6 +762,7 @@
   "todayMenuChangesRequested": "Cambios pedidos",
   "todayMenuDeadline": "Límite: {date}, {time}",
   "todayMenuDeadlinePassed": "Límite vencido: {date}, {time}",
+  "todayMenuDeadlineNearA11y": "Límite: {date}, {time}. Faltan menos de 24 horas.",
   "todayMenusError": "No se pudo saber qué menús faltan mandar.",
   "actionPrepareQuote": "Preparar presupuesto",
   "actionConfirmWithoutQuote": "Confirmar sin presupuesto",

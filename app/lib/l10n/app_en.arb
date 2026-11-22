@@ -762,6 +762,7 @@
   "todayMenuChangesRequested": "Changes requested",
   "todayMenuDeadline": "Deadline: {date}, {time}",
   "todayMenuDeadlinePassed": "Deadline passed: {date}, {time}",
+  "todayMenuDeadlineNearA11y": "Deadline: {date}, {time}. Less than 24 hours left.",
   "todayMenusError": "Couldn't check which menus still need to be sent.",
   "actionPrepareQuote": "Prepare a quote",
   "actionConfirmWithoutQuote": "Confirm without a quote",

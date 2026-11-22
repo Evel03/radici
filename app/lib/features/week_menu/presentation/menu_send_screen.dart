@@ -11,8 +11,9 @@
 // reemplazo que manda ella. Abajo, «Mandar» con los canales elegidos. Cada
 // falla lo dice y ofrece lo que se puede hacer (reintentar, seguir sin
 // traducir, otra vista previa, mandar solo por WhatsApp…); nada se reintenta
-// solo. Después de mandar, cuándo y por dónde salió y, si fue por WhatsApp,
-// el botón para abrirlo (en el teléfono se abre solo).
+// solo. La falla del envío va arriba de la vista previa y se trae a la vista
+// al aparecer. Después de mandar, cuándo y por dónde salió y, si fue por
+// WhatsApp, el botón para abrirlo (en el teléfono se abre solo).
 //
 // La semana 1 de un presupuesto sin aceptar lo lleva (SPEC 5.8): arriba del
 // mensaje, el presupuesto de la foto (la versión que sale, cada semana con su
@@ -96,6 +97,11 @@ class _MenuSendScreenState extends ConsumerState<MenuSendScreen> {
   /// Qué mensaje se ve; null: el del canal elegido (WhatsApp primero).
   MenuSendChannel? _view;
 
+  /// La falla del envío, arriba de la vista previa: al aparecer se trae a la
+  /// vista («Mandar» está abajo, así que lo normal es tocarlo con la vista
+  /// previa desplazada, y la falla quedaría fuera de la pantalla).
+  final GlobalKey _sendFailureKey = GlobalKey();
+
   MenuSendController get _controller =>
       ref.read(menuSendProvider(widget.sessionId).notifier);
 
@@ -114,6 +120,21 @@ class _MenuSendScreenState extends ConsumerState<MenuSendScreen> {
 
   void _close([MenuSendExit? exit]) => Navigator.of(context).pop(exit);
 
+  /// Trae a la vista la falla del envío, después del cuadro que la muestra.
+  void _revealSendFailure() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _sendFailureKey.currentContext;
+      if (!mounted || target == null) return;
+      unawaited(
+        Scrollable.ensureVisible(
+          target,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        ),
+      );
+    });
+  }
+
   Future<void> _openWhatsApp() async {
     final messenger = _messenger.currentState;
     final message = AppLocalizations.of(context).launchFailed;
@@ -129,6 +150,12 @@ class _MenuSendScreenState extends ConsumerState<MenuSendScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final state = ref.watch(menuSendProvider(widget.sessionId));
+    ref.listen(menuSendProvider(widget.sessionId), (previous, next) {
+      if (next.step == MenuSendStep.sendFailed &&
+          previous?.step != MenuSendStep.sendFailed) {
+        _revealSendFailure();
+      }
+    });
     final sending = state.step == MenuSendStep.sending;
     final Widget body = switch (state.step) {
       MenuSendStep.idle ||
@@ -149,6 +176,7 @@ class _MenuSendScreenState extends ConsumerState<MenuSendScreen> {
       MenuSendStep.sendFailed => _PreviewView(
         state: state,
         now: ref.watch(todayNowProvider),
+        sendFailureKey: _sendFailureKey,
         view: _view,
         onView: (view) => setState(() => _view = view),
         onEmail: _controller.setEmail,
@@ -165,6 +193,10 @@ class _MenuSendScreenState extends ConsumerState<MenuSendScreen> {
     return PopScope<Object?>(
       // Mientras manda no se cierra: tiene que saber cómo salió.
       canPop: !sending,
+      // Al cerrar sin saber si salió, lo de abajo vuelve a leer el envío.
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _controller.closed();
+      },
       child: ScaffoldMessenger(
         key: _messenger,
         child: Scaffold(
@@ -292,12 +324,17 @@ class _PreviewFailed extends StatelessWidget {
     if (failure == null) return const SizedBox.shrink();
     final kind = failure.kind;
     // Seguir sin traducir, si la traducción pudo ser lo que falló: lo pide
-    // la clienta que no lee español, mientras se traducía.
+    // la clienta que no lee español, mientras se traducía. También un 500
+    // (otro 4xx de Anthropic, como una clave revocada o sin crédito, da
+    // `server`): sin traducir no se llama a Claude, y si el 500 fue de la
+    // base, vuelve a fallar sin daño.
     final translating = state.translate && clientLocale != ClientLocale.es;
     final translationFailed =
         kind == MenuSendFailureKind.untranslatable ||
         kind == MenuSendFailureKind.notConfigured ||
         kind == MenuSendFailureKind.rateLimited;
+    final translationMaybeFailed =
+        translating && (kind.canRetry || kind == MenuSendFailureKind.server);
     final withoutTranslation = Text(l10n.menuSendWithoutTranslation);
     const withoutTranslationKey = ValueKey('menu-send-without-translation');
     final actions = <Widget>[
@@ -307,15 +344,15 @@ class _PreviewFailed extends StatelessWidget {
           onPressed: onRetry,
           child: Text(l10n.actionRetry),
         ),
-      // La acción principal si la traducción no salió; al lado de
-      // «Reintentar», la otra opción.
+      // La acción principal si la traducción no salió; si pudo ser ella, la
+      // otra opción (al lado de «Reintentar», si la falla es pasajera).
       if (translationFailed)
         FilledButton(
           key: withoutTranslationKey,
           onPressed: onWithoutTranslation,
           child: withoutTranslation,
         )
-      else if (kind.canRetry && translating)
+      else if (translationMaybeFailed)
         OutlinedButton(
           key: withoutTranslationKey,
           onPressed: onWithoutTranslation,
@@ -377,11 +414,13 @@ class _PreviewFailed extends StatelessWidget {
 }
 
 /// La vista previa: a quién va, en qué idioma, por dónde mandarlo y lo que le
-/// llega. Con una falla del envío, arriba dice por qué y qué se puede hacer.
+/// llega. Con una falla del envío, arriba dice por qué y qué se puede hacer
+/// (con [sendFailureKey], para traerla a la vista).
 class _PreviewView extends StatelessWidget {
   const _PreviewView({
     required this.state,
     required this.now,
+    required this.sendFailureKey,
     required this.view,
     required this.onView,
     required this.onEmail,
@@ -395,6 +434,7 @@ class _PreviewView extends StatelessWidget {
 
   /// Ahora: el plazo del presupuesto, si sale en este momento.
   final DateTime now;
+  final GlobalKey sendFailureKey;
   final MenuSendChannel? view;
   final ValueChanged<MenuSendChannel> onView;
   final ValueChanged<bool> onEmail;
@@ -433,6 +473,7 @@ class _PreviewView extends StatelessWidget {
           children: [
             if (state.step == MenuSendStep.sendFailed && state.failure != null)
               Padding(
+                key: sendFailureKey,
                 padding: const EdgeInsets.only(top: 8, bottom: 8),
                 child: _SendFailure(
                   state: state,

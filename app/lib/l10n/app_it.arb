@@ -3644,6 +3644,14 @@
       "time": { "type": "String", "example": "10:00" }
     }
   },
+  "todayMenuDeadlineNearA11y": "Limite: {date}, {time}. Mancano meno di 24 ore.",
+  "@todayMenuDeadlineNearA11y": {
+    "description": "Hoy, en «Menús para mandar», solo para el lector de pantalla: lo que se ve es todayMenuDeadline, resaltado con color y un ícono de aviso porque faltan menos de 24 h para el límite (el color y el ícono no se leen).",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 23 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
   "todayMenusError": "Non è stato possibile sapere quali menù mancano da inviare.",
   "@todayMenusError": {
     "description": "Hoy: no se pudieron leer los menús de las semanas próximas (con «Riprova»)."

@@ -7,9 +7,11 @@
 // vivas de sus reservas (para «Semana k de N»): tres consultas a la vez. Se
 // vuelve a leer si cambian las semanas que entran, si se mueve o se cancela
 // una sesión, y con cada cambio de un menú o de su envío desde este teléfono
-// o con «Ricarica» (weekMenusRevisionProvider). La hora («ahora», al minuto)
-// solo descarta las que ya empezaron y resalta los límites: no vuelve a leer
-// nada. Nada se loguea.
+// o con «Ricarica» (weekMenusRevisionProvider), y mientras tanto queda lo de
+// antes; la primera lectura, cuando llega la agenda, carga sin nada (sin la
+// agenda no hay semanas, y eso no quiere decir que no falte ningún menú). La
+// hora («ahora», al minuto) solo descarta las que ya empezaron y resalta los
+// límites: no vuelve a leer nada. Nada se loguea.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
@@ -55,17 +57,27 @@ const TodayMenusData _noMenusData = (
 final todayMenusDataProvider = FutureProvider.autoDispose<TodayMenusData>((
   ref,
 ) async {
+  // Dos cambios vuelven a leer con ref.watch (un reload: el whenData de
+  // todayPendingMenusProvider descarta lo de antes y la sección espera a la
+  // lectura): otra cocinera, para no mostrar lo de la anterior, y la agenda
+  // leída por primera vez, porque lo de antes era de una agenda sin leer (sin
+  // semanas, nada que leer) y no quiere decir «nada que mandar»: Hoy diría
+  // «Nada pendiente» mientras lee.
   final chefId = ref.watch(currentChefProvider.select((chef) => chef?.chefId));
+  ref.watch(sessionsControllerProvider.select((sessions) => sessions.hasValue));
+  // Lo demás vuelve a leer con invalidateSelf (un refresh): mientras lee
+  // queda lo de antes, sin que la sección desaparezca.
   // Las semanas que entran: si solo cambia otra cosa de ellas, no se vuelve a
   // leer (una que se mueve avisa por sessionChangesProvider).
-  ref.watch(
+  ref.listen(
     todayMenuCandidatesProvider.select(
       (sessions) =>
           [for (final session in sessions) '${session.id}/${session.requestId}']
               .join(','),
     ),
+    (_, _) => ref.invalidateSelf(),
   );
-  ref.watch(weekMenusRevisionProvider);
+  ref.listen(weekMenusRevisionProvider, (_, _) => ref.invalidateSelf());
   ref.listen(sessionChangesProvider, (_, change) {
     if (change != null) ref.invalidateSelf();
   });
@@ -92,10 +104,22 @@ final todayMenusDataProvider = FutureProvider.autoDispose<TodayMenusData>((
   );
 }, retry: (_, _) => null);
 
+/// Ya se leyeron los menús de todas las semanas que entran (cada una tiene su
+/// fila de menús). Sin eso Hoy no dice «Nada pendiente»: al volver a entrar
+/// sin reiniciar la app, la agenda trae las semanas antes de que lleguen sus
+/// menús, y lo leído hasta entonces era de una agenda sin semanas.
+final todayMenusSettledProvider = Provider.autoDispose<bool>((ref) {
+  final candidates = ref.watch(todayMenuCandidatesProvider);
+  final data = ref.watch(todayMenusDataProvider).value;
+  if (data == null) return false;
+  return candidates.every((session) => data.summaries.containsKey(session.id));
+});
+
 /// Las semanas de los próximos 7 días que esperan algo de Evelyn con su menú
-/// (pendingMenus), por fecha. Cargando hasta la primera lectura; mientras se
-/// vuelve a leer, lo de antes: una semana que acaba de entrar y todavía no se
-/// leyó (no tiene fila de menús) espera a la lectura, en lugar de aparecer un
+/// (pendingMenus), por fecha. Cargando hasta la primera lectura con la agenda
+/// leída; mientras se vuelve a leer (un refresh: whenData conserva lo de
+/// antes), lo de antes: una semana que acaba de entrar y todavía no se leyó
+/// (no tiene fila de menús) espera a la lectura, en lugar de aparecer un
 /// momento como «sin menú».
 final todayPendingMenusProvider =
     Provider.autoDispose<AsyncValue<List<PendingMenu>>>((ref) {
