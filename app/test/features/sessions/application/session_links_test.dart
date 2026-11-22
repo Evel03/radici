@@ -1,15 +1,16 @@
 // Enlaces de la ficha de la sesión: Mapas según la plataforma (Apple Maps en
-// un iPhone o una Mac, también /gestione/ en Safari; Google Maps en el resto)
-// y el WhatsApp, en el idioma de la clienta. La hora de llegada va solo en una
-// sesión que no está cancelada, cocinada ni cobrada, de hoy en adelante (el
-// día de Roma); en las demás, el mensaje nombra la sesión por su fecha, sin la
-// hora. El WhatsApp sale del teléfono de quien usa la app: si es un
-// colaborador de la cocinera, escribe de parte de ella y no dice ser ella ni
-// ser quien llega. sessionLinksProvider elige con ChefAccount.collaborator y
-// con el día de hoy de romeTodayProvider, que cambia a la medianoche de Roma.
-// Nunca lleva la dirección, las alergias, las notas, la zona ni el apellido.
-// La prueba en el iPhone sigue haciendo falta: un test no ve qué plataforma
-// reporta Flutter web en Safari.
+// un iPhone o una Mac, también /gestione/ en Safari; Google Maps en el resto),
+// hasta la dirección de la ficha o, sin ella, hasta la zona del pedido con la
+// ciudad, y el WhatsApp, en el idioma de la clienta. La hora de llegada va
+// solo en una sesión que no está cancelada, cocinada ni cobrada, de hoy en
+// adelante (el día de Roma); en las demás, el mensaje nombra la sesión por su
+// fecha, sin la hora. El WhatsApp sale del teléfono de quien usa la app: si es
+// un colaborador de la cocinera, escribe de parte de ella y no dice ser ella
+// ni ser quien llega. sessionLinksProvider elige con ChefAccount.collaborator
+// y con el día de hoy de romeTodayProvider, que cambia a la medianoche de
+// Roma. El WhatsApp nunca lleva la dirección, las alergias, las notas, la zona
+// ni el apellido. La prueba en el iPhone sigue haciendo falta: un test no ve
+// qué plataforma reporta Flutter web en Safari.
 import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart';
@@ -25,6 +26,7 @@ import 'package:radici/features/sessions/application/session_links.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
+import 'package:radici/features/sessions/domain/session_links.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
 import '../../../support/fakes.dart';
@@ -242,13 +244,47 @@ void main() {
           expect(other.directions, own.directions);
         }
         expect(own.call.toString(), 'tel:+393331234567');
+        expect(own.directions!.target, DirectionsTarget.address);
         expect(
-          own.directions!.host,
+          own.directions!.uri.host,
           appleMaps ? 'maps.apple.com' : 'www.google.com',
         );
       }
     },
   );
+
+  test('«Come arrivare» va hasta la dirección de la ficha; sin ella, hasta la zona del pedido con la ciudad; sin ninguna, a ningún lado', () {
+    SessionDirections? directions(CookingSession session) => sessionLinksFor(
+      session,
+      chefName: 'Evelyn',
+      appleMaps: false,
+      onBehalf: false,
+      today: dayBefore,
+    ).directions;
+
+    final toAddress = directions(
+      buildSession(zone: 'Via Gabriele Camozzi 50'),
+    )!;
+    expect(toAddress.target, DirectionsTarget.address);
+    expect(
+      toAddress.uri.queryParameters['destination'],
+      'Via Gombito 12, 24129 Bergamo',
+    );
+
+    // La zona del pedido manda sobre la de la ficha, como en la fila de la
+    // zona.
+    final web = buildSession(address: null, zone: 'Via Gabriele Camozzi 50');
+    final toZone = directions(
+      web.copyWith(client: web.client.copyWith(zone: 'Città Alta')),
+    )!;
+    expect(toZone.target, DirectionsTarget.zone);
+    expect(
+      toZone.uri.queryParameters['destination'],
+      'Via Gabriele Camozzi 50, Bergamo',
+    );
+
+    expect(directions(buildSession(address: null, zone: null)), isNull);
+  });
 
   test('nunca la dirección, las alergias, las notas, la zona ni el apellido: cocinera o colaborador, con la hora de llegada o sin ella, en todos los estados y en los tres idiomas', () {
     // Una sesión con todo: la dirección de la ficha, sus alérgenos, los del

@@ -2,15 +2,14 @@
 // siguientes, el final de la reserva, qué ofrecer si alguna que se quiso
 // cancelar ya está cobrada), la última sesión viva de una reserva semanal
 // (donde va «Rinnova»), la próxima sesión viva de la misma ficha, las
-// sesiones de cada día de la agenda, desde qué día las lee (también 7 días
-// antes de hoy) y el enlace de «Cómo llegar».
+// sesiones de cada día de la agenda y desde qué día las lee (también 7 días
+// antes de hoy). El enlace de «Cómo llegar», en session_links_test.dart.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_booking.dart';
-import 'package:radici/features/sessions/domain/session_links.dart';
 
 import '../../../support/session_fixtures.dart';
 
@@ -376,34 +375,6 @@ void main() {
       final sessions = [...booking, cancelled, otherClient];
       expect(nextLiveSessionOfClient(last, sessions), isNull);
       expect(hasLaterLiveSession(last, sessions), isFalse);
-    });
-  });
-
-  group('«Cómo llegar»', () {
-    const address = 'Via Gombito 12, 24129 Bergamo';
-
-    test('en el iPhone, Apple Maps con el camino hasta la dirección', () {
-      expect(
-        directionsUri(address: address, apple: true).toString(),
-        'https://maps.apple.com/?daddr=Via%20Gombito%2012%2C%2024129%20Bergamo',
-      );
-    });
-
-    test('en Android y en el resto, Google Maps', () {
-      expect(
-        directionsUri(address: address, apple: false).toString(),
-        'https://www.google.com/maps/dir/?api=1&destination=Via%20Gombito%2012%2C%2024129%20Bergamo',
-      );
-    });
-
-    test('sin dirección, nada que abrir', () {
-      expect(directionsUri(address: null, apple: true), isNull);
-      expect(directionsUri(address: '   ', apple: false), isNull);
-    });
-
-    test('un & o un # en la dirección no cortan el enlace', () {
-      final uri = directionsUri(address: 'Via A & B #3', apple: true)!;
-      expect(uri.queryParameters['daddr'], 'Via A & B #3');
     });
   });
 }

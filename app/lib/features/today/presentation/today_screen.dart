@@ -5,9 +5,10 @@
 // renovación: renovar son dos toques) y la tira de 7 días (cada día abre la
 // Agenda en ese día). Abajo, en el tercio inferior del teléfono, «Come
 // arrivare» y WhatsApp de la sesión principal (sin dirección, WhatsApp y
-// «Aggiungi indirizzo», como la ficha); sin ninguna sesión, «Vedi le
-// richieste». «Hoy» es el día de Roma y cambia a la medianoche sin reabrir la
-// app. Deslizar para actualizar (o «Ricarica», arriba) vuelve a leer todo.
+// «Aggiungi indirizzo», como la ficha, y arriba, si hay zona, «Come arrivare
+// (zona)»); sin ninguna sesión, «Vedi le richieste». «Hoy» es el día de Roma
+// y cambia a la medianoche sin reabrir la app. Deslizar para actualizar (o
+// «Ricarica», arriba) vuelve a leer todo.
 // Mientras las sesiones cargan, o si no se pudieron leer, la rueda o el aviso
 // van en el lugar de la tarjeta: los pendientes y la tira siguen.
 //
@@ -27,6 +28,7 @@ import 'package:radici/features/requests/domain/inbox.dart';
 import 'package:radici/features/requests/presentation/chef_refresh_button.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
+import 'package:radici/features/sessions/domain/session_links.dart';
 import 'package:radici/features/sessions/presentation/client_address_dialog.dart';
 import 'package:radici/features/sessions/presentation/session_labels.dart';
 import 'package:radici/features/sessions/presentation/session_widgets.dart';
@@ -474,7 +476,9 @@ class _SectionTitle extends StatelessWidget {
 
 /// «Come arrivare» y WhatsApp de la sesión principal. Sin dirección (las
 /// reservas que llegan por la web), WhatsApp pasa a ser el principal y en lugar
-/// de «Come arrivare» va «Aggiungi indirizzo», que la guarda en la ficha.
+/// de «Come arrivare» va «Aggiungi indirizzo», que la guarda en la ficha; si
+/// hay zona, arriba va «Come arrivare (zona)», que lleva hasta la zona (no es
+/// una dirección verificada), como en la ficha.
 class _TodayActions extends ConsumerWidget {
   const _TodayActions({required this.session, required this.showWhose});
 
@@ -497,6 +501,10 @@ class _TodayActions extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final links = ref.watch(todayLinksProvider);
+    final directions = links?.directions;
+    final toZone = directions?.target == DirectionsTarget.zone
+        ? directions
+        : null;
     VoidCallback? launch(Uri? uri) =>
         uri == null ? null : () => unawaited(_launch(context, ref, uri));
     const whatsAppKey = ValueKey('today-whatsapp');
@@ -508,7 +516,7 @@ class _TodayActions extends ConsumerWidget {
     if (session.address != null) {
       primary = FilledButton.icon(
         key: const ValueKey('today-directions'),
-        onPressed: launch(links?.directions),
+        onPressed: launch(directions?.uri),
         icon: const Icon(Icons.directions_outlined),
         label: Text(l10n.sessionDirections),
       );
@@ -545,6 +553,15 @@ class _TodayActions extends ConsumerWidget {
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (toZone != null) ...[
+          OutlinedButton.icon(
+            key: const ValueKey('today-directions-zone'),
+            onPressed: launch(toZone.uri),
+            icon: const Icon(Icons.directions_outlined),
+            label: Text(l10n.sessionDirectionsZone),
           ),
           const SizedBox(height: 8),
         ],
