@@ -6,9 +6,11 @@
 // Va debajo de la celda (arriba si abajo no entra) sin taparla, no atrapa el
 // mouse (al bajar a la celda de abajo se abre la suya) y se cierra al salir de
 // la celda, unos segundos después de soltarla o al tocar cualquier otra cosa.
-// Es una tarjeta como las de la app, con el punto de la celda: el principal
-// para una sesión y el terciario para un pedido. El lector de pantalla no lo
-// lee acá: el mismo texto va en la celda (agendaSummaryText).
+// En el teléfono se queda con el toque: tocarlo lo cierra sin tocar lo que
+// tapa. Es una tarjeta como las de la app, con el punto de la celda: el
+// principal para una sesión y el terciario para un pedido. El lector de
+// pantalla no lo lee acá: el mismo texto va en la celda (agendaSummaryText).
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/requests/domain/agenda_day_summary.dart';
@@ -73,7 +75,7 @@ extension AgendaSummaryLabels on AppLocalizations {
 }
 
 /// El cartel de [day] sobre [child] (la celda). Sin [summary], solo [child].
-class AgendaDaySummaryTooltip extends StatelessWidget {
+class AgendaDaySummaryTooltip extends StatefulWidget {
   const AgendaDaySummaryTooltip({
     super.key,
     required this.day,
@@ -86,22 +88,49 @@ class AgendaDaySummaryTooltip extends StatelessWidget {
   final Widget child;
 
   @override
+  State<AgendaDaySummaryTooltip> createState() =>
+      _AgendaDaySummaryTooltipState();
+}
+
+class _AgendaDaySummaryTooltipState extends State<AgendaDaySummaryTooltip> {
+  /// Si lo último que pasó por la celda o la apretó fue un mouse (al
+  /// principio, sí). Con el dedo o el lápiz, no.
+  bool _mouse = true;
+
+  /// Anota si [event] es de un mouse. Llega antes de que se abra el cartel:
+  /// el mouse tiene que quedarse encima (agendaSummaryHoverDelay) y el dedo,
+  /// apretar medio segundo.
+  void _track(PointerEvent event) {
+    final mouse = event.kind == PointerDeviceKind.mouse;
+    if (mouse != _mouse) setState(() => _mouse = mouse);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (summary.isEmpty) return child;
+    if (widget.summary.isEmpty) return widget.child;
     return RawTooltip(
       // Lo lee la celda (agendaSummaryText): acá no se repite.
       semanticsTooltip: null,
       hoverDelay: agendaSummaryHoverDelay,
       touchDelay: agendaSummaryTouchDelay,
-      // No atrapa el mouse ni los toques: tapa las celdas de abajo, que
-      // siguen respondiendo.
-      ignorePointer: true,
+      // Con el mouse no lo atrapa: tapa las celdas de abajo, que siguen
+      // respondiendo (al bajar a una se abre la suya). Con el dedo se queda
+      // con el toque: tocarlo lo cierra, como tocar cualquier otra cosa, sin
+      // tocar lo que tapa y no se ve (otra celda, «Blocca questo giorno», una
+      // sesión).
+      ignorePointer: _mouse,
       positionDelegate: _belowOrAboveCell,
       tooltipBuilder: (context, animation) => FadeTransition(
         opacity: animation,
-        child: _SummaryCard(day: day, summary: summary),
+        child: _SummaryCard(day: widget.day, summary: widget.summary),
       ),
-      child: child,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: _track,
+        // En una computadora con pantalla táctil, el mouse vuelve a pasar.
+        onPointerHover: _track,
+        child: widget.child,
+      ),
     );
   }
 }

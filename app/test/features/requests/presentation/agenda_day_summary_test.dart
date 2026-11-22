@@ -2,11 +2,12 @@
 // un momento) o apretando la celda un rato, el resumen de sus sesiones y de
 // los pedidos que lo preferían, debajo de la celda (arriba si abajo no entra)
 // sin taparla. Se cierra al salir, solo unos segundos después de soltar o al
-// tocar otra cosa; no atrapa el mouse, y tocar la celda la sigue eligiendo.
-// Nada de alergias, dirección, teléfono ni notas; el lector de pantalla lo lee
-// en la celda; en el tema oscuro, con sus colores. "Hoy": lunes 19/10/2026
-// (testNow). La reserva de prueba: miércoles 21/10, 28/10, 4/11 y 11/11, con
-// un pedido nuevo el 21/10.
+// tocar otra cosa; no atrapa el mouse, pero sí el dedo (tocarlo lo cierra sin
+// tocar lo que tapa), y tocar la celda la sigue eligiendo. Nada de alergias,
+// dirección, teléfono ni notas; el lector de pantalla lo lee en la celda; en
+// el tema oscuro, con sus colores. "Hoy": lunes 19/10/2026 (testNow). La
+// reserva de prueba: miércoles 21/10, 28/10, 4/11 y 11/11, con un pedido
+// nuevo el 21/10.
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -240,6 +241,62 @@ void main() {
       await tester.pumpAndSettle();
       expectSelected('mercoledì 21 ottobre 2026');
       expect(anySummary, findsNothing);
+    },
+  );
+
+  testWidgets(
+    'en el teléfono, tocar el cartel lo cierra sin tocar lo que tapa: ni la celda de abajo ni «Blocca questo giorno»',
+    (tester) async {
+      final app = await openAgenda(tester);
+
+      // El del 21 tapa la celda del 28: tocarlo ahí no elige el 28.
+      await tester.longPress(day('2026-10-21'));
+      await tester.pumpAndSettle();
+      final below = tester.getCenter(day('2026-10-28'));
+      expect(
+        tester.getRect(summaryOf('2026-10-21')).contains(below),
+        isTrue,
+        reason: 'el cartel del 21 tapa la celda del 28',
+      );
+      await tester.tapAt(below);
+      await tester.pumpAndSettle();
+      expect(anySummary, findsNothing);
+      expectSelected('lunedì 19 ottobre 2026');
+
+      // El del 28 (la última fila) cae sobre la tarjeta del día elegido y tapa
+      // parte de «Blocca questo giorno»: tocarlo ahí no bloquea el 19.
+      await tester.longPress(day('2026-10-28'));
+      await tester.pumpAndSettle();
+      final covered = tester
+          .getRect(summaryOf('2026-10-28'))
+          .intersect(tester.getRect(byKey('availability-block-2026-10-19')));
+      expect(
+        covered.isEmpty,
+        isFalse,
+        reason: 'el cartel del 28 tapa parte de «Blocca questo giorno»',
+      );
+      await tester.tapAt(covered.center);
+      await tester.pumpAndSettle();
+      expect(anySummary, findsNothing);
+      expect(app.availability.blockCalls, isEmpty);
+      expectSelected('lunedì 19 ottobre 2026');
+    },
+  );
+
+  testWidgets(
+    'tocado con el dedo y después con el mouse encima, el cartel vuelve a no atrapar el mouse',
+    (tester) async {
+      await openAgenda(tester);
+      await tester.longPress(day('2026-10-21'));
+      await tester.pumpAndSettle();
+      expect(summaryOf('2026-10-21'), findsOneWidget);
+
+      final gesture = await mouse(tester);
+      await hover(tester, gesture, day('2026-10-21'));
+      await gesture.moveTo(tester.getCenter(day('2026-10-28')));
+      await tester.pumpAndSettle();
+      expect(summaryOf('2026-10-21'), findsNothing);
+      expect(summaryOf('2026-10-28'), findsOneWidget);
     },
   );
 
