@@ -233,9 +233,13 @@ test("fecha preferida: de mañana a +56 días (8 semanas), fechas reales", () =>
   assert.equal(errorsOf(payload({ preferredDate: "20/10/2026" })).preferredDate, "invalid");
 });
 
-test("textos de 2026-11-19 (y 2026-11-16 para las páginas abiertas antes): privacy y salud; las privacy viejas solo para que una página v1 reciba errores de página", () => {
-  assert.equal(CONSENT_VERSION, "2026-11-19");
-  // Una página abierta antes del despliegue manda la privacy de 2026-11-16 (sin el menú, que esa página no
+test("textos de 2026-11-22 (y 2026-11-19 y 2026-11-16 para las páginas abiertas antes): privacy y salud; las privacy viejas solo para que una página v1 reciba errores de página", () => {
+  assert.equal(CONSENT_VERSION, "2026-11-22");
+  // Una página abierta antes del despliegue de la página de la reserva manda la privacy de 2026-11-19: el
+  // formulario no cambió, así que se sigue guardando, con la salud vigente.
+  assert.ok(parsePublicRequest(payload({ consents: { privacy: "2026-11-19", health: null } }), { today: TODAY }).ok);
+  assert.ok(parsePublicRequest(withAllergies({ consents: { privacy: "2026-11-19", health: HEALTH_CONSENT_VERSION } }), { today: TODAY }).ok);
+  // Una página abierta antes del menú manda la privacy de 2026-11-16 (sin el menú, que esa página no
   // tiene): se sigue guardando, con su salud.
   assert.ok(parsePublicRequest(payload({ version: 3, consents: { privacy: "2026-11-16", health: null } }), { today: TODAY }).ok);
   assert.ok(parsePublicRequest(withAllergies({ version: 3, consents: { privacy: "2026-11-16", health: "2026-11-16" } }), { today: TODAY }).ok);
@@ -257,12 +261,12 @@ test("versiones aceptadas: la vigente vale para la privacy; la salud tiene su pr
     HEALTH_CONSENT_VERSIONS.includes(HEALTH_CONSENT_VERSION),
     "al cambiar el texto de salud, sumar la versión nueva a HEALTH_CONSENT_VERSIONS y dejar la anterior mientras haya páginas en caché",
   );
-  // La salud no sigue a CONSENT_VERSION: la privacy 2026-11-19 no la tocó. Si la web mandara la versión de
-  // la privacy, la base cerraría el consentimiento de salud de un prospecto que vuelve (y le borraría las
-  // restricciones), y las páginas ya abiertas quedarían afuera.
+  // La salud no sigue a CONSENT_VERSION: las privacy 2026-11-19 y 2026-11-22 no la tocaron. Si la web mandara
+  // la versión de la privacy, la base cerraría el consentimiento de salud de un prospecto que vuelve (y le
+  // borraría las restricciones), y las páginas ya abiertas quedarían afuera.
   assert.equal(HEALTH_CONSENT_VERSION, "2026-11-16");
   assert.deepEqual([...HEALTH_CONSENT_VERSIONS], ["2026-11-16"]);
-  assert.deepEqual([...CONSENT_VERSIONS], ["2026-11-19", "2026-11-16"]);
+  assert.deepEqual([...CONSENT_VERSIONS], ["2026-11-22", "2026-11-19", "2026-11-16"]);
   for (const list of [CONSENT_VERSIONS, HEALTH_CONSENT_VERSIONS, LEGACY_PAGE_CONSENT_VERSIONS]) {
     assert.equal(new Set(list).size, list.length, `sin repetidas: ${list.join(", ")}`);
   }

@@ -7,8 +7,9 @@
 -- página de la web donde la clienta lo ve entero y lo confirma o pide cambios: todavía no tiene
 -- cuenta (M2), así que el link es la llave.
 --
---   1. menu_sends: cada envío, con la foto de lo que se mandó (snapshot: los platos, la lista y la
---      nota ya en el idioma de la clienta), por dónde salió y lo que contestó la clienta. La página
+--   1. menu_sends: cada envío, con la foto de lo que se mandó (snapshot: los platos y la lista en el
+--      idioma de la clienta, y la nota tal como la escribió Evelyn), por dónde salió y lo que contestó
+--      la clienta. La página
 --      muestra el último envío de cada semana tal como salió, aunque Evelyn edite el menú después, y
 --      la confirmación vale para esa foto.
 --   2. client_links: los links de la clienta. Cada envío crea uno al salir; la base guarda solo el
@@ -38,10 +39,14 @@
 -- sent_at (con el mismo sent_at, el de id mayor: el mismo orden en todas las funciones).
 --
 -- snapshot: lo arma la función chef, en el idioma de la clienta (locale), con los platos (nombre,
--- descripción, alérgenos, dieta, porciones y foto), la lista de compras, la nota y las fechas de la
--- reserva. Lo leen la página de la clienta y el email. La base solo controla que sea un objeto y su
+-- descripción, alérgenos, dieta, porciones y foto), la lista de compras, la nota (tal como la escribió
+-- Evelyn: nunca se traduce) y las fechas de la reserva. Lo leen la página de la clienta y el email. La base solo controla que sea un objeto y su
 -- tamaño. Nunca lleva la dirección, las alergias de la clienta ni nada de pagos.
--- translated: la lista y la nota se tradujeron solas al idioma de la clienta.
+-- translated: los nombres de la lista de compras se tradujeron solos al idioma de la clienta (la nota
+-- sale como la escribió Evelyn: decisión de Nicolas del 22/11/2026, SPEC §6).
+-- fingerprint: la huella de lo que entra en la foto al prepararla (private.menu_send_fingerprint:
+-- día y hora de la sesión, semanas vivas de la reserva, versión del menú y los platos del catálogo con
+-- sus alérgenos). Si cambia antes de mandarlo, el envío no sale (menu_changed).
 -- sent_via: 'email', 'whatsapp' o los dos.
 -- client_confirmed_at: la clienta confirmó ese menú. changes_*: la clienta pidió cambios (con un
 -- mensaje). Solo una de las dos cosas, y solo en un envío que salió.
@@ -55,6 +60,7 @@ create table public.menu_sends (
   locale               text not null,
   snapshot             jsonb not null,
   translated           boolean not null default false,
+  fingerprint          text,
   created_at           timestamptz not null default now(),
   sent_at              timestamptz,
   sent_via             text[],
@@ -90,7 +96,7 @@ create index menu_sends_por_sesion on public.menu_sends (session_id, sent_at des
 comment on table public.menu_sends is
   'Envíos del menú de una semana a la clienta (SPEC 5.8): la foto de lo que se mandó (snapshot, en su idioma), por dónde salió y su respuesta (confirmó o pidió cambios). sent_at null = vista previa que no salió. Lo escriben solo las funciones de la service role; la cocina lo lee.';
 comment on column public.menu_sends.snapshot is
-  'Lo que ve la clienta, tal como salió: platos, lista de compras, nota y fechas, en su idioma. Nunca dirección, alergias de la clienta ni pagos.';
+  'Lo que ve la clienta, tal como salió: platos, lista de compras y fechas en su idioma, y la nota tal como la escribió Evelyn. Nunca dirección, alergias de la clienta ni pagos.';
 
 alter table public.menu_sends enable row level security;
 
@@ -133,6 +139,43 @@ revoke all on table public.client_links from public, anon, authenticated, servic
 grant select, insert, update, delete on table public.client_links to service_role;
 
 -- ---------------------------------------------------------------------
+-- private.menu_send_fingerprint(p_session_id): la huella (md5) de todo lo que entra en la foto de un
+-- envío y puede cambiar sin save_session_menu: el día y la hora de la sesión, las semanas vivas de la
+-- reserva (k de N y la lista de fechas), la versión del menú (platos, porciones, lista y nota) y, de
+-- cada plato, lo que sale del catálogo (nombres, descripciones, dieta, foto y alérgenos). La foto se
+-- arma con chef_menu_send_context; prepare, link y complete comparan contra la huella de ese momento.
+-- ---------------------------------------------------------------------
+create function private.menu_send_fingerprint(p_session_id uuid)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select md5(jsonb_build_object(
+    'session', (select jsonb_build_object('date', s."date", 'start', s.start_time)
+                from public.sessions s where s.id = p_session_id),
+    'weeks', (select coalesce(jsonb_agg(jsonb_build_object('id', o.id, 'date', o."date", 'start', o.start_time)
+                                        order by o."date", o.start_time, o.id), '[]'::jsonb)
+              from public.sessions s
+              join public.sessions o on o.request_id = s.request_id and o.status <> 'cancelled'
+              where s.id = p_session_id),
+    'menu', (select m.version from public.session_menus m where m.session_id = p_session_id),
+    'dishes', (select coalesce(jsonb_agg(jsonb_build_object(
+                 'id', r.id, 'nameIt', r.name_it, 'nameEs', r.name_es, 'nameEn', r.name_en,
+                 'descriptionIt', r.description_it, 'descriptionEs', r.description_es,
+                 'descriptionEn', r.description_en, 'diet', r.diet, 'photoId', r.photo_id,
+                 'allergens', (select coalesce(jsonb_agg(a.allergen order by a.allergen), '[]'::jsonb)
+                               from public.recipe_allergens a where a.recipe_id = r.id))
+                 order by d.position), '[]'::jsonb)
+               from public.session_menu d
+               join public.recipes r on r.id = d.recipe_id
+               where d.session_id = p_session_id)
+  )::text)
+$$;
+
+revoke all on function private.menu_send_fingerprint(uuid) from public, anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------
 -- 3a. public.chef_menu_send_context(p_chef_id, p_session_id)
 --
 -- Todo lo que necesita la función chef para armar el mensaje de una semana, en un solo jsonb:
@@ -148,9 +191,12 @@ grant select, insert, update, delete on table public.client_links to service_rol
 --            renglones de la lista en orden.
 --   lastSend el último envío que salió ({id, menuVersion, sentAt, sentVia, confirmedAt,
 --            changesRequestedAt}) o null.
+--   fingerprint  la huella de todo eso (private.menu_send_fingerprint), que la función chef le pasa a
+--            chef_prepare_menu_send: si algo cambió mientras armaba la foto, no se guarda.
 -- Errores: P0002 session_not_found (no existe o es de otra cocina), P0002 menu_not_found (la semana
--- no tiene menú guardado), 55000 session_without_request (una sesión sin pedido: no hay reserva que
--- mostrar en el link).
+-- no tiene menú guardado), 55000 session_not_editable (cancelada, cocinada o cobrada; DETAIL: el
+-- estado), 55000 session_without_request (una sesión sin pedido: no hay reserva que mostrar en el
+-- link).
 -- ---------------------------------------------------------------------
 create function public.chef_menu_send_context(p_chef_id uuid, p_session_id uuid)
 returns jsonb
@@ -171,6 +217,9 @@ begin
   select s.* into v_session from public.sessions s where s.id = p_session_id and s.chef_id = p_chef_id;
   if not found then
     raise exception 'session_not_found' using errcode = 'P0002';
+  end if;
+  if v_session.status not in ('held', 'confirmed', 'shopping_done') then
+    raise exception 'session_not_editable' using errcode = '55000', detail = v_session.status::text;
   end if;
   if v_session.request_id is null then
     raise exception 'session_without_request' using errcode = '55000';
@@ -240,19 +289,21 @@ begin
       from public.menu_sends ms
       where ms.session_id = p_session_id and ms.sent_at is not null
       order by ms.sent_at desc, ms.id desc
-      limit 1));
+      limit 1),
+    'fingerprint', private.menu_send_fingerprint(p_session_id));
 end
 $$;
 
 comment on function public.chef_menu_send_context(uuid, uuid) is
-  'Lo que la función chef necesita para armar el mensaje del menú de una semana (SPEC 5.8): sesión con «Semana k de N», fechas de la reserva, pedido, contacto (el del pedido de la web o el de la ficha), cocinera, menú (platos en los tres idiomas, alérgenos, dieta, foto, porciones; lista; nota; versión) y el último envío. Errores: P0002 session_not_found / menu_not_found; 55000 session_without_request. Solo service_role.';
+  'Lo que la función chef necesita para armar el mensaje del menú de una semana (SPEC 5.8): sesión con «Semana k de N», fechas de la reserva, pedido, contacto (el del pedido de la web o el de la ficha), cocinera, menú (platos en los tres idiomas, alérgenos, dieta, foto, porciones; lista; nota; versión), el último envío y la huella de todo eso. Errores: P0002 session_not_found / menu_not_found; 55000 session_not_editable / session_without_request. Solo service_role.';
 
 -- ---------------------------------------------------------------------
 -- 3b. public.chef_prepare_menu_send(...)
 --
 -- La vista previa: guarda el envío sin salir (sent_at null) con su foto. La versión tiene que ser la
--- del menú guardado (si Evelyn lo cambió mientras tanto, menu_changed) y el menú tiene que tener
--- algún plato. Devuelve {sendId}.
+-- del menú guardado y p_fingerprint la huella con que se armó la foto (la de chef_menu_send_context):
+-- si Evelyn cambió el menú, movió la semana, se canceló otra semana de la reserva o cambió un plato
+-- del catálogo mientras tanto, menu_changed. El menú tiene que tener algún plato. Devuelve {sendId}.
 -- Errores: P0002 session_not_found / menu_not_found; 55000 session_not_editable (DETAIL: el estado),
 -- session_without_request; 40001 menu_changed; 22023 menu_empty, invalid_locale, invalid_snapshot.
 -- ---------------------------------------------------------------------
@@ -262,7 +313,8 @@ create function public.chef_prepare_menu_send(
   p_menu_version int,
   p_locale       text,
   p_snapshot     jsonb,
-  p_translated   boolean
+  p_translated   boolean,
+  p_fingerprint  text
 )
 returns jsonb
 language plpgsql
@@ -301,20 +353,24 @@ begin
   if p_menu_version is distinct from v_version then
     raise exception 'menu_changed' using errcode = '40001';
   end if;
+  if p_fingerprint is distinct from private.menu_send_fingerprint(p_session_id) then
+    raise exception 'menu_changed' using errcode = '40001';
+  end if;
   if not exists (select 1 from public.session_menu d where d.session_id = p_session_id) then
     raise exception 'menu_empty' using errcode = '22023';
   end if;
 
-  insert into public.menu_sends (chef_id, session_id, request_id, menu_version, locale, snapshot, translated)
-  values (p_chef_id, p_session_id, v_session.request_id, v_version, p_locale, p_snapshot, coalesce(p_translated, false))
+  insert into public.menu_sends (chef_id, session_id, request_id, menu_version, locale, snapshot, translated, fingerprint)
+  values (p_chef_id, p_session_id, v_session.request_id, v_version, p_locale, p_snapshot, coalesce(p_translated, false),
+          p_fingerprint)
   returning id into v_send_id;
 
   return jsonb_build_object('sendId', v_send_id);
 end
 $$;
 
-comment on function public.chef_prepare_menu_send(uuid, uuid, int, text, jsonb, boolean) is
-  'Vista previa del envío del menú de una semana (SPEC 5.8): guarda el envío sin salir con la foto de lo que ve la clienta. Exige la versión guardada del menú y algún plato. Devuelve {sendId}. Errores: P0002 session_not_found / menu_not_found; 55000 session_not_editable, session_without_request; 40001 menu_changed; 22023 menu_empty, invalid_locale, invalid_snapshot. Solo service_role.';
+comment on function public.chef_prepare_menu_send(uuid, uuid, int, text, jsonb, boolean, text) is
+  'Vista previa del envío del menú de una semana (SPEC 5.8): guarda el envío sin salir con la foto de lo que ve la clienta y su huella. Exige la versión guardada del menú, la huella con que se armó la foto y algún plato. Devuelve {sendId}. Errores: P0002 session_not_found / menu_not_found; 55000 session_not_editable, session_without_request; 40001 menu_changed; 22023 menu_empty, invalid_locale, invalid_snapshot. Solo service_role.';
 
 -- ---------------------------------------------------------------------
 -- 3c. public.chef_link_menu_send(p_chef_id, p_send_id, p_token_hash)
@@ -322,9 +378,10 @@ comment on function public.chef_prepare_menu_send(uuid, uuid, int, text, jsonb, 
 -- Al enviar, antes de mandar el email: crea el link del mensaje (el hash del token) y devuelve lo
 -- que la función chef necesita para armarlo: {sendId, sessionId, requestId, locale, snapshot,
 -- contact: {name, email, phone}, chefName}. El contacto es el de ahora (el del pedido de la web o
--- el de la ficha, como en chef_menu_send_context). Valida lo mismo que el envío: si el menú cambió
--- desde la vista previa (menu_changed) o la sesión ya no se arma, no crea nada. Un envío que ya
--- salió no se vuelve a mandar (already_sent).
+-- el de la ficha, como en chef_menu_send_context). Valida lo mismo que el envío: si el menú, el día
+-- o la hora, las semanas de la reserva o un plato del catálogo cambiaron desde la vista previa
+-- (menu_changed: la huella) o la sesión ya no se arma, no crea nada. Un envío que ya salió no se
+-- vuelve a mandar (already_sent).
 -- Errores: P0002 send_not_found; 22023 invalid_token; 55000 already_sent, session_not_editable
 -- (DETAIL: el estado); 40001 menu_changed; 23505 un token repetido (la función genera otro).
 -- ---------------------------------------------------------------------
@@ -357,7 +414,8 @@ begin
     raise exception 'session_not_editable' using errcode = '55000', detail = v_session.status::text;
   end if;
   select m.version into v_version from public.session_menus m where m.session_id = v_send.session_id;
-  if v_version is distinct from v_send.menu_version then
+  if v_version is distinct from v_send.menu_version
+     or v_send.fingerprint is distinct from private.menu_send_fingerprint(v_send.session_id) then
     raise exception 'menu_changed' using errcode = '40001';
   end if;
 
@@ -387,9 +445,9 @@ comment on function public.chef_link_menu_send(uuid, uuid, text) is
 -- 3d. public.chef_complete_menu_send(p_chef_id, p_send_id, p_via)
 --
 -- Marca enviado un envío preparado, cuando ya salió por p_via ('email', 'whatsapp' o los dos): si
--- iba por email, la función chef lo llama después de que el email salió. Si el menú cambió desde la
--- vista previa (menu_changed) o la sesión ya no se puede armar, no se marca: hay que pedir otra
--- vista previa. Si ya estaba enviado (un reintento), no cambia nada y devuelve lo que había.
+-- iba por email, la función chef lo llama después de que el email salió. Si algo de la foto cambió
+-- desde la vista previa (menu_changed: la versión o la huella) o la sesión ya no se puede armar, no
+-- se marca: hay que pedir otra vista previa. Si ya estaba enviado (un reintento), no cambia nada y devuelve lo que había.
 -- Devuelve {sendId, sentAt, sentVia}.
 -- Errores: P0002 send_not_found; 22023 invalid_via; 55000 session_not_editable (DETAIL: el estado);
 -- 40001 menu_changed.
@@ -425,7 +483,8 @@ begin
     raise exception 'session_not_editable' using errcode = '55000', detail = v_status::text;
   end if;
   select m.version into v_version from public.session_menus m where m.session_id = v_send.session_id for update;
-  if v_version is distinct from v_send.menu_version then
+  if v_version is distinct from v_send.menu_version
+     or v_send.fingerprint is distinct from private.menu_send_fingerprint(v_send.session_id) then
     raise exception 'menu_changed' using errcode = '40001';
   end if;
 
@@ -466,8 +525,9 @@ revoke all on function private.client_link_request(text) from public, anon, auth
 --   {requestId, locale, chefName, clientName, weeks: [{sessionId, date, start, status, week, weeks,
 --    send: {id, sentAt, snapshot, confirmedAt, changesRequestedAt} | null}]}
 -- Las semanas son las no canceladas, por fecha; send es el último envío que salió de esa semana.
--- clientName es el nombre de la ficha tal cual: la función client-link deja solo un nombre de pila
--- que parezca un nombre. Nada de dirección, contacto, alergias ni precios.
+-- clientName es el nombre con que llegó el pedido (requests.contact, el mismo del mensaje) o, si no
+-- tiene, el de la ficha: la función client-link deja solo un nombre de pila que parezca un nombre.
+-- Nada de dirección, contacto, alergias ni precios.
 create function public.client_link_view(p_token_hash text)
 returns jsonb
 language plpgsql
@@ -492,7 +552,8 @@ begin
     'requestId', v_request.id,
     'locale', v_request.locale,
     'chefName', (select c.display_name from public.chefs c where c.id = v_request.chef_id),
-    'clientName', (select c.display_name from public.clients c where c.id = v_request.client_id),
+    'clientName', coalesce(nullif(btrim(v_request.contact ->> 'name'), ''),
+                           (select c.display_name from public.clients c where c.id = v_request.client_id)),
     'weeks', coalesce((
       select jsonb_agg(jsonb_build_object(
                'sessionId', w.id, 'date', w."date", 'start', to_char(w.start_time, 'HH24:MI'),
@@ -517,9 +578,10 @@ $$;
 comment on function public.client_link_view(text) is
   'La reserva que abre un link de la clienta (SPEC 5.8), con el hash sha-256 del token: semanas no canceladas por fecha y el último envío del menú de cada una (la foto tal como salió y la respuesta). null si el link no vale. Nada de dirección, contacto, alergias ni precios. Solo service_role.';
 
--- El envío de un link al que la clienta contesta: tiene que ser de esa reserva, haber salido y ser el
--- último de su semana (si Evelyn mandó otro después, se contesta el nuevo: menu_outdated). Bloquea la
--- fila. Errores: P0002 link_not_found, send_not_found; 55000 menu_outdated.
+-- El envío de un link al que la clienta contesta: tiene que ser de esa reserva, haber salido, ser el
+-- último de su semana (si Evelyn mandó otro después, se contesta el nuevo: menu_outdated) y su semana
+-- no puede estar cancelada (session_cancelled). Bloquea la fila. Errores: P0002 link_not_found,
+-- send_not_found; 55000 menu_outdated, session_cancelled.
 create function private.client_link_send_for_answer(p_token_hash text, p_send_id uuid)
 returns public.menu_sends
 language plpgsql
@@ -547,13 +609,17 @@ begin
                and (o.sent_at, o.id) > (v_send.sent_at, v_send.id)) then
     raise exception 'menu_outdated' using errcode = '55000';
   end if;
+  if exists (select 1 from public.sessions s where s.id = v_send.session_id and s.status = 'cancelled') then
+    raise exception 'session_cancelled' using errcode = '55000';
+  end if;
   return v_send;
 end
 $$;
 
 revoke all on function private.client_link_send_for_answer(text, uuid) from public, anon, authenticated, service_role;
 
--- La respuesta para el aviso a Evelyn: el envío, la semana y la clienta (su ficha). Lo usa la función
+-- La respuesta para el aviso a Evelyn: el envío, la semana y la clienta (el nombre con que llegó el
+-- pedido o, si no tiene, el de la ficha: el mismo que ve Evelyn en la bandeja). Lo usa la función
 -- client-link para el email a la cocina (que es de Evelyn: ahí sí va el nombre de la clienta).
 create function private.client_link_answer(p_send public.menu_sends, p_already boolean)
 returns jsonb
@@ -577,10 +643,11 @@ as $$
                               where x.request_id = s.request_id and x.status <> 'cancelled') o
              where o.id = s.id),
     'weeks', (select count(*)::int from public.sessions x where x.request_id = s.request_id and x.status <> 'cancelled'),
-    'clientName', c.display_name,
+    'clientName', coalesce(nullif(btrim(r.contact ->> 'name'), ''), c.display_name),
     'locale', p_send.locale)
   from public.sessions s
   join public.clients c on c.id = s.client_id
+  join public.requests r on r.id = p_send.request_id
   where s.id = p_send.session_id
 $$;
 
@@ -589,7 +656,8 @@ revoke all on function private.client_link_answer(public.menu_sends, boolean) fr
 -- public.client_link_confirm_menu(p_token_hash, p_send_id): la clienta confirma el menú de una
 -- semana. Idempotente (already = true si ya estaba confirmado). Si había pedido cambios para ese
 -- envío, ya no puede confirmarlo: Evelyn tiene que mandar el menú de nuevo (changes_requested).
--- Errores: P0002 link_not_found, send_not_found; 55000 menu_outdated, changes_requested.
+-- Errores: P0002 link_not_found, send_not_found; 55000 menu_outdated, session_cancelled,
+-- changes_requested.
 create function public.client_link_confirm_menu(p_token_hash text, p_send_id uuid)
 returns jsonb
 language plpgsql
@@ -613,14 +681,14 @@ end
 $$;
 
 comment on function public.client_link_confirm_menu(text, uuid) is
-  'La clienta confirma el menú de una semana desde su link (SPEC 5.8). Idempotente (already). Errores: P0002 link_not_found / send_not_found; 55000 menu_outdated (hay un envío más nuevo) / changes_requested (ya pidió cambios: Evelyn manda otro). Devuelve lo necesario para avisarle a Evelyn. Solo service_role.';
+  'La clienta confirma el menú de una semana desde su link (SPEC 5.8). Idempotente (already). Errores: P0002 link_not_found / send_not_found; 55000 menu_outdated (hay un envío más nuevo) / session_cancelled (la semana se canceló) / changes_requested (ya pidió cambios: Evelyn manda otro). Devuelve lo necesario para avisarle a Evelyn. Solo service_role.';
 
 -- public.client_link_request_changes(p_token_hash, p_send_id, p_text): la clienta pide cambios para
 -- el menú de una semana, con un mensaje (1 a 1000 caracteres, admite saltos de línea; los \r\n
 -- pasan a \n). Si ya lo confirmó, no: los cambios se hablan con Evelyn (already_confirmed). Si ya
 -- había pedido cambios, el mensaje nuevo reemplaza al anterior.
--- Errores: P0002 link_not_found, send_not_found; 55000 menu_outdated, already_confirmed;
--- 22023 invalid_text.
+-- Errores: P0002 link_not_found, send_not_found; 55000 menu_outdated, session_cancelled,
+-- already_confirmed; 22023 invalid_text.
 create function public.client_link_request_changes(p_token_hash text, p_send_id uuid, p_text text)
 returns jsonb
 language plpgsql
@@ -648,18 +716,18 @@ end
 $$;
 
 comment on function public.client_link_request_changes(text, uuid, text) is
-  'La clienta pide cambios para el menú de una semana desde su link, con un mensaje de 1 a 1000 caracteres (SPEC 5.8). Errores: P0002 link_not_found / send_not_found; 55000 menu_outdated / already_confirmed; 22023 invalid_text. Devuelve lo necesario para avisarle a Evelyn. Solo service_role.';
+  'La clienta pide cambios para el menú de una semana desde su link, con un mensaje de 1 a 1000 caracteres (SPEC 5.8). Errores: P0002 link_not_found / send_not_found; 55000 menu_outdated / session_cancelled / already_confirmed; 22023 invalid_text. Devuelve lo necesario para avisarle a Evelyn. Solo service_role.';
 
 -- Solo la service role (las Edge Functions chef y client-link).
 revoke all on function public.chef_menu_send_context(uuid, uuid) from public, anon, authenticated, service_role;
-revoke all on function public.chef_prepare_menu_send(uuid, uuid, int, text, jsonb, boolean) from public, anon, authenticated, service_role;
+revoke all on function public.chef_prepare_menu_send(uuid, uuid, int, text, jsonb, boolean, text) from public, anon, authenticated, service_role;
 revoke all on function public.chef_link_menu_send(uuid, uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.chef_complete_menu_send(uuid, uuid, text[]) from public, anon, authenticated, service_role;
 revoke all on function public.client_link_view(text) from public, anon, authenticated, service_role;
 revoke all on function public.client_link_confirm_menu(text, uuid) from public, anon, authenticated, service_role;
 revoke all on function public.client_link_request_changes(text, uuid, text) from public, anon, authenticated, service_role;
 grant execute on function public.chef_menu_send_context(uuid, uuid) to service_role;
-grant execute on function public.chef_prepare_menu_send(uuid, uuid, int, text, jsonb, boolean) to service_role;
+grant execute on function public.chef_prepare_menu_send(uuid, uuid, int, text, jsonb, boolean, text) to service_role;
 grant execute on function public.chef_link_menu_send(uuid, uuid, text) to service_role;
 grant execute on function public.chef_complete_menu_send(uuid, uuid, text[]) to service_role;
 grant execute on function public.client_link_view(text) to service_role;

@@ -1,9 +1,10 @@
 # Contrato: área de Evelyn, Edge Function `chef`
 
 Estado: implementado el 16/11/2026 (plan del área de Evelyn, PR 4), sobre la base de reservas del PR 3 (migraciones `20261116150000_pay_mode_manual.sql` y `20261116150100_bookings.sql`, pgTAP `13_bookings`). Desde el mismo día la llaman también los colaboradores de la cocinera (migración `20261116190000_chef_members.sql`, pgTAP `15_chef_members`; §2). Con el PR 8 del plan (18/11/2026), la app manda también `clientId` («Nuova prenotazione» con una ficha existente y «Rinnova», la renovación de una reserva para la misma ficha) y `newClient` («Nuova cliente»): ver «Uso desde la app» en §4.
-Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, `index.ts` y, para la traducción, `translation.ts` con `translation.test.ts` y `claude_translator.ts`). Si este documento y el código difieren, manda el código.
+Código del contrato: `supabase/functions/_shared/chef_api.ts` (tipos de los cuerpos y de las respuestas, y la validación; tests en `chef_api.test.ts`). La función: `supabase/functions/chef/` (`handler.ts`, con sus tests en `handler.test.ts`, `index.ts`; para la traducción, `translation.ts` con `translation.test.ts` y `claude_translator.ts`; para el envío del menú, `menu_send.ts` y `menu_translation.ts`, con sus tests, y en `_shared/` la foto del envío, `menu_snapshot.ts`, y el mensaje, `menu_message.ts`). Si este documento y el código difieren, manda el código.
 Actualizado el 19/11/2026: Evelyn no hace la compra (la hace el cliente, con la lista de ingredientes y cantidades que ella le manda). `POST /bookings` ya no tiene `groceriesEstCents`: si llega (la app de antes lo manda), se ignora como cualquier otra clave que el contrato no tiene, valga lo que valga, y la función le pasa siempre `p_groceries_est_cents: 0` a `chef_create_booking`, cuya firma no cambia (§4, §7). Sin compra, `chef_settings.shop_minutes` es 0 (migración `20261119090000_sin_compra.sql`): la llegada sugerida de un día de 9:00 a 15:00 es las 9:00.
 Actualizado el 20/11/2026: `POST /translate` traduce un plato del español al italiano y al inglés con Claude (§12), sobre la migración `20261120090000_recipe_translations.sql` (`recipes.auto_translated`, pgTAP `18_recipe_translations`).
+Actualizado el 21/11/2026: `POST /menus/preview` y `POST /menus/send` mandan a la clienta el menú de una semana por email, por WhatsApp o por los dos, con un link para confirmarlo (§13; SPEC §5.8), sobre la migración `20261121100000_menu_sends.sql` (pgTAP `20_menu_sends`).
 
 ## 1. Para qué
 
@@ -17,6 +18,8 @@ Actualizado el 20/11/2026: `POST /translate` traduce un plato del español al it
 | `/sessions/move` | `chef_move_session` | mover una semana (§5) |
 | `/sessions/cancel` | `chef_cancel_sessions` | cancelar una o varias semanas (§6) |
 | `/translate` | ninguna (`hit_public_request_rate` para el límite) | traducir el nombre y la descripción de un plato al italiano y al inglés (§12) |
+| `/menus/preview` | `chef_menu_send_context`, `chef_prepare_menu_send` | la vista previa del menú de una semana para la clienta, en su idioma, y el envío guardado sin salir (§13) |
+| `/menus/send` | `chef_link_menu_send`, `chef_complete_menu_send` | mandarlo: el link de la clienta, el email y el texto del WhatsApp (§13) |
 
   Con el plan crecen: `/sessions/cooked`, `/sessions/uncook`, `/payments`, `/payments/void` y `/payments/refund` (PR 10a, «Cociné» y cobros). Las de los tickets (`/sessions/receipts` y `/receipts/remove`, PR 9a) salieron el 19/11/2026: sin compra no hay tickets.
 
@@ -35,7 +38,7 @@ Actualizado el 20/11/2026: `POST /translate` traduce un plato del español al it
 ## 3. Formato común
 
 - `POST` con `Content-Type: application/json` y un cuerpo de hasta 8 KB (`CHEF_MAX_PAYLOAD_BYTES`).
-- Orden de los chequeos: CORS → ruta (`404`) → método (`405`) → configuración (`500`) → token (`401`) → usuario (`401` o `503`) → su cocina (`403`) → tipo (`415`) → tamaño (`413`) → JSON y validación (`400`) → función SQL (en `/translate`, el traductor: §12). Sin un token válido de la cocinera o de un colaborador suyo no se lee ni el cuerpo.
+- Orden de los chequeos: CORS → ruta (`404`) → método (`405`) → configuración (`500`) → token (`401`) → usuario (`401` o `503`) → su cocina (`403`) → tipo (`415`) → tamaño (`413`) → JSON y validación (`400`) → función SQL (en `/translate`, el traductor: §12; en `/menus/*`, el orden de §13). Sin un token válido de la cocinera o de un colaborador suyo no se lee ni el cuerpo.
 - Fechas `"AAAA-MM-DD"` (fechas de negocio en Roma) y horas `"HH:MM"` (hora de Roma). Dinero en centavos enteros: `14050` es 140,50 €; un número con decimales es `invalid`.
 - Respuestas en JSON con `Cache-Control: no-store`.
 
@@ -46,15 +49,17 @@ Actualizado el 20/11/2026: `POST /translate` traduce un plato del español al it
 | 401 | `{ "error": "unauthorized" }` y `WWW-Authenticate: Bearer` | sin token, token que no es un JWT o que Auth rechaza (vencido, sesión cerrada). Sin `Authorization`, o con un JWT que no valida, responde la plataforma con su propio cuerpo |
 | 403 | `{ "error": "forbidden" }` | usuario válido que no es la cocinera ni un colaborador suyo |
 | 404 | `{ "error": "notFound" }` | ruta desconocida |
-| 404 | `{ "error": "requestNotFound" \| "clientNotFound" \| "sessionNotFound" }` | el pedido, la ficha o la sesión no existen para esta cocinera |
+| 404 | `{ "error": "requestNotFound" \| "clientNotFound" \| "sessionNotFound" \| "menuNotFound" \| "sendNotFound" }` | el pedido, la ficha, la sesión, el menú de la semana o el envío no existen para esta cocinera |
 | 405 | `{ "error": "method" }` y `Allow: POST, OPTIONS` | otro método |
 | 409 | ver abajo | choques y estados que no lo permiten; no se escribió nada |
 | 413 / 415 | `{ "error": "tooLarge" \| "contentType" }` | cuerpo de más de 8 KB o que no es JSON |
-| 422 | `{ "error": "untranslatable" }` | solo `/translate`: este plato no se pudo traducir (una negativa, un corte o una salida que no sirve; §12). Reintentar igual no sirve |
-| 429 | `{ "error": "rateLimited" }` y `Retry-After: 3600` | solo `/translate`: la cocina pasó su límite de traducciones (§12). La app no reintenta sola |
-| 500 | `{ "error": "server" }` | configuración rota o error inesperado (el log lleva el código, §10) |
-| 501 | `{ "error": "notConfigured" }` | solo `/translate`: la traducción está apagada (sin `ANTHROPIC_API_KEY`; §12) |
-| 503 | `{ "error": "unavailable" }` | Auth o la base no responden, o un error que se puede reintentar: reintentar con la misma `requestKey`. En `/translate`, Claude no respondió a tiempo o dio un error que se puede reintentar (§12) |
+| 422 | `{ "error": "untranslatable" }` | solo `/translate` y `/menus/preview`: el texto no se pudo traducir (una negativa, un corte o una salida que no sirve; §12, §13). Reintentar igual no sirve |
+| 429 | `{ "error": "rateLimited" }` y `Retry-After: 3600` | solo `/translate` y `/menus/preview`: la cocina pasó su límite de traducciones (§12). La app no reintenta sola |
+| 500 | `{ "error": "server" }` | configuración rota o error inesperado (el log lleva el código, §10). En `/menus/send` puede llevar `"emailSent": true` (§13) |
+| 501 | `{ "error": "notConfigured" }` | solo `/translate` y `/menus/preview`: la traducción está apagada (sin `ANTHROPIC_API_KEY`; §12) |
+| 502 | `{ "error": "emailFailed" }` | solo `/menus/send`: el email no salió (Resend lo rechazó o no respondió); el envío queda sin marcar (§13) |
+| 503 | `{ "error": "unavailable" }` | Auth o la base no responden, o un error que se puede reintentar: reintentar con la misma `requestKey`. En `/translate` y `/menus/preview`, Claude no respondió a tiempo o dio un error que se puede reintentar (§12) |
+| 503 | `{ "error": "emailUnavailable" }` | solo `/menus/send` con `email: true`: el email no está configurado (sin `RESEND_API_KEY` o sin `MAIL_FROM`); por WhatsApp sale igual (§13) |
 
 Los 409:
 
@@ -66,9 +71,15 @@ Los 409:
 | `{ "error": "sessionNotMovable", "status": "cooked" }` | solo se mueve una sesión `held` o `confirmed`; `status` es el actual |
 | `{ "error": "invalidTransition", "sessionId": uuid }` | al cancelar, esa sesión está `cooked` o `paid`; no se cancela ninguna |
 | `{ "error": "hasPayments", "sessionIds": [uuid] }` | al cancelar sin `allowWithPayments`, esas semanas ya están cobradas; no se cancela ninguna (§6) |
-| `{ "error": "conflict" }` | otro choque (no debería pasar) |
+| `{ "error": "sessionNotEditable", "status": "cancelled" }` | el menú de esa semana ya no se manda: la sesión no está `held`, `confirmed` ni `shopping_done`; `status` es el actual (§13) |
+| `{ "error": "sessionWithoutRequest" }` | la sesión no tiene pedido: no hay reserva que mostrar en el link (§13) |
+| `{ "error": "menuChanged" }` | el menú se guardó otra vez (Evelyn o un colaborador) desde que la app lo cargó o, desde la vista previa, cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo: hay que pedir otra vista previa (§13) |
+| `{ "error": "menuEmpty" }` | el menú de la semana no tiene platos (§13) |
+| `{ "error": "alreadySent" }` | ese envío ya salió: para mandar otra vez, otra vista previa (§13) |
+| `{ "error": "noEmail" }` \| `{ "error": "noPhone" }` | el contacto de la clienta no tiene un email o un teléfono que sirva para lo que se pidió; no salió nada (§13) |
+| `{ "error": "conflict" }` | otro choque (no debería pasar; en `/menus/send`, dos tokens repetidos seguidos) |
 
-Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato; un número que no es entero), `range`, `tooLong`, `dateOutOfRange`, `sameWeek`, `order`, `weeksOnlyForWeek` y `conflict`. Los campos de un objeto van con punto (`newClient.name`, `household.meals`); `client`, `people` y `cents` agrupan varios. `payload` es el cuerpo entero (no es JSON, no es un objeto o, en `/translate`, trae una clave de más).
+Códigos de los 400 (`ChefApiErrorCode`): `required`, `invalid` (tipo o formato; un número que no es entero), `range`, `tooLong`, `dateOutOfRange`, `sameWeek`, `order`, `weeksOnlyForWeek` y `conflict`. Los campos de un objeto van con punto (`newClient.name`, `household.meals`); `client`, `people`, `cents` y `channels` (§13) agrupan varios. `payload` es el cuerpo entero (no es JSON, no es un objeto o, en `/translate` y `/menus/*`, trae una clave de más).
 
 ## 4. `POST /bookings`: confirmar una reserva
 
@@ -196,10 +207,18 @@ La función pasa los argumentos en snake_case (`toCreateBookingParams`) y convie
 | `55000 has_payments` (detalle: las sesiones cobradas, separadas por coma) | `409 hasPayments` con `sessionIds` |
 | `P0002 request_not_found`, `client_not_found`, `session_not_found` | `404` |
 | `P0002 chef_not_found` (la cocinera está en `chefs` pero no en `chef_settings`) | `500` |
+| `P0002 menu_not_found`, `send_not_found` (envío del menú, §13) | `404 menuNotFound` / `sendNotFound` |
+| `55000 session_not_editable` (detalle: el estado), `session_without_request`, `already_sent` | `409 sessionNotEditable` (con `status`) / `sessionWithoutRequest` / `alreadySent` |
+| `40001 menu_changed` (otra versión del menú, u otra huella de la foto: §13) | `409 menuChanged` (no `503`: reintentar igual no sirve) |
+| `22023 menu_empty` | `409 menuEmpty` |
+| `22023 invalid_snapshot`, `invalid_token`, `invalid_via` (los arma la función, nunca la app) | `500` |
+| `23505` en `chef_link_menu_send` (token repetido) | otro token, una vez; si vuelve a chocar, `409 conflict` |
 | `22023` con un código propio (`invalid_dates`, `dates_same_week`, `invalid_household`, `request_key_conflict`, …) | `400` con su campo; un código desconocido, `payload: "invalid"` |
 | otro dato inválido (`22xxx`), `23514` o `23502` | `400 payload: "invalid"` |
 | sin código (la base no respondió), `08xxx`, `40xxx`, `53xxx`, `57xxx`, `58xxx` o `PGRST000`–`PGRST003` | `503` |
 | cualquier otro (por ejemplo `PGRST202`: la función SQL no existe, la migración no está desplegada) | `500` |
+
+Las funciones del envío del menú son de la migración `20261121100000_menu_sends.sql` (SPEC §5.8, contrato §13): `chef_menu_send_context(p_chef_id, p_session_id)`, `chef_prepare_menu_send(p_chef_id, p_session_id, p_menu_version, p_locale, p_snapshot, p_translated, p_fingerprint)`, `chef_link_menu_send(p_chef_id, p_send_id, p_token_hash)` y `chef_complete_menu_send(p_chef_id, p_send_id, p_via)`, también solo de `service_role` y con la cocina del token.
 
 De un error de la base solo se usan el código, el mensaje si es un código propio en snake_case y el detalle si tiene la forma esperada (una fecha, un estado, un uuid o una lista de hasta 100 uuid). El mensaje y el detalle de Postgres pueden traer la fila, con datos personales: nunca pasan ni a la respuesta ni al log.
 
@@ -210,20 +229,24 @@ De un error de la base solo se usan el código, el mensaje si es un código prop
 | `SUPABASE_URL`, `SUPABASE_SECRET_KEYS` (o las variables de compatibilidad) | las pone Supabase | sin ellas, `500` y `config_missing` |
 | `ALLOWED_ORIGINS` | secreto de las funciones, compartido con `public-request`; lo carga `deploy-supabase.yml` | CORS (§2). Sin ella, `/gestione/` no puede llamar a la función (la app nativa sí) y el arranque avisa `config_incomplete` |
 | `ANTHROPIC_API_KEY` | secreto de las funciones (opcional); lo carga `deploy-supabase.yml` desde el secreto de GitHub del mismo nombre | la clave de Claude para `/translate` (§12). Sin ella, `/translate` responde `501` y el arranque avisa `config_incomplete`. Nunca se loguea. Borrar el secreto de GitHub no la saca de Supabase (el despliegue no pisa ni borra lo que ya está): para apagar la traducción, `supabase secrets unset ANTHROPIC_API_KEY --project-ref <ref>` |
-| `TRANSLATE_TRANSPORT` | solo en local (`.env.example` trae `fake`) | `fake`: `/translate` devuelve una traducción de mentira (`"[it] <nombre>"`) sin llamar a Claude, aunque haya clave; el arranque avisa `translate_fake`. Vale solo con un Supabase local (`SUPABASE_URL` en `kong`, `localhost` o `127.0.0.1`): en otro lado se ignora, el arranque loguea el error `translate_fake_ignored` y `/translate` responde `501`. El despliegue no la carga y corta si la encuentra en los secretos de Supabase |
+| `TRANSLATE_TRANSPORT` | solo en local (`.env.example` trae `fake`) | `fake`: `/translate` (y la traducción de `/menus/preview`) devuelve una traducción de mentira (`"[it] <nombre>"`) sin llamar a Claude, aunque haya clave; el arranque avisa `translate_fake`. Vale solo con un Supabase local (`SUPABASE_URL` en `kong`, `localhost` o `127.0.0.1`): en otro lado se ignora, el arranque loguea el error `translate_fake_ignored` y `/translate` responde `501`. El despliegue no la carga y corta si la encuentra en los secretos de Supabase |
+| `PUBLIC_SITE_URL` | secreto de las funciones, compartido con `public-request` (contrato public-request §4) | la web del link de la clienta (`<PUBLIC_SITE_URL>/prenotazione/#t=<token>`, §13). Sin ella (o si no es http/https), `/menus/send` responde `500` y loguea `config_missing`; el arranque avisa `config_incomplete` |
+| `EMAIL_TRANSPORT`, `RESEND_API_KEY`, `MAIL_FROM` | secretos compartidos con `public-request` | el email del menú (§13), como los de `public-request`: con `log` no sale nada (registra solo tamaños). Con Resend, sin la clave o sin `MAIL_FROM`, `/menus/send` con email responde `503 emailUnavailable` y el arranque avisa. La clave la lee solo `index.ts` y nunca se loguea |
+| `MAIL_REPLY_TO` (o `CHEF_NOTIFY_EMAIL`) | secretos compartidos con `public-request` | a dónde van las respuestas de la clienta al email del menú: el `Reply-To`. Sin ninguna de las dos, van al remitente y el arranque avisa `MAIL_REPLY_TO` |
+| `SUPABASE_URL` | la pone Supabase | además, el origen de las URL de las fotos de los platos en la foto del envío (`photoOrigin`, como el menù de la web; con `functions serve` es `http://kong:8000` y los platos van sin foto) |
 
 En local, `npx supabase start` sirve la función con `verify_jwt` de `config.toml` y lee `ALLOWED_ORIGINS` y las de la traducción de `supabase/functions/.env` (copiado de `.env.example`); para `/gestione/` con `flutter run -d web-server --web-port 8080` hay que sumar `http://localhost:8080` (desde el teléfono, `http://<IP de la PC>:8080`).
 
 ## 9. Despliegue
 
-- `deploy-supabase.yml`, paso «Desplegar chef»: `supabase functions deploy chef --use-api`, después de `db push` (llama a las funciones de la migración de reservas) y de cargar los secretos (`ALLOWED_ORIGINS` y, si está, `ANTHROPIC_API_KEY`; sin ella, ni en GitHub ni en Supabase, el paso de los secretos avisa que la traducción queda apagada, sin cortar el despliegue; si está en Supabase y no en GitHub, avisa que sigue prendida y cómo borrarla). El mismo paso corta si no puede leer la lista de secretos de Supabase o si encuentra `TRANSLATE_TRANSPORT`. `verify_jwt = true` sale de `config.toml`. Avisa si `ALLOWED_ORIGINS` tiene orígenes además del de `PUBLIC_SITE_URL`.
+- `deploy-supabase.yml`, paso «Desplegar chef»: `supabase functions deploy chef --use-api`, después de `db push` (llama a las funciones de la migración de reservas) y de cargar los secretos (`ALLOWED_ORIGINS` y, si está, `ANTHROPIC_API_KEY`; sin ella, ni en GitHub ni en Supabase, el paso de los secretos avisa que la traducción queda apagada, sin cortar el despliegue; si está en Supabase y no en GitHub, avisa que sigue prendida y cómo borrarla). Los del email y el link del menú (§13: `RESEND_API_KEY`, `MAIL_FROM`, `MAIL_REPLY_TO`, `CHEF_NOTIFY_EMAIL`, `EMAIL_TRANSPORT`, `PUBLIC_SITE_URL`) son los de `public-request`: los secretos de las funciones son de todo el proyecto y el mismo paso ya los carga y los exige. El mismo paso corta si no puede leer la lista de secretos de Supabase o si encuentra `TRANSLATE_TRANSPORT`. `verify_jwt = true` sale de `config.toml`. Avisa si `ALLOWED_ORIGINS` tiene orígenes además del de `PUBLIC_SITE_URL`.
 - Orden: la migración de reservas va en su propio PR (PR 3) y se despliega antes (contrato public-request §8). Sin ella, cada llamada da `500` y el log dice `PGRST202`.
 - Antes del primer despliegue: limpiar `ALLOWED_ORIGINS` (§2).
 - Se acepta cuando, desplegada, una reserva de 4 semanas hecha con el token de una sesión de prueba crea 4 sesiones, y un reintento con la misma clave no crea nada más.
 
 ## 10. Logs
 
-Solo evento, ruta, códigos, contadores, largos, duraciones e ids. Nunca nombres, teléfonos, emails, zonas, direcciones, notas, restricciones, fechas, tokens, el texto de un plato ni la clave de Anthropic. Los tests lo comprueban con un espía en todos los caminos del handler: cada evento de esta tabla (salvo `config_incomplete`, `translate_fake` y `translate_fake_ignored`, que escribe `index.ts` al arrancar, solo con nombres de variables), también con errores de la base que traen la fila, una respuesta de la base que lanza al leerla, un cuerpo que se corta mientras se lee y un traductor que explota o repite el plato en su salida.
+Solo evento, ruta, códigos, contadores, largos, duraciones e ids. Nunca nombres, teléfonos, emails, zonas, direcciones, notas, restricciones, fechas, tokens (tampoco el del link de la clienta ni su hash), el texto de un plato, de la lista o de la nota, el mensaje ni las claves de Anthropic o de Resend. Los tests lo comprueban con un espía en todos los caminos del handler: cada evento de esta tabla (salvo `config_incomplete`, `translate_fake` y `translate_fake_ignored`, que escribe `index.ts` al arrancar, solo con nombres de variables), también con errores de la base que traen la fila, una respuesta de la base que lanza al leerla, un cuerpo que se corta mientras se lee y un traductor que explota o repite el plato en su salida.
 
 | Evento | Campos |
 |---|---|
@@ -235,9 +258,16 @@ Solo evento, ruta, códigos, contadores, largos, duraciones e ids. Nunca nombres
 | `booking_duplicate` | `requestId`, `userId` |
 | `session_moved` | `sessionId`, `userId` |
 | `sessions_cancelled` | `cancelled`, `alreadyCancelled`, `withPayments` (cantidades), `userId` |
-| `translated` | `route`, `ms` (lo que tardó el traductor), `nameLength`, `descriptionLength` (o null), `userId` |
-| `translate_failed` | `route`, `reason` (§12), `category` (de una negativa) o `apiStatus` (el estado HTTP de Anthropic), `ms`, `nameLength`, `descriptionLength`. `warn` para una negativa, un corte por `max_tokens` o la traducción apagada sin clave; `error` para el resto (también `fakeIgnored`) |
+| `translated` | `route`, `ms` (lo que tardó el traductor), `nameLength`, `descriptionLength` (o null), `userId`. En `/menus/preview`: `items` (los nombres distintos de la lista) en lugar de los largos del plato |
+| `translate_failed` | `route`, `reason` (§12), `category` (de una negativa) o `apiStatus` (el estado HTTP de Anthropic), `ms`, `nameLength`, `descriptionLength` (en `/menus/preview`, `items`). `warn` para una negativa, un corte por `max_tokens` o la traducción apagada sin clave; `error` para el resto (también `fakeIgnored`) |
 | `rate_limited` | `route`, `userId` |
+| `menu_previewed` | `route`, `sendId`, `sessionId`, `locale`, `translated`, `dishes`, `items` (cantidades), `hasNote`, `userId` |
+| `menu_sent` | `route`, `sendId`, `via` (`email`, `whatsapp`), `userId` |
+| `email_sent` / `email_logged` | `route`, `sendId` (con `EMAIL_TRANSPORT=log`, `htmlChars` y `textChars`) |
+| `email_failed` | `route`, `sendId`, `status` (el HTTP de Resend o null), `errorName` (el `name` de Resend, `network` o `unexpected`; nunca el mensaje) |
+| `email_skipped` | `route`, `sendId`, `reason: not_configured` (nivel `warn`: `503 emailUnavailable`) |
+| `token_collision` | `route`, `sendId` (nivel `warn`: un hash repetido en `client_links`, se generó otro token) |
+| `menu_send_incomplete` | `route`, `sendId`, `status`, `code`, `message` (nivel `error`: el email salió pero el envío no se pudo marcar) |
 | `db_error` | `op`, `code` y, si lo hay, `message` (el código propio) |
 | `unexpected_result` | `op` (también `load_chef`, si `chef_id_for_user` responde algo que no es un uuid ni null) |
 | `unexpected_error` | `error` (el tipo, nunca el mensaje) |
@@ -250,8 +280,9 @@ Solo evento, ruta, códigos, contadores, largos, duraciones e ids. Nunca nombres
 ## 11. Pruebas
 
 - `npm test`: `supabase/functions/_shared/chef_api.test.ts` (validación), `supabase/functions/chef/handler.test.ts` (401 antes de leer el cuerpo, 403, un colaborador que entra con la cocina de ella y queda en los logs con su propio `userId`, una cocina con otra forma → 500, 400 por campo, 409 con la fecha o las sesiones cobradas, `dryRun` que no escribe, reintento con la misma clave, la cocinera siempre del token, que `index.ts` use `chef_id_for_user` y le pase su respuesta tal cual al handler, errores de la base, `/translate` con un traductor simulado y el espía de logs), `supabase/functions/chef/translation.test.ts` (el pedido a Claude, el prompt, el esquema, la lectura de la respuesta, la validación de la salida, el límite y el traductor de mentira) y el paso del workflow en `supabase/scripts/deploy-supabase.test.ts`. `claude_translator.ts` no corre en Node (importa el SDK): `handler.test.ts` mira su texto (la versión fija del SDK, las opciones del cliente, el pedido, la señal del tope y que le pase sus clases de error a `failureFrom`, que `translation.test.ts` prueba con clases de mentira) y que ni `handler.ts` ni `index.ts` lo importen al arrancar. CI corre además `deno check` de las dos funciones y de `claude_translator.ts`, con el SDK y supabase-js reales (job `edge-functions`).
-- pgTAP `13_bookings`: las funciones SQL (reparto, chequeos y su prioridad, choques, reintentos, transiciones, mover, cancelar con y sin cobros, y permisos, también que la app no borra fichas). `15_chef_members`: `chef_id_for_user` (quién es de qué cocina, solo `service_role`) y lo que ve y hace un colaborador. `18_recipe_translations`: `recipes.auto_translated`, su fuente en español y la clave de `save_recipe`.
-- En local, de punta a punta: `npx supabase start` (con `-x` se pueden dejar afuera los servicios que no hacen falta: alcanza con la base, Kong, Auth, PostgREST y el runtime de funciones), un token con `POST /auth/v1/token?grant_type=password` para `evelyn@example.test` (la contraseña del seed) y las llamadas a `/functions/v1/chef/…`. Con `marco@example.test`, su colaborador en el seed, las mismas llamadas actúan sobre la cocina de Evelyn. `POST /functions/v1/chef/translate` con `TRANSLATE_TRANSPORT=fake` (lo que trae `.env.example`) devuelve la traducción de mentira sin llamar a Claude.
+- Envío del menú (§13): `_shared/menu_snapshot.test.ts` (la foto: forma, lectura defensiva, que no salga nada de más), `_shared/menu_message.test.ts` (el mensaje en los tres idiomas: cantidades, secciones, alérgenos, fechas, vista previa sin link, WhatsApp, escape del HTML y que nunca lleve contacto, dirección, alergias ni precios), `chef/menu_send.test.ts` (lo que devuelven las funciones SQL, la foto, el token y su hash), `chef/menu_translation.test.ts` (el pedido, el prompt, el esquema, la validación de la salida y el de mentira) y, en `handler.test.ts`, las dos rutas con la base, el traductor y el Mailer simulados (con y sin traducción, cada error, email que sale o no, sin email o sin teléfono, sin configuración, WhatsApp, token repetido, `emailSent`) y el espía de logs.
+- pgTAP `13_bookings`: las funciones SQL (reparto, chequeos y su prioridad, choques, reintentos, transiciones, mover, cancelar con y sin cobros, y permisos, también que la app no borra fichas). `15_chef_members`: `chef_id_for_user` (quién es de qué cocina, solo `service_role`) y lo que ve y hace un colaborador. `18_recipe_translations`: `recipes.auto_translated`, su fuente en español y la clave de `save_recipe`. `20_menu_sends`: las funciones del envío del menú y del link de la clienta (§13).
+- En local, de punta a punta: `npx supabase start` (con `-x` se pueden dejar afuera los servicios que no hacen falta: alcanza con la base, Kong, Auth, PostgREST y el runtime de funciones), un token con `POST /auth/v1/token?grant_type=password` para `evelyn@example.test` (la contraseña del seed) y las llamadas a `/functions/v1/chef/…`. Con `marco@example.test`, su colaborador en el seed, las mismas llamadas actúan sobre la cocina de Evelyn. `POST /functions/v1/chef/translate` con `TRANSLATE_TRANSPORT=fake` (lo que trae `.env.example`) devuelve la traducción de mentira sin llamar a Claude; con `EMAIL_TRANSPORT=log` (también de `.env.example`), `/menus/send` marca el envío sin mandar ningún email.
 
 ## 12. `POST /translate`: traducir un plato
 
@@ -325,3 +356,118 @@ Migración `20261120090000_recipe_translations.sql` (pgTAP `18_recipe_translatio
 ### En local
 
 `TRANSLATE_TRANSPORT=fake` (lo que trae `.env.example`), solo con un Supabase local: una traducción de mentira reconocible (`"[it] <nombre>"`, `"[en] <nombre>"`, cortada a los largos máximos) con la misma forma y la misma validación que la de Claude, sin llamar a la API. Para probar con Claude: `ANTHROPIC_API_KEY` en `supabase/functions/.env` y sin `TRANSLATE_TRANSPORT`.
+
+## 13. `POST /menus/preview` y `POST /menus/send`: el menú de una semana para la clienta
+
+Proceso de Nicolas del 21/11/2026 (SPEC §5.8, «Envío del menú»): Evelyn arma en la app el menú de una semana (platos con sus porciones, la lista de compras y una nota, `save_session_menu`) y se lo manda a la clienta por email, por WhatsApp o por los dos. El mensaje lleva un link a una página de la web (PR siguiente) donde la clienta ve el menú entero y lo confirma o pide cambios: todavía no tiene cuenta (M2), así que el link es la llave. Base de datos: migración `20261121100000_menu_sends.sql` (pgTAP `20_menu_sends`).
+
+Dos pasos:
+
+1. **Vista previa** (`/menus/preview`): la función lee la semana (`chef_menu_send_context`), arma la foto del envío en el idioma de la clienta (con los nombres de la lista traducidos si hace falta; la nota, como la escribió Evelyn), la guarda en un envío que todavía no salió (`chef_prepare_menu_send`, con la huella del contexto) y devuelve el mensaje, sin el link, y el contacto, para que Evelyn revise las dos cosas.
+2. **Envío** (`/menus/send`): con el `sendId` de la vista previa y los canales que eligió Evelyn, la función crea el link (`chef_link_menu_send`: la base guarda solo el hash del token), manda el email si se pidió (Resend) y lo marca enviado (`chef_complete_menu_send`). El WhatsApp lo abre la app desde el teléfono de Evelyn con el texto que devuelve la función: el servidor nunca manda un WhatsApp.
+
+Lo que la clienta recibe es siempre la foto guardada en la vista previa. Si antes de mandarla cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo, el envío da `409 menuChanged` y hace falta otra vista previa: la base guarda la huella de lo que entró en la foto (`private.menu_send_fingerprint`: el día y la hora de la sesión, las semanas vivas de la reserva, la versión del menú y, de cada plato, lo que sale del catálogo con sus alérgenos) y `chef_link_menu_send` y `chef_complete_menu_send` la recalculan antes de mandar y de marcar.
+
+### `POST /menus/preview`
+
+| Campo | Tipo | Regla |
+|---|---|---|
+| `sessionId` | uuid | obligatorio: la semana (una sesión con pedido) |
+| `menuVersion` | entero de 1 a 2147483647 | obligatorio: `session_menus.version` que la app tiene cargada; si no es la guardada, `409 menuChanged` |
+| `translate` | boolean | por defecto `true`: traducir los nombres de la lista al idioma de la clienta. `false`: van como los escribió Evelyn (la app lo ofrece si la traducción falla). La nota nunca se traduce |
+
+Una clave que el contrato no tiene es `payload: "invalid"`.
+
+Respuesta `200`:
+
+```json
+{ "sendId": "uuid", "locale": "it", "translated": true,
+  "contact": { "name": "Maria Rossi", "email": "maria@example.com", "phone": "+393331234567" },
+  "message": { "subject": "Radici: il menù della settimana 1 di 4 (30 nov)",
+               "emailText": "Ciao Maria!\n\n…", "whatsappText": "Ciao Maria!\n…" } }
+```
+
+- `locale`: el idioma de la clienta, el del pedido (`requests.locale`). Todo el mensaje va en ese idioma.
+- `translated`: los nombres de la lista se tradujeron solos. `false` en español, con `translate: false` o sin lista.
+- `contact`: el del pedido de la web (`requests.contact`, también el nombre con que llegó el pedido) o, si no lo tiene, el de la ficha; `email` y `phone` pueden ser null. Es lo que la app le muestra a Evelyn antes de mandar: el envío usa el contacto de ese momento.
+- `message`: el asunto, el texto del email (el HTML sale con lo mismo, con el diseño de los emails) y el del WhatsApp. Donde va el link, un texto de reemplazo en el idioma de la clienta (`[link personale per confermare]`, `[enlace personal para confirmar]`, `[personal link to confirm]`): el link se crea recién al enviar.
+- Cada vista previa guarda un envío nuevo, sin salir: uno que nunca sale no se muestra en ningún lado.
+
+**Los platos** van con las traducciones que tienen guardadas (§12): el nombre en el idioma de la clienta o, si no está, en italiano; la descripción en su idioma, si no la italiana, o ninguna. Con sus alérgenos (de los 14), la dieta, las porciones de la semana y la foto (las URL públicas de Storage, como el menù de la web; el email no las usa).
+
+**La lista** la escribe Evelyn, en español. Si la clienta lee italiano o inglés, `translate` no es `false` y la lista tiene renglones, sus nombres se traducen con Claude en un solo pedido (`menu_translation.ts`): los nombres sin repetir, nada más. El mismo modelo, esfuerzo, fallback, tiempos y errores que `/translate` (§12), con `max_tokens` 16000, su prompt y su esquema (solo `items`). La salida se valida entera: la misma cantidad de nombres, cada uno de 1 a 80 caracteres en una línea y sin caracteres de control; si no, `422`. Cuenta para el mismo límite de la cocina que `/translate` (60 por hora y 150 por día). Con `TRANSLATE_TRANSPORT=fake`, la de mentira (`"[it] zapallitos"`).
+
+**La nota** sale exactamente como la escribió Evelyn, en cualquier idioma: nunca se traduce ni va a Anthropic (decisión de Nicolas del 22/11/2026, SPEC §6).
+
+**La huella**: `chef_menu_send_context` devuelve `fingerprint` (32 caracteres en hexadecimal) y la función se la pasa tal cual a `chef_prepare_menu_send` (`p_fingerprint`). Si mientras armaba la foto o traducía la lista cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo, la base no la guarda (`409 menuChanged`).
+
+**La foto** (`menu_sends.snapshot`, `_shared/menu_snapshot.ts`, versión 1): `{ v: 1, locale, session: { date, start, week, weeks }, weeks: [{ date, start }], dishes: [{ name, description, allergens, diet, portions, photo }], items: [{ name, section, quantity, unit }], note }`. La leen el envío y la página de la clienta. Nunca lleva el contacto, la dirección, las alergias de la clienta, precios ni nada de pagos.
+
+Orden: validación (`400`) → `chef_menu_send_context` (`404 sessionNotFound`; `409 sessionNotEditable` con `status` si la semana está cancelada, cocinada o cobrada; `409 sessionWithoutRequest`; `404 menuNotFound`) → lo que la base vuelve a mirar al guardar, antes de gastar una traducción: la versión (`409 menuChanged`) y algún plato (`409 menuEmpty`) → si hay que traducir: traductor configurado (`501`) → límite de la cocina (`429`; si la base no responde, `503` o `500`) → traductor (`422`, `503` o `500`) → `chef_prepare_menu_send` (los mismos `404` y `409`, y `409 menuChanged` si cambió la huella) → `200`.
+
+### `POST /menus/send`
+
+| Campo | Tipo | Regla |
+|---|---|---|
+| `sendId` | uuid | obligatorio: el de la vista previa |
+| `email` | boolean | mandar el email desde el servidor (ausente = `false`) |
+| `whatsapp` | boolean | devolver el texto para abrir WhatsApp (ausente = `false`) |
+
+Al menos uno de los dos (si no, `channels: "required"`). Una clave que el contrato no tiene es `payload: "invalid"`.
+
+Respuesta `200`:
+
+```json
+{ "sentAt": "2026-11-21T21:42:26.123456+00:00", "sentVia": ["email", "whatsapp"],
+  "whatsappText": "Ciao Maria!\n…\nhttps://radicicucina.app/prenotazione/#t=…", "whatsappPhone": "+393331234567" }
+```
+
+- `sentVia`: en el orden de la base (`email` antes que `whatsapp`).
+- `whatsappText` y `whatsappPhone` solo si se pidió WhatsApp: el mismo mensaje de la vista previa con el link. El teléfono en E.164; `https://wa.me/` lo quiere sin el `+`. La app abre WhatsApp desde el teléfono de Evelyn: el envío ya quedó marcado.
+
+**El link**: `<PUBLIC_SITE_URL>/prenotazione/#t=<token>`, con el token en el fragmento (`#t=`), que el navegador no manda a ningún servidor ni pone en el `Referer`; nunca en la query. El token son 32 bytes al azar (WebCrypto) en base64url, 43 caracteres. La base guarda solo su hash (SHA-256 del token en UTF-8, en hexadecimal), en `client_links`: abre la reserva entera durante 15 días (migración `20261121105000_client_links_15_days.sql`), y todos los links de una reserva valen a la vez. El token no se guarda ni se loguea: va solo en el mensaje (y en `whatsappText`). Si el hash ya existe (`23505`, no debería pasar), la función genera otro una vez.
+
+**El email**: de `MAIL_FROM` al email del contacto, con `Reply-To` `MAIL_REPLY_TO` (o `CHEF_NOTIFY_EMAIL`): las respuestas de la clienta le llegan a Evelyn. Asunto, HTML y texto como la vista previa, con el link. `Idempotency-Key`: `menu-send-<sendId>-<16 primeros caracteres del hash>`, una por link: el reintento de un mismo pedido a Resend no duplica el email, y otro intento de envío (otro link) es otro email. Con `EMAIL_TRANSPORT=log` no sale nada: se registra el tamaño y el envío se marca igual (desarrollo).
+
+Orden: validación (`400`) → la web configurada (sin `PUBLIC_SITE_URL`, `500`) → si pidió email, el email configurado (`503 emailUnavailable`, sin crear el link) → `chef_link_menu_send` (`404 sendNotFound`, `409 alreadySent`, `409 sessionNotEditable`, `409 menuChanged` si cambió la versión o la huella desde la vista previa) → el contacto de ahora: un email con forma de email si pidió email (`409 noEmail`) y un teléfono que se puede normalizar si pidió WhatsApp (`409 noPhone`); con cualquiera de los dos no sale nada → el email (`502 emailFailed`: el envío queda sin marcar) → `chef_complete_menu_send` → `200`.
+
+- Un `409 noEmail` o `noPhone` deja creado un link que no salió en ningún mensaje: nadie tiene su token, así que no abre nada.
+- Después de un `502`, la app ofrece reintentar (otro link, otro email) o mandarlo solo por WhatsApp.
+- Si el email salió y el envío no se pudo marcar (la base no respondió, o justo en ese momento cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo), la respuesta es el error de la base con `"emailSent": true` y el log `menu_send_incomplete`: la clienta ya tiene un link que vale, pero el envío no figura enviado (su página no lo muestra). Reintentar manda otro email; si el error es `menuChanged`, hace falta otra vista previa.
+- Un envío que ya salió no se vuelve a mandar (`409 alreadySent`): para mandar el menú otra vez, otra vista previa. Si la respuesta de un envío se perdió, la app lo ve en `menu_sends` (lo lee con la RLS de la cocina).
+
+### Errores (además de los comunes, §3)
+
+| HTTP | Cuerpo | Ruta | Cuándo |
+|---|---|---|---|
+| 400 | `{ "errors": { campo: código } }` | las dos | el cuerpo no cumple (campos `sessionId`, `menuVersion`, `translate`, `sendId`, `email`, `whatsapp`, `channels` o `payload`) |
+| 404 | `sessionNotFound`, `menuNotFound` | preview | la sesión no es de esta cocina, o la semana no tiene menú guardado |
+| 409 | `menuChanged` | las dos | otra versión del menú, o desde la vista previa cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo: otra vista previa |
+| 404 | `sendNotFound` | send | el envío no existe para esta cocina |
+| 409 | `sessionNotEditable` (con `status`), `sessionWithoutRequest`, `menuChanged`, `menuEmpty` | preview | §3 |
+| 409 | `alreadySent`, `sessionNotEditable`, `menuChanged`, `noEmail`, `noPhone`, `conflict` | send | §3 |
+| 422 | `untranslatable` | preview | la traducción no salió con este texto (§12): la app ofrece mandarlo sin traducir (`translate: false`) |
+| 429 | `rateLimited` y `Retry-After: 3600` | preview | la cocina pasó su límite de traducciones |
+| 501 | `notConfigured` | preview | la traducción está apagada; sin traducir sale igual |
+| 502 | `emailFailed` | send | el email no salió; el envío queda sin marcar |
+| 503 | `unavailable` | las dos | la base o Claude no respondieron, o un error que se puede reintentar (en send, con `emailSent: true` si el email ya salió) |
+| 503 | `emailUnavailable` | send | email pedido sin `RESEND_API_KEY` o `MAIL_FROM` |
+| 500 | `server` | las dos | configuración rota (sin `PUBLIC_SITE_URL`), una respuesta de la base con otra forma o un error que no se puede reintentar (en send, con `emailSent: true` si el email ya salió) |
+
+### El mensaje
+
+`_shared/menu_message.ts`, en italiano, español o inglés (el de la clienta), con los mismos datos en el email (HTML con el diseño compartido de `emails.ts` y texto) y en el WhatsApp (texto con `*negrita*` y `_cursiva_`, más compacto):
+
+- el saludo con el nombre de pila, solo si parece un nombre (`safeFirstName`): el email o el teléfono pueden venir del formulario, sin verificar;
+- la semana (k de N), el día y la hora de llegada y, en el mensaje de la semana 1 de una reserva de varias, las fechas de todas las semanas (con la hora de cada una si alguna llega a otra hora);
+- los platos: nombre, descripción, porciones, dieta y alérgenos con su nombre (los de la web; sin alérgenos, «Nessuno dei 14 allergeni principali», como la web);
+- la lista de compras agrupada por sección del súper, en el orden del recorrido (`produce`, `meat_fish`, `dairy_eggs`, `bakery`, `pantry`, `frozen`, `other`), con las cantidades legibles: hasta 999 en g o ml; desde 1000, en kg o l redondeados a la centésima («1,25 kg» en italiano y español, «1.25 kg» en inglés); las piezas con su unidad («6 pz», «6 uds.», «6 pcs»). Lo que va q.b. aparte, al final: «Da avere in casa» / «Para tener en casa» / «To have at home»;
+- la nota de Evelyn, tal como la escribió;
+- el link para ver el menú entero, con las fotos, y confirmarlo o pedir cambios;
+- cómo responder (al email o al WhatsApp).
+
+Nunca lleva la dirección, el contacto, las alergias de la clienta, precios ni nada de pagos: el mensaje sale solo de la foto. Todo el texto va escapado en el HTML, sin imágenes remotas ni seguimiento.
+
+### Qué se manda a Anthropic
+
+Solo los nombres de los renglones de la lista de compras, como los escribió Evelyn, y solo si la clienta no lee español: texto genérico de ingredientes (la app le avisa que no escriba datos de clientes en los renglones). Nunca la nota, datos de la clienta, del pedido ni de la sesión, restricciones ni direcciones. Como con los platos (§12), no son datos personales: la privacy no cambia (SPEC §6).
