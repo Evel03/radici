@@ -41,6 +41,11 @@ export function weekDomId(session: string): string {
   return `week-${session}`;
 }
 
+/** El id del botón que abre el libro del menú de una semana (book/view.ts le devuelve el foco al cerrarlo). */
+export function bookButtonId(session: string): string {
+  return `${weekDomId(session)}-book`;
+}
+
 /** El id de lo que recibe el foco (Focus del controlador). */
 export function focusId(focus: Focus): string {
   switch (focus.kind) {
@@ -333,6 +338,15 @@ function actionsNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): 
   );
 }
 
+/** «Sfoglia il menù»: abre el libro del menú de la semana (book/view.ts, con data-action="open-book"). */
+function bookButtonNode(session: string, ctx: Context): VNode {
+  return h(
+    "button",
+    { class: "btn btn--ghost week__book", type: "button", id: bookButtonId(session), "data-action": "open-book", "data-session": session },
+    ctx.i18n.t("book.open"),
+  );
+}
+
 function weekNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): VNode {
   const { i18n } = ctx;
   const id = weekDomId(week.sessionId);
@@ -357,6 +371,8 @@ function weekNode(week: ClientLinkWeek, ui: Readonly<WeekUi>, ctx: Context): VNo
       ? missing
       : [
           statusNode(week, menu, ui, ctx),
+          // El libro del menú de esa semana (book/): un plato por página, con las fotos. Solo si se puede mostrar.
+          menu.content && bookButtonNode(week.sessionId, ctx),
           menu.content ? contentNode(menu.content, ctx, id) : unreadable,
           // Solo lo que se puede contestar: por confirmar, mostrado y antes de cocinar.
           statusKind(week, menu) === "pending" && actionsNode(week, ui, ctx),

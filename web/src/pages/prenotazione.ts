@@ -5,7 +5,9 @@
 // Nunca se registran en la consola el token, la reserva ni el mensaje de la clienta.
 import "../styles/base.css";
 import "../styles/reservation.css";
+import "../styles/book.css";
 import { mount } from "../lib/vdom.ts";
+import { attachBookView, type BookView } from "../reservation/book/view.ts";
 import { createReservation, type ActionResult, type Focus, type Message } from "../reservation/controller.ts";
 import { changesCountText, focusId, messageText, reservationTree, weekDomId } from "../reservation/render.ts";
 import { hashChangeAction, readToken, tokenFragment } from "../reservation/token.ts";
@@ -41,6 +43,8 @@ window.addEventListener("hashchange", () => {
 function start(shell: Shell): void {
   /** Miniaturas que no cargaron: se pintan sin foto. */
   const failedPhotos = new Set<string>();
+  /** El libro del menú (reservation/book/): se conecta después de pintar la página por primera vez. */
+  let book: BookView | null = null;
 
   /** Pinta el estado. El foco va a `focus` o, si no, se queda en el mismo elemento (por id). */
   const paint = (focus: Focus | null = null): void => {
@@ -99,6 +103,9 @@ function start(shell: Shell): void {
       case "close-changes":
         finish(reservation.closeChanges(session));
         break;
+      case "open-book":
+        book?.open(session, target.id || null);
+        break;
     }
   });
 
@@ -140,6 +147,16 @@ function start(shell: Shell): void {
   );
 
   paint();
+
+  // El libro del menú: «Sfoglia il menù» en cada semana o libro=<sesión> en el fragmento (el link del mensaje).
+  book = attachBookView({
+    token,
+    brand: config.brandName,
+    i18n: () => shell.i18n,
+    state: () => reservation.state,
+    onStateChange: (listener) => reservation.subscribe(listener),
+    onLanguageChange: (listener) => shell.onLanguageChange(() => listener()),
+  });
 }
 
 // Si no llegan los textos, initShell muestra el aviso y se resuelve recién si un reintento funciona.
