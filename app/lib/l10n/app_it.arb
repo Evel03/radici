@@ -2619,7 +2619,7 @@
   },
   "recipeDiscardTitle": "Scartare le modifiche?",
   "@recipeDiscardTitle": {
-    "description": "Confirmación al salir del editor con cambios sin guardar."
+    "description": "Confirmación al salir del editor de un plato o del menú de una semana con cambios sin guardar."
   },
   "recipeDiscardBody": "Quello che hai scritto non è stato salvato.",
   "@recipeDiscardBody": {
@@ -2855,5 +2855,416 @@
   "routeGoHome": "Torna all'inizio",
   "@routeGoHome": {
     "description": "Botón de la página no encontrada."
+  },
+
+  "weekMenuTitle": "Menù della settimana",
+  "@weekMenuTitle": {
+    "description": "Título del editor del menú de una semana y del bloque de la ficha de la sesión."
+  },
+  "weekMenuNone": "Non ha ancora un menù.",
+  "@weekMenuNone": {
+    "description": "Ficha de la sesión y semanas de la reserva: la semana todavía no tiene menú guardado."
+  },
+  "weekMenuDishCount": "{count, plural, =0{Nessun piatto} =1{1 piatto} other{{count} piatti}}",
+  "@weekMenuDishCount": {
+    "description": "Cuántos platos tiene el menú guardado de una semana (va antes de weekMenuItemCount).",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" }
+    }
+  },
+  "weekMenuItemCount": "{count, plural, =0{lista della spesa vuota} =1{1 voce nella lista della spesa} other{{count} voci nella lista della spesa}}",
+  "@weekMenuItemCount": {
+    "description": "Cuántos renglones tiene la lista de compras guardada de una semana (va después de weekMenuDishCount, tras « · »).",
+    "placeholders": {
+      "count": { "type": "int", "example": "23" }
+    }
+  },
+  "weekMenuLoadFailed": "Non è stato possibile caricare il menù. Controlla la connessione e riprova.",
+  "@weekMenuLoadFailed": {
+    "description": "El menú de una semana no se pudo leer (editor, ficha o semanas de la reserva)."
+  },
+  "weekMenuBuild": "Prepara il menù",
+  "@weekMenuBuild": {
+    "description": "Botón de la ficha de la sesión y de las semanas de la reserva: abre el editor de una semana sin menú."
+  },
+  "weekMenuEdit": "Modifica il menù",
+  "@weekMenuEdit": {
+    "description": "Botón de la ficha de la sesión: abre el editor de una semana que ya tiene menú."
+  },
+  "bookingMenusTitle": "Menù delle settimane",
+  "@bookingMenusTitle": {
+    "description": "Detalle de una reserva (pedido aceptado): título de la lista de sus semanas con el estado del menú de cada una."
+  },
+  "bookingDoneBuildMenu": "{weeks, plural, =1{Prepara il menù} other{Prepara il menù della settimana 1}}",
+  "@bookingDoneBuildMenu": {
+    "description": "Pantalla de reserva confirmada: abre el editor del menú de la primera semana.",
+    "placeholders": {
+      "weeks": { "type": "int", "example": "4" }
+    }
+  },
+  "weekMenuDishesSection": "Piatti",
+  "@weekMenuDishesSection": {
+    "description": "Editor del menú: título de la sección de los platos."
+  },
+  "weekMenuFromWishes": "Sono i piatti che la cliente ha scelto sul sito. Controllali e salva il menù.",
+  "@weekMenuFromWishes": {
+    "description": "Editor del menú de la semana 1 sin guardar: los platos vienen de los que eligió la clienta en la web."
+  },
+  "weekMenuNoDishes": "Ancora nessun piatto.",
+  "@weekMenuNoDishes": {
+    "description": "Editor del menú sin platos."
+  },
+  "weekMenuAddDish": "Aggiungi piatti",
+  "@weekMenuAddDish": {
+    "description": "Editor del menú: abre la lista de platos del catálogo para elegir."
+  },
+  "weekMenuMaxDishes": "Al massimo {max} piatti a settimana.",
+  "@weekMenuMaxDishes": {
+    "description": "Editor y selector de platos: se llegó al tope de platos de una semana.",
+    "placeholders": {
+      "max": { "type": "int", "example": "30" }
+    }
+  },
+  "weekMenuPortions": "{count, plural, =1{1 porzione} other{{count} porzioni}}",
+  "@weekMenuPortions": {
+    "description": "Porciones de un plato en la semana, al lado de sus botones − y +.",
+    "placeholders": {
+      "count": { "type": "int", "example": "4" }
+    }
+  },
+  "weekMenuPortionsLess": "Meno porzioni di {name}",
+  "@weekMenuPortionsLess": {
+    "description": "Lector de pantalla: botón − de las porciones de un plato.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuPortionsMore": "Più porzioni di {name}",
+  "@weekMenuPortionsMore": {
+    "description": "Lector de pantalla: botón + de las porciones de un plato.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishUp": "Sposta su {name}",
+  "@weekMenuDishUp": {
+    "description": "Lector de pantalla: sube un plato en el menú.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishDown": "Sposta giù {name}",
+  "@weekMenuDishDown": {
+    "description": "Lector de pantalla: baja un plato en el menú.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishRemove": "Togli {name}",
+  "@weekMenuDishRemove": {
+    "description": "Lector de pantalla: quita un plato del menú.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishRemoved": "Piatto tolto dal menù.",
+  "@weekMenuDishRemoved": {
+    "description": "Aviso después de quitar un plato del menú (con «Annulla»)."
+  },
+  "weekMenuConflictAllergens": "Contiene: {allergens}",
+  "@weekMenuConflictAllergens": {
+    "description": "Un plato lleva alérgenos que la reserva evita (marcado en rojo en el menú y en el selector).",
+    "placeholders": {
+      "allergens": { "type": "String", "example": "Glutine · Latte e derivati" }
+    }
+  },
+  "weekMenuNotVegetarian": "Non è segnato come vegetariano",
+  "@weekMenuNotVegetarian": {
+    "description": "Un plato sin la dieta vegetariana (ni vegana) en una reserva vegetariana."
+  },
+  "weekMenuNotVegan": "Non è segnato come vegano",
+  "@weekMenuNotVegan": {
+    "description": "Un plato sin la dieta vegana en una reserva vegana."
+  },
+  "weekMenuPickerTitle": "Aggiungi piatti",
+  "@weekMenuPickerTitle": {
+    "description": "Título del selector de platos del catálogo para el menú."
+  },
+  "weekMenuPickerEmpty": "Non restano piatti attivi da aggiungere.",
+  "@weekMenuPickerEmpty": {
+    "description": "Selector de platos: todos los activos ya están en el menú (o no hay ninguno)."
+  },
+  "weekMenuPickerConflicts": "Quelli segnati in rosso sono in conflitto con le allergie o la dieta della prenotazione.",
+  "@weekMenuPickerConflicts": {
+    "description": "Selector de platos: explica la marca roja de los platos que chocan con las restricciones."
+  },
+  "weekMenuPickerAdd": "{count, plural, =0{Scegli i piatti} =1{Aggiungi 1 piatto} other{Aggiungi {count} piatti}}",
+  "@weekMenuPickerAdd": {
+    "description": "Botón del selector: agrega al menú los platos marcados (deshabilitado sin ninguno).",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
+  "weekMenuDishCreated": "«{name}» salvato e aggiunto al menù.",
+  "@weekMenuDishCreated": {
+    "description": "Aviso en el editor del menú después de crear un plato nuevo desde ahí.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuListSection": "Lista della spesa",
+  "@weekMenuListSection": {
+    "description": "Editor del menú: título de la lista de compras para la cliente."
+  },
+  "weekMenuListAuto": "Si compone da sola con gli ingredienti dei piatti, per le loro porzioni. Se la modifichi, smette di seguire i piatti.",
+  "@weekMenuListAuto": {
+    "description": "Editor del menú: la lista sigue sola a los platos."
+  },
+  "weekMenuListManual": "L'hai modificata a mano: non segue più i piatti.",
+  "@weekMenuListManual": {
+    "description": "Editor del menú: la lista se cambió a mano."
+  },
+  "weekMenuListRebuild": "Rifai la lista dai piatti",
+  "@weekMenuListRebuild": {
+    "description": "Editor del menú: vuelve a armar la lista con los platos (pide confirmación)."
+  },
+  "weekMenuListRebuildTitle": "Rifare la lista?",
+  "@weekMenuListRebuildTitle": {
+    "description": "Confirmación de weekMenuListRebuild."
+  },
+  "weekMenuListRebuildBody": "La lista torna a uscire dai piatti, come sono oggi, e li segue di nuovo: quello che contiene adesso viene sostituito.",
+  "@weekMenuListRebuildBody": {
+    "description": "Confirmación de weekMenuListRebuild. Neutra: la lista pudo cambiarla la cocinera o pudo cambiar un plato del catálogo."
+  },
+  "weekMenuListRebuildConfirm": "Rifai",
+  "@weekMenuListRebuildConfirm": {
+    "description": "Botón que confirma weekMenuListRebuild."
+  },
+  "weekMenuListEmpty": "La lista è vuota.",
+  "@weekMenuListEmpty": {
+    "description": "Editor del menú: la lista de compras no tiene renglones."
+  },
+  "weekMenuListTruncated": "Uscivano più di {max} voci: sono rimaste le prime {max}.",
+  "@weekMenuListTruncated": {
+    "description": "Editor del menú: la lista que sale de los platos pasaba el tope de renglones.",
+    "placeholders": {
+      "max": { "type": "int", "example": "150" }
+    }
+  },
+  "weekMenuListNoIngredients": "Senza ingredienti: {names}. Aggiungili nel piatto e poi rifai la lista dai piatti, oppure scrivi qui quello che serve.",
+  "@weekMenuListNoIngredients": {
+    "description": "Editor del menú: platos del menú que no tienen ingredientes cargados (no suman nada a la lista).",
+    "placeholders": {
+      "names": { "type": "String", "example": "Lasagne alla bolognese, Minestrone" }
+    }
+  },
+  "weekMenuItemAdd": "Aggiungi alla lista",
+  "@weekMenuItemAdd": {
+    "description": "Editor del menú: agrega un renglón a la lista de compras; también título y botón de su diálogo."
+  },
+  "weekMenuItemEditTitle": "Modifica nella lista",
+  "@weekMenuItemEditTitle": {
+    "description": "Título del diálogo que cambia un renglón de la lista de compras."
+  },
+  "weekMenuItemEdit": "Modifica {name}",
+  "@weekMenuItemEdit": {
+    "description": "Lector de pantalla: botón que cambia un renglón de la lista.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Carne macinata" }
+    }
+  },
+  "weekMenuItemRemove": "Togli {name}",
+  "@weekMenuItemRemove": {
+    "description": "Lector de pantalla: botón que quita un renglón de la lista.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Carne macinata" }
+    }
+  },
+  "weekMenuItemRemoved": "Tolto dalla lista.",
+  "@weekMenuItemRemoved": {
+    "description": "Aviso después de quitar un renglón de la lista (con «Annulla»)."
+  },
+  "weekMenuItemMax": "Al massimo {max} voci nella lista.",
+  "@weekMenuItemMax": {
+    "description": "Editor del menú: la lista llegó a su tope de renglones.",
+    "placeholders": {
+      "max": { "type": "int", "example": "150" }
+    }
+  },
+  "shoppingAmount": "{quantity} {unit}",
+  "@shoppingAmount": {
+    "description": "Cantidad de un renglón de la lista: el número (con los decimales del idioma) y la unidad.",
+    "placeholders": {
+      "quantity": { "type": "String", "example": "1,25" },
+      "unit": { "type": "String", "example": "kg" }
+    }
+  },
+  "shoppingUnitKilograms": "kg",
+  "@shoppingUnitKilograms": {
+    "description": "Unidad: kilos (la lista muestra 1250 g como 1,25 kg)."
+  },
+  "shoppingUnitLiters": "l",
+  "@shoppingUnitLiters": {
+    "description": "Unidad: litros (la lista muestra 1500 ml como 1,5 l)."
+  },
+  "weekMenuNoteSection": "Nota per la cliente",
+  "@weekMenuNoteSection": {
+    "description": "Editor del menú: título de la nota para la cliente."
+  },
+  "weekMenuNoteLabel": "Nota (facoltativa)",
+  "@weekMenuNoteLabel": {
+    "description": "Campo de la nota para la cliente."
+  },
+  "weekMenuNoteHint": "Es.: tieni pronti 4 contenitori grandi.",
+  "@weekMenuNoteHint": {
+    "description": "Ejemplo dentro del campo de la nota."
+  },
+  "weekMenuNoteHelper": "La cliente la riceve così come la scrivi: scrivila nella sua lingua ({language}). Non scrivere dati di salute, indirizzi né altri dati personali.",
+  "@weekMenuNoteHelper": {
+    "description": "Ayuda debajo de la nota: llega a la cliente tal como la escribe la cocinera (no se traduce, decisión del 22/11/2026), en el idioma de la cliente.",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "weekMenuSave": "Salva il menù",
+  "@weekMenuSave": {
+    "description": "Botón de abajo del editor del menú."
+  },
+  "weekMenuSaved": "Menù salvato.",
+  "@weekMenuSaved": {
+    "description": "Aviso después de guardar el menú."
+  },
+  "weekMenuReadOnly": "Sessione «{status}»: il menù non si può più cambiare.",
+  "@weekMenuReadOnly": {
+    "description": "Editor del menú de una sesión cancelada, cocinada o cobrada.",
+    "placeholders": {
+      "status": { "type": "String", "example": "Cucinata" }
+    }
+  },
+  "weekMenuConflictsTitle": "Piatti in conflitto con la prenotazione",
+  "@weekMenuConflictsTitle": {
+    "description": "Confirmación al guardar un menú con platos que chocan con las alergias o la dieta de la reserva."
+  },
+  "weekMenuConflictsBody": "Controlla le allergie e la dieta della prenotazione prima di salvare:",
+  "@weekMenuConflictsBody": {
+    "description": "Confirmación de weekMenuConflictsTitle, antes de la lista de platos."
+  },
+  "weekMenuConflictLine": "{dish}: {reason}",
+  "@weekMenuConflictLine": {
+    "description": "Un plato de la confirmación de choques y por qué choca.",
+    "placeholders": {
+      "dish": { "type": "String", "example": "Lasagne alla bolognese" },
+      "reason": { "type": "String", "example": "Contiene: Glutine" }
+    }
+  },
+  "weekMenuConflictsConfirm": "Salva comunque",
+  "@weekMenuConflictsConfirm": {
+    "description": "Botón que guarda el menú con los choques confirmados."
+  },
+  "weekMenuConflictsReview": "Rivedi",
+  "@weekMenuConflictsReview": {
+    "description": "Botón que vuelve al menú sin guardar desde la confirmación de choques."
+  },
+  "weekMenuChangedTitle": "Un altro telefono ha cambiato questo menù",
+  "@weekMenuChangedTitle": {
+    "description": "Al guardar: alguien guardó el menú desde otro dispositivo mientras se editaba (menu_changed)."
+  },
+  "weekMenuChangedBody": "Qualcuno l'ha salvato mentre lo modificavi, quindi le tue modifiche non sono state salvate. Puoi caricare il menù salvato (le tue modifiche si perdono) o continuare a vedere le tue per ricopiarle.",
+  "@weekMenuChangedBody": {
+    "description": "Explicación de weekMenuChangedTitle."
+  },
+  "weekMenuChangedReload": "Carica quello salvato",
+  "@weekMenuChangedReload": {
+    "description": "Botón de weekMenuChangedTitle: carga el menú guardado y descarta lo cambiado."
+  },
+  "weekMenuChangedKeep": "Continua a vedere il mio",
+  "@weekMenuChangedKeep": {
+    "description": "Botón de weekMenuChangedTitle: cierra el aviso y deja lo cambiado en la pantalla."
+  },
+  "weekMenuReloadFailed": "Non è stato possibile caricare il menù salvato. Controlla la connessione e riprova.",
+  "@weekMenuReloadFailed": {
+    "description": "Falló la carga del menú guardado después de weekMenuChangedReload."
+  },
+  "weekMenuErrorNotEditable": "Questa sessione non accetta più modifiche al menù (è annullata, cucinata o pagata): non è stato salvato.",
+  "@weekMenuErrorNotEditable": {
+    "description": "Al guardar: session_not_editable."
+  },
+  "weekMenuErrorRecipeNotFound": "«{name}» non è più nel catalogo: toglilo e salva di nuovo.",
+  "@weekMenuErrorRecipeNotFound": {
+    "description": "Al guardar: recipe_not_found con el plato.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuErrorRecipeNotFoundUnknown": "Un piatto non è più nel catalogo: controlla i piatti e salva di nuovo.",
+  "@weekMenuErrorRecipeNotFoundUnknown": {
+    "description": "Al guardar: recipe_not_found sin saber cuál."
+  },
+  "weekMenuErrorInvalid": "Il server non ha accettato il menù. Controlla i dati e riprova.",
+  "@weekMenuErrorInvalid": {
+    "description": "Al guardar: invalid_payload o un check."
+  },
+  "weekMenuErrorForbidden": "Il tuo account non può cambiare i menù.",
+  "@weekMenuErrorForbidden": {
+    "description": "Al guardar: not_a_chef."
+  },
+  "weekMenuErrorUnavailable": "Non è stato possibile salvare. Controlla la connessione e riprova: quello che hai scritto è ancora qui.",
+  "@weekMenuErrorUnavailable": {
+    "description": "Al guardar: sin conexión o el servidor no responde."
+  },
+  "weekMenuListStale": "La lista salvata non è più quella che esce dai piatti: l'hai modificata a mano o è cambiato qualche piatto del catalogo. Controllala o rifalla dai piatti.",
+  "@weekMenuListStale": {
+    "description": "Editor del menú: al abrir, la lista guardada no coincide con la que sale hoy de los platos (no se sabe si la cambió la cocinera o cambió una receta)."
+  },
+  "weekMenuListTranslated": "La cliente riceve i nomi tradotti automaticamente nella sua lingua ({language}): non scrivere dati personali nella lista.",
+  "@weekMenuListTranslated": {
+    "description": "Editor del menú, debajo del título de la lista: los nombres se traducen solos al idioma de la cliente (decisión del 22/11/2026).",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "shoppingItemNameHelper": "Viene tradotto automaticamente nella lingua della cliente ({language}): non scrivere dati personali.",
+  "@shoppingItemNameHelper": {
+    "description": "Ayuda del nombre de un renglón de la lista de compras: se traduce solo al idioma de la cliente.",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "weekMenuErrorSessionNotFound": "La sessione non esiste più: il menù non è stato salvato.",
+  "@weekMenuErrorSessionNotFound": {
+    "description": "Al guardar: session_not_found (aviso y cartel fijo del editor, que queda bloqueado)."
+  },
+  "weekMenuDishCreatedUntranslated": "«{name}» salvato senza tradurre e aggiunto al menù: la traduzione automatica è spenta.",
+  "@weekMenuDishCreatedUntranslated": {
+    "description": "Aviso en el editor del menú: el plato nuevo se guardó sin traducir porque la traducción automática está apagada (501).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishCreatedUntranslatable": "«{name}» salvato senza tradurre e aggiunto al menù: la traduzione automatica non è riuscita a tradurlo.",
+  "@weekMenuDishCreatedUntranslatable": {
+    "description": "Aviso en el editor del menú: el plato nuevo se guardó sin traducir porque la traducción automática no pudo con el texto (422).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishCreatedMenuFull": "«{name}» è salvato nei piatti, ma il menù è già pieno: non è stato aggiunto.",
+  "@weekMenuDishCreatedMenuFull": {
+    "description": "Aviso en el editor del menú: el plato nuevo se guardó en el catálogo pero el menú ya tenía el máximo de platos.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "recipeLeaveSavedTitle": "Tornare al menù?",
+  "@recipeLeaveSavedTitle": {
+    "description": "Editor de un plato abierto desde el menú, con el plato ya guardado (la foto falló o cambió algo después): confirmación al salir."
+  },
+  "recipeLeaveSavedBody": "Il piatto è già salvato ed entra nel menù. Quello che hai cambiato dopo (per esempio la foto) non è stato salvato.",
+  "@recipeLeaveSavedBody": {
+    "description": "Cuerpo de recipeLeaveSavedTitle."
+  },
+  "recipeLeaveSavedConfirm": "Torna al menù",
+  "@recipeLeaveSavedConfirm": {
+    "description": "Botón de recipeLeaveSavedTitle: vuelve al menú con el plato guardado."
   }
 }

@@ -26,6 +26,15 @@
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data: __SUPABASE_ORIGIN__; font-src 'self'; connect-src 'self' __SUPABASE_ORIGIN__; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
 
+# Página de la clienta (SPEC 5.8): su reserva con el menú de cada semana. La Edge Function client-link y las
+# fotos de los platos (bucket público recipe-photos, en el mismo origen de Supabase); sin Turnstile ni nada de
+# terceros. Se abre con un link personal (el token va en el fragmento, que no llega a ningún servidor): nunca
+# se indexa.
+/prenotazione/*
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: __SUPABASE_ORIGIN__; font-src 'self'; connect-src 'self' __SUPABASE_ORIGIN__; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  X-Robots-Tag: noindex, nofollow
+
 # Bandeja y agenda de Evelyn: la app Flutter web (build en dist/gestione/, ver app/README.md "Web
 # /gestione/"). Todo se sirve desde el mismo origen; la CSP de /* no le alcanza:
 # - script-src 'wasm-unsafe-eval': CanvasKit es WebAssembly (sin él la app no arranca). Nada de

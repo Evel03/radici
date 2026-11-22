@@ -14,7 +14,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(88);
+select plan(89);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
@@ -246,10 +246,10 @@ select is(
     "contact": {"name": "Annina Rota", "email": "anna@envios.test", "phone": "+393339999999"}, "chefName": "Evelyn"}'::jsonb,
   'al enviar: la foto, el idioma, el contacto de ahora y la cocinera');
 select is(
-  (select concat_ws(' ', l.request_id, l.chef_id, l.expires_at = l.created_at + interval '120 days')
+  (select concat_ws(' ', l.request_id, l.chef_id, l.expires_at = l.created_at + interval '15 days')
    from public.client_links l where l.token_hash = pg_temp.h('token-a')),
   '7e6a3000-0000-4000-8000-00000000000a 7e6a1000-0000-4000-8000-000000000001 t',
-  'y el link (el hash), del pedido, por 120 días');
+  'y el link (el hash), del pedido, por 15 días');
 select is((select count(*)::int from public.client_links where token_hash = 'token-a'), 0, 'el token no se guarda, solo el hash');
 select is(
   array[
@@ -383,6 +383,8 @@ select is(pg_temp.error_of($$ select public.client_link_confirm_menu(pg_temp.h('
   'P0002: send_not_found', 'el link de una reserva no contesta el envío de otra');
 select is((public.client_link_view(pg_temp.h('token-x')) -> 'weeks') -> 0 ->> 'sessionId',
   '7e6a4000-0000-4000-8000-00000000000f', 'y cada link abre solo su reserva');
+select is(public.client_link_view(pg_temp.h('token-x')) ->> 'clientName', 'Xenia Ferri',
+  'un pedido sin nombre propio (de la app) usa el de la ficha');
 
 -- Evelyn manda otra versión de la semana 1: el envío viejo ya no se contesta.
 select ok(pg_temp.deliver('7e6a1000-0000-4000-8000-000000000001',

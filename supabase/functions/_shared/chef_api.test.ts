@@ -12,7 +12,6 @@ import {
   MAX_MENU_VERSION,
   MAX_PORTIONS,
   MAX_WEEKS,
-  MENU_EDITABLE_STATUSES,
   RECIPE_DESCRIPTION_MAX,
   RECIPE_NAME_MAX,
   SESSION_STATUSES,
@@ -473,10 +472,9 @@ test("traducir: una clave que el contrato no tiene o un cuerpo que no es un obje
 
 const SEND_ID = "5e550000-0000-4000-8000-0000000000aa";
 
-test("estados de sesión: los del enum; el menú solo se arma y se manda en held, confirmed o shopping_done", () => {
+test("estados de sesión: los del enum; la versión del menú, un int de Postgres", () => {
   assert.deepEqual([...SESSION_STATUSES], ["held", "confirmed", "shopping_done", "cooked", "paid", "cancelled"]);
-  assert.deepEqual([...MENU_EDITABLE_STATUSES], ["held", "confirmed", "shopping_done"], "como save_session_menu y chef_prepare_menu_send");
-  assert.equal(MAX_MENU_VERSION, 2_147_483_647, "un int de Postgres");
+  assert.equal(MAX_MENU_VERSION, 2_147_483_647);
 });
 
 test("vista previa: la sesión en minúsculas, la versión del menú y traducir por defecto", () => {

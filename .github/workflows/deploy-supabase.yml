@@ -1,10 +1,11 @@
 # Despliega el backend de Supabase a producción: la configuración de Auth (desde config.toml y la
 # plantilla del código), migraciones (db push), la cuenta de la cocinera con su horario inicial la
 # primera vez, secretos de las Edge Functions, las funciones public-request, chef (el área de Evelyn,
-# con la traducción de los platos) y menu-reminders (los avisos a Evelyn para completar el menú de cada
-# semana, SPEC 5.8) y, al final, las cuentas de sus colaboradores, en cada despliegue.
+# con la traducción de los platos), menu-reminders (los avisos a Evelyn para completar el menú de cada
+# semana, SPEC 5.8) y client-link (el link de la clienta) y, al final, las cuentas de sus colaboradores,
+# en cada despliegue.
 # Contratos:
-# docs/contracts/public-request.md §8 y §10.1, y docs/contracts/chef-api.md §9.
+# docs/contracts/public-request.md §8 y §10.1, docs/contracts/chef-api.md §9 y docs/contracts/client-link.md §8.
 # - push a main que toque supabase/** (o este archivo) → producción
 # - workflow_dispatch → a mano, desde la pestaña Actions
 # Antes de tocar producción corre los tests de TypeScript y los de la base (pgTAP, base local).
@@ -424,6 +425,18 @@ jobs:
           fi
           supabase functions deploy chef --project-ref "${SUPABASE_PROJECT_REF}" --use-api
 
+      # El link de la clienta (docs/contracts/client-link.md): la página /prenotazione/ muestra la reserva
+      # con el menú de cada semana y la clienta lo confirma o pide cambios. Va después de db push porque
+      # llama a las funciones client_link_* (migración 20261121100000_menu_sends.sql). verify_jwt = false
+      # sale de supabase/config.toml ([functions.client-link]): la clienta no tiene cuenta y la llave es el
+      # token del link. Usa los secretos que ya carga "Secretos de la función" (IP_HASH_SALT,
+      # ALLOWED_ORIGINS y los de los avisos a Evelyn), y la URL y la clave secreta que pone Supabase.
+      - name: Desplegar client-link
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: supabase functions deploy client-link --project-ref "${SUPABASE_PROJECT_REF}" --use-api
+
       # Los avisos a Evelyn para completar el menú de cada semana (SPEC 5.8). La base llama a la función
       # cada 15 minutos (pg_cron + pg_net, migración 20261121110000_menu_reminders.sql) con un secreto
       # compartido en la cabecera x-reminders-secret. Este paso genera uno nuevo en cada despliegue, lo
@@ -486,5 +499,5 @@ jobs:
           {
             echo "### Backend desplegado"
             echo "- Migraciones aplicadas con db push"
-            echo "- Funciones: https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/public-request, …/functions/v1/chef y …/functions/v1/menu-reminders"
+            echo "- Funciones: https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/public-request, …/functions/v1/chef, …/functions/v1/client-link y …/functions/v1/menu-reminders"
           } >> "${GITHUB_STEP_SUMMARY}"

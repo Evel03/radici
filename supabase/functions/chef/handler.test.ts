@@ -107,6 +107,9 @@ const PHOTO_ID = "bbbb0000-0000-4000-8000-000000000001";
 const MENU_NOTE = "NOTA-MENU-qqq: tené listos 4 táperes.";
 const LINK_CONTACT = { name: "Mariaxyz Bianchiqwe", email: "maria.pii@example.test", phone: "+393337654321" };
 const SENT_AT = "2026-11-16T10:00:00.123456+00:00";
+/** La huella de la foto (private.menu_send_fingerprint, md5): la de ahora y la de después de un cambio. */
+const FINGERPRINT = "0123456789abcdef0123456789abcdef";
+const MOVED_FINGERPRINT = "fedcba9876543210fedcba9876543210";
 
 /** Id del n-ésimo envío preparado por la base simulada. */
 function sendIdOf(n: number): string {
@@ -154,6 +157,7 @@ function menuContextRpc(overrides: Record<string, unknown> = {}, menu: Record<st
       ...menu,
     },
     lastSend: null,
+    fingerprint: FINGERPRINT,
     ...overrides,
   };
 }
@@ -207,8 +211,13 @@ class FakeStore implements ChefStore {
   prepareCalls: PrepareMenuSendParams[] = [];
   linkCalls: LinkMenuSendParams[] = [];
   completeCalls: CompleteMenuSendParams[] = [];
-  /** Los envíos preparados: la foto (como la guarda la base, en JSON), el idioma y si ya salió. */
-  sends = new Map<string, { snapshot: unknown; locale: string; sent: boolean }>();
+  /** Los envíos preparados: la foto (como la guarda la base, en JSON), el idioma, su huella y si ya salió. */
+  sends = new Map<string, { snapshot: unknown; locale: string; fingerprint: string; sent: boolean }>();
+  /**
+   * La huella de ahora (private.menu_send_fingerprint). Cambiarla simula que se movió la sesión, se
+   * canceló otra semana o cambió un plato: prepare, link y complete dan menu_changed.
+   */
+  fingerprint = FINGERPRINT;
   /** El contacto de ahora que devuelve chef_link_menu_send. */
   linkContact: unknown = { ...LINK_CONTACT };
   /** Cuántas veces chef_link_menu_send responde 23505 (token repetido) antes de crear el link. */
@@ -333,12 +342,22 @@ class FakeStore implements ChefStore {
     return this.menuContext;
   }
 
+  private menuChanged(op: Op): StoreError {
+    return storeErrorFrom(op, { code: "40001", message: "menu_changed" });
+  }
+
   async prepareMenuSend(params: PrepareMenuSendParams): Promise<unknown> {
     this.prepareCalls.push(params);
     this.fail("prepare_menu_send");
     if (this.prepareRaw !== undefined) return this.prepareRaw;
+    if (params.p_fingerprint !== this.fingerprint) throw this.menuChanged("prepare_menu_send");
     const sendId = sendIdOf(this.sends.size);
-    this.sends.set(sendId, { snapshot: JSON.parse(JSON.stringify(params.p_snapshot)), locale: params.p_locale, sent: false });
+    this.sends.set(sendId, {
+      snapshot: JSON.parse(JSON.stringify(params.p_snapshot)),
+      locale: params.p_locale,
+      fingerprint: params.p_fingerprint,
+      sent: false,
+    });
     return { sendId };
   }
 
@@ -357,6 +376,7 @@ class FakeStore implements ChefStore {
     const send = this.sends.get(params.p_send_id);
     if (!send) throw storeErrorFrom("link_menu_send", { code: "P0002", message: "send_not_found" });
     if (send.sent) throw storeErrorFrom("link_menu_send", { code: "55000", message: "already_sent" });
+    if (send.fingerprint !== this.fingerprint) throw this.menuChanged("link_menu_send");
     return {
       sendId: params.p_send_id,
       sessionId: SESSION_ID,
@@ -373,6 +393,7 @@ class FakeStore implements ChefStore {
     this.fail("complete_menu_send");
     if (this.completeRaw !== undefined) return this.completeRaw;
     const send = this.sends.get(params.p_send_id);
+    if (send && send.fingerprint !== this.fingerprint) throw this.menuChanged("complete_menu_send");
     if (send) send.sent = true;
     return { sendId: params.p_send_id, sentAt: SENT_AT, sentVia: [...params.p_via].sort() };
   }
@@ -383,9 +404,12 @@ class FakeMailer implements Mailer {
   messages: EmailMessage[] = [];
   outcome: SendOutcome = { ok: true, id: "re_123" };
   throws: unknown = undefined;
+  /** Se llama mientras «manda» (para simular algo que cambia en la base en ese momento). */
+  during: () => void = () => {};
 
   async send(message: EmailMessage): Promise<SendOutcome> {
     this.messages.push(message);
+    this.during();
     if (this.throws !== undefined) throw this.throws;
     return this.outcome;
   }
@@ -399,7 +423,7 @@ class FakeTranslator implements Translator {
   calls: TranslationSource[] = [];
   reply: TranslatorReply | null = null;
   throws: unknown = undefined;
-  /** La lista y la nota de un menú: lo que recibió y lo que contesta (por defecto, el de mentira). */
+  /** Los nombres de la lista de un menú: lo que recibió y lo que contesta (por defecto, el de mentira). */
   menuCalls: MenuTextSource[] = [];
   menuReply: TranslatorReply | null = null;
   /** Se llama mientras «traduce» (para simular el tiempo que tarda). */
@@ -1801,7 +1825,7 @@ async function previewed(run: Harness, body: Record<string, unknown> = previewBo
   return await json(response);
 }
 
-test("vista previa: 200 con el mensaje en italiano sin link, el contacto, y la lista y la nota traducidas", async () => {
+test("vista previa: 200 con el mensaje en italiano sin link, el contacto, la lista traducida y la nota tal cual", async () => {
   const run = harness();
   const response = await run.handle(post("/menus/preview", previewBody()));
   assert.equal(response.status, 200);
@@ -1820,14 +1844,16 @@ test("vista previa: 200 con el mensaje en italiano sin link, el contacto, y la l
     assert.ok(text.includes("Milanesaxyz alla napoletana"));
     assert.ok(text.includes("[it] Zapallitoszzz: 1,25 kg"));
     assert.ok(text.includes("[it] Zapallitoszzz: 250 g"));
-    assert.ok(text.includes("[it] NOTA-MENU-qqq"));
+    assert.ok(text.includes(MENU_NOTE), "la nota, como la escribió Evelyn");
+    assert.ok(!text.includes("[it] NOTA"), "la nota nunca se traduce");
     assert.ok(text.includes("[link personale per confermare]"), "sin link: se crea al enviar");
     assert.equal(tokenIn(text), null);
     for (const marker of ["Segretissima", "NOTA-SALUD", "maria.pii", "765 4321"]) assert.ok(!text.includes(marker), marker);
   }
 
-  // A Claude, solo los nombres de la lista (sin repetir) y la nota; con el cupo de la cocina, el de /translate.
-  assert.deepEqual(run.translator.menuCalls, [{ target: "it", items: ["Zapallitoszzz", "sal"], note: MENU_NOTE }]);
+  // A Claude, solo los nombres de la lista (sin repetir), nunca la nota; con el cupo de la cocina, el de /translate.
+  assert.deepEqual(run.translator.menuCalls, [{ target: "it", items: ["Zapallitoszzz", "sal"] }]);
+  assert.ok(!JSON.stringify(run.translator.menuCalls).includes("NOTA-MENU"));
   assert.deepEqual(run.store.rateHits, [{ key: await translateRateKey(CHEF_ID), maxPerHour: 60, maxPerDay: 150 }]);
   assert.deepEqual(run.store.contextCalls, [{ p_chef_id: CHEF_ID, p_session_id: SESSION_ID }]);
 
@@ -1838,7 +1864,8 @@ test("vista previa: 200 con el mensaje en italiano sin link, el contacto, y la l
   assert.equal(prepare.p_session_id, SESSION_ID);
   assert.equal(prepare.p_menu_version, MENU_VERSION);
   assert.equal(prepare.p_locale, "it");
-  assert.equal(prepare.p_translated, true);
+  assert.equal(prepare.p_translated, true, "se tradujo la lista");
+  assert.equal(prepare.p_fingerprint, FINGERPRINT, "la huella del contexto con que se armó la foto");
   assert.deepEqual(prepare.p_snapshot, {
     v: 1,
     locale: "it",
@@ -1865,16 +1892,15 @@ test("vista previa: 200 con el mensaje en italiano sin link, el contacto, y la l
       { name: "[it] sal", section: "pantry", quantity: null, unit: null },
       { name: "[it] Zapallitoszzz", section: "produce", quantity: 250, unit: "g" },
     ],
-    note: `[it] ${MENU_NOTE}`,
+    note: MENU_NOTE,
   });
   const snapshotText = JSON.stringify(prepare.p_snapshot);
-  for (const marker of ["Mariaxyz", "maria.pii", "765", "Segretissima", "NOTA-SALUD", REQUEST_ID]) assert.ok(!snapshotText.includes(marker), marker);
+  for (const marker of ["Mariaxyz", "maria.pii", "765", "Segretissima", "NOTA-SALUD", REQUEST_ID, FINGERPRINT]) assert.ok(!snapshotText.includes(marker), marker);
 
   assert.deepEqual(run.logs.find((entry) => entry.event === "translated")?.fields, {
     route: "/menus/preview",
     ms: 0,
     items: 2,
-    noteLength: MENU_NOTE.length,
     userId: USER_EVELYN,
   });
   assert.deepEqual(run.logs.find((entry) => entry.event === "menu_previewed")?.fields, {
@@ -1890,7 +1916,7 @@ test("vista previa: 200 con el mensaje en italiano sin link, el contacto, y la l
   });
 });
 
-test("vista previa en español, sin traducir (translate: false) o sin lista ni nota: no llama a Claude ni gasta el cupo", async () => {
+test("vista previa en español, sin traducir (translate: false) o sin lista (aunque haya nota): no llama a Claude ni gasta el cupo", async () => {
   const spanish = harness();
   spanish.store.menuContext = menuContextRpc({ request: { locale: "es" } });
   const es = await previewed(spanish);
@@ -1908,8 +1934,10 @@ test("vista previa en español, sin traducir (translate: false) o sin lista ni n
   assert.equal(untranslated.store.prepareCalls[0]?.p_snapshot.note, MENU_NOTE, "la nota como la escribió Evelyn");
 
   const empty = harness();
-  empty.store.menuContext = menuContextRpc({}, { items: [], note: null });
-  assert.equal((await previewed(empty)).translated, false);
+  empty.store.menuContext = menuContextRpc({}, { items: [] });
+  const noList = await previewed(empty);
+  assert.equal(noList.translated, false, "la nota sola no se traduce");
+  assert.ok(noList.message.emailText.includes(MENU_NOTE));
 
   for (const run of [spanish, untranslated, empty]) {
     assert.equal(run.translator.menuCalls.length + run.store.rateHits.length, 0);
@@ -1917,7 +1945,7 @@ test("vista previa en español, sin traducir (translate: false) o sin lista ni n
   }
 });
 
-test("vista previa en inglés: el plato sin inglés va en italiano; la lista y la nota, a inglés", async () => {
+test("vista previa en inglés: el plato sin inglés va en italiano; la lista, a inglés; la nota, como está", async () => {
   const run = harness();
   run.store.menuContext = menuContextRpc({ request: { locale: "en" } });
   const body = await previewed(run);
@@ -1925,6 +1953,7 @@ test("vista previa en inglés: el plato sin inglés va en italiano; la lista y l
   assert.equal(run.translator.menuCalls[0]?.target, "en");
   assert.ok(body.message.emailText.includes("• Milanesaxyz alla napoletana"));
   assert.ok(body.message.emailText.includes("[en] Zapallitoszzz: 1.25 kg"));
+  assert.ok(body.message.emailText.includes(`A NOTE FROM EVELYN\n${MENU_NOTE}`), "la nota, en el idioma en que la escribió Evelyn");
   assert.ok(body.message.emailText.includes("[personal link to confirm]"));
 });
 
@@ -1964,8 +1993,8 @@ test("vista previa sin traducción: 503, 422 o 500 como /translate; nunca una li
     ["sobrecargada", { kind: "failed", reason: "apiError", status: 529 }, 503, "unavailable", "apiError"],
     ["negativa", { kind: "refusal", category: "cyber" }, 422, "untranslatable", "refusal"],
     ["max_tokens", { kind: "maxTokens" }, 422, "untranslatable", "maxTokens"],
-    ["uno de menos", { kind: "text", text: JSON.stringify({ items: ["zucchine"], note: "Nota" }) }, 422, "untranslatable", "invalidOutput"],
-    ["sin la nota", { kind: "text", text: JSON.stringify({ items: ["zucchine", "sale"] }) }, 422, "untranslatable", "invalidOutput"],
+    ["uno de menos", { kind: "text", text: JSON.stringify({ items: ["zucchine"] }) }, 422, "untranslatable", "invalidOutput"],
+    ["con una nota que nadie pidió", { kind: "text", text: JSON.stringify({ items: ["zucchine", "sale"], note: "Nota" }) }, 422, "untranslatable", "invalidOutput"],
     ["clave inválida", { kind: "failed", reason: "apiError", status: 401 }, 500, "server", "apiError"],
     ["explota", new Error("Zapallitoszzz NOTA-MENU-qqq"), 500, "server", "unexpected"],
   ];
@@ -1981,23 +2010,13 @@ test("vista previa sin traducción: 503, 422 o 500 como /translate; nunca una li
     assert.equal(entry?.fields["reason"], reason, name);
     assert.equal(entry?.fields["route"], "/menus/preview");
     assert.equal(entry?.fields["items"], 2);
-    assert.equal(entry?.fields["noteLength"], MENU_NOTE.length);
+    assert.equal(entry?.fields["noteLength"], undefined, "la nota no entra en la traducción");
   }
 });
 
-test("vista previa: lo que la base vuelve a mirar se rechaza antes de traducir (otra versión, sesión cerrada, sin platos)", async () => {
+test("vista previa: lo que la base vuelve a mirar se rechaza antes de traducir (otra versión, sin platos)", async () => {
   const cases: Array<[string, (run: Harness) => void, Record<string, unknown>, unknown]> = [
     ["otra versión del menú", () => {}, previewBody({ menuVersion: MENU_VERSION - 1 }), { error: "menuChanged" }],
-    [
-      "sesión cancelada",
-      (run) => {
-        run.store.menuContext = menuContextRpc({
-          session: { id: SESSION_ID, date: "2026-11-30", start: "10:00", status: "cancelled", requestId: REQUEST_ID, week: 1, weeks: 1 },
-        });
-      },
-      previewBody(),
-      { error: "sessionNotEditable", status: "cancelled" },
-    ],
     [
       "sin platos",
       (run) => {
@@ -2016,6 +2035,35 @@ test("vista previa: lo que la base vuelve a mirar se rechaza antes de traducir (
     assert.equal(run.translator.menuCalls.length + run.store.rateHits.length + run.store.prepareCalls.length, 0, `${name}: sin traducir ni guardar`);
     assert.ok(run.logs.some((entry) => entry.event === "rejected" && entry.fields["route"] === "/menus/preview"), name);
   }
+});
+
+test("vista previa de una semana cancelada, cocinada o cobrada: la base la rechaza (55000) y es 409 sessionNotEditable con el estado", async () => {
+  for (const status of ["cancelled", "cooked", "paid"]) {
+    const run = harness();
+    run.store.failures.set("menu_send_context", storeErrorFrom("menu_send_context", { code: "55000", message: "session_not_editable", details: status }));
+    const response = await run.handle(post("/menus/preview", previewBody()));
+    assert.equal(response.status, 409, status);
+    assert.deepEqual(await json(response), { error: "sessionNotEditable", status });
+    assert.equal(run.translator.menuCalls.length + run.store.rateHits.length + run.store.prepareCalls.length, 0, `${status}: sin traducir ni guardar`);
+    assert.ok(run.logs.some((entry) => entry.event === "rejected" && entry.fields["message"] === "session_not_editable"));
+  }
+});
+
+test("vista previa: si algo cambia mientras se traduce la lista (la semana se mueve, un plato), la base no guarda la foto: 409 menuChanged", async () => {
+  const run = harness();
+  run.translator.during = () => {
+    run.store.fingerprint = MOVED_FINGERPRINT;
+  };
+  const response = await run.handle(post("/menus/preview", previewBody()));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await json(response), { error: "menuChanged" });
+  assert.equal(run.store.prepareCalls[0]?.p_fingerprint, FINGERPRINT, "la huella con que se armó la foto");
+  assert.equal(run.store.sends.size, 0);
+
+  const missing = harness();
+  missing.store.menuContext = menuContextRpc({ fingerprint: undefined });
+  assert.equal((await missing.handle(post("/menus/preview", previewBody()))).status, 500, "un contexto sin huella no se usa");
+  assert.ok(missing.logs.some((entry) => entry.event === "unexpected_result" && entry.fields["op"] === "menu_send_context"));
 });
 
 test("vista previa: los errores de la base, traducidos (404, 409, 500, 503); una respuesta con otra forma, 500", async () => {
@@ -2274,6 +2322,32 @@ test("enviar: los errores de la base al crear el link, traducidos (404, 409, 503
     assert.deepEqual(await json(response), expected, name);
     assert.equal(run.mailer.messages.length + run.store.completeCalls.length, 0, name);
   }
+});
+
+test("enviar después de mover la semana, cancelar otra o cambiar un plato: 409 menuChanged sin mandar nada (hace falta otra vista previa)", async () => {
+  const run = harness();
+  const preview = await previewed(run);
+  run.store.fingerprint = MOVED_FINGERPRINT;
+  const response = await run.handle(post("/menus/send", { sendId: preview.sendId, email: true, whatsapp: true }));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await json(response), { error: "menuChanged" });
+  assert.equal(run.mailer.messages.length + run.store.completeCalls.length, 0);
+
+  // Con otra vista previa (armada con la huella de ahora) sale.
+  run.store.menuContext = menuContextRpc({ fingerprint: MOVED_FINGERPRINT });
+  const again = await previewed(run);
+  assert.equal((await run.handle(post("/menus/send", { sendId: again.sendId, whatsapp: true }))).status, 200);
+
+  // Si cambia justo mientras sale el email: no se marca y la respuesta dice que el email salió.
+  const during = harness();
+  const duringPreview = await previewed(during);
+  during.mailer.during = () => {
+    during.store.fingerprint = MOVED_FINGERPRINT;
+  };
+  const late = await during.handle(post("/menus/send", { sendId: duringPreview.sendId, email: true }));
+  assert.equal(late.status, 409);
+  assert.deepEqual(await json(late), { error: "menuChanged", emailSent: true });
+  assert.ok(during.logs.some((entry) => entry.event === "menu_send_incomplete"));
 });
 
 test("enviar: si el email salió pero no se puede marcar, la respuesta lo dice (emailSent) y el log, menu_send_incomplete", async () => {

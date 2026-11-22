@@ -91,8 +91,6 @@ export type DayStatus = (typeof DAY_STATUSES)[number];
 /** Estados de una sesión (el enum session_status). */
 export const SESSION_STATUSES = ["held", "confirmed", "shopping_done", "cooked", "paid", "cancelled"] as const;
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
-/** Solo se arma y se manda el menú de una sesión held o confirmed (o una vieja en shopping_done), como save_session_menu. */
-export const MENU_EDITABLE_STATUSES: readonly SessionStatus[] = ["held", "confirmed", "shopping_done"];
 
 // ---------------------------------------------------------------------------
 // Cuerpos (JSON, camelCase)
@@ -191,8 +189,8 @@ export interface MenuPreviewPayload {
   /** session_menus.version que la app tiene cargada: si Evelyn (o un colaborador) guardó otra, 409 menuChanged. */
   menuVersion: number;
   /**
-   * Traducir la lista de compras y la nota al idioma de la clienta (por defecto true). false: van como
-   * las escribió Evelyn (la app lo ofrece si la traducción falla).
+   * Traducir los nombres de la lista de compras al idioma de la clienta (por defecto true). false: van
+   * como los escribió Evelyn (la app lo ofrece si la traducción falla). La nota nunca se traduce.
    */
   translate?: boolean;
 }
@@ -434,7 +432,7 @@ export interface MenuPreviewMessage {
 export interface MenuPreviewResponse {
   sendId: string;
   locale: Locale;
-  /** La lista y la nota se tradujeron solas al idioma de la clienta. */
+  /** Los nombres de la lista se tradujeron solos al idioma de la clienta (la nota nunca se traduce). */
   translated: boolean;
   /** Para que Evelyn lo revise antes de mandar: a dónde va a salir. */
   contact: MenuSendContact;

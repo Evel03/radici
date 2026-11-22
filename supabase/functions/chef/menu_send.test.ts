@@ -30,6 +30,8 @@ const RECIPE_B = "aaaa0000-0000-4000-8000-000000000002";
 const PHOTO_ID = "bbbb0000-0000-4000-8000-000000000001";
 const SEND_ID = "5e550000-0000-4000-8000-0000000000aa";
 const ORIGIN = "https://abcdefghijklmnop.supabase.co";
+/** La huella de private.menu_send_fingerprint: md5 en hexadecimal. */
+const FINGERPRINT = "0123456789abcdef0123456789abcdef";
 
 /** Lo que devuelve chef_menu_send_context (la forma de la migración 20261121100000_menu_sends.sql). */
 function contextRpc(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -81,6 +83,7 @@ function contextRpc(overrides: Record<string, unknown> = {}): Record<string, unk
       ],
     },
     lastSend: null,
+    fingerprint: FINGERPRINT,
     ...overrides,
   };
 }
@@ -104,6 +107,7 @@ test("menuSendContextFromRpc: lo que usa la función, con el contacto recortado"
   assert.equal(context.menu.note, "Tené listos 4 táperes.");
   assert.equal(context.menu.dishes.length, 2);
   assert.deepEqual(context.menu.items[1], { name: "sal", section: "pantry", quantity: null, unit: null });
+  assert.equal(context.fingerprint, FINGERPRINT, "va tal cual a chef_prepare_menu_send");
 
   const blank = menuSendContextFromRpc(contextRpc({ contact: { name: null, email: "  ", phone: "" }, chef: null }));
   assert.deepEqual(blank?.contact, { name: "", email: null, phone: null });
@@ -133,6 +137,11 @@ test("menuSendContextFromRpc: cualquier forma inesperada es null (un 500, nunca 
     ["porciones 0", { ...base, menu: { ...menu, dishes: [{ ...dish, portions: 0 }] } }],
     ["otra sección", { ...base, menu: { ...menu, items: [{ name: "pan", section: "deli", quantity: 1, unit: "pcs" }] } }],
     ["semanas rotas", { ...base, weeks: [{ date: "30/11/2026", start: "10:00" }] }],
+    // Una semana cancelada nunca llega acá (la base da session_not_editable): si llegara, sin número de semana, no se arma nada.
+    ["semana sin número", { ...base, session: { ...session, status: "cancelled", week: null, weeks: 1 } }],
+    ["sin huella", { ...base, fingerprint: undefined }],
+    ["huella en mayúsculas", { ...base, fingerprint: FINGERPRINT.toUpperCase() }],
+    ["huella corta", { ...base, fingerprint: FINGERPRINT.slice(1) }],
   ];
   for (const [name, value] of broken) {
     assert.equal(menuSendContextFromRpc(value), null, name);
@@ -159,7 +168,7 @@ test("dishName y dishDescription: el idioma de la clienta o el italiano", () => 
   assert.equal(dishDescription(minestrone, "en"), "With beans.");
 });
 
-test("buildMenuSnapshot: en el idioma de la clienta, con las fotos de la web, la lista traducida y nada de la clienta", () => {
+test("buildMenuSnapshot: en el idioma de la clienta, con las fotos de la web, la lista traducida, la nota como la escribió Evelyn y nada de la clienta", () => {
   const context = menuSendContextFromRpc(contextRpc());
   assert.ok(context);
   const snapshot = buildMenuSnapshot(context, {
@@ -169,7 +178,6 @@ test("buildMenuSnapshot: en el idioma de la clienta, con las fotos de la web, la
       ["zapallitos", "courgettes"],
       ["sal", "salt"],
     ]),
-    note: "Have 4 containers ready.",
   });
   assert.deepEqual(snapshot, {
     v: 1,
@@ -198,16 +206,16 @@ test("buildMenuSnapshot: en el idioma de la clienta, con las fotos de la web, la
       { name: "salt", section: "pantry", quantity: null, unit: null },
       { name: "courgettes", section: "produce", quantity: 300, unit: "g" },
     ],
-    note: "Have 4 containers ready.",
+    note: "Tené listos 4 táperes.",
   });
   assert.deepEqual(readMenuSnapshot(JSON.parse(JSON.stringify(snapshot))), snapshot, "la lee igual quien la guarda y la vuelve a leer");
   const text = JSON.stringify(snapshot);
-  for (const marker of ["Maria", "maria@example.test", "3331234567", REQUEST_ID, SESSION_ID, "allergensConfirmed"]) {
+  for (const marker of ["Maria", "maria@example.test", "3331234567", REQUEST_ID, SESSION_ID, "allergensConfirmed", FINGERPRINT]) {
     assert.ok(!text.includes(marker), `la foto lleva ${marker}`);
   }
 
   // Sin origen de las fotos (functions serve) ni traducción: sin fotos y la lista como la escribió Evelyn.
-  const plain = buildMenuSnapshot(context, { chefId: CHEF_ID, photoOrigin: null, itemNames: null, note: context.menu.note });
+  const plain = buildMenuSnapshot(context, { chefId: CHEF_ID, photoOrigin: null, itemNames: null });
   assert.equal(plain.dishes[0]?.photo, null);
   assert.deepEqual(plain.items.map((item) => item.name), ["zapallitos", "sal", "zapallitos"]);
   assert.equal(plain.note, "Tené listos 4 táperes.");

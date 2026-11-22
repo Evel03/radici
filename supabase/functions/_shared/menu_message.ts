@@ -6,8 +6,8 @@
 // le llega a la clienta: la semana (k de N), el día y la llegada; en la semana 1, todas las fechas de
 // la reserva; los platos con su descripción, sus porciones, su dieta y sus alérgenos (los 14 del Reg.
 // UE 1169/2011, con su nombre); la lista de compras por sección del súper, con cantidades legibles, y
-// lo que va q.b. aparte («para tener en casa»); la nota de Evelyn; el link para ver el menú entero y
-// confirmarlo (o pedir cambios) y cómo responder.
+// lo que va q.b. aparte («para tener en casa»); la nota de Evelyn, tal como la escribió; el link para
+// ver el menú entero y confirmarlo (o pedir cambios) y cómo responder.
 //
 // Nunca lleva la dirección, el contacto, las alergias de la clienta, precios ni nada de pagos: la
 // entrada no los tiene. Del nombre de la clienta, solo el de pila si parece un nombre (safeFirstName):
@@ -104,12 +104,25 @@ interface MenuMessages {
   thousands: string;
 }
 
+/**
+ * Una fecha corta en italiano con su artículo («il», o «del» con la preposición), con la elisión de los
+ * días que empiezan con vocal: «il 30 nov», «l'8 dic», «dell'11 gen»; el primero del mes, «il 1° dic».
+ */
+export function italianDateWithArticle(article: "il" | "del", day: string): string {
+  const number = Number(/^\d+/.exec(day)?.[0]);
+  if (number === 8 || number === 11) return `${article === "il" ? "l'" : "dell'"}${day}`;
+  if (number === 1) return `${article} ${day.replace(/^1(?=\D|$)/, "1°")}`;
+  return `${article} ${day}`;
+}
+
 const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
   it: {
     greeting: (first) => (first ? `Ciao ${first}!` : "Ciao!"),
     subject: (brand, day, week, weeks) =>
-      weeks > 1 ? `${brand}: il menù della settimana ${week} di ${weeks} (${day})` : `${brand}: il tuo menù del ${day}`,
-    preheader: (chef, day, start) => `${chef} arriva il ${day} alle ${start}: guarda il menù e confermalo.`,
+      weeks > 1
+        ? `${brand}: il menù della settimana ${week} di ${weeks} (${day})`
+        : `${brand}: il tuo menù ${italianDateWithArticle("del", day)}`,
+    preheader: (chef, day, start) => `${chef} arriva ${italianDateWithArticle("il", day)} alle ${start}: guarda il menù e confermalo.`,
     intro: (chef, day, start, week, weeks) =>
       weeks > 1
         ? `${chef} ha preparato il menù della settimana ${week} di ${weeks}: arriva da te ${day} alle ${start}.`

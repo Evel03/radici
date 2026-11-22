@@ -2,7 +2,14 @@
 // textos por idioma, escape del HTML y que nunca lleve nada de la clienta. Correr con: npm test.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatQuantity, linkPlaceholder, renderMenuMessage, shoppingGroups, type MenuMessageInput } from "./menu_message.ts";
+import {
+  formatQuantity,
+  italianDateWithArticle,
+  linkPlaceholder,
+  renderMenuMessage,
+  shoppingGroups,
+  type MenuMessageInput,
+} from "./menu_message.ts";
 import { readMenuSnapshot, type MenuSnapshot } from "./menu_snapshot.ts";
 import { LOCALES, type Locale } from "./public_request.ts";
 
@@ -343,4 +350,50 @@ test("nunca lleva la dirección, el contacto, las alergias de la clienta ni prec
       assert.ok(!text.includes(marker), `aparece ${marker}`);
     }
   }
+});
+
+test("italiano: el artículo delante de una fecha con elisión («l'8», «dell'11») y «il 1°»", () => {
+  assert.equal(italianDateWithArticle("il", "30 nov"), "il 30 nov");
+  assert.equal(italianDateWithArticle("del", "30 nov"), "del 30 nov");
+  assert.equal(italianDateWithArticle("il", "8 dic"), "l'8 dic");
+  assert.equal(italianDateWithArticle("del", "8 dic"), "dell'8 dic");
+  assert.equal(italianDateWithArticle("il", "11 gen"), "l'11 gen");
+  assert.equal(italianDateWithArticle("del", "11 gen"), "dell'11 gen");
+  assert.equal(italianDateWithArticle("il", "1 dic"), "il 1° dic");
+  assert.equal(italianDateWithArticle("del", "1 dic"), "del 1° dic");
+  assert.equal(italianDateWithArticle("il", "18 dic"), "il 18 dic", "diciotto empieza con consonante");
+  assert.equal(italianDateWithArticle("il", "10 dic"), "il 10 dic");
+
+  const week = (date: string) =>
+    renderMenuMessage(input({ snapshot: snapshot("it", { session: { date, start: "10:00", week: 1, weeks: 1 }, weeks: [{ date, start: "10:00" }] }) }));
+  const cases: Array<[string, string, string]> = [
+    ["2026-12-08", "Radici: il tuo menù dell'8 dic", "Evelyn arriva l&#39;8 dic alle 10:00"],
+    ["2027-01-11", "Radici: il tuo menù dell'11 gen", "Evelyn arriva l&#39;11 gen alle 10:00"],
+    ["2026-12-01", "Radici: il tuo menù del 1° dic", "Evelyn arriva il 1° dic alle 10:00"],
+    ["2026-12-18", "Radici: il tuo menù del 18 dic", "Evelyn arriva il 18 dic alle 10:00"],
+  ];
+  for (const [date, subject, preheader] of cases) {
+    const message = week(date);
+    assert.equal(message.subject, subject, date);
+    assert.ok(message.html.includes(preheader), `${date}: ${preheader}`);
+    for (const wrong of ["del 8", "il 8", "del 11", "il 11", "il 1 dic", "del 1 dic"]) {
+      assert.ok(!message.subject.includes(wrong) && !message.html.includes(wrong), `${date}: ${wrong}`);
+    }
+  }
+  // Con varias semanas la fecha del asunto va entre paréntesis, sin artículo; en español y en inglés no hay elisión.
+  const several = renderMenuMessage(input({ snapshot: snapshot("it", { session: { date: "2026-12-08", start: "10:00", week: 1, weeks: 3 } }) }));
+  assert.equal(several.subject, "Radici: il menù della settimana 1 di 3 (8 dic)");
+  const es = renderMenuMessage(
+    input({ snapshot: snapshot("es", { session: { date: "2026-12-08", start: "10:00", week: 1, weeks: 1 }, weeks: [{ date: "2026-12-08", start: "10:00" }] }) }),
+  );
+  assert.equal(es.subject, "Radici: tu menú del 8 dic");
+});
+
+test("la nota: una palabra larga (un link) se parte y no ensancha el email en el teléfono", () => {
+  const url = "https://www.esselunga.it/commerce/nav/supermercato/store/ricerca/lievito%20di%20birra%20fresco";
+  const { html } = renderMenuMessage(input({ snapshot: snapshot("it", { note: `Compra il lievito qui: ${url}` }) }));
+  const paragraph = html.split("<p ").find((part) => part.includes("Compra il lievito qui"));
+  assert.ok(paragraph, "la nota va en un párrafo");
+  assert.ok(paragraph.startsWith('style="') && paragraph.includes("word-break:break-word;overflow-wrap:anywhere;"), paragraph);
+  assert.ok(paragraph.includes(`Compra il lievito qui: ${url}</p>`));
 });

@@ -56,6 +56,27 @@ test("función chef: se despliega después de las migraciones y de los secretos,
   assert.match(section("public-request"), /^verify_jwt = false$/m);
 });
 
+test("función client-link: se despliega después de las migraciones y de los secretos, sin JWT (la clienta no tiene cuenta)", () => {
+  // client-link llama a las funciones client_link_* (migración 20261121100000_menu_sends.sql) y usa
+  // IP_HASH_SALT, ALLOWED_ORIGINS y los secretos de los avisos, que carga el paso de los secretos
+  // (contrato client-link.md §8).
+  const migrations = WORKFLOW.indexOf("- name: Migraciones (db push)");
+  const secrets = WORKFLOW.indexOf("- name: Secretos de la función");
+  const clientLink = WORKFLOW.indexOf("- name: Desplegar client-link");
+  assert.notEqual(clientLink, -1, "está el paso de client-link");
+  assert.ok(clientLink > migrations && clientLink > secrets, "client-link se despliega después de db push y de los secretos");
+
+  const run = step("Desplegar client-link");
+  assert.match(run, /if: env\.HAS_SUPABASE == 'true'/);
+  assert.match(run, /supabase functions deploy client-link --project-ref "\$\{SUPABASE_PROJECT_REF\}" --use-api/);
+  // verify_jwt sale de config.toml, no de una bandera en el comando.
+  assert.ok(!run.includes("--no-verify-jwt"));
+  const config = readFileSync(repo("supabase/config.toml"), "utf8");
+  const section = /\[functions\.client-link\]\n([\s\S]*?)(?:\n\[|$)/.exec(config)?.[1] ?? "";
+  assert.match(section, /^enabled = true$/m);
+  assert.match(section, /^verify_jwt = false$/m);
+});
+
 const CHEF_STEP = "Cuenta de la cocinera (solo la primera vez)";
 const MEMBERS_STEP = "Colaboradores de la cocinera";
 /** El script de los dos pasos de cuentas (se corre de verdad en deploy-accounts.test.ts). */
