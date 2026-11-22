@@ -3647,5 +3647,330 @@
   "todayMenusError": "Non è stato possibile sapere quali menù mancano da inviare.",
   "@todayMenusError": {
     "description": "Hoy: no se pudieron leer los menús de las semanas próximas (con «Riprova»)."
+  },
+  "actionPrepareQuote": "Prepara il preventivo",
+  "@actionPrepareQuote": {
+    "description": "Detalle de un pedido nuevo: la acción principal, abre la hoja para preparar el presupuesto (SPEC 5.8). También es el título de esa hoja."
+  },
+  "actionConfirmWithoutQuote": "Conferma senza preventivo",
+  "@actionConfirmWithoutQuote": {
+    "description": "Detalle de un pedido nuevo: confirma la reserva sin presupuesto (lo que ya se acordó por fuera), con la misma hoja de siempre."
+  },
+  "quoteBlockTitle": "Preventivo",
+  "@quoteBlockTitle": {
+    "description": "Título del bloque del presupuesto en el detalle del pedido."
+  },
+  "quoteStateDraft": "Bozza non ancora inviata: le date restano bloccate fino al {date} alle {time}.",
+  "@quoteStateDraft": {
+    "description": "Bloque del presupuesto: preparado y sin mandar; hasta cuándo retiene las fechas (hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "23/11" },
+      "time": { "type": "String", "example": "14:32" }
+    }
+  },
+  "quoteStateSent": "Inviato il {date} alle {time} (versione {version}).",
+  "@quoteStateSent": {
+    "description": "Bloque del presupuesto: cuándo salió el último envío (hora de Roma) y qué versión tiene la clienta.",
+    "placeholders": {
+      "version": { "type": "int", "example": "2" },
+      "date": { "type": "String", "example": "22/11" },
+      "time": { "type": "String", "example": "14:32" }
+    }
+  },
+  "quoteValidUntil": "La cliente può accettarlo fino al {date} alle {time}.",
+  "@quoteValidUntil": {
+    "description": "Bloque del presupuesto mandado: hasta cuándo puede aceptarlo la clienta (hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "24/11" },
+      "time": { "type": "String", "example": "14:32" }
+    }
+  },
+  "quoteStateChangesRequested": "Il {date} alle {time} la cliente ha chiesto delle modifiche:",
+  "@quoteStateChangesRequested": {
+    "description": "Bloque del presupuesto: la clienta pidió cambios en el último envío; debajo va su mensaje entero.",
+    "placeholders": {
+      "date": { "type": "String", "example": "23/11" },
+      "time": { "type": "String", "example": "09:10" }
+    }
+  },
+  "quoteChangesHint": "Fai le modifiche (menù, prezzo o date) e rimandalo: è un'altra versione e il tempo per accettarlo riparte.",
+  "@quoteChangesHint": {
+    "description": "Bloque del presupuesto con cambios pedidos: qué hacer."
+  },
+  "quoteStateChanged": "L'hai cambiato dopo averlo inviato: la cliente non può accettarlo finché non glielo rimandi.",
+  "@quoteStateChanged": {
+    "description": "Bloque del presupuesto: cambió (precio, una semana movida o cancelada) después de mandarlo y todavía no se reenvió."
+  },
+  "quoteStateAccepted": "La cliente l'ha accettato il {date} alle {time}.",
+  "@quoteStateAccepted": {
+    "description": "Bloque del presupuesto: la clienta lo aceptó (hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "23/11" },
+      "time": { "type": "String", "example": "09:10" }
+    }
+  },
+  "quoteStateDeclined": "La cliente l'ha rifiutato il {date} alle {time}.",
+  "@quoteStateDeclined": {
+    "description": "Bloque del presupuesto: la clienta lo rechazó (hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "23/11" },
+      "time": { "type": "String", "example": "09:10" }
+    }
+  },
+  "quoteStateWithdrawn": "Ritirato il {date} alle {time}: le settimane bloccate sono state annullate.",
+  "@quoteStateWithdrawn": {
+    "description": "Bloque del presupuesto: se retiró (hora de Roma); sus semanas retenidas se cancelaron.",
+    "placeholders": {
+      "date": { "type": "String", "example": "23/11" },
+      "time": { "type": "String", "example": "09:10" }
+    }
+  },
+  "quoteStateExpired": "Scaduto il {date} alle {time} senza risposta: le date vengono liberate.",
+  "@quoteStateExpired": {
+    "description": "Bloque del presupuesto mandado que venció sin respuesta (hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "24/11" },
+      "time": { "type": "String", "example": "14:32" }
+    }
+  },
+  "quoteStateDraftExpired": "La bozza è scaduta il {date} alle {time} senza essere inviata: le date vengono liberate.",
+  "@quoteStateDraftExpired": {
+    "description": "Bloque del presupuesto: el borrador venció sin mandarse (hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "23/11" },
+      "time": { "type": "String", "example": "14:32" }
+    }
+  },
+  "quoteWeekDetail": "Arrivo {time} · {amount}",
+  "@quoteWeekDetail": {
+    "description": "Una semana del presupuesto, debajo de su fecha: la llegada y el precio del servicio de esa semana.",
+    "placeholders": {
+      "time": { "type": "String", "example": "10:00" },
+      "amount": { "type": "String", "example": "140,00 €" }
+    }
+  },
+  "quoteNoWeeks": "Non ha più settimane (le hai annullate tutte): ritiralo per prepararne un altro.",
+  "@quoteNoWeeks": {
+    "description": "Bloque del presupuesto (y error al cambiar el precio): ya no le quedan semanas vivas."
+  },
+  "quoteMenuMissing": "Manca il menù della settimana 1: parte insieme al preventivo.",
+  "@quoteMenuMissing": {
+    "description": "Bloque del presupuesto abierto: el menú de la semana 1 todavía no tiene platos guardados (también el porqué de «Mandar» deshabilitado)."
+  },
+  "quoteLoadFailed": "Non è stato possibile leggere il preventivo.",
+  "@quoteLoadFailed": {
+    "description": "Detalle del pedido: no se pudo leer el presupuesto (con «Riprova»)."
+  },
+  "quoteWeeksHint": "Tocca una settimana per spostarla o annullarla: poi va rimandato.",
+  "@quoteWeeksHint": {
+    "description": "Bloque del presupuesto abierto, debajo de las semanas."
+  },
+  "quoteActionSend": "Invia il preventivo",
+  "@quoteActionSend": {
+    "description": "Presupuesto sin mandar: abre la vista previa del menú de la semana 1, que lo lleva."
+  },
+  "quoteActionResend": "Invia di nuovo",
+  "@quoteActionResend": {
+    "description": "Presupuesto ya mandado: otra vista previa y otro envío (otra versión)."
+  },
+  "quoteActionChangePrice": "Cambia il prezzo",
+  "@quoteActionChangePrice": {
+    "description": "Bloque del presupuesto: abre el diálogo para otro precio."
+  },
+  "quoteActionWithdraw": "Ritira il preventivo",
+  "@quoteActionWithdraw": {
+    "description": "Bloque del presupuesto: retirarlo (pide confirmación)."
+  },
+  "quotePriceTitle": "Un altro prezzo",
+  "@quotePriceTitle": {
+    "description": "Título del diálogo para cambiar el precio del presupuesto."
+  },
+  "quotePriceHelp": "Il prezzo del servizio di tutte le settimane, diviso fra di loro. Se l'hai già inviato, poi va rimandato.",
+  "@quotePriceHelp": {
+    "description": "Diálogo del precio del presupuesto: qué es y qué pasa después."
+  },
+  "quotePriceSave": "Salva il prezzo",
+  "@quotePriceSave": {
+    "description": "Botón del diálogo del precio del presupuesto."
+  },
+  "quotePriceDone": "Prezzo cambiato.",
+  "@quotePriceDone": {
+    "description": "Aviso: el precio de un presupuesto sin mandar quedó cambiado."
+  },
+  "quotePriceDoneResend": "Prezzo cambiato: rimandalo perché la cliente lo veda.",
+  "@quotePriceDoneResend": {
+    "description": "Aviso: el precio de un presupuesto ya mandado quedó cambiado; hay que mandarlo de nuevo."
+  },
+  "quotePriceSplit": "Per settimana: {amounts}",
+  "@quotePriceSplit": {
+    "description": "Debajo del precio de un presupuesto de varias semanas que no se divide justo: cuánto queda en cada semana (los centavos que sobran, a las primeras).",
+    "placeholders": {
+      "amounts": { "type": "String", "example": "166,67 € · 166,67 € · 166,66 €" }
+    }
+  },
+  "quoteWithdrawTitle": "Ritirare il preventivo?",
+  "@quoteWithdrawTitle": {
+    "description": "Diálogo para retirar el presupuesto."
+  },
+  "quoteWithdrawBody": "Le settimane bloccate vengono annullate e la richiesta torna nuova. Se l'hai già inviato, nel suo link la cliente vede che l'hai ritirato.",
+  "@quoteWithdrawBody": {
+    "description": "Diálogo para retirar el presupuesto: qué pasa."
+  },
+  "quoteWithdrawConfirm": "Ritira",
+  "@quoteWithdrawConfirm": {
+    "description": "Botón que confirma retirar el presupuesto."
+  },
+  "quoteWithdrawDone": "Preventivo ritirato.",
+  "@quoteWithdrawDone": {
+    "description": "Aviso: el presupuesto se retiró."
+  },
+  "quoteErrorClosed": "Il preventivo non è più aperto (accettato, rifiutato, ritirato o scaduto).",
+  "@quoteErrorClosed": {
+    "description": "El presupuesto ya no está abierto (al cambiar el precio o retirarlo)."
+  },
+  "quoteErrorNotFound": "Questo preventivo non esiste più.",
+  "@quoteErrorNotFound": {
+    "description": "El presupuesto ya no existe (al cambiar el precio o retirarlo)."
+  },
+  "quoteErrorPriceUnavailable": "Il prezzo non è stato salvato. Controlla la connessione e riprova.",
+  "@quoteErrorPriceUnavailable": {
+    "description": "El precio del presupuesto no se pudo guardar (sin conexión o el servidor no respondió)."
+  },
+  "quoteErrorWithdrawUnavailable": "Non è stato possibile ritirarlo. Controlla la connessione e riprova.",
+  "@quoteErrorWithdrawUnavailable": {
+    "description": "El presupuesto no se pudo retirar (sin conexión o el servidor no respondió)."
+  },
+  "quoteErrorConflict": "È cambiato nel frattempo: guarda com'è adesso.",
+  "@quoteErrorConflict": {
+    "description": "El presupuesto cambió mientras tanto (otro choque)."
+  },
+  "quoteErrorForbidden": "Il tuo account non può gestire i preventivi.",
+  "@quoteErrorForbidden": {
+    "description": "La cuenta no puede manejar presupuestos."
+  },
+  "quoteFormIntro": "Le settimane restano bloccate mentre prepari il menù della settimana 1: il preventivo parte con lui e la cliente lo accetta dal suo link.",
+  "@quoteFormIntro": {
+    "description": "Hoja «Preparar presupuesto», debajo del pedido: qué pasa al crearlo."
+  },
+  "quoteCreateAction": "Crea il preventivo",
+  "@quoteCreateAction": {
+    "description": "Botón de la hoja «Preparar presupuesto»."
+  },
+  "quoteCreating": "Creo il preventivo…",
+  "@quoteCreating": {
+    "description": "Botón de la hoja «Preparar presupuesto» mientras se crea."
+  },
+  "quoteOpeningMenu": "Apro il menù della settimana 1…",
+  "@quoteOpeningMenu": {
+    "description": "Hoja «Preparar presupuesto»: ya se creó y se abre el editor del menú de la semana 1."
+  },
+  "bookingErrorQuoteExists": "Questa richiesta ha già un preventivo aperto: lo trovi nella richiesta.",
+  "@bookingErrorQuoteExists": {
+    "description": "Hoja «Preparar presupuesto»: el pedido ya tiene un presupuesto abierto (no se creó nada)."
+  },
+  "bookingErrorNotQuotable": "Questa richiesta non ammette un preventivo (è una richiesta di modifica).",
+  "@bookingErrorNotQuotable": {
+    "description": "Hoja «Preparar presupuesto»: un pedido de cambios no admite presupuesto."
+  },
+  "quoteErrorCreateUnavailable": "Il preventivo non è stato creato. Controlla la connessione e riprova con gli stessi dati: se era già stato creato, lo ritrova.",
+  "@quoteErrorCreateUnavailable": {
+    "description": "Hoja «Preparar presupuesto»: no se pudo crear (sin conexión o sin respuesta)."
+  },
+  "weekMenuQuoteFirstWeek": "Il menù della settimana 1 parte insieme al preventivo: salvalo e tocca «Invia» per mandare alla cliente entrambe le cose.",
+  "@weekMenuQuoteFirstWeek": {
+    "description": "Editor del menú de la semana 1 de un presupuesto sin aceptar: el menú sale junto con el presupuesto. «Invia» es el botón de abajo (menuSendShort)."
+  },
+  "weekMenuQuoteLaterWeek": "Settimana del preventivo: il suo menù si invia quando la cliente lo accetta (prima parte solo quello della settimana 1).",
+  "@weekMenuQuoteLaterWeek": {
+    "description": "Editor del menú de otra semana de un presupuesto sin aceptar: se manda después de que lo acepte."
+  },
+  "menuSendAfterQuote": "Si invia quando la cliente accetta il preventivo.",
+  "@menuSendAfterQuote": {
+    "description": "Ficha de una semana de un presupuesto que no es la primera: por qué «Invia» está deshabilitado."
+  },
+  "sessionQuoteHeldHint": "Settimana di un preventivo non ancora accettato: se la sposti o la annulli, il preventivo cambia (se è già partito, va rimandato alla cliente).",
+  "@sessionQuoteHeldHint": {
+    "description": "Ficha de una semana retenida por un presupuesto sin aceptar: qué pasa si se mueve o se cancela."
+  },
+  "menuSendQuoteSection": "Preventivo (versione {version})",
+  "@menuSendQuoteSection": {
+    "description": "Vista previa del menú de la semana 1: título del presupuesto que va con el mensaje (la versión que sale).",
+    "placeholders": {
+      "version": { "type": "int", "example": "1" }
+    }
+  },
+  "menuSendQuoteHint": "Va con il menù: dal link la cliente accetta il preventivo e il menù della settimana 1, chiede modifiche o lo rifiuta.",
+  "@menuSendQuoteHint": {
+    "description": "Vista previa del menú de la semana 1 con el presupuesto: qué puede hacer la clienta."
+  },
+  "menuSendQuoteDeadlineHours": "{hours, plural, =1{Ha 1 ora per accettarlo da quando lo invii; intanto le date restano riservate a lei.} other{Ha {hours} ore per accettarlo da quando lo invii; intanto le date restano riservate a lei.}}",
+  "@menuSendQuoteDeadlineHours": {
+    "description": "Vista previa con el presupuesto: las horas que tiene la clienta para aceptarlo desde que sale.",
+    "placeholders": {
+      "hours": { "type": "int", "example": "48" }
+    }
+  },
+  "menuSendQuoteDeadlineFirst": "Ha tempo fino a {date} alle {time} per accettarlo (l'arrivo della prima settimana).",
+  "@menuSendQuoteDeadlineFirst": {
+    "description": "Vista previa con el presupuesto: el plazo no alcanza las horas de siempre antes de la primera llegada, así que vence a esa hora (Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 30 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "menuSendDoneQuote": "Il preventivo (versione {version}) è partito con il menù.",
+  "@menuSendDoneQuote": {
+    "description": "Después de mandar el menú de la semana 1 con el presupuesto.",
+    "placeholders": {
+      "version": { "type": "int", "example": "1" }
+    }
+  },
+  "menuSendErrorQuoteClosed": "Il preventivo non è più aperto (accettato, rifiutato, ritirato o scaduto): questo menù non parte più con lui.",
+  "@menuSendErrorQuoteClosed": {
+    "description": "Vista previa o envío: el presupuesto de la semana ya no está abierto."
+  },
+  "menuSendErrorQuoteWeekNotFirst": "Questa settimana si invia quando la cliente accetta il preventivo: prima parte solo il menù della settimana 1.",
+  "@menuSendErrorQuoteWeekNotFirst": {
+    "description": "Vista previa: una semana de un presupuesto que no es la primera (se manda después de aceptarlo)."
+  },
+  "menuSendErrorQuoteChanged": "Il preventivo è cambiato (un altro prezzo, una settimana spostata o annullata): prepara un'altra anteprima.",
+  "@menuSendErrorQuoteChanged": {
+    "description": "Vista previa: los términos del presupuesto cambiaron mientras se armaba."
+  },
+  "menuSendErrorQuoteChangedSincePreview": "Dall'anteprima il preventivo è cambiato (un altro prezzo, una settimana spostata o annullata): non è partito niente. Prepara un'altra anteprima.",
+  "@menuSendErrorQuoteChangedSincePreview": {
+    "description": "Envío: desde la vista previa cambiaron los términos del presupuesto; no salió nada."
+  },
+  "cancelReasonQuoteWithdrawn": "Preventivo ritirato",
+  "@cancelReasonQuoteWithdrawn": {
+    "description": "Junto al estado de una semana cancelada porque se retiró su presupuesto."
+  },
+  "cancelReasonQuoteExpired": "Preventivo scaduto",
+  "@cancelReasonQuoteExpired": {
+    "description": "Junto al estado de una semana cancelada porque su presupuesto venció."
+  },
+  "cancelReasonQuoteDeclined": "Preventivo rifiutato",
+  "@cancelReasonQuoteDeclined": {
+    "description": "Junto al estado de una semana cancelada porque la clienta rechazó el presupuesto."
+  },
+  "quoteStateDraftShort": "Bozza non ancora inviata.",
+  "@quoteStateDraftShort": {
+    "description": "Bloque del presupuesto: preparado y sin mandar, sin plazo conocido."
+  },
+  "bookingWithdrawsQuoteSent": "Questa richiesta ha un preventivo già inviato: confermando, viene ritirato, le sue settimane bloccate si annullano e la cliente non potrà più accettarlo dal suo link.",
+  "@bookingWithdrawsQuoteSent": {
+    "description": "Hoja «Conferma prenotazione» desde un pedido con un presupuesto ya mandado (y el diálogo antes de confirmar): la base lo retira al confirmar."
+  },
+  "bookingWithdrawsQuoteDraft": "Questa richiesta ha una bozza di preventivo: confermando, viene ritirata e le sue settimane bloccate si annullano.",
+  "@bookingWithdrawsQuoteDraft": {
+    "description": "Hoja «Conferma prenotazione» desde un pedido con un borrador de presupuesto (y el diálogo antes de confirmar): la base lo retira al confirmar."
+  },
+  "bookingWithdrawQuoteTitle": "Confermare senza preventivo?",
+  "@bookingWithdrawQuoteTitle": {
+    "description": "Diálogo antes de confirmar sin presupuesto un pedido que tiene uno abierto."
+  },
+  "bookingWithdrawQuoteConfirm": "Conferma e ritira il preventivo",
+  "@bookingWithdrawQuoteConfirm": {
+    "description": "Botón del diálogo: confirma la reserva y retira el presupuesto abierto."
   }
 }
