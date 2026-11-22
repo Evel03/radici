@@ -6,7 +6,8 @@
 // lee desde 7 días antes de hoy; una renovada desde este dispositivo
 // desaparece aunque la agenda no se relea), la tira de 7 días con los
 // bloqueos y los feriados de la agenda (sin estado mientras la disponibilidad
-// se vuelve a leer), los enlaces de los botones de abajo (el WhatsApp con la
+// se vuelve a leer), los enlaces de los botones de abajo («Cómo llegar» hasta
+// la dirección o, sin ella, hasta la zona con la ciudad; el WhatsApp con la
 // regla de la ficha: de parte de la cocinera con la cuenta de un
 // colaborador; la hora de llegada solo en una sesión que no está cancelada,
 // cocinada ni cobrada, de hoy en adelante; nunca la dirección, las alergias,
@@ -42,6 +43,7 @@ import 'package:radici/features/sessions/application/session_links.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
+import 'package:radici/features/sessions/domain/session_links.dart';
 import 'package:radici/features/today/application/today_providers.dart';
 import 'package:radici/features/today/domain/today.dart';
 import 'package:radici/l10n/app_localizations.dart';
@@ -113,6 +115,7 @@ void main() {
     int hour = 10,
     String? requestId = bookingRequestId,
     String? address = 'Via Gombito 12, 24129 Bergamo',
+    String? zone = 'Città Alta',
     SessionStatus status = SessionStatus.confirmed,
   }) => buildSession(
     n: n,
@@ -120,6 +123,7 @@ void main() {
     start: ClockTime.hm(hour, 0),
     requestId: requestId,
     address: address,
+    zone: zone,
     status: status,
   );
 
@@ -486,7 +490,11 @@ void main() {
       save([session(1, today)]);
       final container = await start();
       final links = container.read(todayLinksProvider)!;
-      expect(links.directions.toString(), startsWith('https://www.google.com/maps/dir/'));
+      expect(links.directions!.target, DirectionsTarget.address);
+      expect(
+        links.directions!.uri.toString(),
+        startsWith('https://www.google.com/maps/dir/'),
+      );
       expect(links.whatsApp.toString(), startsWith('https://wa.me/393331234567?text='));
 
       final apple = ProviderContainer.test(
@@ -501,14 +509,21 @@ void main() {
       apple.listen(todayFocusProvider, (_, _) {});
       await pumpEventQueue();
       expect(
-        apple.read(todayLinksProvider)!.directions.toString(),
+        apple.read(todayLinksProvider)!.directions!.uri.toString(),
         startsWith('https://maps.apple.com/?daddr='),
       );
     });
 
-    test('sin dirección no hay «Cómo llegar»; sin sesiones, nada', () async {
+    test('sin dirección, «Cómo llegar» lleva hasta la zona, con la ciudad; sin dirección ni zona, no hay; sin sesiones, nada', () async {
       save([session(1, today, address: null)]);
       final container = await start();
+      final toZone = container.read(todayLinksProvider)!.directions!;
+      expect(toZone.target, DirectionsTarget.zone);
+      expect(toZone.uri.queryParameters['destination'], 'Città Alta, Bergamo');
+      expect(container.read(todayLinksProvider)!.whatsApp, isNotNull);
+
+      save([session(1, today, address: null, zone: null)]);
+      await container.read(sessionsControllerProvider.notifier).refresh();
       expect(container.read(todayLinksProvider)!.directions, isNull);
       expect(container.read(todayLinksProvider)!.whatsApp, isNotNull);
 

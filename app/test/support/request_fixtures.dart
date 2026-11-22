@@ -134,6 +134,8 @@ ChefRequest buildRequest({
   String name = 'Giulia Rossi',
   String? phone = '+39 333 123 4567',
   String? email = 'giulia@example.test',
+  // La zona del contacto con que llegó (null: no la escribió).
+  String? zone = 'Città Alta',
   ClientLocale locale = ClientLocale.it,
   RequestRestrictions? restrictions,
   bool? noAllergies,
@@ -176,7 +178,7 @@ ChefRequest buildRequest({
     displayName: name,
     contactEmail: email,
     contactPhone: phone,
-    zone: 'Città Alta',
+    zone: zone,
     status: clientStatus,
   ),
 );
