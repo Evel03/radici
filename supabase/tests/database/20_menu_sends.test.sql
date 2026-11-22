@@ -246,10 +246,10 @@ select is(
     "contact": {"name": "Annina Rota", "email": "anna@envios.test", "phone": "+393339999999"}, "chefName": "Evelyn"}'::jsonb,
   'al enviar: la foto, el idioma, el contacto de ahora y la cocinera');
 select is(
-  (select concat_ws(' ', l.request_id, l.chef_id, l.expires_at = l.created_at + interval '120 days')
+  (select concat_ws(' ', l.request_id, l.chef_id, l.expires_at = l.created_at + interval '15 days')
    from public.client_links l where l.token_hash = pg_temp.h('token-a')),
   '7e6a3000-0000-4000-8000-00000000000a 7e6a1000-0000-4000-8000-000000000001 t',
-  'y el link (el hash), del pedido, por 120 días');
+  'y el link (el hash), del pedido, por 15 días');
 select is((select count(*)::int from public.client_links where token_hash = 'token-a'), 0, 'el token no se guarda, solo el hash');
 select is(
   array[
