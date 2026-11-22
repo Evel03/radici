@@ -34,6 +34,7 @@ import 'package:radici/core/money.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/availability/presentation/availability_actions.dart'
     show errorSnackBarDuration;
+import 'package:radici/features/bookings/domain/booking_draft.dart';
 import 'package:radici/features/bookings/presentation/booking_labels.dart';
 import 'package:radici/features/quotes/application/quote_providers.dart';
 import 'package:radici/features/quotes/data/quotes_repository.dart';
@@ -179,6 +180,7 @@ class _QuoteBlock extends ConsumerWidget {
       context,
       totalCents: quote.currentTerms.totalCents,
       weeks: weeks,
+      referenceCents: suggestedServiceCents(request.estimate, weeks: weeks),
     );
     if (cents == null || !context.mounted) return;
     final commands = ref.read(quoteCommandsProvider);
@@ -826,9 +828,14 @@ Future<int?> showQuotePriceDialog(
   BuildContext context, {
   required int totalCents,
   required int weeks,
+  int? referenceCents,
 }) => showDialog<int>(
   context: context,
-  builder: (_) => QuotePriceDialog(totalCents: totalCents, weeks: weeks),
+  builder: (_) => QuotePriceDialog(
+    totalCents: totalCents,
+    weeks: weeks,
+    referenceCents: referenceCents,
+  ),
 );
 
 class QuotePriceDialog extends StatefulWidget {
@@ -836,7 +843,11 @@ class QuotePriceDialog extends StatefulWidget {
     super.key,
     required this.totalCents,
     required this.weeks,
+    this.referenceCents,
   });
+
+  /// La tarifa para esas semanas, solo de referencia (nunca llena el campo).
+  final int? referenceCents;
 
   /// El precio de ahora.
   final int totalCents;
@@ -931,6 +942,18 @@ class _QuotePriceDialogState extends State<QuotePriceDialog> {
                   errorMaxLines: 2,
                 ),
               ),
+              if (widget.referenceCents case final reference?) ...[
+                const SizedBox(height: 8),
+                Text(
+                  l10n.bookingRateReference(
+                    formatCents(reference, locale: locale),
+                  ),
+                  key: const ValueKey('quote-price-reference'),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ],
           );
         },

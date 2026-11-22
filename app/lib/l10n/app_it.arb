@@ -749,7 +749,7 @@
   "@detailNoEstimate": {
     "description": "El pedido no trae estimación."
   },
-  "detailEstimateFootnote": "Calcolata con le tue tariffe al momento della richiesta. La spesa la fa il cliente, con la lista che gli mandi tu.",
+  "detailEstimateFootnote": "Calcolata con le tue tariffe al momento della richiesta, solo come riferimento. Il prezzo lo scrivi tu. La spesa la fa il cliente, con la lista che gli mandi tu.",
   "@detailEstimateFootnote": {
     "description": "Nota bajo la estimación guardada (solo el servicio: la compra la hace el cliente)."
   },
@@ -1241,6 +1241,17 @@
     "description": "Como bookingPricePerWeek cuando la división no es exacta (los centavos que sobran van a las primeras semanas).",
     "placeholders": {
       "amount": { "type": "String", "example": "166,67 €" }
+    }
+  },
+  "rateReferenceLabel": "Riferimento tariffa",
+  "@rateReferenceLabel": {
+    "description": "Etiqueta del resultado de la fórmula de tarifas en el detalle del pedido semanal: referencia interna para Evelyn, no un precio que vio el cliente (decisión del 22/11/2026)."
+  },
+  "bookingRateReference": "Riferimento tariffa: {amount}",
+  "@bookingRateReference": {
+    "description": "Junto al precio de la hoja de reserva o presupuesto y del diálogo «Otro precio»: la tarifa para esas semanas, solo de referencia; el campo no se llena con ella.",
+    "placeholders": {
+      "amount": { "type": "String", "example": "560,00 €" }
     }
   },
   "bookingPriceRequired": "Scrivi il prezzo che hai concordato.",

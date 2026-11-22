@@ -224,6 +224,8 @@ void main() {
       );
       await tester.tap(byKey('action-confirm-booking'));
       await tester.pumpAndSettle();
+      await tester.enterText(byKey('booking-price'), '560');
+      await tester.pumpAndSettle();
       await tester.tap(byKey('booking-confirm'));
       await tester.pumpAndSettle();
       expect(byKey('booking-done'), findsOneWidget);

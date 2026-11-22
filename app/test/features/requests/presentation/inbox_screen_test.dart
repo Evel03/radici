@@ -365,6 +365,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('action-confirm-booking')));
     await tester.pumpAndSettle();
     expect(navBar, findsNothing, reason: 'la hoja tapa la barra');
+    await tester.enterText(find.byKey(const ValueKey('booking-price')), '560');
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('booking-confirm')));
     await tester.pumpAndSettle();
     expect(app.bookings.confirmations, hasLength(1));

@@ -107,8 +107,10 @@ void main() {
       expect(seed.startEdited, isFalse);
       expect(seed.cookMinutes, 360, reason: 'con el tope de la hoja');
       expect(seed.cookFollowsHousehold, isFalse);
-      expect(seed.priceRule.suggestedFor(4), 56000);
-      expect(seed.priceRule.suggestedFor(2), 30000);
+      // El precio no se prellena (22/11/2026): la tarifa es solo referencia.
+      expect(seed.priceRule.suggestedFor(4), isNull);
+      expect(seed.referenceRule.suggestedFor(4), 56000);
+      expect(seed.referenceRule.suggestedFor(2), 30000);
       expect(seed.portions, 20);
       expect(seed.initialFailure, isNull);
       expect(seed.party.displayName, 'Giulia Rossi');

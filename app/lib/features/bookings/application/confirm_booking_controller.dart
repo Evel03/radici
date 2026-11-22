@@ -208,6 +208,10 @@ abstract class ConfirmBookingState with _$ConfirmBookingState {
     /// El precio que propone la hoja (null: sin precio automático).
     int? suggestedPriceCents,
 
+    /// La tarifa para esas semanas, solo como referencia al lado del campo
+    /// (nunca lo llena; null: el pedido no tiene precio automático).
+    int? rateReferenceCents,
+
     /// Lo que escribió Evelyn; vale solo con [priceEdited].
     @Default('') String priceText,
     @Default(false) bool priceEdited,
@@ -558,6 +562,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
       cookMinutes: value.cookMinutes,
       portions: value.portions,
       suggestedPriceCents: value.priceRule.suggestedFor(weeks),
+      rateReferenceCents: value.referenceRule.suggestedFor(weeks),
       failure: value.initialFailure,
       openQuote: value.openQuote,
     );
@@ -582,6 +587,7 @@ class ConfirmBookingController extends Notifier<ConfirmBookingState> {
         dates: resizeBookingWeeks(current.dates, weeks),
         // El precio sigue a las semanas mientras Evelyn no lo escriba.
         suggestedPriceCents: _seed!.priceRule.suggestedFor(weeks),
+        rateReferenceCents: _seed!.referenceRule.suggestedFor(weeks),
       ),
     );
     unawaited(_runChecks(adopt: _followsSuggestion));

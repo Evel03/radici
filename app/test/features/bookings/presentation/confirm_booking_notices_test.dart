@@ -103,6 +103,9 @@ void main() {
       deviceLocales: [locale],
       overrides: overrides,
     );
+    // El precio arranca vacío (22/11/2026): lo escribe Evelyn.
+    await tester.enterText(find.byKey(const ValueKey('booking-price')), '560');
+    await tester.pumpAndSettle();
   }
 
   /// El día [n] del calendario abierto.
@@ -176,6 +179,8 @@ void main() {
           expect(byKey('update-banner'), findsOneWidget);
           expect(byKey('install-hint'), findsOneWidget);
           await tester.tap(byKey('action-confirm-booking'));
+          await tester.pumpAndSettle();
+          await tester.enterText(byKey('booking-price'), '560');
           await tester.pumpAndSettle();
           final confirm = byKey('booking-confirm');
           expect(confirm.hitTestable(), findsOneWidget);

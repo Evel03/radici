@@ -76,7 +76,11 @@ void main() {
   /// Abre la hoja del presupuesto de [request], con la bandeja y el
   /// presupuesto del pedido leídos. [beforeSheet] cambia "el servidor" justo
   /// antes de abrirla (lo que hizo otro teléfono o la clienta mientras tanto).
-  Future<void> open(ChefRequest request, {void Function()? beforeSheet}) async {
+  Future<void> open(
+    ChefRequest request, {
+    void Function()? beforeSheet,
+    bool typePrice = true,
+  }) async {
     requests.requests[request.id] = request;
     container = ProviderContainer.test(
       retry: noRetry,
@@ -111,6 +115,10 @@ void main() {
     }
     sheet = container.listen(confirmBookingProvider(source), (_, _) {});
     await pumpEventQueue();
+    // El precio ya no se prellena (22/11/2026): lo escribe Evelyn.
+    if (typePrice) {
+      container.read(confirmBookingProvider(source).notifier).setPriceText('560');
+    }
   }
 
   ConfirmBookingState state() => container.read(confirmBookingProvider(source));
@@ -237,7 +245,7 @@ void main() {
     expect(state().retryPending, isTrue);
     // Mientras tanto, nada cambia.
     controller().setPriceText('1');
-    expect(state().priceEdited, isFalse);
+    expect(state().priceText, '560');
 
     await controller().confirm();
 
@@ -382,6 +390,7 @@ void main() {
       await open(weekly(preferredDate: CalendarDate(2026, 10, 12)));
       container.listen(confirmBookingProvider(booking), (_, _) {});
       await pumpEventQueue();
+      container.read(confirmBookingProvider(booking).notifier).setPriceText('560');
       final sheet = container.read(confirmBookingProvider(booking));
       expect(sheet.dates.first, CalendarDate(2026, 10, 12));
       expect(sheet.blocker, isNull);
@@ -471,6 +480,7 @@ void main() {
       await open(request, beforeSheet: beforeSheet);
       container.listen(confirmBookingProvider(booking), (_, _) {});
       await pumpEventQueue();
+      container.read(confirmBookingProvider(booking).notifier).setPriceText('560');
       return container.read(confirmBookingProvider(booking));
     }
 
@@ -616,6 +626,7 @@ void main() {
         (_, _) {},
       );
       await pumpEventQueue();
+      container.read(confirmBookingProvider(booking).notifier).setPriceText('560');
       final reads = quotes.fetches.length;
       bookings.pendingConfirm = Completer<void>();
       final confirming = container

@@ -59,6 +59,7 @@ void main() {
     Locale locale = const Locale('it', 'IT'),
     void Function(FakeBookingsRepository bookings)? configure,
     bool open = true,
+    bool typePrice = true,
     FakeAccountRepository? accounts,
     List<Override> overrides = const [],
   }) async {
@@ -78,6 +79,12 @@ void main() {
     if (open) {
       await tester.tap(byKey('action-confirm-booking'));
       await tester.pumpAndSettle();
+      // El precio arranca vacío (22/11/2026): lo escribe Evelyn.
+      if (typePrice) {
+        await tester.enterText(byKey('booking-price'), '560');
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+      }
     }
     return app;
   }
@@ -195,6 +202,9 @@ void main() {
         expect(tester.getSize(detailAction).height, greaterThanOrEqualTo(48));
 
         await tester.tap(detailAction);
+        await tester.pumpAndSettle();
+        await tester.enterText(byKey('booking-price'), '560');
+        FocusManager.instance.primaryFocus?.unfocus();
         await tester.pumpAndSettle();
         final confirm = byKey('booking-confirm');
         expect(confirm.hitTestable(), findsOneWidget);
@@ -334,6 +344,7 @@ void main() {
     (tester) async {
       await openSheet(
         tester,
+        typePrice: false,
         size: const Size(375, 667),
         locale: const Locale('es', 'ES'),
         request: weekly(
@@ -479,14 +490,29 @@ void main() {
   );
 
   testWidgets(
-    '«+» suma una semana 7 días después; el precio y el botón lo siguen',
+    '«+» suma una semana 7 días después; el precio queda vacío, la referencia de la tarifa sigue a las semanas y el botón espera el precio',
     (tester) async {
-      await openSheet(tester);
+      await openSheet(tester, typePrice: false);
+      // Empieza vacío, con la referencia de la tarifa al lado (22/11/2026).
+      expect(priceText(tester), '');
+      expect(
+        textOf(tester, 'booking-rate-reference'),
+        'Riferimento tariffa: 560,00$_nbsp€',
+      );
+      expect(confirmButton(tester).onPressed, isNull);
+
       await tester.tap(byKey('booking-weeks-increment'));
       await tester.pumpAndSettle();
 
       expect(find.text('Settimana 5 · lun 21 dic'), findsOneWidget);
-      expect(priceText(tester), '700', reason: '5 × 140 €');
+      expect(priceText(tester), '', reason: 'la referencia nunca lo llena');
+      expect(
+        textOf(tester, 'booking-rate-reference'),
+        'Riferimento tariffa: 700,00$_nbsp€',
+      );
+      expect(confirmButton(tester).onPressed, isNull);
+      await tester.enterText(byKey('booking-price'), '700');
+      await tester.pumpAndSettle();
       expect(
         textOf(tester, 'booking-summary'),
         'Servizio 700,00$_nbsp€ · 140,00$_nbsp€ a settimana · arrivo 10:00',
@@ -549,6 +575,7 @@ void main() {
     (tester) async {
       await openSheet(
         tester,
+        typePrice: false,
         request: weekly(
           weeks: 2,
           estimate: const RequestEstimate(
@@ -1021,6 +1048,10 @@ void main() {
         // Con la rueda girando la pantalla no se asienta: unos cuadros.
         await tester.pump();
         await tester.pump(const Duration(seconds: 1));
+        // Con el precio escrito (no se prellena: 22/11/2026), la barra dice
+        // que controla las fechas.
+        await tester.enterText(byKey('booking-price'), '560');
+        await tester.pump();
         expect(textOf(tester, 'booking-checking'), 'Controllo le date…');
         expect(
           tester.getSemantics(byKey('booking-checking')),
@@ -1030,6 +1061,8 @@ void main() {
         expect(confirmButton(tester).onPressed, isNull);
 
         app.bookings.pendingChecks!.complete();
+        await tester.pumpAndSettle();
+        await tester.enterText(byKey('booking-price'), '560');
         await tester.pumpAndSettle();
         expect(byKey('booking-checking'), findsNothing);
         expect(byKey('booking-summary'), findsOneWidget);

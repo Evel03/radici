@@ -663,6 +663,26 @@ void main() {
       },
     );
 
+    testWidgets('«Otro precio» muestra la referencia de la tarifa sin llenar el campo', (
+      tester,
+    ) async {
+      await openDetail(
+        tester,
+        request: buildRequest(
+          weeks: 4,
+          status: RequestStatus.quoted,
+          estimate: fourWeeksEstimate,
+          seenAt: testNow,
+        ),
+        quote: buildQuote(),
+      );
+      await tapVisible(tester, 'quote-change-price');
+      expect(
+        textOf(tester, 'quote-price-reference'),
+        'Riferimento tariffa: 560,00 €',
+      );
+    });
+
     testWidgets('si falla, lo dice; el mismo precio no manda nada', (
       tester,
     ) async {

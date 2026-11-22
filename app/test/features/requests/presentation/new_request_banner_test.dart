@@ -242,6 +242,8 @@ void main() {
       final requests = FakeChefRequestsRepository([booked]);
       final bookings = FakeBookingsRepository(requests: requests)..pendingConfirm = Completer<void>();
       final app = await openSheet(tester, bookings: bookings);
+      await tester.enterText(byKey('booking-price'), '560');
+      await tester.pumpAndSettle();
       await tester.tap(byKey('booking-confirm'));
       await tester.pump();
       expect(find.text('Conferma in corso…'), findsOneWidget);

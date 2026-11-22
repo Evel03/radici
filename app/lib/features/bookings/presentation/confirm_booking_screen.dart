@@ -674,6 +674,18 @@ class _BookingForm extends StatelessWidget {
               onChanged: controller.setPriceText,
             ),
           ),
+          if (state.rateReferenceCents case final reference?) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.bookingRateReference(
+                formatCents(reference, locale: locale),
+              ),
+              key: const ValueKey('booking-rate-reference'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ],
       ),
     );

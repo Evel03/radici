@@ -83,7 +83,8 @@ void main() {
     expect(find.text('141,00 €'), findsNothing);
     expect(
       find.text(
-        'Calcolata con le tue tariffe al momento della richiesta. '
+        'Calcolata con le tue tariffe al momento della richiesta, solo come riferimento. '
+        'Il prezzo lo scrivi tu. '
         'La spesa la fa il cliente, con la lista che gli mandi tu.',
       ),
       findsOneWidget,
@@ -373,7 +374,9 @@ void main() {
             .map((date) => date.replaceAll(' ', '\u00a0'))
             .join(' · '),
       );
-      expect(find.text('Servizio, 4 settimane'), findsOneWidget);
+      // Es la referencia interna de la tarifa, no un precio que vio el cliente.
+      expect(find.text('Riferimento tariffa'), findsOneWidget);
+      expect(find.text('Servizio, 4 settimane'), findsNothing);
       expect(find.text('Servizio a settimana'), findsOneWidget);
       expect(textOf(tester, 'detail-estimate-total'), '560,00 €');
       expect(textOf(tester, 'detail-estimate-weekly'), '140,00 €');
@@ -399,7 +402,7 @@ void main() {
         ),
       );
       expect(textOf(tester, 'detail-weeks'), '1');
-      expect(find.text('Prezzo del servizio'), findsOneWidget);
+      expect(find.text('Riferimento tariffa'), findsOneWidget);
       expect(textOf(tester, 'detail-estimate-total'), '150,00 €');
       expect(find.byKey(const ValueKey('detail-next-dates')), findsNothing);
       expect(find.byKey(const ValueKey('detail-estimate-weekly')), findsNothing);

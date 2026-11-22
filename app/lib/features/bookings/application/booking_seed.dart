@@ -170,7 +170,8 @@ sealed class BookingPriceRule {
   int? suggestedFor(int weeks);
 }
 
-/// Desde un pedido: el de su estimación o sus tarifas guardadas.
+/// Desde un pedido: el de su estimación o sus tarifas guardadas. Solo como
+/// referencia (rateReferenceCents): la hoja no lo usa para llenar el precio.
 final class EstimatePriceRule extends BookingPriceRule {
   const EstimatePriceRule(this.estimate);
 
@@ -237,6 +238,7 @@ final class BookingSeed {
     required this.cookMinutes,
     this.cookFollowsHousehold = false,
     required this.priceRule,
+    this.referenceRule = const NoSuggestedPrice(),
     this.portions,
     this.initialFailure,
     this.renewedFrom,
@@ -264,7 +266,8 @@ final class BookingSeed {
       dates: weeklyDates(initialBookingDate(request, today: today), weeks),
       today: today,
       cookMinutes: suggestedCookMinutes(request.estimate?.cookMinutes),
-      priceRule: EstimatePriceRule(request.estimate),
+      priceRule: const NoSuggestedPrice(),
+      referenceRule: EstimatePriceRule(request.estimate),
       portions: request.estimate?.portions,
       openQuote: request.canConfirmBooking ? openQuote : null,
       // Ya no es un pedido nuevo (ni tiene el presupuesto mandado): ni se
@@ -300,7 +303,8 @@ final class BookingSeed {
       dates: weeklyDates(initialQuoteDate(request, today: today), weeks),
       today: today,
       cookMinutes: suggestedCookMinutes(request.estimate?.cookMinutes),
-      priceRule: EstimatePriceRule(request.estimate),
+      priceRule: const NoSuggestedPrice(),
+      referenceRule: EstimatePriceRule(request.estimate),
       portions: request.estimate?.portions,
       initialFailure: request.type == RequestType.change
           ? const BookingFailure(BookingFailureKind.requestNotQuotable)
@@ -407,6 +411,10 @@ final class BookingSeed {
   /// Los minutos siguen al hogar mientras Evelyn no los toque (a mano).
   final bool cookFollowsHousehold;
   final BookingPriceRule priceRule;
+
+  /// La referencia de la tarifa que se muestra al lado del precio (nunca lo
+  /// llena: decisión del 22/11/2026, SPEC 5.8).
+  final BookingPriceRule referenceRule;
   final int? portions;
 
   /// Una falla que la hoja ya conoce al abrirse (un pedido que ya no está
