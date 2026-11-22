@@ -1951,6 +1951,13 @@
       "count": { "type": "int", "example": "2" }
     }
   },
+  "agendaSummaryMore": "{count, plural, =1{e un'altra} other{e altre {count}}}",
+  "@agendaSummaryMore": {
+    "description": "Cartel con el resumen de un día del mes de la agenda (al pasar el mouse por la celda o al mantenerla apretada): cuántas sesiones o pedidos más tiene el día, además de los que muestra (como mucho 4). En femenino: sessioni e richieste.",
+    "placeholders": {
+      "count": { "type": "int", "example": "2" }
+    }
+  },
 
   "availabilityDayOpen": "Orario {hours}: il sito lo offre se c'è posto.",
   "@availabilityDayOpen": {
