@@ -468,7 +468,7 @@ La clienta recibe siempre la foto de la vista previa: hace falta otra vista prev
 **Avisos a Evelyn** (migración `20261121110000_menu_reminders.sql`, tests pgTAP `21_menu_reminders`; Edge Function `menu-reminders`). Una semana está pendiente si:
 - es de una reserva y está confirmada (una `held` es de un presupuesto sin aceptar);
 - empieza dentro de 4 días;
-- no tiene ningún envío del menú que haya salido, o en el último la clienta pidió cambios;
+- no tiene ningún envío del menú que haya salido, o en el último la clienta pidió cambios (o llevaba una versión anterior del presupuesto y nadie lo confirmó: abajo, «Presupuesto»);
 - se creó hace más de una hora.
 
 Para una semana pendiente, Evelyn recibe un email a `CHEF_NOTIFY_EMAIL`, en `CHEF_LOCALE`:
@@ -490,17 +490,22 @@ Los avisos se prenden con el primer despliegue que guarda la URL y el secreto en
 
 **Presupuesto** (migración `20261121120000_quotes.sql`, tests pgTAP `22_quotes`):
 - **Preparar.** Desde un pedido `new`, semanal o extra, sin otro presupuesto abierto, `chef_create_quote` crea una sesión `held` por semana (pago manual, como las reservas) y el presupuesto, sin enviar. Valida fechas, hora, minutos, porciones y precio como `chef_create_booking` y reparte el precio entre las semanas. El borrador retiene el horario 24 h (nunca más allá de la llegada de la primera semana); el pedido sigue `new`. La página de la clienta no muestra las semanas de un borrador.
-- **Enviar.** Sale con el menú de la semana 1: el envío de esa semana lleva el presupuesto (`menu_sends.quote_id`) y sus términos (`quote_terms`: semanas, horas y precio, calculados por la base; la huella de la foto los incluye). Si cambian antes de mandarlo, el envío no sale (`quote_changed` o `menu_changed`). Al salir, el pedido pasa a `quoted`, el presupuesto guarda los términos enviados (`pricing_snapshot`) y el horario queda retenido `quote_hold_hours` (48 h), nunca más allá de la llegada de la primera semana. Cada reenvío es otra versión y el plazo vuelve a empezar. Mientras no lo acepte, solo la semana 1 sale (`quote_week_not_first`).
-- **Cambiar o retirar.** Evelyn cambia el precio con `chef_update_quote` y las fechas y semanas con `chef_move_session` y `chef_cancel_sessions`; después tiene que reenviarlo, y mientras tanto la clienta no puede aceptar (la página lo muestra como cambiado). `chef_withdraw_quote` cancela las semanas (`quote_withdrawn`) y el pedido vuelve a `new`. Si el pedido pasa a otro estado por otro camino (Evelyn lo rechaza, o lo confirma sin presupuesto), el presupuesto abierto se retira solo (`requests_close_open_quotes`).
+- **Enviar.** Sale con el menú de la semana 1: el envío de esa semana lleva el presupuesto (`menu_sends.quote_id`) y sus términos (`quote_terms`: semanas, horas y precio, calculados por la base; la huella de la foto los incluye). Si cambian antes de mandarlo, el envío no sale (`quote_changed` o `menu_changed`). Al salir, el pedido pasa a `quoted`, el presupuesto guarda los términos enviados (`pricing_snapshot`) y el horario queda retenido `quote_hold_hours` (48 h), nunca más allá de la llegada de la primera semana. Cada reenvío es otra versión y el plazo vuelve a empezar. La versión es la que ve la clienta: el primer presupuesto que le llega de un pedido es la 1, aunque antes haya vencido o se haya retirado un borrador que nunca salió (no gasta número); después de uno que le llegó y se retiró, el nuevo es la versión siguiente («aggiornato»). Mientras no lo acepte, solo la semana 1 sale (`quote_week_not_first`).
+- **Cambiar o retirar.** Evelyn cambia el precio con `chef_update_quote` y las fechas y semanas con `chef_move_session` y `chef_cancel_sessions`; después tiene que reenviarlo, y mientras tanto la clienta no puede aceptar (la página lo muestra como cambiado). `chef_withdraw_quote` cancela las semanas (`quote_withdrawn`) y el pedido vuelve a `new`. Si el pedido sigue por otro camino, el presupuesto abierto se retira solo:
+  - Evelyn lo confirma sin presupuesto (`chef_create_booking` desde el pedido, también si el presupuesto ya salió y el pedido está `quoted`): se retira antes de crear las semanas, en la misma transacción. Sus semanas `held` se cancelan (`quote_withdrawn`) y no chocan con las nuevas, aunque sean las mismas fechas y hora; el `dryRun` tampoco las cuenta como ocupadas. Si una semana choca con otra reserva, no se retira nada.
+  - Evelyn rechaza el pedido desde la bandeja: lo retira `requests_close_open_quotes`.
 - **La clienta, en su link:**
   - acepta la última versión (`client_link_accept_quote`), y solo con los términos que vio (si Evelyn los cambió sin reenviarlo, `quote_changed`): las semanas pasan a `confirmed`, el pedido a `accepted`, la ficha de prospecto a `trial`, el presupuesto guarda lo aceptado y el menú de la semana 1 queda confirmado;
   - la rechaza (`client_link_decline_quote`, también solo la última versión): semanas canceladas (`declined`) y pedido `declined`;
   - o pide cambios con un mensaje, como con cualquier menú.
 
-  Un menú que va con un presupuesto abierto no se confirma solo (`quote_pending`): se acepta el presupuesto.
+  Un menú que va con un presupuesto abierto no se confirma solo (`quote_pending`): se acepta el presupuesto. Tampoco el de un envío anterior del mismo presupuesto que quedó en otra semana (la que lo llevaba pasó al final y Evelyn lo reenvió desde la nueva primera). Aceptado el presupuesto, ese menú se confirma o se le piden cambios como cualquier otro, y mientras nadie lo confirme esa semana sigue pendiente para los avisos.
+
+  El link muestra el último presupuesto que le llegó a la clienta, salvo uno cerrado sin aceptar (rechazado, retirado o vencido) cuando la reserva se confirmó sin él.
 - **Vencer.** Pasado el plazo no se acepta, y `private.expire_quotes` (pg_cron, cada 15 minutos) cancela las semanas (`hold_expired`) y pasa el pedido `quoted` a `expired`. Un borrador que nunca salió deja el pedido en `new`.
 
-«Confirmar sin presupuesto» (`chef_create_booking`) sigue igual, para lo que se acordó por fuera. Nada de esto toca los pagos.
+«Confirmar sin presupuesto» (`chef_create_booking`) sigue, para lo que se acordó por fuera: desde un pedido con un presupuesto abierto, lo retira (arriba, «Cambiar o retirar»). Nada de esto toca los pagos.
+
 ---
 
 ## 6. Seguridad, privacidad y RGPD
