@@ -33,6 +33,9 @@ create extension if not exists pg_net with schema extensions;
 create table private.menu_reminders (
   session_id     uuid primary key references public.sessions (id) on delete cascade,
   chef_id        uuid not null,
+  -- La llegada (en Roma) para la que salieron estos avisos. Si Evelyn mueve la semana, la fila no
+  -- vale para la fecha nueva: los avisos vuelven a empezar.
+  starts_at      timestamptz not null,
   first_at       timestamptz,
   last_at        timestamptz,
   overdue_at     timestamptz,
@@ -40,7 +43,7 @@ create table private.menu_reminders (
 );
 
 comment on table private.menu_reminders is
-  'Avisos a Evelyn para completar el menú de una semana (SPEC 5.8): cuándo salió el de 4 días, el de 72 h y el último de los de cada 2 horas pasado el límite de 48 h. Solo las funciones de los avisos.';
+  'Avisos a Evelyn para completar el menú de una semana (SPEC 5.8): para qué llegada salieron (starts_at; si la semana se mueve, vuelven a empezar), cuándo salió el de 4 días, el de 72 h y el último de los de cada 2 horas pasado el límite de 48 h. Solo las funciones de los avisos.';
 
 revoke all on table private.menu_reminders from public, anon, authenticated, service_role;
 
@@ -55,8 +58,12 @@ revoke all on table private.menu_reminders from public, anon, authenticated, ser
 --     mandar otro);
 --   * se creó hace más de una hora.
 -- El aviso que toca: «overdue» desde 48 h antes (si el anterior de este tipo salió hace 2 horas o
--- más), «last» desde 72 h antes (si no salió) y «first» desde 4 días antes (si no salió ninguno de
--- los dos). Y solo de 8:00 a 20:59 en Roma.
+-- más, con 5 minutos de tolerancia: pg_cron pasa cada 15 minutos y si no se correría a 2 h 15 min),
+-- «last» desde 72 h antes (si no salió) y «first» desde 4 días antes (si no salió ninguno de los
+-- dos). Y solo de 8:00 a 20:59 en Roma. Los avisos que salieron para otra llegada (la semana se
+-- movió) no cuentan.
+-- clientName: el nombre con que llegó el pedido (requests.contact) o, si no tiene, el de la ficha,
+-- como en la bandeja.
 -- Devuelve [{sessionId, requestId, kind, date, start, deadline, week, weeks, clientName,
 -- changesRequested}]; deadline = 48 h antes de la llegada.
 -- ---------------------------------------------------------------------
@@ -80,7 +87,7 @@ as $$
            r.first_at, r.last_at, r.overdue_at,
            coalesce(last_send.changes_requested_at is not null, false) as changes_requested
     from live l
-    left join private.menu_reminders r on r.session_id = l.id
+    left join private.menu_reminders r on r.session_id = l.id and r.starts_at = l.starts_at
     left join lateral (
       select ms.id, ms.changes_requested_at
       from public.menu_sends ms
@@ -98,7 +105,7 @@ as $$
     select p.*,
            case
              when p_now >= p.starts_at - interval '48 hours' then
-               case when p.overdue_at is null or p.overdue_at <= p_now - interval '2 hours' then 'overdue' end
+               case when p.overdue_at is null or p.overdue_at <= p_now - interval '1 hour 55 minutes' then 'overdue' end
              when p_now >= p.starts_at - interval '72 hours' then
                case when p.last_at is null then 'last' end
              else
@@ -115,11 +122,12 @@ as $$
            'deadline', d.starts_at - interval '48 hours',
            'week', d.week,
            'weeks', d.weeks,
-           'clientName', c.display_name,
+           'clientName', coalesce(nullif(btrim(r.contact ->> 'name'), ''), c.display_name),
            'changesRequested', d.changes_requested)
            order by d.starts_at, d.id), '[]'::jsonb)
   from due d
   join public.clients c on c.id = d.client_id
+  join public.requests r on r.id = d.request_id
   where d.kind is not null
     and extract(hour from (p_now at time zone 'Europe/Rome')) between 8 and 20
 $$;
@@ -131,7 +139,8 @@ comment on function public.menu_reminders_due(uuid, timestamptz) is
 -- 3b. public.menu_reminders_mark(p_chef_id, p_items, p_now)
 --
 -- p_items: [{sessionId, kind}], los avisos que salieron en el email. Ignora las sesiones de otra
--- cocina y los tipos desconocidos. Devuelve cuántos marcó.
+-- cocina y los tipos desconocidos. Guarda la llegada actual de cada semana: si la fila era de otra
+-- llegada (la semana se movió), los avisos anteriores se borran. Devuelve cuántos marcó.
 -- ---------------------------------------------------------------------
 create function public.menu_reminders_mark(p_chef_id uuid, p_items jsonb, p_now timestamptz default now())
 returns int
@@ -141,10 +150,11 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_item  jsonb;
-  v_count int := 0;
-  v_id    uuid;
-  v_kind  text;
+  v_item   jsonb;
+  v_count  int := 0;
+  v_id     uuid;
+  v_kind   text;
+  v_starts timestamptz;
 begin
   if p_items is null or jsonb_typeof(p_items) <> 'array' then
     raise exception 'invalid_items' using errcode = '22023';
@@ -157,20 +167,27 @@ begin
       continue;
     end if;
     v_id := (v_item ->> 'sessionId')::uuid;
-    if not exists (select 1 from public.sessions s where s.id = v_id and s.chef_id = p_chef_id) then
+    select ((s."date" + s.start_time) at time zone 'Europe/Rome') into v_starts
+    from public.sessions s where s.id = v_id and s.chef_id = p_chef_id;
+    if not found then
       continue;
     end if;
-    insert into private.menu_reminders (session_id, chef_id, first_at, last_at, overdue_at, overdue_count)
-    values (v_id, p_chef_id,
+    insert into private.menu_reminders (session_id, chef_id, starts_at, first_at, last_at, overdue_at, overdue_count)
+    values (v_id, p_chef_id, v_starts,
             case when v_kind = 'first' then p_now end,
             case when v_kind = 'last' then p_now end,
             case when v_kind = 'overdue' then p_now end,
             case when v_kind = 'overdue' then 1 else 0 end)
     on conflict (session_id) do update
-      set first_at      = case when v_kind = 'first' then p_now else private.menu_reminders.first_at end,
-          last_at       = case when v_kind = 'last' then p_now else private.menu_reminders.last_at end,
-          overdue_at    = case when v_kind = 'overdue' then p_now else private.menu_reminders.overdue_at end,
-          overdue_count = private.menu_reminders.overdue_count + case when v_kind = 'overdue' then 1 else 0 end;
+      set first_at      = case when v_kind = 'first' then p_now
+                               when private.menu_reminders.starts_at = v_starts then private.menu_reminders.first_at end,
+          last_at       = case when v_kind = 'last' then p_now
+                               when private.menu_reminders.starts_at = v_starts then private.menu_reminders.last_at end,
+          overdue_at    = case when v_kind = 'overdue' then p_now
+                               when private.menu_reminders.starts_at = v_starts then private.menu_reminders.overdue_at end,
+          overdue_count = case when private.menu_reminders.starts_at = v_starts then private.menu_reminders.overdue_count else 0 end
+                          + case when v_kind = 'overdue' then 1 else 0 end,
+          starts_at     = v_starts;
     v_count := v_count + 1;
   end loop;
   return v_count;
