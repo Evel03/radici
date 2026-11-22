@@ -90,6 +90,13 @@ void main() {
         'panes': 'pan',
         // El inglés sale con la misma regla.
         'onions': 'onion',
+        // «-ces» a «-z», «-oes» a «-o»; «-ices» solo pierde la «s».
+        'peces': 'pez',
+        'nueces': 'nuez',
+        'arroces': 'arroz',
+        'tomatoes': 'tomato',
+        'Potatoes': 'potato',
+        'spices': 'spice',
         // «-ss» y las palabras de hasta 3 letras quedan.
         'Watercress': 'watercress',
         'carne de res': 'carne de res',
@@ -112,6 +119,10 @@ void main() {
         ('lima', 'limas'),
         ('col', 'coles'),
         ('coliflor', 'coliflores'),
+        ('pez', 'peces'),
+        ('nuez', 'nueces'),
+        ('tomato', 'tomatoes'),
+        ('spice', 'spices'),
       ];
       for (final (a, b) in same) {
         expect(shoppingProductKey(a), shoppingProductKey(b), reason: '$a = $b');
@@ -130,6 +141,10 @@ void main() {
         ('col', 'coliflor'),
         ('coles', 'coliflores'),
         ('piña', 'pina'),
+        ('pez', 'pera'),
+        ('nuez', 'nuez moscada'),
+        ('tomato', 'tomate'),
+        ('arroces', 'arroz integral'),
       ];
       for (final (a, b) in distinct) {
         expect(

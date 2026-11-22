@@ -68,11 +68,18 @@ String _withoutAccents(String text) {
 ///
 /// - después de l, n, r, d, z, j o y se va «-es» entero (limones → limon,
 ///   flores → flor);
+/// - «-ces» pasa a «-z» (peces → pez, nueces → nuez, arroces → arroz), salvo
+///   en «-ices» (spices sigue siendo spice) y «-oes» a «-o» (tomatoes →
+///   tomato, potatoes → potato);
 /// - si no, se va la «s» final (cebollas → cebolla, tomates → tomate; el
 ///   inglés también sale: onions → onion);
 /// - nunca en «-ss» ni en palabras de 3 letras o menos (res).
 String _singular(String word) {
   if (word.runes.length <= 3 || !_finalS.hasMatch(word)) return word;
+  if (word.endsWith('oes')) return word.substring(0, word.length - 2);
+  if (word.endsWith('ces') && !word.endsWith('ices')) {
+    return '${word.substring(0, word.length - 3)}z';
+  }
   final esPlural =
       word.endsWith('es') && _esPluralAfter.contains(word[word.length - 3]);
   return word.substring(0, word.length - (esPlural ? 2 : 1));
