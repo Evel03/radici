@@ -209,6 +209,15 @@ abstract class WeekMenuEditorState with _$WeekMenuEditorState {
       !noteTooLong &&
       (dirty || (version == null && content != const WeekMenuContent()));
 
+  /// Se puede tocar «Mandar»: hay platos y nada se está guardando ni leyendo.
+  /// Con cambios sin guardar, primero se guarda ([needsSaveBeforeSend]).
+  bool get canSend => !busy && !locked && dishes.isNotEmpty;
+
+  /// La clienta recibe el menú guardado: con cambios sin guardar, o un menú
+  /// que todavía no se guardó (como los platos que eligió en la web), antes
+  /// de mandarlo hay que guardarlo.
+  bool get needsSaveBeforeSend => dirty || version == null;
+
   bool get canAddDish => dishes.length < maxMenuDishes;
 
   bool get canAddItem => items.length < maxShoppingItems;
@@ -662,6 +671,7 @@ class WeekMenuEditorController extends AsyncNotifier<WeekMenuEditorState> {
       ref
         ..invalidate(weekMenuSummaryProvider)
         ..invalidate(bookingWeekMenusProvider);
+      ref.read(weekMenusRevisionProvider.notifier).bump();
     }
     if (blocks) {
       // La ficha (que el editor mantiene viva) dice ahora cómo quedó.
@@ -685,10 +695,11 @@ class WeekMenuEditorController extends AsyncNotifier<WeekMenuEditorState> {
   WeekMenuSaveResult _saved(WeekMenuSave menu, int version) {
     _unconfirmed = null;
     if (!ref.mounted) return WeekMenuSaveResult.saved;
-    // La ficha y la reserva cuentan el menú nuevo.
+    // La ficha, la reserva y Hoy cuentan el menú nuevo.
     ref
       ..invalidate(weekMenuSummaryProvider)
       ..invalidate(bookingWeekMenusProvider);
+    ref.read(weekMenusRevisionProvider.notifier).bump();
     final current = state.value;
     if (current == null) return WeekMenuSaveResult.saved;
     _set(
@@ -720,10 +731,11 @@ class WeekMenuEditorController extends AsyncNotifier<WeekMenuEditorState> {
       if (!ref.mounted) return false;
       _unconfirmed = null;
       _set(fresh);
-      // La ficha y la reserva cuentan el menú que se cargó.
+      // La ficha, la reserva y Hoy cuentan el menú que se cargó.
       ref
         ..invalidate(weekMenuSummaryProvider)
         ..invalidate(bookingWeekMenusProvider);
+      ref.read(weekMenusRevisionProvider.notifier).bump();
       return true;
     } on Object {
       final latest = ref.mounted ? state.value : null;
