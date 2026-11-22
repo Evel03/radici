@@ -88,6 +88,7 @@ Map<String, dynamic> sessionRow({
 /// 20 porciones y 140 € de servicio. [estimate] es la del pedido embebido.
 /// [lastAllergyAnswer] es la respuesta de su último pedido semanal de la web
 /// que se reservó (la que toma una sesión semanal cuyo pedido no responde).
+/// [zone] va en la ficha y en el pedido (null: ninguno la tiene).
 /// [wishes] son los platos que la clienta eligió en la web y [meals], las
 /// comidas de cada día del pedido (por defecto, la cena).
 CookingSession buildSession({
@@ -106,6 +107,7 @@ CookingSession buildSession({
   String name = 'Giulia Rossi',
   String? phone = '+39 333 123 4567',
   String? address = 'Via Gombito 12, 24129 Bergamo',
+  String? zone = 'Città Alta',
   List<Allergen> clientAllergens = const [],
   List<Diet> clientDiets = const [],
   PastAllergyAnswer? lastAllergyAnswer,
@@ -140,7 +142,7 @@ CookingSession buildSession({
   client: SessionClient(
     displayName: name,
     contactPhone: phone,
-    zone: 'Città Alta',
+    zone: zone,
     address: address,
     adults: 2,
     kids: 2,
@@ -158,6 +160,7 @@ CookingSession buildSession({
           status: requestStatus,
           name: name,
           phone: phone,
+          zone: zone,
           locale: locale,
           restrictions: restrictions,
           noAllergies: noAllergies,
@@ -177,7 +180,7 @@ CookingSession buildSession({
 /// desde 1, y [serviceCents] es el servicio de cada semana. [address] null:
 /// una reserva que llegó por la web (el formulario no pide la dirección).
 /// [requestSource] app: una reserva cargada a mano. [estimate] es la del
-/// pedido. [lastAllergyAnswer] y [wishes], los de buildSession.
+/// pedido. [lastAllergyAnswer], [zone] y [wishes], los de buildSession.
 List<CookingSession> buildBooking({
   int weeks = 4,
   CalendarDate? first,
@@ -189,6 +192,7 @@ List<CookingSession> buildBooking({
   int serviceCents = 14000,
   String name = 'Giulia Rossi',
   String? address = 'Via Gombito 12, 24129 Bergamo',
+  String? zone = 'Città Alta',
   List<Allergen> clientAllergens = const [],
   PastAllergyAnswer? lastAllergyAnswer,
   RequestRestrictions? restrictions,
@@ -211,6 +215,7 @@ List<CookingSession> buildBooking({
         serviceCents: serviceCents,
         name: name,
         address: address,
+        zone: zone,
         clientAllergens: clientAllergens,
         lastAllergyAnswer: lastAllergyAnswer,
         restrictions: restrictions,
