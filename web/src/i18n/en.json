@@ -246,7 +246,7 @@
     "configMissing": "The request can't be sent online right now: the site configuration is incomplete. Please try again later.",
     "statusSending": "Sending your request…",
     "statusWaitingTurnstile": "One moment: we're finishing the spam check, then your request will be sent automatically.",
-    "statusTurnstileStalled": "The spam check isn't moving: see the tip above. As soon as it finishes, your request will be sent automatically.",
+    "statusTurnstileStalled": "The spam check seems to be stuck: see the tip above. As soon as it finishes, your request will be sent automatically.",
     "retry": "Try again",
     "quote": {
       "title": "Estimated quote",

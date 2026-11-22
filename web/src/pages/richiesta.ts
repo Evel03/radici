@@ -684,9 +684,8 @@ function startRequestPage(shell: Shell): void {
     setText(turnstileHelp, help ? shell.i18n.t("request.turnstileHelp", { site: window.location.hostname }) : "");
     turnstileRetry.hidden = !(view?.retry ?? false);
     // Con el foco en «Ripeti la verifica» (focusField), el lector de pantalla lee también el error, el código y
-    // la sugerencia, en ese orden (el de la pantalla).
-    const described = [view?.error ? "err-turnstileToken" : "", code !== null ? "turnstile-code" : "", help ? "turnstile-help" : ""];
-    const ids = described.filter(Boolean).join(" ");
+    // la sugerencia que se ven (turnstileView).
+    const ids = view?.describedBy.join(" ") ?? "";
     if (ids) turnstileRetry.setAttribute("aria-describedby", ids);
     else turnstileRetry.removeAttribute("aria-describedby");
   };
@@ -880,12 +879,11 @@ function startRequestPage(shell: Shell): void {
         pendingSubmit = true;
         showFormMessage(null);
         setStatus(waitingStatus(turnstile.stalled));
-        // Trabado (p. ej. en blanco por la prevención de seguimiento): a la sugerencia y al reintento.
-        if (turnstile.stalled) focusField("turnstileToken");
       } else {
         showFormMessage({ key: "errors.summary" });
-        focusField("turnstileToken");
       }
+      // Falló, o se trabó (p. ej. en blanco por la prevención de seguimiento): al error, a la sugerencia y al reintento.
+      if (currentTurnstileView()?.focusOnSubmit) focusField("turnstileToken");
       return;
     }
 

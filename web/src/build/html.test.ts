@@ -10,6 +10,7 @@ import itJson from "../i18n/it.json";
 import { createSiteI18n } from "../i18n/site.ts";
 import footer from "../partials/footer.html?raw";
 import header from "../partials/header.html?raw";
+import { turnstileView } from "../request/turnstile.ts";
 import { NOT_FOUND_PATH, buildJsonLd, fillTranslations, pagePathFromHtmlPath, renderPage, withoutLangHrefs } from "./html.ts";
 import { OG_IMAGE } from "./images.ts";
 
@@ -178,6 +179,14 @@ describe("renderPage con las páginas reales", () => {
     for (const id of ["err-turnstileToken", "turnstile-code", "turnstile-help", "turnstile-retry"]) {
       expect(field, id).toMatch(new RegExp(`id="${id}"[^>]*\\shidden[\\s>]`));
     }
+  });
+
+  it("lo que describe a «Ripeti la verifica» (aria-describedby que arma turnstileView) existe junto al widget", () => {
+    const start = requestHtml.indexOf('<div class="field field--turnstile">');
+    const field = requestHtml.slice(start, requestHtml.indexOf('id="config-warning"', start));
+    const { describedBy } = turnstileView({ status: "failed", errorCode: "300030", stalled: true, rejected: true });
+    expect(describedBy).toHaveLength(3);
+    for (const id of describedBy) expect(field, id).toContain(`id="${id}"`);
   });
 
   it("los estados del envío se anuncian (aria-live) y los errores con role=alert", () => {

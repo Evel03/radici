@@ -12,6 +12,7 @@ import {
   widgetSize,
   type TurnstileApi,
   type TurnstileRenderOptions,
+  type TurnstileStatus,
   type TurnstileViewInput,
 } from "./turnstile.ts";
 
@@ -226,9 +227,17 @@ describe("código del error (para que soporte lo diagnostique)", () => {
 describe("lo que se ve junto al widget", () => {
   const view = (input: Partial<TurnstileViewInput>) =>
     turnstileView({ status: "pending", errorCode: null, stalled: false, rejected: false, ...input });
+  const STATUSES: TurnstileStatus[] = ["loading", "pending", "solved", "failed", "unavailable", "misconfigured"];
+  /** Todas las combinaciones de entrada de la vista. */
+  const everyInput = (): TurnstileViewInput[] =>
+    STATUSES.flatMap((status) =>
+      [null, "300030"].flatMap((errorCode) =>
+        [false, true].flatMap((stalled) => [false, true].map((rejected) => ({ status, errorCode, stalled, rejected }))),
+      ),
+    );
 
-  it("con token o esperándolo (sin trabarse) no hay nada que mostrar", () => {
-    const nothing = { error: null, code: null, help: false, retry: false };
+  it("con token o esperándolo (sin trabarse) no hay nada que mostrar, e «Invia» no mueve el foco", () => {
+    const nothing = { error: null, code: null, help: false, retry: false, describedBy: [], focusOnSubmit: false };
     expect(view({ status: "solved" })).toEqual(nothing);
     expect(view({ status: "pending" })).toEqual(nothing);
     expect(view({ status: "loading" })).toEqual(nothing);
@@ -236,20 +245,38 @@ describe("lo que se ve junto al widget", () => {
     expect(view({ status: "solved", stalled: true })).toEqual(nothing);
   });
 
-  it("trabado sin token ni error: la sugerencia y «Ripeti la verifica», sin mensaje de error", () => {
-    const stuck = { error: null, code: null, help: true, retry: true };
-    expect(view({ status: "pending", stalled: true })).toEqual(stuck);
-    expect(view({ status: "loading", stalled: true })).toEqual(stuck);
+  it("trabado sin token ni error: la sugerencia y «Ripeti la verifica», sin error; «Invia» lleva el foco al reintento", () => {
+    expect(view({ status: "pending", stalled: true })).toEqual({
+      error: null,
+      code: null,
+      help: true,
+      retry: true,
+      describedBy: ["turnstile-help"],
+      focusOnSubmit: true,
+    });
   });
 
-  it("el desafío falló: el error con su código, la sugerencia y el reintento", () => {
+  it("trabado con el script todavía cargando: la sugerencia, sin reintento (no hay widget que reiniciar)", () => {
+    expect(view({ status: "loading", stalled: true })).toEqual({
+      error: null,
+      code: null,
+      help: true,
+      retry: false,
+      describedBy: [],
+      focusOnSubmit: true,
+    });
+  });
+
+  it("el desafío falló: el error con su código, la sugerencia y el reintento, que los lee en ese orden", () => {
     expect(view({ status: "failed", errorCode: "200500" })).toEqual({
       error: "errors.turnstileFailed",
       code: "200500",
       help: true,
       retry: true,
+      describedBy: ["err-turnstileToken", "turnstile-code", "turnstile-help"],
+      focusOnSubmit: true,
     });
-    expect(view({ status: "failed" }).code).toBeNull();
+    expect(view({ status: "failed" })).toMatchObject({ code: null, describedBy: ["err-turnstileToken", "turnstile-help"] });
   });
 
   it("no disponible (script bloqueado o navegador no compatible): igual, con el código si lo hubo", () => {
@@ -258,22 +285,59 @@ describe("lo que se ve junto al widget", () => {
       code: "110500",
       help: true,
       retry: true,
+      describedBy: ["err-turnstileToken", "turnstile-code", "turnstile-help"],
+      focusOnSubmit: true,
     });
-    expect(view({ status: "unavailable" })).toMatchObject({ code: null, help: true, retry: true });
+    expect(view({ status: "unavailable" })).toMatchObject({
+      code: null,
+      help: true,
+      retry: true,
+      describedBy: ["err-turnstileToken", "turnstile-help"],
+    });
   });
 
-  it("mal configurado: el error y el código, sin sugerencia ni reintento (no depende del navegador)", () => {
+  it("mal configurado: el error y el código, sin sugerencia ni reintento (no depende del navegador); «Invia» va al widget", () => {
     expect(view({ status: "misconfigured", errorCode: "110200", stalled: true })).toEqual({
       error: "errors.turnstileMisconfigured",
       code: "110200",
       help: false,
       retry: false,
+      describedBy: [],
+      focusOnSubmit: true,
     });
   });
 
-  it("el servidor rechazó el token (403): el error de fallo hasta que llegue otro, sin código", () => {
-    expect(view({ status: "pending", rejected: true })).toEqual({ error: "errors.turnstileFailed", code: null, help: false, retry: false });
-    expect(view({ status: "pending", rejected: true, stalled: true })).toMatchObject({ help: true, retry: true });
+  it("rechazado por el servidor (403): el error de fallo hasta otro token, sin código; «Invia» espera sin mover el foco", () => {
+    expect(view({ status: "pending", rejected: true })).toEqual({
+      error: "errors.turnstileFailed",
+      code: null,
+      help: false,
+      retry: false,
+      describedBy: [],
+      focusOnSubmit: false,
+    });
+    expect(view({ status: "pending", rejected: true, stalled: true })).toMatchObject({
+      help: true,
+      retry: true,
+      describedBy: ["err-turnstileToken", "turnstile-help"],
+      focusOnSubmit: true,
+    });
+  });
+
+  it("«Ripeti la verifica» lo describen el error, el código y la sugerencia que se ven, en ese orden; oculto, nada", () => {
+    for (const input of everyInput()) {
+      const v = turnstileView(input);
+      const shown = [v.error ? "err-turnstileToken" : "", v.code !== null ? "turnstile-code" : "", v.help ? "turnstile-help" : ""];
+      expect(v.describedBy, JSON.stringify(input)).toEqual(v.retry ? shown.filter(Boolean) : []);
+    }
+  });
+
+  it("«Invia» sin token lleva el foco al widget si falló o si se trabó esperando; si solo espera, no lo mueve", () => {
+    for (const input of everyInput()) {
+      const waiting = input.status === "loading" || input.status === "pending";
+      const expected = input.status === "solved" ? false : waiting ? input.stalled : true;
+      expect(turnstileView(input).focusOnSubmit, JSON.stringify(input)).toBe(expected);
+    }
   });
 
   it("el envío que espera el token avisa si el widget se trabó", () => {
@@ -406,14 +470,47 @@ describe("widget trabado: sin token ni error un rato después de dibujarlo", () 
     expect(timeout.widget.stalled).toBe(true);
   });
 
-  it("si el script no termina de cargar, también se traba (y reintentar lo vuelve a pedir)", async () => {
-    const load = vi.fn(() => new Promise<TurnstileApi>(() => undefined));
-    const { widget } = await mountedNow(load);
+  it("si el script no termina de cargar también se traba; reiniciar no lo vuelve a pedir y al llegar dibuja un solo widget", async () => {
+    const pendingLoads: ((api: TurnstileApi) => void)[] = [];
+    const load = vi.fn(() => new Promise<TurnstileApi>((resolve) => pendingLoads.push(resolve)));
+    const { widget, renders, api, last } = await mountedNow(load);
     expect(widget.status).toBe("loading");
     vi.advanceTimersByTime(TURNSTILE_STALL_MS);
     expect(widget.stalled).toBe(true);
+    // Todavía no hay widget que reiniciar: pedir el mismo script otra vez no lo apura y sumaría un widget por toque.
+    widget.reset();
+    widget.reset();
+    widget.reset();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(widget.status).toBe("loading");
+    expect(widget.stalled).toBe(true);
+    pendingLoads[0]?.(api);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renders).toHaveLength(1);
+    expect(api.remove).not.toHaveBeenCalled();
+    expect(widget.status).toBe("pending");
+    // La sugerencia sigue hasta el token, como al reiniciar.
+    expect(widget.stalled).toBe(true);
+    last().callback?.("t1");
+    expect(widget.stalled).toBe(false);
+  });
+
+  it("si el script falla después de trabarse, reintentar sí lo vuelve a pedir", async () => {
+    const attempts: { resolve: (api: TurnstileApi) => void; reject: (error: Error) => void }[] = [];
+    const load = vi.fn(() => new Promise<TurnstileApi>((resolve, reject) => attempts.push({ resolve, reject })));
+    const { widget, renders, api } = await mountedNow(load);
+    vi.advanceTimersByTime(TURNSTILE_STALL_MS);
+    expect(widget.stalled).toBe(true);
+    attempts[0]?.reject(new Error("blocked"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(widget.status).toBe("unavailable");
     widget.reset();
     expect(load).toHaveBeenCalledTimes(2);
+    expect(widget.status).toBe("loading");
+    attempts[1]?.resolve(api);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renders).toHaveLength(1);
+    expect(widget.status).toBe("pending");
   });
 
   it("cambiar de idioma dibuja otro widget y vuelve a contar", async () => {

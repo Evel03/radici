@@ -238,7 +238,7 @@
     "turnstileLabel": "Verifica anti-spam",
     "turnstileHint": "Un controllo automatico di Cloudflare: di solito non devi fare niente.",
     "turnstileRetry": "Ripeti la verifica",
-    "turnstileHelp": "Se la verifica non si completa, potrebbe bloccarla la protezione dal tracciamento del browser o un blocco dei contenuti: prova con un altro browser o dal telefono, oppure aggiungi un'eccezione per {site}.",
+    "turnstileHelp": "Se la verifica non si completa, potrebbe bloccarla la protezione dal tracciamento del browser (in Edge: «Prevenzione monitoraggio») o un blocco dei contenuti: prova con un altro browser o dal telefono, oppure aggiungi un'eccezione per {site}.",
     "turnstileCode": "Codice:",
     "submit": "Invia la richiesta",
     "sending": "Invio in corso…",

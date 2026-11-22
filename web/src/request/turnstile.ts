@@ -104,23 +104,36 @@ export interface TurnstileView {
   help: boolean;
   /** Botón «Ripeti la verifica». */
   retry: boolean;
+  /**
+   * aria-describedby de «Ripeti la verifica» (ids de web/richiesta/index.html): el error, el código y la sugerencia
+   * que se ven, en ese orden (el de la pantalla). Con el foco en el botón, el lector de pantalla los lee. Vacío sin botón.
+   */
+  describedBy: string[];
+  /** Si aprieta «Invia» sin token, el foco va al widget (o al reintento): falló, o se trabó esperando. */
+  focusOnSubmit: boolean;
 }
 
 /** Lo que se muestra junto al widget según su estado. La sugerencia se va en cuanto llega un token. */
 export function turnstileView({ status, errorCode, stalled, rejected }: TurnstileViewInput): TurnstileView {
+  const view = (shown: Omit<TurnstileView, "describedBy">): TurnstileView => {
+    const ids = [shown.error ? "err-turnstileToken" : "", shown.code !== null ? "turnstile-code" : "", shown.help ? "turnstile-help" : ""];
+    return { ...shown, describedBy: shown.retry ? ids.filter(Boolean) : [] };
+  };
   switch (status) {
     case "failed":
-      return { error: "errors.turnstileFailed", code: errorCode, help: true, retry: true };
+      return view({ error: "errors.turnstileFailed", code: errorCode, help: true, retry: true, focusOnSubmit: true });
     case "unavailable":
-      return { error: "errors.turnstileUnavailable", code: errorCode, help: true, retry: true };
+      return view({ error: "errors.turnstileUnavailable", code: errorCode, help: true, retry: true, focusOnSubmit: true });
     case "misconfigured":
       // Sitekey o dominio: no depende del navegador de quien escribe, la sugerencia no le serviría.
-      return { error: "errors.turnstileMisconfigured", code: errorCode, help: false, retry: false };
+      return view({ error: "errors.turnstileMisconfigured", code: errorCode, help: false, retry: false, focusOnSubmit: true });
     case "loading":
+      // Sin widget todavía no hay nada que reiniciar: el reintento no apuraría un script que sigue cargando.
+      return view({ error: rejected ? "errors.turnstileFailed" : null, code: null, help: stalled, retry: false, focusOnSubmit: stalled });
     case "pending":
-      return { error: rejected ? "errors.turnstileFailed" : null, code: null, help: stalled, retry: stalled };
+      return view({ error: rejected ? "errors.turnstileFailed" : null, code: null, help: stalled, retry: stalled, focusOnSubmit: stalled });
     case "solved":
-      return { error: null, code: null, help: false, retry: false };
+      return view({ error: null, code: null, help: false, retry: false, focusOnSubmit: false });
   }
 }
 
@@ -181,7 +194,8 @@ export interface TurnstileWidget {
   readonly stalled: boolean;
   /**
    * Pide un token nuevo: después de un envío fallido (el token ya se usó o pudo usarse) y en el botón
-   * "Ripeti la verifica". Si el script no había cargado, lo vuelve a intentar.
+   * "Ripeti la verifica". Si el script falló, lo vuelve a pedir; si todavía está cargando, no hace nada: el widget
+   * se dibuja una sola vez, cuando llegue.
    */
   reset(): void;
   /** Cambio de idioma de la página: vuelve a dibujar el widget en ese idioma. */
@@ -318,6 +332,8 @@ export function mountTurnstile(
   };
 
   const reset = (): void => {
+    // Sigue cargando: pedir el mismo script otra vez no lo apura, y cada pedido dibujaría su widget al llegar.
+    if (status === "loading") return;
     if (!api) load();
     else if (!widgetId) render();
     else {
