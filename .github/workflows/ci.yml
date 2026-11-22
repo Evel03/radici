@@ -127,6 +127,10 @@ jobs:
       - run: dart run build_runner build
       - run: flutter analyze
       - run: flutter test
+      # Compilar como en producción (JS release con CSP), ahora que los PR ya no tienen vista previa:
+      # un error que solo aparece al pasar a web (dart:io, una API que el navegador no tiene) falla en
+      # el PR y no recién en main. Con APP_ENV=dev, como el deploy fuera de main: no publica nada.
+      - run: flutter build web --release --base-href /gestione/ --no-web-resources-cdn --csp --dart-define=APP_ENV=dev
 
   database:
     name: Base de datos (RLS y no_overlap)
