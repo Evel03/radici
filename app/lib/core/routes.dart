@@ -108,13 +108,6 @@ abstract final class AppRoutes {
   static String sessionMenu(String id) =>
       '${sessionDetail(id)}/$sessionMenuSegment';
 
-  /// El editor de un plato nuevo desde el menú de la semana: al guardarlo,
-  /// el plato entra al menú.
-  static const String menuNewDishSegment = 'nuovo-piatto';
-
-  static String sessionMenuNewDish(String id) =>
-      '${sessionMenu(id)}/$menuNewDishSegment';
-
   /// Parámetro con la ruta a la que volver después de entrar.
   static const String fromParam = 'from';
 }

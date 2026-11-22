@@ -9,6 +9,9 @@
 // como el atrás del navegador en /gestione/).
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/router.dart';
+import 'package:radici/features/availability/presentation/availability_actions.dart';
+import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
@@ -20,6 +23,7 @@ import 'package:radici/features/week_menu/data/session_menus_repository.dart';
 import 'package:radici/features/week_menu/domain/week_menu.dart';
 import 'package:radici/features/week_menu/presentation/week_menu_screen.dart';
 
+import '../../../support/browser_history.dart';
 import '../../../support/chef_app.dart';
 import '../../../support/fakes.dart';
 import '../../../support/menu_fakes.dart';
@@ -57,6 +61,8 @@ void main() {
     List<Recipe>? recipes,
     Locale locale = const Locale('es'),
     bool isWeb = false,
+    FakeTranslationRepository? translator,
+    String? location,
   }) async {
     final app = await pumpChefApp(
       tester,
@@ -64,17 +70,38 @@ void main() {
       sessions: FakeSessionsRepository(booking ?? buildBooking()),
       recipes: FakeRecipesRepository(recipes ?? sampleRecipes()),
       menus: FakeSessionMenusRepository(menus: saved),
-      location: '/sessioni/${sessionId(n)}/menu',
+      location: location ?? '/sessioni/${sessionId(n)}/menu',
       deviceLocales: [locale],
       isWeb: isWeb,
       overrides: [
         translationRepositoryProvider.overrideWithValue(
-          FakeTranslationRepository(),
+          translator ?? FakeTranslationRepository(),
         ),
       ],
     );
-    expect(find.byType(WeekMenuScreen), findsOneWidget);
+    if (location == null) expect(find.byType(WeekMenuScreen), findsOneWidget);
     return app;
+  }
+
+  /// La lasaña con la receta corregida después de guardar: 500 g de carne.
+  Recipe lasagneWith500() => lasagne().copyWith(
+    ingredients: [
+      ingredient(
+        'Carne macinata di manzo',
+        500,
+        IngredientUnit.g,
+        section: ShoppingSection.meatFish,
+      ),
+      ...lasagne().ingredients.skip(1),
+    ],
+  );
+
+  /// «Agregar platos» → «Nuevo plato»: el editor de platos encima del menú.
+  Future<void> openNewDish(WidgetTester tester) async {
+    await tapVisible(tester, byKey('week-menu-add-dish'));
+    await tester.tap(byKey('menu-picker-new'));
+    await tester.pumpAndSettle();
+    expect(find.byType(RecipeEditorScreen), findsOneWidget);
   }
 
   /// Abre el selector, marca [names] y los agrega.
@@ -169,9 +196,10 @@ void main() {
         tester.widget<TextField>(byKey('week-menu-note')).controller!.text,
         'Ten listos 4 táperes',
       );
+      // La clienta (italiana) la recibe tal cual: la ayuda dice su idioma.
       expect(
         find.text(
-          'La lee la clienta: no escribas datos de salud ni direcciones.',
+          'La clienta la recibe tal como la escribes: escríbela en su idioma (Italiano). No escribas datos de salud, direcciones ni otros datos personales.',
         ),
         findsOneWidget,
       );
@@ -405,9 +433,19 @@ void main() {
     await tapVisible(tester, find.byTooltip('Quitar Sale'));
     expect(find.text('Quitado de la lista.'), findsOneWidget);
     expect(find.text('al gusto'), findsNothing);
+    expect(
+      textOf(tester, 'week-menu-list-mode'),
+      'La cambiaste a mano: ya no sigue a los platos.',
+    );
     await tester.tap(find.text('Deshacer'));
     await tester.pumpAndSettle();
     expect(find.text('al gusto'), findsOneWidget);
+    // La lista seguía a los platos: los vuelve a seguir.
+    expect(
+      textOf(tester, 'week-menu-list-mode'),
+      'Sale sola de los ingredientes de los platos, por sus porciones. Si la cambias, deja de seguir a los platos.',
+    );
+    expect(byKey('week-menu-rebuild'), findsNothing);
 
     await tapVisible(tester, byKey('week-menu-dish-remove-$lasagneId'));
     expect(find.text('Plato quitado del menú.'), findsOneWidget);
@@ -529,21 +567,73 @@ void main() {
       expect(app.menus.saves, hasLength(2));
     });
 
-    testWidgets('una sesión que ya no se puede cambiar: lo dice', (
-      tester,
-    ) async {
-      final app = await openMenu(tester);
-      await addDishes(tester, ['Lasaña a la boloñesa']);
-      app.menus.statuses[sessionId(2)] = SessionStatus.cooked;
-      await tapVisible(tester, byKey('week-menu-save'));
-      expect(
-        find.text(
-          'Esta sesión ya no admite cambios de menú (está cancelada, cocinada o cobrada): no se guardó.',
-        ),
-        findsOneWidget,
-      );
-      expect(byKey('week-menu-dish-$lasagneId'), findsOneWidget);
-    });
+    testWidgets(
+      'una sesión que ya no se puede cambiar: lo dice, deja lo escrito a la vista sin «Guardar» y la ficha se actualiza',
+      (tester) async {
+        final app = await openMenu(tester);
+        await addDishes(tester, ['Lasaña a la boloñesa']);
+        // Un colaborador la canceló desde su teléfono.
+        app.menus.statuses[sessionId(2)] = SessionStatus.cancelled;
+        app.sessions.sessions[sessionId(2)] = app
+            .sessions
+            .sessions[sessionId(2)]!
+            .copyWith(
+              status: SessionStatus.cancelled,
+              cancelReason: 'client_cancelled',
+            );
+        await tapVisible(tester, byKey('week-menu-save'));
+        const message =
+            'Esta sesión ya no admite cambios de menú (está cancelada, cocinada o cobrada): no se guardó.';
+        expect(
+          find.descendant(
+            of: byKey('week-menu-blocked'),
+            matching: find.text(message),
+          ),
+          findsOneWidget,
+        );
+        expect(byKey('week-menu-save'), findsNothing);
+        expect(byKey('week-menu-dish-$lasagneId'), findsOneWidget);
+        expect(onPressedOf(tester, 'week-menu-add-dish'), isNull);
+        expect(
+          tester
+              .widget<IconButton>(byKey('week-menu-dish-more-$lasagneId'))
+              .onPressed,
+          isNull,
+        );
+
+        // No hay nada que se pueda guardar: sale sin preguntar, y la ficha
+        // ya dice que se canceló (sin el bloque del menú).
+        await tester.tap(byKey('week-menu-back'));
+        await tester.pumpAndSettle();
+        expect(byKey('week-menu-discard-dialog'), findsNothing);
+        expect(find.byType(CookingSessionScreen), findsOneWidget);
+        expect(textOf(tester, 'session-status'), contains('Cancelada'));
+        expect(byKey('session-menu'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'una sesión que ya no existe: el editor queda a la vista, bloqueado, con la ficha que tenía',
+      (tester) async {
+        final app = await openMenu(tester);
+        await addDishes(tester, ['Lasaña a la boloñesa']);
+        app.menus.missing.add(sessionId(2));
+        app.sessions.sessions.remove(sessionId(2));
+        await tapVisible(tester, byKey('week-menu-save'));
+        expect(
+          find.descendant(
+            of: byKey('week-menu-blocked'),
+            matching: find.text(
+              'La sesión ya no existe: el menú no se guardó.',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(textOf(tester, 'week-menu-client'), 'Giulia Rossi');
+        expect(byKey('week-menu-dish-$lasagneId'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      },
+    );
   });
 
   testWidgets(
@@ -596,6 +686,276 @@ void main() {
       expect(onPressedOf(tester, 'week-menu-save'), isNotNull);
     },
   );
+
+  testWidgets(
+    'una lista guardada que ya no coincide con los platos lo dice sin culpar a nadie y ofrece rehacerla',
+    (tester) async {
+      await openMenu(
+        tester,
+        saved: {
+          sessionId(2): SavedWeekMenu(
+            version: 1,
+            dishes: [WeekMenuDish(recipe: lasagneWith500(), portions: 4)],
+            items: lasagneList(4),
+          ),
+        },
+      );
+      expect(
+        textOf(tester, 'week-menu-list-mode'),
+        'La lista guardada ya no es la que sale de los platos: la cambiaste a mano o cambió algún plato del catálogo. Revísala o rehazla con los platos.',
+      );
+      expect(find.text('400 g'), findsOneWidget);
+      await tapVisible(tester, byKey('week-menu-rebuild'));
+      expect(
+        find.text(
+          'La lista vuelve a salir de los platos, como están hoy, y los sigue otra vez: se reemplaza lo que tiene ahora.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(byKey('week-menu-rebuild-confirm'));
+      await tester.pumpAndSettle();
+      expect(find.text('500 g'), findsOneWidget);
+      expect(
+        textOf(tester, 'week-menu-list-mode'),
+        'Sale sola de los ingredientes de los platos, por sus porciones. Si la cambias, deja de seguir a los platos.',
+      );
+    },
+  );
+
+  testWidgets(
+    'la pista de los platos de la web se va cuando entra un plato que la clienta no eligió',
+    (tester) async {
+      await openMenu(
+        tester,
+        n: 1,
+        booking: buildBooking(wishes: [risottoId, lasagneId]),
+      );
+      expect(byKey('week-menu-from-wishes'), findsOneWidget);
+      await addDishes(tester, ['Minestrone de verduras']);
+      expect(byKey('week-menu-from-wishes'), findsNothing);
+    },
+  );
+
+  group('«Nuevo plato»', () {
+    testWidgets(
+      'lo marcado en el selector entra al menú aunque se cancele el plato nuevo',
+      (tester) async {
+        await openMenu(tester);
+        await tapVisible(tester, byKey('week-menu-add-dish'));
+        await tester.tap(find.text('Lasaña a la boloñesa'));
+        await tester.pump();
+        await tester.tap(find.text('Minestrone de verduras'));
+        await tester.pump();
+        await tester.tap(byKey('menu-picker-new'));
+        await tester.pumpAndSettle();
+        expect(find.byType(RecipeEditorScreen), findsOneWidget);
+        await tester.tap(byKey('recipe-back'));
+        await tester.pumpAndSettle();
+        expect(find.byType(WeekMenuScreen), findsOneWidget);
+        expect(byKey('week-menu-dish-$lasagneId'), findsOneWidget);
+        expect(byKey('week-menu-dish-$minestroneId'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'con el menú lleno con lo marcado, «Nuevo plato» no se ofrece',
+      (tester) async {
+        await openMenu(
+          tester,
+          saved: {
+            sessionId(2): SavedWeekMenu(
+              version: 1,
+              dishes: [
+                for (var n = 1; n < maxMenuDishes; n++)
+                  WeekMenuDish(recipe: dishWith(n, const []), portions: 4),
+              ],
+            ),
+          },
+        );
+        await tapVisible(tester, byKey('week-menu-add-dish'));
+        expect(
+          tester.widget<OutlinedButton>(byKey('menu-picker-new')).onPressed,
+          isNotNull,
+        );
+        await tester.tap(find.text('Lasaña a la boloñesa'));
+        await tester.pump();
+        expect(
+          tester.widget<OutlinedButton>(byKey('menu-picker-new')).onPressed,
+          isNull,
+        );
+      },
+    );
+
+    testWidgets(
+      'no deja una ruta ni una entrada en el historial: el enlace a …/menu/nuovo-piatto no existe y la ubicación sigue en el menú',
+      (tester) async {
+        final app = await openMenu(tester);
+        final router = app.container.read(routerProvider);
+        await openNewDish(tester);
+        expect(router.state.uri.toString(), '/sessioni/${sessionId(2)}/menu');
+        await tester.tap(byKey('recipe-back'));
+        await tester.pumpAndSettle();
+
+        app.go('/sessioni/${sessionId(2)}/menu/nuovo-piatto');
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('route-not-found')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'en /gestione/, el atrás del navegador desde «Nuevo plato» sale del menú: con cambios pregunta, y «Seguir editando» lo deja protegido',
+      (tester) async {
+        final history = FakeBrowserHistory()..install(tester);
+        await openMenu(
+          tester,
+          isWeb: true,
+          location: '/sessioni/${sessionId(2)}',
+        );
+        await tapVisible(tester, byKey('session-menu-open'));
+        expect(find.byType(WeekMenuScreen), findsOneWidget);
+        await addDishes(tester, ['Lasaña a la boloñesa']);
+        final entries = history.entries.length;
+        await openNewDish(tester);
+        // Encima, sin ruta: el historial no cambia.
+        expect(history.entries, hasLength(entries));
+
+        await history.back(tester);
+        expect(byKey('week-menu-discard-dialog'), findsOneWidget);
+        await tester.tap(byKey('week-menu-discard-keep'));
+        await tester.pumpAndSettle();
+        expect(find.byType(RecipeEditorScreen), findsOneWidget);
+
+        // Con la flecha vuelve al menú, que sigue protegido.
+        await tester.tap(byKey('recipe-back'));
+        await tester.pumpAndSettle();
+        expect(byKey('week-menu-dish-$lasagneId'), findsOneWidget);
+        await tester.tap(byKey('week-menu-back'));
+        await tester.pumpAndSettle();
+        expect(byKey('week-menu-discard-dialog'), findsOneWidget);
+        await tester.tap(byKey('week-menu-discard-confirm'));
+        await tester.pumpAndSettle();
+        expect(find.byType(CookingSessionScreen), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'si la foto no se sube, el plato igual quedó guardado: al volver (con el aviso de que la foto se pierde) entra al menú',
+      (tester) async {
+        final app = await openMenu(tester);
+        app.photos.uploadFailure = RecipePhotoFailureKind.unavailable;
+        await openNewDish(tester);
+        await tester.enterText(byKey('recipe-name-es'), 'Pastel de choclo');
+        // Que termine de llevar el campo a la vista antes de bajar a la foto.
+        await tester.pumpAndSettle();
+        await tapVisible(tester, byKey('recipe-photo-choose'));
+        await tester.tap(byKey('recipe-photo-gallery'));
+        await tester.pumpAndSettle();
+        await tester.tap(byKey('recipe-save'));
+        await tester.pumpAndSettle();
+        // El plato se guardó, la foto no: el editor sigue abierto.
+        expect(find.byType(RecipeEditorScreen), findsOneWidget);
+        final created = app.recipes.saveCalls.single;
+
+        await tester.tap(byKey('recipe-back'));
+        await tester.pumpAndSettle();
+        expect(byKey('recipe-leave-saved-dialog'), findsOneWidget);
+        expect(
+          find.text(
+            'El plato ya está guardado y entra al menú. Lo que cambiaste después (por ejemplo, la foto) no se guardó.',
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(byKey('recipe-leave-saved-confirm'));
+        await tester.pumpAndSettle();
+        expect(find.byType(WeekMenuScreen), findsOneWidget);
+        expect(byKey('week-menu-dish-${created.id}'), findsOneWidget);
+        expect(
+          find.text('«Pastel de choclo» guardado y agregado al menú.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'guardado sin traducir: lo dice (y que entró al menú), dura como un error y, con lector de pantalla, se cierra con la X',
+      (tester) async {
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(accessibleNavigation: true);
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+        await openMenu(
+          tester,
+          translator: FakeTranslationRepository()
+            ..failure = TranslationFailureKind.notConfigured,
+        );
+        await openNewDish(tester);
+        await tester.enterText(byKey('recipe-name-es'), 'Pastel de choclo');
+        await tester.enterText(byKey('recipe-name-it'), 'Pasticcio di mais');
+        await tester.tap(byKey('recipe-save'));
+        await tester.pumpAndSettle();
+        expect(find.byType(WeekMenuScreen), findsOneWidget);
+        expect(
+          find.text(
+            '«Pastel de choclo» guardado sin traducir y agregado al menú: la traducción automática está apagada.',
+          ),
+          findsOneWidget,
+        );
+        final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
+        expect(snackBar.duration, errorSnackBarDuration);
+        expect(snackBar.persist, isTrue);
+        expect(snackBar.showCloseIcon, isTrue);
+      },
+    );
+  });
+
+  group('el idioma de la clienta', () {
+    testWidgets(
+      'la nota sale tal cual: la ayuda dice el idioma de la clienta y el ejemplo está en ese idioma',
+      (tester) async {
+        await openMenu(tester);
+        final field = tester.widget<TextField>(byKey('week-menu-note'));
+        expect(
+          field.decoration!.helperText,
+          'La clienta la recibe tal como la escribes: escríbela en su idioma (Italiano). No escribas datos de salud, direcciones ni otros datos personales.',
+        );
+        expect(
+          field.decoration!.hintText,
+          'Es.: tieni pronti 4 contenitori grandi.',
+        );
+      },
+    );
+
+    testWidgets('con una clienta que habla español, en español', (
+      tester,
+    ) async {
+      await openMenu(tester, booking: buildBooking(locale: ClientLocale.es));
+      final field = tester.widget<TextField>(byKey('week-menu-note'));
+      expect(field.decoration!.helperText, contains('(Español)'));
+      expect(field.decoration!.hintText, 'Ej.: ten listos 4 táperes grandes.');
+    });
+
+    testWidgets(
+      'los nombres de la lista le llegan traducidos: lo dice la lista y el diálogo de un renglón',
+      (tester) async {
+        await openMenu(tester);
+        expect(
+          textOf(tester, 'week-menu-list-translated'),
+          'La clienta recibe los nombres traducidos solos a su idioma (Italiano): no escribas datos personales en la lista.',
+        );
+        await tapVisible(tester, byKey('week-menu-add-item'));
+        expect(
+          find.descendant(
+            of: byKey('shopping-item-dialog'),
+            matching: find.text(
+              'Se traduce solo al idioma de la clienta (Italiano): no escribas datos personales.',
+            ),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+  });
 
   group('volver con cambios sin guardar', () {
     testWidgets(

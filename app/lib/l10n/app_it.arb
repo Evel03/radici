@@ -3032,9 +3032,9 @@
   "@weekMenuListRebuildTitle": {
     "description": "Confirmación de weekMenuListRebuild."
   },
-  "weekMenuListRebuildBody": "Le modifiche che hai fatto alla lista si perdono: torna a uscire dai piatti e li segue di nuovo.",
+  "weekMenuListRebuildBody": "La lista torna a uscire dai piatti, come sono oggi, e li segue di nuovo: quello che contiene adesso viene sostituito.",
   "@weekMenuListRebuildBody": {
-    "description": "Confirmación de weekMenuListRebuild."
+    "description": "Confirmación de weekMenuListRebuild. Neutra: la lista pudo cambiarla la cocinera o pudo cambiar un plato del catálogo."
   },
   "weekMenuListRebuildConfirm": "Rifai",
   "@weekMenuListRebuildConfirm": {
@@ -3051,7 +3051,7 @@
       "max": { "type": "int", "example": "150" }
     }
   },
-  "weekMenuListNoIngredients": "Senza ingredienti: {names}. Aggiungili nel piatto o scrivi qui quello che serve.",
+  "weekMenuListNoIngredients": "Senza ingredienti: {names}. Aggiungili nel piatto e poi rifai la lista dai piatti, oppure scrivi qui quello che serve.",
   "@weekMenuListNoIngredients": {
     "description": "Editor del menú: platos del menú que no tienen ingredientes cargados (no suman nada a la lista).",
     "placeholders": {
@@ -3119,9 +3119,12 @@
   "@weekMenuNoteHint": {
     "description": "Ejemplo dentro del campo de la nota."
   },
-  "weekMenuNoteHelper": "La legge la cliente: non scrivere dati di salute né indirizzi.",
+  "weekMenuNoteHelper": "La cliente la riceve così come la scrivi: scrivila nella sua lingua ({language}). Non scrivere dati di salute, indirizzi né altri dati personali.",
   "@weekMenuNoteHelper": {
-    "description": "Ayuda debajo de la nota (llega a la cliente)."
+    "description": "Ayuda debajo de la nota: llega a la cliente tal como la escribe la cocinera (no se traduce, decisión del 22/11/2026), en el idioma de la cliente.",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
   },
   "weekMenuSave": "Salva il menù",
   "@weekMenuSave": {
@@ -3208,5 +3211,60 @@
   "weekMenuErrorUnavailable": "Non è stato possibile salvare. Controlla la connessione e riprova: quello che hai scritto è ancora qui.",
   "@weekMenuErrorUnavailable": {
     "description": "Al guardar: sin conexión o el servidor no responde."
+  },
+  "weekMenuListStale": "La lista salvata non è più quella che esce dai piatti: l'hai modificata a mano o è cambiato qualche piatto del catalogo. Controllala o rifalla dai piatti.",
+  "@weekMenuListStale": {
+    "description": "Editor del menú: al abrir, la lista guardada no coincide con la que sale hoy de los platos (no se sabe si la cambió la cocinera o cambió una receta)."
+  },
+  "weekMenuListTranslated": "La cliente riceve i nomi tradotti automaticamente nella sua lingua ({language}): non scrivere dati personali nella lista.",
+  "@weekMenuListTranslated": {
+    "description": "Editor del menú, debajo del título de la lista: los nombres se traducen solos al idioma de la cliente (decisión del 22/11/2026).",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "shoppingItemNameHelper": "Viene tradotto automaticamente nella lingua della cliente ({language}): non scrivere dati personali.",
+  "@shoppingItemNameHelper": {
+    "description": "Ayuda del nombre de un renglón de la lista de compras: se traduce solo al idioma de la cliente.",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "weekMenuErrorSessionNotFound": "La sessione non esiste più: il menù non è stato salvato.",
+  "@weekMenuErrorSessionNotFound": {
+    "description": "Al guardar: session_not_found (aviso y cartel fijo del editor, que queda bloqueado)."
+  },
+  "weekMenuDishCreatedUntranslated": "«{name}» salvato senza tradurre e aggiunto al menù: la traduzione automatica è spenta.",
+  "@weekMenuDishCreatedUntranslated": {
+    "description": "Aviso en el editor del menú: el plato nuevo se guardó sin traducir porque la traducción automática está apagada (501).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishCreatedUntranslatable": "«{name}» salvato senza tradurre e aggiunto al menù: la traduzione automatica non è riuscita a tradurlo.",
+  "@weekMenuDishCreatedUntranslatable": {
+    "description": "Aviso en el editor del menú: el plato nuevo se guardó sin traducir porque la traducción automática no pudo con el texto (422).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "weekMenuDishCreatedMenuFull": "«{name}» è salvato nei piatti, ma il menù è già pieno: non è stato aggiunto.",
+  "@weekMenuDishCreatedMenuFull": {
+    "description": "Aviso en el editor del menú: el plato nuevo se guardó en el catálogo pero el menú ya tenía el máximo de platos.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Lasagne alla bolognese" }
+    }
+  },
+  "recipeLeaveSavedTitle": "Tornare al menù?",
+  "@recipeLeaveSavedTitle": {
+    "description": "Editor de un plato abierto desde el menú, con el plato ya guardado (la foto falló o cambió algo después): confirmación al salir."
+  },
+  "recipeLeaveSavedBody": "Il piatto è già salvato ed entra nel menù. Quello che hai cambiato dopo (per esempio la foto) non è stato salvato.",
+  "@recipeLeaveSavedBody": {
+    "description": "Cuerpo de recipeLeaveSavedTitle."
+  },
+  "recipeLeaveSavedConfirm": "Torna al menù",
+  "@recipeLeaveSavedConfirm": {
+    "description": "Botón de recipeLeaveSavedTitle: vuelve al menú con el plato guardado."
   }
 }

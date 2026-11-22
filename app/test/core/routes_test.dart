@@ -227,12 +227,10 @@ void main() {
     );
   });
 
-  test('el menú de la semana y su «Nuovo piatto» cuelgan de la ficha de la sesión y son del área de la cocinera', () {
+  test('el menú de la semana cuelga de la ficha de la sesión y es del área de la cocinera', () {
     expect(AppRoutes.sessionMenu('x'), '/sessioni/x/menu');
     expect(AppRoutes.sessionMenu('a/b'), '/sessioni/a%2Fb/menu');
-    expect(AppRoutes.sessionMenuNewDish('x'), '/sessioni/x/menu/nuovo-piatto');
     expect(isChefPath('/sessioni/x/menu'), isTrue);
-    expect(isChefPath('/sessioni/x/menu/nuovo-piatto'), isTrue);
     expect(_redirect(chef, '/sessioni/x/menu'), isNull);
     expect(
       _redirect(signedOut, '/sessioni/x/menu'),

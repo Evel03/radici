@@ -4,13 +4,19 @@
 // sin datos). Después los platos en orden, cada uno con su foto, sus
 // porciones (− y +), subir, bajar, quitar y, si choca con las alergias o la
 // dieta de la reserva, la marca en rojo con el porqué; «Agregar platos» abre
-// el selector del catálogo (con «Nuevo plato»). Después la lista de compras
-// por sección del súper, que sigue sola a los platos hasta que se cambia a
-// mano (con «Rehacer la lista con los platos»), y la nota para la clienta.
-// «Guardar el menú» queda abajo; si algún plato choca, pide confirmarlo antes.
+// el selector del catálogo (con «Nuevo plato», que abre el editor de platos
+// encima, sin ruta: no deja una entrada en el historial del navegador).
+// Después la lista de compras por sección del súper, que sigue sola a los
+// platos hasta que se cambia a mano (con «Rehacer la lista con los platos»;
+// una lista guardada que ya no coincide con los platos lo dice sin culpar a
+// nadie), y la nota para la clienta. La clienta recibe la nota tal como la
+// escribe Evelyn y los nombres de la lista traducidos solos a su idioma
+// (decisión del 22/11/2026): la pantalla dice cuál es ese idioma. «Guardar el
+// menú» queda abajo; si algún plato choca, pide confirmarlo antes.
 //
 // Si otro teléfono guardó el menú en el medio, lo dice y ofrece cargar el
-// guardado; si falla la red, lo escrito queda para reintentar. Con cambios
+// guardado; si falla la red, lo escrito queda para reintentar. Si la sesión
+// ya no admite menú, el editor queda a la vista pero bloqueado. Con cambios
 // sin guardar, volver pregunta antes de descartarlos (en /gestione/, también
 // el atrás del navegador: el onExit de la ruta, router.dart).
 //
@@ -20,18 +26,22 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:radici/core/routes.dart';
 import 'package:radici/features/availability/presentation/availability_actions.dart';
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
+import 'package:radici/features/recipes/application/recipe_editor_controller.dart';
 import 'package:radici/features/recipes/data/translation_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
+import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
 import 'package:radici/features/recipes/presentation/recipe_labels.dart';
 import 'package:radici/features/recipes/presentation/recipe_photo_thumbnail.dart';
+import 'package:radici/features/recipes/presentation/saved_recipe_snack_bar.dart';
+import 'package:radici/features/requests/domain/chef_request.dart'
+    show ClientLocale;
 import 'package:radici/features/requests/presentation/inbox_screen.dart'
     show LoadErrorView;
 import 'package:radici/features/requests/presentation/request_labels.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
+import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/presentation/session_labels.dart';
 import 'package:radici/features/sessions/presentation/session_widgets.dart';
 import 'package:radici/features/week_menu/application/week_menu_editor_controller.dart';
@@ -79,7 +89,6 @@ class WeekMenuScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final editor = ref.watch(weekMenuEditorProvider(sessionId));
-    final detail = ref.watch(sessionDetailProvider(sessionId)).value;
     Widget plain(Widget body) => Scaffold(
       appBar: AppBar(title: Text(l10n.weekMenuTitle)),
       body: body,
@@ -87,12 +96,10 @@ class WeekMenuScreen extends ConsumerWidget {
     const loading = Center(child: CircularProgressIndicator());
     return editor.when(
       // Al volver a cargar lo guardado, el editor se rearma con sus campos.
-      data: (state) => detail == null
-          ? plain(loading)
-          : KeyedSubtree(
-              key: ValueKey('week-menu-${state.generation}'),
-              child: _WeekMenuEditor(sessionId: sessionId, detail: detail),
-            ),
+      data: (state) => KeyedSubtree(
+        key: ValueKey('week-menu-${state.generation}'),
+        child: _WeekMenuEditor(sessionId: sessionId),
+      ),
       error: (error, _) => plain(
         error is MenuFailure && error.kind == MenuFailureKind.sessionNotFound
             ? Center(
@@ -123,12 +130,9 @@ class WeekMenuScreen extends ConsumerWidget {
 }
 
 class _WeekMenuEditor extends ConsumerStatefulWidget {
-  const _WeekMenuEditor({required this.sessionId, required this.detail});
+  const _WeekMenuEditor({required this.sessionId});
 
   final String sessionId;
-
-  /// La ficha como estaba al abrir (por si se vuelve a leer mientras tanto).
-  final SessionDetail detail;
 
   @override
   ConsumerState<_WeekMenuEditor> createState() => _WeekMenuEditorState();
@@ -166,6 +170,17 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
   bool get _persist => MediaQuery.accessibleNavigationOf(context);
 
   String get _language => Localizations.localeOf(context).languageCode;
+
+  /// La ficha de ahora o, si ya no se puede leer, la que se cargó.
+  SessionDetail? get _detail =>
+      ref.read(sessionDetailProvider(_sessionId)).value ?? _state?.detail;
+
+  /// El idioma de la clienta, como se muestra («Italiano»).
+  String get _clientLanguage {
+    final session = _detail?.session;
+    return AppLocalizations.of(context)
+        .language(session?.locale ?? ClientLocale.it);
+  }
 
   void _show(SnackBar snackBar) {
     final messenger = _messenger.currentState;
@@ -207,31 +222,47 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
     switch (choice) {
       case AddPickedDishes(:final recipes):
         _editor.addDishes(recipes);
-      case CreateNewDish():
+      case CreateNewDish(:final picked):
+        // Lo marcado entra igual, aunque después no se guarde el plato nuevo.
+        _editor.addDishes(picked);
         await _newDish();
       case null:
         break;
     }
   }
 
-  /// Abre el editor de platos; el plato que se guarde ahí entra al menú.
+  /// Abre el editor de platos encima, sin ruta: no queda una entrada del
+  /// historial del navegador entre el menú y el editor (el atrás del
+  /// navegador sale del menú, que pregunta si hay cambios). El plato que se
+  /// guarde ahí entra al menú, también si la foto falló (el editor vuelve con
+  /// él igual). Guardado sin traducir, el aviso dura como en la lista de
+  /// platos y, con VoiceOver o TalkBack, se cierra con la X.
   Future<void> _newDish() async {
     final l10n = AppLocalizations.of(context);
-    final notice = await context.push<SavedRecipeNotice>(
-      AppRoutes.sessionMenuNewDish(_sessionId),
+    final notice = await Navigator.of(context).push<SavedRecipeNotice>(
+      MaterialPageRoute<SavedRecipeNotice>(
+        builder: (_) => const RecipeEditorScreen(
+          target: RecipeEditorTarget.create(),
+          returnsSaved: true,
+        ),
+      ),
     );
     if (notice == null || !mounted) return;
-    _editor.addDishes([notice.recipe]);
+    final added = _editor.addDishes([notice.recipe]);
     final name = recipeNameIn(notice.recipe, _language);
+    final because = notice.untranslatedBecause;
     _show(
-      SnackBar(
-        content: Text(switch (notice.untranslatedBecause) {
-          null => l10n.weekMenuDishCreated(name),
-          TranslationFailureKind.notConfigured => l10n.recipeSavedUntranslated(
-            name,
-          ),
-          _ => l10n.recipeSavedUntranslatable(name),
-        }),
+      savedRecipeSnackBar(
+        context,
+        message: added == 0
+            ? l10n.weekMenuDishCreatedMenuFull(name)
+            : switch (because) {
+                null => l10n.weekMenuDishCreated(name),
+                TranslationFailureKind.notConfigured =>
+                  l10n.weekMenuDishCreatedUntranslated(name),
+                _ => l10n.weekMenuDishCreatedUntranslatable(name),
+              },
+        untranslated: because != null,
       ),
     );
   }
@@ -259,13 +290,20 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
   // ------------------------------------------------------------------
 
   Future<void> _editItem(ShoppingRow row) async {
-    final item = await showShoppingItemDialog(context, initial: row.item);
+    final item = await showShoppingItemDialog(
+      context,
+      clientLanguage: _clientLanguage,
+      initial: row.item,
+    );
     if (item == null || item == row.item || !mounted) return;
     _editor.updateItem(row.key, item);
   }
 
   Future<void> _addItem() async {
-    final item = await showShoppingItemDialog(context);
+    final item = await showShoppingItemDialog(
+      context,
+      clientLanguage: _clientLanguage,
+    );
     if (item == null || !mounted) return;
     _editor.addItem(item);
   }
@@ -435,7 +473,7 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
       case MenuFailureKind.notEditable:
         _showError(l10n.weekMenuErrorNotEditable);
       case MenuFailureKind.sessionNotFound:
-        _showError(l10n.sessionErrorNotFound);
+        _showError(l10n.weekMenuErrorSessionNotFound);
       case MenuFailureKind.recipeNotFound:
         final index = failure.dishIndex;
         _showError(
@@ -500,14 +538,16 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
     final l10n = AppLocalizations.of(context);
     final state = ref.watch(weekMenuEditorProvider(_sessionId)).value;
     if (state == null) return const SizedBox.shrink();
+    // La de ahora o, si la sesión ya no se puede leer, la que se cargó.
     final detail =
-        ref.watch(sessionDetailProvider(_sessionId)).value ?? widget.detail;
+        ref.watch(sessionDetailProvider(_sessionId)).value ?? state.detail;
     final conflicts = ref.watch(weekMenuConflictsProvider(_sessionId));
     final session = detail.session;
-    final enabled = !state.readOnly;
+    final enabled = !state.locked;
 
     return PopScope<Object?>(
-      canPop: state.leaving || (!state.dirty && !state.busy),
+      // Bloqueado no hay nada que guardar: sale sin preguntar.
+      canPop: state.leaving || state.locked || (!state.dirty && !state.busy),
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) unawaited(_confirmLeave());
       },
@@ -545,7 +585,17 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _Header(detail: detail),
-                      if (state.readOnly)
+                      if (state.blockedBy case final kind?)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: _Banner(
+                            key: const ValueKey('week-menu-blocked'),
+                            text: kind == MenuFailureKind.notEditable
+                                ? l10n.weekMenuErrorNotEditable
+                                : l10n.weekMenuErrorSessionNotFound,
+                          ),
+                        )
+                      else if (state.readOnly)
                         Padding(
                           padding: const EdgeInsets.only(top: 16),
                           child: _Banner(
@@ -558,14 +608,14 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
                       SessionAllergies(session: session),
                       ..._dishes(state, conflicts, enabled: enabled),
                       ..._list(state, enabled: enabled),
-                      ..._noteField(state),
+                      ..._noteField(state, session),
                     ],
                   ),
                 ),
               ),
             ),
           ),
-          bottomNavigationBar: state.readOnly
+          bottomNavigationBar: state.locked
               ? null
               : _SaveBar(
                   saving: state.saving,
@@ -585,7 +635,7 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
     final dishes = state.dishes;
     return [
       SessionSection(l10n.weekMenuDishesSection),
-      if (state.fromWishes)
+      if (state.showsWishesHint)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: _Hint(
@@ -644,11 +694,19 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
     final withoutIngredients = state.dishesWithoutIngredients;
     return [
       SessionSection(l10n.weekMenuListSection),
-      _Hint(
-        state.manualList ? l10n.weekMenuListManual : l10n.weekMenuListAuto,
-        textKey: const ValueKey('week-menu-list-mode'),
+      _Hint(switch (state.listMode) {
+        ShoppingListMode.automatic => l10n.weekMenuListAuto,
+        ShoppingListMode.manual => l10n.weekMenuListManual,
+        ShoppingListMode.stale => l10n.weekMenuListStale,
+      }, textKey: const ValueKey('week-menu-list-mode')),
+      Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: _Hint(
+          l10n.weekMenuListTranslated(_clientLanguage),
+          textKey: const ValueKey('week-menu-list-translated'),
+        ),
       ),
-      if (state.manualList && enabled)
+      if (state.listMode != ShoppingListMode.automatic && enabled)
         Align(
           alignment: AlignmentDirectional.centerStart,
           child: TextButton.icon(
@@ -734,8 +792,11 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
     ];
   }
 
-  List<Widget> _noteField(WeekMenuEditorState state) {
+  /// La nota le llega a la clienta tal como la escribe Evelyn: la ayuda dice
+  /// en qué idioma escribirla y el ejemplo está en ese idioma.
+  List<Widget> _noteField(WeekMenuEditorState state, CookingSession session) {
     final l10n = AppLocalizations.of(context);
+    final client = lookupAppLocalizations(Locale(session.locale.name));
     final theme = Theme.of(context);
     final material = MaterialLocalizations.of(context);
     const max = maxMenuNoteLength;
@@ -752,7 +813,7 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
           return TextField(
             key: const ValueKey('week-menu-note'),
             controller: _note,
-            readOnly: state.readOnly,
+            readOnly: state.locked,
             autofillHints: null,
             minLines: 3,
             maxLines: 8,
@@ -763,9 +824,11 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
             style: theme.textTheme.bodyLarge,
             decoration: InputDecoration(
               labelText: l10n.weekMenuNoteLabel,
-              hintText: l10n.weekMenuNoteHint,
+              hintText: client.weekMenuNoteHint,
               alignLabelWithHint: true,
-              helperText: l10n.weekMenuNoteHelper,
+              helperText: l10n.weekMenuNoteHelper(
+                l10n.language(session.locale),
+              ),
               helperMaxLines: 3,
               errorText: tooLong ? l10n.recipeTextTooLong(max) : null,
               errorMaxLines: 2,

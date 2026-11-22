@@ -126,7 +126,9 @@ final routerProvider = Provider<GoRouter>((ref) {
                 _canLeaveBooking(ref, _renewalSource(state)),
           ),
           // El menú de la semana. Con push desde un pedido o desde la hoja de
-          // reserva confirmada se apila solo el menú.
+          // reserva confirmada se apila solo el menú. Su «Nuevo plato» se
+          // abre encima sin ruta (Navigator.push): no deja una entrada en el
+          // historial del navegador entre el menú y el editor de platos.
           GoRoute(
             path: AppRoutes.sessionMenuSegment,
             pageBuilder: (context, state) => _page(
@@ -135,20 +137,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
             onExit: (context, state) =>
                 _canLeaveMenu(context, ref, state.pathParameters['id']!),
-            routes: [
-              // «Nuovo piatto» desde el menú: el editor de platos vuelve con
-              // el plato guardado, que entra al menú.
-              GoRoute(
-                path: AppRoutes.menuNewDishSegment,
-                pageBuilder: (context, state) => MaterialPage<Object?>(
-                  key: state.pageKey,
-                  child: const RecipeEditorScreen(
-                    target: RecipeEditorTarget.create(),
-                    returnsSaved: true,
-                  ),
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -346,8 +334,13 @@ bool _canLeaveBooking(Ref ref, BookingSource source) {
 /// El onExit del menú de la semana: con cambios sin guardar pregunta antes
 /// de descartarlos, también por el atrás del navegador en /gestione/ (que no
 /// pasa por PopScope). Mientras guarda no sale. Si ya se eligió descartar en
-/// la pantalla (WeekMenuEditorState.leaving), sale sin volver a preguntar.
-/// Sin la sesión de la cocinera, sí: la redirección al login la saca.
+/// la pantalla (WeekMenuEditorState.leaving) o ya no se puede guardar nada
+/// (la sesión no admite menú), sale sin preguntar. Sin la sesión de la
+/// cocinera, también: la redirección al login la saca.
+///
+/// No marca nada en el editor: si el menú siguiera en la pila de destino (una
+/// entrada del historial rearmada por go_router cuenta como salida aunque la
+/// página quede), seguiría protegido.
 Future<bool> _canLeaveMenu(
   BuildContext context,
   Ref ref,
@@ -357,14 +350,10 @@ Future<bool> _canLeaveMenu(
   final provider = weekMenuEditorProvider(sessionId);
   if (!ref.exists(provider)) return true;
   final state = ref.read(provider).value;
-  if (state == null || state.leaving) return true;
+  if (state == null || state.leaving || state.locked) return true;
   if (state.busy) return false;
   if (!state.dirty) return true;
-  final discard = await confirmDiscardMenuChanges(context);
-  if (discard && ref.exists(provider)) {
-    ref.read(provider.notifier).allowLeave();
-  }
-  return discard;
+  return confirmDiscardMenuChanges(context);
 }
 
 /// Una fecha "AAAA-MM-DD" de la URL, o null si falta o no es una fecha.

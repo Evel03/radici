@@ -1,7 +1,9 @@
 // Agregar o cambiar un renglón de la lista de compras de una semana: qué
 // (como un ingrediente), la cantidad entera en g, ml o piezas, o «q.b.» sin
 // cantidad, y la sección del súper. Valida como la base (validateShoppingItem)
-// antes de cerrar. Los campos tienen letra de 16 px (con menos, iOS agranda la
+// antes de cerrar. Los nombres le llegan a la clienta traducidos solos a su
+// idioma (decisión del 22/11/2026): el campo pide no escribir datos
+// personales. Los campos tienen letra de 16 px (con menos, iOS agranda la
 // página) y autofillHints: null (sin pasarlo, en /gestione/ Safari podría
 // ofrecer datos de Evelyn).
 import 'package:flutter/material.dart';
@@ -16,22 +18,33 @@ import 'package:radici/l10n/app_localizations.dart';
 const int _quantityDigits = 7;
 
 /// Abre el diálogo: vacío para agregar, o con [initial] para cambiarlo.
+/// [clientLanguage]: el idioma de la clienta, como se muestra («Italiano»).
 /// Devuelve el renglón como quedó, o null si se canceló.
 Future<ShoppingItem?> showShoppingItemDialog(
   BuildContext context, {
+  required String clientLanguage,
   ShoppingItem? initial,
   ShoppingSection section = ShoppingSection.other,
 }) => showDialog<ShoppingItem>(
   context: context,
-  builder: (_) => ShoppingItemDialog(initial: initial, section: section),
+  builder: (_) => ShoppingItemDialog(
+    clientLanguage: clientLanguage,
+    initial: initial,
+    section: section,
+  ),
 );
 
 class ShoppingItemDialog extends StatefulWidget {
   const ShoppingItemDialog({
     super.key,
+    required this.clientLanguage,
     this.initial,
     this.section = ShoppingSection.other,
   });
+
+  /// El idioma de la clienta, como se muestra («Italiano»): el nombre le
+  /// llega traducido a ese idioma.
+  final String clientLanguage;
 
   /// El renglón que se cambia; null para agregar uno.
   final ShoppingItem? initial;
@@ -144,6 +157,10 @@ class _ShoppingItemDialogState extends State<ShoppingItemDialog> {
                 style: field,
                 decoration: InputDecoration(
                   labelText: l10n.recipeIngredientName,
+                  helperText: l10n.shoppingItemNameHelper(
+                    widget.clientLanguage,
+                  ),
+                  helperMaxLines: 3,
                   errorText: nameError,
                   errorMaxLines: 2,
                 ),

@@ -3,8 +3,9 @@
 // italiano, español o inglés), cada uno con su foto, sus alérgenos y, si choca
 // con las alergias o la dieta de la reserva, la marca en rojo con el porqué.
 // Se marcan varios y «Agregar N platos» los agrega juntos; «Nuevo plato» abre
-// el editor de platos (el plato que se guarde ahí entra al menú). Solo
-// muestra providers: la lógica está en menuPickerCandidates y dishConflict.
+// el editor de platos (el plato que se guarde ahí entra al menú) y los
+// marcados entran igual. Solo muestra providers: la lógica está en
+// menuPickerCandidates y dishConflict.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/features/recipes/application/recipe_catalog_controller.dart';
@@ -29,9 +30,12 @@ final class AddPickedDishes extends MenuPickerResult {
   final List<Recipe> recipes;
 }
 
-/// Crear un plato nuevo (y agregarlo al menú cuando se guarde).
+/// Crear un plato nuevo (y agregarlo al menú cuando se guarde). [picked]:
+/// los que ya estaban marcados, que se agregan igual.
 final class CreateNewDish extends MenuPickerResult {
-  const CreateNewDish();
+  const CreateNewDish([this.picked = const []]);
+
+  final List<Recipe> picked;
 }
 
 /// Abre el selector. [chosen]: los platos que ya están en el menú;
@@ -119,7 +123,10 @@ class _MenuDishPickerState extends ConsumerState<MenuDishPicker> {
       ),
       bottomNavigationBar: _Bar(
         picked: _picked.length,
-        onNewDish: () => Navigator.of(context).pop(const CreateNewDish()),
+        // Con el menú lleno con lo marcado, el plato nuevo no entraría.
+        onNewDish: _picked.length >= widget.room
+            ? null
+            : () => Navigator.of(context).pop(CreateNewDish(List.of(_picked))),
         onAdd: _picked.isEmpty
             ? null
             : () =>
@@ -320,7 +327,7 @@ class _Bar extends StatelessWidget {
   });
 
   final int picked;
-  final VoidCallback onNewDish;
+  final VoidCallback? onNewDish;
   final VoidCallback? onAdd;
 
   @override

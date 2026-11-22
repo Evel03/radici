@@ -10,8 +10,10 @@
 // (con el teclado abierto, justo arriba de él); mientras traduce dice que
 // traduce y el formulario no se puede tocar. Si la traducción falla, un aviso
 // ofrece reintentar, escribir a mano o guardar sin traducir. Un plato guardado
-// se puede duplicar y desactivar (nunca se borra). Solo muestra providers: la
-// lógica está en RecipeEditorController.
+// se puede duplicar y desactivar (nunca se borra). Abierto desde el menú de
+// una semana («Nuevo plato»), vuelve al menú con el plato guardado, también
+// si la foto falló. Solo muestra providers: la lógica está en
+// RecipeEditorController.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -46,7 +48,9 @@ class RecipeEditorScreen extends ConsumerWidget {
 
   /// Abierto desde el menú de una semana («Nuevo plato»): al guardar vuelve
   /// con el plato (SavedRecipeNotice, el resultado de la ruta) en lugar de
-  /// avisarlo en la lista de platos.
+  /// avisarlo en la lista de platos. Si el plato quedó guardado pero el
+  /// editor no se cerró (la foto falló o quedó pendiente), salir también
+  /// vuelve con él.
   final bool returnsSaved;
 
   @override
@@ -557,10 +561,55 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     return discard ?? false;
   }
 
-  /// Volver con cambios sin guardar: pregunta antes de descartarlos.
+  /// Abierto desde el menú de una semana y con el plato ya guardado (la foto
+  /// falló o quedó pendiente, o cambió algo después): lo que se devuelve al
+  /// salir, así el plato entra al menú igual. null si no.
+  SavedRecipeNotice? get _savedForMenu {
+    final state = _state;
+    final saved = state.source;
+    if (!widget.returnsSaved || state.isNew || saved == null) return null;
+    return (recipe: saved, untranslatedBecause: state.untranslatedBecause);
+  }
+
+  /// Volver con cambios sin guardar: pregunta antes de descartarlos. Desde el
+  /// menú, con el plato ya guardado, vuelve con él: si cambió algo después
+  /// (por ejemplo, la foto que no se subió), el aviso dice que eso se pierde.
   Future<void> _confirmLeave() async {
     if (_state.busy) return;
-    if (await _confirmDiscard() && mounted) Navigator.of(context).pop();
+    final saved = _savedForMenu;
+    if (saved == null) {
+      if (await _confirmDiscard() && mounted) Navigator.of(context).pop();
+      return;
+    }
+    if (_state.dirty && !await _confirmLeaveSaved()) return;
+    if (mounted) Navigator.of(context).pop<SavedRecipeNotice>(saved);
+  }
+
+  /// «¿Volver al menú?»: el plato ya está guardado, lo de después no.
+  Future<bool> _confirmLeaveSaved() async {
+    final l10n = AppLocalizations.of(context);
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey('recipe-leave-saved-dialog'),
+        title: Text(l10n.recipeLeaveSavedTitle),
+        content: Text(l10n.recipeLeaveSavedBody),
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            key: const ValueKey('recipe-leave-saved-keep'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.recipeDiscardKeep),
+          ),
+          FilledButton(
+            key: const ValueKey('recipe-leave-saved-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.recipeLeaveSavedConfirm),
+          ),
+        ],
+      ),
+    );
+    return leave ?? false;
   }
 
   String? _textError(
@@ -948,7 +997,12 @@ class _RecipeEditorState extends ConsumerState<_RecipeEditor> {
     ];
 
     return PopScope<Object?>(
-      canPop: !state.dirty && !state.busy,
+      // Desde el menú, con el plato ya guardado, toda salida pasa por
+      // _confirmLeave: vuelve con el plato.
+      canPop:
+          !state.dirty &&
+          !state.busy &&
+          !(widget.returnsSaved && !state.isNew),
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) unawaited(_confirmLeave());
       },

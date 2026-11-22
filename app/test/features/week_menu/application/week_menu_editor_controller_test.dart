@@ -14,6 +14,7 @@ import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/recipes/domain/recipe.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
+import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/week_menu/application/week_menu_editor_controller.dart';
@@ -105,24 +106,82 @@ void main() {
       expect(state.readOnly, isFalse);
     });
 
+    test('una lista guardada distinta de la que sale de los platos no los sigue, sin decir que la cambió ella', () async {
+      await start(
+        saved: {
+          sessionId(2): savedLasagneMenu(
+            items: [toTasteItem('Sale'), item('Pane', 1, IngredientUnit.pcs)],
+          ),
+        },
+      );
+      await open(2);
+      expect(stateOf(2).manualList, isTrue);
+      // No se sabe si la cambió ella o cambió un plato: el aviso es neutro.
+      expect(stateOf(2).listMode, ShoppingListMode.stale);
+      // Por sección, como se muestra y se guarda.
+      expect(itemsOf(2), [
+        toTasteItem('Sale'),
+        item('Pane', 1, IngredientUnit.pcs),
+      ]);
+      expect(stateOf(2).dirty, isFalse);
+    });
+
+    test('si una receta cambió después de guardar, la lista guardada queda y se ofrece rehacerla', () async {
+      // Evelyn corrigió la receta: ahora lleva 500 g de carne.
+      final changed = lasagne().copyWith(
+        ingredients: [
+          ingredient(
+            'Carne macinata di manzo',
+            500,
+            IngredientUnit.g,
+            section: ShoppingSection.meatFish,
+          ),
+          ...lasagne().ingredients.skip(1),
+        ],
+      );
+      await start(
+        saved: {
+          sessionId(2): SavedWeekMenu(
+            version: 1,
+            dishes: [WeekMenuDish(recipe: changed, portions: 4)],
+            items: lasagneList(4),
+          ),
+        },
+      );
+      final editor = await open(2);
+      expect(stateOf(2).listMode, ShoppingListMode.stale);
+      expect(itemsOf(2), lasagneList(4));
+      expect(stateOf(2).dirty, isFalse);
+
+      editor.rebuildList();
+      expect(stateOf(2).listMode, ShoppingListMode.automatic);
+      expect(
+        itemsOf(2).first,
+        item(
+          'Carne macinata di manzo',
+          500,
+          IngredientUnit.g,
+          section: ShoppingSection.meatFish,
+        ),
+      );
+      expect(stateOf(2).dirty, isTrue);
+    });
+
     test(
-      'una lista guardada distinta de la que sale de los platos está a mano',
+      'cambiar un renglón de una lista que no coincidía la deja «a mano»',
       () async {
         await start(
           saved: {
-            sessionId(2): savedLasagneMenu(
-              items: [toTasteItem('Sale'), item('Pane', 1, IngredientUnit.pcs)],
-            ),
+            sessionId(2): savedLasagneMenu(items: [toTasteItem('Sale')]),
           },
         );
-        await open(2);
-        expect(stateOf(2).manualList, isTrue);
-        // Por sección, como se muestra y se guarda.
-        expect(itemsOf(2), [
-          toTasteItem('Sale'),
-          item('Pane', 1, IngredientUnit.pcs),
-        ]);
-        expect(stateOf(2).dirty, isFalse);
+        final editor = await open(2);
+        expect(stateOf(2).listMode, ShoppingListMode.stale);
+        editor.updateItem(
+          stateOf(2).items.single.key,
+          toTasteItem('Sale grosso'),
+        );
+        expect(stateOf(2).listMode, ShoppingListMode.manual);
       },
     );
 
@@ -318,6 +377,52 @@ void main() {
       );
       expect(stateOf(2).manualList, isTrue);
     });
+
+    test('deshacer un renglón quitado de una lista que seguía a los platos la deja siguiéndolos', () async {
+      await start();
+      final editor = await open(2);
+      editor.addDishes([lasagne()]);
+      final removed = editor.removeItem(stateOf(2).orderedItems.last.key)!;
+      expect(stateOf(2).listMode, ShoppingListMode.manual);
+      editor.restoreItem(removed);
+      expect(stateOf(2).listMode, ShoppingListMode.automatic);
+      expect(itemsOf(2), lasagneList(4));
+      // Los platos la vuelven a mover.
+      editor.setPortions(lasagneId, 8);
+      expect(itemsOf(2), lasagneList(8));
+    });
+
+    test('deshacer después de rehacer la lista (y cambiarla) no hace nada: nunca duplica', () async {
+      await start();
+      final editor = await open(2);
+      editor.addDishes([lasagne()]);
+      final removed = editor.removeItem(stateOf(2).orderedItems.last.key)!;
+      editor.rebuildList();
+      final carne = stateOf(2).orderedItems.first;
+      editor.updateItem(
+        carne.key,
+        item('Carne', 450, IngredientUnit.g, section: ShoppingSection.meatFish),
+      );
+      editor.restoreItem(removed);
+      expect(itemsOf(2).where((i) => i.name == 'Sale'), hasLength(1));
+      expect(itemsOf(2), hasLength(3));
+    });
+
+    test(
+      'deshacer en una lista a mano vuelve a poner el renglón y sigue a mano',
+      () async {
+        await start();
+        final editor = await open(2);
+        editor
+          ..addDishes([lasagne()])
+          ..addItem(toTasteItem('Pepe'));
+        final removed = editor.removeItem(stateOf(2).orderedItems.last.key)!;
+        expect(removed.wasManual, isTrue);
+        editor.restoreItem(removed);
+        expect(itemsOf(2).last, toTasteItem('Pepe'));
+        expect(stateOf(2).listMode, ShoppingListMode.manual);
+      },
+    );
 
     test('quitar un renglón (con deshacer)', () async {
       await start();
@@ -515,6 +620,120 @@ void main() {
       expect(stateOf(2).saveError, isNull);
     });
 
+    test('una respuesta perdida y otra edición: se reconoce el guardado propio y se guarda lo nuevo', () async {
+      await start(saved: {sessionId(2): savedLasagneMenu(version: 1)});
+      final editor = await open(2);
+      editor.setPortions(lasagneId, 6);
+      menus.loseSaveResponse = true;
+      expect(
+        await editor.save(allergensConfirmed: false),
+        WeekMenuSaveResult.failed,
+      );
+      menus.loseSaveResponse = false;
+      editor.setPortions(lasagneId, 7);
+      expect(
+        await editor.save(allergensConfirmed: false),
+        WeekMenuSaveResult.saved,
+      );
+      expect(stateOf(2).version, 3);
+      expect(stateOf(2).dirty, isFalse);
+      expect(stateOf(2).saveError, isNull);
+      // El segundo intento choca (versión 1) y se reenvía con la 2.
+      expect([for (final s in menus.saves) s.version], [1, 1, 2]);
+      expect(menus.menus[sessionId(2)]!.dishes.single.portions, 7);
+    });
+
+    test('después de una respuesta perdida, si otro teléfono guardó encima, sigue siendo un conflicto', () async {
+      await start(saved: {sessionId(2): savedLasagneMenu(version: 1)});
+      final editor = await open(2);
+      editor.setPortions(lasagneId, 6);
+      menus.loseSaveResponse = true;
+      await editor.save(allergensConfirmed: false);
+      menus.loseSaveResponse = false;
+      // Otro teléfono guardó después del guardado perdido.
+      menus.menus[sessionId(2)] = savedLasagneMenu(version: 3, portions: 9);
+      editor.setPortions(lasagneId, 7);
+      expect(
+        await editor.save(allergensConfirmed: false),
+        WeekMenuSaveResult.failed,
+      );
+      expect(stateOf(2).saveError?.kind, MenuFailureKind.changed);
+      expect(menus.menus[sessionId(2)]!.version, 3);
+      expect(menus.menus[sessionId(2)]!.dishes.single.portions, 9);
+    });
+
+    test('session_not_editable: el editor queda bloqueado con lo escrito a la vista y la ficha se vuelve a leer', () async {
+      await start();
+      final editor = await open(2);
+      editor.addDishes([lasagne()]);
+      // Un colaborador la canceló desde su teléfono.
+      menus.statuses[sessionId(2)] = SessionStatus.cancelled;
+      sessions.sessions[sessionId(2)] = sessions.sessions[sessionId(2)]!
+          .copyWith(status: SessionStatus.cancelled);
+      expect(
+        await editor.save(allergensConfirmed: false),
+        WeekMenuSaveResult.failed,
+      );
+      await pumpEventQueue();
+      final state = stateOf(2);
+      expect(state.blockedBy, MenuFailureKind.notEditable);
+      expect(state.locked, isTrue);
+      expect(state.canSave, isFalse);
+      expect(dishesOf(2), [(lasagneId, 4)]);
+      expect(editor.addDishes([risotto()]), 0);
+      expect(
+        container
+            .read(sessionDetailProvider(sessionId(2)))
+            .value
+            ?.session
+            .status,
+        SessionStatus.cancelled,
+      );
+    });
+
+    test('session_not_found: también queda bloqueado y conserva la ficha que tenía', () async {
+      await start();
+      final editor = await open(2);
+      editor.addDishes([lasagne()]);
+      menus.missing.add(sessionId(2));
+      sessions.sessions.remove(sessionId(2));
+      expect(
+        await editor.save(allergensConfirmed: false),
+        WeekMenuSaveResult.failed,
+      );
+      await pumpEventQueue();
+      expect(stateOf(2).blockedBy, MenuFailureKind.sessionNotFound);
+      expect(stateOf(2).detail.session.id, sessionId(2));
+      expect(container.read(sessionDetailProvider(sessionId(2))).value, isNull);
+    });
+
+    test('si otro teléfono guardó, la ficha vuelve a contar el menú, también después de «Cargar el guardado»', () async {
+      await start();
+      container.listen(weekMenuSummaryProvider(sessionId(2)), (_, _) {});
+      expect(
+        await container.read(weekMenuSummaryProvider(sessionId(2)).future),
+        const WeekMenuSummary(),
+      );
+      final editor = await open(2);
+      editor.addDishes([risotto()]);
+      menus.menus[sessionId(2)] = savedLasagneMenu(version: 1);
+      expect(
+        await editor.save(allergensConfirmed: false),
+        WeekMenuSaveResult.failed,
+      );
+      const other = WeekMenuSummary(saved: true, dishes: 1, items: 3);
+      expect(
+        await container.read(weekMenuSummaryProvider(sessionId(2)).future),
+        other,
+      );
+      menus.menus[sessionId(2)] = savedLasagneMenu(version: 2, items: const []);
+      expect(await editor.reload(), isTrue);
+      expect(
+        await container.read(weekMenuSummaryProvider(sessionId(2)).future),
+        const WeekMenuSummary(saved: true, dishes: 1),
+      );
+    });
+
     test('sin conexión: lo escrito queda para reintentar', () async {
       await start();
       final editor = await open(2);
@@ -579,6 +798,23 @@ void main() {
         diets: [Diet.vegetarian],
       ),
     });
+  });
+
+  test('la pista de los platos de la web solo mientras todos los platos son de los que eligió la clienta', () async {
+    await start(booking: buildBooking(wishes: [risottoId, lasagneId]));
+    final editor = await open(1);
+    expect(stateOf(1).showsWishesHint, isTrue);
+    editor
+      ..setPortions(lasagneId, 6)
+      ..moveDish(lasagneId, -1)
+      ..removeDish(risottoId);
+    expect(stateOf(1).showsWishesHint, isTrue);
+    editor.addDishes([minestrone()]);
+    expect(stateOf(1).showsWishesHint, isFalse);
+    editor.removeDish(minestroneId);
+    expect(stateOf(1).showsWishesHint, isTrue);
+    editor.removeDish(lasagneId);
+    expect(stateOf(1).showsWishesHint, isFalse);
   });
 
   test('allowLeave deja salir sin guardar', () async {
