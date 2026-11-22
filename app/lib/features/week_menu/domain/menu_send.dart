@@ -12,6 +12,8 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/phone.dart';
 import 'package:radici/features/auth/domain/auth_models.dart' show isValidEmail;
+import 'package:radici/features/quotes/domain/preview_quote.dart'
+    show PreviewQuote;
 import 'package:radici/features/requests/domain/chef_request.dart'
     show ClientLocale;
 import 'package:radici/features/requests/domain/contact_links.dart';
@@ -322,6 +324,30 @@ abstract class MenuPreview with _$MenuPreview {
   /// Solo el id: nunca el contacto ni el mensaje.
   @override
   String toString() => 'MenuPreview($sendId)';
+}
+
+/// Columnas de una vista previa que lee la app para mostrar el presupuesto
+/// que lleva: su pedido y, de la foto, solo el bloque `quote` (lo que va a ver
+/// la clienta, quote_snapshot.ts). La respuesta de la vista previa no lo trae.
+const String previewQuoteColumns =
+    'request_id, quote_id, quote:snapshot->quote';
+
+/// El presupuesto de una vista previa: su pedido y [quote], lo que va en la
+/// foto (null si el envío no lleva presupuesto, o si la foto no cierra: el
+/// mensaje lo muestra igual).
+typedef PreviewSendQuote = ({String requestId, PreviewQuote? quote});
+
+/// Una fila de `menu_sends` con [previewQuoteColumns]. Lanza
+/// [FormatException] si no tiene pedido.
+PreviewSendQuote previewSendQuoteFromRow(Map<String, dynamic> row) {
+  final requestId = row['request_id'];
+  if (requestId is! String || requestId.isEmpty) {
+    throw const FormatException('Fila de menu_sends inválida');
+  }
+  return (
+    requestId: requestId,
+    quote: row['quote_id'] == null ? null : PreviewQuote.tryParse(row['quote']),
+  );
 }
 
 // ---------------------------------------------------------------------

@@ -71,6 +71,8 @@ extension BookingLabels on AppLocalizations {
       BookingFailureKind.unauthorized => bookingErrorUnauthorized,
       BookingFailureKind.invalid => bookingErrorInvalid,
       BookingFailureKind.unavailable => bookingErrorUnavailable,
+      BookingFailureKind.quoteExists => bookingErrorQuoteExists,
+      BookingFailureKind.requestNotQuotable => bookingErrorNotQuotable,
     };
   }
 
