@@ -1,9 +1,15 @@
 // Cloudflare Turnstile en modo explícito, solo en /richiesta/ (el script no se carga en otras páginas).
 // Docs consultadas el 19/10/2026: client-side-rendering y widget-configurations (act. 06/2026),
-// client-side-errors y error-codes (act. 05/2026 y 09/2026), testing (sitekeys de prueba).
+// client-side-errors y error-codes (act. 05/2026 y 09/2026), testing (sitekeys de prueba). Revisadas
+// el 22/11/2026: widget-configurations (act. 28/06/2026), error-codes (25/09/2026) y testing (05/11/2026).
 // - El script se carga desde su URL oficial: Cloudflare pide no copiarlo ni cachearlo.
 // - La CSP de /richiesta/ permite https://challenges.cloudflare.com en script-src y frame-src.
 // - Siempre hay error-callback: sin él, Turnstile tira una excepción ante cualquier error.
+// - Widget trabado (22/11/2026): en Edge, la prevención de seguimiento puede dejar el iframe en blanco sin
+//   ningún callback (probado con el iframe retenido: el primer error, 300030, llega recién a los ~43 s).
+//   Sin token ni error a los TURNSTILE_STALL_MS, la página sugiere otro navegador o una excepción.
+
+import type { MessageKey } from "../i18n/core.ts";
 
 export const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 const ONLOAD_CALLBACK = "radiciTurnstileLoaded";
@@ -37,6 +43,10 @@ export interface TurnstileRenderOptions {
   "error-callback"?: (code: string) => boolean | void;
   "expired-callback"?: () => void;
   "timeout-callback"?: () => void;
+  /** El desafío pasa a pedir que la persona toque la casilla (modo interactivo). */
+  "before-interactive-callback"?: () => void;
+  /** Sale del modo interactivo (la tocó, o venció). */
+  "after-interactive-callback"?: () => void;
   "unsupported-callback"?: () => void;
 }
 
@@ -57,6 +67,66 @@ export function classifyError(code: string): "failed" | "unavailable" | "misconf
   if (/^(110[124]\d\d|400020)$/.test(code)) return "misconfigured";
   if (/^1105\d\d$/.test(code)) return "unavailable";
   return "failed";
+}
+
+/**
+ * Sin token ni error este tiempo después de dibujar (o reiniciar) el widget, se da por trabado. Un desafío
+ * normal termina en pocos segundos; con la casilla a la vista (modo interactivo) no cuenta.
+ */
+export const TURNSTILE_STALL_MS = 15_000;
+
+/**
+ * El código que recibe error-callback, para mostrarlo («Codice: 200500») y que soporte lo diagnostique.
+ * Solo letras, dígitos y guiones: cualquier otra cosa no es un código y no se muestra.
+ */
+export function errorCodeText(code: unknown): string | null {
+  // Los códigos llegan como texto ("200500"); un número también vale si es un entero (NaN no).
+  const text = typeof code === "string" ? code.trim() : Number.isSafeInteger(code) ? String(code) : "";
+  return /^[\w-]{1,32}$/.test(text) ? text : null;
+}
+
+export interface TurnstileViewInput {
+  status: TurnstileStatus;
+  /** Código del último error (errorCodeText), o null. */
+  errorCode: string | null;
+  /** Sin token ni error TURNSTILE_STALL_MS después de dibujarlo. */
+  stalled: boolean;
+  /** El servidor rechazó el último token (403) y todavía no llegó otro. */
+  rejected: boolean;
+}
+
+export interface TurnstileView {
+  /** Error junto al widget. */
+  error: Extract<MessageKey, "errors.turnstileFailed" | "errors.turnstileUnavailable" | "errors.turnstileMisconfigured"> | null;
+  /** Código para soporte, debajo del error. */
+  code: string | null;
+  /** Sugerencia: la prevención de seguimiento o un bloqueador pueden frenarlo; otro navegador o una excepción. */
+  help: boolean;
+  /** Botón «Ripeti la verifica». */
+  retry: boolean;
+}
+
+/** Lo que se muestra junto al widget según su estado. La sugerencia se va en cuanto llega un token. */
+export function turnstileView({ status, errorCode, stalled, rejected }: TurnstileViewInput): TurnstileView {
+  switch (status) {
+    case "failed":
+      return { error: "errors.turnstileFailed", code: errorCode, help: true, retry: true };
+    case "unavailable":
+      return { error: "errors.turnstileUnavailable", code: errorCode, help: true, retry: true };
+    case "misconfigured":
+      // Sitekey o dominio: no depende del navegador de quien escribe, la sugerencia no le serviría.
+      return { error: "errors.turnstileMisconfigured", code: errorCode, help: false, retry: false };
+    case "loading":
+    case "pending":
+      return { error: rejected ? "errors.turnstileFailed" : null, code: null, help: stalled, retry: stalled };
+    case "solved":
+      return { error: null, code: null, help: false, retry: false };
+  }
+}
+
+/** Estado del envío que espera el token: si el widget se trabó, que mire la sugerencia. */
+export function waitingStatus(stalled: boolean): Extract<MessageKey, "request.statusWaitingTurnstile" | "request.statusTurnstileStalled"> {
+  return stalled ? "request.statusTurnstileStalled" : "request.statusWaitingTurnstile";
 }
 
 let loading: Promise<TurnstileApi> | null = null;
@@ -102,6 +172,13 @@ export interface TurnstileWidget {
   readonly status: TurnstileStatus;
   /** Token vigente o null. Cada token sirve para un solo envío. */
   readonly token: string | null;
+  /** Código del error vigente (error-callback), para soporte; null sin error o si no trajo código. */
+  readonly errorCode: string | null;
+  /**
+   * Sin token ni error TURNSTILE_STALL_MS después de dibujarlo (o reiniciarlo), y sin pedir que toque la
+   * casilla: puede estar bloqueado por el navegador. Sigue así, también al reiniciar, hasta que llegue un token.
+   */
+  readonly stalled: boolean;
   /**
    * Pide un token nuevo: después de un envío fallido (el token ya se usó o pudo usarse) y en el botón
    * "Ripeti la verifica". Si el script no había cargado, lo vuelve a intentar.
@@ -128,20 +205,54 @@ export function mountTurnstile(
   let widgetId: string | null = null;
   let status: TurnstileStatus = "loading";
   let token: string | null = null;
+  let errorCode: string | null = null;
+  let stalled = false;
+  /** El desafío muestra la casilla y espera que la toque: está a la vista, no trabado. */
+  let interactive = false;
+  let stallTimer: ReturnType<typeof setTimeout> | undefined;
   let language = opts.language;
+
+  const changed = (): void => {
+    // Para el CSS y para las pruebas de punta a punta.
+    container.dataset["status"] = status;
+    opts.onChange();
+  };
 
   const set = (next: TurnstileStatus, nextToken: string | null = null): void => {
     status = next;
     token = nextToken;
-    // Para el CSS y para las pruebas de punta a punta.
-    container.dataset["status"] = next;
-    opts.onChange();
+    changed();
+  };
+
+  /** Vuelve a contar TURNSTILE_STALL_MS: si para entonces sigue sin token ni error, está trabado. */
+  const watchStall = (): void => {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => {
+      if (stalled || interactive || (status !== "loading" && status !== "pending")) return;
+      stalled = true;
+      changed();
+    }, TURNSTILE_STALL_MS);
+  };
+
+  /** Espera un token: después de dibujarlo, de reiniciarlo o de que venza el anterior. */
+  const waitForToken = (): void => {
+    errorCode = null;
+    if (!interactive) watchStall();
+    set("pending");
+  };
+
+  const fail = (next: TurnstileStatus, code: string | null): void => {
+    interactive = false;
+    errorCode = code;
+    clearTimeout(stallTimer);
+    set(next);
   };
 
   const render = (): void => {
     if (!api) return;
     if (widgetId) api.remove(widgetId);
     widgetId = null;
+    interactive = false;
     try {
       widgetId =
         api.render(container, {
@@ -153,22 +264,49 @@ export function mountTurnstile(
           size: widgetSize(container.clientWidth),
           // El token se lee de los callbacks: sin input oculto dentro del formulario.
           "response-field": false,
-          callback: (value) => set("solved", value),
+          callback: (value) => {
+            interactive = false;
+            stalled = false;
+            errorCode = null;
+            clearTimeout(stallTimer);
+            set("solved", value);
+          },
           "error-callback": (code) => {
-            set(classifyError(String(code)));
+            fail(classifyError(String(code)), errorCodeText(code));
             // Sin return: Turnstile deja en consola un aviso con el código (útil para diagnosticar).
           },
-          "expired-callback": () => set("pending"),
-          "timeout-callback": () => set("pending"),
-          "unsupported-callback": () => set("unavailable"),
+          "expired-callback": () => {
+            interactive = false;
+            waitForToken();
+          },
+          "timeout-callback": () => {
+            interactive = false;
+            waitForToken();
+          },
+          "before-interactive-callback": () => {
+            interactive = true;
+            clearTimeout(stallTimer);
+            if (stalled) {
+              stalled = false;
+              changed();
+            }
+          },
+          "after-interactive-callback": () => {
+            interactive = false;
+            if (status === "loading" || status === "pending") watchStall();
+          },
+          "unsupported-callback": () => fail("unavailable", null),
         }) ?? null;
-      set("pending");
+      waitForToken();
     } catch {
-      set("unavailable");
+      fail("unavailable", null);
     }
   };
 
   const load = (): void => {
+    errorCode = null;
+    // Un script que no termina de cargar también deja esperando a quien escribe.
+    watchStall();
     set("loading");
     deps
       .load()
@@ -176,15 +314,16 @@ export function mountTurnstile(
         api = loaded;
         render();
       })
-      .catch(() => set("unavailable"));
+      .catch(() => fail("unavailable", null));
   };
 
   const reset = (): void => {
     if (!api) load();
     else if (!widgetId) render();
     else {
+      interactive = false;
       api.reset(widgetId);
-      set("pending");
+      waitForToken();
     }
   };
 
@@ -196,6 +335,12 @@ export function mountTurnstile(
     },
     get token() {
       return token;
+    },
+    get errorCode() {
+      return errorCode;
+    },
+    get stalled() {
+      return stalled;
     },
     reset,
     setLanguage(next) {

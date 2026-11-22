@@ -569,6 +569,31 @@ input[type="radio"] {
   margin-top: 0.25rem;
 }
 
+/* Código del error, para soporte: chico, y con un toque se selecciona entero para copiarlo. */
+.turnstile-code {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.turnstile-code code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+  font-size: 0.9em;
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+/* Si la verificación no termina: una sugerencia suave junto al widget, no un error. */
+.turnstile-help {
+  margin: 0.15rem 0 0;
+  padding: 0.6rem 0.85rem;
+  border-left: 3px solid var(--olive);
+  border-radius: var(--radius);
+  background: var(--olive-soft);
+  font-size: 1.1rem;
+  line-height: 1.4;
+}
+
 /* Error del envío con botón de reintento */
 .notice--actions {
   display: grid;

@@ -56,7 +56,14 @@ import { computeQuote } from "../request/quote.ts";
 import { createRequestKeys, doneViewFor, type DoneView } from "../request/request-key.ts";
 import { publicRequestUrl, rateLimitMessage, sendPublicRequest, type SubmitOutcome } from "../request/submit.ts";
 import { doneEstimate, summaryRows } from "../request/summary.ts";
-import { loadTurnstileScript, mountTurnstile, type TurnstileWidget } from "../request/turnstile.ts";
+import {
+  loadTurnstileScript,
+  mountTurnstile,
+  turnstileView,
+  waitingStatus,
+  type TurnstileView,
+  type TurnstileWidget,
+} from "../request/turnstile.ts";
 import {
   FIELD_ORDER,
   firstErrorField,
@@ -125,6 +132,9 @@ const submitLabel = byId("submit-label");
 // Nunca id="turnstile": el navegador lo expone como window.turnstile y tapa la API de Cloudflare.
 const turnstileBox = byId("turnstile-widget");
 const turnstileRetry = byId<HTMLButtonElement>("turnstile-retry");
+const turnstileCode = byId("turnstile-code");
+const turnstileCodeValue = byId("turnstile-code-value");
+const turnstileHelp = byId("turnstile-help");
 const quoteBody = byId("quote-body");
 const quoteInvalid = byId("quote-invalid");
 const quoteOut = {
@@ -647,20 +657,38 @@ function startRequestPage(shell: Shell): void {
     setText(quoteOut.savings, view.savings ?? "");
   };
 
+  /** Lo que se ve junto al widget (error, código, sugerencia, reintento): lo decide turnstileView. */
+  const currentTurnstileView = (): TurnstileView | null =>
+    turnstile
+      ? turnstileView({
+          status: turnstile.status,
+          errorCode: turnstile.errorCode,
+          stalled: turnstile.stalled,
+          rejected: turnstileRejected,
+        })
+      : null;
+
   const turnstileError = (): FieldError | null => {
-    switch (turnstile?.status) {
-      case "unavailable":
-        return { key: "errors.turnstileUnavailable" };
-      case "misconfigured":
-        return { key: "errors.turnstileMisconfigured" };
-      case "failed":
-        return { key: "errors.turnstileFailed" };
-      case "loading":
-      case "pending":
-        return turnstileRejected ? { key: "errors.turnstileFailed" } : null;
-      default:
-        return null;
-    }
+    const key = currentTurnstileView()?.error;
+    return key ? { key } : null;
+  };
+
+  /** El código del error, la sugerencia y «Ripeti la verifica» (el error lo pinta paintErrors). */
+  const paintTurnstile = (view: TurnstileView | null): void => {
+    const code = view?.code ?? null;
+    turnstileCode.hidden = code === null;
+    setText(turnstileCodeValue, code ?? "");
+    const help = view?.help ?? false;
+    turnstileHelp.hidden = !help;
+    // El sitio, el de la página: radicicucina.app en producción (la excepción se agrega para ese).
+    setText(turnstileHelp, help ? shell.i18n.t("request.turnstileHelp", { site: window.location.hostname }) : "");
+    turnstileRetry.hidden = !(view?.retry ?? false);
+    // Con el foco en «Ripeti la verifica» (focusField), el lector de pantalla lee también el error, el código y
+    // la sugerencia, en ese orden (el de la pantalla).
+    const described = [view?.error ? "err-turnstileToken" : "", code !== null ? "turnstile-code" : "", help ? "turnstile-help" : ""];
+    const ids = described.filter(Boolean).join(" ");
+    if (ids) turnstileRetry.setAttribute("aria-describedby", ids);
+    else turnstileRetry.removeAttribute("aria-describedby");
   };
 
   const paintErrors = (errors: FieldErrors): void => {
@@ -679,7 +707,6 @@ function startRequestPage(shell: Shell): void {
       if (invalid.has(id)) byId(id).setAttribute("aria-invalid", "true");
       else byId(id).removeAttribute("aria-invalid");
     }
-    turnstileRetry.hidden = !(turnstile?.status === "failed" || turnstile?.status === "unavailable");
   };
 
   /** Errores de los campos según la validación local, solo después del primer intento de envío. */
@@ -687,9 +714,10 @@ function startRequestPage(shell: Shell): void {
     submitted ? withoutTurnstile(validateRequest(data, todayInRome(), payloadOptions(""))) : {};
 
   const renderErrors = (data: RequestData, errors: FieldErrors = fieldErrors(data)): void => {
-    const ts = turnstileError();
+    const view = currentTurnstileView();
     const all = { ...errors, ...serverErrors(data) };
-    paintErrors(ts ? { ...all, turnstileToken: ts } : all);
+    paintErrors(view?.error ? { ...all, turnstileToken: { key: view.error } } : all);
+    paintTurnstile(view);
   };
 
   const paintFormMessage = (): void => {
@@ -851,7 +879,9 @@ function startRequestPage(shell: Shell): void {
         // Se manda solo en cuanto Turnstile dé el token (onTurnstileChange).
         pendingSubmit = true;
         showFormMessage(null);
-        setStatus("request.statusWaitingTurnstile");
+        setStatus(waitingStatus(turnstile.stalled));
+        // Trabado (p. ej. en blanco por la prevención de seguimiento): a la sugerencia y al reintento.
+        if (turnstile.stalled) focusField("turnstileToken");
       } else {
         showFormMessage({ key: "errors.summary" });
         focusField("turnstileToken");
@@ -891,6 +921,9 @@ function startRequestPage(shell: Shell): void {
       setStatus(null);
       const error = turnstileError();
       if (error) showFormMessage(error);
+    } else {
+      // Sigue esperando; si se trabó mientras tanto, el estado lo dice (sin mover el foco).
+      setStatus(waitingStatus(turnstile.stalled));
     }
   };
 
