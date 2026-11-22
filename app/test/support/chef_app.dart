@@ -16,10 +16,12 @@ import 'package:radici/features/recipes/data/recipe_photos_repository.dart';
 import 'package:radici/features/recipes/data/recipes_repository.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
+import 'package:radici/features/week_menu/data/menu_sends_repository.dart';
 import 'package:radici/features/week_menu/data/session_menus_repository.dart';
 
 import 'fakes.dart';
 import 'menu_fakes.dart';
+import 'menu_send_fakes.dart';
 import 'photo_fakes.dart';
 import 'pump_app.dart';
 import 'request_fixtures.dart';
@@ -39,6 +41,7 @@ class ChefApp {
     this.photos,
     this.photoPicker,
     this.menus,
+    this.menuSends,
   );
 
   final ProviderContainer container;
@@ -54,6 +57,7 @@ class ChefApp {
   final FakeRecipePhotosRepository photos;
   final FakeRecipePhotoPicker photoPicker;
   final FakeSessionMenusRepository menus;
+  final FakeMenuSendsRepository menuSends;
 
   /// Navega como si se abriera un enlace a [location].
   void go(String location) => container.read(routerProvider).go(location);
@@ -74,10 +78,12 @@ class ChefApp {
 /// las fotos de los platos y [photoPicker] el selector; las fotos se preparan
 /// al instante ([fakeProcessRecipePhoto]) y [photoImage] es la imagen de cada
 /// URL (por defecto, un JPEG chiquito en memoria: sin red). [menus] es el
-/// menú de cada semana (por defecto, ninguno). [isWeb] simula la
-/// versión web (/gestione/). Con [settle] en false no espera a que la
-/// pantalla se asiente (una rueda que gira no se asienta nunca). [retry]: los
-/// reintentos automáticos de Riverpod (por defecto, ninguno; ver retryOnce).
+/// menú de cada semana (por defecto, ninguno) y [menuSends], su envío a la
+/// clienta (por defecto, ninguno salió; la vista previa mira [menus]).
+/// [isWeb] simula la versión web (/gestione/). Con [settle] en false no
+/// espera a que la pantalla se asiente (una rueda que gira no se asienta
+/// nunca). [retry]: los reintentos automáticos de Riverpod (por defecto,
+/// ninguno; ver retryOnce).
 Future<ChefApp> pumpChefApp(
   WidgetTester tester, {
   required FakeChefRequestsRepository requests,
@@ -90,6 +96,7 @@ Future<ChefApp> pumpChefApp(
   FakeRecipePhotosRepository? photos,
   FakeRecipePhotoPicker? photoPicker,
   FakeSessionMenusRepository? menus,
+  FakeMenuSendsRepository? menuSends,
   ImageProvider<Object> Function(String url)? photoImage,
   bool isWeb = false,
   String? location,
@@ -117,6 +124,7 @@ Future<ChefApp> pumpChefApp(
   final bucket = photos ?? FakeRecipePhotosRepository();
   final picker = photoPicker ?? FakeRecipePhotoPicker();
   final weekMenus = menus ?? FakeSessionMenusRepository();
+  final sends = menuSends ?? FakeMenuSendsRepository(menus: weekMenus);
   final launcher = FakeLinkLauncher();
   final container = await pumpRadiciApp(
     tester,
@@ -137,6 +145,7 @@ Future<ChefApp> pumpChefApp(
       recipePhotosRepositoryProvider.overrideWithValue(bucket),
       recipePhotoPickerProvider.overrideWithValue(picker),
       sessionMenusRepositoryProvider.overrideWithValue(weekMenus),
+      menuSendsRepositoryProvider.overrideWithValue(sends),
       recipePhotoProcessorProvider.overrideWithValue(fakeProcessRecipePhoto),
       recipePhotoImageProvider.overrideWith(
         (ref, url) => photoImage?.call(url) ?? MemoryImage(tinyJpeg),
@@ -159,6 +168,7 @@ Future<ChefApp> pumpChefApp(
     bucket,
     picker,
     weekMenus,
+    sends,
   );
   if (location != null) {
     app.go(location);

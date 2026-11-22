@@ -134,6 +134,51 @@ void main() {
       expectClientAnswers(query);
     });
 
+    test('las semanas vivas de varias reservas: una lectura liviana (id, pedido, día y llegada), sin las canceladas', () async {
+      server.handler = (_) async => jsonResponse([
+        {
+          'id': sessionId(1),
+          'request_id': bookingRequestId,
+          'date': '2026-11-25',
+          'start_time': '10:00:00',
+        },
+      ]);
+      final weeks = await repository.fetchLiveBookingWeeks(
+        chefId: testChefId,
+        requestIds: [bookingRequestId, 'otro'],
+      );
+      expect(weeks.single.id, sessionId(1));
+      expect(weeks.single.requestId, bookingRequestId);
+      expect(weeks.single.date, CalendarDate(2026, 11, 25));
+      expect(weeks.single.start, const ClockTime.hm(10, 0));
+      final query = server.last.url.queryParameters;
+      expect(query['select'], 'id,request_id,date,start_time');
+      expect(query['chef_id'], 'eq.$testChefId');
+      expect(query['request_id'], 'in.("$bookingRequestId","otro")');
+      expect(query['status'], 'neq.cancelled');
+
+      server.requests.clear();
+      expect(
+        await repository.fetchLiveBookingWeeks(
+          chefId: testChefId,
+          requestIds: const [],
+        ),
+        isEmpty,
+      );
+      expect(server.requests, isEmpty);
+
+      server.handler = (_) async => jsonResponse([
+        {'id': sessionId(1), 'request_id': null, 'date': '2026-11-25'},
+      ]);
+      await expectLater(
+        repository.fetchLiveBookingWeeks(
+          chefId: testChefId,
+          requestIds: [bookingRequestId],
+        ),
+        _failure(SessionFailureKind.unavailable),
+      );
+    });
+
     // Sin red no: el SDK reintenta los GET con esperas de segundos (PostgREST
     // 503 y errores de red); la traducción es la misma (_read).
     test('un 500, un 401 o una fila rota dan unavailable', () async {
