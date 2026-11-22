@@ -3,6 +3,8 @@
 // menu_send.test.ts (Node). La lectura de lo que devuelven las funciones SQL (chef_menu_send_context,
 // chef_prepare_menu_send, chef_link_menu_send y chef_complete_menu_send, migración
 // 20261121100000_menu_sends.sql), el armado de la foto del envío, el token del link y su hash.
+// La huella del contexto (fingerprint) va tal cual a chef_prepare_menu_send: si algo de lo que entra en la
+// foto cambió mientras se armaba (o se traducía la lista), la base no la guarda (menu_changed).
 //
 // El token (32 bytes al azar, base64url) va solo en el link del mensaje, en el fragmento (#t=…): la base
 // guarda su hash (sha-256 en hexadecimal) y nada de esto lo loguea ni lo guarda.
@@ -57,7 +59,15 @@ export interface MenuSendContext {
   contact: MenuSendContact;
   chefName: string;
   menu: { version: number; note: string | null; dishes: ContextDish[]; items: MenuSnapshotItem[] };
+  /**
+   * La huella de lo que entra en la foto (private.menu_send_fingerprint: md5 en hexadecimal): el día y la
+   * hora, las semanas de la reserva, la versión del menú y los platos del catálogo. Se le pasa a
+   * chef_prepare_menu_send; link y complete la recalculan antes de mandar.
+   */
+  fingerprint: string;
 }
+
+const FINGERPRINT = /^[0-9a-f]{32}$/;
 
 const DB_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** La cocinera de un menú sin nombre (no debería pasar: chefs.display_name es not null), como public-request. */
@@ -145,7 +155,9 @@ function readWeek(value: unknown): { date: string; start: string } | null {
 
 /**
  * Resultado de chef_menu_send_context → lo que usa la función, o null si no tiene la forma esperada (un
- * 500: nunca un mensaje armado con datos rotos). lastSend no se usa.
+ * 500: nunca un mensaje armado con datos rotos). La base solo lo devuelve para una semana que se puede
+ * mandar (held, confirmed o shopping_done, con número de semana): las otras dan session_not_editable.
+ * lastSend no se usa.
  */
 export function menuSendContextFromRpc(data: unknown): MenuSendContext | null {
   if (!isRecord(data)) return null;
@@ -164,7 +176,9 @@ export function menuSendContextFromRpc(data: unknown): MenuSendContext | null {
   const note = optionalText(menu["note"]);
   const dishes = readList(menu["dishes"], readContextDish);
   const items = readList(menu["items"], readMenuItem);
+  const fingerprint = data["fingerprint"];
   if (!isOneOf(LOCALES, locale) || !contact || !weeks || !isPositiveInt(version) || note === undefined || !dishes || !items) return null;
+  if (typeof fingerprint !== "string" || !FINGERPRINT.test(fingerprint)) return null;
   return {
     session: { id, date, start, status, requestId, week, weeks: total },
     weeks,
@@ -172,6 +186,7 @@ export function menuSendContextFromRpc(data: unknown): MenuSendContext | null {
     contact,
     chefName: chefNameOf(isRecord(chef) ? chef["displayName"] : null),
     menu: { version, note, dishes, items },
+    fingerprint,
   };
 }
 
@@ -199,14 +214,13 @@ export interface SnapshotOptions {
   photoOrigin: string | null;
   /** Los nombres de la lista traducidos (cada nombre original → el suyo); null si no se tradujo. */
   itemNames: ReadonlyMap<string, string> | null;
-  /** La nota que va: la traducida o la de Evelyn. */
-  note: string | null;
 }
 
 /**
  * La foto del envío (menu_snapshot.ts), en el idioma de la clienta: los platos con sus textos en ese
  * idioma y las URL de sus fotos (como el menù de la web), la lista con los nombres traducidos si se
- * tradujo, la nota y las fechas. Nada de la clienta: ni contacto, ni dirección, ni alergias, ni precios.
+ * tradujo, la nota tal como la escribió Evelyn (nunca se traduce) y las fechas. Nada de la clienta: ni
+ * contacto, ni dirección, ni alergias, ni precios.
  */
 export function buildMenuSnapshot(context: MenuSendContext, options: SnapshotOptions): MenuSnapshot {
   const { locale, session } = context;
@@ -232,7 +246,7 @@ export function buildMenuSnapshot(context: MenuSendContext, options: SnapshotOpt
     weeks: context.weeks.map((week) => ({ date: week.date, start: week.start })),
     dishes,
     items,
-    note: options.note,
+    note: context.menu.note,
   };
 }
 

@@ -1,5 +1,5 @@
 // La traducción de los platos con Claude (POST /chef/translate, docs/contracts/chef-api.md §12) y de
-// la lista de compras y la nota de un menú (POST /chef/menus/preview, §13): la única parte que usa el
+// la lista de compras de un menú (POST /chef/menus/preview, §13): la única parte que usa el
 // SDK oficial de Anthropic. index.ts la importa recién en la primera traducción (import dinámico,
 // lazyTranslator): si el SDK no carga, solo fallan las traducciones. El pedido,
 // la lectura de la respuesta, el mapeo de errores y la validación están en translation.ts (con tests

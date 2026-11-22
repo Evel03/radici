@@ -630,7 +630,9 @@ export interface EmailDocument {
 function blockHtml(block: Block): string {
   switch (block.kind) {
     case "paragraph":
-      return `<p style="margin:0 0 16px;font-size:17px;line-height:1.55;">${escapeHtml(block.text)}</p>`;
+      // Puede llevar texto libre (el nombre del formulario, la nota de Evelyn con un link): una palabra que
+      // no entra se parte, como en las filas, para no ensanchar la tarjeta más allá del teléfono.
+      return `<p style="margin:0 0 16px;font-size:17px;line-height:1.55;word-break:break-word;overflow-wrap:anywhere;">${escapeHtml(block.text)}</p>`;
     case "title":
       // Rótulo como los de la web: mayúsculas espaciadas en oliva.
       return (

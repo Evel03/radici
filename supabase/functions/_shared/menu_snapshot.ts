@@ -3,9 +3,10 @@
 // /chef/menus/preview, docs/contracts/chef-api.md §13), la guarda la base y de ella salen el email, el
 // WhatsApp y, en el PR siguiente, la página de la clienta (el link). Un solo origen para las tres.
 //
-// Ya está en el idioma de la clienta: los platos con sus nombres en ese idioma (o en italiano), y la
-// lista de compras y la nota traducidas si se pudo. Nunca lleva la dirección, las alergias de la
-// clienta, su contacto ni nada de precios o pagos: solo lo que ve en el mensaje.
+// Ya está en el idioma de la clienta: los platos con sus nombres en ese idioma (o en italiano) y la
+// lista de compras traducida si se pudo; la nota, como la escribió Evelyn (nunca se traduce). Nunca
+// lleva la dirección, las alergias de la clienta, su contacto ni nada de precios o pagos: solo lo que
+// ve en el mensaje.
 // Solo sintaxis borrable (corre en Node, Deno y Vite sin compilar) e imports con extensión .ts.
 import type { MenuPhoto } from "./menu.ts";
 import { ALLERGENS, DIETS, LOCALES, isIsoDate, isOneOf, type Allergen, type Diet, type Locale } from "./public_request.ts";

@@ -73,7 +73,7 @@ Los 409:
 | `{ "error": "hasPayments", "sessionIds": [uuid] }` | al cancelar sin `allowWithPayments`, esas semanas ya están cobradas; no se cancela ninguna (§6) |
 | `{ "error": "sessionNotEditable", "status": "cancelled" }` | el menú de esa semana ya no se manda: la sesión no está `held`, `confirmed` ni `shopping_done`; `status` es el actual (§13) |
 | `{ "error": "sessionWithoutRequest" }` | la sesión no tiene pedido: no hay reserva que mostrar en el link (§13) |
-| `{ "error": "menuChanged" }` | el menú se guardó otra vez (Evelyn o un colaborador) desde que la app lo cargó o desde la vista previa: hay que pedir otra (§13) |
+| `{ "error": "menuChanged" }` | el menú se guardó otra vez (Evelyn o un colaborador) desde que la app lo cargó o, desde la vista previa, cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo: hay que pedir otra vista previa (§13) |
 | `{ "error": "menuEmpty" }` | el menú de la semana no tiene platos (§13) |
 | `{ "error": "alreadySent" }` | ese envío ya salió: para mandar otra vez, otra vista previa (§13) |
 | `{ "error": "noEmail" }` \| `{ "error": "noPhone" }` | el contacto de la clienta no tiene un email o un teléfono que sirva para lo que se pidió; no salió nada (§13) |
@@ -209,7 +209,7 @@ La función pasa los argumentos en snake_case (`toCreateBookingParams`) y convie
 | `P0002 chef_not_found` (la cocinera está en `chefs` pero no en `chef_settings`) | `500` |
 | `P0002 menu_not_found`, `send_not_found` (envío del menú, §13) | `404 menuNotFound` / `sendNotFound` |
 | `55000 session_not_editable` (detalle: el estado), `session_without_request`, `already_sent` | `409 sessionNotEditable` (con `status`) / `sessionWithoutRequest` / `alreadySent` |
-| `40001 menu_changed` | `409 menuChanged` (no `503`: reintentar igual no sirve) |
+| `40001 menu_changed` (otra versión del menú, u otra huella de la foto: §13) | `409 menuChanged` (no `503`: reintentar igual no sirve) |
 | `22023 menu_empty` | `409 menuEmpty` |
 | `22023 invalid_snapshot`, `invalid_token`, `invalid_via` (los arma la función, nunca la app) | `500` |
 | `23505` en `chef_link_menu_send` (token repetido) | otro token, una vez; si vuelve a chocar, `409 conflict` |
@@ -218,7 +218,7 @@ La función pasa los argumentos en snake_case (`toCreateBookingParams`) y convie
 | sin código (la base no respondió), `08xxx`, `40xxx`, `53xxx`, `57xxx`, `58xxx` o `PGRST000`–`PGRST003` | `503` |
 | cualquier otro (por ejemplo `PGRST202`: la función SQL no existe, la migración no está desplegada) | `500` |
 
-Las funciones del envío del menú son de la migración `20261121100000_menu_sends.sql` (SPEC §5.8, contrato §13): `chef_menu_send_context(p_chef_id, p_session_id)`, `chef_prepare_menu_send(p_chef_id, p_session_id, p_menu_version, p_locale, p_snapshot, p_translated)`, `chef_link_menu_send(p_chef_id, p_send_id, p_token_hash)` y `chef_complete_menu_send(p_chef_id, p_send_id, p_via)`, también solo de `service_role` y con la cocina del token.
+Las funciones del envío del menú son de la migración `20261121100000_menu_sends.sql` (SPEC §5.8, contrato §13): `chef_menu_send_context(p_chef_id, p_session_id)`, `chef_prepare_menu_send(p_chef_id, p_session_id, p_menu_version, p_locale, p_snapshot, p_translated, p_fingerprint)`, `chef_link_menu_send(p_chef_id, p_send_id, p_token_hash)` y `chef_complete_menu_send(p_chef_id, p_send_id, p_via)`, también solo de `service_role` y con la cocina del token.
 
 De un error de la base solo se usan el código, el mensaje si es un código propio en snake_case y el detalle si tiene la forma esperada (una fecha, un estado, un uuid o una lista de hasta 100 uuid). El mensaje y el detalle de Postgres pueden traer la fila, con datos personales: nunca pasan ni a la respuesta ni al log.
 
@@ -258,8 +258,8 @@ Solo evento, ruta, códigos, contadores, largos, duraciones e ids. Nunca nombres
 | `booking_duplicate` | `requestId`, `userId` |
 | `session_moved` | `sessionId`, `userId` |
 | `sessions_cancelled` | `cancelled`, `alreadyCancelled`, `withPayments` (cantidades), `userId` |
-| `translated` | `route`, `ms` (lo que tardó el traductor), `nameLength`, `descriptionLength` (o null), `userId`. En `/menus/preview`: `items` (los nombres distintos de la lista) y `noteLength` (o null) en lugar de los largos del plato |
-| `translate_failed` | `route`, `reason` (§12), `category` (de una negativa) o `apiStatus` (el estado HTTP de Anthropic), `ms`, `nameLength`, `descriptionLength` (en `/menus/preview`, `items` y `noteLength`). `warn` para una negativa, un corte por `max_tokens` o la traducción apagada sin clave; `error` para el resto (también `fakeIgnored`) |
+| `translated` | `route`, `ms` (lo que tardó el traductor), `nameLength`, `descriptionLength` (o null), `userId`. En `/menus/preview`: `items` (los nombres distintos de la lista) en lugar de los largos del plato |
+| `translate_failed` | `route`, `reason` (§12), `category` (de una negativa) o `apiStatus` (el estado HTTP de Anthropic), `ms`, `nameLength`, `descriptionLength` (en `/menus/preview`, `items`). `warn` para una negativa, un corte por `max_tokens` o la traducción apagada sin clave; `error` para el resto (también `fakeIgnored`) |
 | `rate_limited` | `route`, `userId` |
 | `menu_previewed` | `route`, `sendId`, `sessionId`, `locale`, `translated`, `dishes`, `items` (cantidades), `hasNote`, `userId` |
 | `menu_sent` | `route`, `sendId`, `via` (`email`, `whatsapp`), `userId` |
@@ -363,10 +363,10 @@ Proceso de Nicolas del 21/11/2026 (SPEC §5.8, «Envío del menú»): Evelyn arm
 
 Dos pasos:
 
-1. **Vista previa** (`/menus/preview`): la función lee la semana (`chef_menu_send_context`), arma la foto del envío en el idioma de la clienta (con la lista y la nota traducidas si hace falta), la guarda en un envío que todavía no salió (`chef_prepare_menu_send`) y devuelve el mensaje, sin el link, y el contacto, para que Evelyn revise las dos cosas.
+1. **Vista previa** (`/menus/preview`): la función lee la semana (`chef_menu_send_context`), arma la foto del envío en el idioma de la clienta (con los nombres de la lista traducidos si hace falta; la nota, como la escribió Evelyn), la guarda en un envío que todavía no salió (`chef_prepare_menu_send`, con la huella del contexto) y devuelve el mensaje, sin el link, y el contacto, para que Evelyn revise las dos cosas.
 2. **Envío** (`/menus/send`): con el `sendId` de la vista previa y los canales que eligió Evelyn, la función crea el link (`chef_link_menu_send`: la base guarda solo el hash del token), manda el email si se pidió (Resend) y lo marca enviado (`chef_complete_menu_send`). El WhatsApp lo abre la app desde el teléfono de Evelyn con el texto que devuelve la función: el servidor nunca manda un WhatsApp.
 
-Lo que la clienta recibe es siempre la foto guardada en la vista previa, aunque Evelyn edite el menú después: si lo edita antes de mandar, el envío da `409 menuChanged` y hace falta otra vista previa.
+Lo que la clienta recibe es siempre la foto guardada en la vista previa. Si antes de mandarla cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo, el envío da `409 menuChanged` y hace falta otra vista previa: la base guarda la huella de lo que entró en la foto (`private.menu_send_fingerprint`: el día y la hora de la sesión, las semanas vivas de la reserva, la versión del menú y, de cada plato, lo que sale del catálogo con sus alérgenos) y `chef_link_menu_send` y `chef_complete_menu_send` la recalculan antes de mandar y de marcar.
 
 ### `POST /menus/preview`
 
@@ -374,7 +374,7 @@ Lo que la clienta recibe es siempre la foto guardada en la vista previa, aunque 
 |---|---|---|
 | `sessionId` | uuid | obligatorio: la semana (una sesión con pedido) |
 | `menuVersion` | entero de 1 a 2147483647 | obligatorio: `session_menus.version` que la app tiene cargada; si no es la guardada, `409 menuChanged` |
-| `translate` | boolean | por defecto `true`: traducir la lista y la nota al idioma de la clienta. `false`: van como las escribió Evelyn (la app lo ofrece si la traducción falla) |
+| `translate` | boolean | por defecto `true`: traducir los nombres de la lista al idioma de la clienta. `false`: van como los escribió Evelyn (la app lo ofrece si la traducción falla). La nota nunca se traduce |
 
 Una clave que el contrato no tiene es `payload: "invalid"`.
 
@@ -388,18 +388,22 @@ Respuesta `200`:
 ```
 
 - `locale`: el idioma de la clienta, el del pedido (`requests.locale`). Todo el mensaje va en ese idioma.
-- `translated`: la lista y la nota se tradujeron solas. `false` en español, con `translate: false` o sin lista ni nota.
-- `contact`: el del pedido de la web (`requests.contact`) o, si no lo tiene, el de la ficha; `email` y `phone` pueden ser null. Es lo que la app le muestra a Evelyn antes de mandar: el envío usa el contacto de ese momento.
+- `translated`: los nombres de la lista se tradujeron solos. `false` en español, con `translate: false` o sin lista.
+- `contact`: el del pedido de la web (`requests.contact`, también el nombre con que llegó el pedido) o, si no lo tiene, el de la ficha; `email` y `phone` pueden ser null. Es lo que la app le muestra a Evelyn antes de mandar: el envío usa el contacto de ese momento.
 - `message`: el asunto, el texto del email (el HTML sale con lo mismo, con el diseño de los emails) y el del WhatsApp. Donde va el link, un texto de reemplazo en el idioma de la clienta (`[link personale per confermare]`, `[enlace personal para confirmar]`, `[personal link to confirm]`): el link se crea recién al enviar.
 - Cada vista previa guarda un envío nuevo, sin salir: uno que nunca sale no se muestra en ningún lado.
 
 **Los platos** van con las traducciones que tienen guardadas (§12): el nombre en el idioma de la clienta o, si no está, en italiano; la descripción en su idioma, si no la italiana, o ninguna. Con sus alérgenos (de los 14), la dieta, las porciones de la semana y la foto (las URL públicas de Storage, como el menù de la web; el email no las usa).
 
-**La lista y la nota** las escribe Evelyn, en español. Si la clienta lee italiano o inglés, `translate` no es `false` y hay algo que traducir, se traducen con Claude en un solo pedido (`menu_translation.ts`): los nombres de la lista sin repetir y la nota, nunca nada de la clienta. El mismo modelo, esfuerzo, fallback, tiempos y errores que `/translate` (§12), con `max_tokens` 16000, su prompt y su esquema (`items` y, si hay nota, `note`). La salida se valida entera: la misma cantidad de nombres, cada uno de 1 a 80 caracteres en una línea, y la nota de 1 a 1000 con sus saltos de línea, sin caracteres de control; si no, `422`. Cuenta para el mismo límite de la cocina que `/translate` (60 por hora y 150 por día). Con `TRANSLATE_TRANSPORT=fake`, la de mentira (`"[it] zapallitos"`).
+**La lista** la escribe Evelyn, en español. Si la clienta lee italiano o inglés, `translate` no es `false` y la lista tiene renglones, sus nombres se traducen con Claude en un solo pedido (`menu_translation.ts`): los nombres sin repetir, nada más. El mismo modelo, esfuerzo, fallback, tiempos y errores que `/translate` (§12), con `max_tokens` 16000, su prompt y su esquema (solo `items`). La salida se valida entera: la misma cantidad de nombres, cada uno de 1 a 80 caracteres en una línea y sin caracteres de control; si no, `422`. Cuenta para el mismo límite de la cocina que `/translate` (60 por hora y 150 por día). Con `TRANSLATE_TRANSPORT=fake`, la de mentira (`"[it] zapallitos"`).
+
+**La nota** sale exactamente como la escribió Evelyn, en cualquier idioma: nunca se traduce ni va a Anthropic (decisión de Nicolas del 22/11/2026, SPEC §6).
+
+**La huella**: `chef_menu_send_context` devuelve `fingerprint` (32 caracteres en hexadecimal) y la función se la pasa tal cual a `chef_prepare_menu_send` (`p_fingerprint`). Si mientras armaba la foto o traducía la lista cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo, la base no la guarda (`409 menuChanged`).
 
 **La foto** (`menu_sends.snapshot`, `_shared/menu_snapshot.ts`, versión 1): `{ v: 1, locale, session: { date, start, week, weeks }, weeks: [{ date, start }], dishes: [{ name, description, allergens, diet, portions, photo }], items: [{ name, section, quantity, unit }], note }`. La leen el envío y la página de la clienta. Nunca lleva el contacto, la dirección, las alergias de la clienta, precios ni nada de pagos.
 
-Orden: validación (`400`) → `chef_menu_send_context` (`404 sessionNotFound` / `menuNotFound`, `409 sessionWithoutRequest`) → lo que la base vuelve a mirar al guardar, antes de gastar una traducción: la sesión `held`, `confirmed` o `shopping_done` (`409 sessionNotEditable` con `status`), la versión (`409 menuChanged`) y algún plato (`409 menuEmpty`) → si hay que traducir: traductor configurado (`501`) → límite de la cocina (`429`; si la base no responde, `503` o `500`) → traductor (`422`, `503` o `500`) → `chef_prepare_menu_send` (los mismos `404` y `409`) → `200`.
+Orden: validación (`400`) → `chef_menu_send_context` (`404 sessionNotFound`; `409 sessionNotEditable` con `status` si la semana está cancelada, cocinada o cobrada; `409 sessionWithoutRequest`; `404 menuNotFound`) → lo que la base vuelve a mirar al guardar, antes de gastar una traducción: la versión (`409 menuChanged`) y algún plato (`409 menuEmpty`) → si hay que traducir: traductor configurado (`501`) → límite de la cocina (`429`; si la base no responde, `503` o `500`) → traductor (`422`, `503` o `500`) → `chef_prepare_menu_send` (los mismos `404` y `409`, y `409 menuChanged` si cambió la huella) → `200`.
 
 ### `POST /menus/send`
 
@@ -425,11 +429,11 @@ Respuesta `200`:
 
 **El email**: de `MAIL_FROM` al email del contacto, con `Reply-To` `MAIL_REPLY_TO` (o `CHEF_NOTIFY_EMAIL`): las respuestas de la clienta le llegan a Evelyn. Asunto, HTML y texto como la vista previa, con el link. `Idempotency-Key`: `menu-send-<sendId>-<16 primeros caracteres del hash>`, una por link: el reintento de un mismo pedido a Resend no duplica el email, y otro intento de envío (otro link) es otro email. Con `EMAIL_TRANSPORT=log` no sale nada: se registra el tamaño y el envío se marca igual (desarrollo).
 
-Orden: validación (`400`) → la web configurada (sin `PUBLIC_SITE_URL`, `500`) → si pidió email, el email configurado (`503 emailUnavailable`, sin crear el link) → `chef_link_menu_send` (`404 sendNotFound`, `409 alreadySent`, `409 sessionNotEditable`, `409 menuChanged`) → el contacto de ahora: un email con forma de email si pidió email (`409 noEmail`) y un teléfono que se puede normalizar si pidió WhatsApp (`409 noPhone`); con cualquiera de los dos no sale nada → el email (`502 emailFailed`: el envío queda sin marcar) → `chef_complete_menu_send` → `200`.
+Orden: validación (`400`) → la web configurada (sin `PUBLIC_SITE_URL`, `500`) → si pidió email, el email configurado (`503 emailUnavailable`, sin crear el link) → `chef_link_menu_send` (`404 sendNotFound`, `409 alreadySent`, `409 sessionNotEditable`, `409 menuChanged` si cambió la versión o la huella desde la vista previa) → el contacto de ahora: un email con forma de email si pidió email (`409 noEmail`) y un teléfono que se puede normalizar si pidió WhatsApp (`409 noPhone`); con cualquiera de los dos no sale nada → el email (`502 emailFailed`: el envío queda sin marcar) → `chef_complete_menu_send` → `200`.
 
 - Un `409 noEmail` o `noPhone` deja creado un link que no salió en ningún mensaje: nadie tiene su token, así que no abre nada.
 - Después de un `502`, la app ofrece reintentar (otro link, otro email) o mandarlo solo por WhatsApp.
-- Si el email salió y el envío no se pudo marcar (la base no respondió, o el menú cambió justo en ese momento), la respuesta es el error de la base con `"emailSent": true` y el log `menu_send_incomplete`: la clienta ya tiene un link que vale, pero el envío no figura enviado (su página no lo muestra). Reintentar manda otro email; si el error es `menuChanged`, hace falta otra vista previa.
+- Si el email salió y el envío no se pudo marcar (la base no respondió, o justo en ese momento cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo), la respuesta es el error de la base con `"emailSent": true` y el log `menu_send_incomplete`: la clienta ya tiene un link que vale, pero el envío no figura enviado (su página no lo muestra). Reintentar manda otro email; si el error es `menuChanged`, hace falta otra vista previa.
 - Un envío que ya salió no se vuelve a mandar (`409 alreadySent`): para mandar el menú otra vez, otra vista previa. Si la respuesta de un envío se perdió, la app lo ve en `menu_sends` (lo lee con la RLS de la cocina).
 
 ### Errores (además de los comunes, §3)
@@ -438,6 +442,7 @@ Orden: validación (`400`) → la web configurada (sin `PUBLIC_SITE_URL`, `500`)
 |---|---|---|---|
 | 400 | `{ "errors": { campo: código } }` | las dos | el cuerpo no cumple (campos `sessionId`, `menuVersion`, `translate`, `sendId`, `email`, `whatsapp`, `channels` o `payload`) |
 | 404 | `sessionNotFound`, `menuNotFound` | preview | la sesión no es de esta cocina, o la semana no tiene menú guardado |
+| 409 | `menuChanged` | las dos | otra versión del menú, o desde la vista previa cambió el menú, el día o la hora, las semanas de la reserva o un plato del catálogo: otra vista previa |
 | 404 | `sendNotFound` | send | el envío no existe para esta cocina |
 | 409 | `sessionNotEditable` (con `status`), `sessionWithoutRequest`, `menuChanged`, `menuEmpty` | preview | §3 |
 | 409 | `alreadySent`, `sessionNotEditable`, `menuChanged`, `noEmail`, `noPhone`, `conflict` | send | §3 |
@@ -457,7 +462,7 @@ Orden: validación (`400`) → la web configurada (sin `PUBLIC_SITE_URL`, `500`)
 - la semana (k de N), el día y la hora de llegada y, en el mensaje de la semana 1 de una reserva de varias, las fechas de todas las semanas (con la hora de cada una si alguna llega a otra hora);
 - los platos: nombre, descripción, porciones, dieta y alérgenos con su nombre (los de la web; sin alérgenos, «Nessuno dei 14 allergeni principali», como la web);
 - la lista de compras agrupada por sección del súper, en el orden del recorrido (`produce`, `meat_fish`, `dairy_eggs`, `bakery`, `pantry`, `frozen`, `other`), con las cantidades legibles: hasta 999 en g o ml; desde 1000, en kg o l redondeados a la centésima («1,25 kg» en italiano y español, «1.25 kg» en inglés); las piezas con su unidad («6 pz», «6 uds.», «6 pcs»). Lo que va q.b. aparte, al final: «Da avere in casa» / «Para tener en casa» / «To have at home»;
-- la nota de Evelyn;
+- la nota de Evelyn, tal como la escribió;
 - el link para ver el menú entero, con las fotos, y confirmarlo o pedir cambios;
 - cómo responder (al email o al WhatsApp).
 
@@ -465,4 +470,4 @@ Nunca lleva la dirección, el contacto, las alergias de la clienta, precios ni n
 
 ### Qué se manda a Anthropic
 
-Solo los nombres de la lista de compras y la nota, como los escribió Evelyn: nunca datos de la clienta, del pedido ni de la sesión. Como con los platos (§12), no son datos personales mientras Evelyn no los escriba ahí.
+Solo los nombres de los renglones de la lista de compras, como los escribió Evelyn, y solo si la clienta no lee español: texto genérico de ingredientes (la app le avisa que no escriba datos de clientes en los renglones). Nunca la nota, datos de la clienta, del pedido ni de la sesión, restricciones ni direcciones. Como con los platos (§12), no son datos personales: la privacy no cambia (SPEC §6).
