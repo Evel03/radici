@@ -1,0 +1,426 @@
+/* /prenotazione/: la reserva de la clienta con el menú de cada semana (SPEC 5.8). Pensada primero para el
+   teléfono (llega por WhatsApp o por email). Misma identidad que el formulario: semanas como papel crema con
+   filete, rótulos en versalitas oliva, controles con borde terra (≥ 3:1). */
+
+.reservation-page {
+  padding-block: 2.5rem 3.5rem;
+}
+
+.page-head {
+  margin-bottom: 1.5rem;
+}
+
+.page-head__title {
+  font-size: clamp(2.4rem, 7vw, 3.4rem);
+}
+
+.page-head__title::after {
+  display: block;
+  width: 3rem;
+  height: 1px;
+  margin-top: 1.1rem;
+  background: var(--terra);
+  content: "";
+}
+
+.reservation__loading {
+  color: var(--muted);
+}
+
+.reservation__greeting {
+  margin-bottom: 0.4rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.reservation__lead {
+  color: var(--muted);
+  font-size: 1.25rem;
+}
+
+/* El saludo y el aviso de la página reciben el foco por código (después de «Riprova» o de una semana cancelada). */
+.reservation__greeting:focus,
+.reservation__notice:focus {
+  outline: none;
+}
+
+.reservation__greeting:focus-visible,
+.reservation__notice:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* El link no sirve o no se pudo leer la reserva. */
+.problem {
+  padding: 1.5rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.problem:focus {
+  outline: none;
+}
+
+.problem:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+.problem__title {
+  font-size: 1.9rem;
+}
+
+/* Una semana */
+.weeks {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.week {
+  min-width: 0;
+  padding: 1.4rem 1.1rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+@media (min-width: 40rem) {
+  .week {
+    padding: 1.75rem 1.75rem 1.9rem;
+  }
+}
+
+.week__head {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.week__title {
+  margin-bottom: 0.25rem;
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.week__when {
+  margin: 0;
+  color: var(--muted);
+}
+
+.week__done {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Estado del menú: recibe el foco después de una respuesta. */
+.week__status {
+  margin-bottom: 1.25rem;
+  padding: 0.8rem 1rem;
+  border-left: 3px solid var(--olive);
+  border-radius: var(--radius);
+  background: var(--olive-soft);
+}
+
+.week__status--pending {
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.week__status:focus {
+  outline: none;
+}
+
+.week__status:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.week__notice {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.week__state {
+  margin: 0;
+}
+
+.state-badge {
+  display: inline-block;
+  margin-right: 0.25rem;
+  color: var(--olive);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.week__status--pending .state-badge {
+  color: var(--terra-ink);
+}
+
+/* Enviado, sin nada que hacer (una semana ya cocinada, o un envío que la página no puede mostrar): neutro. */
+.week__status--sent {
+  border-left-color: var(--rule);
+  background: var(--crema-dark);
+}
+
+.week__status--sent .state-badge {
+  color: var(--muted);
+}
+
+/* Platos, lista y nota */
+.menu__part + .menu__part {
+  margin-top: 1.6rem;
+}
+
+.menu__title {
+  margin: 0 0 0.75rem;
+  color: var(--olive);
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.menu__intro,
+.menu__empty {
+  color: var(--muted);
+  font-size: 1.15rem;
+}
+
+.dishes {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dish {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.dish:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* La miniatura (72 px, fija y cuadrada: DISH_PHOTO_SIZE en render.ts). Si no carga, la página la saca. */
+.dish__photo {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  margin-top: 0.2rem;
+  border-radius: calc(var(--radius) / 2);
+  background: var(--line);
+  object-fit: cover;
+}
+
+.dish__body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dish__name {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.dish__desc {
+  margin: 0.15rem 0 0;
+}
+
+.dish__meta {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
+.dish__diet {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dish__allergens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: baseline;
+  margin: 0.45rem 0 0;
+  font-size: 1.05rem;
+}
+
+.dish__allergens-label {
+  color: var(--muted);
+}
+
+.dish__allergens--none {
+  display: block;
+  color: var(--muted);
+}
+
+.allergens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.allergens__item {
+  padding: 0 0.6rem;
+  border: 1px solid var(--terra);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--terra-ink);
+  line-height: 1.6;
+}
+
+.shopping__group + .shopping__group {
+  margin-top: 1rem;
+}
+
+.shopping__section {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.shopping {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+  list-style: none;
+}
+
+.shopping__item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  justify-content: space-between;
+  padding-block: 0.45rem;
+  border-bottom: 1px solid var(--rule);
+  overflow-wrap: anywhere;
+}
+
+.shopping__qty {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* La nota de Evelyn, con sus saltos de línea. */
+.menu__note {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* Respuesta */
+.week__actions {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.week__actions .actions .btn {
+  flex: 1 1 14rem;
+}
+
+.week__error {
+  margin: 0 0 0.75rem;
+  color: var(--error);
+  font-weight: 600;
+}
+
+.btn[aria-disabled="true"] {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.changes {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.changes .actions {
+  margin-top: 0.5rem;
+}
+
+.field__label {
+  font-weight: 600;
+}
+
+.field__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1.4;
+}
+
+.field__error {
+  margin: 0;
+  color: var(--error);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* El "!" es solo visual (texto alternativo vacío, como en el formulario). */
+.field__error::before {
+  content: "! " / "";
+  font-weight: 700;
+}
+
+.input {
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+textarea.input {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--error);
+  box-shadow: 0 0 0 1px var(--error);
+}
+
+.changes__count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  font-variant-numeric: lining-nums tabular-nums;
+  text-align: right;
+}
+
+/* Para los lectores de pantalla (la región en vivo). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

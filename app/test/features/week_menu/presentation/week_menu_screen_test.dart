@@ -1035,6 +1035,12 @@ void main() {
     (tester) async {
       await openMenu(tester);
       expectReadableInputs(tester);
+      final note = tester.widget<TextField>(byKey('week-menu-note'));
+      expect(
+        note.decoration?.helperMaxLines,
+        greaterThanOrEqualTo(8),
+        reason: 'la ayuda de la nota (idioma y datos que no van) no se corta',
+      );
       await expectNoBrowserAutofill(tester, byKey('week-menu-note'));
       await tapVisible(tester, byKey('week-menu-add-item'));
       expectReadableInputs(tester);

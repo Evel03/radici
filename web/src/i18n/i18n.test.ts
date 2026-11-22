@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 import notFoundHtml from "../../404.html?raw";
 import indexHtml from "../../index.html?raw";
+import reservationHtml from "../../prenotazione/index.html?raw";
 import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
 import footerHtml from "../partials/footer.html?raw";
 import headerHtml from "../partials/header.html?raw";
 import { DEFAULT_PRICING, LIMITS } from "../engine.ts";
 import { formatCents } from "../lib/format.ts";
+import { SHOPPING_SECTIONS } from "../../../supabase/functions/_shared/client_link.ts";
 import { ALLERGENS, DIETS } from "../../../supabase/functions/_shared/public_request.ts";
 import { DATE_WINDOW, MEAL_OPTIONS, REQUEST_TYPES } from "../request/model.ts";
 import { exampleQuote, EXAMPLE_INPUT } from "../request/quote.ts";
 import { FIELD_ORDER, fieldError } from "../request/validate.ts";
-import { LANGS, createI18n, flatten, interpolate, parseAttrSpec, placeholders, resolveLang, type Lang } from "./core.ts";
+import { LANGS, createI18n, flatten, interpolate, langHref, parseAttrSpec, placeholders, resolveLang, type Lang } from "./core.ts";
 import en from "./en.json";
 import es from "./es.json";
 import itJson from "./it.json";
@@ -20,7 +22,7 @@ import { createSiteI18n } from "./site.ts";
 const dicts = { it: flatten(itJson), es: flatten(es), en: flatten(en) };
 const itKeys = Object.keys(dicts.it).sort();
 
-const htmlFiles = { indexHtml, requestHtml, privacyHtml, notFoundHtml, headerHtml, footerHtml };
+const htmlFiles = { indexHtml, requestHtml, privacyHtml, reservationHtml, notFoundHtml, headerHtml, footerHtml };
 
 /** Claves que el HTML pide con data-i18n, data-i18n-html y data-i18n-attr. */
 function htmlKeys(html: string): string[] {
@@ -118,6 +120,32 @@ describe("claves usadas por la web", () => {
       const keys = [...ALLERGENS.map((a) => `allergens.${a}`), ...DIETS.map((d) => `diets.${d}`)];
       expect(keys.filter((key) => !(key in dicts[lang])), lang).toEqual([]);
       expect(ALLERGENS.length).toBe(14);
+    }
+  });
+
+  it("página de la clienta: cada sección del súper tiene su nombre en los tres idiomas", () => {
+    for (const lang of LANGS) {
+      const keys = SHOPPING_SECTIONS.map((section) => `reservation.sections.${section}`);
+      expect(keys.filter((key) => !(key in dicts[lang])), lang).toEqual([]);
+    }
+  });
+
+  it("página de la clienta: el mensaje de cambios pide no escribir datos de salud (SPEC §6), en los tres idiomas", () => {
+    const expected: Record<Lang, string> = {
+      it: "Non scrivere qui allergie, intolleranze o altri dati sulla salute",
+      es: "No escribas aquí alergias, intolerancias ni otros datos de salud",
+      en: "Don't write allergies, intolerances or other health information here",
+    };
+    for (const lang of LANGS) {
+      expect(dicts[lang]["reservation.changesHint"], lang).toContain(expected[lang]);
+    }
+  });
+
+  it("página de la clienta: ningún texto habla de precios ni de pagos (la página no los muestra)", () => {
+    for (const lang of LANGS) {
+      const texts = Object.entries(dicts[lang]).filter(([key]) => key.startsWith("reservation."));
+      expect(texts.length).toBeGreaterThan(50);
+      for (const [key, value] of texts) expect(value, `${lang} ${key}`).not.toMatch(/€|\{(price|amount|total)\w*\}|prezz|precio|price|pagament|pago|payment/i);
     }
   });
 
@@ -350,6 +378,26 @@ describe("privacy", () => {
       }
     });
   }
+
+  // 2026-11-22: la página de la reserva (el link de la clienta, contrato client-link). Las respuestas al menú (la
+  // confirmación o el mensaje de cambios) son datos de la solicitud; las visitas y respuestas de esa página entran en
+  // el límite por IP, con la misma huella y conservación; y el aviso a Evelyn no lleva el mensaje.
+  const booking: Record<Lang, { page: string; limit: RegExp; email: string }> = {
+    it: { page: "pagina della tua prenotazione", limit: /visite e (le )?risposte nella pagina della prenotazione/, email: "non riporta il tuo messaggio" },
+    es: { page: "página de tu reserva", limit: /visitas y respuestas en la página de la reserva/, email: "no incluye tu mensaje" },
+    en: { page: "booking page", limit: /visits and replies on the booking page/, email: "doesn't include your message" },
+  };
+  for (const lang of LANGS) {
+    it(`${lang}: cuenta la página de la reserva (respuestas al menú, su límite por IP y el aviso a Evelyn sin el mensaje)`, () => {
+      for (const key of ["privacy.metaDescription", "privacy.intro", "privacy.dataBody", "privacy.purposeBody", "privacy.flowBody"]) {
+        expect(dicts[lang][key], key).toContain(booking[lang].page);
+      }
+      for (const key of ["privacy.legalBody", "privacy.flowBody", "privacy.retentionBody"]) {
+        expect(dicts[lang][key], key).toMatch(booking[lang].limit);
+      }
+      expect(dicts[lang]["privacy.flowBody"]).toContain(booking[lang].email);
+    });
+  }
 });
 
 describe("SEO y accesibilidad de los textos", () => {
@@ -408,6 +456,16 @@ describe("núcleo de i18n", () => {
     expect(resolveLang("?lang=fr", "en")).toBe("en");
     expect(resolveLang("", "xx")).toBe("it");
     expect(resolveLang("", null)).toBe("it");
+  });
+
+  it("langHref: el link de idioma conserva el fragmento (en /prenotazione/, el token del link)", () => {
+    expect(langHref("it", "")).toBe("?lang=it");
+    expect(langHref("es", "#t=abc")).toBe("?lang=es#t=abc");
+    // Como lo resuelve el navegador desde la página de la clienta: la query cambia, el token queda.
+    const page = "https://radicicucina.app/prenotazione/?lang=it#t=TOKEN";
+    expect(new URL(langHref("en", "#t=TOKEN"), page).href).toBe("https://radicicucina.app/prenotazione/?lang=en#t=TOKEN");
+    // Sin el fragmento, un "?lang=en" a secas lo perdería.
+    expect(new URL("?lang=en", page).hash).toBe("");
   });
 
   it("createI18n aplica los valores globales y devuelve la clave si falta", () => {
