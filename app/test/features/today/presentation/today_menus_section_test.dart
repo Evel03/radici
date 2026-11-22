@@ -4,8 +4,9 @@
 // resaltado si faltan menos de 24 h o ya pasó (el lector de pantalla también
 // lo oye); tocar una abre su menú y, después de mandarlo, ya no está. Sin
 // ninguna, la sección no sale; si no se puede leer, lo dice con
-// «Reintentar». Al abrir la app, «Nada pendiente» espera a la primera
-// lectura; «Ricarica» no hace desaparecer la sección mientras vuelve a leer.
+// «Reintentar». Al abrir la app (y al volver a entrar sin reiniciarla),
+// «Nada pendiente» espera a que se lean los menús; «Ricarica» no hace
+// desaparecer la sección mientras vuelve a leer.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -26,6 +27,7 @@ import '../../../support/menu_fixtures.dart';
 import '../../../support/menu_send_fakes.dart';
 import '../../../support/plain_text.dart';
 import '../../../support/recipe_fixtures.dart';
+import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
 
 void main() {
@@ -308,6 +310,47 @@ void main() {
       sends.pendingLatest!.complete();
       await tester.pumpAndSettle();
       expect(empty, findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'al salir y volver a entrar sin reiniciar la app, «Nada pendiente» no sale mientras se leen los menús',
+    (tester) async {
+      // La semana 2 de 8 (el miércoles 25) espera su menú.
+      final sessions = FakeSessionsRepository(
+        buildBooking(weeks: 8, first: CalendarDate(2026, 11, 18)),
+      );
+      final menus = FakeSessionMenusRepository();
+      final sends = FakeMenuSendsRepository(menus: menus);
+      final app = await pumpChefApp(
+        tester,
+        requests: FakeChefRequestsRepository(const []),
+        sessions: sessions,
+        recipes: FakeRecipesRepository(sampleRecipes()),
+        menus: menus,
+        menuSends: sends,
+        clock: () => now,
+        deviceLocales: const [Locale('es')],
+      );
+      expect(byKey('today-menu-${sessionId(2)}'), findsOneWidget);
+
+      app.auth.emit(null);
+      await tester.pumpAndSettle();
+      sessions.pendingAgendaFetch = Completer<void>();
+      sends.pendingLatest = Completer<void>();
+      app.auth.emit(chefUser);
+      await tester.pump();
+      sessions.pendingAgendaFetch!.complete();
+      // La agenda ya trae la semana 2; sus menús todavía no llegaron.
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(byKey('today-pending-empty'), findsNothing);
+      }
+
+      sends.pendingLatest!.complete();
+      await tester.pumpAndSettle();
+      expect(byKey('today-menu-${sessionId(2)}'), findsOneWidget);
+      expect(byKey('today-pending-empty'), findsNothing);
     },
   );
 

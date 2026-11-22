@@ -104,6 +104,17 @@ final todayMenusDataProvider = FutureProvider.autoDispose<TodayMenusData>((
   );
 }, retry: (_, _) => null);
 
+/// Ya se leyeron los menús de todas las semanas que entran (cada una tiene su
+/// fila de menús). Sin eso Hoy no dice «Nada pendiente»: al volver a entrar
+/// sin reiniciar la app, la agenda trae las semanas antes de que lleguen sus
+/// menús, y lo leído hasta entonces era de una agenda sin semanas.
+final todayMenusSettledProvider = Provider.autoDispose<bool>((ref) {
+  final candidates = ref.watch(todayMenuCandidatesProvider);
+  final data = ref.watch(todayMenusDataProvider).value;
+  if (data == null) return false;
+  return candidates.every((session) => data.summaries.containsKey(session.id));
+});
+
 /// Las semanas de los próximos 7 días que esperan algo de Evelyn con su menú
 /// (pendingMenus), por fecha. Cargando hasta la primera lectura con la agenda
 /// leída; mientras se vuelve a leer (un refresh: whenData conserva lo de

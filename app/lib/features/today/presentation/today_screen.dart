@@ -280,9 +280,14 @@ class _Pending extends ConsumerWidget {
     final inboxLoading = inbox.isLoading;
     final inboxFailed = inbox.hasError && !inbox.isLoading;
     // «Niente in sospeso» solo con la bandeja y las sesiones leídas, y los
-    // menús de los próximos días leídos y sin ninguno que espere algo.
+    // menús de los próximos días leídos (los de todas las semanas que entran)
+    // y sin ninguno que espere algo.
     final menus = ref.watch(todayPendingMenusProvider);
-    final noMenus = menus.hasValue && !menus.hasError && menus.value!.isEmpty;
+    final noMenus =
+        menus.hasValue &&
+        !menus.hasError &&
+        menus.value!.isEmpty &&
+        ref.watch(todayMenusSettledProvider);
     final allRead =
         sessionsRead && !inbox.isLoading && !inbox.hasError && noMenus;
 
