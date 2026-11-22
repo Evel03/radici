@@ -164,6 +164,22 @@ int? suggestedServiceCents(RequestEstimate? estimate, {required int weeks}) {
   even: totalCents % weeks == 0,
 );
 
+/// El servicio de cada semana al repartir [totalCents] en [weeks] semanas,
+/// exactamente como `private.split_cents` (la usan chef_create_booking,
+/// chef_create_quote y chef_update_quote): partes que difieren como mucho en
+/// un centavo, los que sobran van a las primeras y la suma es el total (500 €
+/// en 3 son 166,67 + 166,67 + 166,66). Solo enteros. Lanza [RangeError] con
+/// un total negativo o fuera de 1 a 100 semanas, como la base.
+List<int> splitServiceCents(int totalCents, int weeks) {
+  RangeError.checkNotNegative(totalCents, 'totalCents');
+  RangeError.checkValueInInterval(weeks, 1, 100, 'weeks');
+  final base = totalCents ~/ weeks;
+  final rest = totalCents % weeks;
+  return [
+    for (var week = 0; week < weeks; week++) base + (week < rest ? 1 : 0),
+  ];
+}
+
 /// Semanas con que empieza una reserva a mano: un mes.
 const int defaultManualBookingWeeks = 4;
 
