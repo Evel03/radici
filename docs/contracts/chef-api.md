@@ -452,7 +452,7 @@ Orden: validación (`400`) → la web configurada (sin `PUBLIC_SITE_URL`, `500`)
 | 502 | `emailFailed` | send | el email no salió; el envío queda sin marcar |
 | 503 | `unavailable` | las dos | la base o Claude no respondieron, o un error que se puede reintentar (en send, con `emailSent: true` si el email ya salió) |
 | 503 | `emailUnavailable` | send | email pedido sin `RESEND_API_KEY` o `MAIL_FROM` |
-| 500 | `server` | las dos | configuración rota (sin `PUBLIC_SITE_URL`), una respuesta de la base con otra forma o un error que no se puede reintentar (en send, con `emailSent: true` si el email ya salió) |
+| 500 | `server` | las dos | configuración rota (sin `PUBLIC_SITE_URL`), una respuesta de la base con otra forma o un error que no se puede reintentar (en send, con `emailSent: true` si el email ya salió; en preview, también una traducción rota, §12: otro 4xx de Anthropic o un error del SDK, así que si se pidió traducir la app ofrece seguir sin traducir) |
 
 ### El mensaje
 

@@ -4,11 +4,15 @@
 // dice a quién va, en qué idioma y si la lista se tradujo, deja elegir email
 // y WhatsApp (deshabilitados con el porqué) y muestra el WhatsApp y el email
 // con el texto de reemplazo del link. Cada falla lo dice y ofrece lo que se
-// puede hacer: seguir sin traducir, reintentar, solo por WhatsApp, volver al
-// menú (desde el editor) o ver lo guardado (desde la ficha). Al mandar con
-// WhatsApp se abre solo en el teléfono y con «Abrir WhatsApp» en la web.
+// puede hacer: seguir sin traducir (también con un 500 mientras traducía),
+// reintentar, solo por WhatsApp, volver al menú (desde el editor) o ver lo
+// guardado (desde la ficha); la falla del envío se trae a la vista aunque la
+// vista previa esté desplazada. Al mandar con WhatsApp se abre solo en el
+// teléfono y con «Abrir WhatsApp» en la web.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/features/requests/domain/chef_request.dart'
+    show ClientLocale;
 import 'package:radici/features/sessions/presentation/cooking_session_screen.dart';
 import 'package:radici/features/week_menu/data/menu_sends_repository.dart';
 import 'package:radici/features/week_menu/domain/menu_send.dart';
@@ -55,13 +59,16 @@ void main() {
   final session = sessionId(2);
 
   /// La semana 2 de una reserva de 4, con el menú guardado (versión 2), en
-  /// español: el editor ([location] por defecto) o la ficha.
+  /// español: el editor ([location] por defecto) o la ficha. [locale] es el
+  /// idioma de la clienta (por defecto, italiano: la lista se traduce).
   Future<ChefApp> open(
     WidgetTester tester, {
     String? location,
     FakeSessionMenusRepository? menus,
     MenuSendContact contact = testMenuContact,
+    ClientLocale locale = ClientLocale.it,
     bool isWeb = false,
+    Size size = const Size(400, 900),
   }) async {
     final weekMenus =
         menus ??
@@ -71,13 +78,18 @@ void main() {
     return pumpChefApp(
       tester,
       requests: FakeChefRequestsRepository(const []),
-      sessions: FakeSessionsRepository(buildBooking()),
+      sessions: FakeSessionsRepository(buildBooking(locale: locale)),
       recipes: FakeRecipesRepository(sampleRecipes()),
       menus: weekMenus,
-      menuSends: FakeMenuSendsRepository(menus: weekMenus, contact: contact),
+      menuSends: FakeMenuSendsRepository(
+        menus: weekMenus,
+        contact: contact,
+        locale: locale,
+      ),
       location: location ?? '/sessioni/$session/menu',
       deviceLocales: const [Locale('es')],
       isWeb: isWeb,
+      size: size,
     );
   }
 
@@ -299,6 +311,44 @@ void main() {
     );
 
     testWidgets(
+      'un 500 mientras traducía (puede ser la traducción: la clave de Claude, el crédito): sin «Reintentar», y «Seguir sin traducir» la arma sin traducir',
+      (tester) async {
+        final app = await open(tester);
+        app.menuSends.previewFailures.add(
+          const MenuSendFailure(MenuSendFailureKind.server),
+        );
+        await tapVisible(tester, byKey('week-menu-send'));
+        expect(
+          textOf(tester, 'menu-send-preview-error'),
+          'Algo falló en el servidor. Vuelve a intentarlo más tarde.',
+        );
+        expect(byKey('menu-send-retry-preview'), findsNothing);
+        await tapVisible(tester, byKey('menu-send-without-translation'));
+        expect(app.menuSends.previews, hasLength(2));
+        expect(app.menuSends.previews.last.translate, isFalse);
+        expect(
+          textOf(tester, 'menu-send-translation'),
+          'La lista va como la escribiste, sin traducir.',
+        );
+      },
+    );
+
+    testWidgets(
+      'con una clienta que lee español no se traducía: un 500 no ofrece seguir sin traducir',
+      (tester) async {
+        final app = await open(tester, locale: ClientLocale.es);
+        app.menuSends.previewFailures.add(
+          const MenuSendFailure(MenuSendFailureKind.server),
+        );
+        await tapVisible(tester, byKey('week-menu-send'));
+        expect(byKey('menu-send-preview-error'), findsOneWidget);
+        expect(byKey('menu-send-without-translation'), findsNothing);
+        expect(byKey('menu-send-retry-preview'), findsNothing);
+        expect(byKey('menu-send-failed-close'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'el email no salió: lo dice y «Mandar solo por WhatsApp» lo manda con el mismo envío',
       (tester) async {
         final app = await open(tester);
@@ -364,6 +414,57 @@ void main() {
         );
         expect(byKey('menu-send-whatsapp-lost'), findsOneWidget);
         expect(byKey('menu-send-open-whatsapp'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'sin saber si salió, cerrar con la X vuelve a leer el envío: el editor dice que salió',
+      (tester) async {
+        final app = await open(tester);
+        await tapVisible(tester, byKey('week-menu-send'));
+        app.menuSends.loseSendResponse = const MenuSendFailure(
+          MenuSendFailureKind.timeout,
+        );
+        await tapVisible(tester, byKey('menu-send-submit'));
+        expect(byKey('menu-send-error'), findsOneWidget);
+        final reads = app.menuSends.latestCalls.length;
+
+        await tapVisible(tester, byKey('menu-send-close'));
+        expect(find.byType(MenuSendScreen), findsNothing);
+        expect(app.menuSends.latestCalls.length, greaterThan(reads));
+        expect(
+          textOf(tester, 'week-menu-status-sent'),
+          'Mandado el 22/11 a las 14:32 por email y WhatsApp.',
+        );
+      },
+    );
+
+    testWidgets(
+      'con la vista previa desplazada hasta abajo, la falla del envío se trae a la vista con sus acciones',
+      (tester) async {
+        final app = await open(tester, size: const Size(400, 560));
+        await tapVisible(tester, byKey('week-menu-send'));
+        // Hasta el final del mensaje, donde está «Mandar»: lo de arriba queda
+        // fuera de la pantalla.
+        final preview = tester.state<ScrollableState>(
+          find
+              .descendant(
+                of: byKey('menu-send-preview'),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        preview.position.jumpTo(preview.position.maxScrollExtent);
+        await tester.pumpAndSettle();
+        expect(byKey('menu-send-to').hitTestable(), findsNothing);
+
+        app.menuSends.sendFailures.add(
+          const MenuSendFailure(MenuSendFailureKind.emailFailed),
+        );
+        await tester.tap(byKey('menu-send-submit'));
+        await tester.pumpAndSettle();
+        expect(byKey('menu-send-error').hitTestable(), findsOneWidget);
+        expect(byKey('menu-send-only-whatsapp').hitTestable(), findsOneWidget);
       },
     );
 

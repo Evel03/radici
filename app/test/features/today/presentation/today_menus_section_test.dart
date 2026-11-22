@@ -1,9 +1,12 @@
 // «Menús para mandar» en Hoy: las semanas de los próximos 7 días que esperan
 // algo con su menú, cada una con la clienta, «Semana k de N», el día y la
 // llegada, su estado y el límite (48 h antes de la llegada, hora de Roma),
-// resaltado si faltan menos de 24 h o ya pasó; tocar una abre su menú y,
-// después de mandarlo, ya no está. Sin ninguna, la sección no sale; si no se
-// puede leer, lo dice con «Reintentar».
+// resaltado si faltan menos de 24 h o ya pasó (el lector de pantalla también
+// lo oye); tocar una abre su menú y, después de mandarlo, ya no está. Sin
+// ninguna, la sección no sale; si no se puede leer, lo dice con
+// «Reintentar». «Ricarica» no la hace desaparecer mientras vuelve a leer.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
@@ -157,6 +160,108 @@ void main() {
         ),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'el lector de pantalla oye que faltan menos de 24 h (el color y el ícono no se leen); sin apuro, solo el límite',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openToday(
+        tester,
+        sessions: [
+          // La 8 de 8: el miércoles 25 a las 10:00, límite el lunes 23.
+          ...buildBooking(weeks: 8, first: CalendarDate(2026, 10, 7)),
+          // El viernes 27 a las 11:00: el límite es el miércoles 25.
+          buildSession(
+            n: 22,
+            date: CalendarDate(2026, 11, 27),
+            start: const ClockTime.hm(11, 0),
+            requestId: 'b0000000-0000-4000-8000-0000000000c2',
+            name: 'Laura Neri',
+          ),
+        ],
+      );
+      await reveal(tester, byKey('today-menus'));
+      String heard(String key) =>
+          plainSpaces(tester.getSemantics(byKey(key)).getSemanticsData().label);
+
+      final near = heard('today-menu-deadline-${sessionId(8)}');
+      expect(
+        near,
+        contains('Límite: lun 23 de nov, 10:00. Faltan menos de 24 horas.'),
+      );
+      final later = heard('today-menu-deadline-${sessionId(22)}');
+      expect(later, contains('Límite: mié 25 de nov, 11:00'));
+      expect(later, isNot(contains('Faltan')));
+      // Lo que se ve no cambia.
+      expect(
+        pillText(tester, 'today-menu-deadline-${sessionId(8)}'),
+        'Límite: lun 23 de nov, 10:00',
+      );
+      semantics.dispose();
+    },
+  );
+
+  testWidgets(
+    '«Ricarica» no hace desaparecer las semanas mientras vuelve a leer',
+    (tester) async {
+      final menus = FakeSessionMenusRepository();
+      final sends = FakeMenuSendsRepository(menus: menus);
+      await openToday(
+        tester,
+        sessions: buildBooking(weeks: 8, first: CalendarDate(2026, 10, 7)),
+        menus: menus,
+        menuSends: sends,
+      );
+      final tile = byKey('today-menu-${sessionId(8)}');
+      await reveal(tester, tile);
+      final reads = sends.latestCalls.length;
+
+      sends.pendingLatest = Completer<void>();
+      await tester.tap(byKey('chef-reload'));
+      await tester.pumpAndSettle();
+      expect(sends.latestCalls, hasLength(reads + 1));
+      expect(byKey('today-menus-title'), findsOneWidget);
+      expect(tile, findsOneWidget);
+
+      sends.pendingLatest!.complete();
+      await tester.pumpAndSettle();
+      expect(tile, findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'sin semanas que esperen algo, «Nada pendiente» sigue mientras «Ricarica» vuelve a leer',
+    (tester) async {
+      // La semana 2 de 8 (el miércoles 25), mandada: la reserva no termina
+      // estos días, así que no hay nada pendiente.
+      final menus = FakeSessionMenusRepository(
+        menus: {sessionId(2): savedLasagneMenu(version: 2)},
+      );
+      final sends = FakeMenuSendsRepository(
+        menus: menus,
+        sent: [sentMenu(sessionId: sessionId(2), menuVersion: 2)],
+      );
+      await openToday(
+        tester,
+        sessions: buildBooking(weeks: 8, first: CalendarDate(2026, 11, 18)),
+        menus: menus,
+        menuSends: sends,
+      );
+      final empty = byKey('today-pending-empty');
+      await reveal(tester, empty);
+      final reads = sends.latestCalls.length;
+
+      sends.pendingLatest = Completer<void>();
+      await tester.tap(byKey('chef-reload'));
+      await tester.pumpAndSettle();
+      expect(sends.latestCalls, hasLength(reads + 1));
+      expect(empty, findsOneWidget);
+
+      sends.pendingLatest!.complete();
+      await tester.pumpAndSettle();
+      expect(empty, findsOneWidget);
     },
   );
 

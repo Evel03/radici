@@ -372,9 +372,9 @@ class _Pending extends ConsumerWidget {
 /// «Menús para mandar», dentro de los pendientes: las semanas de los próximos
 /// 7 días que esperan algo con su menú (todayPendingMenusProvider), por
 /// fecha, cada una con su estado y el límite para mandarlo, resaltado si
-/// faltan menos de 24 h o ya pasó. Tocar una abre su menú. Sin ninguna (o
-/// mientras se leen por primera vez), nada; si no se pudieron leer, lo dice
-/// con «Riprova».
+/// faltan menos de 24 h (el lector de pantalla lo oye en el texto) o ya pasó.
+/// Tocar una abre su menú. Sin ninguna (o mientras se leen por primera vez),
+/// nada; si no se pudieron leer, lo dice con «Riprova».
 class _PendingMenus extends ConsumerWidget {
   const _PendingMenus();
 
@@ -474,10 +474,16 @@ class _PendingMenuTile extends StatelessWidget {
       deadlineWall.hour,
       deadlineWall.minute,
     ).toHhMm();
-    final deadline = menu.deadlinePassed(now)
+    final passed = menu.deadlinePassed(now);
+    final deadline = passed
         ? l10n.todayMenuDeadlinePassed(deadlineDay, deadlineTime)
         : l10n.todayMenuDeadline(deadlineDay, deadlineTime);
     final near = menu.deadlineNear(now);
+    // Faltan menos de 24 h: lo resaltan el color y el ícono, que el lector de
+    // pantalla no lee, así que lo dice en el texto que oye.
+    final deadlineHeard = near && !passed
+        ? l10n.todayMenuDeadlineNearA11y(deadlineDay, deadlineTime)
+        : null;
     final changes = menu.state == PendingMenuState.changesRequested;
     final state = switch (menu.state) {
       PendingMenuState.noMenu => l10n.todayMenuNoMenu,
@@ -515,6 +521,7 @@ class _PendingMenuTile extends StatelessWidget {
                 _Pill(
                   key: ValueKey('today-menu-deadline-$id'),
                   text: deadline,
+                  semanticsLabel: deadlineHeard,
                   icon: near ? Icons.warning_amber_rounded : Icons.schedule,
                   background: near
                       ? colors.errorContainer
@@ -534,8 +541,9 @@ class _PendingMenuTile extends StatelessWidget {
   }
 }
 
-/// Una etiqueta chica de color, con un ícono opcional (que el lector de
-/// pantalla no lee: el texto dice lo mismo).
+/// Una etiqueta chica de color, con un ícono opcional. El lector de pantalla
+/// no lee el ícono ni el color: lo que digan va en el texto o, si lo que se
+/// ve no alcanza, en [semanticsLabel] (lo que oye en lugar del texto).
 class _Pill extends StatelessWidget {
   const _Pill({
     super.key,
@@ -543,12 +551,14 @@ class _Pill extends StatelessWidget {
     required this.background,
     required this.foreground,
     this.icon,
+    this.semanticsLabel,
   });
 
   final String text;
   final Color background;
   final Color foreground;
   final IconData? icon;
+  final String? semanticsLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -571,6 +581,7 @@ class _Pill extends StatelessWidget {
             Flexible(
               child: Text(
                 text,
+                semanticsLabel: semanticsLabel,
                 style: theme.textTheme.labelMedium?.copyWith(color: foreground),
               ),
             ),

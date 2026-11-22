@@ -90,9 +90,11 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
   /// ejemplo, timeout). Se usa una vez.
   MenuSendFailure? loseSendResponse;
 
-  /// Si no son null, la respuesta espera a que se completen.
+  /// Si no son null, la respuesta espera a que se completen (la lectura de
+  /// los últimos envíos devuelve lo que había al llegar el pedido).
   Completer<void>? pendingPreview;
   Completer<void>? pendingSend;
+  Completer<void>? pendingLatest;
 
   /// Cada pedido recibido, en orden (también los que fallaron).
   final List<MenuPreviewRequest> previews = [];
@@ -111,12 +113,15 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
     required List<String> sessionIds,
   }) async {
     latestCalls.add(List.of(sessionIds));
-    final failure = readFailure;
-    if (failure != null) throw failure;
     final ids = sessionIds.toSet();
-    return latestSendsBySession(
+    final latest = latestSendsBySession(
       sent.where((record) => ids.contains(record.sessionId)),
     );
+    final pending = pendingLatest;
+    if (pending != null) await pending.future;
+    final failure = readFailure;
+    if (failure != null) throw failure;
+    return latest;
   }
 
   @override

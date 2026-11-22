@@ -2,10 +2,12 @@
 // traducción falla, reintentar solo si es pasajera o seguir sin traducir,
 // nunca sola), los canales que permite el contacto, el envío (WhatsApp se
 // abre solo en el teléfono, con un toque en la web) y cada falla: el menú que
-// cambió (otra vista previa, o la de lo guardado), la semana que ya no se
-// manda, el email que no salió (reintentar o solo WhatsApp), el contacto que
-// cambió, el email que salió sin quedar registrado y la respuesta perdida
-// (reintentar no manda dos veces: alreadySent y se confirma en menu_sends).
+// cambió (otra vista previa, o la de lo guardado, que se vuelve a leer al
+// reintentar si no se pudo), la semana que ya no se manda, el email que no
+// salió (reintentar o solo WhatsApp), el contacto que cambió, el email que
+// salió sin quedar registrado y la respuesta perdida (reintentar no manda dos
+// veces: alreadySent y se confirma en menu_sends, con los canales que
+// salieron; lo que se muestra vuelve a leer el envío, también al cerrar).
 // Un toque doble manda una sola vez.
 import 'dart:async';
 
@@ -40,6 +42,9 @@ void main() {
   late FakeMenuSendsRepository sends;
   late FakeLinkLauncher launcher;
   late ProviderContainer container;
+
+  /// La pantalla abierta: escucha el envío (cerrarla es cerrar esto).
+  late ProviderSubscription<MenuSendState> screen;
   final session = sessionId(2);
 
   /// La semana 2 de la reserva, con su menú guardado en la versión 3.
@@ -80,7 +85,7 @@ void main() {
     container.listen(sessionControllerProvider, (_, _) {});
     await pumpEventQueue();
     // Como la pantalla, que lo escucha mientras está abierta.
-    container.listen(menuSendProvider(session), (_, _) {});
+    screen = container.listen(menuSendProvider(session), (_, _) {});
   }
 
   MenuSendController flow() =>
@@ -221,6 +226,42 @@ void main() {
       expect(state().step, MenuSendStep.ready);
     });
 
+    for (final (action, translate) in [
+      ('Reintentar', true),
+      ('Seguir sin traducir', false),
+    ]) {
+      test(
+        'si «Ver lo guardado» no pudo leer la versión, «$action» la vuelve a leer (no pide la de antes, que ya se rechazó)',
+        () async {
+          await setUpFlow(savedVersion: 4);
+          await flow().start(3);
+          expect(state().failure!.kind, MenuSendFailureKind.menuChanged);
+          menus.summaryFailure = const MenuFailure(MenuFailureKind.unavailable);
+          await flow().previewSaved();
+          expect(state().step, MenuSendStep.previewFailed);
+          expect(state().failure!.kind, MenuSendFailureKind.unavailable);
+          expect(sends.previews, hasLength(1));
+
+          menus.summaryFailure = null;
+          if (translate) {
+            await flow().retryPreview();
+          } else {
+            await flow().previewWithoutTranslation();
+          }
+          expect(sends.previews.last.menuVersion, 4);
+          expect(sends.previews.last.translate, translate);
+          expect(state().menuVersion, 4);
+          expect(state().step, MenuSendStep.ready);
+
+          // Ya leída: otra vista previa no la vuelve a leer.
+          final reads = menus.summaryCalls.length;
+          await flow().newPreview();
+          expect(menus.summaryCalls, hasLength(reads));
+          expect(sends.previews.last.menuVersion, 4);
+        },
+      );
+    }
+
     test('una semana cancelada no se manda: lo dice con su estado', () async {
       await setUpFlow();
       menus.statuses[session] = SessionStatus.cancelled;
@@ -314,10 +355,10 @@ void main() {
       await setUpFlow(web: true);
       container.listen(latestMenuSendProvider(session), (_, _) {});
       await container.read(latestMenuSendProvider(session).future);
-      final screen = container.listen(menuSendProvider(session), (_, _) {});
       await flow().start(3);
       sends.pendingSend = Completer<void>();
       final sending = flow().send();
+      // La pantalla se cierra: nadie más escucha el envío.
       screen.close();
       await pumpEventQueue();
       sends.pendingSend!.complete();
@@ -326,6 +367,9 @@ void main() {
         latestMenuSendProvider(session).future,
       );
       expect(latest!.id, 'send-1');
+      // Con la respuesta, el envío deja de retenerse y se descarta.
+      await pumpEventQueue();
+      expect(container.exists(menuSendProvider(session)), isFalse);
     });
 
     test(
@@ -396,6 +440,110 @@ void main() {
       expect(state().preview!.sendId, 'send-2');
       expect(state().email, isFalse);
       expect(state().whatsapp, isTrue);
+    });
+
+    test('una respuesta perdida de un envío solo por WhatsApp y un reintento solo por email: dice lo que salió (WhatsApp, sin su texto)', () async {
+      await setUpFlow();
+      await flow().start(3);
+      flow().setEmail(false);
+      sends.loseSendResponse = const MenuSendFailure(
+        MenuSendFailureKind.timeout,
+      );
+      await flow().send();
+      expect(state().step, MenuSendStep.sendFailed);
+      // Cree que falló WhatsApp: elige el email y reintenta.
+      flow().setWhatsapp(false);
+      flow().setEmail(true);
+      await flow().send();
+
+      expect(
+        sends.sends.last,
+        const MenuSendRequest(sendId: 'send-1', email: true, whatsapp: false),
+      );
+      expect(sends.sent.single.via, [MenuSendChannel.whatsapp]);
+      expect(state().step, MenuSendStep.sent);
+      expect(state().recovered, isTrue);
+      expect(state().result!.via, [MenuSendChannel.whatsapp]);
+      expect(state().whatsAppLost, isTrue);
+
+      // Otra vista previa para mandarlo por WhatsApp, como se había elegido.
+      await flow().newPreview();
+      expect(state().email, isFalse);
+      expect(state().whatsapp, isTrue);
+    });
+
+    test('al revés: salió solo por email y el reintento pide también WhatsApp: no avisa de un WhatsApp que nunca salió', () async {
+      await setUpFlow();
+      await flow().start(3);
+      flow().setWhatsapp(false);
+      sends.loseSendResponse = const MenuSendFailure(
+        MenuSendFailureKind.offline,
+      );
+      await flow().send();
+      flow().setWhatsapp(true);
+      await flow().send();
+
+      expect(sends.sends.last.whatsapp, isTrue);
+      expect(state().step, MenuSendStep.sent);
+      expect(state().recovered, isTrue);
+      expect(state().result!.via, [MenuSendChannel.email]);
+      expect(state().whatsAppLost, isFalse);
+    });
+
+    test('sin respuesta (no se sabe si salió): la ficha, el editor y la reserva vuelven a leer el envío', () async {
+      await setUpFlow();
+      container.listen(latestMenuSendProvider(session), (_, _) {});
+      expect(
+        await container.read(latestMenuSendProvider(session).future),
+        isNull,
+      );
+      await flow().start(3);
+      final reads = sends.latestCalls.length;
+      sends.loseSendResponse = const MenuSendFailure(
+        MenuSendFailureKind.timeout,
+      );
+      await flow().send();
+      await pumpEventQueue();
+      expect(state().step, MenuSendStep.sendFailed);
+      expect(sends.latestCalls.length, greaterThan(reads));
+      final latest = await container.read(
+        latestMenuSendProvider(session).future,
+      );
+      expect(latest!.id, 'send-1');
+    });
+
+    test('al cerrar la pantalla sin saber si salió, vuelve a leer el envío (el servidor pudo terminar después)', () async {
+      await setUpFlow();
+      container.listen(latestMenuSendProvider(session), (_, _) {});
+      await container.read(latestMenuSendProvider(session).future);
+      await flow().start(3);
+      sends.loseSendResponse = const MenuSendFailure(
+        MenuSendFailureKind.offline,
+      );
+      await flow().send();
+      await pumpEventQueue();
+      final reads = sends.latestCalls.length;
+
+      flow().closed();
+      await pumpEventQueue();
+      expect(sends.latestCalls.length, greaterThan(reads));
+    });
+
+    test('al cerrar después de una falla con respuesta (el email no salió), no vuelve a leer nada', () async {
+      await setUpFlow();
+      container.listen(latestMenuSendProvider(session), (_, _) {});
+      await container.read(latestMenuSendProvider(session).future);
+      await flow().start(3);
+      sends.sendFailures.add(
+        const MenuSendFailure(MenuSendFailureKind.emailFailed),
+      );
+      await flow().send();
+      await pumpEventQueue();
+      final reads = sends.latestCalls.length;
+
+      flow().closed();
+      await pumpEventQueue();
+      expect(sends.latestCalls, hasLength(reads));
     });
 
     test('si después de alreadySent no se puede leer menu_sends, lo dice y reintentar lo confirma', () async {
