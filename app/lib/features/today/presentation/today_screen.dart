@@ -7,17 +7,10 @@
 // límite de 48 h antes de la llegada, que abren su menú) y la tira de 7 días
 // (cada día abre la Agenda en ese día). Abajo, en el tercio inferior del
 // teléfono, «Come arrivare» y WhatsApp de la sesión principal (sin
-// dirección, WhatsApp y «Aggiungi indirizzo», como la ficha); sin ninguna
-// sesión, «Vedi le richieste». «Hoy» es el día de Roma y cambia a la
-// medianoche sin reabrir la app. Deslizar para actualizar (o «Ricarica»,
-// arriba) vuelve a leer todo.
-// renovación: renovar son dos toques) y la tira de 7 días (cada día abre la
-// Agenda en ese día). Abajo, en el tercio inferior del teléfono, «Come
-// arrivare» y WhatsApp de la sesión principal (sin dirección, WhatsApp y
-// «Aggiungi indirizzo», como la ficha, y arriba, si hay zona, «Come arrivare
-// (zona)»); sin ninguna sesión, «Vedi le richieste». «Hoy» es el día de Roma
-// y cambia a la medianoche sin reabrir la app. Deslizar para actualizar (o
-// «Ricarica», arriba) vuelve a leer todo.
+// dirección, WhatsApp y «Aggiungi indirizzo», como la ficha, y arriba, si hay
+// zona, «Come arrivare (zona)»); sin ninguna sesión, «Vedi le richieste».
+// «Hoy» es el día de Roma y cambia a la medianoche sin reabrir la app.
+// Deslizar para actualizar (o «Ricarica», arriba) vuelve a leer todo.
 // Mientras las sesiones cargan, o si no se pudieron leer, la rueda o el aviso
 // van en el lugar de la tarjeta: los pendientes y la tira siguen.
 //
