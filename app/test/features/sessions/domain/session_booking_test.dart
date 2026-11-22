@@ -2,15 +2,14 @@
 // siguientes, el final de la reserva, qué ofrecer si alguna que se quiso
 // cancelar ya está cobrada), la última sesión viva de una reserva semanal
 // (donde va «Rinnova»), la próxima sesión viva de la misma ficha, las
-// sesiones de cada día de la agenda, desde qué día las lee (también 7 días
-// antes de hoy) y el enlace de «Cómo llegar».
+// sesiones de cada día de la agenda y desde qué día las lee (también 7 días
+// antes de hoy). El enlace de «Cómo llegar», en session_links_test.dart.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_booking.dart';
-import 'package:radici/features/sessions/domain/session_links.dart';
 
 import '../../../support/session_fixtures.dart';
 
@@ -76,6 +75,32 @@ void main() {
     test('si la lista no la trae, la sesión cuenta igual', () {
       final booking = buildBooking(weeks: 3);
       expect(bookingPosition(booking[2], booking.take(2)), (week: 3, weeks: 3));
+    });
+
+    test('bookingWeekPositions: de las semanas vivas de varias reservas, en el orden de la ficha; las de una sola semana no están', () {
+      BookingWeekRef ref(String id, String request, int day, [int hour = 10]) =>
+          (
+            id: id,
+            requestId: request,
+            date: CalendarDate(2026, 11, day),
+            start: ClockTime.hm(hour, 0),
+          );
+      final positions = bookingWeekPositions([
+        ref('c', 'r1', 25),
+        ref('a', 'r1', 11),
+        ref('b', 'r1', 18),
+        ref('solo', 'r2', 20),
+        // Mismo día: por la llegada.
+        ref('y', 'r3', 21, 12),
+        ref('x', 'r3', 21, 9),
+      ]);
+      expect(positions, {
+        'a': (week: 1, weeks: 3),
+        'b': (week: 2, weeks: 3),
+        'c': (week: 3, weeks: 3),
+        'x': (week: 1, weeks: 2),
+        'y': (week: 2, weeks: 2),
+      });
     });
   });
 
@@ -376,34 +401,6 @@ void main() {
       final sessions = [...booking, cancelled, otherClient];
       expect(nextLiveSessionOfClient(last, sessions), isNull);
       expect(hasLaterLiveSession(last, sessions), isFalse);
-    });
-  });
-
-  group('«Cómo llegar»', () {
-    const address = 'Via Gombito 12, 24129 Bergamo';
-
-    test('en el iPhone, Apple Maps con el camino hasta la dirección', () {
-      expect(
-        directionsUri(address: address, apple: true).toString(),
-        'https://maps.apple.com/?daddr=Via%20Gombito%2012%2C%2024129%20Bergamo',
-      );
-    });
-
-    test('en Android y en el resto, Google Maps', () {
-      expect(
-        directionsUri(address: address, apple: false).toString(),
-        'https://www.google.com/maps/dir/?api=1&destination=Via%20Gombito%2012%2C%2024129%20Bergamo',
-      );
-    });
-
-    test('sin dirección, nada que abrir', () {
-      expect(directionsUri(address: null, apple: true), isNull);
-      expect(directionsUri(address: '   ', apple: false), isNull);
-    });
-
-    test('un & o un # en la dirección no cortan el enlace', () {
-      final uri = directionsUri(address: 'Via A & B #3', apple: true)!;
-      expect(uri.queryParameters['daddr'], 'Via A & B #3');
     });
   });
 }

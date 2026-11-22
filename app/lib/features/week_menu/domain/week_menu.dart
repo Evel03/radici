@@ -132,7 +132,8 @@ abstract class SavedWeekMenu with _$SavedWeekMenu {
 }
 
 /// Cuántos platos y renglones tiene el menú de una semana, para la ficha de
-/// la sesión y la reserva.
+/// la sesión y la reserva, y su versión guardada (la que se manda a la
+/// clienta y la que dice si cambió después de mandarlo).
 @Freezed(fromJson: false, toJson: false)
 abstract class WeekMenuSummary with _$WeekMenuSummary {
   const factory WeekMenuSummary({
@@ -140,6 +141,9 @@ abstract class WeekMenuSummary with _$WeekMenuSummary {
     @Default(false) bool saved,
     @Default(0) int dishes,
     @Default(0) int items,
+
+    /// `session_menus.version` (null si no se guardó).
+    int? version,
   }) = _WeekMenuSummary;
 }
 
@@ -202,10 +206,16 @@ WeekMenuSummary weekMenuSummaryFromRow(Map<String, dynamic> json) {
   if (dishes is! List || items is! List) {
     throw const FormatException('Menú inválido');
   }
+  final menu = _single(json['menu']);
+  final version = menu?['version'];
+  if (menu != null && version is! int) {
+    throw const FormatException('Fila de session_menus inválida');
+  }
   return WeekMenuSummary(
-    saved: _single(json['menu']) != null,
+    saved: menu != null,
     dishes: dishes.length,
     items: items.length,
+    version: version as int?,
   );
 }
 
@@ -315,6 +325,12 @@ bool isMenuEditable(SessionStatus status) =>
     status == SessionStatus.held ||
     status == SessionStatus.confirmed ||
     status == SessionStatus.shoppingDone;
+
+/// El menú de [session] se le puede mandar a la clienta (chef_menu_send_context):
+/// una sesión que todavía se arma ([isMenuEditable]) y que tiene pedido (el
+/// link de la clienta abre esa reserva).
+bool isMenuSendable(CookingSession session) =>
+    session.requestId != null && isMenuEditable(session.status);
 
 /// Porciones de un plato agregado: las personas de la reserva (adultos y
 /// niños) por las comidas de cada día de su pedido, porque un plato cubre más

@@ -1,11 +1,11 @@
 // Agregar (o corregir) la dirección de la ficha de la clienta desde la ficha
-// de la sesión: el formulario web no la pide, y sin ella no hay «Cómo
-// llegar». Se guarda con la RLS en clients.address (SessionCommands.
-// updateAddress) y vale para todas sus sesiones. Si falla, el diálogo queda
-// abierto con lo escrito. El campo tiene letra de 16 px (con menos, iOS
-// agranda la página) y autofillHints: null (sin pasarlo, en /gestione/ sale
-// con autocomplete="on" y Safari podría ofrecer la dirección de Evelyn). La
-// dirección no se loguea.
+// de la sesión: el formulario web no la pide, y sin ella «Cómo llegar» lleva,
+// como mucho, hasta la zona. Se guarda con la RLS en clients.address
+// (SessionCommands.updateAddress) y vale para todas sus sesiones. Si falla, el
+// diálogo queda abierto con lo escrito. El campo tiene letra de 16 px (con
+// menos, iOS agranda la página) y autofillHints: null (sin pasarlo, en
+// /gestione/ sale con autocomplete="on" y Safari podría ofrecer la dirección
+// de Evelyn). La dirección no se loguea.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';

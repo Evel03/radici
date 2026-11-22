@@ -1,9 +1,9 @@
 // Enlaces de la ficha de la sesión: WhatsApp (con un mensaje en el idioma de
 // la clienta con la fecha y, si no está cancelada, cocinada ni cobrada y es
 // de hoy en adelante, la hora de llegada: nunca la dirección ni las alergias),
-// llamar y «Cómo llegar» (la dirección de la ficha en Mapas). El WhatsApp sale
-// del teléfono de quien usa la app: si es un colaborador de Evelyn, escribe de
-// parte de ella.
+// llamar y «Cómo llegar» (la dirección de la ficha en Mapas o, si no tiene,
+// la zona del pedido con la ciudad). El WhatsApp sale del teléfono de quien
+// usa la app: si es un colaborador de Evelyn, escribe de parte de ella.
 import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart';
@@ -18,14 +18,17 @@ import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/domain/session_links.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
-/// Links para la sesión; cada uno null si falta el dato (teléfono válido o
-/// dirección).
+/// Links para la sesión; cada uno null si falta el dato (teléfono válido, o
+/// dirección y zona).
 class SessionLinks {
   const SessionLinks({this.whatsApp, this.call, this.directions});
 
   final Uri? whatsApp;
   final Uri? call;
-  final Uri? directions;
+
+  /// «Cómo llegar»: hasta la dirección de la ficha o, sin ella, hasta la zona
+  /// (SessionDirections.target dice cuál).
+  final SessionDirections? directions;
 }
 
 /// En un iPhone o una Mac (también la web en Safari), Apple Maps; si no,
@@ -74,7 +77,11 @@ SessionLinks sessionLinksFor(
   return SessionLinks(
     whatsApp: whatsAppUri(phoneE164: phone, message: message),
     call: phoneCallUri(phone),
-    directions: directionsUri(address: session.address, apple: appleMaps),
+    directions: sessionDirections(
+      address: session.address,
+      zone: session.zone,
+      apple: appleMaps,
+    ),
   );
 }
 

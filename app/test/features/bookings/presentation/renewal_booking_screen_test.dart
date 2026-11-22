@@ -453,7 +453,7 @@ void main() {
     await tester.tap(byKey('booking-confirm'));
     await tester.pumpAndSettle();
     expect(byKey('booking-no-phone'), findsOneWidget);
-    expect(tester.widget<FilledButton>(byKey('booking-whatsapp')).onPressed, isNull);
+    expect(tester.widget<ButtonStyleButton>(byKey('booking-whatsapp')).onPressed, isNull);
   });
 
   testWidgets('más de 360 minutos se copian: «+» deshabilitado y «−» los lleva a 360', (tester) async {

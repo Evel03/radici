@@ -20,6 +20,14 @@
 // sin guardar, volver pregunta antes de descartarlos (en /gestione/, también
 // el atrás del navegador: el onExit de la ruta, router.dart).
 //
+// Debajo de las alergias, el envío a la clienta (menu_send_status_view.dart):
+// si ya salió, cuándo y por dónde, y lo que contestó la clienta (con su
+// mensaje entero si pidió cambios), o que el menú cambió después de mandarlo.
+// «Mandar», al lado de «Guardar el menú», abre la vista previa del mensaje
+// (menu_send_screen.dart) con el menú guardado: con cambios sin guardar, pide
+// guardarlos antes. Si al mandarlo resulta que otro teléfono guardó el menú,
+// el editor carga lo guardado.
+//
 // Solo muestra providers: la lógica está en WeekMenuEditorController. Lleva
 // datos de salud (las alergias): nada se loguea.
 import 'dart:async';
@@ -45,9 +53,12 @@ import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/sessions/presentation/session_labels.dart';
 import 'package:radici/features/sessions/presentation/session_widgets.dart';
 import 'package:radici/features/week_menu/application/week_menu_editor_controller.dart';
+import 'package:radici/features/week_menu/application/week_menu_summaries.dart';
 import 'package:radici/features/week_menu/data/session_menus_repository.dart';
 import 'package:radici/features/week_menu/domain/week_menu.dart';
 import 'package:radici/features/week_menu/presentation/menu_dish_picker.dart';
+import 'package:radici/features/week_menu/presentation/menu_send_screen.dart';
+import 'package:radici/features/week_menu/presentation/menu_send_status_view.dart';
 import 'package:radici/features/week_menu/presentation/shopping_item_dialog.dart';
 import 'package:radici/features/week_menu/presentation/week_menu_labels.dart';
 import 'package:radici/l10n/app_localizations.dart';
@@ -357,22 +368,22 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
   // ------------------------------------------------------------------
 
   /// Guarda. Si algún plato choca con la reserva, primero pide confirmarlo
-  /// (queda registrado: allergens_confirmed).
-  Future<void> _save() async {
+  /// (queda registrado: allergens_confirmed). true si quedó guardado.
+  Future<bool> _save() async {
     FocusScope.of(context).unfocus();
     // El aviso de antes (un «Deshacer») no sigue a mano mientras guarda.
     _messenger.currentState?.removeCurrentSnackBar();
     final l10n = AppLocalizations.of(context);
     final state = _state;
-    if (state == null || !state.canSave) return;
+    if (state == null || !state.canSave) return false;
     final conflicts = ref.read(weekMenuConflictsProvider(_sessionId));
     var confirmed = false;
     if (conflicts.isNotEmpty) {
       confirmed = await _confirmConflicts(state, conflicts);
-      if (!confirmed || !mounted) return;
+      if (!confirmed || !mounted) return false;
     }
     final result = await _editor.save(allergensConfirmed: confirmed);
-    if (!mounted) return;
+    if (!mounted) return result == WeekMenuSaveResult.saved;
     switch (result) {
       case WeekMenuSaveResult.saved:
         _show(SnackBar(content: Text(l10n.weekMenuSaved)));
@@ -383,6 +394,69 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
       case WeekMenuSaveResult.busy:
         break;
     }
+    return result == WeekMenuSaveResult.saved;
+  }
+
+  /// «Mandar»: la vista previa del mensaje con el menú guardado. Con cambios
+  /// sin guardar (o un menú que nunca se guardó), primero pide guardarlo. Si
+  /// el menú cambió en otro teléfono, al volver carga lo guardado (no hay
+  /// nada sin guardar que perder).
+  Future<void> _send() async {
+    FocusScope.of(context).unfocus();
+    _messenger.currentState?.removeCurrentSnackBar();
+    final l10n = AppLocalizations.of(context);
+    final state = _state;
+    if (state == null || !state.canSend) return;
+    if (state.needsSaveBeforeSend) {
+      if (state.noteTooLong) {
+        _showError(l10n.recipeTextTooLong(maxMenuNoteLength));
+        return;
+      }
+      if (!await _confirmSaveBeforeSend() || !mounted) return;
+      if (!await _save() || !mounted) return;
+    }
+    final saved = _state;
+    final version = saved?.version;
+    if (saved == null || version == null || saved.dirty) return;
+    final exit = await showMenuSendScreen(
+      context,
+      sessionId: _sessionId,
+      menuVersion: version,
+      fromEditor: true,
+    );
+    if (exit != MenuSendExit.menuChanged || !mounted) return;
+    final message = l10n.weekMenuReloadFailed;
+    // Si carga, el editor se rearma (esta pantalla se reemplaza).
+    final loaded = await _editor.reload();
+    if (!loaded && mounted) _showError(message);
+  }
+
+  /// «¿Guardar antes de mandar?»: la clienta recibe el menú guardado. true
+  /// si eligió guardar.
+  Future<bool> _confirmSaveBeforeSend() async {
+    final l10n = AppLocalizations.of(context);
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey('week-menu-save-first-dialog'),
+        title: Text(l10n.menuSendSaveFirstTitle),
+        content: Text(l10n.menuSendSaveFirstBody),
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            key: const ValueKey('week-menu-save-first-cancel'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.actionCancel),
+          ),
+          FilledButton(
+            key: const ValueKey('week-menu-save-first-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.menuSendSaveFirstConfirm),
+          ),
+        ],
+      ),
+    );
+    return save ?? false;
   }
 
   Future<bool> _confirmConflicts(
@@ -606,6 +680,7 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
                           ),
                         ),
                       SessionAllergies(session: session),
+                      if (session.requestId != null) ..._sendStatus(state),
                       ..._dishes(state, conflicts, enabled: enabled),
                       ..._list(state, enabled: enabled),
                       ..._noteField(state, session),
@@ -620,10 +695,31 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
               : _SaveBar(
                   saving: state.saving,
                   onSave: state.canSave ? () => unawaited(_save()) : null,
+                  // Sin pedido no hay reserva que mostrar en el link.
+                  showSend: isMenuSendable(session),
+                  onSend: state.canSend ? () => unawaited(_send()) : null,
                 ),
         ),
       ),
     );
+  }
+
+  /// El envío a la clienta: si ya salió y qué contestó, o que el menú cambió
+  /// después de mandarlo. Nada mientras no hay menú guardado ni envío.
+  List<Widget> _sendStatus(WeekMenuEditorState state) {
+    final l10n = AppLocalizations.of(context);
+    final everSent = ref.watch(
+      latestMenuSendProvider(_sessionId).select((send) => send.value != null),
+    );
+    if (state.version == null && !everSent) return const [];
+    return [
+      SessionSection(l10n.menuSendSection),
+      SessionMenuSendStatus(
+        sessionId: _sessionId,
+        savedVersion: state.version,
+        keyPrefix: 'week-menu-status',
+      ),
+    ];
   }
 
   List<Widget> _dishes(
@@ -1202,20 +1298,46 @@ class _Banner extends StatelessWidget {
   }
 }
 
-/// «Guardar el menú», abajo y a lo ancho: a mano con el pulgar. Con el
-/// teclado abierto queda justo arriba de él (como en el editor de platos).
+/// «Guardar el menú» y «Mandar», abajo y a lo ancho: a mano con el pulgar.
+/// Con el teclado abierto quedan justo arriba de él (como en el editor de
+/// platos).
 class _SaveBar extends StatelessWidget {
-  const _SaveBar({required this.saving, required this.onSave});
+  const _SaveBar({
+    required this.saving,
+    required this.onSave,
+    required this.showSend,
+    required this.onSend,
+  });
 
   final bool saving;
 
   /// null: no hay nada para guardar (o no se puede).
   final VoidCallback? onSave;
 
+  /// La sesión se le puede mandar a la clienta: va «Mandar» al lado.
+  final bool showSend;
+
+  /// null: no se puede mandar ahora (sin platos o guardando).
+  final VoidCallback? onSend;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final save = FilledButton(
+      key: const ValueKey('week-menu-save'),
+      onPressed: saving ? null : onSave,
+      child: saving
+          // La ruedita sola no dice nada al lector de pantalla.
+          ? Semantics(
+              label: l10n.recipeSaving,
+              child: const SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : Text(l10n.weekMenuSave),
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -1239,20 +1361,22 @@ class _SaveBar extends StatelessWidget {
                 ),
                 child: SizedBox(
                   width: double.infinity,
-                  child: FilledButton(
-                    key: const ValueKey('week-menu-save'),
-                    onPressed: saving ? null : onSave,
-                    child: saving
-                        // La ruedita sola no dice nada al lector de pantalla.
-                        ? Semantics(
-                            label: l10n.recipeSaving,
-                            child: const SizedBox.square(
-                              dimension: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                  child: showSend
+                      ? Row(
+                          children: [
+                            Expanded(child: save),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: FilledButton.tonalIcon(
+                                key: const ValueKey('week-menu-send'),
+                                onPressed: saving ? null : onSend,
+                                icon: const Icon(Icons.send_outlined),
+                                label: Text(l10n.menuSendShort),
+                              ),
                             ),
-                          )
-                        : Text(l10n.weekMenuSave),
-                  ),
+                          ],
+                        )
+                      : save,
                 ),
               ),
             ),

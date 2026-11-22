@@ -1,13 +1,16 @@
 // Hoy (/oggi), el inicio de la cocinera: la sesión de hoy (varias, con la
 // próxima primero) o, si hoy no hay, la próxima; los pendientes de uno o dos
-// toques (pedidos nuevos, que llevan a «Nuove», y reservas que terminan, que
+// toques (pedidos nuevos, que llevan a «Nuove»; reservas que terminan, que
 // abren la ficha de su última semana o, con «Rinnova», la hoja de la
-// renovación: renovar son dos toques) y la tira de 7 días (cada día abre la
-// Agenda en ese día). Abajo, en el tercio inferior del teléfono, «Come
-// arrivare» y WhatsApp de la sesión principal (sin dirección, WhatsApp y
-// «Aggiungi indirizzo», como la ficha); sin ninguna sesión, «Vedi le
-// richieste». «Hoy» es el día de Roma y cambia a la medianoche sin reabrir la
-// app. Deslizar para actualizar (o «Ricarica», arriba) vuelve a leer todo.
+// renovación: renovar son dos toques; y los menús para mandar, las semanas de
+// los próximos 7 días sin menú, sin mandar o con cambios pedidos, con el
+// límite de 48 h antes de la llegada, que abren su menú) y la tira de 7 días
+// (cada día abre la Agenda en ese día). Abajo, en el tercio inferior del
+// teléfono, «Come arrivare» y WhatsApp de la sesión principal (sin
+// dirección, WhatsApp y «Aggiungi indirizzo», como la ficha, y arriba, si hay
+// zona, «Come arrivare (zona)»); sin ninguna sesión, «Vedi le richieste».
+// «Hoy» es el día de Roma y cambia a la medianoche sin reabrir la app.
+// Deslizar para actualizar (o «Ricarica», arriba) vuelve a leer todo.
 // Mientras las sesiones cargan, o si no se pudieron leer, la rueda o el aviso
 // van en el lugar de la tarjeta: los pendientes y la tira siguen.
 //
@@ -18,7 +21,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/link_launcher.dart';
+import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/requests/application/chef_inbox_controller.dart';
@@ -27,11 +32,14 @@ import 'package:radici/features/requests/domain/inbox.dart';
 import 'package:radici/features/requests/presentation/chef_refresh_button.dart';
 import 'package:radici/features/requests/presentation/chef_shell.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
+import 'package:radici/features/sessions/domain/session_links.dart';
 import 'package:radici/features/sessions/presentation/client_address_dialog.dart';
 import 'package:radici/features/sessions/presentation/session_labels.dart';
 import 'package:radici/features/sessions/presentation/session_widgets.dart';
 import 'package:radici/features/sessions/presentation/sessions_load_error.dart';
+import 'package:radici/features/today/application/today_menus_providers.dart';
 import 'package:radici/features/today/application/today_providers.dart';
+import 'package:radici/features/today/domain/pending_menus.dart';
 import 'package:radici/features/today/domain/today.dart';
 import 'package:radici/features/today/presentation/today_labels.dart';
 import 'package:radici/features/today/presentation/today_session_card.dart';
@@ -240,9 +248,10 @@ class _NoSessionsActions extends StatelessWidget {
   }
 }
 
-/// Los pendientes: pedidos nuevos (llevan a «Nuove») y reservas que terminan
+/// Los pendientes: pedidos nuevos (llevan a «Nuove»), reservas que terminan
 /// o que terminaron hace hasta 7 días (abren la ficha de su última semana y
-/// tienen «Rinnova», que abre la hoja prellenada).
+/// tienen «Rinnova», que abre la hoja prellenada) y los menús para mandar
+/// (_PendingMenus). «Niente in sospeso» solo si no hay nada de eso.
 class _Pending extends ConsumerWidget {
   const _Pending({required this.sessionsRead});
 
@@ -271,8 +280,17 @@ class _Pending extends ConsumerWidget {
     // estado trae el error y sigue cargando: la barra, no el error.
     final inboxLoading = inbox.isLoading;
     final inboxFailed = inbox.hasError && !inbox.isLoading;
-    // «Niente in sospeso» solo con la bandeja y las sesiones leídas.
-    final allRead = sessionsRead && !inbox.isLoading && !inbox.hasError;
+    // «Niente in sospeso» solo con la bandeja y las sesiones leídas, y los
+    // menús de los próximos días leídos (los de todas las semanas que entran)
+    // y sin ninguno que espere algo.
+    final menus = ref.watch(todayPendingMenusProvider);
+    final noMenus =
+        menus.hasValue &&
+        !menus.hasError &&
+        menus.value!.isEmpty &&
+        ref.watch(todayMenusSettledProvider);
+    final allRead =
+        sessionsRead && !inbox.isLoading && !inbox.hasError && noMenus;
 
     final items = <Widget>[
       if (newCount > 0)
@@ -340,6 +358,7 @@ class _Pending extends ConsumerWidget {
             child: LinearProgressIndicator(),
           ),
         ...items,
+        const _PendingMenus(),
         if (items.isEmpty && allRead)
           // Un nodo propio: sin esto se funde con el título de arriba.
           MergeSemantics(
@@ -352,6 +371,229 @@ class _Pending extends ConsumerWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// «Menús para mandar», dentro de los pendientes: las semanas de los próximos
+/// 7 días que esperan algo con su menú (todayPendingMenusProvider), por
+/// fecha, cada una con su estado y el límite para mandarlo, resaltado si
+/// faltan menos de 24 h (el lector de pantalla lo oye en el texto) o ya pasó.
+/// Tocar una abre su menú. Sin ninguna (o mientras se leen por primera vez),
+/// nada; si no se pudieron leer, lo dice con «Riprova».
+class _PendingMenus extends ConsumerWidget {
+  const _PendingMenus();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final now = ref.watch(todayNowProvider);
+    final title = _SubsectionTitle(
+      l10n.todayMenusTitle,
+      textKey: const ValueKey('today-menus-title'),
+    );
+    return ref
+        .watch(todayPendingMenusProvider)
+        .when(
+          data: (menus) => menus.isEmpty
+              ? const SizedBox.shrink()
+              : Column(
+                  key: const ValueKey('today-menus'),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    title,
+                    // Un nodo propio: sin esto se funde con el título.
+                    MergeSemantics(
+                      child: Text(
+                        l10n.todayMenusHint,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    for (final menu in menus)
+                      _PendingMenuTile(menu: menu, now: now),
+                  ],
+                ),
+          loading: () => const SizedBox.shrink(),
+          error: (_, _) => Column(
+            key: const ValueKey('today-menus'),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              title,
+              Wrap(
+                spacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  MergeSemantics(
+                    child: Text(
+                      l10n.todayMenusError,
+                      key: const ValueKey('today-menus-error'),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    key: const ValueKey('today-menus-retry'),
+                    onPressed: () => ref.invalidate(todayMenusDataProvider),
+                    child: Text(l10n.actionRetry),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+  }
+}
+
+/// Una semana de «Menús para mandar»: la clienta, «Semana k de N», el día y
+/// la llegada, qué le falta al menú y el límite para mandarlo (hora de
+/// Roma). Tocarla abre su menú, encima de Hoy.
+class _PendingMenuTile extends StatelessWidget {
+  const _PendingMenuTile({required this.menu, required this.now});
+
+  final PendingMenu menu;
+
+  /// «Ahora», al minuto: el límite se resalta si faltan menos de 24 h.
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final formats = SessionFormats(context);
+    final session = menu.session;
+    final id = session.id;
+    final position = menu.position;
+    final when = [
+      if (position != null) l10n.sessionWeekOf(position.week, position.weeks),
+      formats.inText(session.date),
+      l10n.todayMenusArrives(session.start.toHhMm()),
+    ].join(' · ');
+    final deadlineWall = romeWallClock(menu.deadline);
+    final deadlineDay = formats.inText(CalendarDate.fromDateTime(deadlineWall));
+    final deadlineTime = ClockTime.hm(
+      deadlineWall.hour,
+      deadlineWall.minute,
+    ).toHhMm();
+    final passed = menu.deadlinePassed(now);
+    final deadline = passed
+        ? l10n.todayMenuDeadlinePassed(deadlineDay, deadlineTime)
+        : l10n.todayMenuDeadline(deadlineDay, deadlineTime);
+    final near = menu.deadlineNear(now);
+    // Faltan menos de 24 h: lo resaltan el color y el ícono, que el lector de
+    // pantalla no lee, así que lo dice en el texto que oye.
+    final deadlineHeard = near && !passed
+        ? l10n.todayMenuDeadlineNearA11y(deadlineDay, deadlineTime)
+        : null;
+    final changes = menu.state == PendingMenuState.changesRequested;
+    final state = switch (menu.state) {
+      PendingMenuState.noMenu => l10n.todayMenuNoMenu,
+      PendingMenuState.notSent => l10n.todayMenuNotSent,
+      PendingMenuState.changedSinceSent => l10n.todayMenuChangedSinceSent,
+      PendingMenuState.changesRequested => l10n.todayMenuChangesRequested,
+    };
+    return Card(
+      key: ValueKey('today-menu-$id'),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        leading: const Icon(Icons.restaurant_menu),
+        title: Text(session.displayName),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(when, key: ValueKey('today-menu-when-$id')),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                _Pill(
+                  key: ValueKey('today-menu-state-$id'),
+                  text: state,
+                  background: changes
+                      ? colors.tertiaryContainer
+                      : colors.secondaryContainer,
+                  foreground: changes
+                      ? colors.onTertiaryContainer
+                      : colors.onSecondaryContainer,
+                ),
+                _Pill(
+                  key: ValueKey('today-menu-deadline-$id'),
+                  text: deadline,
+                  semanticsLabel: deadlineHeard,
+                  icon: near ? Icons.warning_amber_rounded : Icons.schedule,
+                  background: near
+                      ? colors.errorContainer
+                      : colors.surfaceContainerHighest,
+                  foreground: near
+                      ? colors.onErrorContainer
+                      : colors.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ],
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => unawaited(context.push(AppRoutes.sessionMenu(id))),
+      ),
+    );
+  }
+}
+
+/// Una etiqueta chica de color, con un ícono opcional. El lector de pantalla
+/// no lee el ícono ni el color: lo que digan va en el texto o, si lo que se
+/// ve no alcanza, en [semanticsLabel] (lo que oye en lugar del texto).
+class _Pill extends StatelessWidget {
+  const _Pill({
+    super.key,
+    required this.text,
+    required this.background,
+    required this.foreground,
+    this.icon,
+    this.semanticsLabel,
+  });
+
+  final String text;
+  final Color background;
+  final Color foreground;
+  final IconData? icon;
+  final String? semanticsLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final icon = this.icon;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              ExcludeSemantics(child: Icon(icon, size: 16, color: foreground)),
+              const SizedBox(width: 4),
+            ],
+            Flexible(
+              child: Text(
+                text,
+                semanticsLabel: semanticsLabel,
+                style: theme.textTheme.labelMedium?.copyWith(color: foreground),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -472,9 +714,40 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+/// Título de una parte dentro de una sección (los menús para mandar, dentro
+/// de los pendientes): más chico que [_SectionTitle] y, como él, un nodo
+/// propio para el lector de pantalla.
+class _SubsectionTitle extends StatelessWidget {
+  const _SubsectionTitle(this.text, {this.textKey});
+
+  final String text;
+  final Key? textKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 4),
+      child: Semantics(
+        header: true,
+        container: true,
+        child: Text(
+          text,
+          key: textKey,
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// «Come arrivare» y WhatsApp de la sesión principal. Sin dirección (las
 /// reservas que llegan por la web), WhatsApp pasa a ser el principal y en lugar
-/// de «Come arrivare» va «Aggiungi indirizzo», que la guarda en la ficha.
+/// de «Come arrivare» va «Aggiungi indirizzo», que la guarda en la ficha; si
+/// hay zona, arriba va «Come arrivare (zona)», que lleva hasta la zona (no es
+/// una dirección verificada), como en la ficha.
 class _TodayActions extends ConsumerWidget {
   const _TodayActions({required this.session, required this.showWhose});
 
@@ -497,6 +770,10 @@ class _TodayActions extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final links = ref.watch(todayLinksProvider);
+    final directions = links?.directions;
+    final toZone = directions?.target == DirectionsTarget.zone
+        ? directions
+        : null;
     VoidCallback? launch(Uri? uri) =>
         uri == null ? null : () => unawaited(_launch(context, ref, uri));
     const whatsAppKey = ValueKey('today-whatsapp');
@@ -508,7 +785,7 @@ class _TodayActions extends ConsumerWidget {
     if (session.address != null) {
       primary = FilledButton.icon(
         key: const ValueKey('today-directions'),
-        onPressed: launch(links?.directions),
+        onPressed: launch(directions?.uri),
         icon: const Icon(Icons.directions_outlined),
         label: Text(l10n.sessionDirections),
       );
@@ -545,6 +822,15 @@ class _TodayActions extends ConsumerWidget {
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (toZone != null) ...[
+          OutlinedButton.icon(
+            key: const ValueKey('today-directions-zone'),
+            onPressed: launch(toZone.uri),
+            icon: const Icon(Icons.directions_outlined),
+            label: Text(l10n.sessionDirectionsZone),
           ),
           const SizedBox(height: 8),
         ],
