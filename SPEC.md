@@ -453,6 +453,8 @@ Para una semana pendiente, Evelyn recibe un email a `CHEF_NOTIFY_EMAIL`, en `CHE
 - 72 h antes, si sigue pendiente;
 - pasado el límite de 48 h, cada 2 horas, hasta que lo envíe o empiece la sesión.
 
+Si Evelyn mueve la semana, los avisos vuelven a empezar para la fecha nueva. Los de cada 2 horas tienen 5 minutos de tolerancia, porque pg_cron pasa cada 15 minutos.
+
 Ningún aviso sale de noche: solo de 8:00 a 20:59, hora de Roma (§8). El que cae de noche sale a las 8:00. Las semanas que tocan en un mismo turno van en un solo email, con la clienta, la semana, el día y la hora de la cocina, el límite y el link al pedido en `/gestione/`. Nunca lleva alergias ni direcciones.
 
 Cómo funciona:
@@ -460,6 +462,8 @@ Cómo funciona:
 2. Esa función llama a la Edge Function con pg_net, usando la URL y un secreto que el despliegue genera en cada corrida y guarda en Vault y como `MENU_REMINDERS_SECRET` de la función. Sin ellos, en local, no hace nada.
 3. La función lee `menu_reminders_due` y manda el email.
 4. Recién entonces marca los avisos con `menu_reminders_mark`. Si el email falla, el turno siguiente lo reintenta.
+
+Los avisos se prenden con el primer despliegue que guarda la URL y el secreto en Vault. Por eso este cambio se mergea después de la pantalla de envío de la app: si no, a Evelyn le llegarían avisos de semanas que todavía no puede mandar.
 ---
 
 ## 6. Seguridad, privacidad y RGPD

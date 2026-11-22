@@ -13,7 +13,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(33);
+select plan(44);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres)
@@ -60,6 +60,10 @@ insert into public.sessions (id, chef_id, client_id, request_id, "date", start_t
   -- SX: de C2.
   ('7e6b4000-0000-4000-8000-00000000000f', '7e6b1000-0000-4000-8000-000000000002', '7e6b2000-0000-4000-8000-00000000000f',
    '7e6b3000-0000-4000-8000-00000000000f', '2027-01-11', '10:00', 180, 'confirmed', null, null, '2026-12-01');
+
+-- R llegó de la web con su propio nombre: los avisos usan ese, como la bandeja.
+update public.requests set contact = '{"name": "Anna R.", "email": "anna@avisos.test"}'
+where id = '7e6b3000-0000-4000-8000-000000000001';
 
 -- Lo que toca en p_now para C1, como "S1:first,S6:last" (o '' si nada).
 create function pg_temp.due(p_now text) returns text
@@ -111,6 +115,8 @@ set local role service_role;
 
 select is(pg_temp.due('2027-01-06 09:00Z'), '', '5 días antes: nada');
 select is(pg_temp.due('2027-01-07 09:05Z'), 'S1:first', '4 días antes (10:05 en Roma): el primero');
+select is(public.menu_reminders_due('7e6b1000-0000-4000-8000-000000000001', '2027-01-07 09:05Z') -> 0 ->> 'clientName', 'Anna R.',
+  'con el nombre con que llegó el pedido, no el de la ficha');
 select is(pg_temp.due('2027-01-07 22:00Z'), '', 'a las 23:00 de Roma no sale nada');
 select is(pg_temp.mark('[{"sessionId": "7e6b4000-0000-4000-8000-000000000001", "kind": "first"}]', '2027-01-07 09:05Z'),
   1, 'marca el primero');
@@ -129,6 +135,7 @@ select is(pg_temp.mark('[{"sessionId": "7e6b4000-0000-4000-8000-000000000001", "
                          {"sessionId": "7e6b4000-0000-4000-8000-000000000006", "kind": "last"}]', '2027-01-09 09:01Z'),
   2, 'marca los dos');
 select is(pg_temp.due('2027-01-09 10:30Z'), '', 'una hora y media después: nada');
+select is(pg_temp.due('2027-01-09 10:57Z'), 'S1:overdue', 'el turno de pg_cron que cae a 1 h 56 min ya avisa (5 minutos de tolerancia)');
 select is(pg_temp.due('2027-01-09 11:02Z'), 'S1:overdue', 'dos horas después: otra vez el urgente');
 select is(pg_temp.due('2027-01-09 20:30Z'), '', 'a las 21:30 de Roma no sale');
 select is(pg_temp.due('2027-01-10 07:00Z'), 'S1:overdue', 'a las 8:00 de Roma vuelve (y S6 todavía no pasó el límite)');
@@ -160,6 +167,19 @@ select is(
     "week": 1, "weeks": 1, "clientName": "Bruno Sala", "changesRequested": true}'::jsonb,
   'cada aviso trae fecha, hora, límite, semana, clienta y si pidió cambios');
 
+-- S2 (la semana 2 de R, el lunes 18/1) recibe sus dos primeros avisos y Evelyn la pasa al 25/1.
+select is(pg_temp.due('2027-01-14 09:05Z'), 'S2:first', 'S2: el primero, 4 días antes del 18/1');
+select is(pg_temp.mark('[{"sessionId": "7e6b4000-0000-4000-8000-000000000002", "kind": "first"}]', '2027-01-14 09:05Z'), 1, 'marca el primero de S2');
+select is(pg_temp.due('2027-01-15 09:05Z'), 'S2:last', 'S2: el segundo, 72 h antes');
+select is(pg_temp.mark('[{"sessionId": "7e6b4000-0000-4000-8000-000000000002", "kind": "last"}]', '2027-01-15 09:05Z'), 1, 'marca el segundo de S2');
+reset role;
+update public.sessions set "date" = '2027-01-25' where id = '7e6b4000-0000-4000-8000-000000000002';
+set local role service_role;
+select is(pg_temp.due('2027-01-16 09:05Z'), '', 'movida al 25/1: el 16/1 todavía no toca nada (antes habría tocado el urgente)');
+select is(pg_temp.due('2027-01-21 09:05Z'), 'S2:first', 'para la fecha nueva vuelve el de 4 días');
+select is(pg_temp.mark('[{"sessionId": "7e6b4000-0000-4000-8000-000000000002", "kind": "first"}]', '2027-01-21 09:05Z'), 1, 'lo marca');
+select is(pg_temp.due('2027-01-22 09:05Z'), 'S2:last', 'y el de 72 h también');
+
 -- ---------------------------------------------------------------------
 -- 3. menu_reminders_mark
 -- ---------------------------------------------------------------------
@@ -174,6 +194,10 @@ select is(pg_temp.error_of($$ select pg_temp.mark('{}', '2027-01-11 09:30Z') $$)
 reset role;
 select is((select overdue_count from private.menu_reminders where session_id = '7e6b4000-0000-4000-8000-000000000006'),
   1, 'cuenta los urgentes de S6');
+select is(
+  (select concat_ws(' ', r.starts_at = '2027-01-25 09:00Z', r.first_at = '2027-01-21 09:05Z', r.last_at is null, r.overdue_count)
+   from private.menu_reminders r where r.session_id = '7e6b4000-0000-4000-8000-000000000002'),
+  't t t 0', 'la fila de S2 quedó para la llegada nueva, sin los avisos de la fecha vieja');
 
 -- ---------------------------------------------------------------------
 -- 4. private.call_menu_reminders
