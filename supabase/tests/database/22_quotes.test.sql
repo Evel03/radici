@@ -15,7 +15,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(83);
+select plan(114);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres)
@@ -51,6 +51,12 @@ insert into public.requests (id, chef_id, client_id, type, status, adults, kids,
   ('7e6c3000-0000-4000-8000-000000000006', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week',   'new',      2, 0, 5, '{dinner}', 1, 'web', 'it', null),
   ('7e6c3000-0000-4000-8000-000000000007', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week',   'new',      2, 0, 5, '{dinner}', 1, 'web', 'it', null),
   ('7e6c3000-0000-4000-8000-00000000000f', '7e6c1000-0000-4000-8000-000000000002', '7e6c2000-0000-4000-8000-00000000000f', 'week',   'new',      1, 0, 3, '{dinner}', 1, 'app', 'it', null);
+insert into public.requests (id, chef_id, client_id, type, status, adults, kids, days, meals, weeks, source, locale) values
+  ('7e6c3000-0000-4000-8000-000000000008', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 2, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000009', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 2, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000010', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000011', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it'),
+  ('7e6c3000-0000-4000-8000-000000000012', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000b', 'week', 'new', 2, 0, 5, '{dinner}', 1, 'web', 'it');
 insert into public.requests (id, chef_id, client_id, type, status, text, source) values
   ('7e6c3000-0000-4000-8000-000000000003', '7e6c1000-0000-4000-8000-000000000001', '7e6c2000-0000-4000-8000-00000000000c', 'change', 'new', 'Otra cosa', 'app');
 
@@ -113,7 +119,8 @@ language sql
 as $$
   select (public.chef_prepare_menu_send('7e6c1000-0000-4000-8000-000000000001', p_session,
             (select m.version from public.session_menus m where m.session_id = p_session), 'it',
-            jsonb_build_object('v', 1, 'token', p_token), false) ->> 'sendId')::uuid
+            jsonb_build_object('v', 1, 'token', p_token), false,
+            public.chef_menu_send_context('7e6c1000-0000-4000-8000-000000000001', p_session) ->> 'fingerprint') ->> 'sendId')::uuid
 $$;
 
 create function pg_temp.deliver(p_send uuid, p_token text) returns timestamptz
@@ -166,17 +173,19 @@ select is((select count(*)::int from public.quotes where request_id = '7e6c3000-
 
 select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000001', array[0, 7], 30001) is not null, 'prepara el presupuesto de R1');
 select is(
-  (select string_agg(concat_ws(' ', s.status, s.pay_mode, s.service_cents, s.hold_until between now() + interval '23 hours 59 minutes' and now() + interval '24 hours', s.quote_is_set), ' | ' order by s."date")
+  (select string_agg(concat_ws(' ', s.status, s.pay_mode, s.service_cents,
+                              s.hold_until = least(now() + interval '24 hours', (pg_temp.d(0) + time '10:00') at time zone 'Europe/Rome'),
+                              s.quote_is_set), ' | ' order by s."date")
    from (select s.*, (s.quote_id is not null)::text as quote_is_set from public.sessions s
          where s.request_id = '7e6c3000-0000-4000-8000-000000000001') s),
   'held manual 15001 t true | held manual 15000 t true',
-  'dos sesiones held (manual), con el precio repartido, retenidas 24 h y ligadas al presupuesto');
+  'dos sesiones held (manual), con el precio repartido, retenidas 24 h (sin pasar la llegada de la primera) y ligadas al presupuesto');
 select is(
   (select concat_ws(' ', q.version, q.sent_at is null, q.service_cents, q.slot_date = pg_temp.d(0), q.slot_start,
-                    q.session_id = pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 1))
+                    q.session_id = pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 1), q.pricing_snapshot = '{}')
    from public.quotes q where q.request_id = '7e6c3000-0000-4000-8000-000000000001'),
-  '1 t 30001 t 10:00:00 t',
-  'el presupuesto: versión 1, sin enviar, con el total, la primera fecha y la primera sesión');
+  '1 t 30001 t 10:00:00 t t',
+  'el presupuesto: versión 1, sin enviar, con el total, la primera fecha y la primera sesión (sin términos enviados todavía)');
 select is((select concat_ws(' ', r.status, r.seen_at is not null) from public.requests r where r.id = '7e6c3000-0000-4000-8000-000000000001'),
   'new t', 'el pedido sigue new (sale quoted al enviarlo) y queda visto');
 
@@ -253,12 +262,14 @@ select is(pg_temp.error_of($$ select public.chef_link_menu_send('7e6c1000-0000-4
 select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000001', 1), 'r1-b'), 'r1-b') is not null,
   'nueva vista previa y envío');
 select is(
-  (select concat_ws(' ', q.version, q.sent_at = now(), q.last_sent_at = now(), q.hold_until = now() + interval '48 hours',
+  (select concat_ws(' ', q.version, q.sent_at = now(), q.last_sent_at = now(),
+                    q.hold_until = least(now() + interval '48 hours', (pg_temp.d(0) + time '10:00') at time zone 'Europe/Rome'),
                     q.service_cents, q.pricing_snapshot ->> 'totalCents')
    from public.quotes q where q.request_id = '7e6c3000-0000-4000-8000-000000000001'),
-  '1 t t t 42000 42000', 'el presupuesto sale: versión 1, enviado ahora, plazo de 48 h y los términos enviados');
+  '1 t t t 42000 42000', 'el presupuesto sale: versión 1, enviado ahora, plazo de 48 h (sin pasar la llegada de la primera semana) y los términos enviados');
 select is(
-  (select array_agg(s.hold_until = now() + interval '48 hours' order by s."date") from public.sessions s
+  (select array_agg(s.hold_until = least(now() + interval '48 hours', (pg_temp.d(0) + time '10:00') at time zone 'Europe/Rome')
+                     order by s."date") from public.sessions s
    where s.request_id = '7e6c3000-0000-4000-8000-000000000001'),
   array[true, true], 'las semanas held quedan retenidas el mismo plazo');
 select is((select status::text from public.requests where id = '7e6c3000-0000-4000-8000-000000000001'), 'quoted', 'el pedido pasa a quoted');
@@ -336,6 +347,48 @@ select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000
 select is((select quote_id from public.menu_sends where id = pg_temp.send_of('r1-w2b')), null, 'sin presupuesto');
 select is(public.client_link_confirm_menu(pg_temp.h('r1-w2b'), pg_temp.send_of('r1-w2b')) ->> 'already', 'false',
   'y la clienta lo confirma');
+
+-- ---------------------------------------------------------------------
+-- 5b. Términos cambiados sin reenviar (R8) y una versión reemplazada desde otra semana (R9)
+-- ---------------------------------------------------------------------
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000008', array[49, 56], 30000) is not null, 'presupuesto de R8');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000008', 1)) $$, 'su menú');
+select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000008', 1), 'r8-a'), 'r8-a') is not null, 'sale');
+select ok(public.chef_update_quote('7e6c1000-0000-4000-8000-000000000001', (select id from public.quotes where request_id = '7e6c3000-0000-4000-8000-000000000008'), 90000) is not null,
+  'Evelyn le cambia el precio y no lo reenvía');
+select is(pg_temp.error_of($$ select public.client_link_accept_quote(pg_temp.h('r8-a'), pg_temp.send_of('r8-a')) $$),
+  '40001: quote_changed', 'la clienta no acepta un precio que ya no es el de ahora');
+select is((select array_agg(status::text order by "date") from public.sessions where request_id = '7e6c3000-0000-4000-8000-000000000008'),
+  array['held', 'held'], 'y nada pasa a confirmed');
+select is(public.client_link_view(pg_temp.h('r8-a')) #>> '{quote,status}', 'changed', 'el link lo muestra cambiado (sin aceptar)');
+select is((select pricing_snapshot ->> 'totalCents' from public.quotes where request_id = '7e6c3000-0000-4000-8000-000000000008'),
+  '30000', 'pricing_snapshot sigue con lo enviado');
+reset role;
+update public.menu_sends set sent_at = now() - interval '1 hour' where id = pg_temp.send_of('r8-a');
+set local role service_role;
+select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000008', 1), 'r8-b'), 'r8-b') is not null, 'Evelyn lo reenvía');
+select is(public.client_link_accept_quote(pg_temp.h('r8-b'), pg_temp.send_of('r8-b')) ->> 'totalCents', '90000', 'ahora sí: acepta el precio nuevo');
+select is(
+  (select concat_ws(' ', q.service_cents, q.pricing_snapshot ->> 'totalCents', q.slot_date = pg_temp.d(49), q.slot_start)
+   from public.quotes q where q.request_id = '7e6c3000-0000-4000-8000-000000000008'),
+  '90000 90000 t 10:00:00', 'el presupuesto guarda lo aceptado');
+
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000009', array[63, 70], 40000) is not null, 'presupuesto de R9 (dos semanas)');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000009', 1)) $$, 'menú de su semana 1');
+select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000009', 1), 'r9-a'), 'r9-a') is not null, 'sale la versión 1');
+reset role;
+update public.menu_sends set sent_at = now() - interval '1 hour' where id = pg_temp.send_of('r9-a');
+set local role service_role;
+select ok(public.chef_cancel_sessions('7e6c1000-0000-4000-8000-000000000001', array[pg_temp.week('7e6c3000-0000-4000-8000-000000000009', 1)]) is not null,
+  'Evelyn cancela la semana 1');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000009', 1)) $$, 'menú de la que ahora es la primera');
+select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000009', 1), 'r9-b'), 'r9-b') is not null,
+  'y reenvía desde ahí (versión 2)');
+select is(pg_temp.error_of($$ select public.client_link_accept_quote(pg_temp.h('r9-a'), pg_temp.send_of('r9-a')) $$),
+  '55000: session_cancelled', 'la versión 1 (de una semana cancelada) ya no se acepta');
+select is(pg_temp.error_of($$ select public.client_link_decline_quote(pg_temp.h('r9-a'), pg_temp.send_of('r9-a')) $$),
+  '55000: session_cancelled', 'ni se rechaza');
+select is(public.client_link_accept_quote(pg_temp.h('r9-b'), pg_temp.send_of('r9-b')) ->> 'quoteWeeks', '1', 'la versión 2 sí, con su única semana');
 
 -- ---------------------------------------------------------------------
 -- 6. Rechazar (R2, una sesión extra)
@@ -419,6 +472,47 @@ select ok(public.chef_cancel_sessions('7e6c1000-0000-4000-8000-000000000001',
 select is(pg_temp.error_of($$ select public.chef_update_quote('7e6c1000-0000-4000-8000-000000000001',
     (select id from public.quotes where request_id = '7e6c3000-0000-4000-8000-000000000007' and withdrawn_at is null), 100) $$),
   '55000: quote_empty', 'un presupuesto sin semanas no cambia de precio');
+
+-- R12: un presupuesto para mañana a las 16:00 (la semana 1 de R1 puede caer mañana a las 10:00). El plazo de 48 h no pasa la llegada.
+select ok((public.chef_create_quote('7e6c1000-0000-4000-8000-000000000001', '7e6c3000-0000-4000-8000-000000000012',
+  array[(now() at time zone 'Europe/Rome')::date + 1], '16:00', 120, 20000, 4) ->> 'quote_id') is not null, 'presupuesto de R12 para mañana');
+select is(
+  (select q.hold_until from public.quotes q where q.request_id = '7e6c3000-0000-4000-8000-000000000012'),
+  least(now() + interval '24 hours', (((now() at time zone 'Europe/Rome')::date + 1) + time '16:00') at time zone 'Europe/Rome'),
+  'el borrador retiene 24 h, sin pasar la llegada');
+select lives_ok($$ select pg_temp.add_menu(pg_temp.week('7e6c3000-0000-4000-8000-000000000012', 1)) $$, 'su menú');
+select ok(pg_temp.deliver(pg_temp.prep(pg_temp.week('7e6c3000-0000-4000-8000-000000000012', 1), 'r12'), 'r12') is not null, 'sale');
+select is(
+  (select q.hold_until from public.quotes q where q.request_id = '7e6c3000-0000-4000-8000-000000000012'),
+  (((now() at time zone 'Europe/Rome')::date + 1) + time '16:00') at time zone 'Europe/Rome',
+  'enviado: el plazo es la llegada de mañana, no 48 h');
+
+-- R7 tenía un presupuesto retirado y otro borrador: el link de antes no muestra el borrador.
+select is(jsonb_array_length(public.client_link_view(pg_temp.h('r7')) -> 'weeks'), 0,
+  'el link no muestra las semanas de un borrador que no salió');
+
+-- R10: Evelyn rechaza el pedido desde la bandeja con un borrador abierto.
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000010', array[77], 30000) is not null, 'borrador de R10');
+reset role;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"7e6c0000-0000-4000-8000-00000000c001","role":"authenticated"}';
+update public.requests set status = 'rejected' where id = '7e6c3000-0000-4000-8000-000000000010';
+reset role;
+select is(
+  (select concat_ws(' ', s.status, s.cancel_reason, q.withdrawn_at is not null)
+   from public.sessions s join public.quotes q on q.id = s.quote_id
+   where s.request_id = '7e6c3000-0000-4000-8000-000000000010'),
+  'cancelled quote_withdrawn t', 'rechazar el pedido retira el borrador y libera su semana');
+
+-- R11: Evelyn confirma sin presupuesto otra semana, con un borrador abierto.
+set local role service_role;
+select ok(pg_temp.quote('7e6c3000-0000-4000-8000-000000000011', array[84], 30000) is not null, 'borrador de R11');
+select ok(public.chef_create_booking('7e6c1000-0000-4000-8000-000000000001', array[pg_temp.d(91)], '10:00', 180, 25000,
+  p_request_id => '7e6c3000-0000-4000-8000-000000000011') is not null, 'Evelyn confirma sin presupuesto otra semana');
+select is(
+  (select string_agg(concat_ws(' ', s.status, s.cancel_reason), ' | ' order by s."date") from public.sessions s
+   where s.request_id = '7e6c3000-0000-4000-8000-000000000011'),
+  'cancelled quote_withdrawn | confirmed', 'el borrador se retira solo; queda la semana confirmada');
 
 reset role;
 select * from finish();

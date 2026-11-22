@@ -11,15 +11,20 @@
 --      presupuesto (quote_id) y sus términos (quote_terms: semanas, horas y precio, tal como los ve
 --      la clienta). Al salir, el pedido pasa a quoted y el horario queda retenido quote_hold_hours
 --      (48 h por defecto).
---   3. La clienta, en su link, lo acepta (las sesiones pasan a confirmed, el pedido a accepted, la
---      ficha de prospecto a trial y el menú de la semana 1 queda confirmado), lo rechaza (sesiones
---      canceladas, pedido declined) o pide cambios (como con cualquier menú). Evelyn cambia lo que
---      haga falta (precio con chef_update_quote; fechas y semanas con chef_move_session y
---      chef_cancel_sessions; el menú con save_session_menu) y lo vuelve a mandar: otra versión, y el
---      plazo vuelve a empezar.
+--   3. La clienta, en su link, acepta la última versión, con los términos que vio (las sesiones pasan
+--      a confirmed, el pedido a accepted, la ficha de prospecto a trial, el menú de la semana 1 queda
+--      confirmado y el presupuesto guarda lo aceptado), lo rechaza (sesiones canceladas, pedido
+--      declined) o pide cambios (como con cualquier menú). Evelyn cambia lo que haga falta (precio con
+--      chef_update_quote; fechas y semanas con chef_move_session y chef_cancel_sessions; el menú con
+--      save_session_menu) y lo vuelve a mandar: otra versión, y el plazo vuelve a empezar. Mientras
+--      no lo reenvíe, la clienta no puede aceptar términos que ya no son los de ahora
+--      (quote_changed).
 --   4. Si nadie contesta a tiempo, vence: private.expire_quotes (pg_cron, cada 15 minutos) cancela
 --      las sesiones (hold_expired) y el pedido pasa a expired; un borrador que nunca salió deja el
---      pedido en new. Evelyn también puede retirarlo (chef_withdraw_quote): el pedido vuelve a new.
+--      pedido en new. El plazo nunca pasa la llegada de la primera semana. Evelyn también puede
+--      retirarlo (chef_withdraw_quote): el pedido vuelve a new. Si el pedido pasa a otro estado por
+--      otro camino (Evelyn lo rechaza, o lo confirma sin presupuesto), el presupuesto abierto se
+--      retira solo (requests_close_open_quotes).
 -- «Confirmar sin presupuesto» (chef_create_booking) sigue igual, para lo que se acordó por fuera.
 -- Nada de esto toca los pagos.
 --
@@ -32,6 +37,8 @@
 --   5. El link de la clienta: client_link_view con el presupuesto, client_link_accept_quote,
 --      client_link_decline_quote, y confirmar o pedir cambios de un menú que va con un presupuesto.
 --   6. private.expire_quotes y su trabajo de pg_cron.
+--   7. requests_close_open_quotes: retirar el presupuesto abierto si el pedido cambia de estado por
+--      otro camino.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -39,7 +46,9 @@
 --
 -- version: 1 al prepararlo; cada envío después del primero la sube (la clienta ve «versión 2» y
 -- solo puede aceptar la última). sent_at = el primer envío; last_sent_at = el último (null en los
--- presupuestos de antes, que salían una sola vez: vale sent_at).
+-- presupuestos de antes, que salían una sola vez: vale sent_at). service_cents es el total de ahora
+-- (chef_update_quote lo cambia); pricing_snapshot, los términos del último envío y, al aceptarlo,
+-- los aceptados.
 -- Un presupuesto está abierto mientras no tenga accepted_at, declined_at, withdrawn_at ni
 -- expired_at (a lo sumo uno de los cuatro). Uno abierto por pedido.
 -- ---------------------------------------------------------------------
@@ -126,8 +135,8 @@ revoke all on function private.quote_terms(uuid) from public, anon, authenticate
 -- hora, los minutos, las porciones y el precio, como chef_create_booking: de 1 a 8 fechas, una por
 -- semana ISO y en orden (más de una solo en un pedido semanal), a menos de un año de hoy; el precio
 -- de todo el presupuesto, repartido entre las semanas con split_cents.
--- Crea una sesión held por semana (pay_mode manual, hold_until: 24 h, el borrador) y el presupuesto
--- (sin enviar, versión siguiente a la última del pedido). El pedido sigue new (con seen_at): pasa a
+-- Crea una sesión held por semana (pay_mode manual, hold_until: 24 h, el borrador, sin pasar la
+-- llegada de la primera) y el presupuesto (sin enviar, versión siguiente a la última del pedido). El pedido sigue new (con seen_at): pasa a
 -- quoted cuando sale. p_dry_run: valida y devuelve el estado de cada fecha (booking_day_checks) sin
 -- escribir nada; ahí p_start puede faltar.
 -- Todo o nada: si una semana choca, no se crea ninguna (23P01 slot_taken o 23505 week_taken, con la
@@ -156,7 +165,7 @@ set search_path = ''
 as $$
 declare
   v_today      date := (now() at time zone 'Europe/Rome')::date;
-  v_hold       timestamptz := now() + interval '24 hours';
+  v_hold       timestamptz;
   v_dates      date[];
   v_n          int;
   v_split      int[];
@@ -201,6 +210,9 @@ begin
     raise exception 'invalid_cents' using errcode = '22023';
   end if;
   v_split := private.split_cents(p_service_total_cents, v_n);
+  -- El borrador retiene 24 h, nunca más allá de la llegada de la primera semana.
+  v_hold := least(now() + interval '24 hours',
+                  ((v_dates[1] + coalesce(p_start, time '00:00')) at time zone 'Europe/Rome'));
 
   -- El lock serializa dos presupuestos (o una reserva y un presupuesto) del mismo pedido.
   select r.* into v_request
@@ -261,8 +273,7 @@ begin
   end loop;
 
   update public.quotes q
-     set session_id = (select s.id from public.sessions s where s.quote_id = v_quote_id order by s."date" limit 1),
-         pricing_snapshot = private.quote_terms(v_quote_id)
+     set session_id = (select s.id from public.sessions s where s.quote_id = v_quote_id order by s."date" limit 1)
    where q.id = v_quote_id;
   update public.requests r set seen_at = coalesce(r.seen_at, now()) where r.id = v_request.id;
 
@@ -285,8 +296,9 @@ comment on function public.chef_create_quote(uuid, uuid, date[], time, int, int,
 -- 3c. public.chef_update_quote(p_chef_id, p_quote_id, p_service_total_cents)
 --
 -- Otro precio para un presupuesto abierto: se reparte entre sus semanas vivas (split_cents). Si ya
--- salió, hay que volver a mandarlo para que la clienta vea el precio nuevo (los envíos preparados
--- antes ya no salen: quote_changed). Devuelve los términos nuevos (private.quote_terms).
+-- salió, hay que volver a mandarlo para que la clienta vea el precio nuevo: los envíos preparados
+-- antes ya no salen (quote_changed) y el que ella tiene no se puede aceptar hasta que llegue el
+-- nuevo. pricing_snapshot sigue con los términos enviados. Devuelve los términos nuevos.
 -- Errores: P0002 quote_not_found; 22023 invalid_cents; 55000 quote_closed, quote_empty.
 -- ---------------------------------------------------------------------
 create function public.chef_update_quote(p_chef_id uuid, p_quote_id uuid, p_service_total_cents int)
@@ -321,9 +333,7 @@ begin
   for i in 1 .. cardinality(v_ids) loop
     update public.sessions s set service_cents = v_split[i] where s.id = v_ids[i];
   end loop;
-  update public.quotes q
-     set service_cents = p_service_total_cents, pricing_snapshot = private.quote_terms(p_quote_id)
-   where q.id = p_quote_id;
+  update public.quotes q set service_cents = p_service_total_cents where q.id = p_quote_id;
   return private.quote_terms(p_quote_id);
 end
 $$;
@@ -410,6 +420,43 @@ $$;
 
 revoke all on function private.session_quote(public.sessions) from public, anon, authenticated, service_role;
 
+-- La huella de la foto (private.menu_send_fingerprint, de la migración del envío) suma, en una semana
+-- held de un presupuesto abierto, sus términos: si cambia el precio o una semana mientras se arma la
+-- foto, la vista previa no se guarda (menu_changed).
+create or replace function private.menu_send_fingerprint(p_session_id uuid)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select md5(jsonb_build_object(
+    'session', (select jsonb_build_object('date', s."date", 'start', s.start_time)
+                from public.sessions s where s.id = p_session_id),
+    'weeks', (select coalesce(jsonb_agg(jsonb_build_object('id', o.id, 'date', o."date", 'start', o.start_time)
+                                        order by o."date", o.start_time, o.id), '[]'::jsonb)
+              from public.sessions s
+              join public.sessions o on o.request_id = s.request_id and o.status <> 'cancelled'
+              where s.id = p_session_id),
+    'menu', (select m.version from public.session_menus m where m.session_id = p_session_id),
+    'dishes', (select coalesce(jsonb_agg(jsonb_build_object(
+                 'id', r.id, 'nameIt', r.name_it, 'nameEs', r.name_es, 'nameEn', r.name_en,
+                 'descriptionIt', r.description_it, 'descriptionEs', r.description_es,
+                 'descriptionEn', r.description_en, 'diet', r.diet, 'photoId', r.photo_id,
+                 'allergens', (select coalesce(jsonb_agg(a.allergen order by a.allergen), '[]'::jsonb)
+                               from public.recipe_allergens a where a.recipe_id = r.id))
+                 order by d.position), '[]'::jsonb)
+               from public.session_menu d
+               join public.recipes r on r.id = d.recipe_id
+               where d.session_id = p_session_id),
+    'quote', (select private.quote_terms(s.quote_id)
+              from public.sessions s
+              join public.quotes q on q.id = s.quote_id
+              where s.id = p_session_id and s.status = 'held' and private.quote_open(q))
+  )::text)
+$$;
+
+revoke all on function private.menu_send_fingerprint(uuid) from public, anon, authenticated, service_role;
+
 -- 4a. chef_menu_send_context: igual que antes, más quote (private.session_quote o null).
 create or replace function public.chef_menu_send_context(p_chef_id uuid, p_session_id uuid)
 returns jsonb
@@ -430,6 +477,9 @@ begin
   select s.* into v_session from public.sessions s where s.id = p_session_id and s.chef_id = p_chef_id;
   if not found then
     raise exception 'session_not_found' using errcode = 'P0002';
+  end if;
+  if v_session.status not in ('held', 'confirmed', 'shopping_done') then
+    raise exception 'session_not_editable' using errcode = '55000', detail = v_session.status::text;
   end if;
   if v_session.request_id is null then
     raise exception 'session_without_request' using errcode = '55000';
@@ -500,21 +550,24 @@ begin
       where ms.session_id = p_session_id and ms.sent_at is not null
       order by ms.sent_at desc, ms.id desc
       limit 1),
-    'quote', private.session_quote(v_session));
+    'quote', private.session_quote(v_session),
+    'fingerprint', private.menu_send_fingerprint(p_session_id));
 end
 $$;
 
 comment on function public.chef_menu_send_context(uuid, uuid) is
-  'Lo que la función chef necesita para armar el mensaje del menú de una semana (SPEC 5.8): sesión con «Semana k de N», fechas de la reserva, pedido, contacto (el del pedido de la web o el de la ficha), cocinera, menú (platos en los tres idiomas, alérgenos, dieta, foto, porciones; lista; nota; versión), el último envío y, si la semana es de un presupuesto abierto, el presupuesto (quote: versión, si ya salió, plazo, si es su primera semana y sus términos). Errores: P0002 session_not_found / menu_not_found; 55000 session_without_request. Solo service_role.';
+  'Lo que la función chef necesita para armar el mensaje del menú de una semana (SPEC 5.8): sesión con «Semana k de N», fechas de la reserva, pedido, contacto (el del pedido de la web o el de la ficha), cocinera, menú (platos en los tres idiomas, alérgenos, dieta, foto, porciones; lista; nota; versión), el último envío, si la semana es de un presupuesto abierto el presupuesto (quote: versión, si ya salió, plazo, si es su primera semana y sus términos) y la huella de todo eso. Errores: P0002 session_not_found / menu_not_found; 55000 session_not_editable / session_without_request. Solo service_role.';
 
--- 4b. chef_prepare_menu_send: una semana held solo sale con su presupuesto, y solo la primera.
+-- 4b. chef_prepare_menu_send: una semana held solo sale con su presupuesto, y solo la primera. La huella
+-- (p_fingerprint, la del contexto) cubre también los términos del presupuesto.
 create or replace function public.chef_prepare_menu_send(
   p_chef_id      uuid,
   p_session_id   uuid,
   p_menu_version int,
   p_locale       text,
   p_snapshot     jsonb,
-  p_translated   boolean
+  p_translated   boolean,
+  p_fingerprint  text
 )
 returns jsonb
 language plpgsql
@@ -559,7 +612,8 @@ begin
   if not found then
     raise exception 'menu_not_found' using errcode = 'P0002';
   end if;
-  if p_menu_version is distinct from v_version then
+  if p_menu_version is distinct from v_version
+     or p_fingerprint is distinct from private.menu_send_fingerprint(p_session_id) then
     raise exception 'menu_changed' using errcode = '40001';
   end if;
   if not exists (select 1 from public.session_menu d where d.session_id = p_session_id) then
@@ -567,17 +621,17 @@ begin
   end if;
 
   insert into public.menu_sends (chef_id, session_id, request_id, menu_version, locale, snapshot, translated,
-                                 quote_id, quote_terms)
+                                 fingerprint, quote_id, quote_terms)
   values (p_chef_id, p_session_id, v_session.request_id, v_version, p_locale, p_snapshot, coalesce(p_translated, false),
-          (v_quote ->> 'id')::uuid, v_quote -> 'terms')
+          p_fingerprint, (v_quote ->> 'id')::uuid, v_quote -> 'terms')
   returning id into v_send_id;
 
   return jsonb_build_object('sendId', v_send_id);
 end
 $$;
 
-comment on function public.chef_prepare_menu_send(uuid, uuid, int, text, jsonb, boolean) is
-  'Vista previa del envío del menú de una semana (SPEC 5.8): guarda el envío sin salir con la foto de lo que ve la clienta. Exige la versión guardada del menú y algún plato. Una semana held solo sale como la primera de su presupuesto abierto, y el envío lo lleva (quote_id y sus términos). Devuelve {sendId}. Errores: P0002 session_not_found / menu_not_found; 55000 session_not_editable, session_without_request, quote_closed, quote_week_not_first; 40001 menu_changed; 22023 menu_empty, invalid_locale, invalid_snapshot. Solo service_role.';
+comment on function public.chef_prepare_menu_send(uuid, uuid, int, text, jsonb, boolean, text) is
+  'Vista previa del envío del menú de una semana (SPEC 5.8): guarda el envío sin salir con la foto de lo que ve la clienta y su huella. Exige la versión guardada del menú, la huella con que se armó la foto y algún plato. Una semana held solo sale como la primera de su presupuesto abierto, y el envío lo lleva (quote_id y sus términos). Devuelve {sendId}. Errores: P0002 session_not_found / menu_not_found; 55000 session_not_editable, session_without_request, quote_closed, quote_week_not_first; 40001 menu_changed; 22023 menu_empty, invalid_locale, invalid_snapshot. Solo service_role.';
 
 -- private.send_quote_check(p_send): para un envío con presupuesto, que siga abierto y con los mismos
 -- términos que en la vista previa. Bloquea el presupuesto. Errores: 55000 quote_closed; 40001
@@ -640,6 +694,9 @@ begin
     raise exception 'menu_changed' using errcode = '40001';
   end if;
   perform private.send_quote_check(v_send);
+  if v_send.fingerprint is distinct from private.menu_send_fingerprint(v_send.session_id) then
+    raise exception 'menu_changed' using errcode = '40001';
+  end if;
 
   insert into public.client_links (token_hash, chef_id, request_id)
   values (p_token_hash, p_chef_id, v_send.request_id);
@@ -664,8 +721,9 @@ comment on function public.chef_link_menu_send(uuid, uuid, text) is
   'Al enviar el menú de una semana (SPEC 5.8), antes del email: crea el link del mensaje (el hash sha-256 del token) y devuelve la foto, el idioma, el contacto de ahora y el nombre de la cocinera para armarlo. Si lleva presupuesto, tiene que seguir abierto y con los términos de la vista previa. Errores: P0002 send_not_found; 22023 invalid_token; 55000 already_sent / session_not_editable / quote_closed; 40001 menu_changed / quote_changed; 23505 token repetido. Solo service_role.';
 
 -- 4d. chef_complete_menu_send: igual que antes; si lleva presupuesto, el presupuesto sale con él:
--- versión (la primera vez queda la 1), plazo (quote_hold_hours desde ahora, también en sus semanas
--- held) y el pedido pasa a quoted.
+-- versión (la primera vez queda la 1), plazo (quote_hold_hours desde ahora sin pasar la llegada de
+-- la primera semana, también en sus semanas held), los términos enviados (pricing_snapshot) y el
+-- pedido pasa a quoted.
 create or replace function public.chef_complete_menu_send(p_chef_id uuid, p_send_id uuid, p_via text[])
 returns jsonb
 language plpgsql
@@ -702,6 +760,9 @@ begin
     raise exception 'menu_changed' using errcode = '40001';
   end if;
   perform private.send_quote_check(v_send);
+  if v_send.fingerprint is distinct from private.menu_send_fingerprint(v_send.session_id) then
+    raise exception 'menu_changed' using errcode = '40001';
+  end if;
 
   update public.menu_sends ms
   set sent_at  = now(),
@@ -710,7 +771,11 @@ begin
   returning * into v_send;
 
   if v_send.quote_id is not null then
-    v_hold := now() + make_interval(hours => (select cs.quote_hold_hours from public.chef_settings cs where cs.chef_id = p_chef_id));
+    -- El plazo: quote_hold_hours desde ahora, nunca más allá de la llegada de la primera semana.
+    v_hold := least(
+      now() + make_interval(hours => (select cs.quote_hold_hours from public.chef_settings cs where cs.chef_id = p_chef_id)),
+      ((v_send.quote_terms #>> '{weeks,0,date}')::date + (v_send.quote_terms #>> '{weeks,0,start}')::time)
+        at time zone 'Europe/Rome');
     update public.quotes q
        set version      = case when q.sent_at is null then q.version else q.version + 1 end,
            sent_at      = coalesce(q.sent_at, now()),
@@ -736,10 +801,13 @@ comment on function public.chef_complete_menu_send(uuid, uuid, text[]) is
 -- 5. El link de la clienta
 --
 -- 5a. client_link_view: igual que antes, más quote: el último presupuesto que salió de la reserva,
--- {id, version, status ('sent', 'accepted', 'declined', 'withdrawn' o 'expired'; 'expired' también si
--- venció el plazo y todavía no pasó private.expire_quotes), sentAt, holdUntil, acceptedAt, sendId (el
--- último envío que lo llevó: su foto tiene lo que ve la clienta)} o null. Los términos (fechas,
--- horas y precio) van en la foto de ese envío: es su presupuesto.
+-- {id, version, status ('sent', 'changed', 'accepted', 'declined', 'withdrawn' o 'expired'),
+-- sentAt, holdUntil, acceptedAt, sendId (el último envío que lo llevó: su foto tiene lo que ve la
+-- clienta)} o null. 'expired' también si venció el plazo y todavía no pasó private.expire_quotes;
+-- 'changed' si Evelyn cambió el precio o una semana después de mandarlo y todavía no lo reenvió (no
+-- se puede aceptar). Los términos (fechas, horas y precio) van en la foto de ese envío. Las semanas
+-- held de un presupuesto que todavía no salió (un borrador) no se muestran. clientName: el nombre
+-- con que llegó el pedido o, si no tiene, el de la ficha.
 -- ---------------------------------------------------------------------
 create or replace function public.client_link_view(p_token_hash text)
 returns jsonb
@@ -765,7 +833,8 @@ begin
     'requestId', v_request.id,
     'locale', v_request.locale,
     'chefName', (select c.display_name from public.chefs c where c.id = v_request.chef_id),
-    'clientName', (select c.display_name from public.clients c where c.id = v_request.client_id),
+    'clientName', coalesce(nullif(btrim(v_request.contact ->> 'name'), ''),
+                           (select c.display_name from public.clients c where c.id = v_request.client_id)),
     'weeks', coalesce((
       select jsonb_agg(jsonb_build_object(
                'sessionId', w.id, 'date', w."date", 'start', to_char(w.start_time, 'HH24:MI'),
@@ -784,7 +853,9 @@ begin
                    row_number() over (order by s."date", s.start_time, s.id)::int as n,
                    count(*) over ()::int as total
             from public.sessions s
-            where s.request_id = v_request.id and s.status <> 'cancelled') w), '[]'::jsonb),
+            where s.request_id = v_request.id and s.status <> 'cancelled'
+              and not (s.status = 'held'
+                       and exists (select 1 from public.quotes q where q.id = s.quote_id and q.sent_at is null))) w), '[]'::jsonb),
     'quote', (
       select jsonb_build_object(
                'id', q.id,
@@ -794,6 +865,10 @@ begin
                            when q.declined_at is not null then 'declined'
                            when q.withdrawn_at is not null then 'withdrawn'
                            when q.expired_at is not null or q.hold_until <= now() then 'expired'
+                           when private.quote_terms(q.id) is distinct from
+                                (select ms.quote_terms from public.menu_sends ms
+                                 where ms.quote_id = q.id and ms.sent_at is not null
+                                 order by ms.sent_at desc, ms.id desc limit 1) then 'changed'
                            else 'sent'
                          end,
                'sentAt', coalesce(q.last_sent_at, q.sent_at),
@@ -810,12 +885,61 @@ end
 $$;
 
 comment on function public.client_link_view(text) is
-  'La reserva que abre un link de la clienta (SPEC 5.8), con el hash sha-256 del token: semanas no canceladas por fecha con el último envío del menú de cada una (la foto tal como salió y la respuesta) y el último presupuesto que salió (estado, plazo y el envío que lo lleva; sus términos van en la foto). null si el link no vale. Nada de dirección, contacto ni alergias. Solo service_role.';
+  'La reserva que abre un link de la clienta (SPEC 5.8), con el hash sha-256 del token: semanas no canceladas por fecha (sin las de un borrador) con el último envío del menú de cada una (la foto tal como salió y la respuesta) y el último presupuesto que salió (estado, con changed si cambió sin reenviarse; plazo y el envío que lo lleva; sus términos van en la foto). null si el link no vale. Nada de dirección, contacto ni alergias. Solo service_role.';
 
 -- 5b. Confirmar o pedir cambios de un menú: si el envío lleva un presupuesto todavía abierto, no se
 -- confirma el menú solo (se acepta el presupuesto: quote_pending); pedir cambios sí. Si el
 -- presupuesto se cerró sin aceptarse (rechazado, retirado o vencido), ninguna de las dos
 -- (quote_closed). Un presupuesto aceptado ya dejó ese menú confirmado.
+-- private.client_link_sent_send(p_token_hash, p_send_id): el envío que salió de la reserva del link,
+-- sin más controles (para contestar primero que el presupuesto está cerrado, o que ya se contestó,
+-- aunque sus semanas se hayan cancelado al cerrarlo). Errores: P0002 link_not_found, send_not_found.
+create function private.client_link_sent_send(p_token_hash text, p_send_id uuid)
+returns public.menu_sends
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  v_request_id uuid;
+  v_send       public.menu_sends;
+begin
+  v_request_id := case when p_token_hash ~ '^[0-9a-f]{64}$' then private.client_link_request(p_token_hash) end;
+  if v_request_id is null then
+    raise exception 'link_not_found' using errcode = 'P0002';
+  end if;
+  select ms.* into v_send
+  from public.menu_sends ms
+  where ms.id = p_send_id and ms.request_id = v_request_id and ms.sent_at is not null;
+  if not found then
+    raise exception 'send_not_found' using errcode = 'P0002';
+  end if;
+  return v_send;
+end
+$$;
+
+revoke all on function private.client_link_sent_send(text, uuid) from public, anon, authenticated, service_role;
+
+-- private.quote_closed_reason(p_quote_id): 'accepted', 'declined', 'withdrawn', 'expired' (también si
+-- venció el plazo y todavía no pasó expire_quotes) o null si está abierto y a tiempo.
+create function private.quote_closed_reason(p_quote_id uuid)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  select case
+           when q.accepted_at is not null then 'accepted'
+           when q.declined_at is not null then 'declined'
+           when q.withdrawn_at is not null then 'withdrawn'
+           when q.expired_at is not null or q.hold_until <= now() then 'expired'
+         end
+  from public.quotes q
+  where q.id = p_quote_id
+$$;
+
+revoke all on function private.quote_closed_reason(uuid) from public, anon, authenticated, service_role;
+
 create function private.client_send_quote_state(p_send public.menu_sends)
 returns text
 language sql
@@ -845,6 +969,10 @@ declare
   v_send  public.menu_sends;
   v_state text;
 begin
+  v_send := private.client_link_sent_send(p_token_hash, p_send_id);
+  if v_send.client_confirmed_at is null and private.client_send_quote_state(v_send) = 'closed' then
+    raise exception 'quote_closed' using errcode = '55000';
+  end if;
   v_send := private.client_link_send_for_answer(p_token_hash, p_send_id);
   if v_send.client_confirmed_at is not null then
     return private.client_link_answer(v_send, true);
@@ -880,6 +1008,10 @@ begin
   if v_text is null or char_length(v_text) not between 1 and 1000 or replace(v_text, E'\n', '') ~ '[[:cntrl:]]' then
     raise exception 'invalid_text' using errcode = '22023';
   end if;
+  v_send := private.client_link_sent_send(p_token_hash, p_send_id);
+  if v_send.client_confirmed_at is null and private.client_send_quote_state(v_send) = 'closed' then
+    raise exception 'quote_closed' using errcode = '55000';
+  end if;
   v_send := private.client_link_send_for_answer(p_token_hash, p_send_id);
   if v_send.client_confirmed_at is not null then
     raise exception 'already_confirmed' using errcode = '55000';
@@ -899,8 +1031,12 @@ comment on function public.client_link_request_changes(text, uuid, text) is
   'La clienta pide cambios para el menú de una semana (o para el presupuesto que va con él) desde su link, con un mensaje de 1 a 1000 caracteres (SPEC 5.8). Errores: P0002 link_not_found / send_not_found; 55000 menu_outdated / already_confirmed / quote_closed; 22023 invalid_text. Devuelve lo necesario para avisarle a Evelyn (quoteId si iba con un presupuesto). Solo service_role.';
 
 -- 5c. private.client_quote_for_answer: el presupuesto de un envío al que la clienta contesta, abierto
--- y a tiempo, bloqueado. Errores: 55000 not_a_quote (el envío no lleva presupuesto), quote_closed
--- (aceptado, rechazado, retirado o vencido; DETAIL: cuál), changes_requested, quote_empty.
+-- y a tiempo, con sus semanas bloqueadas (presupuesto → sesiones por id, el mismo orden que el resto).
+-- El envío tiene que ser el último que lo llevó (menu_outdated: hay una versión más nueva) y los
+-- términos de ahora, los que ella vio (quote_changed: Evelyn lo cambió y tiene que reenviarlo).
+-- Errores: 55000 not_a_quote (el envío no lleva presupuesto), quote_closed (aceptado, rechazado,
+-- retirado o vencido; DETAIL: cuál), menu_outdated, changes_requested, quote_empty; 40001
+-- quote_changed.
 create function private.client_quote_for_answer(p_send public.menu_sends)
 returns public.quotes
 language plpgsql
@@ -923,8 +1059,17 @@ begin
   elsif v_quote.expired_at is not null or v_quote.hold_until <= now() then
     raise exception 'quote_closed' using errcode = '55000', detail = 'expired';
   end if;
+  perform 1 from public.sessions s where s.quote_id = v_quote.id and s.status <> 'cancelled' order by s.id for update;
+  if exists (select 1 from public.menu_sends o
+             where o.quote_id = v_quote.id and o.sent_at is not null
+               and (o.sent_at, o.id) > (p_send.sent_at, p_send.id)) then
+    raise exception 'menu_outdated' using errcode = '55000';
+  end if;
   if p_send.changes_requested_at is not null then
     raise exception 'changes_requested' using errcode = '55000';
+  end if;
+  if private.quote_terms(v_quote.id) is distinct from p_send.quote_terms then
+    raise exception 'quote_changed' using errcode = '40001';
   end if;
   if not exists (select 1 from public.sessions s where s.quote_id = v_quote.id and s.status = 'held') then
     raise exception 'quote_empty' using errcode = '55000';
@@ -936,12 +1081,13 @@ $$;
 revoke all on function private.client_quote_for_answer(public.menu_sends) from public, anon, authenticated, service_role;
 
 -- 5d. public.client_link_accept_quote(p_token_hash, p_send_id): la clienta acepta el presupuesto del
--- último envío que lo llevó. Sus semanas held pasan a confirmed, el pedido a accepted (con las
--- semanas que quedaron), la ficha de prospecto a trial, el presupuesto queda aceptado y el menú de
--- ese envío, confirmado. Idempotente: si ya lo aceptó, already = true.
+-- último envío que lo llevó, con los términos que vio. Sus semanas held pasan a confirmed, el pedido
+-- a accepted (con esas semanas), la ficha de prospecto a trial, el presupuesto queda aceptado con lo
+-- aceptado (total, primera fecha y hora, términos) y el menú de ese envío, confirmado. Idempotente:
+-- si ya lo aceptó, already = true.
 -- Errores: P0002 link_not_found / send_not_found; 55000 menu_outdated (hay un envío más nuevo),
--- not_a_quote, quote_closed (DETAIL: accepted, declined, withdrawn o expired), changes_requested,
--- quote_empty.
+-- session_cancelled, not_a_quote, quote_closed (DETAIL: accepted, declined, withdrawn o expired),
+-- changes_requested, quote_empty; 40001 quote_changed.
 create function public.client_link_accept_quote(p_token_hash text, p_send_id uuid)
 returns jsonb
 language plpgsql
@@ -950,25 +1096,39 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_send  public.menu_sends;
-  v_quote public.quotes;
-  v_weeks int;
+  v_send   public.menu_sends;
+  v_quote  public.quotes;
+  v_weeks  int;
+  v_reason text;
 begin
-  v_send := private.client_link_send_for_answer(p_token_hash, p_send_id);
-  if v_send.quote_id is not null and v_send.client_confirmed_at is not null
-     and exists (select 1 from public.quotes q where q.id = v_send.quote_id and q.accepted_at is not null) then
+  v_send := private.client_link_sent_send(p_token_hash, p_send_id);
+  if v_send.quote_id is null then
+    raise exception 'not_a_quote' using errcode = '55000';
+  end if;
+  v_reason := private.quote_closed_reason(v_send.quote_id);
+  if v_reason = 'accepted' and v_send.client_confirmed_at is not null then
     return private.client_link_answer(v_send, true)
            || jsonb_build_object('quoteId', v_send.quote_id,
                                  'totalCents', (v_send.quote_terms ->> 'totalCents')::int,
                                  'quoteWeeks', jsonb_array_length(v_send.quote_terms -> 'weeks'));
   end if;
+  if v_reason is not null then
+    raise exception 'quote_closed' using errcode = '55000', detail = v_reason;
+  end if;
+  v_send := private.client_link_send_for_answer(p_token_hash, p_send_id);
   v_quote := private.client_quote_for_answer(v_send);
 
   update public.sessions s
      set status = 'confirmed', hold_until = null
    where s.quote_id = v_quote.id and s.status = 'held';
   get diagnostics v_weeks = row_count;
-  update public.quotes q set accepted_at = now() where q.id = v_quote.id;
+  update public.quotes q
+     set accepted_at      = now(),
+         service_cents    = (v_send.quote_terms ->> 'totalCents')::int,
+         pricing_snapshot = v_send.quote_terms,
+         slot_date        = (v_send.quote_terms #>> '{weeks,0,date}')::date,
+         slot_start       = (v_send.quote_terms #>> '{weeks,0,start}')::time
+   where q.id = v_quote.id;
   update public.requests r
      set status = 'accepted', weeks = greatest(v_weeks, 1)
    where r.id = v_quote.request_id;
@@ -986,13 +1146,14 @@ end
 $$;
 
 comment on function public.client_link_accept_quote(text, uuid) is
-  'La clienta acepta el presupuesto desde su link (SPEC 5.8): sus semanas held pasan a confirmed, el pedido a accepted, la ficha de prospecto a trial y el menú de la semana 1 queda confirmado. Idempotente (already). Errores: P0002 link_not_found / send_not_found; 55000 menu_outdated / not_a_quote / quote_closed (DETAIL: cuál) / changes_requested / quote_empty. Devuelve lo necesario para avisarle a Evelyn. Solo service_role.';
+  'La clienta acepta desde su link la última versión del presupuesto, con los términos que vio (SPEC 5.8): sus semanas held pasan a confirmed, el pedido a accepted, la ficha de prospecto a trial, el presupuesto guarda lo aceptado y el menú de la semana 1 queda confirmado. Idempotente (already). Errores: P0002 link_not_found / send_not_found; 55000 menu_outdated / session_cancelled / not_a_quote / quote_closed (DETAIL: cuál) / changes_requested / quote_empty; 40001 quote_changed. Devuelve lo necesario para avisarle a Evelyn. Solo service_role.';
 
 -- 5e. public.client_link_decline_quote(p_token_hash, p_send_id): la clienta rechaza el presupuesto.
 -- Sus semanas held se cancelan (declined), el pedido pasa a declined y el presupuesto queda
--- rechazado. Idempotente (already). Se puede rechazar aunque haya pedido cambios antes.
--- Errores: P0002 link_not_found / send_not_found; 55000 menu_outdated, not_a_quote, quote_closed
--- (DETAIL: cuál).
+-- rechazado. Idempotente (already). Se puede rechazar aunque haya pedido cambios antes, pero solo la
+-- última versión (si Evelyn mandó otra, menu_outdated: la página muestra la nueva).
+-- Errores: P0002 link_not_found / send_not_found; 55000 menu_outdated, session_cancelled,
+-- not_a_quote, quote_closed (DETAIL: cuál).
 create function public.client_link_decline_quote(p_token_hash text, p_send_id uuid)
 returns jsonb
 language plpgsql
@@ -1001,13 +1162,22 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_send  public.menu_sends;
-  v_quote public.quotes;
+  v_send   public.menu_sends;
+  v_quote  public.quotes;
+  v_reason text;
 begin
-  v_send := private.client_link_send_for_answer(p_token_hash, p_send_id);
+  v_send := private.client_link_sent_send(p_token_hash, p_send_id);
   if v_send.quote_id is null then
     raise exception 'not_a_quote' using errcode = '55000';
   end if;
+  v_reason := private.quote_closed_reason(v_send.quote_id);
+  if v_reason = 'declined' then
+    return private.client_link_answer(v_send, true) || jsonb_build_object('quoteId', v_send.quote_id);
+  end if;
+  if v_reason is not null then
+    raise exception 'quote_closed' using errcode = '55000', detail = v_reason;
+  end if;
+  v_send := private.client_link_send_for_answer(p_token_hash, p_send_id);
   select q.* into v_quote from public.quotes q where q.id = v_send.quote_id for update;
   if v_quote.declined_at is not null then
     return private.client_link_answer(v_send, true) || jsonb_build_object('quoteId', v_quote.id);
@@ -1018,6 +1188,11 @@ begin
     raise exception 'quote_closed' using errcode = '55000', detail = 'withdrawn';
   elsif v_quote.expired_at is not null or v_quote.hold_until <= now() then
     raise exception 'quote_closed' using errcode = '55000', detail = 'expired';
+  end if;
+  if exists (select 1 from public.menu_sends o
+             where o.quote_id = v_quote.id and o.sent_at is not null
+               and (o.sent_at, o.id) > (v_send.sent_at, v_send.id)) then
+    raise exception 'menu_outdated' using errcode = '55000';
   end if;
 
   update public.sessions s
@@ -1079,3 +1254,47 @@ comment on function private.expire_quotes(timestamptz) is
 revoke all on function private.expire_quotes(timestamptz) from public, anon, authenticated, service_role;
 
 select cron.schedule('radici-expire-quotes', '*/15 * * * *', 'select private.expire_quotes()');
+
+-- ---------------------------------------------------------------------
+-- 7. requests_close_open_quotes
+--
+-- Si el pedido pasa a un estado que no es new ni quoted por otro camino (Evelyn lo rechaza desde la
+-- bandeja, o lo confirma sin presupuesto con chef_create_booking), el presupuesto abierto se retira:
+-- sus semanas held se cancelan (quote_withdrawn) y deja de retener el calendario. Aceptar, rechazar
+-- o vencer el presupuesto lo cierran antes de cambiar el pedido, así que acá no encuentran nada.
+-- Security definer: el rechazo llega con la sesión de la cocina, que no escribe sesiones.
+-- ---------------------------------------------------------------------
+create function private.close_open_quotes()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_quote public.quotes;
+begin
+  for v_quote in
+    select q.* from public.quotes q
+    where q.request_id = new.id
+      and q.accepted_at is null and q.declined_at is null and q.withdrawn_at is null and q.expired_at is null
+    for update
+  loop
+    update public.sessions s
+       set status = 'cancelled', cancelled_at = now(), cancel_reason = 'quote_withdrawn', hold_until = null
+     where s.quote_id = v_quote.id and s.status = 'held';
+    update public.quotes q set withdrawn_at = now() where q.id = v_quote.id;
+  end loop;
+  return null;
+end
+$$;
+
+comment on function private.close_open_quotes() is
+  'Trigger de requests: si el pedido pasa a un estado que no es new ni quoted por otro camino (rechazado, o confirmado sin presupuesto), retira su presupuesto abierto y cancela sus semanas held (quote_withdrawn). SPEC 5.8.';
+
+revoke all on function private.close_open_quotes() from public, anon, authenticated, service_role;
+
+create trigger requests_close_open_quotes
+  after update of status on public.requests
+  for each row
+  when (new.status is distinct from old.status and new.status not in ('new', 'quoted'))
+  execute function private.close_open_quotes();
