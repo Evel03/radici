@@ -205,3 +205,86 @@ test("la lista de secretos de Supabase: si no se puede leer, el despliegue corta
     assert.ok(run.indexOf(check) > list, `${check} usa la lista leída`);
   }
 });
+
+// ---------------------------------------------------------------------------------------------
+// PR04: Auth fijada desde el repo (contrato auth.md §3). El despliegue corta ANTES de db push.
+// ---------------------------------------------------------------------------------------------
+const AUTH_STEP = "Auth desde el repo (altas, código, SMTP y plantilla)";
+const TRACKING_STEP = "Seguimiento de Resend apagado";
+/** Un paso sin sus líneas de comentario (los que van antes del paso siguiente caen en este bloque). */
+const code = (name: string): string =>
+  step(name)
+    .split("\n")
+    .filter((line) => !/^\s*#/.test(line))
+    .join("\n");
+
+test("Auth y seguimiento de Resend: los dos pasos van antes de db push, con las credenciales del proyecto", () => {
+  const migrations = WORKFLOW.indexOf("- name: Migraciones (db push)");
+  const auth = WORKFLOW.indexOf(`- name: ${AUTH_STEP}`);
+  const tracking = WORKFLOW.indexOf(`- name: ${TRACKING_STEP}`);
+  assert.ok(tracking !== -1 && auth !== -1, "están los dos pasos");
+  assert.ok(tracking < migrations && auth < migrations, "los dos antes de db push");
+  assert.ok(tracking < auth, "el seguimiento se comprueba antes de tocar Auth");
+  assert.match(step(TRACKING_STEP), /if: env\.HAS_SUPABASE == 'true'/);
+});
+
+test("seguimiento de Resend: con seguimiento de clics o de aperturas prendido, el paso falla (sin ignorar el resultado)", () => {
+  const run = code(TRACKING_STEP);
+  assert.match(run, /RESEND_API_KEY: \$\{\{ secrets\.RESEND_API_KEY \}\}/, "la clave que ya existe, como secreto");
+  assert.match(run, /run: node supabase\/scripts\/resend-tracking\.ts$/m);
+  assert.ok(!/\|\| true|continue-on-error/.test(run), "ningún resultado se ignora");
+  assert.ok(!/echo[^\n]*RESEND_API_KEY/.test(run), "ningún echo imprime la clave");
+  // Quien apaga el seguimiento es la dueña de la cuenta de Resend: el despliegue solo lo comprueba.
+  assert.ok(!run.includes("PATCH") && !run.includes("-X "), "el despliegue no cambia nada en Resend");
+  // Con una clave solo de envío no se puede leer: corta salvo una variable que lo confirme a propósito.
+  assert.match(run, /RESEND_TRACKING_RESTRICTED_OK: \$\{\{ vars\.RESEND_TRACKING_RESTRICTED_OK \}\}/);
+});
+
+test("Auth: cada PATCH se vuelve a leer y se compara con el cuerpo pedido; un campo distinto corta antes de migrar", () => {
+  const run = code(AUTH_STEP);
+  assert.match(run, /^\s+set -euo pipefail$/m);
+  // El cuerpo sale del script (que falla si config.toml prende autoconfirm) y no se lee en un `local`
+  // que taparía el error.
+  assert.match(run, /local body status[^\n]*\n\s+body=\$\(node supabase\/scripts\/auth-config\.ts "\$1"\)/);
+  assert.ok(run.indexOf("body=$(node") < run.indexOf("-X PATCH"), "primero el cuerpo, después el PATCH");
+  // La respuesta del PATCH (la configuración vigente) se compara con el cuerpo, parte por parte.
+  assert.match(run, /node supabase\/scripts\/auth-config\.ts verify "\$1" < "\$\{response\}"/);
+  const patchFn = /patch\(\) \{[\s\S]*?\n          \}\n/.exec(run)?.[0] ?? "";
+  assert.ok(patchFn.includes('verify "$1"'), "dentro de patch(): ninguna parte queda sin verificar");
+  assert.ok(patchFn.indexOf('verify "$1"') > patchFn.indexOf("-X PATCH"), "verifica lo que devolvió el PATCH");
+  assert.match(patchFn, /Auth no quedó como pide el repo/);
+  // Las tres partes siguen: security siempre; smtp y templates con RESEND_SMTP_KEY.
+  for (const part of ["security", "smtp", "templates"]) assert.match(run, new RegExp(`^\\s+patch ${part}$`, "m"));
+  // Lo viejo se mantiene: las altas apagadas y la plantilla guardada.
+  assert.match(run, /\.disable_signup == true/);
+  assert.match(run, /mailer_templates_magic_link_content == \$template/);
+});
+
+test("Auth: una sola vez anota la versión de GoTrue y los campos que cambian, en el resumen y sin valores", () => {
+  const run = code(AUTH_STEP);
+  assert.match(run, /\$\{api\}\/health\?services=auth/, "la versión sale de la Management API");
+  assert.match(run, /\.\[0\]\.info\.version/);
+  assert.match(run, /auth-config\.ts changed "\$1" < "\$\{response\}"/, "los campos que cambian, antes de cada PATCH");
+  assert.match(run, /GITHUB_STEP_SUMMARY/);
+  // Se lee la configuración vigente antes del primer PATCH, para saber qué cambia.
+  assert.ok(run.indexOf("-X GET") !== -1 && run.indexOf("-X GET") < run.indexOf("patch security"), "GET antes del primer PATCH");
+  // Nada de la respuesta (trae la clave del SMTP) ni del cuerpo llega al log.
+  assert.ok(!/cat "\$\{response\}"|cat "\$\{body\}"|echo "\$\{body\}"|echo "\$\{changed|set -x/.test(run), "no imprime ni la respuesta ni el cuerpo");
+  const printers = run.split("\n").filter((line) => /\b(echo|printf)\b/.test(line) && /\$\{?(version|changed|all_changed)\b/.test(line));
+  for (const line of printers) assert.match(line, /GITHUB_STEP_SUMMARY/, `se imprime fuera del resumen: ${line.trim()}`);
+  // La versión que no se pudo leer avisa, pero no corta: no es un ajuste.
+  assert.match(run, /::warning::[^\n]*versión de GoTrue/);
+});
+
+test("config.toml: con autoconfirm prendido no se llega a ninguna llamada (el script falla con código 2)", () => {
+  // authSecurityConfig lanza (auth-config.test.ts) y la línea de comandos sale con 2: con set -e el paso corta.
+  const script = readFileSync(repo("supabase/scripts/auth-config.ts"), "utf8");
+  assert.match(script, /process\.exit\(2\)/);
+  assert.match(step(AUTH_STEP), /set -euo pipefail/);
+});
+
+test("el encabezado del workflow remite a auth.md y dice que el seguimiento de Resend lo apaga la dueña de la cuenta", () => {
+  const header = WORKFLOW.slice(0, WORKFLOW.indexOf("\nname: "));
+  assert.match(header, /docs\/contracts\/auth\.md/);
+  assert.match(header, /seguimiento de (clics|aperturas)/i);
+});

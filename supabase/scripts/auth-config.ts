@@ -4,8 +4,13 @@
 // (PATCH /v1/projects/{ref}/config/auth): el panel nunca queda distinto del repo y nadie copia la
 // plantilla a mano.
 //
-// Tres partes, en este orden (cada una es un PATCH):
-// - security: altas apagadas, código de 8 cifras y su vencimiento, CAPTCHA. No depende del plan.
+// Tres partes, en este orden (cada una es un PATCH, y el despliegue vuelve a leer lo que Supabase guardó y
+// lo compara con el cuerpo: `verify`; un campo que no quedó igual, o un nombre de campo equivocado que la
+// API ignora en silencio, corta el despliegue antes de db push):
+// - security: altas apagadas, código de 8 cifras y su vencimiento, CAPTCHA, sin autoconfirm, sin entrar
+//   con emails sin verificar, cambio de email seguro, linking manual apagado, 10 verificaciones cada 5
+//   minutos, URLs de redirección exactas y solo el email como proveedor (contrato docs/contracts/auth.md).
+//   No depende del plan.
 // - smtp: el SMTP de Resend (necesita RESEND_SMTP_KEY y MAIL_FROM).
 // - templates: asuntos, plantilla del código y límite de emails. En un proyecto Free (desde junio de
 //   2026) Supabase solo deja cambiar las plantillas con SMTP propio: sin él, el email del código trae
@@ -13,6 +18,8 @@
 //   del SMTP y nunca sin él.
 //
 // Uso (CI, desde la raíz): node supabase/scripts/auth-config.ts security|smtp|templates > body.json
+//   node supabase/scripts/auth-config.ts verify <parte> < respuesta.json   (falla con 2 si algo no quedó)
+//   node supabase/scripts/auth-config.ts changed <parte> < respuesta.json  (nombres de campo que cambian)
 // Solo sintaxis borrable: corre con node, sin compilar.
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -87,7 +94,27 @@ function requireValue<T extends TomlValue>(section: Map<string, TomlValue>, key:
   return value as T;
 }
 
-/** Altas apagadas, código de 8 cifras y CAPTCHA, desde config.toml. */
+/** Única URL de redirección de Auth: el área de clientes (M2). /gestione/ entra con el código de 8 cifras, sin redirección. */
+export const AUTH_SITE_URL = "https://radicicucina.app/app/";
+
+/** Falla si config.toml no coincide con lo que producción tiene fijado (así local y producción no se separan). */
+function requireLocalMatch(toml: string, section: string, key: string, expected: TomlValue, message: string): void {
+  if (tomlSection(toml, section).get(key) !== expected) throw new Error(`config.toml: ${message}`);
+}
+
+/** Proveedores externos ([auth.external.*]) que config.toml prende. */
+function enabledExternalProviders(toml: string): string[] {
+  const names = [...toml.matchAll(/^\[auth\.external\.([A-Za-z0-9_]+)\]/gm)].map((m) => m[1] ?? "");
+  return names.filter((name) => tomlSection(toml, `auth.external.${name}`).get("enabled") === true);
+}
+
+/**
+ * Lo fijo de Auth, desde config.toml y las constantes de arriba: altas apagadas, código de 8 cifras,
+ * CAPTCHA apagado, sin autoconfirm, sin entrar con emails sin verificar, cambio de email seguro, linking
+ * manual apagado, magic link prendido (el código de Evelyn sale de esa plantilla), 10 verificaciones
+ * cada 5 minutos y solo el email como proveedor. Nombres de campo: Management API, PATCH
+ * /v1/projects/{ref}/config/auth.
+ */
 export function authSecurityConfig(toml: string): AuthBody {
   const auth = tomlSection(toml, "auth");
   const email = tomlSection(toml, "auth.email");
@@ -100,13 +127,61 @@ export function authSecurityConfig(toml: string): AuthBody {
   if (tomlSection(toml, "auth.captcha").get("enabled") === true) {
     throw new Error("config.toml prende el CAPTCHA: falta su proveedor y su secreto en auth-config.ts (M2)");
   }
+  // enable_confirmations = false es el autoconfirm de la Management API (mailer_autoconfirm y
+  // sms_autoconfirm = true): una cuenta quedaría confirmada sin probar que el email es suyo.
+  requireLocalMatch(toml, "auth.email", "enable_confirmations", true, "[auth.email] enable_confirmations = false prende el autoconfirm del email");
+  requireLocalMatch(toml, "auth.sms", "enable_confirmations", true, "[auth.sms] enable_confirmations = false prende el autoconfirm del teléfono");
+  requireLocalMatch(toml, "auth", "enable_manual_linking", false, "[auth] enable_manual_linking prende el linking manual");
+  requireLocalMatch(toml, "auth", "enable_anonymous_sign_ins", false, "[auth] enable_anonymous_sign_ins prende los anónimos");
+  requireLocalMatch(toml, "auth.email", "double_confirm_changes", true, "[auth.email] double_confirm_changes apagado: el cambio de email tiene que confirmarse en los dos emails");
+  requireLocalMatch(toml, "auth.sms", "enable_signup", false, "[auth.sms] enable_signup prende el teléfono");
+  requireLocalMatch(toml, "auth.web3.solana", "enabled", false, "[auth.web3.solana] enabled prende Web3");
+  requireLocalMatch(toml, "auth.rate_limit", "token_verifications", 10, "[auth.rate_limit] token_verifications tiene que ser 10 (rate_limit_verify de producción)");
+  const providers = enabledExternalProviders(toml);
+  if (providers.length > 0) {
+    throw new Error(`config.toml prende proveedores externos (${providers.join(", ")}): Google y Apple se prenden en su PR, con su secreto en auth-config.ts`);
+  }
   return {
     disable_signup: true,
     external_email_enabled: true,
     mailer_otp_length: requireValue<number>(email, "otp_length", "number"),
     mailer_otp_exp: requireValue<number>(email, "otp_expiry", "number"),
     security_captcha_enabled: false,
+    // /gestione/ entra con el código por email, sin redirección: estas URLs son solo las del área de
+    // clientes y no abren /gestione/ a ningún redirect (contrato auth.md §3).
+    site_url: AUTH_SITE_URL,
+    uri_allow_list: AUTH_SITE_URL,
+    mailer_autoconfirm: false,
+    sms_autoconfirm: false,
+    mailer_allow_unverified_email_sign_ins: false,
+    mailer_secure_email_change_enabled: true,
+    security_manual_linking_enabled: false,
+    // false = el magic link / código por email prendido (signInWithOtp de la app lo usa).
+    external_email_magic_link_disabled: false,
+    rate_limit_verify: 10,
+    external_google_enabled: false,
+    external_apple_enabled: false,
+    external_phone_enabled: false,
+    external_anonymous_users_enabled: false,
+    external_web3_solana_enabled: false,
+    external_web3_ethereum_enabled: false,
+    saml_enabled: false,
   };
+}
+
+/** Campos que la API guarda pero no devuelve en claro: no se comparan. */
+const NOT_COMPARABLE = new Set(["smtp_pass"]);
+
+const same = (expected: unknown, live: unknown): boolean => live !== undefined && live !== null && String(expected) === String(live);
+
+/** Nombres de los campos de [body] que la configuración vigente [live] no tiene igual (nunca valores). */
+export function verifyAuthConfig(body: AuthBody, live: Record<string, unknown>): string[] {
+  return Object.keys(body).filter((key) => !NOT_COMPARABLE.has(key) && !same(body[key], live[key]));
+}
+
+/** Lo que cambiaría en producción: los nombres de campo que hoy no tienen el valor del repo. */
+export function changedFields(body: AuthBody, live: Record<string, unknown>): string[] {
+  return verifyAuthConfig(body, live);
 }
 
 /** SMTP de Resend con el remitente de MAIL_FROM. */
@@ -139,13 +214,14 @@ export function authTemplatesConfig(toml: string, readFile: (path: string) => st
 }
 
 // Uso desde la línea de comandos: imprime el cuerpo de una parte en JSON (con la clave del SMTP
-// adentro: va directo al curl del workflow, nunca a un log).
+// adentro: va directo al curl del workflow, nunca a un log). `verify` y `changed` leen de la entrada
+// estándar la configuración vigente (la respuesta de la API, con la clave del SMTP: no se imprime) y solo
+// escriben nombres de campo.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const root = new URL("../../", import.meta.url);
   const read = (path: string): string => readFileSync(new URL(path.replace(/^\.\//, ""), root), "utf8");
   const toml = read("supabase/config.toml");
-  const part = process.argv[2];
-  try {
+  const bodyOf = (part: string | undefined): AuthBody => {
     const body =
       part === "security"
         ? authSecurityConfig(toml)
@@ -154,8 +230,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           : part === "templates"
             ? authTemplatesConfig(toml, read)
             : null;
-    if (!body) throw new Error("Uso: node supabase/scripts/auth-config.ts security|smtp|templates");
-    process.stdout.write(JSON.stringify(body));
+    if (!body) throw new Error("Uso: node supabase/scripts/auth-config.ts [verify|changed] security|smtp|templates");
+    return body;
+  };
+  try {
+    const command = process.argv[2];
+    if (command === "verify" || command === "changed") {
+      const live = JSON.parse(readFileSync(0, "utf8")) as Record<string, unknown>;
+      const wrong = verifyAuthConfig(bodyOf(process.argv[3]), live);
+      if (command === "changed") process.stdout.write(wrong.map((name) => `${name}\n`).join(""));
+      else if (wrong.length > 0) throw new Error(`Auth no quedó como pide el repo, campos: ${wrong.join(", ")}`);
+    } else {
+      process.stdout.write(JSON.stringify(bodyOf(command)));
+    }
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(2);

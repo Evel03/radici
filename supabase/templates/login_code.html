@@ -34,11 +34,11 @@
 {{ end }}
 <p style="margin:0 0 16px;font-size:32px;font-weight:700;letter-spacing:8px;font-family:Menlo,Consolas,monospace;color:#2c2b20;">{{ .Token }}</p>
 {{ if and .Data.locale (eq .Data.locale "es") }}
-<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Escríbelo en la app. Vale 10 minutos. Si no lo pediste, ignora este email.</p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Escríbelo en la app. Vale 10 minutos. No compartas este código con nadie, ni siquiera con Evelyn. Si no lo pediste, ignora este email.</p>
 {{ else if and .Data.locale (eq .Data.locale "en") }}
-<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Type it in the app. It is valid for 10 minutes. If you didn't ask for it, ignore this email.</p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Type it in the app. It is valid for 10 minutes. Don't share this code with anyone, not even Evelyn. If you didn't ask for it, ignore this email.</p>
 {{ else }}
-<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Scrivilo nell'app. Vale 10 minuti. Se non l'hai chiesto tu, ignora questa email.</p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Scrivilo nell'app. Vale 10 minuti. Non condividere questo codice con nessuno, nemmeno con Evelyn. Se non l'hai chiesto tu, ignora questa email.</p>
 {{ end }}
 </td></tr>
 </table>
