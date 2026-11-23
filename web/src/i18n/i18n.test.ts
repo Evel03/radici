@@ -273,7 +273,9 @@ describe("sin precios: la web no muestra importes ni tarifas (decisión del 22/1
     it(`${lang}: ningún texto lleva «€», una tarifa, un valor global de dinero ni promete una estimación`, () => {
       const entries = Object.entries(dicts[lang]);
       // Los textos de privacy hablan de «estimada» solo para la duración del servicio (minutos de cocina, sin dinero).
-      const copy = entries.filter(([key]) => !key.startsWith("privacy."));
+      // El recuadro del presupuesto de la página de la reserva (reservation.quote.*) es el único lugar con «precio»:
+      // el que escribe Evelyn a mano para esa clienta, sin tarifas ni cálculo.
+      const copy = entries.filter(([key]) => !key.startsWith("privacy.") && !key.startsWith("reservation.quote."));
       for (const [key, value] of entries) {
         expect(value, key).not.toMatch(/€|EUR|&euro;/);
         expect(value, key).not.toMatch(MONEY_PLACEHOLDERS);
