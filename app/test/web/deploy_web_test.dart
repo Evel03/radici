@@ -76,7 +76,15 @@ void main() {
     expect(check, contains('run: bash "\${GITHUB_WORKSPACE}/$script"'));
     final checker = findRepoFile(script).readAsStringSync();
     expect(checker, contains('gestione/main.dart.js gestione/flutter_bootstrap.js'));
-    // Un cambio solo en el script también dispara el workflow (push y PR).
-    expect('- "$script"'.allMatches(workflow), hasLength(2));
+    // Un cambio solo en el script también dispara el workflow (el push a main).
+    expect('- "$script"'.allMatches(workflow), hasLength(1));
+  });
+
+  test('los pull requests no lo disparan: solo main y la ejecución manual', () {
+    final start = workflow.indexOf('\non:\n');
+    final on = workflow.substring(start, workflow.indexOf('\nconcurrency:'));
+    expect(on, contains('branches: [main]'));
+    expect(on, contains('workflow_dispatch:'));
+    expect(on, isNot(contains('pull_request')));
   });
 }
