@@ -76,6 +76,17 @@ test("los archivos que no son .sql se ignoran; un .sql con otro nombre falla (el
   }
 });
 
+test("el mensaje de nombre inválido distingue lo que el CLI saltea de lo que aplicaría con otra cantidad de dígitos", () => {
+  assert.match(problems(MAIN, [...MAIN, m("2026112310000_corta.sql")])[0].message, /el CLI lo aplicaría/);
+  assert.match(problems(MAIN, [...MAIN, m("agregar_columna.sql")])[0].message, /el CLI de Supabase saltea/);
+});
+
+test("una migración de main con prefijo que no es de 14 dígitos igual cuenta como aplicada", () => {
+  const odd = [...MAIN, m("2026_x.sql")];
+  assert.deepEqual(problems(odd, MAIN).map((p) => p.file), [m("2026_x.sql")]);
+  assert.deepEqual(problems(odd, odd, [m("2026_x.sql")]).map((p) => p.file), [m("2026_x.sql")]);
+});
+
 test("solo cuenta lo de supabase/migrations/ (sin subcarpetas)", () => {
   assert.deepEqual(problems(MAIN, [...MAIN, `${DIR}viejas/20200101000000_x.sql`, "supabase/seed.sql"]), []);
 });

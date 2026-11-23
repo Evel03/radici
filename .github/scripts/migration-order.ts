@@ -20,9 +20,12 @@ import { execFileSync } from "node:child_process";
 
 export const MIGRATIONS_DIR = "supabase/migrations/";
 
-// El formato de `supabase migration new`: AAAAMMDDHHMMSS_nombre.sql. El CLI saltea (sin aplicar) un .sql
-// que no empieza con dígitos y «_»; acá se exigen además los 14 dígitos, porque las versiones se comparan
-// como texto.
+// El formato de `supabase migration new`: AAAAMMDDHHMMSS_nombre.sql. El CLI (pkg/migration/file.go) aplica
+// todo lo que calce con `^([0-9]+)_(.*)\.sql$` (cualquier cantidad de dígitos, nombre vacío incluido) y
+// saltea el resto. Acá las migraciones que ya están en main se reconocen con el patrón del CLI
+// (CLI_MIGRATION) y a las nuevas se les exigen además los 14 dígitos (MIGRATION_NAME), porque el CLI
+// compara las versiones como texto.
+const CLI_MIGRATION = /^(\d+)_.*\.sql$/;
 const MIGRATION_NAME = /^(\d{14})_[^/]+\.sql$/;
 const TITLE = "Orden de las migraciones";
 
@@ -48,9 +51,14 @@ function isSql(name: string): boolean {
   return name.toLowerCase().endsWith(".sql");
 }
 
-/** Versión de una migración bien nombrada, o null. */
+/** Versión de una migración bien nombrada (14 dígitos), o null. */
 function versionOf(name: string): string | null {
   return MIGRATION_NAME.exec(name)?.[1] ?? null;
+}
+
+/** Versión con la que el CLI de Supabase guardaría la migración, o null si la saltea. */
+function appliedVersionOf(name: string): string | null {
+  return CLI_MIGRATION.exec(name)?.[1] ?? null;
 }
 
 /** Los problemas del PR; una lista vacía es que está todo bien. Función pura: los tests la llaman directo. */
@@ -67,10 +75,11 @@ export function checkMigrationOrder(trees: MigrationTrees): MigrationProblem[] {
   const name = (path: string) => topLevelName(path) ?? path;
   const problems: MigrationProblem[] = [];
 
-  // Las de main que producción ya aplicó (las bien nombradas: un .sql mal nombrado nunca se aplicó).
-  const applied = base.filter((path) => versionOf(name(path)) !== null);
-  const newest = applied.reduce<string | null>((max, path) => (max === null || name(path) > name(max) ? path : max), null);
-  const newestVersion = newest === null ? null : versionOf(name(newest));
+  // Las de main que producción ya aplicó (las que el CLI no saltea).
+  const applied = base.filter((path) => appliedVersionOf(name(path)) !== null);
+  const appliedVersion = (path: string) => appliedVersionOf(name(path)) ?? "";
+  const newest = applied.reduce<string | null>((max, path) => (max === null || appliedVersion(path) > appliedVersion(max) ? path : max), null);
+  const newestVersion = newest === null ? null : appliedVersion(newest);
 
   for (const path of applied) {
     if (!mergedSet.has(path)) {
@@ -96,10 +105,14 @@ export function checkMigrationOrder(trees: MigrationTrees): MigrationProblem[] {
   for (const path of added) {
     const version = versionOf(name(path));
     if (version === null) {
+      const skipped = appliedVersionOf(name(path)) === null;
+      const why = skipped
+        ? "el CLI de Supabase saltea un .sql con ese nombre y nunca lo aplicaría"
+        : "el CLI lo aplicaría, pero acá se exigen 14 dígitos porque las versiones se comparan como texto";
       problems.push({
         file: path,
         title: "Nombre de migración inválido",
-        message: `${name(path)} no tiene la forma AAAAMMDDHHMMSS_nombre.sql (14 dígitos, «_», un nombre y .sql en minúsculas): el CLI de Supabase saltea un .sql mal nombrado y nunca lo aplicaría. Creala con \`npx supabase migration new <nombre>\`.`,
+        message: `${name(path)} no tiene la forma AAAAMMDDHHMMSS_nombre.sql (14 dígitos, «_», un nombre y .sql en minúsculas): ${why}. Creala con \`npx supabase migration new <nombre>\`.`,
       });
     } else if (newest !== null && newestVersion !== null && version <= newestVersion) {
       problems.push({
@@ -195,8 +208,13 @@ export function readTrees(cwd: string, baseRef?: string): MigrationTrees {
     base = git(cwd, ["rev-parse", "--verify", `${baseRef}^{commit}`]).trim();
     try {
       merged = git(cwd, ["merge-tree", "--write-tree", base, "HEAD"]).split("\n")[0].trim();
-    } catch {
-      throw new UsageError(`HEAD no se mezcla sin conflictos sobre «${baseRef}»: resolvelos y volvé a probar.`);
+    } catch (error) {
+      // merge-tree sale con 1 cuando hay conflictos; cualquier otro código es otro problema (git viejo, historias sin relación).
+      if ((error as { status?: number }).status === 1) {
+        throw new UsageError(`HEAD no se mezcla sin conflictos sobre «${baseRef}»: resolvelos y volvé a probar.`);
+      }
+      const detail = String((error as { stderr?: unknown }).stderr ?? error).trim();
+      throw new UsageError(`git merge-tree falló (hace falta git >= 2.38 e historias relacionadas): ${detail}`);
     }
   }
   const list = (treeish: string) => nulList(git(cwd, ["ls-tree", "-z", "--full-tree", "--name-only", treeish, "--", MIGRATIONS_DIR]));
@@ -229,7 +247,7 @@ export function main(args: readonly string[], cwd: string = process.cwd()): numb
   }
   const baseNames = new Set(trees.base);
   const added = trees.merged.filter((path) => !baseNames.has(path) && path.toLowerCase().endsWith(".sql"));
-  const newest = trees.base.filter((path) => versionOf(topLevelName(path) ?? "") !== null).sort().at(-1);
+  const newest = trees.base.filter((path) => appliedVersionOf(topLevelName(path) ?? "") !== null).sort().at(-1);
   const count = added.length === 1 ? "1 nueva" : `${added.length} nuevas`;
   console.log(`Migraciones en orden: ${count}; la última de main es ${newest === undefined ? "(ninguna)" : topLevelName(newest)}.`);
   return 0;
