@@ -415,6 +415,195 @@ textarea.input {
   text-align: right;
 }
 
+/* El presupuesto, arriba de las semanas: el mismo papel que una semana, con el filete del estado a la izquierda. */
+.quote {
+  min-width: 0;
+  margin-bottom: 1.25rem;
+  padding: 1.4rem 1.1rem 1.5rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+@media (min-width: 40rem) {
+  .quote {
+    padding: 1.75rem 1.75rem 1.9rem;
+  }
+}
+
+.quote--accepted {
+  border-left-color: var(--olive);
+}
+
+.quote--closed {
+  border-left-color: var(--rule);
+}
+
+.quote__head {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.quote__title {
+  margin-bottom: 0.25rem;
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.quote__version {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Estado del presupuesto: recibe el foco después de aceptar o rechazar. */
+.quote__status {
+  margin-bottom: 1.25rem;
+  padding: 0.8rem 1rem;
+  border-left: 3px solid var(--olive);
+  border-radius: var(--radius);
+  background: var(--olive-soft);
+}
+
+.quote__status--pending {
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.quote__status--closed {
+  border-left-color: var(--rule);
+  background: var(--crema-dark);
+}
+
+.quote__status--pending .state-badge {
+  color: var(--terra-ink);
+}
+
+.quote__status--closed .state-badge {
+  color: var(--muted);
+}
+
+.quote__status:focus,
+.quote__question:focus {
+  outline: none;
+}
+
+.quote__status:focus-visible,
+.quote__question:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.quote__notice {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.quote__state {
+  margin: 0;
+}
+
+.quote__weeks {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+  list-style: none;
+}
+
+.quote__week {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+  align-items: baseline;
+  padding-block: 0.5rem;
+  border-bottom: 1px solid var(--rule);
+  overflow-wrap: anywhere;
+}
+
+.quote__week-label {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.quote__week-when {
+  flex: 1 1 12rem;
+}
+
+.quote__week-price,
+.quote__total-value {
+  font-variant-numeric: lining-nums tabular-nums;
+  white-space: nowrap;
+}
+
+.quote__total {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  justify-content: space-between;
+  margin: 0.75rem 0 0;
+  font-size: 1.25rem;
+}
+
+.quote__total-value {
+  font-weight: 700;
+}
+
+.quote__actions {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.quote__actions .actions .btn {
+  flex: 1 1 14rem;
+}
+
+.quote__hint,
+.quote__more {
+  color: var(--muted);
+  font-size: 1.15rem;
+}
+
+.quote__more {
+  margin: 0.75rem 0 0;
+}
+
+/* «Rifiuto» con el paso de la confirmación abierto debajo: queda en su lugar, marcado como abierto. */
+.quote__actions .btn--ghost[aria-expanded="true"] {
+  background: var(--olive-soft);
+  color: var(--oliva-dark);
+}
+
+/* El paso para confirmar el rechazo, debajo de los botones: nada de lo de arriba se mueve al abrirlo. */
+.quote__confirm {
+  margin-top: 1.25rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border);
+}
+
+.quote__question {
+  font-weight: 600;
+}
+
+.quote__error {
+  margin: 0 0 0.75rem;
+  color: var(--error);
+  font-weight: 600;
+}
+
+/* Rechazar el presupuesto (el paso de la confirmación): el color de los errores, sin relleno. */
+.btn--danger {
+  border-color: var(--error);
+  background: transparent;
+  color: var(--error);
+}
+
+.btn--danger:hover {
+  background: var(--error-soft);
+}
+
 /* Para los lectores de pantalla (la región en vivo). */
 .visually-hidden {
   position: absolute;

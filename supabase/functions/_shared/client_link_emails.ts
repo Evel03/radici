@@ -1,14 +1,17 @@
 // Avisos a Evelyn de lo que contesta la clienta en su link (SPEC 5.8, docs/contracts/client-link.md §6):
-// confirmó el menú de una semana o pidió cambios. Van a CHEF_NOTIFY_EMAIL, en CHEF_LOCALE, con el diseño de los
-// otros emails (_shared/emails.ts) y un botón al pedido en la bandeja (INBOX_URL).
+// confirmó el menú de una semana o pidió cambios, o aceptó o rechazó el presupuesto. Van a CHEF_NOTIFY_EMAIL, en
+// CHEF_LOCALE, con el diseño de los otros emails (_shared/emails.ts) y un botón al pedido en la bandeja (INBOX_URL).
 // - El mensaje de la clienta no va: es una nota libre, y las notas libres nunca salen por email (SPEC §6),
 //   aunque el aviso vaya a la dirección de Evelyn. Ella lo lee en la app, en el pedido.
 // - El nombre de la clienta es el que llegó con el pedido (o, si no tiene, el de la ficha): el mismo del mensaje y
 //   de la bandeja. En el asunto (se ve en las notificaciones del celular) solo el de pila, y solo si parece un
 //   nombre (safeFirstName); en el cuerpo, entero y escapado.
-// - Nunca el token ni el link de la clienta, alergias, dirección ni nada de pagos.
+// - Del presupuesto aceptado, las semanas y el precio del servicio que aceptó (es de Evelyn), en singular si es una
+//   sola; del rechazado, el día en que empezaba, sin contar semanas (la base no lo dice). Nunca nada de pagos.
+// - Nunca el token ni el link de la clienta, alergias ni dirección.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import {
+  formatCents,
   formatDateLong,
   inboxRequestUrl,
   render as renderEmailDocument,
@@ -140,6 +143,159 @@ export function renderMenuAnswerNotification(input: MenuAnswerNotice, locale: Lo
     locale,
     subject: answer.subject(safeFirstName(input.clientName ?? ""), input.week),
     preheader: answer.preheader,
+    brand: input.brand,
+    heading: answer.heading,
+    blocks,
+    slogan: null,
+    footer: messages.footer(input.brand),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// El presupuesto: la clienta lo aceptó o lo rechazó
+// ---------------------------------------------------------------------------
+
+/** Qué hizo la clienta con el presupuesto. */
+export type QuoteAnswerKind = "accepted" | "declined";
+
+export interface QuoteAnswerNotice {
+  kind: QuoteAnswerKind;
+  brand: string;
+  /** El nombre de la clienta (el del pedido o el de la ficha); null o vacío: «la clienta». */
+  clientName: string | null;
+  requestId: string;
+  /** La primera semana del presupuesto (la del envío que lo llevó): fecha ("AAAA-MM-DD") y llegada ("HH:MM"). */
+  date: string;
+  start: string;
+  /** Al aceptar: cuántas semanas y el precio del servicio de todas (centavos). Al rechazar, null. */
+  weeks: number | null;
+  totalCents: number | null;
+  inboxUrl: string | null;
+}
+
+/**
+ * Los textos de un aviso del presupuesto. weeks: cuántas semanas aceptó (con una sola, en singular); al rechazar es
+ * null y los textos no las cuentan.
+ */
+interface QuoteAnswerMessages {
+  subject: (first: string) => string;
+  preheader: (weeks: number | null) => string;
+  heading: string;
+  /** Al aceptar: weeks y total ya escritos («4 semanas», «560,00 €»). Al rechazar no van. */
+  intro: (name: string, weeks: string, total: string) => string;
+  /** La primera semana o, con una sola, el día (date: la fecha larga). */
+  first: (date: string, start: string, weeks: number | null) => string;
+  note: (weeks: number | null) => string;
+}
+
+interface QuoteMessages {
+  someone: string;
+  weeks: (n: number) => string;
+  accepted: QuoteAnswerMessages;
+  declined: QuoteAnswerMessages;
+  button: string;
+  footer: (brand: string) => string;
+}
+
+const QUOTE_MESSAGES: Readonly<Record<Locale, QuoteMessages>> = {
+  it: {
+    someone: "La cliente",
+    weeks: (n) => (n === 1 ? "1 settimana" : `${n} settimane`),
+    accepted: {
+      subject: (first) => (first ? `${first} ha accettato il preventivo` : "Preventivo accettato"),
+      preheader: (weeks) => (weeks === 1 ? "La data è confermata in agenda." : "Le settimane sono confermate in agenda."),
+      heading: "Preventivo accettato",
+      intro: (name, weeks, total) => `${name} ha accettato il preventivo: ${weeks}, ${total}.`,
+      first: (date, start, weeks) =>
+        weeks === 1 ? `Il giorno è ${date}, con arrivo alle ${start}.` : `La prima settimana è ${date}, con arrivo alle ${start}.`,
+      note: (weeks) =>
+        weeks === 1 ? "La data è confermata in agenda, e anche il menù." : "Le settimane sono confermate in agenda, e anche il menù della settimana 1.",
+    },
+    declined: {
+      subject: (first) => (first ? `${first} ha rifiutato il preventivo` : "Preventivo rifiutato"),
+      preheader: () => "Quello che le avevi proposto è di nuovo libero.",
+      heading: "Preventivo rifiutato",
+      intro: (name) => `${name} ha rifiutato il preventivo.`,
+      first: (date, start) => `Il preventivo cominciava ${date}, con arrivo alle ${start}.`,
+      note: () => "Quello che le avevi proposto è di nuovo libero in agenda.",
+    },
+    button: "Apri la richiesta",
+    footer: (brand) => `Avviso automatico di ${brand}.`,
+  },
+  es: {
+    someone: "La clienta",
+    weeks: (n) => (n === 1 ? "1 semana" : `${n} semanas`),
+    accepted: {
+      subject: (first) => (first ? `${first} aceptó el presupuesto` : "Presupuesto aceptado"),
+      preheader: (weeks) => (weeks === 1 ? "La fecha quedó confirmada en la agenda." : "Las semanas quedaron confirmadas en la agenda."),
+      heading: "Presupuesto aceptado",
+      intro: (name, weeks, total) => `${name} aceptó el presupuesto: ${weeks}, ${total}.`,
+      first: (date, start, weeks) =>
+        weeks === 1 ? `El día es el ${date}, con llegada a las ${start}.` : `La primera semana es el ${date}, con llegada a las ${start}.`,
+      note: (weeks) =>
+        weeks === 1
+          ? "La fecha quedó confirmada en la agenda, y el menú también."
+          : "Las semanas quedaron confirmadas en la agenda, y el menú de la semana 1 también.",
+    },
+    declined: {
+      subject: (first) => (first ? `${first} rechazó el presupuesto` : "Presupuesto rechazado"),
+      preheader: () => "Lo que le propusiste quedó libre.",
+      heading: "Presupuesto rechazado",
+      intro: (name) => `${name} rechazó el presupuesto.`,
+      first: (date, start) => `El presupuesto empezaba el ${date}, con llegada a las ${start}.`,
+      note: () => "Lo que le propusiste quedó libre en la agenda.",
+    },
+    button: "Abrir en la bandeja",
+    footer: (brand) => `Aviso automático de ${brand}.`,
+  },
+  en: {
+    someone: "The client",
+    weeks: (n) => (n === 1 ? "1 week" : `${n} weeks`),
+    accepted: {
+      subject: (first) => (first ? `${first} accepted the quote` : "Quote accepted"),
+      preheader: (weeks) => (weeks === 1 ? "The date is confirmed in the calendar." : "The weeks are confirmed in the calendar."),
+      heading: "Quote accepted",
+      intro: (name, weeks, total) => `${name} accepted the quote: ${weeks}, ${total}.`,
+      first: (date, start, weeks) =>
+        weeks === 1 ? `The day is ${date}, arriving at ${start}.` : `The first week is on ${date}, arriving at ${start}.`,
+      note: (weeks) =>
+        weeks === 1 ? "The date is confirmed in the calendar, and so is the menu." : "The weeks are confirmed in the calendar, and so is the menu for week 1.",
+    },
+    declined: {
+      subject: (first) => (first ? `${first} declined the quote` : "Quote declined"),
+      preheader: () => "What you proposed is free again.",
+      heading: "Quote declined",
+      intro: (name) => `${name} declined the quote.`,
+      first: (date, start) => `The quote started on ${date}, arriving at ${start}.`,
+      note: () => "What you proposed is free again in the calendar.",
+    },
+    button: "Open in the inbox",
+    footer: (brand) => `Automatic notice from ${brand}.`,
+  },
+};
+
+/**
+ * Aviso a Evelyn de que la clienta aceptó (con las semanas y el precio del servicio) o rechazó el presupuesto, en
+ * CHEF_LOCALE. Sin texto libre: ni aceptar ni rechazar llevan un mensaje.
+ */
+export function renderQuoteAnswerNotification(input: QuoteAnswerNotice, locale: Locale): RenderedEmail {
+  const messages = QUOTE_MESSAGES[locale];
+  const answer = messages[input.kind];
+  const name = input.clientName?.trim() || messages.someone;
+  const inboxUrl = safeHttpUrl(input.inboxUrl);
+  const weeks = input.weeks === null ? "" : messages.weeks(input.weeks);
+  const total = input.totalCents === null ? "" : formatCents(input.totalCents, locale);
+  const blocks: Block[] = [
+    { kind: "paragraph", text: answer.intro(name, weeks, total) },
+    { kind: "paragraph", text: answer.first(formatDateLong(input.date, locale), input.start, input.weeks) },
+    { kind: "note", text: answer.note(input.weeks) },
+  ];
+  if (inboxUrl) blocks.push({ kind: "button", label: messages.button, href: inboxRequestUrl(inboxUrl, input.requestId) });
+
+  return renderEmailDocument({
+    locale,
+    subject: answer.subject(safeFirstName(input.clientName ?? "")),
+    preheader: answer.preheader(input.weeks),
     brand: input.brand,
     heading: answer.heading,
     blocks,

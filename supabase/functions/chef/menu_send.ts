@@ -4,13 +4,22 @@
 // chef_prepare_menu_send, chef_link_menu_send y chef_complete_menu_send, migración
 // 20261121100000_menu_sends.sql), el armado de la foto del envío, el token del link y su hash.
 // La huella del contexto (fingerprint) va tal cual a chef_prepare_menu_send: si algo de lo que entra en la
-// foto cambió mientras se armaba (o se traducía la lista), la base no la guarda (menu_changed).
+// foto cambió mientras se armaba (o se traducía la lista), la base no la guarda (menu_changed). En una semana
+// held de un presupuesto abierto, la huella cubre también los términos del presupuesto (migración
+// 20261121120000_quotes.sql): el de la semana 1 viaja en la foto (quote_snapshot.ts).
 //
 // El token (32 bytes al azar, base64url) va solo en el link del mensaje, en el fragmento (#t=…): la base
 // guarda su hash (sha-256 en hexadecimal) y nada de esto lo loguea ni lo guarda.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import { CLIENT_LINK_TOKEN_BYTES, hashClientLinkToken, newClientLinkToken, reservationPageUrl } from "../_shared/client_link.ts";
-import { SESSION_STATUSES, isTimeOfDay, type MenuSendChannel, type MenuSendContact, type SessionStatus } from "../_shared/chef_api.ts";
+import {
+  SESSION_STATUSES,
+  isTimeOfDay,
+  type MenuSendChannel,
+  type MenuSendContact,
+  type QuoteTerms,
+  type SessionStatus,
+} from "../_shared/chef_api.ts";
 import { recipePhotoUrls } from "../_shared/menu.ts";
 import {
   MENU_SNAPSHOT_VERSION,
@@ -20,6 +29,8 @@ import {
   type MenuSnapshotDish,
   type MenuSnapshotItem,
 } from "../_shared/menu_snapshot.ts";
+import { QUOTE_MAX_HOLD_HOURS, QUOTE_MAX_VERSION, quoteFirstStart, type SnapshotQuote } from "../_shared/quote_snapshot.ts";
+import { quoteTermsFromRpc } from "./quotes.ts";
 import {
   DIETS,
   LOCALES,
@@ -51,6 +62,21 @@ export interface ContextDish {
   allergens: Allergen[];
 }
 
+/**
+ * El presupuesto abierto de una semana held (private.session_quote): su versión, si ya salió, el plazo de ahora,
+ * las horas que tiene la clienta para aceptarlo desde que sale, si esta semana es la primera (la que lo lleva) y
+ * sus términos de ahora (los mismos que guarda el envío y que la clienta acepta).
+ */
+export interface ContextQuote {
+  id: string;
+  version: number;
+  sent: boolean;
+  holdUntil: string | null;
+  holdHours: number;
+  firstWeek: boolean;
+  terms: QuoteTerms;
+}
+
 export interface MenuSendContext {
   session: { id: string; date: string; start: string; status: SessionStatus; requestId: string; week: number; weeks: number };
   /** Las semanas no canceladas de la reserva, por fecha. */
@@ -60,10 +86,12 @@ export interface MenuSendContext {
   contact: MenuSendContact;
   chefName: string;
   menu: { version: number; note: string | null; dishes: ContextDish[]; items: MenuSnapshotItem[] };
+  /** Solo en una semana held de un presupuesto abierto; null en las demás (una semana confirmada nunca lo tiene). */
+  quote: ContextQuote | null;
   /**
    * La huella de lo que entra en la foto (private.menu_send_fingerprint: md5 en hexadecimal): el día y la
-   * hora, las semanas de la reserva, la versión del menú y los platos del catálogo. Se le pasa a
-   * chef_prepare_menu_send; link y complete la recalculan antes de mandar.
+   * hora, las semanas de la reserva, la versión del menú, los platos del catálogo y, en una semana held, los
+   * términos del presupuesto. Se le pasa a chef_prepare_menu_send; link y complete la recalculan antes de mandar.
    */
   fingerprint: string;
 }
@@ -154,6 +182,25 @@ function readWeek(value: unknown): { date: string; start: string } | null {
   return typeof date === "string" && isIsoDate(date) && isTimeOfDay(start) ? { date, start } : null;
 }
 
+const TIMESTAMP_PREFIX = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
+
+/**
+ * El presupuesto del contexto (quote), o null si no tiene (ausente o null), o undefined si tiene otra forma. Sus
+ * términos tienen al menos una semana (la de esta sesión, que está viva) y, si es la primera, empiezan por ella.
+ */
+function readContextQuote(value: unknown, sessionId: string): ContextQuote | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return undefined;
+  const { id, version, sent, holdUntil, holdHours, firstWeek } = value;
+  const terms = quoteTermsFromRpc(value["terms"]);
+  if (!isDbUuid(id) || typeof version !== "number" || !Number.isInteger(version) || version < 1 || version > QUOTE_MAX_VERSION) return undefined;
+  if (typeof sent !== "boolean" || typeof firstWeek !== "boolean") return undefined;
+  if (holdUntil !== null && (typeof holdUntil !== "string" || !TIMESTAMP_PREFIX.test(holdUntil))) return undefined;
+  if (!isPositiveInt(holdHours) || holdHours > QUOTE_MAX_HOLD_HOURS || !terms || terms.quoteId !== id || terms.weeks.length === 0) return undefined;
+  if (firstWeek && terms.weeks[0]?.sessionId !== sessionId) return undefined;
+  return { id, version, sent, holdUntil, holdHours, firstWeek, terms };
+}
+
 /**
  * Resultado de chef_menu_send_context → lo que usa la función, o null si no tiene la forma esperada (un
  * 500: nunca un mensaje armado con datos rotos). La base solo lo devuelve para una semana que se puede
@@ -178,8 +225,11 @@ export function menuSendContextFromRpc(data: unknown): MenuSendContext | null {
   const dishes = readList(menu["dishes"], readContextDish);
   const items = readList(menu["items"], readMenuItem);
   const fingerprint = data["fingerprint"];
+  const quote = readContextQuote(data["quote"], id);
   if (!isOneOf(LOCALES, locale) || !contact || !weeks || !isPositiveInt(version) || note === undefined || !dishes || !items) return null;
-  if (typeof fingerprint !== "string" || !FINGERPRINT.test(fingerprint)) return null;
+  if (typeof fingerprint !== "string" || !FINGERPRINT.test(fingerprint) || quote === undefined) return null;
+  // La base trae el presupuesto solo para una semana held.
+  if (quote !== null && status !== "held") return null;
   return {
     session: { id, date, start, status, requestId, week, weeks: total },
     weeks,
@@ -187,7 +237,29 @@ export function menuSendContextFromRpc(data: unknown): MenuSendContext | null {
     contact,
     chefName: chefNameOf(isRecord(chef) ? chef["displayName"] : null),
     menu: { version, note, dishes, items },
+    quote,
     fingerprint,
+  };
+}
+
+/**
+ * El presupuesto que viaja en la foto del envío (quote_snapshot.ts), o null: solo el de la semana 1 de un
+ * presupuesto abierto (la base no deja mandar otra semana held: quote_week_not_first). La versión es la que va a
+ * salir: la de ahora la primera vez y la siguiente en cada reenvío (chef_complete_menu_send la sube); las semanas
+ * con su fecha, su llegada y su precio, el total y las horas para aceptarlo.
+ */
+export function snapshotQuoteOf(context: Pick<MenuSendContext, "quote">): SnapshotQuote | null {
+  const quote = context.quote;
+  if (!quote || !quote.firstWeek) return null;
+  const weeks = quote.terms.weeks.map((week) => ({ date: week.date, start: week.start, serviceCents: week.serviceCents }));
+  const first = weeks[0];
+  if (!first) return null;
+  return {
+    version: quote.sent ? quote.version + 1 : quote.version,
+    totalCents: quote.terms.totalCents,
+    weeks,
+    holdHours: quote.holdHours,
+    firstStart: quoteFirstStart(first.date, first.start),
   };
 }
 
@@ -220,8 +292,9 @@ export interface SnapshotOptions {
 /**
  * La foto del envío (menu_snapshot.ts), en el idioma de la clienta: los platos con sus textos en ese
  * idioma y las URL de sus fotos (como el menù de la web), la lista con los nombres traducidos si se
- * tradujo, la nota tal como la escribió Evelyn (nunca se traduce) y las fechas. Nada de la clienta: ni
- * contacto, ni dirección, ni alergias, ni precios.
+ * tradujo, la nota tal como la escribió Evelyn (nunca se traduce) y las fechas. En la semana 1 de un
+ * presupuesto abierto, también el presupuesto (snapshotQuoteOf: el servicio de cada semana y el total,
+ * nunca nada de pagos). Nada de la clienta: ni contacto, ni dirección, ni alergias.
  */
 export function buildMenuSnapshot(context: MenuSendContext, options: SnapshotOptions): MenuSnapshot {
   const { locale, session } = context;
@@ -240,7 +313,7 @@ export function buildMenuSnapshot(context: MenuSendContext, options: SnapshotOpt
     ...item,
     name: options.itemNames?.get(item.name) ?? item.name,
   }));
-  return {
+  const snapshot: MenuSnapshot = {
     v: MENU_SNAPSHOT_VERSION,
     locale,
     session: { date: session.date, start: session.start, week: session.week, weeks: session.weeks },
@@ -249,6 +322,9 @@ export function buildMenuSnapshot(context: MenuSendContext, options: SnapshotOpt
     items,
     note: context.menu.note,
   };
+  const quote = snapshotQuoteOf(context);
+  if (quote) snapshot.quote = quote;
+  return snapshot;
 }
 
 // ---------------------------------------------------------------------------

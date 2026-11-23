@@ -3,39 +3,55 @@
 // Node) las simulan.
 //
 // Pública, como public-request (verify_jwt = false): la llama la página /prenotazione/ de la web, sin cuenta.
-// La llave es el token del link (32 bytes al azar); la base guarda solo su hash. Tres rutas, todas POST:
-// - /view {token}: la reserva (client_link_view): semanas y el último menú enviado de cada una.
+// La llave es el token del link (32 bytes al azar); la base guarda solo su hash. Cinco rutas, todas POST:
+// - /view {token}: la reserva (client_link_view): semanas y el último menú enviado de cada una, y el último
+//   presupuesto que salió, con lo que vio la clienta (de la foto del envío que lo lleva).
 // - /confirm {token, sendId}: la clienta confirma el menú de una semana (client_link_confirm_menu).
 // - /changes {token, sendId, text}: pide cambios con un mensaje (client_link_request_changes).
+// - /accept {token, sendId}: acepta el presupuesto que lleva ese envío, y con él el menú de la semana 1
+//   (client_link_accept_quote).
+// - /decline {token, sendId}: lo rechaza (client_link_decline_quote).
 // Orden: CORS → ruta (404) → método (405) → tipo (415) → tamaño (413) → JSON y validación (400) →
 // configuración (500) → límite por IP (429; uno para /view y otro, más corto, para las respuestas) → forma del
 // token (404) → función SQL. Después de una respuesta, el aviso a Evelyn sale en segundo plano (waitUntil): un
 // email que falla no rompe lo que hizo la clienta.
 //
-// Los logs llevan solo el evento, la ruta, códigos e ids (del pedido y del envío): nunca el token ni su hash,
-// nombres, el mensaje de la clienta, los platos ni la IP.
+// Los logs llevan solo el evento, la ruta, códigos e ids (del pedido, del envío y del presupuesto): nunca el
+// token ni su hash, nombres, el mensaje de la clienta, los platos, importes ni la IP.
 // Solo sintaxis borrable: corre en Node (tests) y Deno (Edge Functions).
 import {
   CLIENT_LINK_FUNCTION,
   CLIENT_LINK_MAX_PAYLOAD_BYTES,
   CLIENT_LINK_ROUTES,
   CLIENT_LINK_VERSION,
+  QUOTE_CLOSED_REASONS,
+  QUOTE_STATUSES,
   hashClientLinkToken,
   isClientLinkToken,
   isTimeOfDay,
   isTimestamp,
   menuState,
   normalizeChangesText,
+  quoteSummaryFromSnapshot,
   readMenuSnapshot,
-  type ClientLinkErrorCode,
+  type AcceptQuoteResponse,
+  type ClientLinkErrorBody,
   type ClientLinkMenu,
+  type ClientLinkQuote,
   type ClientLinkRoute,
   type ClientLinkView,
   type ClientLinkWeek,
   type ConfirmMenuResponse,
+  type DeclineQuoteResponse,
+  type QuoteClosedReason,
   type RequestChangesResponse,
 } from "../_shared/client_link.ts";
-import { renderMenuAnswerNotification, type MenuAnswerKind } from "../_shared/client_link_emails.ts";
+import {
+  renderMenuAnswerNotification,
+  renderQuoteAnswerNotification,
+  type MenuAnswerKind,
+  type QuoteAnswerKind,
+} from "../_shared/client_link_emails.ts";
 import { clientIp, hashSubject, rateLimitSubject } from "../_shared/client_ip.ts";
 import { corsHeaders, parseAllowedOrigins, type OriginRule } from "../_shared/cors.ts";
 import {
@@ -63,7 +79,7 @@ export const CLIENT_LINK_CORS_METHODS = "POST, OPTIONS";
  * formulario (la misma función SQL, otra clave): no gasta su cupo.
  */
 export const VIEW_RATE_LIMITS = { perHour: 60, perDay: 300 } as const;
-/** Límite de /confirm y /changes por IP: cada respuesta le manda un email a Evelyn. */
+/** Límite de /confirm, /changes, /accept y /decline por IP (un solo contador): cada respuesta le manda un email a Evelyn. */
 export const ANSWER_RATE_LIMITS = { perHour: 10, perDay: 30 } as const;
 /** La ventana corta es de una hora. */
 export const RETRY_AFTER_SECONDS = 3600;
@@ -73,7 +89,10 @@ export function viewRateSubject(ip: string | null): string {
   return `client-link:${ip ? rateLimitSubject(ip) : "unknown"}`;
 }
 
-/** Clave del límite de las respuestas (/confirm y /changes): otro contador, con el prefijo "client-link-answer:". */
+/**
+ * Clave del límite de las respuestas (/confirm, /changes, /accept y /decline): otro contador, con el prefijo
+ * "client-link-answer:".
+ */
 export function answerRateSubject(ip: string | null): string {
   return `client-link-answer:${ip ? rateLimitSubject(ip) : "unknown"}`;
 }
@@ -152,16 +171,27 @@ export interface ClientLinkStore {
   confirmMenu(tokenHash: string, sendId: string): Promise<unknown>;
   /** public.client_link_request_changes(p_token_hash, p_send_id, p_text). */
   requestChanges(tokenHash: string, sendId: string, text: string): Promise<unknown>;
+  /** public.client_link_accept_quote(p_token_hash, p_send_id). */
+  acceptQuote(tokenHash: string, sendId: string): Promise<unknown>;
+  /** public.client_link_decline_quote(p_token_hash, p_send_id). */
+  declineQuote(tokenHash: string, sendId: string): Promise<unknown>;
 }
 
 interface DbErrorLike {
   code?: string;
   message?: string;
+  details?: unknown;
 }
 
-/** Error de supabase-js sin datos: la operación, el SQLSTATE y el código propio de la función SQL (nunca details ni hint). */
+/**
+ * Error de supabase-js sin datos: la operación, el SQLSTATE y el código propio de la función SQL (nunca el hint).
+ * Del detalle, solo el de quote_closed y si es uno de sus motivos (accepted, declined, withdrawn o expired): el de
+ * Postgres puede traer la fila.
+ */
 export function storeErrorFrom(op: string, error: DbErrorLike): StoreError {
-  return new StoreError(op, error.code ? error.code : null, safeDbMessage(error.message));
+  const message = safeDbMessage(error.message);
+  const detail = message === "quote_closed" && isOneOf(QUOTE_CLOSED_REASONS, error.details) ? error.details : null;
+  return new StoreError(op, error.code ? error.code : null, message, detail);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -180,16 +210,28 @@ export interface ViewFromRpc {
   unreadable: string[];
 }
 
+/** Un uuid en minúsculas, null (ausente o null) o undefined (otra cosa). */
+function optionalUuid(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return null;
+  return typeof value === "string" && isUuid(value) ? value.toLowerCase() : undefined;
+}
+
+/** Un timestamptz, null (ausente o null) o undefined (otra cosa). */
+function optionalTimestamp(value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return null;
+  return isTimestamp(value) ? value : undefined;
+}
+
 /** Lo que pasa de la base a la página de un envío: la foto leída campo por campo (readMenuSnapshot). */
 function menuFromRpc(value: unknown, storageOrigin: string | null, unreadable: string[]): ClientLinkMenu | null | undefined {
   if (value === null || value === undefined) return null;
   if (!isRecord(value)) return undefined;
-  const { id, sentAt, confirmedAt, changesRequestedAt } = value;
+  const { id, sentAt } = value;
   if (typeof id !== "string" || !isUuid(id) || !isTimestamp(sentAt)) return undefined;
-  const confirmed = confirmedAt === null || confirmedAt === undefined ? null : isTimestamp(confirmedAt) ? confirmedAt : undefined;
-  const changes =
-    changesRequestedAt === null || changesRequestedAt === undefined ? null : isTimestamp(changesRequestedAt) ? changesRequestedAt : undefined;
-  if (confirmed === undefined || changes === undefined) return undefined;
+  const confirmed = optionalTimestamp(value["confirmedAt"]);
+  const changes = optionalTimestamp(value["changesRequestedAt"]);
+  const quoteId = optionalUuid(value["quoteId"]);
+  if (confirmed === undefined || changes === undefined || quoteId === undefined) return undefined;
   const content = readMenuSnapshot(value["snapshot"], storageOrigin);
   if (!content) unreadable.push(id.toLowerCase());
   return {
@@ -198,15 +240,36 @@ function menuFromRpc(value: unknown, storageOrigin: string | null, unreadable: s
     state: menuState(confirmed, changes),
     confirmedAt: confirmed,
     changesRequestedAt: changes,
+    quoteId,
     content,
   };
+}
+
+/**
+ * El presupuesto de client_link_view → el de la respuesta, o null si la reserva no tiene, o undefined si tiene otra
+ * forma. Lo que vio la clienta (summary) sale de la foto del envío que lo lleva (`snapshots`: la foto de cada envío
+ * a la vista, por id), solo por aceptar (sent) o aceptado (accepted): con otro estado la página no muestra precios.
+ */
+function quoteFromRpc(value: unknown, snapshots: ReadonlyMap<string, unknown>): ClientLinkQuote | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return undefined;
+  const { id, version, status, sentAt } = value;
+  const holdUntil = optionalTimestamp(value["holdUntil"]);
+  const acceptedAt = optionalTimestamp(value["acceptedAt"]);
+  const sendId = optionalUuid(value["sendId"]);
+  if (typeof id !== "string" || !isUuid(id) || !isPositiveInt(version) || !isOneOf(QUOTE_STATUSES, status) || !isTimestamp(sentAt)) return undefined;
+  if (holdUntil === undefined || acceptedAt === undefined || sendId === undefined) return undefined;
+  if ((status === "accepted") !== (acceptedAt !== null)) return undefined;
+  const shown = status === "sent" || status === "accepted";
+  const summary = shown && sendId !== null ? quoteSummaryFromSnapshot(snapshots.get(sendId)) : null;
+  return { id: id.toLowerCase(), version, status, sentAt, holdUntil, acceptedAt, sendId, summary };
 }
 
 /**
  * public.client_link_view → la respuesta de POST …/view, o null si no tiene la forma esperada (500). Solo pasa lo
  * del contrato: de la clienta, el nombre de pila con que llegó el pedido (o el de la ficha) si parece un nombre
  * (safeFirstName), nunca el nombre completo; de cada semana, su sesión, la fecha, la hora, si ya se cocinó y el
- * último menú enviado.
+ * último menú enviado (con el presupuesto que lleva); y el último presupuesto que salió, con lo que vio la clienta.
  */
 export function viewFromRpc(data: unknown, storageOrigin: string | null): ViewFromRpc | null {
   if (!isRecord(data)) return null;
@@ -214,14 +277,18 @@ export function viewFromRpc(data: unknown, storageOrigin: string | null): ViewFr
   if (typeof requestId !== "string" || !isUuid(requestId) || !Array.isArray(weeks)) return null;
   const unreadable: string[] = [];
   const out: ClientLinkWeek[] = [];
+  /** La foto de cada envío a la vista (por id): de la del envío que lleva el presupuesto sale lo que vio la clienta. */
+  const snapshots = new Map<string, unknown>();
   for (const raw of weeks) {
     if (!isRecord(raw)) return null;
     const { sessionId, date, start, status, week, weeks: total } = raw;
     if (typeof sessionId !== "string" || !isUuid(sessionId)) return null;
     if (typeof date !== "string" || !isIsoDate(date) || !isTimeOfDay(start) || typeof status !== "string") return null;
     if (!isPositiveInt(week) || !isPositiveInt(total) || week > total) return null;
-    const menu = menuFromRpc(raw["send"], storageOrigin, unreadable);
+    const send = raw["send"];
+    const menu = menuFromRpc(send, storageOrigin, unreadable);
     if (menu === undefined) return null;
+    if (menu && isRecord(send)) snapshots.set(menu.sendId, send["snapshot"]);
     out.push({
       sessionId: sessionId.toLowerCase(),
       week,
@@ -232,6 +299,8 @@ export function viewFromRpc(data: unknown, storageOrigin: string | null): ViewFr
       menu,
     });
   }
+  const quote = quoteFromRpc(data["quote"], snapshots);
+  if (quote === undefined) return null;
   const first = typeof clientName === "string" ? safeFirstName(clientName) : "";
   return {
     view: {
@@ -240,6 +309,7 @@ export function viewFromRpc(data: unknown, storageOrigin: string | null): ViewFr
       locale: isOneOf(LOCALES, locale) ? locale : "it",
       chefName: typeof chefName === "string" && chefName.trim() ? chefName.trim() : "Evelyn",
       clientFirstName: first ? first : null,
+      quote,
       weeks: out,
     },
     requestId: requestId.toLowerCase(),
@@ -293,17 +363,43 @@ export function answerFromRpc(data: unknown): MenuAnswer | null {
   };
 }
 
+/**
+ * Lo que devuelven client_link_accept_quote y client_link_decline_quote: la respuesta de siempre
+ * (private.client_link_answer) más el presupuesto y, al aceptar, cuántas semanas y el precio del servicio de todas.
+ */
+export interface QuoteAnswer extends MenuAnswer {
+  quoteId: string;
+  /** Solo al aceptar. */
+  totalCents: number | null;
+  quoteWeeks: number | null;
+}
+
+function optionalCount(value: unknown): number | null | undefined {
+  if (value === null || value === undefined) return null;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+export function quoteAnswerFromRpc(data: unknown): QuoteAnswer | null {
+  const answer = answerFromRpc(data);
+  if (!answer || !isRecord(data)) return null;
+  const quoteId = data["quoteId"];
+  const totalCents = optionalCount(data["totalCents"]);
+  const quoteWeeks = optionalCount(data["quoteWeeks"]);
+  if (typeof quoteId !== "string" || !isUuid(quoteId) || totalCents === undefined || quoteWeeks === undefined) return null;
+  return { ...answer, quoteId: quoteId.toLowerCase(), totalCents, quoteWeeks };
+}
+
 // ---------------------------------------------------------------------------
 // Errores
 // ---------------------------------------------------------------------------
 
 export interface ErrorReply {
   status: number;
-  body: { error: ClientLinkErrorCode };
+  body: ClientLinkErrorBody;
 }
 
 /** Los errores propios de las funciones SQL client_link_*: el SQLSTATE con que salen y la respuesta. */
-const SQL_ERRORS: ReadonlyMap<string, { code: string; status: number; error: ClientLinkErrorCode }> = new Map([
+const SQL_ERRORS: ReadonlyMap<string, { code: string; status: number; error: ClientLinkErrorBody["error"] }> = new Map([
   ["link_not_found", { code: "P0002", status: 404, error: "linkNotFound" }],
   ["send_not_found", { code: "P0002", status: 404, error: "sendNotFound" }],
   ["menu_outdated", { code: "55000", status: 409, error: "menuOutdated" }],
@@ -312,6 +408,14 @@ const SQL_ERRORS: ReadonlyMap<string, { code: string; status: number; error: Cli
   // La semana se canceló después del envío: ya no hay menú que contestar.
   ["session_cancelled", { code: "55000", status: 409, error: "sessionCancelled" }],
   ["invalid_text", { code: "22023", status: 400, error: "invalidText" }],
+  // El presupuesto (SPEC 5.8): el menú que va con uno abierto se acepta con el presupuesto, no se confirma solo.
+  ["quote_pending", { code: "55000", status: 409, error: "quotePending" }],
+  // Aceptado, rechazado, retirado o vencido (con el motivo, si la base lo dice): ya no se contesta.
+  ["quote_closed", { code: "55000", status: 409, error: "quoteClosed" }],
+  // Evelyn cambió el precio o una semana y todavía no lo reenvió (40001, la clase de los reintentos: reintentar igual no sirve).
+  ["quote_changed", { code: "40001", status: 409, error: "quoteChanged" }],
+  ["not_a_quote", { code: "55000", status: 409, error: "notAQuote" }],
+  ["quote_empty", { code: "55000", status: 409, error: "quoteEmpty" }],
 ]);
 
 /** Sin código (sin respuesta de la base), conexión, transacción, recursos o PostgREST sin base: se puede reintentar. */
@@ -319,11 +423,18 @@ function isRetryable(code: string | null): boolean {
   return code === null || /^(08|40|53|57|58)/.test(code) || /^PGRST00[0-3]$/.test(code);
 }
 
-/** Error de la base → respuesta: los de las funciones client_link_* con su código; el resto, 503 (reintentable) o 500. */
+/**
+ * Error de la base → respuesta: los de las funciones client_link_* con su código (quoteClosed, con el motivo si la
+ * base lo dice); el resto, 503 (reintentable) o 500.
+ */
 export function errorReply(error: unknown): ErrorReply {
   if (!(error instanceof StoreError)) return { status: 500, body: { error: "server" } };
   const known = error.safeMessage === null ? undefined : SQL_ERRORS.get(error.safeMessage);
-  if (known && known.code === error.code) return { status: known.status, body: { error: known.error } };
+  if (known && known.code === error.code) {
+    const reason: QuoteClosedReason | null =
+      known.error === "quoteClosed" && isOneOf(QUOTE_CLOSED_REASONS, error.safeDetail) ? error.safeDetail : null;
+    return { status: known.status, body: reason ? { error: known.error, reason } : { error: known.error } };
+  }
   return isRetryable(error.code) ? { status: 503, body: { error: "unavailable" } } : { status: 500, body: { error: "server" } };
 }
 
@@ -362,8 +473,8 @@ type ParseResult = { ok: true; value: ParsedBody } | { ok: false; error: "invali
 
 /**
  * El cuerpo de cada ruta. Las claves que el contrato no tiene se ignoran. El token tiene que ser un texto (su
- * forma se mira después del límite por IP: uno con otra forma da linkNotFound); sendId, un uuid; text, el mensaje
- * como lo acepta la base (normalizeChangesText).
+ * forma se mira después del límite por IP: uno con otra forma da linkNotFound); sendId, un uuid (en /confirm,
+ * /accept y /decline, lo único además del token); text, el mensaje como lo acepta la base (normalizeChangesText).
  */
 function parseBody(route: ClientLinkRoute, input: unknown): ParseResult {
   if (!isRecord(input)) return { ok: false, error: "invalidPayload" };
@@ -373,7 +484,7 @@ function parseBody(route: ClientLinkRoute, input: unknown): ParseResult {
 
   const sendId = input["sendId"];
   if (typeof sendId !== "string" || !isUuid(sendId)) return { ok: false, error: "invalidPayload" };
-  if (route === CLIENT_LINK_ROUTES.confirm) return { ok: true, value: { token, sendId: sendId.toLowerCase(), text: null } };
+  if (route !== CLIENT_LINK_ROUTES.changes) return { ok: true, value: { token, sendId: sendId.toLowerCase(), text: null } };
 
   const raw = input["text"];
   if (typeof raw !== "string") return { ok: false, error: "invalidPayload" };
@@ -399,11 +510,14 @@ export interface ClientLinkHandlerDeps {
 
 type Reply = (status: number, body: unknown, extra?: Record<string, string>) => Response;
 
-/** Error de una función SQL: el código va al log (sin mensaje de Postgres ni detalle) y la respuesta, traducida. */
+/**
+ * Error de una función SQL: el código va al log (sin mensaje de Postgres ni detalle; de quoteClosed, el motivo, que
+ * es un código) y la respuesta, traducida.
+ */
 function dbFailure(log: Logger, route: ClientLinkRoute, op: string, error: unknown, reply: Reply): Response {
   const mapped = errorReply(error);
   if (mapped.status >= 500) logStoreError(log, error, op);
-  else log("info", "rejected", { route, status: mapped.status, error: mapped.body.error });
+  else log("info", "rejected", { route, status: mapped.status, error: mapped.body.error, ...(mapped.body.reason ? { reason: mapped.body.reason } : {}) });
   return reply(mapped.status, mapped.body);
 }
 
@@ -481,6 +595,56 @@ async function answerRoute(
   return reply(200, response);
 }
 
+/**
+ * /accept y /decline: la clienta acepta el presupuesto que lleva ese envío (y con él el menú de la semana 1, que
+ * queda confirmado a la misma hora) o lo rechaza. Solo la última versión y con los términos que vio (los controla la
+ * base). La primera vez le avisa a Evelyn; una respuesta repetida (already), no.
+ */
+async function quoteAnswerRoute(
+  deps: ClientLinkHandlerDeps,
+  route: typeof CLIENT_LINK_ROUTES.accept | typeof CLIENT_LINK_ROUTES.decline,
+  tokenHash: string,
+  body: ParsedBody,
+  reply: Reply,
+): Promise<Response> {
+  const { log } = deps;
+  const sendId = body.sendId ?? "";
+  const accept = route === CLIENT_LINK_ROUTES.accept;
+  const op = accept ? "accept_quote" : "decline_quote";
+  let data: unknown;
+  try {
+    data = accept ? await deps.store.acceptQuote(tokenHash, sendId) : await deps.store.declineQuote(tokenHash, sendId);
+  } catch (error) {
+    return dbFailure(log, route, op, error, reply);
+  }
+  const answer = quoteAnswerFromRpc(data);
+  // Al aceptar, el menú de ese envío queda confirmado: es la hora en que lo aceptó, con las semanas y el precio.
+  if (!answer || (accept && (answer.confirmedAt === null || answer.totalCents === null || answer.quoteWeeks === null))) {
+    log("error", "unexpected_result", { op });
+    return reply(500, { error: "server" });
+  }
+
+  const kind: QuoteAnswerKind = accept ? "accepted" : "declined";
+  log("info", accept ? "quote_accepted" : "quote_declined", {
+    route,
+    sendId: answer.sendId,
+    requestId: answer.requestId,
+    quoteId: answer.quoteId,
+    already: answer.already,
+  });
+  if (!answer.already) {
+    deps.waitUntil(
+      notifyChefQuote(deps, kind, answer).catch((error: unknown) => {
+        log("error", "notify_crashed", { sendId: answer.sendId, error: error instanceof Error ? error.name : "unknown" });
+      }),
+    );
+  }
+  const response: AcceptQuoteResponse | DeclineQuoteResponse = accept
+    ? { acceptedAt: answer.confirmedAt ?? "", already: answer.already }
+    : { already: answer.already };
+  return reply(200, response);
+}
+
 export function createClientLinkHandler(deps: ClientLinkHandlerDeps): (request: Request) => Promise<Response> {
   const { config, log } = deps;
 
@@ -553,6 +717,9 @@ export function createClientLinkHandler(deps: ClientLinkHandlerDeps): (request: 
       }
       const tokenHash = await hashClientLinkToken(parsed.value.token);
       if (isView) return await viewRoute(deps, tokenHash, reply);
+      if (route === CLIENT_LINK_ROUTES.accept || route === CLIENT_LINK_ROUTES.decline) {
+        return await quoteAnswerRoute(deps, route, tokenHash, parsed.value, reply);
+      }
       return await answerRoute(deps, route, tokenHash, parsed.value, reply);
     } catch (error) {
       // Solo el tipo de error: el mensaje podría traer datos.
@@ -608,6 +775,53 @@ async function notifyChef(deps: ClientLinkHandlerDeps, kind: MenuAnswerKind, ans
     replyTo: null,
     ...email,
     idempotencyKey: kind === "confirmed" ? `menu-confirmed-${answer.sendId}` : `menu-changes-${answer.sendId}-${Date.parse(at ?? "")}`,
+  };
+  if (config.emailTransport === "log") {
+    log("info", "email_logged", { ...ids, htmlChars: message.html.length, textChars: message.text.length });
+    return;
+  }
+  const outcome = await sendWithResend(message, { apiKey: config.resendApiKey ?? "", fetch: deps.fetch, sleep: deps.sleep });
+  if (outcome.ok) log("info", "email_sent", ids);
+  else log("error", "email_failed", { ...ids, status: outcome.status, errorName: outcome.errorName });
+}
+
+/**
+ * Le avisa a Evelyn (CHEF_NOTIFY_EMAIL, en CHEF_LOCALE) que la clienta aceptó el presupuesto (con las semanas y el
+ * precio del servicio) o lo rechazó, con el link al pedido. Sin texto libre. La clave de idempotencia de Resend:
+ * una por presupuesto y respuesta (aceptar y rechazar son definitivos). Al rechazar, las semanas ya se cancelaron:
+ * la fecha y la hora son las de la semana del envío (la primera que proponía), y no se sabe cuántas eran.
+ */
+async function notifyChefQuote(deps: ClientLinkHandlerDeps, kind: QuoteAnswerKind, answer: QuoteAnswer): Promise<void> {
+  const { config, log } = deps;
+  const ids = { sendId: answer.sendId, quoteId: answer.quoteId, kind };
+  if (!config.chefNotifyEmail) {
+    log("warn", "email_skipped", { ...ids, reason: "no_recipient" });
+    return;
+  }
+  if (config.emailTransport === "resend" && (!config.resendApiKey || !config.mailFrom)) {
+    log("warn", "email_skipped", { ...ids, reason: "not_configured" });
+    return;
+  }
+  const email = renderQuoteAnswerNotification(
+    {
+      kind,
+      brand: brandFromMailFrom(config.mailFrom),
+      clientName: answer.clientName,
+      requestId: answer.requestId,
+      date: answer.date,
+      start: answer.start,
+      weeks: kind === "accepted" ? answer.quoteWeeks : null,
+      totalCents: kind === "accepted" ? answer.totalCents : null,
+      inboxUrl: config.inboxUrl,
+    },
+    config.chefLocale,
+  );
+  const message: EmailMessage = {
+    from: config.mailFrom ?? "",
+    to: config.chefNotifyEmail,
+    replyTo: null,
+    ...email,
+    idempotencyKey: `quote-${kind}-${answer.quoteId}`,
   };
   if (config.emailTransport === "log") {
     log("info", "email_logged", { ...ids, htmlChars: message.html.length, textChars: message.text.length });

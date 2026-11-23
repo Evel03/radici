@@ -23,7 +23,7 @@ export const PUBLIC_REQUEST_VERSION = 4;
 export const PUBLIC_REQUEST_VERSIONS: readonly number[] = [PUBLIC_REQUEST_VERSION, 3, 2];
 
 /** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
-export const CONSENT_VERSION = "2026-11-22";
+export const CONSENT_VERSION = "2026-11-23";
 /**
  * Versiones de la privacy con que se puede guardar un pedido de la versión vigente del contrato. Al cambiar
  * el texto sin cambiar el contrato, agregar la nueva y dejar la anterior mientras haya páginas en caché (y
@@ -34,9 +34,13 @@ export const CONSENT_VERSION = "2026-11-22";
  * para las páginas abiertas antes del despliegue, que no mandan platos. 2026-11-22 suma la página de la
  * reserva (el link de la clienta, docs/contracts/client-link.md): las respuestas al menú, sus visitas y
  * respuestas en el límite por IP y el aviso a Evelyn sin el mensaje; el formulario no cambia, así que
- * 2026-11-19 y 2026-11-16 siguen valiendo para las páginas abiertas antes.
+ * 2026-11-19 y 2026-11-16 siguen valiendo para las páginas abiertas antes. 2026-11-23 suma el presupuesto en
+ * esa página (SPEC 5.8): la página muestra el presupuesto (las fechas y el precio del servicio; antes decía
+ * que nunca mostraba precios) y la clienta lo acepta o lo rechaza desde ahí, una respuesta más de la
+ * solicitud (la misma base, art. 6.1.b, y la misma conservación); el formulario tampoco cambia, así que las
+ * tres anteriores siguen valiendo.
  */
-export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-11-19", "2026-11-16"];
+export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-11-22", "2026-11-19", "2026-11-16"];
 /**
  * Privacy de las páginas de la versión 1 del contrato: 2026-11-15 (sin la pregunta de alergias ni las
  * consultas del calendario) y 2026-10-19 (el borrador, solo prueba interna). Nunca se guardan: se aceptan
@@ -59,7 +63,7 @@ export const LEGACY_PAGE_CONSENT_VERSIONS: readonly string[] = ["2026-11-15", "2
 export const HEALTH_CONSENT_VERSIONS: readonly string[] = ["2026-11-16"];
 /**
  * Versión del texto de salud (la casilla y el punto 5 de la privacy) que manda la web en consents.health.
- * Va aparte de CONSENT_VERSION: las privacy 2026-11-19 y 2026-11-22 no tocaron la salud, y si la web mandara la versión de
+ * Va aparte de CONSENT_VERSION: las privacy 2026-11-19, 2026-11-22 y 2026-11-23 no tocaron la salud, y si la web mandara la versión de
  * la privacy, submit_public_request cerraría el consentimiento de salud vigente de un prospecto que vuelve
  * con alergias escritas (otra versión del texto), y con él consents_purge_health_data le borraría las
  * restricciones del hogar. Cambia solo cuando cambia el texto de salud.

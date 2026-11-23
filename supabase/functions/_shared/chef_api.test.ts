@@ -14,15 +14,19 @@ import {
   MAX_WEEKS,
   RECIPE_DESCRIPTION_MAX,
   RECIPE_NAME_MAX,
+  QUOTE_WEEK_STATUSES,
   SESSION_STATUSES,
   isTimeOfDay,
   isoWeekMonday,
   menuSendChannels,
   parseBookingRequest,
   parseCancelSessionsRequest,
+  parseCreateQuoteRequest,
   parseMenuPreviewRequest,
   parseMenuSendRequest,
   parseMoveSessionRequest,
+  parseQuotePriceRequest,
+  parseQuoteWithdrawRequest,
   parseTranslateRequest,
   textLength,
 } from "./chef_api.ts";
@@ -73,7 +77,10 @@ function errorsOf(
     | ReturnType<typeof parseCancelSessionsRequest>
     | ReturnType<typeof parseTranslateRequest>
     | ReturnType<typeof parseMenuPreviewRequest>
-    | ReturnType<typeof parseMenuSendRequest>,
+    | ReturnType<typeof parseMenuSendRequest>
+    | ReturnType<typeof parseCreateQuoteRequest>
+    | ReturnType<typeof parseQuotePriceRequest>
+    | ReturnType<typeof parseQuoteWithdrawRequest>,
 ): unknown {
   assert.equal(result.ok, false, "tenía que fallar");
   return result.ok ? null : result.errors;
@@ -91,6 +98,9 @@ test("rutas y límites del contrato", () => {
     translate: "/translate",
     menuPreview: "/menus/preview",
     menuSend: "/menus/send",
+    quotes: "/quotes",
+    quotePrice: "/quotes/price",
+    quoteWithdraw: "/quotes/withdraw",
   });
   assert.equal(RECIPE_NAME_MAX, 120, "como recipes_name_*_valido");
   assert.equal(RECIPE_DESCRIPTION_MAX, 200, "como recipes_description_*_valida");
@@ -547,4 +557,102 @@ test("menuSendChannels: en el orden de la base, email antes que whatsapp", () =>
   assert.deepEqual(menuSendChannels({ email: true, whatsapp: true }), ["email", "whatsapp"]);
   assert.deepEqual(menuSendChannels({ email: false, whatsapp: true }), ["whatsapp"]);
   assert.deepEqual(menuSendChannels({ email: true, whatsapp: false }), ["email"]);
+});
+
+// ---------------------------------------------------------------------------
+// Presupuesto: POST /quotes, /quotes/price y /quotes/withdraw (§14)
+// ---------------------------------------------------------------------------
+
+const QUOTE_ID = "5e550000-0000-4000-8000-0000000000a1";
+
+/** Preparar el presupuesto de un pedido de la bandeja: 4 semanas, 560 € de servicio. */
+function quoteBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { requestId: REQUEST_ID, dates: FOUR_MONDAYS, start: "10:00", cookMinutes: 240, portions: 50, serviceTotalCents: 56000, ...overrides };
+}
+
+test("presupuesto: el cuerpo de una reserva desde un pedido, normalizado (uuid en minúsculas, porciones 0 por defecto)", () => {
+  assert.deepEqual(parseCreateQuoteRequest(quoteBody({ requestId: REQUEST_ID.toUpperCase() }), OPTS), {
+    ok: true,
+    value: { requestId: REQUEST_ID, dates: FOUR_MONDAYS, start: "10:00", cookMinutes: 240, portions: 50, serviceTotalCents: 56000, dryRun: false },
+  });
+  const { portions: _portions, ...withoutPortions } = quoteBody();
+  const parsed = parseCreateQuoteRequest(withoutPortions, OPTS);
+  assert.ok(parsed.ok);
+  assert.equal(parsed.value.portions, 0);
+  // 0 vale: sin cargo.
+  assert.ok(parseCreateQuoteRequest(quoteBody({ serviceTotalCents: 0 }), OPTS).ok);
+  assert.ok(parseCreateQuoteRequest(quoteBody({ dates: ["2026-11-23"] }), OPTS).ok, "una semana");
+});
+
+test("presupuesto en dryRun: la hora y el precio pueden faltar (las semanas salen con 0)", () => {
+  const parsed = parseCreateQuoteRequest({ requestId: REQUEST_ID, dates: FOUR_MONDAYS, cookMinutes: 240, dryRun: true }, OPTS);
+  assert.deepEqual(parsed, {
+    ok: true,
+    value: { requestId: REQUEST_ID, dates: FOUR_MONDAYS, start: null, cookMinutes: 240, portions: 0, serviceTotalCents: 0, dryRun: true },
+  });
+});
+
+test("presupuesto: 400 por campo, con la fecha del error; una clave de más (type, clientId, la compra), payload invalid", () => {
+  const cases: Array<[Record<string, unknown>, unknown, string | undefined]> = [
+    [quoteBody({ requestId: undefined }), { requestId: "required" }, undefined],
+    [quoteBody({ requestId: "pedido-1" }), { requestId: "invalid" }, undefined],
+    [quoteBody({ dates: [] }), { dates: "range" }, undefined],
+    [quoteBody({ dates: Array.from({ length: 9 }, (_, i) => `2026-12-${String(i * 7 + 1).padStart(2, "0")}`) }), { dates: "range" }, undefined],
+    [quoteBody({ dates: "2026-11-23" }), { dates: "invalid" }, undefined],
+    [quoteBody({ dates: ["2026-11-23", "2026-11-25"] }), { dates: "sameWeek" }, "2026-11-25"],
+    [quoteBody({ dates: ["2026-11-30", "2026-11-23"] }), { dates: "order" }, "2026-11-23"],
+    [quoteBody({ dates: ["2028-01-03"] }), { dates: "dateOutOfRange" }, "2028-01-03"],
+    [quoteBody({ start: undefined }), { start: "required" }, undefined],
+    [quoteBody({ start: "9:00" }), { start: "invalid" }, undefined],
+    [quoteBody({ cookMinutes: undefined }), { cookMinutes: "required" }, undefined],
+    [quoteBody({ cookMinutes: 721 }), { cookMinutes: "range" }, undefined],
+    [quoteBody({ portions: 841 }), { portions: "range" }, undefined],
+    [quoteBody({ portions: 2.5 }), { portions: "invalid" }, undefined],
+    [quoteBody({ serviceTotalCents: undefined }), { serviceTotalCents: "required" }, undefined],
+    [quoteBody({ serviceTotalCents: 56000.5 }), { serviceTotalCents: "invalid" }, undefined],
+    [quoteBody({ serviceTotalCents: MAX_CENTS + 1 }), { serviceTotalCents: "range" }, undefined],
+    [quoteBody({ serviceTotalCents: -1 }), { serviceTotalCents: "range" }, undefined],
+    [quoteBody({ dryRun: "sí" }), { dryRun: "invalid" }, undefined],
+    [quoteBody({ type: "week" }), { payload: "invalid" }, undefined],
+    [quoteBody({ clientId: CLIENT_ID }), { payload: "invalid" }, undefined],
+    [quoteBody({ groceriesEstCents: 0 }), { payload: "invalid" }, undefined],
+  ];
+  for (const [input, expected, date] of cases) {
+    const result = parseCreateQuoteRequest(input, OPTS);
+    assert.deepEqual(errorsOf(result), expected, JSON.stringify(input));
+    assert.equal(result.ok ? undefined : result.date, date, JSON.stringify(input));
+  }
+  for (const input of [null, [], "x", 5]) assert.deepEqual(errorsOf(parseCreateQuoteRequest(input, OPTS)), { payload: "invalid" });
+});
+
+test("otro precio: el presupuesto y el precio, obligatorios; 0 vale; una clave de más, payload invalid", () => {
+  assert.deepEqual(parseQuotePriceRequest({ quoteId: QUOTE_ID.toUpperCase(), serviceTotalCents: 42000 }), {
+    ok: true,
+    value: { quoteId: QUOTE_ID, serviceTotalCents: 42000 },
+  });
+  assert.ok(parseQuotePriceRequest({ quoteId: QUOTE_ID, serviceTotalCents: 0 }).ok);
+  const cases: Array<[unknown, unknown]> = [
+    [{}, { quoteId: "required", serviceTotalCents: "required" }],
+    [{ quoteId: "x", serviceTotalCents: 100 }, { quoteId: "invalid" }],
+    [{ quoteId: QUOTE_ID, serviceTotalCents: "420" }, { serviceTotalCents: "invalid" }],
+    [{ quoteId: QUOTE_ID, serviceTotalCents: MAX_CENTS + 1 }, { serviceTotalCents: "range" }],
+    [{ quoteId: QUOTE_ID, serviceTotalCents: 100, reason: "sconto" }, { payload: "invalid" }],
+    ["x", { payload: "invalid" }],
+  ];
+  for (const [input, expected] of cases) assert.deepEqual(errorsOf(parseQuotePriceRequest(input)), expected, JSON.stringify(input));
+});
+
+test("retirar: solo el presupuesto; una clave de más, payload invalid", () => {
+  assert.deepEqual(parseQuoteWithdrawRequest({ quoteId: QUOTE_ID.toUpperCase() }), { ok: true, value: { quoteId: QUOTE_ID } });
+  const cases: Array<[unknown, unknown]> = [
+    [{}, { quoteId: "required" }],
+    [{ quoteId: 7 }, { quoteId: "invalid" }],
+    [{ quoteId: QUOTE_ID, requestId: REQUEST_ID }, { payload: "invalid" }],
+    [null, { payload: "invalid" }],
+  ];
+  for (const [input, expected] of cases) assert.deepEqual(errorsOf(parseQuoteWithdrawRequest(input)), expected, JSON.stringify(input));
+});
+
+test("los estados de cada fecha de un presupuesto: los de una reserva y free (ya creado)", () => {
+  assert.deepEqual([...QUOTE_WEEK_STATUSES], ["busy", "past", "blocked", "closed", "outside", "ok", "free"]);
 });

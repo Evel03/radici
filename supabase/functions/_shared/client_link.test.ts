@@ -18,9 +18,13 @@ import {
   newClientLinkToken,
   normalizeChangesText,
   parseClientLinkView,
+  QUOTE_CLOSED_REASONS,
+  QUOTE_STATUSES,
+  quoteSummaryFromSnapshot,
   readMenuSnapshot,
   reservationPageUrl,
   textLength,
+  type ClientLinkQuote,
   type ClientLinkView,
 } from "./client_link.ts";
 import { recipePhotoUrls } from "./menu.ts";
@@ -100,8 +104,10 @@ test("reservationPageUrl: la página /prenotazione/ con el token en el fragmento
   assert.equal(new URL(reservationPageUrl("https://radicicucina.app", TOKEN)).search, "");
 });
 
-test("rutas de la función: view, confirm y changes", () => {
-  assert.deepEqual(CLIENT_LINK_ROUTES, { view: "/view", confirm: "/confirm", changes: "/changes" });
+test("rutas de la función: view, confirm, changes y, para el presupuesto, accept y decline", () => {
+  assert.deepEqual(CLIENT_LINK_ROUTES, { view: "/view", confirm: "/confirm", changes: "/changes", accept: "/accept", decline: "/decline" });
+  assert.deepEqual([...QUOTE_STATUSES], ["sent", "changed", "accepted", "declined", "withdrawn", "expired"], "los de client_link_view");
+  assert.deepEqual([...QUOTE_CLOSED_REASONS], ["accepted", "declined", "withdrawn", "expired"], "el DETAIL de quote_closed");
 });
 
 // ---------------------------------------------------------------------------
@@ -246,6 +252,7 @@ function view(): ClientLinkView {
     locale: "es",
     chefName: "Evelyn",
     clientFirstName: "Anna",
+    quote: null,
     weeks: [
       {
         sessionId: SESSION_1,
@@ -260,12 +267,44 @@ function view(): ClientLinkView {
           state: "pending",
           confirmedAt: null,
           changesRequestedAt: null,
+          quoteId: null,
           content,
         },
       },
       { sessionId: SESSION_2, week: 2, weeks: 2, date: "2027-03-08", start: "10:00", done: false, menu: null },
     ],
   };
+}
+
+const QUOTE_ID = "5e550000-0000-4000-8000-0000000000a1";
+
+/** El presupuesto por aceptar (2 semanas, 300 €) que lleva el envío de la semana 1. */
+function quote(overrides: Partial<ClientLinkQuote> = {}): ClientLinkQuote {
+  return {
+    id: QUOTE_ID,
+    version: 1,
+    status: "sent",
+    sentAt: "2027-02-25T18:03:00.123456+00:00",
+    holdUntil: "2027-02-27T18:03:00.123456+00:00",
+    acceptedAt: null,
+    sendId: SEND_ID,
+    summary: {
+      totalCents: 30000,
+      weeks: [
+        { date: "2027-03-01", start: "10:00", serviceCents: 15000 },
+        { date: "2027-03-08", start: "10:00", serviceCents: 15000 },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+/** La reserva con el presupuesto: el envío de la semana 1 lo lleva. */
+function quoteView(overrides: Partial<ClientLinkQuote> = {}): ClientLinkView {
+  const value = view();
+  const [first, second] = value.weeks;
+  assert.ok(first?.menu && second);
+  return { ...value, quote: quote(overrides), weeks: [{ ...first, menu: { ...first.menu, quoteId: QUOTE_ID } }, second] };
 }
 
 test("menuState: confirmado, con cambios pedidos o por confirmar", () => {
@@ -315,4 +354,66 @@ test("parseClientLinkView: con otra forma, null (la página dice que hubo un pro
     ],
   ];
   for (const [label, value] of cases) assert.equal(parseClientLinkView(value, ORIGIN), null, label);
+});
+
+test("parseClientLinkView: el presupuesto y el de cada envío, tal cual después de pasar por JSON", () => {
+  const value = quoteView();
+  assert.deepEqual(parseClientLinkView(JSON.parse(JSON.stringify(value)), ORIGIN), value);
+  const accepted = quoteView({ status: "accepted", acceptedAt: "2027-02-26T09:00:00+00:00" });
+  assert.deepEqual(parseClientLinkView(JSON.parse(JSON.stringify(accepted)), ORIGIN), accepted);
+  const closed = quoteView({ status: "withdrawn", summary: null, sendId: null, holdUntil: null });
+  assert.deepEqual(parseClientLinkView(JSON.parse(JSON.stringify(closed)), ORIGIN), closed);
+});
+
+test("parseClientLinkView: una función de antes (sin quote ni quoteId) es una reserva sin presupuesto", () => {
+  const value = JSON.parse(JSON.stringify(view())) as Record<string, unknown> & { weeks: Array<{ menu: Record<string, unknown> | null }> };
+  delete value["quote"];
+  delete value.weeks[0]?.menu?.["quoteId"];
+  const parsed = parseClientLinkView(value, ORIGIN);
+  assert.equal(parsed?.quote, null);
+  assert.equal(parsed?.weeks[0]?.menu?.quoteId, null);
+});
+
+test("parseClientLinkView: un presupuesto con otra forma, null (la página dice que hubo un problema)", () => {
+  const mutate = (change: (value: Record<string, unknown>) => void): unknown => {
+    const value = JSON.parse(JSON.stringify(quoteView())) as Record<string, unknown>;
+    change(value);
+    return value;
+  };
+  const quoteOf = (value: Record<string, unknown>): Record<string, unknown> => value["quote"] as Record<string, unknown>;
+  const cases: Array<[string, unknown]> = [
+    ["no es un objeto", mutate((v) => (v["quote"] = "presupuesto"))],
+    ["estado desconocido", mutate((v) => (quoteOf(v)["status"] = "pending"))],
+    ["versión 0", mutate((v) => (quoteOf(v)["version"] = 0))],
+    ["sin fecha de envío", mutate((v) => (quoteOf(v)["sentAt"] = null))],
+    ["aceptado sin fecha", mutate((v) => (quoteOf(v)["status"] = "accepted"))],
+    ["con fecha de aceptado sin estar aceptado", mutate((v) => (quoteOf(v)["acceptedAt"] = "2027-02-26T09:00:00Z"))],
+    ["envío que no es un uuid", mutate((v) => (quoteOf(v)["sendId"] = "x"))],
+    ["el total no es la suma", mutate((v) => ((quoteOf(v)["summary"] as Record<string, unknown>)["totalCents"] = 1))],
+    ["resumen sin semanas", mutate((v) => (quoteOf(v)["summary"] = { totalCents: 0, weeks: [] }))],
+    ["precio con decimales", mutate((v) => (quoteOf(v)["summary"] = { totalCents: 1.5, weeks: [{ date: "2027-03-01", start: "10:00", serviceCents: 1.5 }] }))],
+    ["quoteId que no es un uuid", mutate((v) => (((v["weeks"] as Array<Record<string, unknown>>)[0]!["menu"] as Record<string, unknown>)["quoteId"] = 7))],
+  ];
+  for (const [label, value] of cases) assert.equal(parseClientLinkView(value, ORIGIN), null, label);
+});
+
+test("quoteSummaryFromSnapshot: lo que vio la clienta sale de la foto del envío (las semanas y el total); sin presupuesto, null", () => {
+  const withQuote = snapshot({
+    quote: {
+      version: 2,
+      totalCents: 30000,
+      weeks: [
+        { date: "2027-03-01", start: "10:00", serviceCents: 15000 },
+        { date: "2027-03-08", start: "10:00", serviceCents: 15000 },
+      ],
+      holdHours: 48,
+      firstStart: "2027-03-01T10:00",
+    },
+  });
+  assert.deepEqual(quoteSummaryFromSnapshot(withQuote), quote().summary);
+  assert.equal(quoteSummaryFromSnapshot(snapshot()), null);
+  assert.equal(quoteSummaryFromSnapshot(snapshot({ quote: { version: 1, totalCents: 1, weeks: [] } })), null, "uno que no cierra");
+  assert.equal(quoteSummaryFromSnapshot("foto"), null);
+  // La foto del menú no cambia por llevar el presupuesto.
+  assert.deepEqual(readMenuSnapshot(withQuote, ORIGIN), readMenuSnapshot(snapshot(), ORIGIN));
 });

@@ -53,12 +53,29 @@ describe("la web pública no lleva precios", () => {
     expect(files.filter((file) => file.endsWith("/_shared/emails.ts"))).toEqual([]);
   });
 
-  it("ningún módulo menciona las tarifas ni formatea importes", () => {
+  // Solo la página de la reserva muestra un importe: el precio que Evelyn escribió en el presupuesto de esa clienta.
+  const QUOTE_MODULES = ["/web/src/lib/format.ts", "/web/src/reservation/render.ts", "/supabase/functions/_shared/client_link.ts", "/supabase/functions/_shared/quote_snapshot.ts"];
+
+  it("ningún módulo menciona las tarifas ni el ahorro", () => {
     const offending = [...modules.entries()]
-      .filter(([, source]) => /DEFAULT_PRICING|weeklyRate|formatCents|weeklyServiceCents|serviceCents|savingsCents|currency:\s*["']EUR/.test(source))
+      .filter(([, source]) => /DEFAULT_PRICING|weeklyRate|weeklyServiceCents|savingsCents/.test(source))
       .map(([file]) => file)
-      // Este mismo archivo escribe esas palabras para buscarlas, pero ninguna página lo importa.
       .filter((file) => !file.endsWith(".test.ts"));
     expect(offending).toEqual([]);
+  });
+
+  it("solo los módulos del presupuesto de la página de la reserva formatean importes", () => {
+    const offending = [...modules.entries()]
+      .filter(([, source]) => /formatCents|serviceCents|currency:\s*["']EUR/.test(source))
+      .map(([file]) => file)
+      .filter((file) => !file.endsWith(".test.ts") && !QUOTE_MODULES.includes(file));
+    expect(offending).toEqual([]);
+  });
+
+  it("ninguna otra página (landing, formulario, privacy) alcanza esos módulos", () => {
+    for (const page of ["landing", "richiesta", "privacy", "not-found"]) {
+      const reached = [...reachable([`/web/src/pages/${page}.ts`]).keys()];
+      expect(reached.filter((file) => QUOTE_MODULES.includes(file) && file !== "/web/src/lib/format.ts"), page).toEqual([]);
+    }
   });
 });
