@@ -126,12 +126,14 @@ directorio temporal del runner (permisos 600) y se borra al final; nunca se impr
 **Rol de la clave: tiene que ser Admin.** Con `xcodebuild`, Xcode crea el certificado de distribución
 administrado en la nube. Una clave con rol App Manager falla con «Cloud signing permission error: You
 haven't been given access to cloud-managed distribution certificates» y no hay opción en la web para
-darle ese acceso a una clave (foros de Apple, hilos 698117 y 810658). Apple no documenta la tabla de
-roles de claves de la API con esa precisión: se verificó por esos reportes y todavía no con esta cuenta.
-Si el primer run falla así, Nicolas crea una segunda clave de equipo (App Store Connect → Usuarios y
-acceso → Integraciones → Claves de equipo, acceso **Admin**) y reemplaza `APP_STORE_CONNECT_KEY_ID` y
-`APP_STORE_CONNECT_API_KEY` (el issuer y el equipo no cambian: los nombres de los secretos se
-mantienen). El resto del flujo solo sube el build, para lo que App Manager alcanzaría.
+darle ese acceso a una clave (foros de Apple, hilos 698117 y 810658). Confirmado con esta cuenta el
+23/11/2026: con la clave App Manager, la exportación falla con «Cloud signing permission error», «No
+profiles for 'app.radicicucina' were found» y «No signing certificate "iOS Distribution" found». Nicolas
+crea una clave de equipo (App Store Connect → Usuarios y acceso → Integraciones → Claves de equipo,
+acceso **Admin**) y reemplaza `APP_STORE_CONNECT_KEY_ID` y `APP_STORE_CONNECT_API_KEY` (el issuer y el
+equipo no cambian: los nombres de los secretos se mantienen); después revoca la de App Manager. La
+alternativa sin clave Admin es la firma manual: un certificado de distribución y un perfil de App Store
+creados una vez en la web de Apple y cargados como secretos (dura un año).
 
 **Número de build** = `github.run_number` + `IOS_BUILD_NUMBER_OFFSET` (0 si no está). Cada ejecución
 de este workflow, PRs incluidos, lo aumenta, así que nunca se repite. Si en App Store Connect ya hay un
@@ -149,17 +151,14 @@ pregunta por el cumplimiento de exportación en cada build.
 3. **Pruebas externas** (opcional): grupo externo con invitación por email o enlace público; el primer
    build de cada versión pasa por una revisión corta de Apple.
 
-**Un iPhone registrado en la cuenta (una sola vez).** Con firma automática, Xcode archiva con la
-identidad de desarrollo y el perfil de desarrollo exige al menos un dispositivo del equipo; recién al
-exportar firma para distribución. Sin ninguno falla con «Your team has no devices from which to generate a
-provisioning profile» (primer run, 23/11/2026). Forzar `CODE_SIGN_IDENTITY="Apple Distribution"` en el
-archivo no sirve: con firma automática Xcode lo rechaza («is automatically signed, but code signing
-identity … has been manually specified», segundo run). Evitarlo exigiría firma manual (certificado y
-perfil cargados como secretos). Se registra en developer.apple.com → Certificates, IDs & Profiles →
-Devices → «+» con el UDID (app Apple Devices o iTunes en Windows: clic sobre el número de serie hasta
-que aparece el UDID). «No profiles for app.radicicucina» o permisos de nube: ver el rol de la clave
-arriba. Todavía sin Sign in with Apple: cuando llegue su PR, el `.entitlements` se suma a la lista de
-archivos que disparan el PR.
+**Sin iPhone registrado.** El archivo sale sin firmar y toda la firma va en la exportación (perfil de
+App Store, sin dispositivos); verificado el 23/11/2026 (tercer run: el archivo pasa). Lo que no sirve:
+archivar con firma automática pide un perfil de desarrollo, que exige un dispositivo («Your team has no
+devices from which to generate a provisioning profile», primer run), y forzar
+`CODE_SIGN_IDENTITY="Apple Distribution"` con firma automática lo rechaza Xcode («is automatically
+signed, but code signing identity … has been manually specified», segundo run). «No profiles for
+app.radicicucina» o permisos de nube al exportar: ver el rol de la clave arriba. Todavía sin Sign in
+with Apple: cuando llegue su PR, el `.entitlements` se suma a la lista de archivos que disparan el PR.
 
 ## Verificar (lo mismo que el CI)
 
