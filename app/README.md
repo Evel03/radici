@@ -67,8 +67,9 @@ Dónde vive, todo en `app/`:
    Profile) = `app.radicicucina.RunnerTests`.
 
 Fuera del repo (creados el 23/11/2026): App ID `app.radicicucina` en Apple Developer (con Sign in
-with Apple), la app «Radici Cucina» en App Store Connect y en Play Console. Pendiente: Firebase (FCM),
-firma de iOS, entitlements y dominios asociados (PRs aparte).
+with Apple), la app «Radici Cucina» en App Store Connect y en Play Console. La firma y los builds de
+las tiendas, abajo («Publicar en Android» e «iOS: TestFlight»). Pendiente: Firebase (FCM), entitlements
+y dominios asociados (PRs aparte).
 
 ## Publicar en Android
 
