@@ -56,6 +56,25 @@ jobs:
           fi
           echo "${areas}" | tee -a "${GITHUB_OUTPUT}"
 
+  # deploy-supabase.yml corre db push sin --include-all: una migración del PR que no es posterior a la
+  # última de main, o una de main borrada, renombrada o cambiada, rompe el despliegue que sigue al merge.
+  # Compara el merge commit del PR (HEAD, lo que baja actions/checkout en un pull_request) con su primer
+  # padre (HEAD^1, el main sobre el que se mezcla): fetch-depth 2. No depende de «Qué cambió» (tarda
+  # segundos y un error ahí no lo saltea). Si main avanzó después del último push, un re-run usa el mismo
+  # merge commit: actualizar la rama para que compare con el main de ahora.
+  migrations:
+    name: Orden de las migraciones
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: node .github/scripts/migration-order.ts
+
   quote:
     name: Motor de presupuesto (TS)
     needs: changes
