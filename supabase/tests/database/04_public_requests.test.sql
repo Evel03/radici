@@ -17,7 +17,7 @@ begin
 end
 $$;
 
-select plan(101);
+select plan(129);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres, sin RLS)
@@ -471,6 +471,248 @@ select results_eq(
      order by revoked_at nulls last $$,
   $$ values ('2026-10-19'::text, false), ('2027-01-01'::text, true) $$,
   'la versión nueva reemplaza a la anterior, que queda cerrada como traza'
+);
+
+-- =====================================================================
+-- 7b. El formulario nunca toca una ficha existente (PR03, SPEC §6, contrato §3)
+--   Una ficha con cuenta (prospect con profile_id) no se reutiliza jamás; un prospecto sin cuenta
+--   solo se reutiliza con su mismo consentimiento de salud vigente; con otra versión de salud
+--   nace una gemela y la ficha de antes queda exactamente como estaba.
+-- =====================================================================
+reset role;
+insert into auth.users (id, email) values ('7e580000-0000-4000-8000-00000000a002', 'cuenta@public.test');
+
+-- Ficha CON cuenta, en estado prospect (lo permite quitar clients_prospect_sin_cuenta), con consentimientos y una restricción.
+insert into public.clients (id, chef_id, profile_id, display_name, status, contact_email, contact_phone, zone) values
+  ('7e582000-0000-4000-8000-0000000000b1', '7e581000-0000-4000-8000-000000000001', '7e580000-0000-4000-8000-00000000a002',
+   'Cuenta Propia', 'prospect', 'cuenta@public.test', '+390000000011', 'Zona B1');
+-- Prospectos sin cuenta: uno con salud v1 (gemela base) y otro para la privacy vieja.
+insert into public.clients (id, chef_id, display_name, status, contact_email, contact_phone, zone) values
+  ('7e582000-0000-4000-8000-0000000000b2', '7e581000-0000-4000-8000-000000000001', 'Gemela Base', 'prospect',
+   'gemela@public.test', '+390000000012', 'Zona B2'),
+  ('7e582000-0000-4000-8000-0000000000b3', '7e581000-0000-4000-8000-000000000001', 'Privacy Vieja', 'prospect',
+   'privacy@public.test', '+390000000013', 'Zona B3');
+insert into public.consents (chef_id, client_id, kind, text_version)
+select '7e581000-0000-4000-8000-000000000001', c.id, k.kind, k.v
+from (values ('7e582000-0000-4000-8000-0000000000b1'::uuid), ('7e582000-0000-4000-8000-0000000000b2'),
+             ('7e582000-0000-4000-8000-0000000000b3')) as c(id)
+cross join (values ('privacy'::public.consent_kind, '2026-10-19'), ('health_data'::public.consent_kind, 'v1')) as k(kind, v);
+insert into public.client_restrictions (chef_id, client_id, allergen)
+select '7e581000-0000-4000-8000-000000000001', c.id, 'nuts'
+from (values ('7e582000-0000-4000-8000-0000000000b1'::uuid), ('7e582000-0000-4000-8000-0000000000b2'),
+             ('7e582000-0000-4000-8000-0000000000b3')) as c(id);
+
+-- Foto de cada ficha, de sus consentimientos (con revoked_at) y restricciones, para compararlas después.
+create temp table snap (k text primary key, j jsonb);
+create function pg_temp.foto(p_client uuid) returns jsonb language sql as $$
+  select jsonb_build_object(
+    'client', (select to_jsonb(cl) from public.clients cl where cl.id = p_client),
+    'consents', (select coalesce(jsonb_agg(to_jsonb(c) order by c.id), '[]') from public.consents c where c.client_id = p_client),
+    'restrictions', (select coalesce(jsonb_agg(to_jsonb(r) order by r.id), '[]') from public.client_restrictions r where r.client_id = p_client),
+    'requests', (select count(*) from public.requests r where r.client_id = p_client))
+$$;
+insert into snap values
+  ('cuenta',  pg_temp.foto('7e582000-0000-4000-8000-0000000000b1')),
+  ('gemela',  pg_temp.foto('7e582000-0000-4000-8000-0000000000b2'));
+
+-- (a) Email de una ficha con cuenta: no se reutiliza, nace un prospecto sin cuenta aparte.
+set local role service_role;
+select lives_ok(
+  $$ select public.submit_public_request(pg_temp.payload(
+       '{"email": "Cuenta@Public.test", "name": "Otra Persona", "allergens": ["eggs"], "health_consent_version": "v1"}')) $$,
+  'un envío anónimo con el email de una ficha con cuenta'
+);
+reset role;
+select is(
+  (select count(*)::int from public.clients
+   where chef_id = '7e581000-0000-4000-8000-000000000001' and lower(contact_email) = 'cuenta@public.test'),
+  2,
+  'la ficha con cuenta no se reutiliza: nace un prospecto nuevo al lado'
+);
+insert into ids (k, v)
+select 'cuenta_nueva', cl.id from public.clients cl
+where cl.chef_id = '7e581000-0000-4000-8000-000000000001' and lower(cl.contact_email) = 'cuenta@public.test'
+  and cl.id <> '7e582000-0000-4000-8000-0000000000b1';
+select results_eq(
+  $$ select profile_id, status::text, display_name from public.clients where id = (select v from ids where k = 'cuenta_nueva') $$,
+  $$ values (null::uuid, 'prospect'::text, 'Otra Persona'::text) $$,
+  'el prospecto nuevo no tiene cuenta y lleva los datos del pedido'
+);
+select is(
+  (select jsonb_build_object('c', (select count(*) from public.requests where client_id = (select v from ids where k = 'cuenta_nueva')),
+                             'r', (select count(*) from public.client_restrictions where client_id = (select v from ids where k = 'cuenta_nueva')),
+                             'h', (select count(*) from public.consents where client_id = (select v from ids where k = 'cuenta_nueva') and kind = 'health_data' and revoked_at is null))),
+  '{"c": 1, "r": 1, "h": 1}'::jsonb,
+  'el pedido, la restricción y el consentimiento de salud cuelgan del prospecto nuevo'
+);
+select is(
+  pg_temp.foto('7e582000-0000-4000-8000-0000000000b1'),
+  (select j from snap where k = 'cuenta'),
+  'la ficha con cuenta queda intacta: columnas, consentimientos (ninguno cerrado), restricciones y pedidos'
+);
+
+-- (b) Otra versión de salud: todo queda como estaba y nace una gemela con los datos nuevos.
+set local role service_role;
+select lives_ok(
+  $$ select public.submit_public_request(pg_temp.payload(
+       '{"email": "gemela@public.test", "name": "Gemela Nueva", "allergens": ["eggs"], "health_consent_version": "v2"}')) $$,
+  'un pedido con restricciones y otra versión del texto de salud'
+);
+reset role;
+select is(
+  pg_temp.foto('7e582000-0000-4000-8000-0000000000b2'),
+  (select j from snap where k = 'gemela'),
+  'la ficha de antes queda exactamente como estaba: ni cierra su consentimiento de salud ni purga sus restricciones'
+);
+insert into ids (k, v)
+select 'gemela', cl.id from public.clients cl
+where cl.chef_id = '7e581000-0000-4000-8000-000000000001' and lower(cl.contact_email) = 'gemela@public.test'
+  and cl.id <> '7e582000-0000-4000-8000-0000000000b2';
+select results_eq(
+  $$ select cl.display_name, cl.status::text, cl.profile_id,
+            (select array_agg(c.kind::text || ':' || c.text_version order by c.kind) from public.consents c
+             where c.client_id = cl.id and c.revoked_at is null),
+            (select array_agg(r.allergen::text) from public.client_restrictions r where r.client_id = cl.id),
+            (select count(*)::int from public.requests r where r.client_id = cl.id)
+     from public.clients cl where cl.id = (select v from ids where k = 'gemela') $$,
+  $$ values ('Gemela Nueva'::text, 'prospect'::text, null::uuid, array['health_data:v2', 'privacy:2026-10-19'],
+             array['eggs'], 1) $$,
+  'la gemela nace con los datos y el consentimiento de salud nuevos, y el pedido'
+);
+
+-- Un pedido posterior con la versión nueva reutiliza la gemela; con la vieja, la ficha original.
+set local role service_role;
+select lives_ok(
+  $$ select public.submit_public_request(pg_temp.payload(
+       '{"email": "gemela@public.test", "allergens": ["milk"], "health_consent_version": "v2"}')) $$,
+  'otro pedido con la versión v2'
+);
+select lives_ok(
+  $$ select public.submit_public_request(pg_temp.payload(
+       '{"email": "gemela@public.test", "allergens": ["gluten"], "health_consent_version": "v1"}')) $$,
+  'y otro con la versión v1'
+);
+reset role;
+select is(
+  (select count(*)::int from public.clients
+   where chef_id = '7e581000-0000-4000-8000-000000000001' and lower(contact_email) = 'gemela@public.test'),
+  2,
+  'no nacen más gemelas: cada pedido va a la ficha con su misma versión de salud'
+);
+select is(
+  (select array_agg(r.allergen::text order by r.allergen::text) from public.client_restrictions r
+   where r.client_id = (select v from ids where k = 'gemela')),
+  array['eggs', 'milk'],
+  'con la misma versión (v2) las restricciones se suman en la gemela'
+);
+select is(
+  (select array_agg(r.allergen::text order by r.allergen::text) from public.client_restrictions r
+   where r.client_id = '7e582000-0000-4000-8000-0000000000b2'),
+  array['gluten', 'nuts'],
+  'con la misma versión (v1) se suman en la ficha original'
+);
+select is(
+  (select count(*)::int from public.consents
+   where client_id = '7e582000-0000-4000-8000-0000000000b2' and kind = 'health_data' and revoked_at is null and text_version = 'v1'),
+  1,
+  'y el consentimiento de salud v1 original sigue vigente, sin cerrar'
+);
+
+-- (c) Cambió solo la privacy: se reutiliza la ficha, la privacy nueva se suma como hoy y no se purga nada.
+set local role service_role;
+select lives_ok(
+  $$ select public.submit_public_request(pg_temp.payload(
+       '{"email": "privacy@public.test", "privacy_consent_version": "2027-02-02", "allergens": ["milk"], "health_consent_version": "v1"}')) $$,
+  'pedido con otra versión de privacidad y la misma de salud'
+);
+select lives_ok(
+  $$ select public.submit_public_request(pg_temp.payload(
+       '{"email": "privacy@public.test", "privacy_consent_version": "2027-03-03"}')) $$,
+  'y otro, sin restricciones, con otra privacidad más'
+);
+reset role;
+select is(
+  (select count(*)::int from public.clients
+   where chef_id = '7e581000-0000-4000-8000-000000000001' and lower(contact_email) = 'privacy@public.test'),
+  1,
+  'si cambió solo la privacy se reutiliza la ficha'
+);
+select results_eq(
+  $$ select text_version, revoked_at is null from public.consents
+     where client_id = '7e582000-0000-4000-8000-0000000000b3' and kind = 'privacy' order by text_version $$,
+  $$ values ('2026-10-19'::text, false), ('2027-02-02'::text, false), ('2027-03-03'::text, true) $$,
+  'la privacy nueva se suma y las anteriores quedan cerradas como traza'
+);
+select results_eq(
+  $$ select text_version, revoked_at is null from public.consents
+     where client_id = '7e582000-0000-4000-8000-0000000000b3' and kind = 'health_data' $$,
+  $$ values ('v1'::text, true) $$,
+  'el consentimiento de salud no se cierra ni se reemplaza'
+);
+select is(
+  (select array_agg(r.allergen::text order by r.allergen::text) from public.client_restrictions r
+   where r.client_id = '7e582000-0000-4000-8000-0000000000b3'),
+  array['milk', 'nuts'],
+  'no se purga nada: las restricciones de antes siguen y se suma la nueva'
+);
+
+-- (d) Sin restricciones, la versión de salud que mande el envío no importa: no se escribe nada de salud.
+set local role service_role;
+select lives_ok(
+  $$ select public.submit_public_request(pg_temp.payload(
+       '{"email": "privacy@public.test", "privacy_consent_version": "2027-03-03", "health_consent_version": "v9"}')) $$,
+  'pedido sin restricciones con otra versión de salud'
+);
+reset role;
+select is(
+  (select count(*)::int from public.clients
+   where chef_id = '7e581000-0000-4000-8000-000000000001' and lower(contact_email) = 'privacy@public.test'),
+  1,
+  'sin restricciones no hay dato de salud que escribir: se reutiliza la ficha, sin gemela'
+);
+
+-- (e) Una ficha sin consentimiento de salud vigente: no hay nada que cerrar ni reemplazar, recibe el nuevo.
+insert into public.clients (id, chef_id, display_name, status, contact_email, contact_phone, zone)
+values ('7e582000-0000-4000-8000-0000000000b4', '7e581000-0000-4000-8000-000000000001', 'Sin Salud', 'prospect',
+        'sinsalud@public.test', '+390000000014', 'Zona B4');
+set local role service_role;
+select lives_ok(
+  $$ select public.submit_public_request(pg_temp.payload(
+       '{"email": "sinsalud@public.test", "allergens": ["fish"], "health_consent_version": "v1"}')) $$,
+  'pedido con restricciones a una ficha sin consentimiento de salud vigente'
+);
+reset role;
+select results_eq(
+  $$ select (select count(*)::int from public.clients where lower(contact_email) = 'sinsalud@public.test'),
+            (select count(*)::int from public.consents where client_id = '7e582000-0000-4000-8000-0000000000b4'
+              and kind = 'health_data' and revoked_at is null and text_version = 'v1') $$,
+  $$ values (1, 1) $$,
+  'sin consentimiento vigente se reutiliza y recibe el consentimiento nuevo'
+);
+
+-- (f) Test estructural: la regla clave vive en el cuerpo de la función.
+select ok(
+  (select p.prosrc ~ 'cl\.profile_id is null' and p.prosrc ~ 'cl\.status = ''prospect'''
+     and p.prosrc ~ 'c2\.text_version = v_health'
+   from pg_proc p where p.oid = 'public.submit_public_request(jsonb)'::regprocedure),
+  'estructura: solo reutiliza prospectos sin cuenta (profile_id is null) y con la misma versión de salud vigente'
+);
+select ok(
+  (select not exists (
+            select 1 from regexp_matches(p.prosrc, 'update public\.consents[^;]*;', 'g') as m(x)
+            where m.x[1] !~ '''privacy''')
+   from pg_proc p where p.oid = 'public.submit_public_request(jsonb)'::regprocedure),
+  'estructura: lo único que la función cierra de los consentimientos es el de privacy, nunca el de salud'
+);
+select is(
+  (select count(*)::int from pg_constraint where conname = 'clients_prospect_sin_cuenta'),
+  0,
+  'el check clients_prospect_sin_cuenta ya no existe: la ficha propia de una cuenta es un prospecto con cuenta'
+);
+select is(
+  (select pg_get_indexdef(i.indexrelid) from pg_index i where i.indexrelid = 'public.clients_prospect_email_idx'::regclass),
+  'CREATE INDEX clients_prospect_email_idx ON public.clients USING btree (chef_id, lower(contact_email)) WHERE ((status = ''prospect''::client_status) AND (profile_id IS NULL))',
+  'clients_prospect_email_idx es parcial: prospectos sin cuenta'
 );
 
 -- =====================================================================

@@ -9,7 +9,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(39);
+select plan(40);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres)
@@ -30,6 +30,7 @@ select plan(39);
 --   p_live         expired de hace 200 días con una sesión confirmada → queda
 --   p_edge         new de hace 89 días                               → queda
 --   k_account      cliente con cuenta, new de hace 200 días          → queda
+--   p_account      prospecto CON cuenta (ya no lo impide un check), new de hace 200 días → queda
 --   t_trial        trial sin cuenta, new de hace 200 días            → queda
 --   q_old (C2)     new de hace 40 días (C2 guarda 30)                → se borra
 --   q_new (C2)     new de hace 20 días                               → queda
@@ -40,7 +41,8 @@ insert into auth.users (id, email) values
   ('7e600000-0000-4000-8000-00000000c001', 'chef1@purge.test'),
   ('7e600000-0000-4000-8000-00000000c002', 'chef2@purge.test'),
   ('7e600000-0000-4000-8000-00000000c003', 'chef3@purge.test'),
-  ('7e600000-0000-4000-8000-00000000a001', 'k@purge.test');
+  ('7e600000-0000-4000-8000-00000000a001', 'k@purge.test'),
+  ('7e600000-0000-4000-8000-00000000a002', 'p_account@purge.test');
 update public.profiles set role = 'chef'
 where id in ('7e600000-0000-4000-8000-00000000c001', '7e600000-0000-4000-8000-00000000c002',
              '7e600000-0000-4000-8000-00000000c003');
@@ -69,6 +71,7 @@ insert into fx (k, id, chef) values
   ('p_edge',        '7e602000-0000-4000-8000-00000000000b', '7e601000-0000-4000-8000-000000000001'),
   ('k_account',     '7e602000-0000-4000-8000-00000000000c', '7e601000-0000-4000-8000-000000000001'),
   ('t_trial',       '7e602000-0000-4000-8000-00000000000d', '7e601000-0000-4000-8000-000000000001'),
+  ('p_account',     '7e602000-0000-4000-8000-000000000012', '7e601000-0000-4000-8000-000000000001'),
   ('q_old',         '7e602000-0000-4000-8000-00000000000e', '7e601000-0000-4000-8000-000000000002'),
   ('q_new',         '7e602000-0000-4000-8000-00000000000f', '7e601000-0000-4000-8000-000000000002'),
   ('r_old',         '7e602000-0000-4000-8000-000000000010', '7e601000-0000-4000-8000-000000000003'),
@@ -76,7 +79,8 @@ insert into fx (k, id, chef) values
 
 insert into public.clients (id, chef_id, profile_id, display_name, contact_email, status, created_at)
 select fx.id, fx.chef,
-       case when fx.k = 'k_account' then '7e600000-0000-4000-8000-00000000a001'::uuid end,
+       case fx.k when 'k_account' then '7e600000-0000-4000-8000-00000000a001'::uuid
+                 when 'p_account' then '7e600000-0000-4000-8000-00000000a002'::uuid end,
        'Cliente ' || fx.k, fx.k || '@purge.test',
        case fx.k when 'k_account' then 'active' when 't_trial' then 'trial' else 'prospect' end::public.client_status,
        now() - make_interval(days => case fx.k when 'p_no_req_new' then 5 when 'p_recent' then 10 else 100 end)
@@ -96,6 +100,7 @@ insert into fx_req (k, status, days_ago) values
   ('p_edge', 'new', 89),
   ('k_account', 'new', 200),
   ('t_trial', 'new', 200),
+  ('p_account', 'new', 200),
   ('q_old', 'new', 40),
   ('q_new', 'new', 20),
   ('r_old', 'new', 100),
@@ -271,7 +276,7 @@ select is(
 -- Lo que queda
 select is(
   (select array_agg(fx.k order by fx.k collate "C") from fx where exists (select 1 from public.clients cl where cl.id = fx.id)),
-  array['k_account', 'p_accepted', 'p_edge', 'p_last_recent', 'p_live', 'p_no_req_new', 'p_paid', 'p_quoted',
+  array['k_account', 'p_accepted', 'p_account', 'p_edge', 'p_last_recent', 'p_live', 'p_no_req_new', 'p_paid', 'p_quoted',
         'p_recent', 'q_new', 'r_new', 't_trial'],
   'se conservan: recientes, con pedidos que avanzaron, con sesión viva o pago, clientes con cuenta y no prospectos'
 );
@@ -279,13 +284,18 @@ select is(
   (select count(*)::int from fx_req q
    where q.k not in ('p_no_req_old', 'p_old_mix', 'p_old_new', 'q_old', 'r_old')
      and exists (select 1 from public.requests r where r.id = q.id)),
-  12,
+  13,
   'todos los pedidos de los que quedan siguen ahí'
 );
 select is(
   (select count(*)::int from public.clients cl join fx on fx.id = cl.id where fx.k = 'k_account' and cl.profile_id is not null),
   1,
   'el cliente con cuenta no se toca aunque su pedido sea viejo'
+);
+select ok(
+  not private.prospect_retention_expired('7e602000-0000-4000-8000-000000000012')
+  and (select cl.profile_id = '7e600000-0000-4000-8000-00000000a002' from public.clients cl where cl.id = '7e602000-0000-4000-8000-000000000012'),
+  'un prospecto con cuenta (sin el check clients_prospect_sin_cuenta) tampoco vence ni se borra: la retención toca solo fichas sin cuenta'
 );
 select is(
   (select count(*)::int from public.clients cl join fx on fx.id = cl.id where fx.k = 'p_last_recent'),
