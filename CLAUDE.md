@@ -36,6 +36,11 @@ Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y est
 - Colaboradores (`chef_members`): entran al área de Evelyn con su cuenta y el mismo acceso, salvo su ficha pública. En la RLS el lado de la cocinera usa siempre `current_chef_id()` o `is_chef_of()` (dueña y colaboradores, vía `chef_id_for_user`), nunca `profile_id = auth.uid()` directo: el pgTAP `15_chef_members` lo exige (lista de excepciones: las de identidad propia y la edición de la ficha pública). Un texto de la app no promete «solo tú» en el área de la cocinera: sus colaboradores ven lo mismo.
 - Workflows: actions fijadas por SHA con `# vX.Y.Z` (Dependabot las actualiza).
 - CI: en un PR cada job corre solo si cambió lo que usa (`.github/scripts/ci-changes.sh`, con tests; las listas salen de lo que los tests leen del repo; si el cálculo falla, corre todo); cambiar `.github/**` corre todo; en `main` siempre todo. `deploy-web.yml` no corre en PR: vista previa a pedido con workflow_dispatch sobre la rama (desde una rama nunca publica en producción).
+- Migraciones: una de `main` nunca se edita, renombra ni borra (producción ya la aplicó); un cambio va en una migración nueva, con una versión posterior a la última de `main`, porque `db push` corre sin `--include-all`. El CI lo comprueba en cada PR (job «Orden de las migraciones», `.github/scripts/migration-order.ts`).
+- Función SQL que se reescribe (`create or replace` en una migración nueva): lleva un test estructural de su regla clave (pgTAP sobre `pg_proc.prosrc`), así otra reescritura no la pierde sin que falle un test. Los PRs que reescriben la misma función van en serie, cada uno sobre el anterior ya mergeado.
+- Un ajuste de Auth que depende de una función o de algo de la base (un hook, una tabla) va en un PR posterior al que lo crea: `deploy-supabase.yml` aplica la configuración de Auth antes de `db push`.
+- Toda función nueva que la app de Evelyn llame por RPC, o que use una política de RLS, lleva su `grant execute` explícito a `authenticated` (la política corre con los permisos de quien consulta): nunca se depende de los privilegios por defecto.
+- Edge Functions: nunca loguean `message`, `details` ni `hint` de un error de la base (pasan por `StoreError` de `_shared/edge.ts`: operación, SQLSTATE y un código propio ya filtrado). Las nuevas validan largo y formato de cada campo antes de escribir.
 - Textos de UI: ARB en la app, JSON por idioma en la web (it por defecto, es, en). Nada hardcodeado.
 - App: lógica fuera de los widgets (repositorios + providers Riverpod). Widgets sin llamadas a Supabase.
 - TS de `_shared/`: solo sintaxis borrable (sin enum, namespace ni parameter properties), imports con extensión `.ts`; así corre en Node, Deno y Vite sin compilar.
@@ -47,4 +52,5 @@ Especificación completa: SPEC.md. Si una regla cambia, actualizar SPEC.md y est
 - Web: `cd web && npm run dev | npm run build | npm test`
 - App: `cd app && flutter analyze && flutter test` (con el SDK 3.47.7)
 - Base: `npx supabase start` · `npx supabase db reset` · `npx supabase test db` (necesita Docker)
+- Orden de las migraciones (lo mismo que el CI, simulando el merge sobre main): `node .github/scripts/migration-order.ts origin/main`
 - Edge Function local: copiar `supabase/functions/.env.example` y `npx supabase functions serve --env-file <archivo>` (con `EMAIL_TRANSPORT=log` no sale ningún email; con `TRANSLATE_TRANSPORT=fake` no se llama a Claude)
