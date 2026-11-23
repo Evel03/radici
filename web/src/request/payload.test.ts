@@ -12,7 +12,6 @@ import {
   type RequestData,
 } from "./model.ts";
 import { buildPayload } from "./payload.ts";
-import { computeQuote } from "./quote.ts";
 
 function serverParse(data: RequestData, token = TEST_TOKEN) {
   // Ida y vuelta por JSON, como viaja de verdad.
@@ -29,15 +28,14 @@ describe("buildPayload", () => {
     expect(result.value.meals).toEqual(["dinner"]);
     expect(result.value.noAllergies).toBe(true);
     expect(result.value.consents).toEqual({ privacy: CONSENT_VERSION, health: null });
-    // La estimación del servidor coincide con la de la calculadora de la web (vector 1).
-    expect(result.estimate).toEqual(computeQuote(validRequest()));
-    expect(result.estimate.autoPrice && result.estimate.serviceCents).toBe(15000);
+    // La entrada del motor es la del vector 1 (el precio lo calcula solo el servidor, y la web no lo muestra).
+    expect(result.value.quoteInput).toEqual({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 });
   });
 
   it("manda las semanas del pedido semanal; una sesión extra, siempre 1", () => {
     const four = serverParse(validRequest({ weeks: 4 }));
     expect(four.ok && four.value.weeks).toBe(4);
-    expect(four.ok && four.estimate).toEqual(computeQuote(validRequest({ weeks: 4 })));
+    expect(four.ok && four.value.quoteInput.weeks).toBe(4);
     expect(buildPayload(validRequest({ weeks: 4 }), { locale: "it", turnstileToken: "t" }).weeks).toBe(4);
     // El selector puede haber quedado en otra semana si después eligió "extra": no se manda.
     expect(buildPayload(validRequest({ type: "extra", weeks: 4 }), { locale: "it", turnstileToken: "t" }).weeks).toBe(1);

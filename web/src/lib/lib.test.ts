@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { romeToday } from "../../../supabase/functions/_shared/public_request.ts";
 import { addDays, isIsoDate, todayInRome } from "./dates.ts";
-import { formatCents, formatIsoDate } from "./format.ts";
+import { formatIsoDate } from "./format.ts";
 
 describe("fechas en Europe/Rome", () => {
   it("'hoy' es el día de Bergamo, no el de UTC", () => {
@@ -29,25 +29,7 @@ describe("fechas en Europe/Rome", () => {
   });
 });
 
-describe("formato", () => {
-  it("moneda desde centavos enteros según el idioma", () => {
-    expect(formatCents(14100, "it-IT")).toMatch(/^141,00\s€$/);
-    expect(formatCents(14100, "es-ES")).toMatch(/^141,00\s€$/);
-    expect(formatCents(14100, "en-IE")).toBe("€141.00");
-    expect(formatCents(8488, "it-IT")).toMatch(/^84,88\s€$/);
-  });
-
-  it("los miles van separados también con 4 cifras, como en el email y en la app (8 semanas: 1120 €)", () => {
-    expect(formatCents(112000, "it-IT")).toMatch(/^1\.120,00\s€$/);
-    expect(formatCents(112000, "es-ES")).toMatch(/^1\.120,00\s€$/);
-    expect(formatCents(112000, "en-IE")).toBe("€1,120.00");
-    expect(formatCents(1000000, "it-IT")).toMatch(/^10\.000,00\s€$/);
-  });
-
-  it("rechaza importes no enteros", () => {
-    expect(() => formatCents(10.5, "it-IT")).toThrow(RangeError);
-  });
-
+describe("formato de fechas", () => {
   it("fecha larga según el idioma", () => {
     expect(formatIsoDate("2026-10-26", "it-IT")).toBe("lunedì 26 ottobre 2026");
     expect(formatIsoDate("2026-10-26", "en-IE")).toMatch(/Monday,? 26 October 2026/);

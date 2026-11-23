@@ -3,7 +3,7 @@
 // Nunca se registran en consola los datos del pedido ni la respuesta.
 import { readMenuChoices, type MenuChoice } from "../../../supabase/functions/_shared/menu.ts";
 import type { MessageKey, Params } from "../i18n/core.ts";
-import { readPublicEstimate, type PublicRequestErrors, type PublicRequestEstimate, type PublicRequestPayload } from "./model.ts";
+import type { PublicRequestErrors, PublicRequestPayload } from "./model.ts";
 
 export const PUBLIC_REQUEST_PATH = "/functions/v1/public-request";
 
@@ -24,15 +24,14 @@ export function publicRequestUrl(supabaseUrl: string): string {
 export type SubmitOutcome =
   /**
    * 2xx: el pedido quedó guardado (aunque el cuerpo no se pueda leer). `duplicate`: ya estaba guardado
-   * de un envío anterior con la misma clave y este no cambió nada (la estimación es la guardada).
-   * `estimate`: la que guardó el servidor (calcQuote con las tarifas de la cocinera), con precio o sin él.
+   * de un envío anterior con la misma clave y este no cambió nada. La respuesta no trae estimación ni precio
+   * (decisión del 22/11/2026): la web no los muestra.
    * `menu`: los platos que guardó (los publicados de los que eligió, con sus nombres); null si no vino o
    * vino con otra forma (la pantalla de gracias usa entonces los nombres del catálogo de la página).
    */
   | {
       kind: "created";
       requestId: string | null;
-      estimate: PublicRequestEstimate | null;
       menu: MenuChoice[] | null;
       duplicate: boolean;
     }
@@ -87,12 +86,9 @@ export function rateLimitMessage(seconds: number | null): { key: MessageKey; par
 export function interpretResponse(status: number, body: unknown, retryAfter: string | null, now?: Date): SubmitOutcome {
   if (status >= 200 && status < 300) {
     const data = isRecord(body) ? body : {};
-    // La estimación se lee con la función del contrato: con otra forma queda en null y la pantalla de
-    // gracias usa la de la calculadora.
     return {
       kind: "created",
       requestId: readRequestId(data),
-      estimate: readPublicEstimate(data["estimate"]),
       menu: readMenuChoices(data["menu"]),
       duplicate: data["duplicate"] === true,
     };

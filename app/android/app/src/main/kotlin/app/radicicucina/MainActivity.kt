@@ -1,4 +1,4 @@
-package com.sepusola10.mestolo
+package app.radicicucina
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -506,6 +506,10 @@ const Map<String, String> _withoutAccent = {
   'ñ': 'n', 'ç': 'c', 'ý': 'y', 'ÿ': 'y',
 };
 
+/// [char], una letra en minúsculas, sin acento, diéresis, tilde ni cedilla
+/// («é» → «e», «ñ» → «n», «ç» → «c»). Cualquier otro carácter queda igual.
+String withoutAccent(String char) => _withoutAccent[char] ?? char;
+
 /// [text] para comparar en una búsqueda: en minúsculas, sin acentos y con un
 /// solo espacio entre palabras.
 String foldForSearch(String text) {
@@ -513,8 +517,7 @@ String foldForSearch(String text) {
   for (final rune in normalizeRecipeText(text).toLowerCase().runes) {
     // Acentos sueltos (combinantes), por si el teclado no los compuso.
     if (rune >= 0x0300 && rune <= 0x036f) continue;
-    final char = String.fromCharCode(rune);
-    buffer.write(_withoutAccent[char] ?? char);
+    buffer.write(withoutAccent(String.fromCharCode(rune)));
   }
   return buffer.toString();
 }

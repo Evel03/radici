@@ -11,9 +11,11 @@
 // HTML simple con estilos en línea, sin imágenes remotas ni seguimiento, más texto plano. Con la
 // identidad de la web (logotipo en texto, paleta del manual de marca) y sin fuentes remotas.
 // Importes con aritmética entera; fechas sin zona horaria (son días de calendario).
-// Precio por semana (SPEC §5.1): con precio automático, el servicio por semana, el de todas las semanas
-// y el ahorro; sin él, quién prepara el presupuesto. La compra la hace el cliente con la lista que le
-// manda Evelyn (decisión del 19/11/2026): ningún email la estima; al cliente se le recuerda, a Evelyn no.
+// Precios (decisión del 22/11/2026): el cliente no ve ningún precio, ni en la web ni en el email: se le dice
+// que Evelyn le prepara un presupuesto a medida. Al aviso a Evelyn va el resultado de la fórmula (SPEC §5.1)
+// rotulado como referencia interna (por semana, de todas las semanas y ahorro; sin precio automático, por
+// qué). La compra la hace el cliente con la lista que le manda Evelyn (decisión del 19/11/2026): ningún
+// email la estima; al cliente se le recuerda, a Evelyn no.
 // Menù (versión 4, 19/11/2026): los platos que eligió el cliente en la web, con los nombres de la receta en
 // el idioma del email (o en italiano si no están traducidos). A Evelyn, cuáles y de cuántos días, o que lo
 // propone ella; al cliente, cuáles y que Evelyn le confirma el menù. Nunca sus alérgenos.
@@ -22,7 +24,7 @@ import { localizedText, type MenuChoice } from "./menu.ts";
 import { weeklyDates, type Locale, type Meal, type RequestType, type Slot } from "./public_request.ts";
 import type { NoAutoPriceReason } from "./quote.ts";
 
-/** Lo que el email dice del precio: la estimación del motor con las tarifas de la cocinera. */
+/** La referencia de tarifa del aviso a Evelyn: la estimación del motor con sus tarifas. Nunca va al cliente. */
 export type EstimateSummary =
   | {
       autoPrice: true;
@@ -74,7 +76,6 @@ export interface RequestSummary {
   slot: Slot;
   /** Qué contestó sobre alergias, nunca cuáles. */
   allergies: AllergyAnswer;
-  estimate: EstimateSummary;
   /** Los platos que eligió en la web (los que guardó la base, en orden); [] si el menù lo propone Evelyn. */
   menu: readonly MenuChoice[];
 }
@@ -97,7 +98,8 @@ export interface ChefNotificationInput {
   whatsappOptIn: boolean;
   /** Solo si dejó notas, nunca cuáles. */
   hasNotes: boolean;
-  summary: RequestSummary;
+  /** Con la referencia de tarifa: solo el aviso a Evelyn la lleva (la confirmación al cliente no tiene precio). */
+  summary: RequestSummary & { estimate: EstimateSummary };
   /** Bandeja de la app web; el botón abre el pedido. */
   inboxUrl: string | null;
 }
@@ -146,16 +148,15 @@ interface Messages {
   /** "40,00 € rispetto a 150,00 € a settimana". */
   savingsValue: (savings: string, regular: string) => string;
   noDate: string;
-  estimateTitle: string;
-  /** Con precio automático, debajo del importe: que es una estimación (al cliente, el precio final se lo confirma Evelyn). */
-  estimateNote: string;
+  /** Título del bloque de Evelyn: la fórmula es solo una referencia suya, el cliente no ve ningún precio. */
+  referenceTitle: string;
   client: {
     subject: (brand: string) => string;
     preheader: (chef: string) => string;
     greeting: (first: string) => string;
     intro: (chef: string) => string;
-    /** Sin precio automático: quién prepara el presupuesto del servicio, y por qué. */
-    noAutoPrice: Readonly<Record<NoAutoPriceReason, (chef: string, maxPeople: number) => string>>;
+    /** Evelyn le prepara un presupuesto a medida y se lo manda por email o WhatsApp. */
+    quote: (chef: string) => string;
     /** La compra la hace el cliente, con la lista que le manda la cocinera (la misma frase que la web). */
     shopping: (chef: string) => string;
     summaryTitle: string;
@@ -232,18 +233,14 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
     },
     savingsValue: (savings, regular) => `${savings} rispetto a ${regular} a settimana`,
     noDate: "Nessuna preferenza",
-    estimateTitle: "Preventivo stimato",
-    estimateNote: "Questa è una stima.",
+    referenceTitle: "Riferimento tariffa (interno)",
     client: {
       subject: (brand) => `${brand}: abbiamo ricevuto la tua richiesta`,
       preheader: (chef) => `${chef} ti contatterà al più presto.`,
       greeting: (first) => (first ? `Grazie, ${first}!` : "Grazie!"),
       intro: (chef) =>
-        `Abbiamo ricevuto la tua richiesta. ${chef} ti contatterà al più presto per confermare giorni, orari, menù e prezzo finale.`,
-      noAutoPrice: {
-        people: (chef, maxPeople) => `Per più di ${maxPeople} persone il preventivo per il servizio te lo prepara ${chef}.`,
-        extra: (chef) => `Per eventi e sessioni extra il preventivo per il servizio te lo prepara ${chef}.`,
-      },
+        `Abbiamo ricevuto la tua richiesta. ${chef} ti contatterà al più presto per confermare giorni, orari e menù.`,
+      quote: (chef) => `${chef} ti prepara un preventivo su misura e te lo manda per email o WhatsApp.`,
       shopping: (chef) => `La spesa la fai tu, con la lista che ti manda ${chef}.`,
       summaryTitle: "La tua richiesta",
       menuChosen: "Piatti scelti",
@@ -314,18 +311,14 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
     },
     savingsValue: (savings, regular) => `${savings} frente a ${regular} por semana`,
     noDate: "Sin preferencia",
-    estimateTitle: "Presupuesto estimado",
-    estimateNote: "Esto es una estimación.",
+    referenceTitle: "Referencia de tarifa (interna)",
     client: {
       subject: (brand) => `${brand}: hemos recibido tu solicitud`,
       preheader: (chef) => `${chef} te contactará lo antes posible.`,
       greeting: (first) => (first ? `¡Gracias, ${first}!` : "¡Gracias!"),
       intro: (chef) =>
-        `Hemos recibido tu solicitud. ${chef} te contactará lo antes posible para confirmar los días, los horarios, el menú y el precio final.`,
-      noAutoPrice: {
-        people: (chef, maxPeople) => `Para más de ${maxPeople} personas, el presupuesto del servicio te lo prepara ${chef}.`,
-        extra: (chef) => `Para eventos y sesiones extra, el presupuesto del servicio te lo prepara ${chef}.`,
-      },
+        `Hemos recibido tu solicitud. ${chef} te contactará lo antes posible para confirmar los días, los horarios y el menú.`,
+      quote: (chef) => `${chef} te prepara un presupuesto a tu medida y te lo manda por email o WhatsApp.`,
       shopping: (chef) => `La compra la haces tú, con la lista que te manda ${chef}.`,
       summaryTitle: "Tu solicitud",
       menuChosen: "Platos elegidos",
@@ -396,18 +389,14 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
     },
     savingsValue: (savings, regular) => `${savings} compared with ${regular} a week`,
     noDate: "No preference",
-    estimateTitle: "Estimated quote",
-    estimateNote: "This is an estimate.",
+    referenceTitle: "Rate reference (internal)",
     client: {
       subject: (brand) => `${brand}: we've received your request`,
       preheader: (chef) => `${chef} will contact you as soon as possible.`,
       greeting: (first) => (first ? `Thank you, ${first}!` : "Thank you!"),
       intro: (chef) =>
-        `We've received your request. ${chef} will contact you as soon as possible to confirm the days, times, menu and final price.`,
-      noAutoPrice: {
-        people: (chef, maxPeople) => `For more than ${maxPeople} people, ${chef} will send you a quote for the service.`,
-        extra: (chef) => `For events and extra sessions, ${chef} will send you a quote for the service.`,
-      },
+        `We've received your request. ${chef} will contact you as soon as possible to confirm the days, times and menu.`,
+      quote: (chef) => `${chef} will prepare a quote tailored to you and send it by email or WhatsApp.`,
       shopping: (chef) => `You do the shopping, with the list ${chef} sends you.`,
       summaryTitle: "Your request",
       menuChosen: "Dishes chosen",
@@ -794,13 +783,13 @@ function strongRow(label: string, cents: number, locale: Locale): Row {
 
 /**
  * El precio: con precio automático, el servicio (por semana y de todas las semanas, y el ahorro si hay
- * descuento); sin él, `noPrice` dice quién prepara el precio. Ninguna fila de compra: la hace el cliente.
- * `note` va debajo (si está vacía, no va).
+ * descuento); sin él, `noPrice` dice por qué no hay. Solo el aviso a Evelyn lo usa, rotulado como referencia
+ * interna: el cliente no ve ningún precio (decisión del 22/11/2026). Ninguna fila de compra: la hace el cliente.
  */
-function estimateBlocks(summary: RequestSummary, messages: Messages, locale: Locale, noPrice: string, note: string): Block[] {
+function referenceBlocks(summary: RequestSummary & { estimate: EstimateSummary }, messages: Messages, locale: Locale, noPrice: string): Block[] {
   const { estimate } = summary;
   const money = (cents: number): string => formatCents(cents, locale);
-  const blocks: Block[] = [{ kind: "title", text: messages.estimateTitle }];
+  const blocks: Block[] = [{ kind: "title", text: messages.referenceTitle }];
   if (estimate.autoPrice) {
     const rows: Row[] = [];
     if (summary.weeks > 1) {
@@ -816,7 +805,6 @@ function estimateBlocks(summary: RequestSummary, messages: Messages, locale: Loc
   } else {
     blocks.push({ kind: "paragraph", text: noPrice });
   }
-  if (note) blocks.push({ kind: "note", text: note });
   return blocks;
 }
 
@@ -840,13 +828,9 @@ export function renderClientConfirmation(input: ClientConfirmationInput, locale:
   // De las alergias, solo "nadie tiene", para que vea si se equivocó. "Hay alergias" no sale hacia una
   // dirección que nadie verificó (es un dato de salud); sin respuesta, tampoco se dice nada.
   if (summary.allergies === "none") blocks.push({ kind: "note", text: messages.client.allergiesNone });
-  const noPrice = summary.estimate.autoPrice
-    ? ""
-    : messages.client.noAutoPrice[summary.estimate.reason](input.chefName, summary.estimate.maxPeople);
-  // Con precio, que es una estimación; siempre, que la compra la hace él con la lista de la cocinera.
-  const shopping = messages.client.shopping(input.chefName);
-  const note = summary.estimate.autoPrice ? `${messages.estimateNote} ${shopping}` : shopping;
-  blocks.push(...estimateBlocks(summary, messages, locale, noPrice, note));
+  // Sin precio: la cocinera le prepara un presupuesto a medida; y que la compra la hace él con su lista.
+  blocks.push({ kind: "paragraph", text: messages.client.quote(input.chefName) });
+  blocks.push({ kind: "note", text: messages.client.shopping(input.chefName) });
   blocks.push({ kind: "paragraph", text: messages.client.reply });
   if (privacyUrl) blocks.push({ kind: "link", label: messages.client.privacy, href: privacyUrl });
   blocks.push({ kind: "note", text: `${messages.labels.reference}: ${summary.requestId.slice(0, 8)}` });
@@ -897,8 +881,8 @@ export function renderChefNotification(input: ChefNotificationInput, locale: Loc
   ];
   if (input.hasNotes) blocks.push({ kind: "note", text: messages.chef.notes });
   const noPrice = summary.estimate.autoPrice ? "" : messages.chef.noAutoPrice[summary.estimate.reason](summary.estimate.maxPeople);
-  // A Evelyn, nada de compra: con precio, solo que es una estimación.
-  blocks.push(...estimateBlocks(summary, messages, locale, noPrice, summary.estimate.autoPrice ? messages.estimateNote : ""));
+  // A Evelyn, la fórmula como referencia interna (el cliente no ve precios) y nada de compra.
+  blocks.push(...referenceBlocks(summary, messages, locale, noPrice));
   if (inboxUrl) blocks.push({ kind: "button", label: messages.chef.button, href: inboxRequestUrl(inboxUrl, summary.requestId) });
 
   return render({
