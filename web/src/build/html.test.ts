@@ -12,6 +12,7 @@ import itJson from "../i18n/it.json";
 import { createSiteI18n } from "../i18n/site.ts";
 import footer from "../partials/footer.html?raw";
 import header from "../partials/header.html?raw";
+import { turnstileView } from "../request/turnstile.ts";
 import { NOT_FOUND_PATH, buildJsonLd, fillTranslations, pagePathFromHtmlPath, renderPage, withoutLangHrefs } from "./html.ts";
 import { OG_IMAGE } from "./images.ts";
 
@@ -186,6 +187,28 @@ describe("renderPage con las páginas reales", () => {
     }
     // El script de Turnstile lo carga el JS solo en esta página: ninguna página lo trae en el HTML.
     for (const html of [indexHtml, requestHtml, privacyHtml]) expect(html).not.toContain("challenges.cloudflare.com");
+  });
+
+  it("junto al widget: el error, su código (seleccionable), la sugerencia y «Ripeti la verifica», ocultos hasta que hagan falta", () => {
+    const start = requestHtml.indexOf('<div class="field field--turnstile">');
+    const field = requestHtml.slice(start, requestHtml.indexOf('id="config-warning"', start));
+    const ids = ["turnstile-widget", "hint-turnstile", "err-turnstileToken", "turnstile-code", "turnstile-help", "turnstile-retry"];
+    const positions = ids.map((id) => field.indexOf(`id="${id}"`));
+    expect(positions.filter((i) => i < 0), "faltan").toEqual([]);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    // El código va en <code>: se copia tal cual para mandárselo a quien da soporte.
+    expect(field).toMatch(/<code id="turnstile-code-value"><\/code>/);
+    for (const id of ["err-turnstileToken", "turnstile-code", "turnstile-help", "turnstile-retry"]) {
+      expect(field, id).toMatch(new RegExp(`id="${id}"[^>]*\\shidden[\\s>]`));
+    }
+  });
+
+  it("lo que describe a «Ripeti la verifica» (aria-describedby que arma turnstileView) existe junto al widget", () => {
+    const start = requestHtml.indexOf('<div class="field field--turnstile">');
+    const field = requestHtml.slice(start, requestHtml.indexOf('id="config-warning"', start));
+    const { describedBy } = turnstileView({ status: "failed", errorCode: "300030", stalled: true, rejected: true });
+    expect(describedBy).toHaveLength(3);
+    for (const id of describedBy) expect(field, id).toContain(`id="${id}"`);
   });
 
   it("los estados del envío se anuncian (aria-live) y los errores con role=alert", () => {

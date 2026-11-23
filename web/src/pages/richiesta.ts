@@ -55,7 +55,14 @@ import { nextSummary } from "../request/next-box.ts";
 import { createRequestKeys, doneViewFor, type DoneView } from "../request/request-key.ts";
 import { publicRequestUrl, rateLimitMessage, sendPublicRequest, type SubmitOutcome } from "../request/submit.ts";
 import { summaryRows } from "../request/summary.ts";
-import { loadTurnstileScript, mountTurnstile, type TurnstileWidget } from "../request/turnstile.ts";
+import {
+  loadTurnstileScript,
+  mountTurnstile,
+  turnstileView,
+  waitingStatus,
+  type TurnstileView,
+  type TurnstileWidget,
+} from "../request/turnstile.ts";
 import {
   FIELD_ORDER,
   firstErrorField,
@@ -124,6 +131,9 @@ const submitLabel = byId("submit-label");
 // Nunca id="turnstile": el navegador lo expone como window.turnstile y tapa la API de Cloudflare.
 const turnstileBox = byId("turnstile-widget");
 const turnstileRetry = byId<HTMLButtonElement>("turnstile-retry");
+const turnstileCode = byId("turnstile-code");
+const turnstileCodeValue = byId("turnstile-code-value");
+const turnstileHelp = byId("turnstile-help");
 const nextBody = byId("next-body");
 const nextInvalid = byId("next-invalid");
 const nextSummaryList = byId("next-summary");
@@ -621,20 +631,44 @@ function startRequestPage(shell: Shell): void {
     );
   };
 
+  /** Lo que se ve junto al widget (error, código, sugerencia, reintento): lo decide turnstileView. */
+  const currentTurnstileView = (): TurnstileView | null =>
+    turnstile
+      ? turnstileView({
+          status: turnstile.status,
+          errorCode: turnstile.errorCode,
+          stalled: turnstile.stalled,
+          rejected: turnstileRejected,
+        })
+      : null;
+
   const turnstileError = (): FieldError | null => {
-    switch (turnstile?.status) {
-      case "unavailable":
-        return { key: "errors.turnstileUnavailable" };
-      case "misconfigured":
-        return { key: "errors.turnstileMisconfigured" };
-      case "failed":
-        return { key: "errors.turnstileFailed" };
-      case "loading":
-      case "pending":
-        return turnstileRejected ? { key: "errors.turnstileFailed" } : null;
-      default:
-        return null;
-    }
+    const key = currentTurnstileView()?.error;
+    return key ? { key } : null;
+  };
+
+  /** El código del error, la sugerencia y «Ripeti la verifica» (el error lo pinta paintErrors). */
+  const paintTurnstile = (view: TurnstileView | null): void => {
+    const code = view?.code ?? null;
+    turnstileCode.hidden = code === null;
+    setText(turnstileCodeValue, code ?? "");
+    const help = view?.help ?? false;
+    turnstileHelp.hidden = !help;
+    // El sitio, el de la página: radicicucina.app en producción (la excepción se agrega para ese).
+    setText(turnstileHelp, help ? shell.i18n.t("request.turnstileHelp", { site: window.location.hostname }) : "");
+    const retryWasFocused = document.activeElement === turnstileRetry;
+    turnstileRetry.hidden = !(view?.retry ?? false);
+    // Si «Ripeti la verifica» se esconde con el foco adentro, el foco no cae al body: pasa al grupo del widget.
+    if (retryWasFocused && turnstileRetry.hidden) turnstileBox.focus({ preventScroll: true });
+    // El grupo del widget (donde cae el foco al apretar «Invia» sin token, aunque el script no haya cargado) describe
+    // también el código y la sugerencia que se ven, no solo «di solito non devi fare niente».
+    const boxIds = ["hint-turnstile", code !== null ? "turnstile-code" : "", help ? "turnstile-help" : ""];
+    turnstileBox.setAttribute("aria-describedby", boxIds.filter(Boolean).join(" "));
+    // Con el foco en «Ripeti la verifica» (focusField), el lector de pantalla lee también el error, el código y
+    // la sugerencia que se ven (turnstileView).
+    const ids = view?.describedBy.join(" ") ?? "";
+    if (ids) turnstileRetry.setAttribute("aria-describedby", ids);
+    else turnstileRetry.removeAttribute("aria-describedby");
   };
 
   const paintErrors = (errors: FieldErrors): void => {
@@ -653,7 +687,6 @@ function startRequestPage(shell: Shell): void {
       if (invalid.has(id)) byId(id).setAttribute("aria-invalid", "true");
       else byId(id).removeAttribute("aria-invalid");
     }
-    turnstileRetry.hidden = !(turnstile?.status === "failed" || turnstile?.status === "unavailable");
   };
 
   /** Errores de los campos según la validación local, solo después del primer intento de envío. */
@@ -661,9 +694,10 @@ function startRequestPage(shell: Shell): void {
     submitted ? withoutTurnstile(validateRequest(data, todayInRome(), payloadOptions(""))) : {};
 
   const renderErrors = (data: RequestData, errors: FieldErrors = fieldErrors(data)): void => {
-    const ts = turnstileError();
+    const view = currentTurnstileView();
     const all = { ...errors, ...serverErrors(data) };
-    paintErrors(ts ? { ...all, turnstileToken: ts } : all);
+    paintErrors(view?.error ? { ...all, turnstileToken: { key: view.error } } : all);
+    paintTurnstile(view);
   };
 
   const paintFormMessage = (): void => {
@@ -823,11 +857,12 @@ function startRequestPage(shell: Shell): void {
         // Se manda solo en cuanto Turnstile dé el token (onTurnstileChange).
         pendingSubmit = true;
         showFormMessage(null);
-        setStatus("request.statusWaitingTurnstile");
+        setStatus(waitingStatus(turnstile.stalled));
       } else {
         showFormMessage({ key: "errors.summary" });
-        focusField("turnstileToken");
       }
+      // Falló, o se trabó (p. ej. en blanco por la prevención de seguimiento): al error, a la sugerencia y al reintento.
+      if (currentTurnstileView()?.focusOnSubmit) focusField("turnstileToken");
       return;
     }
 
@@ -863,6 +898,9 @@ function startRequestPage(shell: Shell): void {
       setStatus(null);
       const error = turnstileError();
       if (error) showFormMessage(error);
+    } else {
+      // Sigue esperando; si se trabó mientras tanto, el estado lo dice (sin mover el foco).
+      setStatus(waitingStatus(turnstile.stalled));
     }
   };
 
