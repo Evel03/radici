@@ -294,6 +294,10 @@
                 <div id="turnstile-widget" class="turnstile" tabindex="-1" role="group" aria-labelledby="turnstile-label" aria-describedby="hint-turnstile"></div>
                 <p class="field__hint" id="hint-turnstile" data-i18n="request.turnstileHint"></p>
                 <p class="field__error" id="err-turnstileToken" hidden></p>
+                <!-- Código del error de Turnstile, para que soporte lo diagnostique; la sugerencia (otro navegador o
+                     una excepción), si falla o se traba (src/request/turnstile.ts, turnstileView). -->
+                <p class="turnstile-code" id="turnstile-code" hidden><span data-i18n="request.turnstileCode"></span> <code id="turnstile-code-value"></code></p>
+                <p class="turnstile-help" id="turnstile-help" hidden></p>
                 <button id="turnstile-retry" class="btn btn--ghost btn--sm" type="button" data-i18n="request.turnstileRetry" hidden></button>
               </div>
               <p id="config-warning" class="notice notice--error" data-i18n="request.configMissing" hidden></p>

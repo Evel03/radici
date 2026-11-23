@@ -187,6 +187,21 @@ describe("claves usadas por la web", () => {
     expect(missing).toEqual([]);
   });
 
+  it("verificación anti-spam trabada o fallida: la sugerencia nombra el ajuste del navegador y el sitio, en los tres idiomas", () => {
+    const setting = { it: "protezione dal tracciamento", es: "prevención de seguimiento", en: "tracking prevention" } as const;
+    // Y como lo llama Edge en ese idioma (ayuda de Microsoft, 22/11/2026), que es donde se agrega la excepción: en
+    // italiano «Prevenzione monitoraggio», no «tracciamento»; en español y en inglés coincide con el general.
+    const edge = { it: "«Prevenzione monitoraggio»", es: "prevención de seguimiento", en: "tracking prevention" } as const;
+    for (const lang of LANGS) {
+      const help = dicts[lang]["request.turnstileHelp"] ?? "";
+      expect(help, lang).toContain(setting[lang]);
+      expect(help, lang).toContain(edge[lang]);
+      // El sitio sale de la página (location.hostname): radicicucina.app en producción, otro en una vista previa.
+      expect(placeholders(help), lang).toEqual(["site"]);
+      expect(help, lang).not.toMatch(/radicicucina/);
+    }
+  });
+
   it("los HTML no traen texto de UI propio: los elementos traducibles vienen vacíos", () => {
     for (const [file, html] of Object.entries(htmlFiles)) {
       const filled = [...html.matchAll(/<([a-zA-Z][a-zA-Z0-9-]*)\b[^<>]*\sdata-i18n(?:-html)?="[^"]+"[^<>]*>(?!<\/\1>)/g)];
