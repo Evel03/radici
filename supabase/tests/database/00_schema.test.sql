@@ -4,7 +4,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(54);
+select plan(57);
 
 -- ---------------------------------------------------------------------
 -- Tablas esperadas (Fase 1 y Fase 2)
@@ -301,6 +301,10 @@ select is(
 
 -- Inventario 2: las políticas que no pasan por la cocina, o sea las que alcanzan a una cuenta sin
 -- cocina (la clienta). Lo demás de la clienta pasa por Edge Functions (service role).
+-- Es una red parcial: el filtro es textual (nombra current_chef_id o is_chef_of) y no prueba que la
+-- política restrinja de verdad. La red real es 02_rls, que recorre las tablas con una cuenta sin
+-- cocina y datos reales; los insert abiertos de una tabla nueva los atrapa este inventario (un
+-- with_check que no nombra la cocina aparece en la lista), no el catálogo de 02_rls.
 select is(
   (select array_agg(p.schemaname || '.' || p.policyname || ' | ' || p.cmd order by p.schemaname, p.policyname)
    from pg_policies p
@@ -313,6 +317,37 @@ select is(
     'public.profiles: el usuario lee el suyo | SELECT'
   ]::text[],
   'inventario 2: las únicas políticas fuera de la cocina son las del perfil y los avisos propios (y la dueña editando su ficha)'
+);
+
+-- Ninguna política de la cocina mezcla funciones de la clienta ni auth.uid() (una cláusula «o» así
+-- le abriría filas a una cuenta sin cocina). Solo las 4 conservadas pueden usar auth.uid().
+select is(
+  (select array_agg(p.policyname::text order by p.policyname)
+   from pg_policies p
+   where p.schemaname in ('public', 'storage')
+     and coalesce(p.qual, '') || ' ' || coalesce(p.with_check, '')
+         ~ '(current_client_ids|current_client_chef_ids|client_can_read_receipt|auth\.uid)'
+     and p.policyname not in ('chefs: la cocinera edita la suya', 'notifications: el usuario lee las suyas',
+                              'profiles: el usuario edita el suyo', 'profiles: el usuario lee el suyo')),
+  null::text[],
+  'ninguna política de la cocina usa funciones de la clienta ni auth.uid()'
+);
+
+-- push_tokens: la app no la usa; sin privilegios para la API (no depende solo de la falta de políticas).
+select is(
+  (select count(*)::int from unnest(array['anon', 'authenticated']) r
+   where has_table_privilege(r, 'public.push_tokens', 'SELECT,INSERT,UPDATE,DELETE')),
+  0,
+  'push_tokens: ni anon ni authenticated tienen privilegios'
+);
+
+-- anon no tiene privilegios sobre ninguna secuencia de public.
+select is(
+  (select count(*)::int from pg_class c
+   where c.relnamespace = 'public'::regnamespace and c.relkind = 'S'
+     and case when c.relkind = 'S' then has_sequence_privilege('anon', c.oid, 'USAGE,SELECT,UPDATE') else false end),
+  0,
+  'anon no tiene privilegios sobre ninguna secuencia de public'
 );
 
 select is(

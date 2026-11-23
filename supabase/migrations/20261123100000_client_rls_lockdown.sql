@@ -54,6 +54,10 @@ comment on policy "chefs: la cocinera lee la suya" on public.chefs is
 -- Quedan solo estas (inventario 2 de 00_schema): profiles (leer y editar el suyo, solo locale),
 -- notifications (leer las suyas) y chefs (la dueña edita su ficha pública; una cuenta sin cocina no tiene fila).
 
+-- push_tokens: la app no la usa (ni app/lib ni las funciones). Sin políticas la RLS ya la cierra; se
+-- sacan además los privilegios, para que no dependa solo de que nadie agregue una política.
+revoke all on public.push_tokens from anon, authenticated;
+
 -- ---------------------------------------------------------------------
 -- 2. profiles: authenticated solo actualiza locale
 -- ---------------------------------------------------------------------
@@ -80,6 +84,11 @@ alter default privileges for role postgres in schema public revoke all on functi
 alter default privileges for role postgres in schema public grant all on tables    to service_role;
 alter default privileges for role postgres in schema public grant all on sequences to service_role;
 alter default privileges for role postgres in schema public grant all on functions to service_role;
+
+-- Las tablas y secuencias que ya existen: anon no tiene nada (la web pública solo usa Edge Functions).
+-- En proyectos viejos de Supabase podían conservar los grants amplios del default de entonces.
+revoke all on all tables    in schema public from anon;
+revoke all on all sequences in schema public from anon;
 
 -- Estos valores valen para los objetos que crea postgres. Los de otro dueño (supabase_admin: sus
 -- esquemas) no se tocan: 00_schema exige que las funciones de las migraciones sean de postgres.
