@@ -149,6 +149,8 @@ jobs:
           keys_dir="${RUNNER_TEMP}/asc-keys"
           mkdir -p "${keys_dir}"
           chmod 700 "${keys_dir}"
+          # Antes de volcar la clave: así el paso de limpieza la borra aunque la validación falle.
+          echo "ASC_KEYS_DIR=${keys_dir}" >> "${GITHUB_ENV}"
           umask 077
           # altool exige el nombre AuthKey_<id>.p8 y xcodebuild acepta cualquiera: se usa el mismo archivo.
           printf '%s\n' "${API_KEY_CONTENT}" > "${keys_dir}/AuthKey_${KEY_ID}.p8"
@@ -156,7 +158,6 @@ jobs:
             echo "::error::APP_STORE_CONNECT_API_KEY no parece el contenido de un .p8 (tiene que empezar con BEGIN PRIVATE KEY)."
             exit 1
           fi
-          echo "ASC_KEYS_DIR=${keys_dir}" >> "${GITHUB_ENV}"
 
       # Archivo con firma automática: -allowProvisioningUpdates + la clave dejan que Xcode cree el perfil y
       # los certificados en la nube de Apple. El equipo viene del secreto, no del repo.
