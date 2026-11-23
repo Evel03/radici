@@ -688,6 +688,8 @@ La tabla sigue el orden de trabajo, reordenado el 15/11/2026 con la especificaci
 
 En cada milestone: plan con `planner` → tests primero → implementación → revisión con `code-reviewer` (y `security-reviewer` en M2, M2b, M4 y M6; `database-reviewer` en M1, M3, M3b, M4a, M3c y M2b).
 
+Migraciones y funciones (reglas de serie, 23/11/2026; detalle en `CLAUDE.md`): una migración de `main` nunca se edita, renombra ni borra, y cada migración nueva lleva una versión posterior a la última de `main` (el CI lo comprueba en cada PR); una función reescrita lleva un test estructural de su regla clave y los PRs que reescriben la misma función van en serie; un ajuste de Auth que depende de la base va en un PR posterior al que la crea.
+
 ---
 
 ## 11. ECC para este proyecto
