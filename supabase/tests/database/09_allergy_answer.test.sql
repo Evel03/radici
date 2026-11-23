@@ -7,6 +7,17 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
+-- Desde la migración client_rls_lockdown lo nuevo nace sin EXECUTE para nadie: las ayudas de pg_temp
+-- de este test las llaman authenticated y service_role, así que en pg_temp nacen ejecutables
+-- (solo dentro de esta transacción: el default privilege y el esquema temporal se van con el rollback).
+create temp table zz_esquema_temp (i int) on commit drop;
+do $$
+begin
+  execute format('alter default privileges in schema %I grant execute on functions to public',
+    (select nspname from pg_namespace where oid = pg_my_temp_schema()));
+end
+$$;
+
 select plan(40);
 
 -- ---------------------------------------------------------------------
@@ -254,8 +265,8 @@ select is(
 select is(
   (select array_agg(r.no_allergies order by r.no_allergies nulls last) from public.requests r
    where r.client_id = '7e612000-0000-4000-8000-00000000000a'),
-  array[false, true, null]::boolean[],
-  'A: ve la respuesta de sus propios pedidos'
+  null::boolean[],
+  'A: ya no ve ni sus propios pedidos (RLS de la clienta cerrada)'
 );
 select throws_ok(
   $$ insert into public.requests (chef_id, client_id, type, adults, kids, days, meals, no_allergies)

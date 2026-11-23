@@ -6,6 +6,17 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
+-- Desde la migración client_rls_lockdown lo nuevo nace sin EXECUTE para nadie: las ayudas de pg_temp
+-- de este test las llaman authenticated y service_role, así que en pg_temp nacen ejecutables
+-- (solo dentro de esta transacción: el default privilege y el esquema temporal se van con el rollback).
+create temp table zz_esquema_temp (i int) on commit drop;
+do $$
+begin
+  execute format('alter default privileges in schema %I grant execute on functions to public',
+    (select nspname from pg_namespace where oid = pg_my_temp_schema()));
+end
+$$;
+
 select plan(101);
 
 -- ---------------------------------------------------------------------
@@ -690,10 +701,11 @@ select throws_ok(
   '42501', null,
   'A: no puede escribir la estimación'
 );
-select lives_ok(
+select throws_ok(
   $$ insert into public.requests (chef_id, client_id, type, adults, kids, days, meals, preferred_slot, locale)
      values ('7e581000-0000-4000-8000-000000000001', '7e582000-0000-4000-8000-00000000000a', 'week', 1, 0, 3, '{dinner}', 'morning', 'es') $$,
-  'A: sigue creando sus pedidos desde la app, con franja e idioma'
+  '42501', null,
+  'A: ya no crea pedidos por la API (RLS de la clienta cerrada: los crea una Edge Function)'
 );
 
 -- =====================================================================
@@ -706,11 +718,13 @@ select results_eq(
   $$ values ('new'::text, true) $$,
   'el update de C2 no cambió nada: el pedido sigue visto y en new'
 );
+insert into public.requests (chef_id, client_id, type, adults, kids, days, meals, preferred_slot, locale)
+values ('7e581000-0000-4000-8000-000000000001', '7e582000-0000-4000-8000-00000000000a', 'week', 1, 0, 3, '{dinner}', 'morning', 'es');
 select is(
   (select source from public.requests
    where client_id = '7e582000-0000-4000-8000-00000000000a' and preferred_slot = 'morning'),
   'app',
-  'el pedido creado desde la app queda con origen app'
+  'un pedido que no es de la web (lo crea la service role para una ficha) queda con origen app'
 );
 
 select finish();

@@ -4,7 +4,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(45);
+select plan(54);
 
 -- ---------------------------------------------------------------------
 -- Tablas esperadas (Fase 1 y Fase 2)
@@ -203,6 +203,125 @@ select is(
   (select public from storage.buckets where id = 'receipts'),
   false,
   'el bucket receipts existe y es privado'
+);
+
+-- ---------------------------------------------------------------------
+-- Privilegios por defecto y inventarios (PR02: RLS de la clienta cerrada)
+--
+-- Todo lo nuevo nace cerrado: sin EXECUTE para PUBLIC, anon ni authenticated, y sin privilegios de
+-- tabla para anon ni authenticated. Lo que la app o una política necesita se concede a mano, en la
+-- migración que lo crea (y el inventario de abajo lo cuenta).
+-- ---------------------------------------------------------------------
+create function public.zz_funcion_nueva() returns int language sql as 'select 1';
+create function private.zz_funcion_nueva() returns int language sql as 'select 1';
+create table public.zz_tabla_nueva (id int primary key);
+create sequence public.zz_secuencia_nueva;
+
+select is(
+  (select array_agg(r || ' ' || f order by r, f)
+   from unnest(array['public', 'anon', 'authenticated']) as r,
+        unnest(array['public.zz_funcion_nueva()', 'private.zz_funcion_nueva()']) as f
+   where has_function_privilege(r, f, 'EXECUTE')),
+  null::text[],
+  'una función nueva, en public y en private, nace sin EXECUTE para public, anon ni authenticated'
+);
+
+select is(
+  (select array_agg(r order by r)
+   from unnest(array['anon', 'authenticated']) as r
+   where has_table_privilege(r, 'public.zz_tabla_nueva', 'SELECT,INSERT,UPDATE,DELETE,REFERENCES,TRIGGER')
+      or has_sequence_privilege(r, 'public.zz_secuencia_nueva', 'USAGE,SELECT,UPDATE')),
+  null::text[],
+  'una tabla y una secuencia nuevas de public nacen sin privilegios para anon ni authenticated'
+);
+
+select ok(
+  has_function_privilege('service_role', 'public.zz_funcion_nueva()', 'EXECUTE')
+  and has_table_privilege('service_role', 'public.zz_tabla_nueva', 'SELECT')
+  and has_table_privilege('service_role', 'public.zz_tabla_nueva', 'INSERT')
+  and has_table_privilege('service_role', 'public.zz_tabla_nueva', 'UPDATE')
+  and has_table_privilege('service_role', 'public.zz_tabla_nueva', 'DELETE'),
+  'lo nuevo de public sigue naciendo usable para service_role (las Edge Functions)'
+);
+
+select is(
+  (select array_agg(n.nspname || '.' || p.proname || ' (' || pg_get_userbyid(p.proowner) || ')' order by n.nspname, p.proname)
+   from pg_proc p
+   join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname in ('public', 'private')
+     and p.proname not like 'zz\_%'
+     and pg_get_userbyid(p.proowner) <> 'postgres'),
+  null::text[],
+  'las funciones de las migraciones son de postgres (las de otro dueño no heredan estos privilegios por defecto)'
+);
+
+-- Inventario 1: qué funciones de public y private puede ejecutar cada rol de la API.
+select is(
+  (select array_agg(n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
+                    order by n.nspname, p.proname)
+   from pg_proc p
+   join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname in ('public', 'private')
+     and p.proname not like 'zz\_%'
+     and has_function_privilege('public', p.oid, 'EXECUTE')),
+  null::text[],
+  'inventario 1: ninguna función de public ni private es ejecutable por PUBLIC'
+);
+
+select is(
+  (select array_agg(n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
+                    order by n.nspname, p.proname)
+   from pg_proc p
+   join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname in ('public', 'private')
+     and p.proname not like 'zz\_%'
+     and has_function_privilege('anon', p.oid, 'EXECUTE')),
+  null::text[],
+  'inventario 1: anon no ejecuta ninguna función de public ni private'
+);
+
+select is(
+  (select array_agg(n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
+                    order by n.nspname, p.proname)
+   from pg_proc p
+   join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname in ('public', 'private')
+     and p.proname not like 'zz\_%'
+     and has_function_privilege('authenticated', p.oid, 'EXECUTE')),
+  array[
+    'public.current_chef_id()',        -- las políticas de la cocina y la app (rpc)
+    'public.current_client_ids()',     -- clients_guard_update, que corre con el rol de la cocinera
+    'public.is_chef_of(p_chef_id uuid)',
+    'public.save_recipe(p jsonb)',                                  -- rpc de la app, valida current_chef_id()
+    'public.save_session_menu(p jsonb)',                            -- rpc de la app
+    'public.set_recipe_photo(p_recipe_id uuid, p_photo_id uuid)'    -- rpc de la app
+  ]::text[],
+  'inventario 1: authenticated ejecuta solo los helpers de la cocina y las rpc de la app; agregar una exige sumarla acá, con su motivo'
+);
+
+-- Inventario 2: las políticas que no pasan por la cocina, o sea las que alcanzan a una cuenta sin
+-- cocina (la clienta). Lo demás de la clienta pasa por Edge Functions (service role).
+select is(
+  (select array_agg(p.schemaname || '.' || p.policyname || ' | ' || p.cmd order by p.schemaname, p.policyname)
+   from pg_policies p
+   where p.schemaname in ('public', 'storage')
+     and coalesce(p.qual, '') || ' ' || coalesce(p.with_check, '') !~ '(current_chef_id|is_chef_of)\('),
+  array[
+    'public.chefs: la cocinera edita la suya | UPDATE',   -- profile_id = auth.uid(): una cuenta sin cocina no tiene fila
+    'public.notifications: el usuario lee las suyas | SELECT',
+    'public.profiles: el usuario edita el suyo | UPDATE',  -- con grant solo de locale
+    'public.profiles: el usuario lee el suyo | SELECT'
+  ]::text[],
+  'inventario 2: las únicas políticas fuera de la cocina son las del perfil y los avisos propios (y la dueña editando su ficha)'
+);
+
+select is(
+  (select array_agg(a.attname::text order by a.attname)
+   from pg_attribute a
+   where a.attrelid = 'public.profiles'::regclass and a.attnum > 0 and not a.attisdropped
+     and has_column_privilege('authenticated', 'public.profiles', a.attname, 'UPDATE')),
+  array['locale'],
+  'profiles: authenticated solo puede actualizar locale'
 );
 
 select finish();

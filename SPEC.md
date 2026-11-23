@@ -9,6 +9,8 @@
 > **Sin compra (19/11/2026, comentarios de Evelyn):** Evelyn no hace la compra. La hace el cliente, con la lista de ingredientes que ella le manda antes de cada sesión (sale del menú y de las porciones: §4, «Catálogo de platos»). Se van la compra estimada, la pre-autorización de insumos, el ticket y su reembolso, y la primera llegada pasa a las 9:00 (5.2). Lo que la base tiene de la compra queda sin uso (§4, «Sin compra»).
 >
 > **Sin precios en la web (22/11/2026, decisión de Nicolas):** la web pública no muestra precios. Evelyn evalúa a cada cliente y escribe a mano el precio del presupuesto antes de enviarlo. La fórmula de 5.1 (150 € por semana, 140 € desde 4 semanas) queda solo como **referencia interna de Evelyn**: el servidor la sigue calculando y guardando en `requests.estimate`, su email del pedido la muestra rotulada como referencia, y la app la va a mostrar junto al campo vacío del precio (PR posterior). La portada, el formulario, la pantalla de gracias, el email al cliente y la respuesta de la función no llevan precios ni tarifas. El único precio que ve un cliente es el que Evelyn escribió en su presupuesto, en su página de la reserva (§5.8), nunca una tarifa ni un cálculo.
+>
+> **Área de la clienta (22/11/2026, D8):** vive en la app Flutter (`/app/`, iOS y Android) y no lee ni escribe tablas: todo pasa por Edge Functions (service role). Desde el PR02 (23/11/2026) su RLS está cerrada: por la API de datos solo ve su perfil (y cambia su idioma) y sus avisos (§6, §14 D8).
 
 ---
 
@@ -535,6 +537,8 @@ Los avisos se prenden con el primer despliegue que guarda la URL y el secreto en
 
 «Confirmar sin presupuesto» (`chef_create_booking`) sigue, para lo que se acordó por fuera: desde un pedido con un presupuesto abierto, lo retira (arriba, «Cambiar o retirar»). Nada de esto toca los pagos.
 
+**La clienta con cuenta (D8, 22/11/2026)** ve su semana, el libro del menú y el presupuesto en pantallas nativas de la app, pero no por la RLS: la app llama a una Edge Function que valida la sesión y lee con la service role, con el mismo núcleo que la página de la reserva (`client-link`). La RLS de la clienta está cerrada desde el PR02 (§6): ninguna tabla de este proceso (`quotes`, `menu_sends`, `session_menus`) se lee desde su sesión.
+
 ---
 
 ## 6. Seguridad, privacidad y RGPD
@@ -567,18 +571,25 @@ Los avisos se prenden con el primer despliegue que guarda la URL y el secreto en
 - Formulario público protegido con Cloudflare Turnstile y límite de solicitudes por IP. Nadie queda trabado sin saber qué hacer (22/11/2026): si el widget no da token ni error a los 15 s de dibujado (Edge, con la prevención de seguimiento, lo deja en blanco) o si falla, la web sugiere otro navegador, el teléfono o una excepción para el sitio (con el nombre que le da Edge al ajuste: «Prevenzione monitoraggio» en italiano), con «Repetir la verificación» a mano (no mientras el script todavía carga: no hay widget que reiniciar); el error muestra el código de Turnstile («Codice: 200500») para que soporte lo diagnostique, sin registrar nada del pedido.
 - Página de la reserva (el link de la clienta, 22/11/2026, §5.8): muestra solo la foto de cada envío (nunca dirección ni alergias; del precio, solo el del servicio del presupuesto) y guarda lo que contesta la clienta, la confirmación o el mensaje de cambios, y la aceptación o el rechazo del presupuesto, como dato de la solicitud (art. 6.1.b RGPD), que se conserva como la reserva. El mensaje es una nota libre: el campo pide no escribir datos de salud y nunca sale por email ni push (el aviso a Evelyn dice solo que pidió cambios). Sus visitas y respuestas se cuentan por IP, como el formulario: huella HMAC, 2 días como máximo, interés legítimo. La privacy lo cuenta desde su versión `2026-11-22` y, con el presupuesto (la página muestra su precio, y la clienta lo acepta o lo rechaza ahí), desde la `2026-11-23` (`CONSENT_VERSION`; el texto de salud no cambió; la fecha es la del día siguiente porque la `2026-11-22`, del mismo día, sale antes con el link de la clienta).
 
-**RLS (resumen)**. «Cocinera» es la cocina: la dueña y sus colaboradores, con el mismo acceso salvo la ficha pública (abajo).
+**RLS (resumen)**. «Cocinera» es la cocina: la dueña y sus colaboradores, con el mismo acceso salvo la ficha pública (abajo). **Cliente (PR02, 23/11/2026): la RLS de la clienta está cerrada.** Por la API de datos una cuenta sin cocina no lee ni escribe ninguna tabla de negocio (ni `storage`, tampoco los tickets): lo suyo lo lee y escribe una Edge Function con la service role (`client`, `client-link`), que valida quién es con `getUser`. Le quedan solo su perfil (leerlo y cambiar `profiles.locale`; el nombre y el teléfono no los edita nadie por la API) y sus avisos (`notifications`, solo lectura). Lo que la tabla decía de la clienta (qué ve, qué edita) lo cumplen ahora las funciones.
 | Tabla | Cliente | Cocinera | Anónimo |
 |---|---|---|---|
-| clients, client_restrictions, consents | lee y edita lo propio | todo lo de su `chef_id`, salvo borrar fichas (en cascada se llevaban sus pedidos y sus sesiones) y consentimientos | — |
-| requests | crea y lee lo propio | todo, salvo borrar (un pedido aceptado es el registro de su reserva) | crea vía Edge Function `public-request` |
-| quotes, sessions, session_menu, receipts | lee lo propio | todo | — |
-| payments | lee lo propio | lee todo; escribe solo con efectivo o transferencia | — |
-| prepared_portions | lee y actualiza `count_left` / `discarded_at` | crea y lee | — |
-| pantry_items | CRUD de lo propio | lee si `share_pantry = true` | — |
+| profiles, notifications | lee lo propio (perfil: edita solo `locale`) | lee los perfiles de sus clientes | — |
+| clients, client_restrictions, consents | — (Edge Function) | todo lo de su `chef_id`, salvo borrar fichas (en cascada se llevaban sus pedidos y sus sesiones) y consentimientos | — |
+| requests | — (Edge Function) | todo, salvo borrar (un pedido aceptado es el registro de su reserva) | crea vía Edge Function `public-request` |
+| quotes, sessions, session_menu, receipts | — (Edge Function) | todo | — |
+| payments | — (Edge Function) | lee todo; escribe solo con efectivo o transferencia | — |
+| prepared_portions | — (Edge Function) | crea y lee | — |
+| pantry_items | — (Edge Function) | lee si `share_pantry = true` | — |
 | chef_settings, availability_* | — | CRUD | días libres solo vía la Edge Function `public-request` (`GET …/availability`) |
 
-Precisiones implementadas en M1 (`supabase/migrations/*_rls.sql`):
+Cierre de la RLS de la clienta y privilegios por defecto (PR02, `20261123100000_client_rls_lockdown.sql`; pgTAP `02_rls` y `00_schema`):
+- Se borran las políticas de la clienta de `clients`, `client_restrictions`, `consents`, `requests`, `quotes`, `sessions`, `session_menu`, `recipes`, `recipe_allergens`, `payments`, `receipts`, `recurring_plans`, `prepared_portions`, `pantry_items`, `push_tokens` y `storage.objects` (tickets), y la cláusula de clienta de `chefs`. Quedan solo `profiles` (leer y editar el suyo), `notifications` (leer las suyas) y `chefs` (la dueña edita su ficha). `00_schema` fija ese inventario de políticas.
+- `profiles`: `authenticated` solo tiene `update (locale)` (la app solo cambia el idioma).
+- Privilegios por defecto del rol de las migraciones (`postgres`): sin `EXECUTE` para `PUBLIC` (global: un revoke por esquema solo no lo saca) y sin nada para `anon` ni `authenticated` en tablas, secuencias y funciones de `public`. Lo nuevo nace cerrado y se concede a mano en la migración que lo crea; `service_role` sigue recibiendo lo nuevo de `public`. Las funciones de las migraciones son todas de `postgres` (si no, el valor por defecto no las alcanza). Las funciones que ya existían quedan sin `EXECUTE` para `PUBLIC` ni `anon`; `authenticated` ejecuta solo `current_chef_id`, `is_chef_of`, `current_client_ids` (la usa `clients_guard_update`) y las rpc de la app (`save_recipe`, `save_session_menu`, `set_recipe_photo`). `00_schema` fija ese inventario: sumar una función ejecutable por la API exige sumarla ahí, con su motivo.
+- `current_client_chef_ids` y `client_can_read_receipt` ya no las usa ninguna política ni las ejecuta nadie de la API.
+
+Precisiones implementadas en M1 (`supabase/migrations/*_rls.sql`; lo que dicen del cliente que lee o escribe quedó superado por el cierre de arriba):
 - `recipes`: el cliente lee las recetas activas y visibles en el catálogo (`catalog_visible`) de su cocinera, para elegir platos deseados: no las desactivadas ni las de eventos. De `recipe_allergens` lee solo los alérgenos de las recetas que ve. Desde M2, solo un cliente activo (`trial` o `active`), con tests: un prospecto con cuenta no las ve. `recipe_ingredients` y `recipe_notes` son solo de la cocinera: el cliente no lee ingredientes ni notas.
 - `consents`: el cliente los otorga y revoca; la cocinera los lee y puede registrar una revocación, pero no otorga en nombre del cliente. Nadie los borra desde la app. Un consentimiento revocado no se reactiva: se otorga uno nuevo.
 - `clients`: el cliente no crea su propia ficha (con el registro abierto de M2 la crea el servidor, en `prospect`). El estado lo cambia solo la cocinera (y el servidor al aceptar el primer presupuesto, M4); `share_pantry`, solo el cliente.
@@ -656,7 +667,7 @@ Sin notificaciones entre las 21:00 y las 8:00 (hora de Roma), salvo fallos de pa
 9. Cancelar una sesión con retención libera el importe en Stripe.
 10. La app funciona en italiano y español; los textos no están hardcodeados.
 11. Ningún texto de la web, de los emails ni de la app dice que Evelyn hace la compra ni muestra una compra estimada (19/11/2026). Tampoco la privacy, desde su versión `2026-11-19`.
-12. Solo un cliente activo (`trial` o `active`) lee el catálogo y guarda sugerencias de platos; un prospecto, con o sin cuenta, no (test de RLS).
+12. Una cuenta sin cocina (con o sin ficha de cliente) no lee ni escribe ninguna tabla de negocio ni los tickets de storage por la API de datos: solo lee su perfil y sus avisos y cambia su `locale` (test de RLS, `02_rls`). El catálogo y las sugerencias de platos son solo para clientes activos (`trial` o `active`) y los sirve una Edge Function. Lo que crea una migración nace sin `EXECUTE` para `PUBLIC`, `anon` ni `authenticated` (`00_schema`).
 
 ---
 
@@ -674,6 +685,7 @@ La tabla sigue el orden de trabajo, reordenado el 15/11/2026 con la especificaci
 | M5a | Disponibilidad en la app | Bloquear y desbloquear días; después, editar el horario semanal (`availability_rules`). Repositorio + providers, textos ARB y tests; reemplaza el horario inicial fijo de 5.2 |
 | M4a | Catálogo de platos | Base: `name_en`, `season_months`, `catalog_visible`, `recipe_ingredients` con cantidad para 4 porciones, `recipe_notes` (notas solo de la cocinera) y `save_recipe` (guardado atómico), con pgTAP; pantalla de Evelyn: alta, edición, duplicar, baja (desactivar), alérgenos UE, dieta, temporada e ingredientes; con tests |
 | M2 | Auth y perfil, con registro abierto | Registro abierto y login con código, con Turnstile en cada pedido de código (también el de Evelyn); ficha `prospect` creada por el servidor; check `clients_prospect_sin_cuenta` relajado y `submit_public_request` limitado a prospectos sin cuenta (test pgTAP); conservación de las cuentas que no pasan a cliente activo (y privacy); RLS del catálogo solo para clientes activos; roles, perfil del hogar, restricciones con consentimiento, borrado de cuenta. Cambia la regla de altas aquí, en `CLAUDE.md` y en el contrato §10 (§6) |
+| PR02 | RLS de la clienta cerrada | Plan del área de la clienta (D8), antes de cualquier cuenta de clienta: se borran las políticas de la clienta salvo su perfil y sus avisos, `profiles` solo actualiza `locale`, privilegios por defecto cerrados (global y de `public`) y dos inventarios en `00_schema` (funciones ejecutables y políticas fuera de la cocina). Con `security-reviewer`. Sigue el área de la clienta (PR03 en adelante) |
 | M3b | Eventos privados | Tipo `event` (5.3): sección y formulario propios en la web (fecha libre, invitados, hora aproximada, idea), sin estimación en la web ni en los emails; contrato, el check `requests_datos_de_presupuesto`, las validaciones de `submit_public_request` (`invalid_request_type`, `estimate_required`, `invalid_meals`) y los emails, con tests primero; etiqueta y filtro de eventos en la bandeja |
 | M3c | Pedir en la app | Pantalla Pedir del cliente con cuenta (§7): presupuesto estimado en vivo (copia Dart de `quote.ts`; **pendiente de decisión** tras el 22/11/2026, ver §7) y horarios libres reales; RPC de solo lectura con la vista previa y la política de cancelación (§6); ruta de servidor para `get_free_slots`, que hoy ejecuta solo `service_role` (5.2). Repositorio + providers, textos ARB y tests |
 | M2b | Sugerencias de menú | Cliente activo: sugerencias de la semana (catálogo de temporada sin cantidad fija, incompatibles tachados, nota libre y pedidos especiales). Evelyn: Menús de la semana, con aprobación o alternativa de los pedidos especiales. Tabla propia con RLS, tests primero |
@@ -752,6 +764,14 @@ Verificar con el commercialista antes de cobrar a clientes reales:
 - ¿Los tápers los pone el cliente o Evelyn (con depósito)?
 - Política de cancelación definitiva.
 - Satispay sí o no en el MVP.
+
+**Decisión D8 · Área de la clienta (22/11/2026, respuestas de Nicolas)**
+- El área de la clienta vive en la app Flutter: `/app/` en la web, iOS y Android.
+- La versión 1 es M2 + M3c + M2b juntas, en un solo lanzamiento y con registro abierto.
+- Alta con email y contraseña confirmada por link, más Google y Apple. Evelyn sigue entrando solo con el código por email.
+- Las fichas las vincula Evelyn a mano: la clienta le manda un código de 8 cifras desde el email o el teléfono de su ficha. Nada se vincula solo.
+- La semana, el libro del menú y el presupuesto son pantallas nativas, no páginas web.
+- Seguridad: la clienta lee y escribe solo por Edge Functions y su RLS está cerrada (PR02, §6); el plan sigue en §10.
 
 **De la especificación de la app (15/11/2026)**
 - **D5 · Menú semanal recurrente.** La especificación propone un plazo para sugerir platos (hasta un día antes de la primera sesión de la semana) y repetir el menú de la semana anterior si el cliente no sugiere. Sin decidir: queda para M11, con los planes recurrentes. Si se adopta, el plazo va en hora de Roma, Evelyn ve en Hoy quién no sugirió y la repetición vuelve a pasar el control de alérgenos (5.6): nunca copia un plato inactivo, fuera de temporada o que choque con una restricción vigente.

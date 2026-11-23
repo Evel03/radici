@@ -35,7 +35,6 @@ set local search_path to public, extensions;
 --   * profiles «el usuario lee el suyo» y «el usuario edita el suyo»: el perfil propio.
 --   * chefs «la cocinera edita la suya»: la ficha pública de la cocinera (nombre, zona y WhatsApp que
 --     ven los clientes) la cambia solo la dueña; un colaborador la lee y no la edita.
---   * push_tokens «el usuario gestiona los suyos»: los dispositivos de cada uno.
 --   * notifications «el usuario lee las suyas»: cada aviso es de una persona (el del pedido nuevo, de
 --     la cocinera).
 -- Una tabla nueva (el catálogo de platos, por ejemplo) queda cubierta sola: si una política suya usa
@@ -49,8 +48,7 @@ select set_eq(
   $$ values ('public', 'chefs',         'chefs: la cocinera edita la suya'),
             ('public', 'notifications', 'notifications: el usuario lee las suyas'),
             ('public', 'profiles',      'profiles: el usuario edita el suyo'),
-            ('public', 'profiles',      'profiles: el usuario lee el suyo'),
-            ('public', 'push_tokens',   'push_tokens: el usuario gestiona los suyos') $$,
+            ('public', 'profiles',      'profiles: el usuario lee el suyo') $$,
   'auth.uid() directo solo en las políticas de la lista (identidad propia y la edición de la ficha pública): el resto del lado de la cocinera pasa por current_chef_id() o is_chef_of()'
 );
 
@@ -467,9 +465,9 @@ set local request.jwt.claims = '{"sub":"7e5f0000-0000-4000-8000-00000000a001","r
 
 select is(public.current_chef_id(), null::uuid, 'A (cliente): ninguna cocina');
 select is((select array_agg(id) from public.clients),
-  array['7e5f2000-0000-4000-8000-00000000000a']::uuid[], 'A: sigue viendo solo su ficha');
+  null::uuid[], 'A: no ve ninguna ficha (la RLS de la clienta está cerrada)');
 select is((select array_agg(id) from public.chefs),
-  array['7e5f1000-0000-4000-8000-000000000001']::uuid[], 'A: sigue leyendo la ficha de su cocinera');
+  null::uuid[], 'A: tampoco lee la ficha de su cocinera');
 
 reset role;
 set local role service_role;
@@ -586,7 +584,7 @@ set local request.jwt.claims = '{"sub":"7e5f0000-0000-4000-8000-00000000f002","r
 
 select is(public.current_chef_id(), null::uuid, 'K, fuera de la lista, pierde el acceso en el acto');
 select is((select array_agg(id) from public.clients),
-  array['7e5f2000-0000-4000-8000-00000000000d']::uuid[], 'K ve solo su ficha de cliente, nada de la cocina');
+  null::uuid[], 'K, sin la cocina, no ve ninguna ficha');
 
 reset role;
 
