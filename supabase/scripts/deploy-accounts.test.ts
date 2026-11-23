@@ -205,7 +205,7 @@ test("colaboradores: un error de Auth o de la base corta el paso sin mostrar ema
 });
 
 test("colaboradores: avisa si en Auth hay alguien más que la cocinera y sus colaboradores", { skip }, () => {
-  // Una cuenta que salió de la lista y no se pudo borrar (una ficha de cliente, permisos) queda de más.
+  // Una cuenta que salió de la lista y no se pudo borrar (permisos) y no tiene ficha de cliente queda de más.
   const run = accounts(
     "members",
     { chefs: [EVELYN], users: [confirmed(EVELYN), confirmed(SOCIO), confirmed(VIEJO)], members: [SOCIO, VIEJO], undeletable: [VIEJO] },
@@ -213,7 +213,97 @@ test("colaboradores: avisa si en Auth hay alguien más que la cocinera y sus col
   );
   assert.equal(run.code, 0, run.out);
   assert.match(run.out, /cuentas borradas: 0\)\.$/m);
-  assert.match(run.out, /^::warning::Hay 3 usuarios en Auth y se esperaban 2 \(la cocinera y sus colaboradores\)/m);
+  assert.match(run.out, /^::warning::Hay 1 usuarios en Auth que no son la cocinera, ni sus colaboradores, ni tienen ficha de cliente/m);
+});
+
+const OTRA = "otra@ejemplo.test";
+
+test("colaboradores: dos cocinas cortan el paso antes de crear cuentas o sincronizar", { skip }, () => {
+  const run = accounts(
+    "members",
+    { chefs: [EVELYN, OTRA], users: [confirmed(EVELYN), confirmed(OTRA)], members: [] },
+    { CHEF_MEMBER_EMAILS: NUEVA },
+  );
+  assert.equal(run.code, 1, run.out);
+  assert.match(run.out, /^::error::Hay 2 cocinas en public\.chefs y tiene que haber una sola/m);
+  assert.deepEqual(syncCalls(run), []);
+  assert.equal(accountsCreated(run).length, 0);
+  assertNoEmails(run.out, [EVELYN, OTRA, NUEVA]);
+});
+
+test("colaboradores: un usuario anónimo corta el paso (las altas anónimas están apagadas)", { skip }, () => {
+  const run = accounts(
+    "members",
+    { chefs: [EVELYN], users: [confirmed(EVELYN), { email: "", confirmed: false, anonymous: true }], members: [] },
+  );
+  assert.equal(run.code, 1, run.out);
+  assert.match(run.out, /^::error::Hay 1 usuarios anónimos en Auth/m);
+  assert.deepEqual(syncCalls(run), []);
+});
+
+test("colaboradores: si después de sincronizar chef_members no es la lista (de más o de menos) corta el paso", { skip }, () => {
+  // Un colaborador de más: la base dice que sync dejó a VIEJO, que no está en la lista.
+  const extra = accounts(
+    "members",
+    { chefs: [EVELYN], users: [confirmed(EVELYN), confirmed(SOCIO), confirmed(VIEJO)], members: [SOCIO, VIEJO], syncIgnored: true },
+    { CHEF_MEMBER_EMAILS: SOCIO },
+  );
+  assert.equal(extra.code, 1, extra.out);
+  assert.match(extra.out, /^::error::Los colaboradores en la base \(2\) no son los de la lista \(1\)/m);
+
+  // Un colaborador de menos: falta SOCIO.
+  const missing = accounts(
+    "members",
+    { chefs: [EVELYN], users: [confirmed(EVELYN), confirmed(SOCIO)], members: [], syncIgnored: true },
+    { CHEF_MEMBER_EMAILS: SOCIO },
+  );
+  assert.equal(missing.code, 1, missing.out);
+  assert.match(missing.out, /^::error::Los colaboradores en la base \(0\) no son los de la lista \(1\)/m);
+
+  // Misma cantidad pero otra persona: tampoco pasa.
+  const swapped = accounts(
+    "members",
+    { chefs: [EVELYN], users: [confirmed(EVELYN), confirmed(SOCIO), confirmed(VIEJO)], members: [VIEJO], syncIgnored: true },
+    { CHEF_MEMBER_EMAILS: SOCIO },
+  );
+  assert.equal(swapped.code, 1, swapped.out);
+  assert.match(swapped.out, /^::error::Los colaboradores en la base \(1\) no son los de la lista \(1\)/m);
+  for (const run of [extra, missing, swapped]) assertNoEmails(run.out, [EVELYN, SOCIO, VIEJO]);
+});
+
+test("colaboradores: avisa, sin cortar, si una cuenta de la cocina tiene una identidad que no es de email", { skip }, () => {
+  const run = accounts(
+    "members",
+    {
+      chefs: [EVELYN],
+      users: [{ email: EVELYN, confirmed: true, providers: ["email", "google"] }, confirmed(SOCIO)],
+      members: [SOCIO],
+    },
+    { CHEF_MEMBER_EMAILS: SOCIO },
+  );
+  assert.equal(run.code, 0, run.out);
+  assert.match(run.out, /^::warning::1 identidades de las cuentas de la cocina no son de email/m);
+  assertNoEmails(run.out, [EVELYN, SOCIO]);
+});
+
+test("colaboradores: informa cuántas cuentas hay de clientas, de prueba y sin confirmar, solo con números", { skip }, () => {
+  const run = accounts(
+    "members",
+    {
+      chefs: [EVELYN],
+      users: [
+        confirmed(EVELYN),
+        { email: "clienta1@gmail.com", confirmed: true, client: true },
+        { email: "clienta2@ejemplo.test", confirmed: true, client: true },
+        { email: "clienta3@gmail.com", confirmed: false, client: true },
+      ],
+      members: [],
+    },
+  );
+  assert.equal(run.code, 0, run.out);
+  assert.match(run.out, /^Cuentas de clientas: 3 \(de prueba: 1; sin confirmar: 1\)\.$/m);
+  assert.doesNotMatch(run.out, /::warning::/);
+  assertNoEmails(run.out, [EVELYN, "clienta1", "clienta2", "clienta3"]);
 });
 
 test("cocinera: la primera vez crea la cuenta, la promueve y le carga el horario", { skip }, () => {

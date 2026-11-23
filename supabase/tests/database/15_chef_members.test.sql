@@ -16,12 +16,12 @@
 --      lo que nunca puede. El autor de un ticket es quien lo sube (receipts.uploaded_by).
 --   5. La dueña, una cuenta con rol chef sin cocina, un cliente, service_role y anon.
 --   6. Una cuenta es dueña o colaboradora, nunca las dos.
---   7. private.sync_chef_members: la lista manda.
+--   7. private.sync_chef_members: la lista manda; una cuenta con ficha de cliente no entra (PR06).
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(118);
+select plan(121);
 
 -- Las expresiones de pg_policies se imprimen según el search_path: así auth.uid() sale calificado.
 set local search_path to public, extensions;
@@ -696,6 +696,23 @@ select throws_ok(
 select throws_ok(
   $$ select private.sync_chef_members(array['socio@colaboradores.test']) $$,
   'P0001', 'single_chef_required', 'sin decir la cocina, con más de una: error (producción tiene una sola)');
+-- Una clienta con ficha (la cuenta A, «Cliente A») no puede ser colaboradora: cortaría el acceso a las
+-- alergias y direcciones de la cocina para una cuenta que se registra sola. Nada cambia, ni para el
+-- socio, que va en la misma lista.
+select throws_ok(
+  $$ select private.sync_chef_members(array['socio@colaboradores.test', 'a@colaboradores.test'],
+                                      '7e5f1000-0000-4000-8000-000000000001') $$,
+  'P0001', 'member_has_client_record', 'una cuenta con ficha de cliente no puede ser colaboradora');
+select is(
+  (select count(*)::int from public.chef_members where profile_id = '7e5f0000-0000-4000-8000-00000000a001'),
+  0, 'y no queda como colaboradora');
+-- La regla en el código (estructural): la guarda mira public.clients con la cuenta de cada email de la
+-- lista y corta antes de borrar o agregar a nadie.
+select ok(
+  (select p.prosrc ~ $re$exists\s*\(\s*select 1 from public\.clients cl where cl\.profile_id = v_user_id\s*\)\s*then\s*raise exception 'member_has_client_record'$re$
+      and position('member_has_client_record' in p.prosrc) < position('delete from public.chef_members' in p.prosrc)
+   from pg_proc p where p.oid = 'private.sync_chef_members(text[], uuid)'::regprocedure),
+  'la guarda de la ficha de cliente está en private.sync_chef_members, antes de tocar a nadie');
 
 create temp table sync6 as
 select private.sync_chef_members(array[]::text[], '7e5f1000-0000-4000-8000-000000000001') as r;
