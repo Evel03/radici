@@ -48,28 +48,27 @@ Los valores se inyectan al compilar con `--dart-define-from-file` y se leen en `
 
 - `env/dev.example.json` y `env/prod.example.json` se versionan como plantilla; los `env/*.json` reales están ignorados.
 - Si falta la URL o la clave, no se inicializa Supabase. En `dev` aparece un aviso discreto al pie: "Backend non configurato".
-- Por ahora no hay flavors nativos: dev y prod comparten el bundle id (hoy el provisorio, ver abajo). Los flavors con bundle id propio llegan en M8.
+- Por ahora no hay flavors nativos: dev y prod comparten el bundle id (`app.radicicucina`, ver abajo). Los flavors con bundle id propio llegan en M8.
 
-## TODO: bundle id definitivo
+## Identificador nativo
 
-El nombre visible ya es **Radici** (`android:label` en `android/app/src/main/AndroidManifest.xml`,
-`CFBundleDisplayName` y `CFBundleName` en `ios/Runner/Info.plist`, `appTitle` en los ARB). El
-identificador nativo sigue siendo el provisorio `com.sepusola10.mestolo` hasta que se elija el
-definitivo, **antes de la primera subida a las tiendas** (después no se puede cambiar; SPEC §14).
-Lugares a cambiar, todos en `app/`:
+El identificador definitivo es **`app.radicicucina`**, elegido por Nicolas el 22/11/2026. Una vez
+publicada la app no se puede cambiar. El nombre en las tiendas es «Radici Cucina»; el nombre bajo el
+ícono es **Radici** (`android:label` en `android/app/src/main/AndroidManifest.xml`,
+`CFBundleDisplayName` y `CFBundleName` en `ios/Runner/Info.plist`, `appTitle` en los ARB).
 
-1. `android/app/build.gradle.kts`: `namespace` y `applicationId` (`"com.sepusola10.mestolo"`).
-2. `android/app/src/main/kotlin/com/sepusola10/mestolo/MainActivity.kt`: la línea
-   `package com.sepusola10.mestolo` y la carpeta, que se mueve a la del paquete nuevo
-   (`kotlin/<id con / en lugar de .>/MainActivity.kt`). `android:name=".MainActivity"` del
-   manifiesto es relativo al `namespace`: no cambia.
+Dónde vive, todo en `app/`:
+
+1. `android/app/build.gradle.kts`: `namespace` y `applicationId` (`"app.radicicucina"`).
+2. `android/app/src/main/kotlin/app/radicicucina/MainActivity.kt`: `package app.radicicucina`.
+   `android:name=".MainActivity"` del manifiesto es relativo al `namespace`.
 3. `ios/Runner.xcodeproj/project.pbxproj`: `PRODUCT_BUNDLE_IDENTIFIER` en 6 configuraciones:
-   Runner (Debug, Release, Profile) = `com.sepusola10.mestolo` y RunnerTests (Debug, Release,
-   Profile) = `com.sepusola10.mestolo.RunnerTests`.
-4. Documentación: esta sección, SPEC.md §14 y `CLAUDE.md`.
+   Runner (Debug, Release, Profile) = `app.radicicucina` y RunnerTests (Debug, Release,
+   Profile) = `app.radicicucina.RunnerTests`.
 
-Fuera del repo, cuando existan: App ID en Apple Developer / App Store Connect, la app en Play
-Console y Firebase (FCM). Para comprobar que no quedó nada: `git grep -n -i mestolo` (desde la raíz).
+Fuera del repo (creados el 23/11/2026): App ID `app.radicicucina` en Apple Developer (con Sign in
+with Apple), la app «Radici Cucina» en App Store Connect y en Play Console. Pendiente: Firebase (FCM),
+firma, entitlements y dominios asociados (PRs aparte).
 
 ## Verificar (lo mismo que el CI)
 

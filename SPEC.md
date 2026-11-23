@@ -1,6 +1,6 @@
 # Radici — Especificación para construir con Claude Code
 
-> **Radici** es el nombre definitivo (ex Mestolo, el provisorio). Repo: `github.com/Evel03/radici`. Dominio: `radicicucina.app` (web pública y bandeja en `/gestione/`). Falta elegir el identificador nativo de la app (sección 14).
+> **Radici** es el nombre definitivo (ex Mestolo, el provisorio). Repo: `github.com/Evel03/radici`. Dominio: `radicicucina.app` (web pública y bandeja en `/gestione/`). El identificador nativo de la app es `app.radicicucina` (sección 14).
 >
 > **Prototipo de referencia:** `docs/prototipo.html` (también publicado en https://claude.ai/artifact/E5zsqMUGziiWUr2N1BDmsw; pendiente de copiar al repo). Es la referencia visual. Las reglas de negocio de **este documento** prevalecen sobre el prototipo: la fórmula de presupuesto y el margen entre sesiones se corrigieron en la revisión del 19/10/2026, y el 15 y 16/11/2026 el servicio pasó a tener un precio por semana (5.1).
 >
@@ -702,7 +702,7 @@ Verificar con el commercialista antes de cobrar a clientes reales:
 
 ## 14. Decisiones abiertas
 
-- Identificador de la app y dominio definitivo. El nombre ya está decidido (Radici) y el dominio es `radicicucina.app`. Falta elegir el bundle id antes de la primera subida a las tiendas: no se puede cambiar después de publicar. Hoy sigue el provisorio (`com.sepusola10.mestolo`); los lugares a cambiar están en `app/README.md`.
+- Identificador de la app y dominio: decididos. El nombre es Radici, el dominio `radicicucina.app` y el identificador nativo `app.radicicucina` (elegido el 22/11/2026; no se puede cambiar después de publicar). Los lugares donde vive están en `app/README.md`.
 - ¿Se pide tarjeta guardada también a los clientes `pay_after` (para poder cobrar la penalidad por cancelación)?
 - Al revocar el consentimiento de salud se borran las restricciones del cliente. ¿Se borran también las copias en pedidos y presupuestos pasados? Pueden servir como prueba de que Evelyn fue informada de una alergia: decidir con quien asesore en privacidad. Mientras tanto se hace lo que dice la privacy: el retiro se procesa con `private.revoke_health_consent`, que borra también las copias de los pedidos (contrato §10.2). Si se decide conservarlas, cambiar la privacy (finalidad y plazo) y esa función.
 - La confirmación de que nadie tiene alergias (`requests.no_allergies = true`) se trata como dato de la solicitud (art. 6.1.b RGPD, sin consentimiento de salud), y así lo dice la privacy `2026-11-16`. Confirmarlo con quien asesore en privacidad: si se la considera dato de salud, también necesitaría el consentimiento explícito.
