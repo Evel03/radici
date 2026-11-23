@@ -545,7 +545,7 @@ void main() {
         await editor.save(allergensConfirmed: false);
         expect(
           await container.read(weekMenuSummaryProvider(sessionId(2)).future),
-          const WeekMenuSummary(saved: true, dishes: 1, items: 3),
+          const WeekMenuSummary(saved: true, dishes: 1, items: 3, version: 1),
         );
       },
     );
@@ -721,7 +721,12 @@ void main() {
         await editor.save(allergensConfirmed: false),
         WeekMenuSaveResult.failed,
       );
-      const other = WeekMenuSummary(saved: true, dishes: 1, items: 3);
+      const other = WeekMenuSummary(
+        saved: true,
+        dishes: 1,
+        items: 3,
+        version: 1,
+      );
       expect(
         await container.read(weekMenuSummaryProvider(sessionId(2)).future),
         other,
@@ -730,7 +735,7 @@ void main() {
       expect(await editor.reload(), isTrue);
       expect(
         await container.read(weekMenuSummaryProvider(sessionId(2)).future),
-        const WeekMenuSummary(saved: true, dishes: 1),
+        const WeekMenuSummary(saved: true, dishes: 1, version: 2),
       );
     });
 

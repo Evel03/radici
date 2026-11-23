@@ -6,6 +6,8 @@ import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
 import type { AppConfig } from "../config.ts";
 import { createI18n, flatten } from "../i18n/core.ts";
+import enJson from "../i18n/en.json";
+import esJson from "../i18n/es.json";
 import itJson from "../i18n/it.json";
 import { createSiteI18n } from "../i18n/site.ts";
 import footer from "../partials/footer.html?raw";
@@ -24,6 +26,7 @@ const baseConfig: AppConfig = {
 };
 const i18n = createSiteI18n("it", flatten(itJson), "Radici");
 const partials = { header, footer };
+const dictFor = (lang: "it" | "es" | "en") => ({ it: itJson, es: esJson, en: enJson })[lang];
 
 describe("fillTranslations", () => {
   const dict = createI18n("it", { a: "Ciao <tu> & \"voi\"", b: "<strong>forte</strong>", c: "Descrizione" });
@@ -65,24 +68,36 @@ describe("renderPage con las páginas reales", () => {
     });
   }
 
-  it("la landing muestra el ejemplo calculado con el motor (vector 3: 4 semanas) y el precio por semana", () => {
+  it("la landing no muestra ningún precio: «Cómo se paga» es un presupuesto a medida", () => {
     const out = renderPage(indexHtml, { i18n, config: baseConfig, pagePath: "/", partials });
-    expect(out).toMatch(/140,00\s€/);
-    expect(out).toMatch(/560,00\s€/);
-    expect(out).toMatch(/40,00\s€/);
-    expect(out).toMatch(/150,00\s€ a settimana/);
-    expect(out).toContain("Nessun rinnovo automatico");
+    // Ni importes ni tarifas en ningún lado (cuerpo, metas, JSON-LD, Open Graph).
+    expect(out).not.toMatch(/€|&euro;|EUR|\d+[.,]\d{2}\s?(€|euro)/i);
+    expect(out).toContain("Un preventivo su misura, sempre chiaro. Nessun rinnovo automatico, nessun costo nascosto.");
+    const start = out.indexOf('<section id="prices"');
+    const prices = out.slice(start, out.indexOf("</section>", start));
+    expect(prices).toContain('<h3 class="card__title" data-i18n="landing.pricing.serviceTitle">Un preventivo su misura</h3>');
+    expect(prices).toContain("Evelyn lo prepara per la tua famiglia in base alle persone");
+    expect(prices).not.toContain("card--example");
   });
 
-  it("el ejemplo de la portada: servicio por semana y servicio de las semanas (destacado, al final), sin fila de compra", () => {
+  it("la tarjeta de «Cómo se paga» invita a pedir el presupuesto y apunta al formulario", () => {
     const out = renderPage(indexHtml, { i18n, config: baseConfig, pagePath: "/", partials });
-    const card = /<article class="card card--example">([\s\S]*?)<\/article>/.exec(out)?.[1] ?? "";
-    const example = /<dl class="example">([\s\S]*?)<\/dl>/.exec(card)?.[1] ?? "";
-    const rows = [...example.matchAll(/<div class="([^"]+)">\s*<dt data-i18n="landing\.pricing\.(\w+)"/g)].map(([, cls = "", key = ""]) => ({ cls, key }));
-    expect(rows.map((row) => row.key)).toEqual(["exampleWeekly", "exampleTotal"]);
-    expect(rows[1]?.cls).toContain("example__row--total");
-    // La compra la hace el cliente con la lista de Evelyn (19/11/2026): ni fila ni nota sobre ella.
-    expect(card).not.toMatch(/spesa|scontrin/i);
+    const card = /<article class="card card--cta">([\s\S]*?)<\/article>/.exec(out)?.[1] ?? "";
+    expect(card).toContain("Quanto costerebbe per te?");
+    expect(card).toContain("Raccontaci cosa ti serve e Evelyn ti prepara il preventivo.");
+    expect(card).toMatch(/<a class="link-arrow" href="\/richiesta\/"[^>]*>Chiedi il tuo preventivo<\/a>/);
+    // Sin la compra ni cifras: es solo la invitación.
+    expect(card.replace(/data-i18n="[^"]*"/g, "")).not.toMatch(/spesa|\b\d+\b|€/);
+  });
+
+  it("el JSON-LD no implica tarifa (sin moneda ni precio) y las descripciones no prometen una estimación", () => {
+    for (const lang of ["it", "es", "en"] as const) {
+      const text = createSiteI18n(lang, flatten(dictFor(lang)), "Radici");
+      const ld = JSON.stringify(buildJsonLd({ ...baseConfig, siteUrl: "https://radicicucina.app" }, text));
+      expect(ld, lang).not.toMatch(/currenciesAccepted|priceRange|price|EUR|€/i);
+      expect(text.t("landing.metaDescription"), lang).not.toMatch(/€|stima|estimaci|estimate|calcul|calcol/i);
+      expect(text.t("request.metaDescription"), lang).not.toMatch(/€|stima|estimaci|estimate|calcul|calcol/i);
+    }
   });
 
   it("la portada dice que la compra la hace el cliente, con la lista de Evelyn, y no la promete en ningún lado", () => {
@@ -95,12 +110,19 @@ describe("renderPage con las páginas reales", () => {
     expect(out).not.toMatch(/scontrin|spesa stimata|fa la spesa|compra tutto|niente spesa/i);
   });
 
-  it("el recuadro del precio del formulario no tiene fila de compra", () => {
-    const quote = /<aside id="quote"[\s\S]*?<\/aside>/.exec(requestHtml)?.[0] ?? "";
-    expect(quote).toContain('id="q-portions"');
-    expect(quote).not.toMatch(/groceries/);
+  it("el recuadro «Cómo sigue» del formulario: el resumen de lo que pide, los tres pasos y la compra, sin precios", () => {
+    const next = /<aside id="next"[\s\S]*?<\/aside>/.exec(requestHtml)?.[0] ?? "";
+    expect(next).toContain('id="next-summary"');
+    expect(next).not.toMatch(/q-total|q-weekly|q-savings|q-manual|groceries/);
+    expect((next.match(/<li data-i18n="request\.next\.step\d">/g) ?? []).length).toBe(3);
     const out = renderPage(requestHtml, { i18n, config: baseConfig, pagePath: "/richiesta/", partials });
-    expect(out).toContain("Il prezzo finale lo conferma Evelyn. La spesa la fai tu, con la lista che ti manda Evelyn.");
+    expect(out).toContain("Come prosegue");
+    expect(out).toContain("Invii la richiesta e ricevi un&#39;email di conferma.");
+    expect(out).toContain("Evelyn ti prepara un preventivo su misura e te lo manda per email o WhatsApp.");
+    expect(out).toContain("Lo rivedi e, se ti convince, lo accetti.");
+    expect(out).toContain("La spesa la fai tu, con la lista che ti manda Evelyn.");
+    // Ningún precio en todo el formulario ni en la pantalla de gracias.
+    expect(out).not.toMatch(/€|&euro;|EUR|\d+[.,]\d{2}|prezzo|stima|risparmi/i);
     expect(out).not.toMatch(/scontrin|spesa stimata|spesa più leggera/i);
   });
 

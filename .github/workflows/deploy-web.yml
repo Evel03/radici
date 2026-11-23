@@ -4,10 +4,15 @@
 # - push a main  → producción (rama de producción del proyecto: main). Se sirve en el dominio
 #   propio https://radicicucina.app (dominio personalizado del proyecto, se agrega una vez
 #   en Cloudflare).
-# - pull request → vista previa en <rama>.<subdominio>.pages.dev (con X-Robots-Tag: noindex).
-#   <subdominio> lo asigna Cloudflare al crear el proyecto: "radici", o con un sufijo si ya está tomado.
-#   En una vista previa /gestione/ se compila sin backend (modo dev): es código sin revisar en una URL
-#   pública y no se conecta a los datos de producción (contrato §8).
+# - ejecución manual (workflow_dispatch) desde una rama que no es main → vista previa en
+#   <rama>.<subdominio>.pages.dev (con X-Robots-Tag: noindex). Nunca publica en producción: el
+#   workflow decide por la rama (main o no), no por quién lo dispara. <subdominio> lo asigna Cloudflare
+#   al crear el proyecto: "radici", o con un sufijo si ya está tomado. En una vista previa /gestione/ se
+#   compila sin backend (modo dev): es código sin revisar en una URL pública y no se conecta a los datos
+#   de producción (contrato §8).
+# Los pull requests NO lo disparan (gastaba unos 13 min de Actions por cada evento): el CI (ci.yml) ya
+# compila la web y prueba la app. Para ver un PR en una URL: Actions → Deploy web → Run workflow → elegir
+# la rama del PR (o: gh workflow run deploy-web.yml --ref <rama>).
 # Antes de publicar corre los tests de la web (npm test) y de la app (flutter analyze + flutter test).
 # Cada deploy (producción y vistas previas) compila /gestione/ con su id (BUILD_ID, el commit) y publica
 # el mismo en gestione/build.json: la app los compara y avisa cuando hay una versión nueva. En
@@ -39,20 +44,12 @@ on:
       - "supabase/functions/_shared/**"
       - ".github/workflows/deploy-web.yml"
       - ".github/scripts/check-gestione-cache.sh"
-  pull_request:
-    paths:
-      - "web/**"
-      - "app/**"
-      - "supabase/functions/_shared/**"
-      - ".github/workflows/deploy-web.yml"
-      - ".github/scripts/check-gestione-cache.sh"
   workflow_dispatch:
 
-# Un grupo por PR y otro por rama: un PR (también desde un fork, cuya rama suele llamarse main) nunca
-# cae en el grupo de producción. Los PR se cancelan entre sí; producción no se corta: hace cola.
+# Un grupo por rama. Un deploy en curso no se corta: hace cola.
 concurrency:
-  group: deploy-web-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: deploy-web-${{ github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

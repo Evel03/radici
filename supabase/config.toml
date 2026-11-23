@@ -430,6 +430,14 @@ verify_jwt = false
 enabled = true
 verify_jwt = true
 
+# Avisos a Evelyn para completar el menú de cada semana (SPEC 5.8): la llama la base cada 15 minutos
+# (pg_cron + pg_net) con el secreto compartido en la cabecera x-reminders-secret
+# (MENU_REMINDERS_SECRET, que el despliegue genera y guarda también en Vault). Sin JWT: el secreto es
+# la protección.
+[functions.menu-reminders]
+enabled = true
+verify_jwt = false
+
 # Link de la clienta (docs/contracts/client-link.md): la página /prenotazione/ de la web muestra la
 # reserva con el menú de cada semana y la clienta lo confirma o pide cambios. Sin JWT: la clienta no
 # tiene cuenta (M2). La llave es el token del link (la base guarda solo su hash), más límite por IP y

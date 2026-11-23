@@ -31,6 +31,7 @@ test("CI: deno check de las Edge Functions, con el traductor de chef (que index.
     "supabase/functions/chef/index.ts",
     "supabase/functions/chef/claude_translator.ts",
     "supabase/functions/public-request/index.ts",
+    "supabase/functions/menu-reminders/index.ts",
     "supabase/functions/client-link/index.ts",
   ];
   for (const file of files) {

@@ -4,11 +4,12 @@
 // dirección, el botón para agregarla: el formulario web no la pide; con la
 // zona del pedido, también «Come arrivare (zona)», que lleva hasta ella); las
 // alergias resaltadas (la nota del pedido y, con gluten, la de contaminación
-// cruzada, SPEC §5.6); el menú de la semana (cuántos platos y renglones, y
-// el botón para armarlo o editarlo, SPEC 5.8); los datos de la clienta (la
-// dirección, o sin ella la zona, es un enlace a Mapas, como «Come arrivare»)
-// y las semanas de su reserva; en la última sesión viva de una reserva
-// semanal, «Rinnova» al final.
+// cruzada, SPEC §5.6); el menú de la semana (cuántos platos y renglones, qué
+// pasó con su envío a la clienta y los botones para armarlo o editarlo y para
+// mandárselo, SPEC 5.8); los datos de la clienta (la dirección, o sin ella la
+// zona, es un enlace a Mapas, como «Come arrivare») y las semanas de su
+// reserva; en la última sesión viva de una reserva semanal, «Rinnova» al
+// final.
 // Abajo, Mover (con «Annulla» después) y Cancelar (con confirmación y
 // «también las siguientes»; si alguna ya está cobrada, el aviso dice cuál y
 // qué se puede hacer). Abierta con un enlace directo, la flecha de volver
@@ -119,8 +120,11 @@ class _SessionView extends ConsumerWidget {
   Future<void> _refresh(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     final message = AppLocalizations.of(context).inboxRefreshError;
-    // El menú también puede haber cambiado en otro teléfono.
-    ref.invalidate(weekMenuSummaryProvider(detail.session.id));
+    // El menú también puede haber cambiado en otro teléfono, y la clienta
+    // puede haber contestado al envío.
+    ref
+      ..invalidate(weekMenuSummaryProvider(detail.session.id))
+      ..invalidate(latestMenuSendProvider(detail.session.id));
     try {
       await ref
           .read(sessionDetailProvider(detail.session.id).notifier)

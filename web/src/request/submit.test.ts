@@ -12,8 +12,9 @@ import {
 } from "./submit.ts";
 
 const URL_ = "https://abcdefgh.supabase.co/functions/v1/public-request";
-// La del 201 de la versión 3 (vector 3: 4 semanas), sin compra ni total desde el 19/11/2026.
-const ESTIMATE = {
+// La estimación (con precio) que mandaba el 201 hasta el 21/11/2026: desde el 22/11/2026 ya no viene, y si viniera
+// (una función de antes) la web la ignora: no muestra precios.
+const OLD_ESTIMATE = {
   weeks: 4,
   portions: 20,
   recipes: 3,
@@ -52,56 +53,42 @@ describe("publicRequestUrl", () => {
 });
 
 describe("interpretResponse (contrato §2)", () => {
-  it("201: guardado, con id, estimación y platos del servidor", () => {
-    expect(interpretResponse(201, { requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE, menu: MENU }, null)).toEqual({
+  it("201: guardado, con el id y los platos del servidor (ninguna estimación ni precio)", () => {
+    expect(interpretResponse(201, { requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", menu: MENU }, null)).toEqual({
       kind: "created",
       requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10",
-      estimate: ESTIMATE,
       menu: MENU,
       duplicate: false,
     });
-    expect(interpretResponse(201, { requestId: "abc", estimate: ESTIMATE, menu: [] }, null)).toMatchObject({ menu: [] });
+    expect(interpretResponse(201, { requestId: "abc", menu: [] }, null)).toMatchObject({ menu: [] });
   });
 
   it("201 sin menu (una función de antes) o con otra forma: menu null (la pantalla de gracias usa el catálogo)", () => {
-    expect(interpretResponse(201, { requestId: "abc", estimate: ESTIMATE }, null)).toMatchObject({ kind: "created", menu: null });
-    expect(interpretResponse(201, { requestId: "abc", estimate: ESTIMATE, menu: [{ id: "x" }] }, null)).toMatchObject({ menu: null });
-    expect(interpretResponse(201, { requestId: "abc", estimate: ESTIMATE, menu: "Lasagne" }, null)).toMatchObject({ menu: null });
+    expect(interpretResponse(201, { requestId: "abc" }, null)).toMatchObject({ kind: "created", menu: null });
+    expect(interpretResponse(201, { requestId: "abc", menu: [{ id: "x" }] }, null)).toMatchObject({ menu: null });
+    expect(interpretResponse(201, { requestId: "abc", menu: "Lasagne" }, null)).toMatchObject({ menu: null });
   });
 
   it("201 con duplicate: true: el servidor ya tenía el pedido de un envío anterior con la misma clave", () => {
-    expect(
-      interpretResponse(201, { requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE, duplicate: true }, null),
-    ).toEqual({ kind: "created", requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", estimate: ESTIMATE, menu: null, duplicate: true });
-    // Solo cuenta el booleano true.
-    expect(interpretResponse(201, { requestId: "x", estimate: ESTIMATE, duplicate: "true" }, null)).toMatchObject({ duplicate: false });
-  });
-
-  it("201 sin precio automático: la estimación sin claves de precio, con el motivo", () => {
-    const unpriced = { weeks: 1, portions: 16, recipes: 2, cookMinutes: 150, autoPrice: false, reason: "extra" };
-    expect(interpretResponse(201, { requestId: "abc", estimate: unpriced }, null)).toMatchObject({ kind: "created", estimate: unpriced });
-  });
-
-  it("201 de antes del 19/11/2026, con la compra y el total: la estimación se lee sin esas claves", () => {
-    const before = { ...ESTIMATE, groceriesEstCents: 6300, totalCents: 81200 };
-    expect(interpretResponse(201, { requestId: "abc", estimate: before }, null)).toEqual({
+    expect(interpretResponse(201, { requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10", duplicate: true }, null)).toEqual({
       kind: "created",
-      requestId: "abc",
-      estimate: ESTIMATE,
+      requestId: "6f1c7c1e-9f7e-4a53-9a77-2f5d2f0f7a10",
       menu: null,
-      duplicate: false,
+      duplicate: true,
     });
+    // Solo cuenta el booleano true.
+    expect(interpretResponse(201, { requestId: "x", duplicate: "true" }, null)).toMatchObject({ duplicate: false });
+  });
+
+  it("201 de una función de antes, con la estimación y su precio: se ignora, el resultado no lleva ningún precio", () => {
+    const outcome = interpretResponse(201, { requestId: "abc", estimate: OLD_ESTIMATE }, null);
+    expect(outcome).toEqual({ kind: "created", requestId: "abc", menu: null, duplicate: false });
+    expect(JSON.stringify(outcome)).not.toMatch(/estimate|cents/i);
   });
 
   it("201 con un cuerpo raro igual es éxito (el pedido ya está guardado)", () => {
-    expect(interpretResponse(201, null, null)).toEqual({ kind: "created", requestId: null, estimate: null, menu: null, duplicate: false });
-    expect(interpretResponse(201, { requestId: 5, estimate: { ...ESTIMATE, serviceCents: 141.5 } }, null)).toEqual({
-      kind: "created",
-      requestId: null,
-      estimate: null,
-      menu: null,
-      duplicate: false,
-    });
+    expect(interpretResponse(201, null, null)).toEqual({ kind: "created", requestId: null, menu: null, duplicate: false });
+    expect(interpretResponse(201, { requestId: 5 }, null)).toEqual({ kind: "created", requestId: null, menu: null, duplicate: false });
   });
 
   it("400 con errores por campo", () => {
@@ -164,9 +151,9 @@ describe("rateLimitMessage", () => {
 
 describe("sendPublicRequest", () => {
   it("POST JSON a la función, sin cookies ni apikey, y devuelve el resultado", async () => {
-    const fetchFn = vi.fn(async () => jsonResponse(201, { requestId: "abc-123", estimate: ESTIMATE, menu: MENU }));
+    const fetchFn = vi.fn(async () => jsonResponse(201, { requestId: "abc-123", menu: MENU }));
     const outcome = await sendPublicRequest(URL_, payload, { fetch: fetchFn });
-    expect(outcome).toEqual({ kind: "created", requestId: "abc-123", estimate: ESTIMATE, menu: MENU, duplicate: false });
+    expect(outcome).toEqual({ kind: "created", requestId: "abc-123", menu: MENU, duplicate: false });
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(URL_);

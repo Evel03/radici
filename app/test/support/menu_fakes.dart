@@ -78,6 +78,7 @@ class FakeSessionMenusRepository implements SessionMenusRepository {
               saved: menu.exists,
               dishes: menu.dishes.length,
               items: menu.items.length,
+              version: menu.version,
             ),
           },
     };

@@ -3291,5 +3291,394 @@
   "recipeLeaveSavedConfirm": "Torna al menù",
   "@recipeLeaveSavedConfirm": {
     "description": "Botón de recipeLeaveSavedTitle: vuelve al menú con el plato guardado."
+  },
+  "menuSendSection": "Invio alla cliente",
+  "@menuSendSection": {
+    "description": "Título de la sección del editor del menú de una semana con el estado del envío a la clienta (SPEC 5.8)."
+  },
+  "menuSendAction": "Invia alla cliente",
+  "@menuSendAction": {
+    "description": "Botón del bloque «Menú de la semana» de la ficha de la sesión: abre la vista previa del mensaje para la clienta."
+  },
+  "menuSendAgain": "Invia di nuovo",
+  "@menuSendAgain": {
+    "description": "Botón del bloque «Menú de la semana» de la ficha cuando el menú ya se mandó alguna vez."
+  },
+  "menuSendShort": "Invia",
+  "@menuSendShort": {
+    "description": "Botón de abajo del editor del menú, al lado de «Guardar el menú»: abre la vista previa del mensaje para la clienta."
+  },
+  "menuSendNotSent": "Non è ancora stato inviato alla cliente.",
+  "@menuSendNotSent": {
+    "description": "Estado del envío: el menú de la semana nunca salió."
+  },
+  "menuSendViaEmail": "via email",
+  "@menuSendViaEmail": {
+    "description": "Por dónde salió un envío, dentro de menuSendSentOn, menuSendDone y menuSendButton."
+  },
+  "menuSendViaWhatsApp": "via WhatsApp",
+  "@menuSendViaWhatsApp": {
+    "description": "Por dónde salió un envío, dentro de menuSendSentOn, menuSendDone y menuSendButton."
+  },
+  "menuSendViaBoth": "via email e WhatsApp",
+  "@menuSendViaBoth": {
+    "description": "Por dónde salió un envío (los dos), dentro de menuSendSentOn, menuSendDone y menuSendButton."
+  },
+  "menuSendSentOn": "Inviato il {date} alle {time} {via}.",
+  "@menuSendSentOn": {
+    "description": "Estado del envío: cuándo salió el último (hora de Roma) y por dónde.",
+    "placeholders": {
+      "date": { "type": "String", "example": "25/11" },
+      "time": { "type": "String", "example": "14:32" },
+      "via": { "type": "String", "example": "via email e WhatsApp" }
+    }
+  },
+  "menuSendConfirmedOn": "La cliente l'ha confermato il {date} alle {time}.",
+  "@menuSendConfirmedOn": {
+    "description": "Estado del envío: la clienta confirmó el menú desde su link (hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "26/11" },
+      "time": { "type": "String", "example": "09:15" }
+    }
+  },
+  "menuSendChangesOn": "La cliente ha chiesto delle modifiche il {date} alle {time}:",
+  "@menuSendChangesOn": {
+    "description": "Estado del envío: la clienta pidió cambios desde su link (hora de Roma). Debajo va su mensaje entero, que solo se ve en la app (SPEC §6).",
+    "placeholders": {
+      "date": { "type": "String", "example": "26/11" },
+      "time": { "type": "String", "example": "09:15" }
+    }
+  },
+  "menuSendChangedSince": "Il menù è cambiato dopo l'invio: la cliente ha quello di prima. Invialo di nuovo.",
+  "@menuSendChangedSince": {
+    "description": "Estado del envío: el menú guardado es más nuevo que el que salió."
+  },
+  "menuSendStatusFailed": "Non è stato possibile sapere se il menù è stato inviato.",
+  "@menuSendStatusFailed": {
+    "description": "No se pudo leer el último envío del menú (con «Riprova»)."
+  },
+  "menuSendSaveFirstTitle": "Salvare prima di inviare?",
+  "@menuSendSaveFirstTitle": {
+    "description": "Editor del menú: «Mandar» con cambios sin guardar (o un menú que nunca se guardó)."
+  },
+  "menuSendSaveFirstBody": "La cliente riceve il menù così com'è salvato. Salvalo prima.",
+  "@menuSendSaveFirstBody": {
+    "description": "Cuerpo de menuSendSaveFirstTitle."
+  },
+  "menuSendSaveFirstConfirm": "Salva e continua",
+  "@menuSendSaveFirstConfirm": {
+    "description": "Botón de menuSendSaveFirstTitle: guarda el menú y abre la vista previa."
+  },
+  "menuSendTitle": "Invia il menù",
+  "@menuSendTitle": {
+    "description": "Título de la pantalla de la vista previa y el envío del menú a la clienta."
+  },
+  "menuSendPreviewing": "Preparo il messaggio nella lingua della cliente ({language})…",
+  "@menuSendPreviewing": {
+    "description": "Mientras se pide la vista previa (puede traducir la lista: hasta un minuto).",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "menuSendTo": "Per {name}",
+  "@menuSendTo": {
+    "description": "Vista previa: a quién va (el nombre del contacto del pedido o de la ficha).",
+    "placeholders": {
+      "name": { "type": "String", "example": "Maria Rossi" }
+    }
+  },
+  "menuSendLanguage": "È nella lingua della cliente: {language}.",
+  "@menuSendLanguage": {
+    "description": "Vista previa: el idioma del mensaje (el del pedido).",
+    "placeholders": {
+      "language": { "type": "String", "example": "Italiano" }
+    }
+  },
+  "menuSendTranslated": "I nomi della lista sono stati tradotti in automatico.",
+  "@menuSendTranslated": {
+    "description": "Vista previa: los nombres de la lista de compras se tradujeron con la traducción automática."
+  },
+  "menuSendNotTranslated": "La lista va così come l'hai scritta, senza traduzione.",
+  "@menuSendNotTranslated": {
+    "description": "Vista previa sin traducir (después de «Continua senza tradurre»), a una clienta que no lee español."
+  },
+  "menuSendLinkNote": "Il link per confermare si crea all'invio: nell'anteprima al suo posto c'è un testo.",
+  "@menuSendLinkNote": {
+    "description": "Vista previa: dónde va el link de la clienta (la función pone un texto de reemplazo)."
+  },
+  "menuSendMessageSection": "Cosa riceve",
+  "@menuSendMessageSection": {
+    "description": "Vista previa: título del mensaje (WhatsApp o email)."
+  },
+  "menuSendSubject": "Oggetto: {subject}",
+  "@menuSendSubject": {
+    "description": "Vista previa del email: el asunto.",
+    "placeholders": {
+      "subject": { "type": "String", "example": "Radici: il menù della settimana 1 di 4 (30 nov)" }
+    }
+  },
+  "menuSendChannelsSection": "Come inviarlo",
+  "@menuSendChannelsSection": {
+    "description": "Vista previa: título de la elección de email y WhatsApp."
+  },
+  "menuSendByEmail": "Via email",
+  "@menuSendByEmail": {
+    "description": "Vista previa: casilla para mandarlo por email."
+  },
+  "menuSendByWhatsApp": "Via WhatsApp",
+  "@menuSendByWhatsApp": {
+    "description": "Vista previa: casilla para mandarlo por WhatsApp."
+  },
+  "menuSendWhatsAppHint": "{phone} · si apre WhatsApp con il messaggio pronto da inviare.",
+  "@menuSendWhatsAppHint": {
+    "description": "Vista previa: debajo de la casilla de WhatsApp, el teléfono y qué pasa al mandar (WhatsApp sale del teléfono de quien manda).",
+    "placeholders": {
+      "phone": { "type": "String", "example": "+39 333 123 4567" }
+    }
+  },
+  "menuSendNoEmail": "Non c'è un'email nella richiesta né nella scheda.",
+  "@menuSendNoEmail": {
+    "description": "Vista previa: por qué no se puede mandar por email."
+  },
+  "menuSendBadEmail": "Questa email non sembra valida: {email}",
+  "@menuSendBadEmail": {
+    "description": "Vista previa: por qué no se puede mandar por email.",
+    "placeholders": {
+      "email": { "type": "String", "example": "maria@example" }
+    }
+  },
+  "menuSendNoPhone": "Non c'è un telefono nella richiesta né nella scheda.",
+  "@menuSendNoPhone": {
+    "description": "Vista previa: por qué no se puede mandar por WhatsApp."
+  },
+  "menuSendBadPhone": "Questo telefono non va bene per WhatsApp: {phone}",
+  "@menuSendBadPhone": {
+    "description": "Vista previa: por qué no se puede mandar por WhatsApp.",
+    "placeholders": {
+      "phone": { "type": "String", "example": "333 12" }
+    }
+  },
+  "menuSendNoChannel": "Non c'è un'email né un telefono validi: così non si può inviare.",
+  "@menuSendNoChannel": {
+    "description": "Vista previa: el contacto no tiene ni email ni teléfono que sirvan."
+  },
+  "menuSendButton": "Invia {via}",
+  "@menuSendButton": {
+    "description": "Botón de abajo de la vista previa, con los canales elegidos.",
+    "placeholders": {
+      "via": { "type": "String", "example": "via email e WhatsApp" }
+    }
+  },
+  "menuSendChooseChannel": "Scegli come inviarlo",
+  "@menuSendChooseChannel": {
+    "description": "Botón de abajo de la vista previa, deshabilitado, sin ningún canal elegido."
+  },
+  "menuSending": "Invio in corso…",
+  "@menuSending": {
+    "description": "Mientras se manda el menú (para el lector de pantalla, en lugar de la ruedita)."
+  },
+  "menuSendErrorUntranslatable": "La traduzione automatica non è riuscita a tradurre la lista.",
+  "@menuSendErrorUntranslatable": {
+    "description": "Vista previa: 422, la lista no se pudo traducir (reintentar igual no sirve)."
+  },
+  "menuSendErrorNotConfigured": "La traduzione automatica è spenta.",
+  "@menuSendErrorNotConfigured": {
+    "description": "Vista previa: 501, la traducción está apagada."
+  },
+  "menuSendErrorRateLimited": "È stato raggiunto il limite di traduzioni per ora: riprova tra un'ora o continua senza tradurre.",
+  "@menuSendErrorRateLimited": {
+    "description": "Vista previa: 429, la cocina pasó su límite de traducciones (la app no reintenta sola)."
+  },
+  "menuSendErrorPreviewUnavailable": "Non è stato possibile preparare l'anteprima. Controlla la connessione e riprova.",
+  "@menuSendErrorPreviewUnavailable": {
+    "description": "Vista previa: sin conexión, sin respuesta o un error pasajero (también de la traducción)."
+  },
+  "menuSendWithoutTranslation": "Continua senza tradurre",
+  "@menuSendWithoutTranslation": {
+    "description": "Vista previa: si la traducción de la lista falla, otra vista previa con la lista sin traducir (todavía no manda nada)."
+  },
+  "menuSendErrorMenuChanged": "Il menù è cambiato: è stato salvato su un altro telefono dopo che l'hai aperto.",
+  "@menuSendErrorMenuChanged": {
+    "description": "Vista previa: 409 menuChanged, la versión del menú ya no es la guardada."
+  },
+  "menuSendBackToMenu": "Torna al menù",
+  "@menuSendBackToMenu": {
+    "description": "Vista previa abierta desde el editor, con el menú cambiado: vuelve al editor, que carga el guardado."
+  },
+  "menuSendPreviewSaved": "Vedi quello salvato",
+  "@menuSendPreviewSaved": {
+    "description": "Vista previa abierta desde la ficha, con el menú cambiado: la vista previa del menú guardado de ahora."
+  },
+  "menuSendErrorNotEditable": "Questa settimana non si può più inviare: è «{status}».",
+  "@menuSendErrorNotEditable": {
+    "description": "409 sessionNotEditable: la sesión está cancelada, cocinada o cobrada.",
+    "placeholders": {
+      "status": { "type": "String", "example": "Annullata" }
+    }
+  },
+  "menuSendErrorNotEditableUnknown": "Questa settimana non si può più inviare: è annullata, cucinata o pagata.",
+  "@menuSendErrorNotEditableUnknown": {
+    "description": "409 sessionNotEditable sin el estado."
+  },
+  "menuSendErrorEmpty": "Il menù salvato non ha piatti: aggiungine qualcuno e salvalo.",
+  "@menuSendErrorEmpty": {
+    "description": "409 menuEmpty."
+  },
+  "menuSendErrorNoMenu": "Questa settimana non ha ancora un menù salvato.",
+  "@menuSendErrorNoMenu": {
+    "description": "404 menuNotFound."
+  },
+  "menuSendErrorNoRequest": "Questa sessione non ha una richiesta: non c'è un link da mandare alla cliente.",
+  "@menuSendErrorNoRequest": {
+    "description": "409 sessionWithoutRequest."
+  },
+  "menuSendErrorUnauthorized": "L'accesso è scaduto: esci e rientra.",
+  "@menuSendErrorUnauthorized": {
+    "description": "401 también después de renovar la sesión."
+  },
+  "menuSendErrorForbidden": "Il tuo account non può inviare menù.",
+  "@menuSendErrorForbidden": {
+    "description": "403: la cuenta no es de la cocina."
+  },
+  "menuSendErrorServer": "Qualcosa non ha funzionato sul server. Riprova più tardi.",
+  "@menuSendErrorServer": {
+    "description": "500, otro 409 o una respuesta que no se entiende: reintentar en el momento no lo arregla."
+  },
+  "menuSendErrorInvalid": "Il server non ha accettato la richiesta. Riprova più tardi.",
+  "@menuSendErrorInvalid": {
+    "description": "400 u otro 4xx: un pedido que la app no debería mandar."
+  },
+  "menuSendErrorUncertain": "Non si sa se è partito: la connessione si è interrotta o il server non ha risposto. Riprovare è sicuro: se è già partito, non viene inviato due volte.",
+  "@menuSendErrorUncertain": {
+    "description": "Envío sin respuesta (sin conexión, tiempo agotado o error pasajero): el reintento usa el mismo envío."
+  },
+  "menuSendErrorEmailFailed": "L'email non è partita: non è stato inviato niente.",
+  "@menuSendErrorEmailFailed": {
+    "description": "502 emailFailed: el envío quedó sin marcar."
+  },
+  "menuSendOnlyWhatsApp": "Invia solo via WhatsApp",
+  "@menuSendOnlyWhatsApp": {
+    "description": "Después de que el email no salió: manda el mismo envío solo por WhatsApp."
+  },
+  "menuSendOnlyEmail": "Invia solo via email",
+  "@menuSendOnlyEmail": {
+    "description": "Después de noPhone: manda el mismo envío solo por email."
+  },
+  "menuSendErrorEmailUnavailable": "L'email non è configurata sul server: per ora, invialo via WhatsApp.",
+  "@menuSendErrorEmailUnavailable": {
+    "description": "503 emailUnavailable: el servidor no tiene RESEND_API_KEY o MAIL_FROM."
+  },
+  "menuSendErrorNoEmailNow": "Il contatto della cliente non ha più un'email valida: non è stato inviato niente.",
+  "@menuSendErrorNoEmailNow": {
+    "description": "409 noEmail: el contacto cambió desde la vista previa."
+  },
+  "menuSendErrorNoPhoneNow": "Il contatto della cliente non ha più un telefono valido per WhatsApp: non è stato inviato niente.",
+  "@menuSendErrorNoPhoneNow": {
+    "description": "409 noPhone: el contacto cambió desde la vista previa."
+  },
+  "menuSendErrorChangedSincePreview": "Qualcosa è cambiato dopo l'anteprima (il menù, il giorno o l'ora, le settimane della prenotazione o un piatto del catalogo): non è stato inviato niente. Prepara una nuova anteprima per vedere cosa riceverà.",
+  "@menuSendErrorChangedSincePreview": {
+    "description": "409 menuChanged al mandar: hace falta otra vista previa."
+  },
+  "menuSendNewPreview": "Nuova anteprima",
+  "@menuSendNewPreview": {
+    "description": "Pide otra vista previa (otro envío) del mismo menú."
+  },
+  "menuSendErrorEmailSent": "L'email è partita, ma l'invio non è stato registrato: sulla pagina della cliente non risulta inviato.",
+  "@menuSendErrorEmailSent": {
+    "description": "Error al mandar con emailSent: el email salió y la base no marcó el envío."
+  },
+  "menuSendEmailSentRetry": "Se riprovi, le arriva un'altra email con un altro link (funzionano tutti e due).",
+  "@menuSendEmailSentRetry": {
+    "description": "Debajo de menuSendErrorEmailSent cuando se puede reintentar."
+  },
+  "menuSendWhatsAppLost": "È stato registrato, ma si è perso il testo di WhatsApp con il link. Per inviarlo via WhatsApp, prepara una nuova anteprima.",
+  "@menuSendWhatsAppLost": {
+    "description": "Ya había salido (la respuesta se perdió) y se pidió WhatsApp: el link solo viaja en la respuesta."
+  },
+  "menuSendDone": "Inviato a {name} il {date} alle {time} {via}.",
+  "@menuSendDone": {
+    "description": "Después de mandar: a quién, cuándo (hora de Roma) y por dónde.",
+    "placeholders": {
+      "name": { "type": "String", "example": "Maria Rossi" },
+      "date": { "type": "String", "example": "25/11" },
+      "time": { "type": "String", "example": "14:32" },
+      "via": { "type": "String", "example": "via email e WhatsApp" }
+    }
+  },
+  "menuSendDoneWhatsApp": "Manca toccare «Invia» su WhatsApp: lì c'è il messaggio con il link.",
+  "@menuSendDoneWhatsApp": {
+    "description": "Después de mandar por WhatsApp, con WhatsApp ya abierto en el teléfono."
+  },
+  "menuSendDoneOpenWhatsApp": "Tocca «Apri WhatsApp» e invia il messaggio: contiene il link per confermare.",
+  "@menuSendDoneOpenWhatsApp": {
+    "description": "Después de mandar por WhatsApp sin que se abriera solo (en /gestione/, o si no se pudo)."
+  },
+  "menuSendOpenWhatsApp": "Apri WhatsApp",
+  "@menuSendOpenWhatsApp": {
+    "description": "Botón después de mandar por WhatsApp: abre WhatsApp con el mensaje y el link."
+  },
+  "menuSendDoneRecovered": "Era già partito: la risposta del primo tentativo si era persa.",
+  "@menuSendDoneRecovered": {
+    "description": "Después de reintentar un envío cuya respuesta se perdió (alreadySent): salió una sola vez."
+  },
+  "todayMenusTitle": "Menù da inviare",
+  "@todayMenusTitle": {
+    "description": "Hoy: título de las semanas de los próximos 7 días que esperan algo con su menú (sin menú, sin mandar o con cambios pedidos)."
+  },
+  "todayMenusHint": "Le settimane dei prossimi 7 giorni: il menù si invia alla cliente entro 48 ore prima dell'arrivo.",
+  "@todayMenusHint": {
+    "description": "Hoy: debajo de todayMenusTitle, de dónde salen esas semanas y el límite para mandar el menú."
+  },
+  "todayMenusArrives": "arrivo alle {time}",
+  "@todayMenusArrives": {
+    "description": "Hoy, en «Menús para mandar»: la hora de llegada, al final de «Semana k de N · día».",
+    "placeholders": {
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "todayMenuNoMenu": "Senza menù",
+  "@todayMenuNoMenu": {
+    "description": "Hoy, en «Menús para mandar»: la semana todavía no tiene menú guardado (o no tiene platos)."
+  },
+  "todayMenuNotSent": "Pronto, non inviato",
+  "@todayMenuNotSent": {
+    "description": "Hoy, en «Menús para mandar»: el menú está guardado pero nunca se mandó."
+  },
+  "todayMenuChangedSinceSent": "Cambiato, non inviato",
+  "@todayMenuChangedSinceSent": {
+    "description": "Hoy, en «Menús para mandar»: el menú se mandó y después cambió; la clienta tiene el de antes."
+  },
+  "todayMenuChangesRequested": "Modifiche richieste",
+  "@todayMenuChangesRequested": {
+    "description": "Hoy, en «Menús para mandar»: la clienta pidió cambios en el último envío."
+  },
+  "todayMenuDeadline": "Limite: {date}, {time}",
+  "@todayMenuDeadline": {
+    "description": "Hoy, en «Menús para mandar»: hasta cuándo mandar el menú (48 h antes de la llegada, hora de Roma).",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 23 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "todayMenuDeadlinePassed": "Limite scaduto: {date}, {time}",
+  "@todayMenuDeadlinePassed": {
+    "description": "Hoy, en «Menús para mandar»: el límite para mandar el menú (48 h antes de la llegada) ya pasó.",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 23 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "todayMenuDeadlineNearA11y": "Limite: {date}, {time}. Mancano meno di 24 ore.",
+  "@todayMenuDeadlineNearA11y": {
+    "description": "Hoy, en «Menús para mandar», solo para el lector de pantalla: lo que se ve es todayMenuDeadline, resaltado con color y un ícono de aviso porque faltan menos de 24 h para el límite (el color y el ícono no se leen).",
+    "placeholders": {
+      "date": { "type": "String", "example": "lun 23 nov" },
+      "time": { "type": "String", "example": "10:00" }
+    }
+  },
+  "todayMenusError": "Non è stato possibile sapere quali menù mancano da inviare.",
+  "@todayMenusError": {
+    "description": "Hoy: no se pudieron leer los menús de las semanas próximas (con «Riprova»)."
   }
 }

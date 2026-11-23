@@ -169,7 +169,12 @@ void main() {
         );
 
         expect(summaries, {
-          sessionId(1): const WeekMenuSummary(saved: true, dishes: 1, items: 2),
+          sessionId(1): const WeekMenuSummary(
+            saved: true,
+            dishes: 1,
+            items: 2,
+            version: 1,
+          ),
           sessionId(2): const WeekMenuSummary(),
         });
         final query = server.last.url.queryParameters;

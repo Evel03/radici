@@ -13,8 +13,9 @@
 // ninguna ruta lo cambia), «Controllo le date…» mientras corre el dryRun o lo
 // primero que impide confirmar, con un botón que lleva hasta ahí: en un
 // teléfono, el precio y las últimas semanas quedan fuera de la vista. Al
-// confirmar, el WhatsApp para la clienta, en su idioma, y el botón para armar
-// el menú de la primera semana.
+// confirmar, abajo, «Armar el menú de la semana 1» (la acción principal: el
+// paso siguiente, SPEC 5.8), el WhatsApp para la clienta, en su idioma, y
+// «Listo».
 //
 // Antes de la hoja, según su seed: la rueda, el error con «Riprova» o «no
 // está» (a mano, con «Nuova prenotazione» abajo). Una reserva a mano o una renovación no se cierra mientras espera el
@@ -321,7 +322,12 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
                 onLeaveAnyway: _leaveAnyway,
               )
             else
-              _DoneBar(source: _source, manual: manual),
+              _DoneBar(
+                source: _source,
+                manual: manual,
+                weeks: result.weeks.length,
+                firstSessionId: result.weeks.firstOrNull?.sessionId,
+              ),
           ],
         ),
       ),
@@ -1137,21 +1143,6 @@ class _BookingDone extends ConsumerWidget {
                 ].join(' · '),
               ),
             ),
-          // El paso siguiente (SPEC 5.8): el menú de la primera semana.
-          if (weeks.firstOrNull?.sessionId case final sessionId?)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: OutlinedButton.icon(
-                  key: const ValueKey('booking-done-menu'),
-                  onPressed: () =>
-                      unawaited(context.push(AppRoutes.sessionMenu(sessionId))),
-                  icon: const Icon(Icons.restaurant_menu),
-                  label: Text(l10n.bookingDoneBuildMenu(weeks.length)),
-                ),
-              ),
-            ),
           const Divider(),
           Text(
             '${l10n.quoteServiceTotal(weeks.length)}: '
@@ -1175,14 +1166,30 @@ class _BookingDone extends ConsumerWidget {
   }
 }
 
+/// Abajo, después de confirmar: «Armar el menú de la semana 1», la acción
+/// principal (el paso siguiente, SPEC 5.8: el menú se le manda a la clienta
+/// antes de la primera semana); el WhatsApp de la confirmación para la
+/// clienta y «Listo».
 class _DoneBar extends ConsumerWidget {
-  const _DoneBar({required this.source, required this.manual});
+  const _DoneBar({
+    required this.source,
+    required this.manual,
+    required this.weeks,
+    required this.firstSessionId,
+  });
 
   final BookingSource source;
 
   /// Una reserva a mano: «Fatto» lleva a «Prenotazioni». Desde un pedido,
   /// vuelve al detalle; una renovación, a donde estaba (Hoy o la ficha).
   final bool manual;
+
+  /// Cuántas semanas se confirmaron (el texto del menú: «de la semana 1»).
+  final int weeks;
+
+  /// La sesión de la primera semana: su menú (null si el servidor no la
+  /// devolvió).
+  final String? firstSessionId;
 
   Future<void> _launch(BuildContext context, WidgetRef ref, Uri uri) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -1197,9 +1204,21 @@ class _DoneBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final whatsApp = ref.watch(bookingWhatsAppProvider(source));
+    final sessionId = firstSessionId;
     return BookingBottomBar(
       children: [
-        FilledButton.icon(
+        if (sessionId != null) ...[
+          // Se apila sobre la hoja: al volver, la reserva confirmada sigue.
+          FilledButton.icon(
+            key: const ValueKey('booking-done-menu'),
+            onPressed: () =>
+                unawaited(context.push(AppRoutes.sessionMenu(sessionId))),
+            icon: const Icon(Icons.restaurant_menu),
+            label: Text(l10n.bookingDoneBuildMenu(weeks)),
+          ),
+          const SizedBox(height: 8),
+        ],
+        OutlinedButton.icon(
           key: const ValueKey('booking-whatsapp'),
           onPressed: whatsApp == null
               ? null
@@ -1208,7 +1227,7 @@ class _DoneBar extends ConsumerWidget {
           label: Text(l10n.bookingSendWhatsApp),
         ),
         const SizedBox(height: 8),
-        OutlinedButton(
+        TextButton(
           key: const ValueKey('booking-done-close'),
           onPressed: manual
               ? () => _finishManualBooking(context, ref)

@@ -449,7 +449,7 @@ void main() {
           {'position': 1},
         ],
       }),
-      const WeekMenuSummary(saved: true, dishes: 2, items: 1),
+      const WeekMenuSummary(saved: true, dishes: 2, items: 1, version: 2),
     );
     expect(
       weekMenuSummaryFromRow({
@@ -459,6 +459,16 @@ void main() {
         'items': const <Object>[],
       }),
       const WeekMenuSummary(),
+    );
+    // La fila de session_menus sin una versión que sea un número: rota.
+    expect(
+      () => weekMenuSummaryFromRow({
+        'id': sessionId(1),
+        'menu': const {'version': '2'},
+        'dishes': const <Object>[],
+        'items': const <Object>[],
+      }),
+      throwsFormatException,
     );
   });
 

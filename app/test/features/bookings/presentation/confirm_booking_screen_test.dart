@@ -732,7 +732,7 @@ void main() {
         'Senza un numero valido non si può mandare su WhatsApp.',
       );
       expect(
-        tester.widget<FilledButton>(byKey('booking-whatsapp')).onPressed,
+        tester.widget<ButtonStyleButton>(byKey('booking-whatsapp')).onPressed,
         isNull,
       );
     },
@@ -902,7 +902,7 @@ void main() {
         'Era già confermata: non si è duplicato nulla.',
       );
       expect(
-        tester.widget<FilledButton>(byKey('booking-whatsapp')).onPressed,
+        tester.widget<ButtonStyleButton>(byKey('booking-whatsapp')).onPressed,
         isNotNull,
       );
     },
