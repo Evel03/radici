@@ -50,3 +50,24 @@ test("CI: deno check revisa el index.ts de cada Edge Function del repo", () => {
     assert.ok(CI.includes(`supabase/functions/${name}/index.ts`), `deno check de ${name}`);
   }
 });
+
+test("iOS release: manual o PR acotado a sus archivos, la subida solo manual, imagen y Xcode fijos, la clave se borra", () => {
+  const text = readFileSync(new URL("ios-release.yml", workflows), "utf8");
+  const on = text.slice(text.indexOf("\non:\n"), text.indexOf("\n# Un grupo por rama"));
+  assert.match(on, /pull_request:\n\s+paths:/, "el PR corre solo si cambian sus archivos");
+  assert.match(on, /workflow_dispatch:/);
+  assert.doesNotMatch(on, /push:/, "no corre solo en cada push (los minutos de macOS cuestan)");
+  assert.match(text, /runs-on: macos-\d+\n/, "imagen de macOS fija, no macos-latest");
+  assert.match(text, /XCODE_VERSION: "\d+\.\d+(\.\d+)?"/, "Xcode fijo");
+  const upload = /- name: TestFlight - subir el build\n\s+if: ([^\n]+)/.exec(text)?.[1] ?? "";
+  assert.match(upload, /github\.event_name == 'workflow_dispatch'/, "un PR nunca sube");
+  assert.match(text, /- name: Borrar la clave[^\n]*\n\s+if: always\(\)/, "la clave .p8 se borra siempre");
+  // Los secretos entran por env: nunca dentro de un script (run).
+  let runIndent = -1;
+  for (const line of text.split("\n")) {
+    const indent = line.length - line.trimStart().length;
+    if (runIndent >= 0 && line.trim() !== "" && indent <= runIndent) runIndent = -1;
+    if (runIndent >= 0) assert.doesNotMatch(line, /\$\{\{\s*secrets\./, `secreto dentro de un run: ${line.trim()}`);
+    if (/^\s*run:/.test(line)) runIndent = indent;
+  }
+});

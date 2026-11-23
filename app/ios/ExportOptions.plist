@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Opciones de `xcodebuild -exportArchive` para TestFlight / App Store (ios-release.yml). -->
+	<key>method</key>
+	<string>app-store-connect</string>
+	<!-- Firma automática: Xcode crea y usa el certificado de distribución y el perfil administrados en la nube. -->
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<!-- No se escribe el equipo acá: el workflow lo reemplaza en una copia (APPLE_TEAM_ID). -->
+	<key>teamID</key>
+	<string>TEAM_ID_PLACEHOLDER</string>
+	<!-- Solo se genera el .ipa; la subida es un paso aparte del workflow. -->
+	<key>destination</key>
+	<string>export</string>
+	<key>uploadSymbols</key>
+	<true/>
+	<!-- El número de build lo fija el workflow (github.run_number + offset): Xcode no lo toca. -->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>

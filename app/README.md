@@ -67,8 +67,98 @@ Dónde vive, todo en `app/`:
    Profile) = `app.radicicucina.RunnerTests`.
 
 Fuera del repo (creados el 23/11/2026): App ID `app.radicicucina` en Apple Developer (con Sign in
-with Apple), la app «Radici Cucina» en App Store Connect y en Play Console. Pendiente: Firebase (FCM),
-firma, entitlements y dominios asociados (PRs aparte).
+with Apple), la app «Radici Cucina» en App Store Connect y en Play Console. La firma y los builds de
+las tiendas, abajo («Publicar en Android» e «iOS: TestFlight»). Pendiente: Firebase (FCM), entitlements
+y dominios asociados (PRs aparte).
+
+## Publicar en Android
+
+El workflow `.github/workflows/android-release.yml` compila un Android App Bundle (AAB) firmado con la
+clave de subida y la configuración de producción. Se corre a mano (Actions → Android release → Run
+workflow; opcional el build name, ej. `1.0.0`) y deja el AAB como artefacto `radici-android-aab` por 14
+días. En los PR solo corre si cambia el workflow o los archivos de firma de Android. No sube nada a Play.
+
+- Firma: `android/app/build.gradle.kts` lee `RADICI_KEYSTORE_PATH`, `RADICI_KEYSTORE_PASSWORD`,
+  `RADICI_KEY_ALIAS` y `RADICI_KEY_PASSWORD`. En local, sin esas variables, un build de release se firma
+  con la clave de debug y avisa (no sirve para Play). En el CI faltar una variable hace fallar el build.
+  La clave (`radici-upload.p12`) y su contraseña viven fuera del repo y en los secretos `ANDROID_UPLOAD_*`.
+- versionCode = número de ejecución del workflow + 100 (offset fijo `BUILD_NUMBER_OFFSET`, solo sube).
+- Huella SHA-256 esperada del certificado de subida:
+  `0E:DB:97:D7:82:DC:92:08:95:25:6F:BD:A3:0D:B3:09:9C:10:B3:42:C4:08:4E:23:16:0F:82:69:80:9F:5F:21`.
+
+Cómo subirlo (Nicolas): Google exige que la **primera** subida de una app nueva sea por Play Console.
+
+1. En GitHub: Actions → Android release → la ejecución → Artifacts → bajar `radici-android-aab` (zip con
+   `app-release.aab`).
+2. Play Console → Radici Cucina → Pruebas → Pruebas internas → Crear versión → subir el `.aab` →
+   guardar y publicar. Agregar los testers (lista de correos) y probar con el enlace de invitación.
+3. Prueba cerrada: Pruebas → Pruebas cerradas → crear versión con el mismo AAB (o uno más nuevo),
+   agregar **12 testers como mínimo** y mantenerlos optados **14 días seguidos**; después se puede pedir
+   el acceso a producción.
+
+Las subidas automáticas a Play (cuenta de servicio) vienen después, cuando la app ya esté creada y
+con su primera versión subida a mano.
+
+## iOS: TestFlight
+
+`.github/workflows/ios-release.yml` compila, firma y sube la app a TestFlight desde un runner de
+macOS de GitHub (`macos-26`, Xcode 26.6 fijo en `XCODE_VERSION`). No hace falta una Mac ni
+certificados a mano: la firma es automática, en la nube de Apple, con una clave de la API de App Store
+Connect (`xcodebuild -allowProvisioningUpdates` con `-authenticationKeyPath/ID/IssuerID`; las flags
+están en `man xcodebuild`). Pasos: `flutter build ios --config-only` (versión, número de build y
+`--dart-define` de producción) → `xcodebuild archive` → `xcodebuild -exportArchive` con
+`ios/ExportOptions.plist` (método `app-store-connect`, firma automática; el equipo se inyecta en una copia
+en tiempo de ejecución) → `xcrun altool --upload-app` con la misma clave.
+
+**Cómo correrlo**: GitHub → Actions → «iOS release» → Run workflow → elegir la rama (o
+`gh workflow run ios-release.yml --ref <rama>`). Con «upload» en false solo compila y firma. Es manual a
+propósito: el repo es público hasta ~30/11 (minutos de macOS gratis); después los minutos de macOS
+cuestan 10 veces los de Linux. Un PR lo corre solo si cambia el workflow o los archivos de firma de iOS
+(`ExportOptions.plist`, `Info.plist`, entitlements, `project.pbxproj`) y llega hasta el `.ipa` firmado,
+sin subir. Un PR desde un fork no tiene secretos: solo compila sin firmar.
+
+**Secretos** (Settings → Secrets and variables → Actions): `APP_STORE_CONNECT_KEY_ID`,
+`APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY` (el contenido del `.p8`, completo),
+`APPLE_TEAM_ID`. **Variables**: `SUPABASE_URL` y `SUPABASE_PUBLISHABLE_KEY` (las mismas de
+`deploy-web.yml`, `APP_ENV=prod`); opcional `IOS_BUILD_NUMBER_OFFSET`. La clave se escribe en el
+directorio temporal del runner (permisos 600) y se borra al final; nunca se imprime.
+
+**Rol de la clave: tiene que ser Admin.** Con `xcodebuild`, Xcode crea el certificado de distribución
+administrado en la nube. Una clave con rol App Manager falla con «Cloud signing permission error: You
+haven't been given access to cloud-managed distribution certificates» y no hay opción en la web para
+darle ese acceso a una clave (foros de Apple, hilos 698117 y 810658). Confirmado con esta cuenta el
+23/11/2026: con la clave App Manager, la exportación falla con «Cloud signing permission error», «No
+profiles for 'app.radicicucina' were found» y «No signing certificate "iOS Distribution" found». Nicolas
+crea una clave de equipo (App Store Connect → Usuarios y acceso → Integraciones → Claves de equipo,
+acceso **Admin**) y reemplaza `APP_STORE_CONNECT_KEY_ID` y `APP_STORE_CONNECT_API_KEY` (el issuer y el
+equipo no cambian: los nombres de los secretos se mantienen); después revoca la de App Manager. La
+alternativa sin clave Admin es la firma manual: un certificado de distribución y un perfil de App Store
+creados una vez en la web de Apple y cargados como secretos (dura un año).
+
+**Número de build** = `github.run_number` + `IOS_BUILD_NUMBER_OFFSET` (0 si no está). Cada ejecución
+de este workflow, PRs incluidos, lo aumenta, así que nunca se repite. Si en App Store Connect ya hay un
+build con un número mayor (otra vía de subida), poner el offset para superarlo. La versión sale de
+`version:` del `pubspec.yaml` (hoy 1.0.0): al cambiarla, TestFlight acepta números de build desde cero.
+`Info.plist` declara `ITSAppUsesNonExemptEncryption=false` (la app solo usa HTTPS): TestFlight no
+pregunta por el cumplimiento de exportación en cada build.
+
+**Agregar testers** (Nicolas, en App Store Connect → Radici Cucina → TestFlight):
+1. Esperar a que el build aparezca y pase de «Processing» a listo (unos minutos; llega un email).
+2. **Pruebas internas**: Usuarios y acceso → agregar a la persona con rol Developer, App Manager o
+   superior (hasta 100 internos) → TestFlight → «+» junto a «Internal Testing» → crear el grupo y
+   agregarla. Los internos reciben los builds sin revisión de Apple. Evelyn instala TestFlight desde el
+   App Store en su iPhone y acepta la invitación con su Apple ID.
+3. **Pruebas externas** (opcional): grupo externo con invitación por email o enlace público; el primer
+   build de cada versión pasa por una revisión corta de Apple.
+
+**Sin iPhone registrado.** El archivo sale sin firmar y toda la firma va en la exportación (perfil de
+App Store, sin dispositivos); verificado el 23/11/2026 (tercer run: el archivo pasa). Lo que no sirve:
+archivar con firma automática pide un perfil de desarrollo, que exige un dispositivo («Your team has no
+devices from which to generate a provisioning profile», primer run), y forzar
+`CODE_SIGN_IDENTITY="Apple Distribution"` con firma automática lo rechaza Xcode («is automatically
+signed, but code signing identity … has been manually specified», segundo run). «No profiles for
+app.radicicucina» o permisos de nube al exportar: ver el rol de la clave arriba. Todavía sin Sign in
+with Apple: cuando llegue su PR, el `.entitlements` se suma a la lista de archivos que disparan el PR.
 
 ## Verificar (lo mismo que el CI)
 
