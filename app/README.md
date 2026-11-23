@@ -68,7 +68,35 @@ Dónde vive, todo en `app/`:
 
 Fuera del repo (creados el 23/11/2026): App ID `app.radicicucina` en Apple Developer (con Sign in
 with Apple), la app «Radici Cucina» en App Store Connect y en Play Console. Pendiente: Firebase (FCM),
-firma, entitlements y dominios asociados (PRs aparte).
+firma de iOS, entitlements y dominios asociados (PRs aparte).
+
+## Publicar en Android
+
+El workflow `.github/workflows/android-release.yml` compila un Android App Bundle (AAB) firmado con la
+clave de subida y la configuración de producción. Se corre a mano (Actions → Android release → Run
+workflow; opcional el build name, ej. `1.0.0`) y deja el AAB como artefacto `radici-android-aab` por 14
+días. En los PR solo corre si cambia el workflow o los archivos de firma de Android. No sube nada a Play.
+
+- Firma: `android/app/build.gradle.kts` lee `RADICI_KEYSTORE_PATH`, `RADICI_KEYSTORE_PASSWORD`,
+  `RADICI_KEY_ALIAS` y `RADICI_KEY_PASSWORD`. En local, sin esas variables, un build de release se firma
+  con la clave de debug y avisa (no sirve para Play). En el CI faltar una variable hace fallar el build.
+  La clave (`radici-upload.p12`) y su contraseña viven fuera del repo y en los secretos `ANDROID_UPLOAD_*`.
+- versionCode = número de ejecución del workflow + 100 (offset fijo `BUILD_NUMBER_OFFSET`, solo sube).
+- Huella SHA-256 esperada del certificado de subida:
+  `0E:DB:97:D7:82:DC:92:08:95:25:6F:BD:A3:0D:B3:09:9C:10:B3:42:C4:08:4E:23:16:0F:82:69:80:9F:5F:21`.
+
+Cómo subirlo (Nicolas): Google exige que la **primera** subida de una app nueva sea por Play Console.
+
+1. En GitHub: Actions → Android release → la ejecución → Artifacts → bajar `radici-android-aab` (zip con
+   `app-release.aab`).
+2. Play Console → Radici Cucina → Pruebas → Pruebas internas → Crear versión → subir el `.aab` →
+   guardar y publicar. Agregar los testers (lista de correos) y probar con el enlace de invitación.
+3. Prueba cerrada: Pruebas → Pruebas cerradas → crear versión con el mismo AAB (o uno más nuevo),
+   agregar **12 testers como mínimo** y mantenerlos optados **14 días seguidos**; después se puede pedir
+   el acceso a producción.
+
+Las subidas automáticas a Play (cuenta de servicio) vienen después, cuando la app ya esté creada y
+con su primera versión subida a mano.
 
 ## Verificar (lo mismo que el CI)
 
