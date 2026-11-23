@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -198,4 +198,32 @@ test("en local, contra una rama base: simula el merge (como GitHub) y detecta un
   repo.git("commit", "-q", "-m", "limpia");
   const clean = runScript(repo.dir, "main");
   assert.equal(clean.status, 0, clean.stdout + clean.stderr);
+});
+
+// ---------------------------------------------------------------------------
+// Dónde corre: el job de ci.yml y el db push de deploy-supabase.yml (acá y no en ci-workflow.test.ts, así
+// este PR no choca con otros que suman tests de workflows)
+// ---------------------------------------------------------------------------
+
+const workflows = new URL("../workflows/", import.meta.url);
+
+test("CI: «Orden de las migraciones» en cada PR, sobre el merge commit y sin depender de «Qué cambió»", () => {
+  const ci = readFileSync(new URL("ci.yml", workflows), "utf8");
+  const start = ci.indexOf("\n  migrations:\n");
+  assert.notEqual(start, -1, "está el job migrations");
+  const next = ci.slice(start + 1).search(/\n  [\w-]+:\n/);
+  const job = next === -1 ? ci.slice(start) : ci.slice(start, start + 1 + next);
+  assert.match(job, /\n    if: github\.event_name == 'pull_request'\n/, "solo en los PR (en main no hay merge commit que comparar)");
+  assert.doesNotMatch(job, /\n    needs:/, "no depende de «Qué cambió»: un error ahí no lo saltea");
+  assert.match(job, /\n          fetch-depth: 2\n/, "el merge commit y sus dos padres");
+  assert.doesNotMatch(job, /\n          ref:/, "el merge commit del PR: el ref por defecto de actions/checkout");
+  assert.match(job, /\n          node-version: 24\n/);
+  assert.match(job, /\n      - run: node \.github\/scripts\/migration-order\.ts\n/);
+});
+
+test("deploy-supabase: db push sin --include-all (el orden de las migraciones lo cuida el CI)", () => {
+  const deploy = readFileSync(new URL("deploy-supabase.yml", workflows), "utf8");
+  const pushes = deploy.split("\n").filter((line) => /^\s*run: .*supabase db push/.test(line));
+  assert.deepEqual(pushes.map((line) => line.trim()), ["run: supabase db push --yes"]);
+  assert.doesNotMatch(deploy, /--include-all/);
 });
