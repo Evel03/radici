@@ -1,11 +1,15 @@
 // Textos de la hoja «Conferma prenotazione» en italiano: cada estado de una
-// semana, cada falla y la barra de abajo (el precio que se confirma o lo que
-// impide confirmar). arb_keys_test vigila que las claves existan; esto, qué
-// texto sale en cada caso.
+// semana, cada falla, la barra de abajo (el precio que se confirma o lo que
+// impide confirmar: en el presupuesto, también una llegada que ya pasó) y el
+// presupuesto abierto que se retira al confirmar sin presupuesto (la salida
+// del enlace, solo si la clienta todavía lo puede aceptar).
+// arb_keys_test vigila que las claves existan; esto, qué texto sale en cada
+// caso.
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
@@ -216,6 +220,114 @@ void main() {
         ),
         'Settimana 2 · Stessa settimana della data precedente: una sessione '
         'a settimana.',
+      );
+    });
+
+    test('en el presupuesto, una llegada que ya pasó impide crearlo (en la reserva es un aviso)', () {
+      String? blocker(ConfirmBookingState state) => state.blocker == null
+          ? null
+          : it.bookingBlockerText(state, state.blocker!, locale: 'it');
+      // Hoy, el lunes 19/10 a las 14:00: una semana 1 del lunes 12/10.
+      final past = sheet(weeks: 2).copyWith(
+        dates: weeklyDates(CalendarDate(2026, 10, 12), 2),
+        openedAt: const ClockTime.hm(14, 0),
+      );
+      expect(
+        blocker(past.copyWith(kind: BookingSourceKind.quote)),
+        "Settimana 1 · L'arrivo è già passato: la cliente accetta il "
+        "preventivo prima dell'arrivo. Scegli una data futura.",
+      );
+      // Con una sola fecha, hoy a las 10:00 (ya pasaron).
+      final today = sheet(weeks: 1).copyWith(
+        dates: [CalendarDate(2026, 10, 19)],
+        openedAt: const ClockTime.hm(14, 0),
+        kind: BookingSourceKind.quote,
+      );
+      expect(
+        blocker(today),
+        "L'arrivo è già passato: la cliente accetta il preventivo prima "
+        "dell'arrivo. Scegli una data futura.",
+      );
+      // Desde un pedido (la reserva), nada lo impide.
+      expect(blocker(past), isNull);
+    });
+  });
+
+  group('el presupuesto que se retira al confirmar sin presupuesto', () {
+    test('con una sola semana, «la data»; sin saber cuántas, en plural; con menú, que se va con la semana', () {
+      expect(
+        it.bookingWithdrawsQuoteText((
+          kind: QuoteToWithdraw.draft,
+          weeks: 1,
+          hasMenu: false,
+          clientCanAccept: false,
+        )),
+        'Questa richiesta ha una bozza di preventivo: confermando, viene '
+        'ritirata e la sua data bloccata si annulla.',
+      );
+      expect(
+        it.bookingWithdrawsQuoteText((
+          kind: QuoteToWithdraw.sent,
+          weeks: 0,
+          hasMenu: false,
+          clientCanAccept: false,
+        )),
+        'Questa richiesta ha un preventivo già inviato: confermando, viene '
+        'ritirato, le sue settimane bloccate si annullano e la cliente non '
+        'potrà più accettarlo dal suo link.',
+      );
+      expect(
+        it.bookingWithdrawsQuoteText((
+          kind: QuoteToWithdraw.sent,
+          weeks: 1,
+          hasMenu: false,
+          clientCanAccept: true,
+        )),
+        'Questa richiesta ha un preventivo già inviato: confermando, viene '
+        'ritirato, la sua data bloccata si annulla e la cliente non potrà '
+        'più accettarlo dal suo link.',
+      );
+      expect(
+        it.bookingWithdrawsQuoteText((
+          kind: QuoteToWithdraw.draft,
+          weeks: 1,
+          hasMenu: true,
+          clientCanAccept: false,
+        )),
+        'Questa richiesta ha una bozza di preventivo: confermando, viene '
+        'ritirata e la sua data bloccata si annulla. Il menù che hai '
+        'preparato se ne va con la data annullata. Dopo aver confermato '
+        'dovrai prepararlo e inviarlo di nuovo.',
+      );
+    });
+
+    test('la salida del enlace (que la clienta lo acepte), solo si todavía lo puede aceptar', () {
+      const withMenu =
+          'Questa richiesta ha un preventivo già inviato: confermando, viene '
+          'ritirato, le sue settimane bloccate si annullano e la cliente non '
+          'potrà più accettarlo dal suo link. Il menù della settimana 1 che '
+          'hai preparato se ne va con la settimana annullata. Dopo aver '
+          'confermato dovrai prepararlo e inviarlo di nuovo.';
+      expect(
+        it.bookingWithdrawsQuoteText((
+          kind: QuoteToWithdraw.sent,
+          weeks: 4,
+          hasMenu: true,
+          clientCanAccept: true,
+        )),
+        '$withMenu Se invece la cliente accetta il preventivo dal suo link, '
+        "il menù resta confermato così com'è.",
+      );
+      // Con cambios pedidos, cambiado sin reenviar o con el plazo vencido no
+      // lo puede aceptar: esa salida no existe.
+      expect(
+        it.bookingWithdrawsQuoteText((
+          kind: QuoteToWithdraw.sent,
+          weeks: 4,
+          hasMenu: true,
+          clientCanAccept: false,
+        )),
+        withMenu,
       );
     });
   });

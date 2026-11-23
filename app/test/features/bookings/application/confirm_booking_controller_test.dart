@@ -54,7 +54,8 @@ void main() {
     seenAt: testNow,
   );
 
-  Future<void> open(ChefRequest request) async {
+  /// [typePrice]: Evelyn escribe 560 (el precio ya no se prellena: 22/11/2026).
+  Future<void> open(ChefRequest request, {bool typePrice = true}) async {
     requests.requests[request.id] = request;
     container = ProviderContainer.test(
       retry: noRetry,
@@ -79,6 +80,9 @@ void main() {
     await container.read(chefRequestProvider(request.id).future);
     container.listen(confirmBookingProvider(BookingSource.request(request.id)), (_, _) {});
     await pumpEventQueue();
+    if (typePrice) {
+      container.read(confirmBookingProvider(BookingSource.request(request.id)).notifier).setPriceText('560');
+    }
   }
 
   ConfirmBookingState state() =>
@@ -100,16 +104,19 @@ void main() {
 
   group('prellenado', () {
     test('las semanas del pedido cada 7 días desde la preferida, los minutos y el precio de la estimación; la hora, del dryRun', () async {
-      await open(weekly());
+      await open(weekly(), typePrice: false);
 
       expect(state().dates, mondays);
       expect(state().maxWeeks, 8);
       expect(state().cookMinutes, 180);
-      // El precio de la estimación, sin tocar (la pantalla lo escribe en el
-      // campo con el idioma de la interfaz).
+      // El precio arranca vacío (decisión del 22/11/2026: lo escribe Evelyn);
+      // el de la tarifa es solo una referencia al lado del campo.
       expect(state().priceEdited, isFalse);
-      expect(state().suggestedPriceCents, 56000);
-      expect(state().serviceTotalCents, 56000);
+      expect(state().suggestedPriceCents, isNull);
+      expect(state().serviceTotalCents, isNull);
+      expect(state().priceIssue, BookingPriceIssue.required);
+      expect(state().rateReferenceCents, 56000);
+      controller().setPriceText('560');
       // La llegada es la que sugiere el servidor (el comienzo del horario).
       expect(state().start, const ClockTime.hm(10, 0));
       expect(state().startEdited, isFalse);
@@ -148,6 +155,7 @@ void main() {
 
     test('sin precio automático el precio queda vacío y no deja confirmar hasta escribirlo', () async {
       await open(
+        typePrice: false,
         weekly(
           weeks: 2,
           estimate: const RequestEstimate(
@@ -161,6 +169,7 @@ void main() {
         ),
       );
       expect(state().suggestedPriceCents, isNull);
+      expect(state().rateReferenceCents, isNull);
       expect(state().serviceTotalCents, isNull);
       expect(state().priceIssue, BookingPriceIssue.required);
       expect(state().canConfirm, isFalse);
@@ -187,6 +196,7 @@ void main() {
 
     test('una sesión extra: una sola fecha, sin precio automático', () async {
       await open(
+        typePrice: false,
         weekly(
           weeks: 1,
           type: RequestType.extra,
@@ -465,12 +475,15 @@ void main() {
       },
     );
 
-    test('el precio sigue a las semanas mientras no se edita', () async {
-      await open(weekly());
+    test('la referencia de la tarifa sigue a las semanas y el precio queda vacío hasta que Evelyn lo escribe', () async {
+      await open(weekly(), typePrice: false);
       controller().setWeeks(2);
-      expect(state().serviceTotalCents, 30000, reason: '2 × 150 €');
+      expect(state().rateReferenceCents, 30000, reason: '2 × 150 €');
+      expect(state().serviceTotalCents, isNull);
       controller().setWeeks(5);
-      expect(state().serviceTotalCents, 70000, reason: '5 × 140 €');
+      expect(state().rateReferenceCents, 70000, reason: '5 × 140 €');
+      expect(state().serviceTotalCents, isNull);
+      expect(state().priceIssue, BookingPriceIssue.required);
 
       controller().setPriceText('650');
       controller().setWeeks(4);
@@ -554,7 +567,7 @@ void main() {
       expect(state().dates, mondays);
       expect(state().start, const ClockTime.hm(10, 0));
       expect(state().cookMinutes, 180);
-      expect(state().priceEdited, isFalse);
+      expect(state().priceText, '560');
       expect(bookings.dryRuns, hasLength(dryRuns));
 
       bookings.pendingConfirm!.complete();
@@ -590,6 +603,7 @@ void main() {
       container.invalidate(confirmBookingProvider(const BookingSource.request('req-1')));
       expect(state().result, isNull);
       await pumpEventQueue();
+      controller().setPriceText('560');
       await controller().confirm();
       expect(bookings.confirmations.last.requestKey, 'key-2');
     });
@@ -713,7 +727,7 @@ void main() {
         ..setDate(1, mondays[1].addDays(1))
         ..retryChecks();
       await pumpEventQueue();
-      expect(state().priceEdited, isFalse);
+      expect(state().priceText, '560');
       expect(state().serviceTotalCents, 56000);
       expect(state().start, const ClockTime.hm(10, 0));
       expect(state().dates, mondays);

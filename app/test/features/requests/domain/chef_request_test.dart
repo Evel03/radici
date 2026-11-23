@@ -352,15 +352,47 @@ void main() {
       }
     });
 
-    test('«Confirmar reserva» solo desde un pedido nuevo que no es un cambio', () {
+    test('«Confirmar sin presupuesto» desde un pedido nuevo o con el presupuesto mandado, que no es un cambio', () {
       expect(buildRequest().canConfirmBooking, isTrue);
       expect(buildRequest(seenAt: testNow).canConfirmBooking, isTrue);
       expect(buildRequest(type: RequestType.extra).canConfirmBooking, isTrue);
       expect(buildRequest(type: RequestType.change).canConfirmBooking, isFalse);
-      for (final status in RequestStatus.values.skip(1)) {
-        expect(buildRequest(status: status).canConfirmBooking, isFalse, reason: '$status');
+      // Con el presupuesto mandado: la base lo retira al confirmar.
+      expect(
+        buildRequest(status: RequestStatus.quoted).canConfirmBooking,
+        isTrue,
+      );
+      expect(
+        buildRequest(
+          status: RequestStatus.quoted,
+          type: RequestType.change,
+        ).canConfirmBooking,
+        isFalse,
+      );
+      for (final status in RequestStatus.values.skip(2)) {
+        expect(
+          buildRequest(status: status).canConfirmBooking,
+          isFalse,
+          reason: '$status',
+        );
       }
     });
+
+    test(
+      '«Preparar presupuesto» solo desde un pedido nuevo que no es un cambio',
+      () {
+        expect(buildRequest().canPrepareQuote, isTrue);
+        expect(buildRequest(type: RequestType.extra).canPrepareQuote, isTrue);
+        expect(buildRequest(type: RequestType.change).canPrepareQuote, isFalse);
+        for (final status in RequestStatus.values.skip(1)) {
+          expect(
+            buildRequest(status: status).canPrepareQuote,
+            isFalse,
+            reason: '$status',
+          );
+        }
+      },
+    );
 
     test('una reserva es un pedido aceptado', () {
       expect(buildRequest(status: RequestStatus.accepted).isBooking, isTrue);

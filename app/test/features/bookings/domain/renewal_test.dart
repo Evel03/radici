@@ -180,6 +180,89 @@ void main() {
     });
   });
 
+  group(
+    'las semanas de un presupuesto que no se aceptó no son de la reserva',
+    () {
+      /// Las [weeks] semanas `held` de un presupuesto del mismo pedido (desde
+      /// el miércoles 25/11, 140 € cada una, ids desde `sessionId(firstN)`),
+      /// canceladas al cerrarse sin aceptar con [reason]. [bookingWeeks] es lo
+      /// que dice el pedido embebido (`requests.weeks`, el de la reserva).
+      List<CookingSession> closedQuote(
+        int weeks,
+        String reason, {
+        required int bookingWeeks,
+        int firstN = 21,
+      }) => [
+        for (var week = 1; week <= weeks; week++)
+          buildSession(
+            n: firstN + week - 1,
+            date: CalendarDate(2026, 11, 25).addDays(7 * (week - 1)),
+            status: SessionStatus.cancelled,
+            cancelReason: reason,
+            weeks: bookingWeeks,
+          ),
+      ];
+
+      test('confirmada sin presupuesto con uno mandado, las mismas 4 fechas: 4 semanas y 560 €, no 8 y 1.120 €', () {
+        final plan = renewalPlan([
+          ...closedQuote(4, 'quote_withdrawn', bookingWeeks: 4),
+          ...normal(),
+        ])!;
+        expect(plan.last.id, sessionId(4));
+        expect(plan.weeks, 4);
+        expect(plan.serviceTotalCents, 56000);
+        expect(plan.firstDate, CalendarDate(2026, 12, 23));
+      });
+
+      test('con 8 semanas: 8 y 1.120 €, no 2.240 €', () {
+        final plan = renewalPlan([
+          ...closedQuote(8, 'quote_withdrawn', bookingWeeks: 8),
+          ...buildBooking(weeks: 8),
+        ])!;
+        expect(plan.weeks, 8);
+        expect(plan.serviceTotalCents, 112000);
+      });
+
+      test('un borrador que venció (hold_expired) y otro presupuesto rechazado o retirado antes de la reserva: no cuentan', () {
+        final plan = renewalPlan([
+          ...closedQuote(2, 'hold_expired', bookingWeeks: 4),
+          ...closedQuote(3, 'declined', bookingWeeks: 4, firstN: 31),
+          ...closedQuote(1, 'quote_withdrawn', bookingWeeks: 4, firstN: 41),
+          ...normal(),
+        ])!;
+        expect(plan.weeks, 4);
+        expect(plan.serviceTotalCents, 56000);
+      });
+
+      test('las semanas canceladas de la reserva sí cuentan (las cancela Evelyn o la clienta)', () {
+        final booking = normal(statuses: {2: SessionStatus.cancelled});
+        booking[1] = booking[1].copyWith(cancelReason: 'client_cancelled');
+        final plan = renewalPlan([
+          ...closedQuote(4, 'quote_withdrawn', bookingWeeks: 4),
+          ...booking,
+        ])!;
+        expect(plan.weeks, 4);
+        expect(plan.serviceTotalCents, 56000);
+      });
+
+      test('una semana del presupuesto cancelada antes de que la clienta lo aceptara: las semanas del pedido (las aceptadas) y el precio vacío, sin adivinarlo', () {
+        // La clienta aceptó 3 semanas (el pedido dice 3); la cuarta la canceló
+        // Evelyn antes, con el presupuesto abierto, y no estaba en lo aceptado.
+        final accepted = buildBooking(weeks: 3);
+        final cancelledBefore = buildSession(
+          n: 9,
+          date: CalendarDate(2026, 12, 16),
+          status: SessionStatus.cancelled,
+          cancelReason: 'chef_cancelled',
+          weeks: 3,
+        );
+        final plan = renewalPlan([...accepted, cancelledBefore])!;
+        expect(plan.weeks, 3);
+        expect(plan.serviceTotalCents, isNull);
+      });
+    },
+  );
+
   group('lo que se copia', () {
     test('la ficha, el idioma y la estimación del pedido; las porciones de la última viva', () {
       final booking = buildBooking(

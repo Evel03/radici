@@ -28,6 +28,11 @@
 // guardarlos antes. Si al mandarlo resulta que otro teléfono guardó el menú,
 // el editor carga lo guardado.
 //
+// Una semana de un presupuesto sin aceptar (SPEC 5.8) lo dice arriba: la
+// semana 1 sale junto con el presupuesto (así se llega acá al crearlo); las
+// demás se mandan cuando la clienta lo acepte, y su «Mandar» queda
+// deshabilitado.
+//
 // Solo muestra providers: la lógica está en WeekMenuEditorController. Lleva
 // datos de salud (las alergias): nada se loguea.
 import 'dart:async';
@@ -618,6 +623,9 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
     final conflicts = ref.watch(weekMenuConflictsProvider(_sessionId));
     final session = detail.session;
     final enabled = !state.locked;
+    // Una semana de un presupuesto sin aceptar: la 1 sale con él; las demás,
+    // cuando lo acepte.
+    final quoteRole = quoteWeekRole(session, detail.booking);
 
     return PopScope<Object?>(
       // Bloqueado no hay nada que guardar: sale sin preguntar.
@@ -678,9 +686,30 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
                               l10n.sessionStatus(session.status),
                             ),
                           ),
+                        )
+                      else if (quoteRole != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: _Banner(
+                            key: ValueKey('week-menu-quote-${quoteRole.name}'),
+                            text: switch (quoteRole) {
+                              // Con una sola semana, sin «semana 1».
+                              QuoteWeekRole.first =>
+                                l10n.weekMenuQuoteFirstWeek(
+                                  detail.position?.weeks ?? 1,
+                                ),
+                              QuoteWeekRole.later =>
+                                l10n.weekMenuQuoteLaterWeek,
+                            },
+                          ),
                         ),
                       SessionAllergies(session: session),
-                      if (session.requestId != null) ..._sendStatus(state),
+                      if (session.requestId != null)
+                        ..._sendStatus(
+                          state,
+                          confirmedWeek:
+                              session.status.shown == SessionStatus.confirmed,
+                        ),
                       ..._dishes(state, conflicts, enabled: enabled),
                       ..._list(state, enabled: enabled),
                       ..._noteField(state, session),
@@ -695,9 +724,13 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
               : _SaveBar(
                   saving: state.saving,
                   onSave: state.canSave ? () => unawaited(_save()) : null,
-                  // Sin pedido no hay reserva que mostrar en el link.
+                  // Sin pedido no hay reserva que mostrar en el link. Otra
+                  // semana de un presupuesto sin aceptar todavía no sale (el
+                  // aviso de arriba dice por qué).
                   showSend: isMenuSendable(session),
-                  onSend: state.canSend ? () => unawaited(_send()) : null,
+                  onSend: state.canSend && quoteRole != QuoteWeekRole.later
+                      ? () => unawaited(_send())
+                      : null,
                 ),
         ),
       ),
@@ -705,8 +738,13 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
   }
 
   /// El envío a la clienta: si ya salió y qué contestó, o que el menú cambió
-  /// después de mandarlo. Nada mientras no hay menú guardado ni envío.
-  List<Widget> _sendStatus(WeekMenuEditorState state) {
+  /// después de mandarlo (en una semana confirmada, [confirmedWeek], también
+  /// si salió con una versión anterior del presupuesto). Nada mientras no hay
+  /// menú guardado ni envío.
+  List<Widget> _sendStatus(
+    WeekMenuEditorState state, {
+    required bool confirmedWeek,
+  }) {
     final l10n = AppLocalizations.of(context);
     final everSent = ref.watch(
       latestMenuSendProvider(_sessionId).select((send) => send.value != null),
@@ -718,6 +756,7 @@ class _WeekMenuEditorState extends ConsumerState<_WeekMenuEditor> {
         sessionId: _sessionId,
         savedVersion: state.version,
         keyPrefix: 'week-menu-status',
+        confirmedWeek: confirmedWeek,
       ),
     ];
   }

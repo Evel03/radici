@@ -7,9 +7,16 @@
 //   + 7 días (mismo día de la semana) y se copian su llegada, sus minutos
 //   (tal cual: el contrato admite hasta 720) y sus porciones. Sin compra: la
 //   hace el cliente.
-// - Las semanas y el precio cuentan todas las sesiones de la reserva, también
+// - Las semanas son las del pedido (`requests.weeks`: las que creó la reserva
+//   o las que aceptó la clienta en el presupuesto; cancelar una no lo cambia)
+//   y el precio, la suma del servicio de las sesiones de la reserva, también
 //   las canceladas: es lo que se reservó y se acordó (split_cents suma el
-//   total exacto).
+//   total exacto). Las de un presupuesto que se cerró sin aceptarse (retirado,
+//   también al confirmar sin presupuesto; vencido o rechazado: cancel_reason
+//   quote_withdrawn, hold_expired o declined) nunca fueron de la reserva y no
+//   cuentan. Si las que quedan no son las del pedido (una semana del
+//   presupuesto cancelada antes de que la clienta lo aceptara, que no estaba
+//   en lo aceptado), el precio no se adivina: lo escribe Evelyn.
 // - El hogar (ajustado a los límites del contrato) y el idioma son los del
 //   pedido renovado; su estimación sirve para el precio de otra cantidad de
 //   semanas.
@@ -48,7 +55,7 @@ final class RenewalPlan {
   /// La ficha de la reserva: la renovación va con clientId.
   final String clientId;
 
-  /// Las de la reserva (también las canceladas), de 1 a 8.
+  /// Las de la reserva (las del pedido, también las canceladas), de 1 a 8.
   final int weeks;
 
   /// La última viva + 7 días.
@@ -56,8 +63,10 @@ final class RenewalPlan {
   final ClockTime start;
   final int cookMinutes;
 
-  /// La suma del servicio de todas las sesiones, también las canceladas.
-  final int serviceTotalCents;
+  /// La suma del servicio de las sesiones de la reserva, también las
+  /// canceladas (no las de un presupuesto que no se aceptó); null si esas
+  /// sesiones no son las [weeks] del pedido: el precio lo escribe Evelyn.
+  final int? serviceTotalCents;
   final int portions;
   final BookingHousehold household;
   final ClientLocale locale;
@@ -86,6 +95,15 @@ final class RenewalPlan {
   String toString() => 'RenewalPlan(${last.id}, weeks: $weeks)';
 }
 
+/// Los motivos con que se cancelan las semanas `held` de un presupuesto que se
+/// cerró sin aceptarse (private.withdraw_quote, private.expire_quotes y
+/// client_link_decline_quote): nunca fueron de la reserva.
+const Set<String> quoteClosedCancelReasons = {
+  'quote_withdrawn',
+  'hold_expired',
+  'declined',
+};
+
 /// Lo que propone «Rinnova» para la reserva de [booking] (todas sus
 /// sesiones, también las canceladas); null si no se puede renovar: una
 /// sesión extra, sin pedido, un pedido que no es una reserva semanal o una
@@ -104,9 +122,13 @@ RenewalPlan? renewalPlan(Iterable<CookingSession> booking) {
       request.type != RequestType.week) {
     return null;
   }
+  // Las de la reserva: sin las de un presupuesto que se cerró sin aceptarse.
   final sessions = [
     for (final session in booking)
-      if (session.requestId == last.requestId) session,
+      if (session.requestId == last.requestId &&
+          !(session.status == SessionStatus.cancelled &&
+              quoteClosedCancelReasons.contains(session.cancelReason)))
+        session,
   ];
   final ofBooking = [
     for (final session in live)
@@ -115,11 +137,13 @@ RenewalPlan? renewalPlan(Iterable<CookingSession> booking) {
   return RenewalPlan(
     last: last,
     clientId: last.clientId,
-    weeks: sessions.length.clamp(1, maxBookingWeeks),
+    weeks: request.weeks.clamp(1, maxBookingWeeks),
     firstDate: last.date.addDays(7),
     start: last.start,
     cookMinutes: last.cookMinutes,
-    serviceTotalCents: sessions.fold(0, (sum, s) => sum + s.serviceCents),
+    serviceTotalCents: sessions.length == request.weeks
+        ? sessions.fold<int>(0, (sum, s) => sum + s.serviceCents)
+        : null,
     portions: last.portions,
     household: _householdOf(request, last.client),
     locale: request.locale,

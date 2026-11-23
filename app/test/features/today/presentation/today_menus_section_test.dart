@@ -6,13 +6,17 @@
 // ninguna, la sección no sale; si no se puede leer, lo dice con
 // «Reintentar». Al abrir la app (y al volver a entrar sin reiniciarla),
 // «Nada pendiente» espera a que se lean los menús; «Ricarica» no hace
-// desaparecer la sección mientras vuelve a leer.
+// desaparecer la sección mientras vuelve a leer. La semana 1 de un
+// presupuesto cuyo plazo vence antes dice cuándo vence el presupuesto, y una
+// semana mandada con una versión anterior del presupuesto dice que hay que
+// mandarla de nuevo.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/clock_time.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/requests/domain/chef_request.dart';
 import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/today/presentation/today_screen.dart';
 import 'package:radici/features/week_menu/data/menu_sends_repository.dart';
@@ -26,6 +30,8 @@ import '../../../support/menu_fakes.dart';
 import '../../../support/menu_fixtures.dart';
 import '../../../support/menu_send_fakes.dart';
 import '../../../support/plain_text.dart';
+import '../../../support/quote_fakes.dart';
+import '../../../support/quote_fixtures.dart';
 import '../../../support/recipe_fixtures.dart';
 import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
@@ -53,6 +59,7 @@ void main() {
     required List<CookingSession> sessions,
     FakeSessionMenusRepository? menus,
     FakeMenuSendsRepository? menuSends,
+    FakeQuotesRepository? quotes,
   }) async {
     final app = await pumpChefApp(
       tester,
@@ -61,6 +68,7 @@ void main() {
       recipes: FakeRecipesRepository(sampleRecipes()),
       menus: menus,
       menuSends: menuSends,
+      quotes: quotes,
       clock: () => now,
       deviceLocales: const [Locale('es')],
     );
@@ -438,4 +446,79 @@ void main() {
     expect(byKey('today-menu-${sessionId(8)}'), findsOneWidget);
     expect(const WeekMenuSummary().dishes, 0);
   });
+
+  testWidgets(
+    'la semana 1 de un presupuesto que vence antes que el menú: «El presupuesto vence», resaltado; una semana mandada con un presupuesto anterior: «Por mandar de nuevo»',
+    (tester) async {
+      const quoteRequest = 'b0000000-0000-4000-8000-0000000000c3';
+      final menus = FakeSessionMenusRepository(
+        menus: {sessionId(1): savedLasagneMenu(version: 1)},
+      );
+      final sends = FakeMenuSendsRepository(
+        menus: menus,
+        sent: [
+          sentMenu(
+            id: 'send-1',
+            sessionId: sessionId(1),
+            quoteId: testQuoteId,
+            sentAt: DateTime.utc(2026, 11, 18, 9),
+          ),
+          sentMenu(
+            id: 'send-2',
+            sessionId: sessionId(2),
+            quoteId: testQuoteId,
+            sentAt: DateTime.utc(2026, 11, 19, 9),
+          ),
+        ],
+      );
+      await openToday(
+        tester,
+        sessions: [
+          ...buildBooking(weeks: 2, first: CalendarDate(2026, 11, 25)),
+          // El viernes 27: su menú vence el miércoles 25, pero el borrador
+          // retiene hasta el lunes 23 a las 10:00.
+          buildSession(
+            n: 20,
+            date: CalendarDate(2026, 11, 27),
+            status: SessionStatus.held,
+            requestId: quoteRequest,
+            requestStatus: RequestStatus.newRequest,
+            name: 'Marta Bianchi',
+          ),
+        ],
+        menus: menus,
+        menuSends: sends,
+        quotes: FakeQuotesRepository(
+          quotes: [
+            buildQuote(
+              requestId: quoteRequest,
+              holdUntil: DateTime.utc(2026, 11, 23, 9),
+            ),
+          ],
+        ),
+      );
+      await reveal(tester, byKey('today-menus'));
+
+      final weekOne = sessionId(20);
+      expect(
+        pillText(tester, 'today-menu-deadline-$weekOne'),
+        'El presupuesto vence: lun 23 de nov, 10:00',
+      );
+      expect(
+        find.descendant(
+          of: byKey('today-menu-deadline-$weekOne'),
+          matching: find.byIcon(Icons.warning_amber_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        pillText(tester, 'today-menu-state-${sessionId(1)}'),
+        'Por mandar de nuevo (presupuesto anterior)',
+      );
+      expect(
+        pillText(tester, 'today-menu-deadline-${sessionId(1)}'),
+        'Límite: lun 23 de nov, 10:00',
+      );
+    },
+  );
 }

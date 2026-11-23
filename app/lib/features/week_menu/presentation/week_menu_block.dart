@@ -4,7 +4,8 @@
 //   tiene menú (cuántos platos y renglones), qué pasó con su envío a la
 //   clienta y los botones para armarlo o editarlo y para mandárselo. Una
 //   sesión cocinada o cobrada muestra el que tiene, sin botones; una
-//   cancelada, nada.
+//   cancelada, nada. Otra semana de un presupuesto sin aceptar no se manda
+//   todavía (sale cuando la clienta lo acepte): lo dice.
 // - [BookingWeekMenus], en el detalle de una reserva (un pedido aceptado):
 //   sus semanas vivas con el menú de cada una y su envío; tocar una abre su
 //   menú (y ahí se manda).
@@ -29,9 +30,14 @@ import 'package:radici/l10n/app_localizations.dart';
 
 /// «Menú de la semana» en la ficha de [session].
 class WeekMenuBlock extends ConsumerWidget {
-  const WeekMenuBlock({super.key, required this.session});
+  const WeekMenuBlock({super.key, required this.session, this.quoteRole});
 
   final CookingSession session;
+
+  /// Una semana de un presupuesto sin aceptar: la 1 sale con él; las demás
+  /// ([QuoteWeekRole.later]) se mandan cuando lo acepte («Mandar»
+  /// deshabilitado, con el porqué).
+  final QuoteWeekRole? quoteRole;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -48,8 +54,12 @@ class WeekMenuBlock extends ConsumerWidget {
       latestMenuSendProvider(session.id).select((send) => send.value != null),
     );
     // Se manda el menú guardado, con algún plato: su versión (null si no).
+    // Otra semana de un presupuesto sin aceptar, todavía no.
+    final afterQuote = quoteRole == QuoteWeekRole.later;
     final sendVersion =
-        isMenuSendable(session) && (summary.value?.dishes ?? 0) > 0
+        isMenuSendable(session) &&
+            !afterQuote &&
+            (summary.value?.dishes ?? 0) > 0
         ? version
         : null;
 
@@ -104,6 +114,7 @@ class WeekMenuBlock extends ConsumerWidget {
               sessionId: session.id,
               savedVersion: version,
               keyPrefix: 'session-menu-status',
+              confirmedWeek: session.status.shown == SessionStatus.confirmed,
             ),
           ),
         if (editable) ...[
@@ -138,6 +149,19 @@ class WeekMenuBlock extends ConsumerWidget {
                 ),
             ],
           ),
+          if (afterQuote && isMenuSendable(session))
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: MergeSemantics(
+                child: Text(
+                  l10n.menuSendAfterQuote,
+                  key: const ValueKey('session-menu-after-quote'),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
         ],
       ],
     );

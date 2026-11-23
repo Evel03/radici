@@ -9,6 +9,7 @@
 // lenta, y [loseSendResponse] aplica el envío y pierde la respuesta.
 import 'dart:async';
 
+import 'package:radici/features/quotes/domain/preview_quote.dart';
 import 'package:radici/features/requests/domain/chef_request.dart'
     show ClientLocale;
 import 'package:radici/features/sessions/domain/cooking_session.dart';
@@ -32,7 +33,8 @@ final DateTime testSentAt = DateTime.utc(2026, 11, 22, 13, 32);
 /// función).
 const String testLinkPlaceholder = '[link personale per confermare]';
 
-/// Un envío que salió, de la sesión [sessionId].
+/// Un envío que salió, de la sesión [sessionId] ([quoteId]: el presupuesto
+/// que llevaba).
 MenuSendRecord sentMenu({
   String id = 'send-0',
   required String sessionId,
@@ -42,6 +44,7 @@ MenuSendRecord sentMenu({
   DateTime? confirmedAt,
   DateTime? changesRequestedAt,
   String? changesText,
+  String? quoteId,
 }) => MenuSendRecord(
   id: id,
   sessionId: sessionId,
@@ -51,6 +54,7 @@ MenuSendRecord sentMenu({
   confirmedAt: confirmedAt,
   changesRequestedAt: changesRequestedAt,
   changesText: changesText,
+  quoteId: quoteId,
 );
 
 class FakeMenuSendsRepository implements MenuSendsRepository {
@@ -86,9 +90,27 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
   /// Si no es null, las lecturas de `menu_sends` fallan con esto.
   MenuSendFailure? readFailure;
 
+  /// El presupuesto que lleva la vista previa de cada sesión (la semana 1 de
+  /// uno sin aceptar), como queda en la foto; y el pedido de cada sesión
+  /// (por defecto, `req-1`).
+  final Map<String, PreviewQuote> previewQuotes = {};
+  final Map<String, String> requestOf = {};
+
+  /// Si no es null, la lectura del presupuesto de la vista previa falla con
+  /// esto.
+  MenuSendFailure? previewQuoteFailure;
+
+  /// Cada lectura del presupuesto de una vista previa, en orden.
+  final List<String> previewQuoteReads = [];
+
   /// El envío se aplica pero la respuesta no llega: falla con esto (por
   /// ejemplo, timeout). Se usa una vez.
   MenuSendFailure? loseSendResponse;
+
+  /// Lo demás que hace la base al marcar un envío (chef_complete_menu_send):
+  /// si lleva un presupuesto, lo deja mandado y el pedido en `quoted`. Se
+  /// llama con cada envío que sale, también si su respuesta se pierde.
+  void Function(MenuSendRecord sent)? onSent;
 
   /// Si no son null, la respuesta espera a que se completen (la lectura de
   /// los últimos envíos devuelve lo que había al llegar el pedido).
@@ -124,6 +146,24 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
     return latest;
   }
 
+  /// Cada lectura de los envíos de varios presupuestos, en orden.
+  final List<List<String>> quoteSendCalls = [];
+
+  @override
+  Future<Map<String, MenuSendRecord>> fetchLatestQuoteSends({
+    required String chefId,
+    required List<String> quoteIds,
+  }) async {
+    quoteSendCalls.add(List.of(quoteIds));
+    final ids = quoteIds.toSet();
+    final latest = latestSendsByQuote(
+      sent.where((record) => ids.contains(record.quoteId)),
+    );
+    final failure = readFailure;
+    if (failure != null) throw failure;
+    return latest;
+  }
+
   @override
   Future<MenuSendRecord?> fetchSend({
     required String chefId,
@@ -133,6 +173,22 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
     final failure = readFailure;
     if (failure != null) throw failure;
     return sent.where((record) => record.id == sendId).firstOrNull;
+  }
+
+  @override
+  Future<PreviewSendQuote?> fetchPreviewQuote({
+    required String chefId,
+    required String sendId,
+  }) async {
+    previewQuoteReads.add(sendId);
+    final failure = previewQuoteFailure;
+    if (failure != null) throw failure;
+    final draft = prepared[sendId];
+    if (draft == null) return null;
+    return (
+      requestId: requestOf[draft.sessionId] ?? 'req-1',
+      quote: previewQuotes[draft.sessionId],
+    );
   }
 
   @override
@@ -197,15 +253,15 @@ class FakeMenuSendsRepository implements MenuSendsRepository {
     );
     final sentAt = now();
     if (refused == null && draft != null) {
-      sent.add(
-        MenuSendRecord(
-          id: request.sendId,
-          sessionId: draft.sessionId,
-          menuVersion: draft.menuVersion,
-          sentAt: sentAt,
-          via: via,
-        ),
+      final record = MenuSendRecord(
+        id: request.sendId,
+        sessionId: draft.sessionId,
+        menuVersion: draft.menuVersion,
+        sentAt: sentAt,
+        via: via,
       );
+      sent.add(record);
+      onSent?.call(record);
     }
     final pending = pendingSend;
     if (pending != null) await pending.future;

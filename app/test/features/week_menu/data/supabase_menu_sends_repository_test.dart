@@ -15,6 +15,7 @@ import 'package:radici/features/sessions/domain/cooking_session.dart';
 import 'package:radici/features/week_menu/data/menu_sends_repository.dart';
 import 'package:radici/features/week_menu/domain/menu_send.dart';
 
+import '../../../support/quote_fixtures.dart';
 import '../../../support/request_fixtures.dart';
 import '../../../support/session_fixtures.dart';
 import '../../../support/supabase_http_fake.dart';
@@ -131,7 +132,7 @@ void main() {
       expect(
         query['select'],
         'id,session_id,menu_version,sent_at,sent_via,client_confirmed_at,'
-        'changes_requested_at,changes_text',
+        'changes_requested_at,changes_text,quote_id',
       );
       expect(query['chef_id'], 'eq.$testChefId');
       expect(
@@ -151,6 +152,22 @@ void main() {
         isEmpty,
       );
       expect(server.requests, isEmpty);
+    });
+
+    test('el presupuesto que llevaba cada envío (quote_id)', () async {
+      server.handler = (_) async => jsonResponse([
+        {
+          ..._sendRow(id: 'send-1', session: sessionId(1)),
+          'quote_id': testQuoteId,
+        },
+        _sendRow(id: 'send-2', session: sessionId(2)),
+      ]);
+      final latest = await repository.fetchLatestSends(
+        chefId: testChefId,
+        sessionIds: [sessionId(1), sessionId(2)],
+      );
+      expect(latest[sessionId(1)]!.quoteId, testQuoteId);
+      expect(latest[sessionId(2)]!.quoteId, isNull);
     });
 
     // Sin red no: el SDK reintenta los GET con esperas de segundos; la
@@ -182,6 +199,50 @@ void main() {
     });
   });
 
+  group('fetchLatestQuoteSends', () {
+    test('una sola lectura por quote_id, solo los que salieron, y el último de cada presupuesto', () async {
+      server.handler = (_) async => jsonResponse([
+        {
+          ..._sendRow(id: 'send-1', session: sessionId(1)),
+          'quote_id': testQuoteId,
+        },
+        {
+          ..._sendRow(
+            id: 'send-2',
+            session: sessionId(2),
+            sentAt: '2026-11-22T15:00:00+00:00',
+          ),
+          'quote_id': testQuoteId,
+        },
+      ]);
+
+      final latest = await repository.fetchLatestQuoteSends(
+        chefId: testChefId,
+        quoteIds: [testQuoteId],
+      );
+
+      expect(latest.keys, [testQuoteId]);
+      expect(latest[testQuoteId]!.id, 'send-2');
+      expect(latest[testQuoteId]!.sessionId, sessionId(2));
+      final query = server.requests.single.url.queryParameters;
+      expect(query['chef_id'], 'eq.$testChefId');
+      expect(query['quote_id'], 'in.("$testQuoteId")');
+      expect(query['sent_at'], 'not.is.null');
+      expect(query['order'], 'sent_at.desc.nullslast,id.desc.nullslast');
+    });
+
+    test('sin presupuestos no pregunta nada', () async {
+      expect(
+        await repository.fetchLatestQuoteSends(
+          chefId: testChefId,
+          quoteIds: [],
+        ),
+        isEmpty,
+      );
+      expect(server.requests, isEmpty);
+    });
+  });
+
   group('fetchSend', () {
     test('el envío por id si ya salió (la RLS de la cocina)', () async {
       server.handler = (_) async =>
@@ -203,6 +264,88 @@ void main() {
         await repository.fetchSend(chefId: testChefId, sendId: sendId),
         isNull,
       );
+    });
+  });
+
+  group('fetchPreviewQuote', () {
+    test('de la vista previa, su pedido y solo el bloque quote de la foto (la RLS de la cocina)', () async {
+      server.handler = (_) async => jsonResponse([
+        {
+          'request_id': 'req-1',
+          'quote_id': testQuoteId,
+          'quote': snapshotQuoteJson(version: 2),
+        },
+      ]);
+      final preview = await repository.fetchPreviewQuote(
+        chefId: testChefId,
+        sendId: sendId,
+      );
+      expect(preview!.requestId, 'req-1');
+      expect(preview.quote!.version, 2);
+      expect(preview.quote!.totalCents, 28000);
+      final request = server.last;
+      expect(request.url.path, '/rest/v1/menu_sends');
+      final query = request.url.queryParameters;
+      expect(query['select'], 'request_id,quote_id,quote:snapshot->quote');
+      expect(query['id'], 'eq.$sendId');
+      expect(query['chef_id'], 'eq.$testChefId');
+    });
+
+    test('sin presupuesto (o con una foto que no cierra): el pedido sin presupuesto', () async {
+      server.handler = (_) async => jsonResponse([
+        {'request_id': 'req-1', 'quote_id': null, 'quote': null},
+      ]);
+      final none = await repository.fetchPreviewQuote(
+        chefId: testChefId,
+        sendId: sendId,
+      );
+      expect(none!.quote, isNull);
+      server.handler = (_) async => jsonResponse([
+        {
+          'request_id': 'req-1',
+          'quote_id': testQuoteId,
+          'quote': {...snapshotQuoteJson(), 'totalCents': 1},
+        },
+      ]);
+      final broken = await repository.fetchPreviewQuote(
+        chefId: testChefId,
+        sendId: sendId,
+      );
+      expect(broken!.quote, isNull);
+    });
+
+    test('null si el envío no existe; un 500, unavailable', () async {
+      expect(
+        await repository.fetchPreviewQuote(chefId: testChefId, sendId: sendId),
+        isNull,
+      );
+      server.handler = (_) async => jsonResponse({
+        'code': 'XX000',
+        'message': 'error',
+        'details': null,
+        'hint': null,
+      }, status: 500);
+      await expectLater(
+        repository.fetchPreviewQuote(chefId: testChefId, sendId: sendId),
+        _failure(MenuSendFailureKind.unavailable),
+      );
+    });
+
+    test('los 409 del presupuesto a su tipo', () {
+      expect(
+        menuSendFailureFromResponse(409, {'error': 'quoteClosed'}).kind,
+        MenuSendFailureKind.quoteClosed,
+      );
+      expect(
+        menuSendFailureFromResponse(409, {'error': 'quoteWeekNotFirst'}).kind,
+        MenuSendFailureKind.quoteWeekNotFirst,
+      );
+      final changed = menuSendFailureFromResponse(409, {
+        'error': 'quoteChanged',
+        'emailSent': true,
+      });
+      expect(changed.kind, MenuSendFailureKind.quoteChanged);
+      expect(changed.emailSent, isTrue);
     });
   });
 

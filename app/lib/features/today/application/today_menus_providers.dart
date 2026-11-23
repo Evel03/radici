@@ -3,17 +3,23 @@
 //
 // Las semanas salen de lo que ya lee la agenda (las sesiones) y de «hoy» en
 // Roma. Lo demás se lee para todas juntas, nunca una por semana: los menús
-// (session_menus), el último envío de cada una (menu_sends) y las semanas
-// vivas de sus reservas (para «Semana k de N»): tres consultas a la vez. Se
-// vuelve a leer si cambian las semanas que entran, si se mueve o se cancela
-// una sesión, y con cada cambio de un menú o de su envío desde este teléfono
-// o con «Ricarica» (weekMenusRevisionProvider), y mientras tanto queda lo de
-// antes; la primera lectura, cuando llega la agenda, carga sin nada (sin la
-// agenda no hay semanas, y eso no quiere decir que no falte ningún menú). La
-// hora («ahora», al minuto) solo descarta las que ya empezaron y resalta los
-// límites: no vuelve a leer nada. Nada se loguea.
+// (session_menus), el último envío de cada una (menu_sends), las semanas
+// vivas de sus reservas (para «Semana k de N») y, si entra la semana 1 de un
+// presupuesto, el plazo de los presupuestos abiertos (quotes.hold_until, que
+// cada envío vuelve a empezar): hasta cuatro consultas a la vez. Después, solo
+// si el último envío de una semana confirmada llevaba un presupuesto que nadie
+// confirmó, el último envío de esos presupuestos (para saber si salió otro
+// después, como menu_reminders_due). Se vuelve a leer si cambian las semanas
+// que entran, si se mueve o se cancela una sesión, y con cada cambio de un
+// menú o de su envío desde este teléfono o con «Ricarica»
+// (weekMenusRevisionProvider), y mientras tanto queda lo de antes; la primera
+// lectura, cuando llega la agenda, carga sin nada (sin la agenda no hay
+// semanas, y eso no quiere decir que no falte ningún menú). La hora («ahora»,
+// al minuto) solo descarta las que ya empezaron y resalta los límites: no
+// vuelve a leer nada. Nada se loguea.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/quotes/data/quotes_repository.dart';
 import 'package:radici/features/requests/application/agenda_controller.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/data/sessions_repository.dart';
@@ -37,23 +43,32 @@ final todayMenuCandidatesProvider = Provider<List<CookingSession>>(
 );
 
 /// Lo que se lee de las semanas de [todayMenuCandidatesProvider]: su menú, su
-/// último envío que salió y su lugar en la reserva.
+/// último envío que salió, su lugar en la reserva, el plazo del presupuesto
+/// abierto de cada pedido con una semana retenida ([quoteHolds], por pedido)
+/// y el último envío de cada presupuesto que llevaba el último envío de una
+/// semana confirmada sin confirmar ([quoteSends], por presupuesto).
 typedef TodayMenusData = ({
   Map<String, WeekMenuSummary> summaries,
   Map<String, MenuSendRecord> sends,
   Map<String, BookingWeekPosition> positions,
+  Map<String, DateTime> quoteHolds,
+  Map<String, MenuSendRecord> quoteSends,
 });
 
 const TodayMenusData _noMenusData = (
   summaries: <String, WeekMenuSummary>{},
   sends: <String, MenuSendRecord>{},
   positions: <String, BookingWeekPosition>{},
+  quoteHolds: <String, DateTime>{},
+  quoteSends: <String, MenuSendRecord>{},
 );
 
 /// El menú, el último envío y «Semana k de N» de las semanas que pueden
-/// esperar su menú, en tres lecturas juntas. Error ([MenuFailure],
-/// [MenuSendFailure] o [SessionFailure]) si alguna falla, sin reintentar
-/// solo: la sección ofrece «Reintentar».
+/// esperar su menú (con el plazo de sus presupuestos), en lecturas juntas, y
+/// después, si hace falta, los envíos de los presupuestos que llevaban.
+/// Error ([MenuFailure], [MenuSendFailure], [SessionFailure] o
+/// [QuoteFailure]) si alguna falla, sin reintentar solo: la sección ofrece
+/// «Reintentar».
 final todayMenusDataProvider = FutureProvider.autoDispose<TodayMenusData>((
   ref,
 ) async {
@@ -86,21 +101,47 @@ final todayMenusDataProvider = FutureProvider.autoDispose<TodayMenusData>((
   final ids = [for (final session in candidates) session.id];
   final requestIds = {for (final session in candidates) ?session.requestId}
       .toList();
+  // La semana 1 de un presupuesto sin aceptar: su límite puede ser el plazo
+  // del presupuesto.
+  final heldRequestIds = {
+    for (final session in candidates)
+      if (session.status == SessionStatus.held) ?session.requestId,
+  }.toList();
+  final sendsRepository = ref.watch(menuSendsRepositoryProvider);
   final results = await Future.wait<Object>([
     ref
         .watch(sessionMenusRepositoryProvider)
         .fetchSummaries(chefId: chefId, sessionIds: ids),
-    ref
-        .watch(menuSendsRepositoryProvider)
-        .fetchLatestSends(chefId: chefId, sessionIds: ids),
+    sendsRepository.fetchLatestSends(chefId: chefId, sessionIds: ids),
     ref
         .watch(sessionsRepositoryProvider)
         .fetchLiveBookingWeeks(chefId: chefId, requestIds: requestIds),
+    if (heldRequestIds.isNotEmpty)
+      ref
+          .watch(quotesRepositoryProvider)
+          .fetchOpenQuoteHolds(chefId: chefId, requestIds: heldRequestIds),
   ]);
+  final sends = results[1] as Map<String, MenuSendRecord>;
+  // Una semana confirmada cuyo último envío llevaba un presupuesto que nadie
+  // confirmó: ¿salió otro envío de ese presupuesto después?
+  final quoteIds = unconfirmedQuoteIds([
+    for (final session in candidates)
+      if (session.status.shown == SessionStatus.confirmed) ?sends[session.id],
+  ]).toList();
+  final quoteSends = quoteIds.isEmpty
+      ? const <String, MenuSendRecord>{}
+      : await sendsRepository.fetchLatestQuoteSends(
+          chefId: chefId,
+          quoteIds: quoteIds,
+        );
   return (
     summaries: results[0] as Map<String, WeekMenuSummary>,
-    sends: results[1] as Map<String, MenuSendRecord>,
+    sends: sends,
     positions: bookingWeekPositions(results[2] as List<BookingWeekRef>),
+    quoteHolds: heldRequestIds.isEmpty
+        ? const <String, DateTime>{}
+        : results[3] as Map<String, DateTime>,
+    quoteSends: quoteSends,
   );
 }, retry: (_, _) => null);
 
@@ -137,6 +178,8 @@ final todayPendingMenusProvider =
               sends: data.sends,
               positions: data.positions,
               now: now,
+              quoteHolds: data.quoteHolds,
+              quoteSends: data.quoteSends,
             ),
           );
     });

@@ -54,6 +54,19 @@ CalendarDate initialBookingDate(
   required CalendarDate today,
 }) => request.preferredDate ?? today.addDays(1);
 
+/// Primera fecha de un presupuesto: la de la reserva ([initialBookingDate]),
+/// pero nunca antes de mañana. Una preferida de hoy o que ya pasó (un pedido
+/// atendido tarde) daría un presupuesto vencido al nacer: la clienta lo acepta
+/// antes de la primera llegada.
+CalendarDate initialQuoteDate(
+  ChefRequest request, {
+  required CalendarDate today,
+}) {
+  final first = initialBookingDate(request, today: today);
+  final tomorrow = today.addDays(1);
+  return first.isBefore(tomorrow) ? tomorrow : first;
+}
+
 /// [weeks] fechas, cada 7 días desde [first].
 List<CalendarDate> weeklyDates(CalendarDate first, int weeks) => [
   for (var week = 0; week < weeks; week++) first.addDays(7 * week),
@@ -163,6 +176,22 @@ int? suggestedServiceCents(RequestEstimate? estimate, {required int weeks}) {
   firstWeekCents: (totalCents + weeks - 1) ~/ weeks,
   even: totalCents % weeks == 0,
 );
+
+/// El servicio de cada semana al repartir [totalCents] en [weeks] semanas,
+/// exactamente como `private.split_cents` (la usan chef_create_booking,
+/// chef_create_quote y chef_update_quote): partes que difieren como mucho en
+/// un centavo, los que sobran van a las primeras y la suma es el total (500 €
+/// en 3 son 166,67 + 166,67 + 166,66). Solo enteros. Lanza [RangeError] con
+/// un total negativo o fuera de 1 a 100 semanas, como la base.
+List<int> splitServiceCents(int totalCents, int weeks) {
+  RangeError.checkNotNegative(totalCents, 'totalCents');
+  RangeError.checkValueInInterval(weeks, 1, 100, 'weeks');
+  final base = totalCents ~/ weeks;
+  final rest = totalCents % weeks;
+  return [
+    for (var week = 0; week < weeks; week++) base + (week < rest ? 1 : 0),
+  ];
+}
 
 /// Semanas con que empieza una reserva a mano: un mes.
 const int defaultManualBookingWeeks = 4;

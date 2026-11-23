@@ -43,6 +43,14 @@ enum BookingFailureKind {
   /// estado). No se creó nada.
   requestNotNew,
 
+  /// 409, al preparar un presupuesto (POST chef/quotes): el pedido ya tiene
+  /// uno abierto (para preparar otro, primero se retira). No se creó nada.
+  quoteExists,
+
+  /// 409, al preparar un presupuesto: el pedido no lo admite (uno de
+  /// cambios). No se creó nada.
+  requestNotQuotable,
+
   /// 404: el pedido no existe (para esta cocinera).
   notFound,
 
@@ -124,10 +132,10 @@ class SupabaseBookingsRepository implements BookingsRepository {
   }
 }
 
-/// Traduce una respuesta de error de la función (contrato §3) a
-/// [BookingFailure]. Del cuerpo solo se usan el código, la fecha (si es una
-/// fecha), el estado (si es uno de `request_status`) y los nombres de los
-/// campos: nada más pasa.
+/// Traduce una respuesta de error de la función (contrato §3; también la de
+/// POST chef/quotes, §14) a [BookingFailure]. Del cuerpo solo se usan el
+/// código, la fecha (si es una fecha), el estado (si es uno de
+/// `request_status`) y los nombres de los campos: nada más pasa.
 BookingFailure failureFromResponse(int status, Object? body) {
   final map = body is Map ? body : const <Object?, Object?>{};
   final error = map['error'];
@@ -163,6 +171,10 @@ BookingFailure failureFromResponse(int status, Object? body) {
         'requestNotNew' => BookingFailure(
           BookingFailureKind.requestNotNew,
           requestStatus: _requestStatusOrNull(map['status']),
+        ),
+        'quoteExists' => const BookingFailure(BookingFailureKind.quoteExists),
+        'requestNotQuotable' => const BookingFailure(
+          BookingFailureKind.requestNotQuotable,
         ),
         _ => const BookingFailure(BookingFailureKind.conflict),
       };

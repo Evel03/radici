@@ -12,6 +12,8 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/phone.dart';
 import 'package:radici/features/auth/domain/auth_models.dart' show isValidEmail;
+import 'package:radici/features/quotes/domain/preview_quote.dart'
+    show PreviewQuote;
 import 'package:radici/features/requests/domain/chef_request.dart'
     show ClientLocale;
 import 'package:radici/features/requests/domain/contact_links.dart';
@@ -38,10 +40,11 @@ List<MenuSendChannel> menuSendChannels({
 ];
 
 /// Columnas que la app lee de `menu_sends`: sin la foto (la lee la página de
-/// la clienta), el idioma ni la huella.
+/// la clienta), el idioma ni la huella. `quote_id` (de la migración del
+/// presupuesto): el presupuesto que llevaba el envío.
 const String menuSendColumns =
     'id, session_id, menu_version, sent_at, sent_via, client_confirmed_at, '
-    'changes_requested_at, changes_text';
+    'changes_requested_at, changes_text, quote_id';
 
 /// Un envío que salió, como lo lee la cocina en `menu_sends`.
 @Freezed(fromJson: false, toJson: false, toStringOverride: false)
@@ -65,6 +68,10 @@ abstract class MenuSendRecord with _$MenuSendRecord {
     /// con saltos de línea). Solo una de las dos respuestas.
     DateTime? changesRequestedAt,
     String? changesText,
+
+    /// El presupuesto que llevaba (solo el envío de la semana 1 de uno sin
+    /// aceptar); null si no llevaba.
+    String? quoteId,
   }) = _MenuSendRecord;
 
   const MenuSendRecord._();
@@ -80,6 +87,7 @@ abstract class MenuSendRecord with _$MenuSendRecord {
     final confirmed = row['client_confirmed_at'];
     final changes = row['changes_requested_at'];
     final text = row['changes_text'];
+    final quoteId = row['quote_id'];
     if (id is! String ||
         sessionId is! String ||
         version is! int ||
@@ -89,7 +97,8 @@ abstract class MenuSendRecord with _$MenuSendRecord {
         (confirmed != null && _instantOrNull(confirmed) == null) ||
         (changes != null && _instantOrNull(changes) == null) ||
         (text != null && text is! String) ||
-        (changes == null) != (text == null)) {
+        (changes == null) != (text == null) ||
+        (quoteId != null && (quoteId is! String || quoteId.isEmpty))) {
       throw const FormatException('Fila de menu_sends inválida');
     }
     return MenuSendRecord(
@@ -101,6 +110,7 @@ abstract class MenuSendRecord with _$MenuSendRecord {
       confirmedAt: _instantOrNull(confirmed),
       changesRequestedAt: _instantOrNull(changes),
       changesText: text as String?,
+      quoteId: quoteId as String?,
     );
   }
 
@@ -130,6 +140,47 @@ Map<String, MenuSendRecord> latestSendsBySession(
   return latest;
 }
 
+/// El último envío que salió con cada presupuesto de [records] (por
+/// [MenuSendRecord.quoteId]; los que no llevaban presupuesto no cuentan).
+Map<String, MenuSendRecord> latestSendsByQuote(
+  Iterable<MenuSendRecord> records,
+) {
+  final latest = <String, MenuSendRecord>{};
+  for (final record in records) {
+    final quoteId = record.quoteId;
+    if (quoteId == null) continue;
+    final current = latest[quoteId];
+    if (current == null || current.isOlderThan(record)) {
+      latest[quoteId] = record;
+    }
+  }
+  return latest;
+}
+
+/// Los presupuestos que llevaban los últimos envíos de [sends] sin
+/// confirmar: los únicos que hay que mirar para [sentWithEarlierQuote].
+Set<String> unconfirmedQuoteIds(Iterable<MenuSendRecord> sends) => {
+  for (final send in sends)
+    if (send.confirmedAt == null) ?send.quoteId,
+};
+
+/// El último envío de una semana ([send]) llevaba un presupuesto, nadie lo
+/// confirmó y después salió otro envío de ese mismo presupuesto
+/// ([latestOfQuote]: el último que salió con él, desde otra semana): salió
+/// con términos que ya no valen. Es la regla 8 de `menu_reminders_due`
+/// (migración 20261121120000_quotes.sql): para los avisos, una semana
+/// confirmada (o una vieja en shopping_done) con ese último envío sigue
+/// pendiente, como si no hubiera salido, hasta que Evelyn le mande el menú de
+/// nuevo o la clienta lo confirme. Quien llama mira el estado de la semana.
+bool sentWithEarlierQuote(MenuSendRecord send, MenuSendRecord? latestOfQuote) {
+  final quoteId = send.quoteId;
+  return quoteId != null &&
+      send.confirmedAt == null &&
+      latestOfQuote != null &&
+      latestOfQuote.quoteId == quoteId &&
+      send.isOlderThan(latestOfQuote);
+}
+
 /// Qué pasó con el menú de una semana, según su último envío.
 enum MenuSendPhase {
   /// Nunca salió.
@@ -146,12 +197,17 @@ enum MenuSendPhase {
 }
 
 /// El estado del envío del menú de una semana: su último envío ([send], null
-/// si nunca salió) y la versión del menú guardado ([savedVersion], null si no
-/// hay menú o no se sabe).
+/// si nunca salió), la versión del menú guardado ([savedVersion], null si no
+/// hay menú o no se sabe) y si ese envío salió con una versión anterior del
+/// presupuesto que nadie confirmó ([sentWithEarlierQuote]: hay que mandarlo
+/// de nuevo, como dicen los avisos).
 @Freezed(fromJson: false, toJson: false, toStringOverride: false)
 abstract class WeekMenuSendStatus with _$WeekMenuSendStatus {
-  const factory WeekMenuSendStatus({MenuSendRecord? send, int? savedVersion}) =
-      _WeekMenuSendStatus;
+  const factory WeekMenuSendStatus({
+    MenuSendRecord? send,
+    int? savedVersion,
+    @Default(false) bool sentWithEarlierQuote,
+  }) = _WeekMenuSendStatus;
 
   const WeekMenuSendStatus._();
 
@@ -322,6 +378,30 @@ abstract class MenuPreview with _$MenuPreview {
   /// Solo el id: nunca el contacto ni el mensaje.
   @override
   String toString() => 'MenuPreview($sendId)';
+}
+
+/// Columnas de una vista previa que lee la app para mostrar el presupuesto
+/// que lleva: su pedido y, de la foto, solo el bloque `quote` (lo que va a ver
+/// la clienta, quote_snapshot.ts). La respuesta de la vista previa no lo trae.
+const String previewQuoteColumns =
+    'request_id, quote_id, quote:snapshot->quote';
+
+/// El presupuesto de una vista previa: su pedido y [quote], lo que va en la
+/// foto (null si el envío no lleva presupuesto, o si la foto no cierra: el
+/// mensaje lo muestra igual).
+typedef PreviewSendQuote = ({String requestId, PreviewQuote? quote});
+
+/// Una fila de `menu_sends` con [previewQuoteColumns]. Lanza
+/// [FormatException] si no tiene pedido.
+PreviewSendQuote previewSendQuoteFromRow(Map<String, dynamic> row) {
+  final requestId = row['request_id'];
+  if (requestId is! String || requestId.isEmpty) {
+    throw const FormatException('Fila de menu_sends inválida');
+  }
+  return (
+    requestId: requestId,
+    quote: row['quote_id'] == null ? null : PreviewQuote.tryParse(row['quote']),
+  );
 }
 
 // ---------------------------------------------------------------------

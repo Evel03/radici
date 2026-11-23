@@ -1,9 +1,12 @@
-// Textos de la hoja «Conferma prenotazione»: lo que dijo el servidor de cada
-// semana, lo que impide mandar una fecha, las fallas y la barra de abajo (el
-// precio que se va a confirmar o lo que impide confirmar). Solo presentación:
-// los textos salen del ARB.
+// Textos de la hoja «Conferma prenotazione» (también «Preparar
+// presupuesto»): lo que dijo el servidor de cada semana, lo que impide mandar
+// una fecha, las fallas, el reparto del precio, el presupuesto abierto que se
+// retira al confirmar sin presupuesto y la barra de abajo (el precio que se va
+// a confirmar o lo que impide confirmar). Solo presentación: los textos salen
+// del ARB.
 import 'package:radici/core/money.dart';
 import 'package:radici/core/rome_time.dart';
+import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
 import 'package:radici/features/bookings/data/bookings_repository.dart';
 import 'package:radici/features/bookings/domain/booking.dart';
@@ -71,12 +74,15 @@ extension BookingLabels on AppLocalizations {
       BookingFailureKind.unauthorized => bookingErrorUnauthorized,
       BookingFailureKind.invalid => bookingErrorInvalid,
       BookingFailureKind.unavailable => bookingErrorUnavailable,
+      BookingFailureKind.quoteExists => bookingErrorQuoteExists,
+      BookingFailureKind.requestNotQuotable => bookingErrorNotQuotable,
     };
   }
 
   /// La falla de la barra de la hoja [state]: a mano, los datos de la ficha
   /// nueva que el servidor rechaza (se corrigen en el formulario); a mano o
-  /// al renovar, la ficha que ya no está; si no, [bookingFailure].
+  /// al renovar, la ficha que ya no está; al preparar un presupuesto, uno que
+  /// no se sabe si se creó; si no, [bookingFailure].
   String bookingFailureText(
     ConfirmBookingState state,
     BookingFailure failure, {
@@ -86,7 +92,32 @@ extension BookingLabels on AppLocalizations {
     if (state.createsRequest && failure.kind == BookingFailureKind.notFound) {
       return bookingErrorClientNotFound;
     }
+    if (state.isQuote && failure.kind == BookingFailureKind.unavailable) {
+      return quoteErrorCreateUnavailable;
+    }
     return bookingFailure(failure, formatDate: formatDate);
+  }
+
+  /// Debajo del precio de un presupuesto de varias semanas, cuánto queda en
+  /// cada una, exactamente como lo va a guardar la base
+  /// ([splitServiceCents]): «= 140,00 € por semana» si se divide justo; si
+  /// no, «Por semana: 166,67 € · 166,67 € · 166,66 €». null con una semana.
+  String? quotePriceSplitText(
+    int totalCents,
+    int weeks, {
+    required String locale,
+  }) {
+    if (weeks < 2) return null;
+    final split = splitServiceCents(totalCents, weeks);
+    if (split.toSet().length == 1) {
+      return bookingPricePerWeek(formatCents(split.first, locale: locale));
+    }
+    return quotePriceSplit(
+      [
+        for (final cents in split)
+          formatCents(cents, locale: locale).replaceAll(' ', ' '),
+      ].join(' · '),
+    );
   }
 
   /// La barra de abajo: lo que impide confirmar ([blocker], de
@@ -108,6 +139,8 @@ extension BookingLabels on AppLocalizations {
         };
       case BookingBlockKind.date:
         problem = bookingDateIssue(state.dateIssues[blocker.week!]!);
+      case BookingBlockKind.arrival:
+        problem = quoteBlockArrivalPassed;
       case BookingBlockKind.clash:
         problem = bookingBlockClash;
     }
@@ -115,6 +148,26 @@ extension BookingLabels on AppLocalizations {
         ? bookingWeekProblem(blocker.week! + 1, problem)
         : problem;
   }
+
+  /// Arriba de la hoja «Confirmar sin presupuesto» (y en la pregunta antes de
+  /// confirmar): el presupuesto abierto del pedido se retira y sus semanas
+  /// retenidas se cancelan; si la semana 1 tiene un menú guardado, se va con
+  /// ella y hay que volver a armarlo y mandarlo (si la clienta todavía lo
+  /// puede aceptar desde su enlace, también que aceptarlo deja ese menú
+  /// confirmado; con cambios pedidos, cambiado sin reenviar o vencido, esa
+  /// salida no existe). Con una sola semana habla de una fecha; sin saber
+  /// cuántas, en plural.
+  String bookingWithdrawsQuoteText(OpenQuoteToWithdraw quote) => [
+    switch (quote.kind) {
+      QuoteToWithdraw.sent => bookingWithdrawsQuoteSent(quote.weeks),
+      QuoteToWithdraw.draft => bookingWithdrawsQuoteDraft(quote.weeks),
+    },
+    if (quote.hasMenu) ...[
+      quoteMenuGoesWithWeek(quote.weeks),
+      bookingQuoteMenuRedo,
+      if (quote.clientCanAccept) bookingQuoteMenuAccept,
+    ],
+  ].join(' ');
 
   /// La barra de abajo: el precio del servicio que se va a confirmar (después
   /// ninguna ruta lo cambia), lo que queda por semana y la llegada:

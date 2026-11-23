@@ -39,9 +39,30 @@ abstract interface class MenuSendsRepository {
     required List<String> sessionIds,
   });
 
+  /// El último envío que salió con cada presupuesto de [quoteIds] (por
+  /// `quote_id`, desde cualquier semana), en una sola consulta: para saber
+  /// si el último envío de una semana salió con una versión anterior
+  /// (sentWithEarlierQuote). Lanza [MenuSendFailure]
+  /// ([MenuSendFailureKind.unavailable]).
+  Future<Map<String, MenuSendRecord>> fetchLatestQuoteSends({
+    required String chefId,
+    required List<String> quoteIds,
+  });
+
   /// El envío [sendId] si ya salió; null si no existe (para esta cocina) o
   /// todavía no salió. Lanza [MenuSendFailure].
   Future<MenuSendRecord?> fetchSend({
+    required String chefId,
+    required String sendId,
+  });
+
+  /// El presupuesto que lleva la vista previa [sendId] (la semana 1 de un
+  /// presupuesto abierto: `menu_sends.snapshot.quote`) y su pedido; null si
+  /// el envío no existe para esta cocina. [PreviewSendQuote.quote] es null si
+  /// el envío no lleva presupuesto (o si no se puede leer: el mensaje lo
+  /// muestra igual). Lanza [MenuSendFailure]
+  /// ([MenuSendFailureKind.unavailable]).
+  Future<PreviewSendQuote?> fetchPreviewQuote({
     required String chefId,
     required String sendId,
   });
@@ -91,6 +112,19 @@ enum MenuSendFailureKind {
 
   /// 409: el menú no tiene platos.
   menuEmpty,
+
+  /// 409: la semana es de un presupuesto que ya no está abierto (aceptado,
+  /// rechazado, retirado o vencido): su menú ya no sale con él.
+  quoteClosed,
+
+  /// 409: la semana es de un presupuesto sin aceptar y no es la primera:
+  /// antes de que lo acepte solo sale la semana 1.
+  quoteWeekNotFirst,
+
+  /// 409: cambiaron los términos del presupuesto (otro precio, una semana
+  /// movida o cancelada) desde la vista previa o mientras se armaba: hace
+  /// falta otra vista previa.
+  quoteChanged,
 
   /// 404: la semana no tiene menú guardado.
   menuNotFound,
@@ -203,6 +237,24 @@ class SupabaseMenuSendsRepository implements MenuSendsRepository {
   });
 
   @override
+  Future<Map<String, MenuSendRecord>> fetchLatestQuoteSends({
+    required String chefId,
+    required List<String> quoteIds,
+  }) => _read(() async {
+    if (quoteIds.isEmpty) return const {};
+    final rows = await _client
+        .from(_table)
+        .select(menuSendColumns)
+        .eq('chef_id', chefId)
+        .inFilter('quote_id', quoteIds)
+        .not('sent_at', 'is', null)
+        .order('sent_at', ascending: false)
+        .order('id', ascending: false)
+        .limit(menuSendsPageSize);
+    return latestSendsByQuote(rows.map(MenuSendRecord.fromRow));
+  });
+
+  @override
   Future<MenuSendRecord?> fetchSend({
     required String chefId,
     required String sendId,
@@ -215,6 +267,20 @@ class SupabaseMenuSendsRepository implements MenuSendsRepository {
         .not('sent_at', 'is', null)
         .maybeSingle();
     return row == null ? null : MenuSendRecord.fromRow(row);
+  });
+
+  @override
+  Future<PreviewSendQuote?> fetchPreviewQuote({
+    required String chefId,
+    required String sendId,
+  }) => _read(() async {
+    final row = await _client
+        .from(_table)
+        .select(previewQuoteColumns)
+        .eq('chef_id', chefId)
+        .eq('id', sendId)
+        .maybeSingle();
+    return row == null ? null : previewSendQuoteFromRow(row);
   });
 
   @override
@@ -344,6 +410,9 @@ MenuSendFailure menuSendFailureFromResponse(int status, Object? body) {
         'alreadySent' => failure(MenuSendFailureKind.alreadySent),
         'noEmail' => failure(MenuSendFailureKind.noEmail),
         'noPhone' => failure(MenuSendFailureKind.noPhone),
+        'quoteClosed' => failure(MenuSendFailureKind.quoteClosed),
+        'quoteWeekNotFirst' => failure(MenuSendFailureKind.quoteWeekNotFirst),
+        'quoteChanged' => failure(MenuSendFailureKind.quoteChanged),
         _ => failure(MenuSendFailureKind.conflict),
       };
     case 422 when error == 'untranslatable':
@@ -389,7 +458,19 @@ class _NoBackendMenuSendsRepository implements MenuSendsRepository {
   }) => Future.error(_failure);
 
   @override
+  Future<Map<String, MenuSendRecord>> fetchLatestQuoteSends({
+    required String chefId,
+    required List<String> quoteIds,
+  }) => Future.error(_failure);
+
+  @override
   Future<MenuSendRecord?> fetchSend({
+    required String chefId,
+    required String sendId,
+  }) => Future.error(_failure);
+
+  @override
+  Future<PreviewSendQuote?> fetchPreviewQuote({
     required String chefId,
     required String sendId,
   }) => Future.error(_failure);

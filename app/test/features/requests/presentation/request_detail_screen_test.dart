@@ -83,7 +83,8 @@ void main() {
     expect(find.text('141,00 €'), findsNothing);
     expect(
       find.text(
-        'Calcolata con le tue tariffe al momento della richiesta. '
+        'Calcolata con le tue tariffe al momento della richiesta, solo come riferimento. '
+        'Il prezzo lo scrivi tu. '
         'La spesa la fa il cliente, con la lista che gli mandi tu.',
       ),
       findsOneWidget,
@@ -373,7 +374,9 @@ void main() {
             .map((date) => date.replaceAll(' ', '\u00a0'))
             .join(' · '),
       );
-      expect(find.text('Servizio, 4 settimane'), findsOneWidget);
+      // Es la referencia interna de la tarifa, no un precio que vio el cliente.
+      expect(find.text('Riferimento tariffa'), findsOneWidget);
+      expect(find.text('Servizio, 4 settimane'), findsNothing);
       expect(find.text('Servizio a settimana'), findsOneWidget);
       expect(textOf(tester, 'detail-estimate-total'), '560,00 €');
       expect(textOf(tester, 'detail-estimate-weekly'), '140,00 €');
@@ -399,7 +402,7 @@ void main() {
         ),
       );
       expect(textOf(tester, 'detail-weeks'), '1');
-      expect(find.text('Prezzo del servizio'), findsOneWidget);
+      expect(find.text('Riferimento tariffa'), findsOneWidget);
       expect(textOf(tester, 'detail-estimate-total'), '150,00 €');
       expect(find.byKey(const ValueKey('detail-next-dates')), findsNothing);
       expect(find.byKey(const ValueKey('detail-estimate-weekly')), findsNothing);
@@ -568,34 +571,75 @@ void main() {
     });
   });
 
-  group('confirmar reserva', () {
+  // «Conferma senza preventivo» (la hoja de siempre) y, como acción
+  // principal, «Prepara il preventivo» (SPEC 5.8; el resto, en
+  // quotes/presentation/quote_block_test.dart).
+  group('confirmar sin presupuesto', () {
     const action = ValueKey('action-confirm-booking');
+    const prepare = ValueKey('action-prepare-quote');
 
-    testWidgets('un pedido nuevo la ofrece abajo y abre la hoja', (tester) async {
-      await openDetail(tester, buildRequest());
-      expect(find.byKey(action), findsOneWidget);
-      expect(find.text('Conferma prenotazione'), findsOneWidget);
+    testWidgets(
+      'un pedido nuevo la ofrece abajo, al lado de «Prepara il preventivo» (la principal, a la derecha), y abre la hoja',
+      (tester) async {
+        await openDetail(tester, buildRequest());
+        expect(find.byKey(action), findsOneWidget);
+        expect(find.byKey(prepare), findsOneWidget);
+        expect(find.text('Conferma senza preventivo'), findsOneWidget);
+        expect(find.text('Prepara il preventivo'), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byKey(prepare)).dy,
+          tester.getTopLeft(find.byKey(action)).dy,
+        );
+        expect(
+          tester.getTopLeft(find.byKey(prepare)).dx,
+          greaterThan(tester.getTopLeft(find.byKey(action)).dx),
+        );
 
-      await tester.tap(find.byKey(action));
-      await tester.pumpAndSettle();
-      expect(find.byType(ConfirmBookingScreen), findsOneWidget);
-    });
+        await tester.tap(find.byKey(action));
+        await tester.pumpAndSettle();
+        expect(find.byType(ConfirmBookingScreen), findsOneWidget);
+        expect(
+          find.widgetWithText(AppBar, 'Conferma prenotazione'),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('una sesión extra también', (tester) async {
       await openDetail(tester, buildRequest(type: RequestType.extra));
       expect(find.byKey(action), findsOneWidget);
+      expect(find.byKey(prepare), findsOneWidget);
     });
 
-    for (final status in [RequestStatus.rejected, RequestStatus.accepted, RequestStatus.quoted]) {
+    for (final status in [
+      RequestStatus.rejected,
+      RequestStatus.accepted,
+      RequestStatus.declined,
+      RequestStatus.expired,
+    ]) {
       testWidgets('un pedido ${status.name} no la ofrece', (tester) async {
         await openDetail(tester, buildRequest(status: status, seenAt: testNow));
         expect(find.byKey(action), findsNothing);
+        expect(find.byKey(prepare), findsNothing);
       });
     }
+
+    testWidgets(
+      'con el presupuesto mandado la sigue ofreciendo (la base lo retira al confirmar), pero no otro presupuesto',
+      (tester) async {
+        await openDetail(
+          tester,
+          buildRequest(status: RequestStatus.quoted, seenAt: testNow),
+        );
+        expect(find.byKey(action), findsOneWidget);
+        expect(find.byKey(prepare), findsNothing);
+      },
+    );
 
     testWidgets('un cambio de una sesión no la ofrece', (tester) async {
       await openDetail(tester, buildRequest(type: RequestType.change));
       expect(find.byKey(action), findsNothing);
+      expect(find.byKey(prepare), findsNothing);
     });
   });
 
@@ -800,6 +844,17 @@ void main() {
           tester.platformDispatcher.textScaleFactorTestValue = 2;
           addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
           await openWithPhoto(tester, size: const Size(375, 667), locale: locale);
+          expect(tester.takeException(), isNull);
+          // Con el texto al doble, la barra de abajo (dos acciones) deja el
+          // plato un poco más abajo: se llega deslizando.
+          await tester.scrollUntilVisible(
+            find.byKey(const ValueKey('detail-menu-photo-0')),
+            100,
+            scrollable: find.descendant(
+              of: find.byKey(const ValueKey('request-detail')),
+              matching: find.byType(Scrollable),
+            ),
+          );
           expect(tester.takeException(), isNull);
           expect(find.byKey(const ValueKey('detail-menu-photo-0')), findsOneWidget);
         });

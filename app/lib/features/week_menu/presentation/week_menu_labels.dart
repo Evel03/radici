@@ -56,7 +56,10 @@ extension WeekMenuLabels on AppLocalizations {
       return switch (kind) {
         MenuSendFailureKind.sessionNotEditable =>
           '$menuSendErrorEmailSent ${_notEditable(failure)}',
-        MenuSendFailureKind.menuChanged => menuSendErrorEmailSent,
+        MenuSendFailureKind.quoteClosed =>
+          '$menuSendErrorEmailSent $menuSendErrorQuoteClosed',
+        MenuSendFailureKind.menuChanged ||
+        MenuSendFailureKind.quoteChanged => menuSendErrorEmailSent,
         _ => '$menuSendErrorEmailSent $menuSendEmailSentRetry',
       };
     }
@@ -71,6 +74,12 @@ extension WeekMenuLabels on AppLocalizations {
       MenuSendFailureKind.menuChanged =>
         sending ? menuSendErrorChangedSincePreview : menuSendErrorMenuChanged,
       MenuSendFailureKind.menuEmpty => menuSendErrorEmpty,
+      MenuSendFailureKind.quoteClosed => menuSendErrorQuoteClosed,
+      MenuSendFailureKind.quoteWeekNotFirst => menuSendErrorQuoteWeekNotFirst,
+      MenuSendFailureKind.quoteChanged =>
+        sending
+            ? menuSendErrorQuoteChangedSincePreview
+            : menuSendErrorQuoteChanged,
       MenuSendFailureKind.menuNotFound => menuSendErrorNoMenu,
       MenuSendFailureKind.sessionNotFound => sessionNotFound,
       MenuSendFailureKind.sessionNotEditable => _notEditable(failure),

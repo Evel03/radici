@@ -24,6 +24,16 @@
 // después). Después de mandar, la ficha, el editor y la reserva vuelven a
 // leer el último envío.
 //
+// La semana 1 de un presupuesto sin aceptar lo lleva (SPEC 5.8): después de
+// la vista previa se lee de `menu_sends` (con la RLS de la cocina) el
+// presupuesto de su foto, lo que va a ver la clienta, para mostrarlo arriba
+// del mensaje (la respuesta de la vista previa no lo trae). Al mandarlo, el
+// pedido y su presupuesto se vuelven a leer; sin respuesta también, al fallar
+// y al cerrar (pudo haber salido). Si el presupuesto se cerró, cambió o la
+// semana no es la primera, lo dice (quoteClosed, quoteChanged,
+// quoteWeekNotFirst); uno que se cerró sin aceptarse llega como la semana
+// cancelada (sessionNotEditable), y también se vuelve a leer.
+//
 // Nada se loguea: ni el contacto, ni el mensaje.
 import 'dart:async';
 
@@ -32,6 +42,9 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/platform.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/quotes/application/quote_providers.dart';
+import 'package:radici/features/quotes/domain/preview_quote.dart';
+import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/week_menu/application/week_menu_summaries.dart';
 import 'package:radici/features/week_menu/data/menu_sends_repository.dart';
@@ -87,6 +100,15 @@ abstract class MenuSendState with _$MenuSendState {
     /// La última vista previa (null mientras no hay).
     MenuPreview? preview,
 
+    /// El presupuesto que lleva la vista previa (la semana 1 de uno sin
+    /// aceptar), como lo va a ver la clienta; null si no lleva (o si no se
+    /// pudo leer: el mensaje lo muestra igual).
+    PreviewQuote? quote,
+
+    /// El pedido de la semana (de la vista previa), para volver a leerlo al
+    /// mandar el presupuesto.
+    String? requestId,
+
     /// Por dónde se manda: lo que eligió, solo si el contacto lo permite.
     @Default(false) bool email,
     @Default(false) bool whatsapp,
@@ -126,7 +148,9 @@ abstract class MenuSendState with _$MenuSendState {
     if (failure == null) return true;
     if (failure.emailSent) {
       return failure.kind != MenuSendFailureKind.menuChanged &&
-          failure.kind != MenuSendFailureKind.sessionNotEditable;
+          failure.kind != MenuSendFailureKind.sessionNotEditable &&
+          failure.kind != MenuSendFailureKind.quoteChanged &&
+          failure.kind != MenuSendFailureKind.quoteClosed;
     }
     return failure.kind.canRetry ||
         failure.kind == MenuSendFailureKind.emailFailed ||
@@ -226,6 +250,7 @@ class MenuSendController extends Notifier<MenuSendState> {
         step: MenuSendStep.previewing,
         translate: translate,
         preview: null,
+        quote: null,
         failure: null,
         result: null,
         recovered: false,
@@ -251,6 +276,9 @@ class MenuSendController extends Notifier<MenuSendState> {
           translate: translate,
         ),
       );
+      // El presupuesto de la foto, si lo lleva (la semana 1 de uno sin
+      // aceptar). Si no se puede leer, el mensaje lo muestra igual.
+      final quote = await _previewQuote(preview.sendId);
       final contact = preview.contact;
       final whatsapp = contact.phoneE164 != null;
       _set(
@@ -259,6 +287,8 @@ class MenuSendController extends Notifier<MenuSendState> {
           menuVersion: version,
           rereadVersion: false,
           preview: preview,
+          quote: quote?.quote,
+          requestId: quote?.requestId ?? state.requestId,
           email: contact.usableEmail != null && !(onlyWhatsapp && whatsapp),
           whatsapp: whatsapp,
         ),
@@ -274,6 +304,21 @@ class MenuSendController extends Notifier<MenuSendState> {
           failure: failure,
         ),
       );
+    }
+  }
+
+  /// El presupuesto que lleva la vista previa [sendId] y su pedido; null si
+  /// no se puede leer (no es un error: el mensaje ya lo trae).
+  Future<PreviewSendQuote?> _previewQuote(String sendId) async {
+    final chefId = ref.read(currentChefProvider)?.chefId;
+    if (chefId == null) return null;
+    try {
+      return await _repository.fetchPreviewQuote(
+        chefId: chefId,
+        sendId: sendId,
+      );
+    } on MenuSendFailure {
+      return null;
     }
   }
 
@@ -391,6 +436,7 @@ class MenuSendController extends Notifier<MenuSendState> {
   Future<void> _sent(MenuSendResult result, {required bool recovered}) async {
     if (!ref.mounted) return;
     _refreshSendStatus();
+    _refreshQuote(quoteSent: state.quote != null);
     _set(
       state.copyWith(
         step: MenuSendStep.sent,
@@ -415,12 +461,17 @@ class MenuSendController extends Notifier<MenuSendState> {
     // salió (sin respuesta: pudo quedar marcado): lo que se muestra vuelve a
     // leerse.
     if (failure.emailSent || failure.kind.canRetry) _refreshSendStatus();
+    // Sin respuesta, el servidor pudo terminar: el presupuesto que llevaba
+    // quedó mandado y el pedido en «Presupuesto enviado». El detalle no los
+    // sigue ofreciendo como sin mandar.
+    if (failure.kind.canRetry) _refreshQuote(quoteSent: state.quote != null);
     _set(state.copyWith(step: MenuSendStep.sendFailed, failure: failure));
   }
 
   /// La pantalla se cerró. Si el último envío quedó sin respuesta, lo que se
-  /// muestra vuelve a leer el envío: el servidor pudo terminar (y marcarlo)
-  /// después de la lectura de la falla, o esa lectura falló sin conexión.
+  /// muestra vuelve a leer el envío (y el presupuesto que llevaba, con su
+  /// pedido): el servidor pudo terminar (y marcarlo) después de la lectura de
+  /// la falla, o esa lectura falló sin conexión.
   void closed() {
     if (!ref.mounted) return;
     final failure = state.failure;
@@ -429,6 +480,7 @@ class MenuSendController extends Notifier<MenuSendState> {
         failure.kind.canRetry &&
         !failure.emailSent) {
       _refreshSendStatus();
+      _refreshQuote(quoteSent: state.quote != null);
     }
   }
 
@@ -444,12 +496,38 @@ class MenuSendController extends Notifier<MenuSendState> {
         if (ref.exists(detail)) {
           unawaited(ref.read(detail.notifier).reloadQuietly());
         }
+        // Así llega un presupuesto que se cerró sin aceptarse (rechazado,
+        // retirado o vencido): sus semanas se cancelaron y la base contesta
+        // por la sesión antes que por el presupuesto. El bloque del pedido lo
+        // vuelve a leer (y, con él, el pedido y la agenda).
+        _refreshQuote(quoteSent: false);
       case MenuSendFailureKind.menuChanged ||
           MenuSendFailureKind.menuEmpty ||
           MenuSendFailureKind.menuNotFound:
         _refreshMenus();
+      case MenuSendFailureKind.quoteClosed ||
+          MenuSendFailureKind.quoteChanged ||
+          MenuSendFailureKind.quoteWeekNotFirst:
+        // El presupuesto cambió o se cerró (y con él, quizás, sus semanas):
+        // el pedido y la ficha muestran lo de ahora.
+        _refreshQuote(quoteSent: false);
+        final detail = sessionDetailProvider(sessionId);
+        if (ref.exists(detail)) {
+          unawaited(ref.read(detail.notifier).reloadQuietly());
+        }
       default:
         break;
+    }
+  }
+
+  /// El presupuesto de los pedidos abiertos se vuelve a leer; si salió con
+  /// este envío ([quoteSent]), también el pedido, que pasa a «Presupuesto
+  /// enviado».
+  void _refreshQuote({required bool quoteSent}) {
+    ref.invalidate(requestQuoteProvider);
+    final requestId = state.requestId;
+    if (quoteSent && requestId != null) {
+      unawaited(ref.read(chefInboxProvider.notifier).reload(requestId));
     }
   }
 

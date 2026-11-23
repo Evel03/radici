@@ -15,17 +15,28 @@
 // al aparecer. Después de mandar, cuándo y por dónde salió y, si fue por
 // WhatsApp, el botón para abrirlo (en el teléfono se abre solo).
 //
+// La semana 1 de un presupuesto sin aceptar lo lleva (SPEC 5.8): arriba del
+// mensaje, el presupuesto de la foto (la versión que sale, cada semana con su
+// fecha, su llegada y su precio, el total y hasta cuándo lo puede aceptar si
+// sale ahora). Si se cerró o cambió, lo dice y ofrece otra vista previa
+// cuando sirve.
+//
 // Solo muestra providers: la lógica está en MenuSendController. Lleva el
 // contacto de la clienta: nada se loguea.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:radici/core/money.dart';
+import 'package:radici/features/quotes/domain/preview_quote.dart';
+import 'package:radici/features/quotes/presentation/quote_labels.dart';
 import 'package:radici/features/requests/domain/chef_request.dart'
     show ClientLocale;
 import 'package:radici/features/requests/presentation/request_labels.dart';
 import 'package:radici/features/sessions/application/sessions_controller.dart';
 import 'package:radici/features/sessions/presentation/session_widgets.dart';
+import 'package:radici/features/today/application/today_providers.dart'
+    show todayNowProvider;
 import 'package:radici/features/week_menu/application/menu_send_controller.dart';
 import 'package:radici/features/week_menu/data/menu_sends_repository.dart';
 import 'package:radici/features/week_menu/domain/menu_send.dart';
@@ -164,6 +175,7 @@ class _MenuSendScreenState extends ConsumerState<MenuSendScreen> {
       MenuSendStep.sending ||
       MenuSendStep.sendFailed => _PreviewView(
         state: state,
+        now: ref.watch(todayNowProvider),
         sendFailureKey: _sendFailureKey,
         view: _view,
         onView: (view) => setState(() => _view = view),
@@ -358,6 +370,14 @@ class _PreviewFailed extends StatelessWidget {
                 onPressed: onPreviewSaved,
                 child: Text(l10n.menuSendPreviewSaved),
               ),
+      // El presupuesto cambió mientras se armaba: otra vista previa, con los
+      // términos de ahora.
+      if (kind == MenuSendFailureKind.quoteChanged)
+        FilledButton(
+          key: const ValueKey('menu-send-preview-again'),
+          onPressed: onRetry,
+          child: Text(l10n.menuSendNewPreview),
+        ),
       OutlinedButton(
         key: const ValueKey('menu-send-failed-close'),
         onPressed: onClose,
@@ -399,6 +419,7 @@ class _PreviewFailed extends StatelessWidget {
 class _PreviewView extends StatelessWidget {
   const _PreviewView({
     required this.state,
+    required this.now,
     required this.sendFailureKey,
     required this.view,
     required this.onView,
@@ -410,6 +431,9 @@ class _PreviewView extends StatelessWidget {
   });
 
   final MenuSendState state;
+
+  /// Ahora: el plazo del presupuesto, si sale en este momento.
+  final DateTime now;
   final GlobalKey sendFailureKey;
   final MenuSendChannel? view;
   final ValueChanged<MenuSendChannel> onView;
@@ -527,6 +551,12 @@ class _PreviewView extends StatelessWidget {
                   ),
                 ),
               ),
+            // La semana 1 de un presupuesto sin aceptar lo lleva: arriba del
+            // mensaje, lo que va a ver la clienta.
+            if (state.quote case final quote?) ...[
+              SessionSection(l10n.menuSendQuoteSection(quote.version)),
+              _PreviewQuoteView(quote: quote, now: now),
+            ],
             SessionSection(l10n.menuSendMessageSection),
             SegmentedButton<MenuSendChannel>(
               key: const ValueKey('menu-send-view'),
@@ -589,6 +619,72 @@ class _PreviewView extends StatelessWidget {
   }
 }
 
+/// El presupuesto que va con el menú: cada semana con su fecha, su llegada y
+/// su precio, el total, hasta cuándo puede aceptarlo la clienta si sale ahora
+/// y qué puede hacer desde el enlace. Sale de la foto de la vista previa.
+class _PreviewQuoteView extends StatelessWidget {
+  const _PreviewQuoteView({required this.quote, required this.now});
+
+  final PreviewQuote quote;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final formats = RequestFormats(context);
+    final locale = Localizations.localeOf(context).toString();
+    final weeks = quote.weeks;
+    return Column(
+      key: const ValueKey('menu-send-quote'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (index, week) in weeks.indexed)
+          MergeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                '${l10n.quoteWeekTitle(index + 1, weeks.length, week.date, formats)}'
+                ' · '
+                '${l10n.quoteWeekDetail(week.start.toHhMm(), formatCents(week.serviceCents, locale: locale))}',
+                key: ValueKey('menu-send-quote-week-$index'),
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          ),
+        SessionInfoRow(
+          label: l10n.quoteServiceTotal(weeks.length),
+          value: formatCents(quote.totalCents, locale: locale),
+          valueKey: const ValueKey('menu-send-quote-total'),
+        ),
+        MergeSemantics(
+          child: Text(
+            l10n.quoteDeadlineText(
+              quote.deadlineAt(now),
+              formats,
+              weeks: weeks.length,
+            ),
+            key: const ValueKey('menu-send-quote-deadline'),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        MergeSemantics(
+          child: Text(
+            l10n.menuSendQuoteHint(weeks.length),
+            key: const ValueKey('menu-send-quote-hint'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// El envío falló o no se sabe si salió: por qué y qué se puede hacer con
 /// esta vista previa (o con otra).
 class _SendFailure extends StatelessWidget {
@@ -628,6 +724,7 @@ class _SendFailure extends StatelessWidget {
         kind == MenuSendFailureKind.noPhone;
     final newPreview =
         kind == MenuSendFailureKind.menuChanged ||
+        kind == MenuSendFailureKind.quoteChanged ||
         (!failure.emailSent &&
             (kind == MenuSendFailureKind.noEmail ||
                 kind == MenuSendFailureKind.noPhone));
@@ -731,6 +828,14 @@ class _SentView extends StatelessWidget {
               style: theme.textTheme.bodyLarge,
             ),
           ),
+          if (state.quote case final quote?) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.menuSendDoneQuote(quote.version),
+              key: const ValueKey('menu-send-done-quote'),
+              style: theme.textTheme.bodyLarge,
+            ),
+          ],
           if (state.recovered) ...[
             const SizedBox(height: 8),
             Text(

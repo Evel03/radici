@@ -238,6 +238,9 @@ class RequestTile extends StatelessWidget {
         if (slot != null) l10n.slot(slot),
       ].join(' · ');
     }
+    // Con presupuesto (enviado, rechazado o vencido): lo dice, porque las
+    // pestañas no.
+    final status = l10n.requestTileStatus(request);
 
     return ListTile(
       key: ValueKey('request-${request.id}'),
@@ -279,6 +282,16 @@ class RequestTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+          if (status != null)
+            Text(
+              status,
+              key: ValueKey('request-${request.id}-status'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.tertiary,
+              ),
+            ),
           // La marca va acá y no al lado de la fecha: ListTile le da al
           // trailing hasta 56 px de alto y, con el texto grande, no entraba.
           if (request.hasMenu)
@@ -288,7 +301,7 @@ class RequestTile extends StatelessWidget {
             ),
         ],
       ),
-      isThreeLine: when.isNotEmpty || request.hasMenu,
+      isThreeLine: when.isNotEmpty || request.hasMenu || status != null,
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,

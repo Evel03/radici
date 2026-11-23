@@ -481,22 +481,26 @@ class _PendingMenuTile extends StatelessWidget {
       deadlineWall.minute,
     ).toHhMm();
     final passed = menu.deadlinePassed(now);
-    final deadline = passed
-        ? l10n.todayMenuDeadlinePassed(deadlineDay, deadlineTime)
-        : l10n.todayMenuDeadline(deadlineDay, deadlineTime);
+    // El del menú (48 h antes de la llegada) o, en la semana 1 de un
+    // presupuesto, el plazo del presupuesto si vence antes.
+    final deadline = l10n.pendingMenuDeadline(
+      menu,
+      day: deadlineDay,
+      time: deadlineTime,
+      passed: passed,
+    );
     final near = menu.deadlineNear(now);
     // Faltan menos de 24 h: lo resaltan el color y el ícono, que el lector de
     // pantalla no lee, así que lo dice en el texto que oye.
     final deadlineHeard = near && !passed
-        ? l10n.todayMenuDeadlineNearA11y(deadlineDay, deadlineTime)
+        ? l10n.pendingMenuDeadlineNearA11y(
+            menu,
+            day: deadlineDay,
+            time: deadlineTime,
+          )
         : null;
     final changes = menu.state == PendingMenuState.changesRequested;
-    final state = switch (menu.state) {
-      PendingMenuState.noMenu => l10n.todayMenuNoMenu,
-      PendingMenuState.notSent => l10n.todayMenuNotSent,
-      PendingMenuState.changedSinceSent => l10n.todayMenuChangedSinceSent,
-      PendingMenuState.changesRequested => l10n.todayMenuChangesRequested,
-    };
+    final state = l10n.pendingMenuState(menu.state);
     return Card(
       key: ValueKey('today-menu-$id'),
       margin: const EdgeInsets.symmetric(vertical: 4),

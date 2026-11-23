@@ -24,6 +24,11 @@
 // «Fatto», la X y el atrás llevan a «Prenotazioni»; una renovación vuelve a
 // donde estaba.
 //
+// «Preparar presupuesto» (SPEC 5.8) es la misma hoja desde un pedido nuevo:
+// el precio es el de todo el presupuesto, con cuánto va exactamente en cada
+// semana; abajo, «Crear el presupuesto». Al crearlo, la hoja se reemplaza por
+// el menú de la semana 1, que sale junto con el presupuesto.
+//
 // Solo lee providers: la lógica está en ConfirmBookingController y el
 // mensaje, en booking_message.dart. Los campos tienen letra de 16 px (con
 // menos, iOS agranda la página al enfocarlos).
@@ -65,6 +70,7 @@ String _sheetTitle(AppLocalizations l10n, BookingSourceKind kind) =>
       BookingSourceKind.request => l10n.actionConfirmBooking,
       BookingSourceKind.manual => l10n.newBookingAction,
       BookingSourceKind.renewal => l10n.renewBookingTitle,
+      BookingSourceKind.quote => l10n.actionPrepareQuote,
     };
 
 /// Después de confirmar una reserva a mano: a «Prenotazioni», donde está la
@@ -92,7 +98,8 @@ class ConfirmBookingScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(_sheetTitle(l10n, source.kind))),
       body: switch (status) {
         BookingSeedStatus.error => switch (source) {
-          RequestBookingSource(:final requestId) => LoadErrorView(
+          RequestBookingSource(:final requestId) ||
+          QuoteBookingSource(:final requestId) => LoadErrorView(
             message: l10n.inboxLoadError,
             onRetry: () => ref.invalidate(chefRequestProvider(requestId)),
           ),
@@ -127,7 +134,10 @@ class _SourceMissing extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final (key, text) = switch (source) {
-      RequestBookingSource() => ('booking-request-not-found', l10n.requestNotFound),
+      RequestBookingSource() || QuoteBookingSource() => (
+        'booking-request-not-found',
+        l10n.requestNotFound,
+      ),
       ClientBookingSource() => (
         'booking-client-not-found',
         l10n.bookingErrorClientNotFound,
@@ -228,6 +238,55 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
   /// «Chiudi comunque»: la hoja deja de retenerse y se cierra. pop no pasa
   /// por PopScope (que se arma con el estado anterior) y el onExit de la ruta
   /// ya la deja salir.
+  /// Confirma. Desde un pedido con un presupuesto abierto, antes pide
+  /// confirmar que se retira (la base lo hace en la misma transacción): la
+  /// primera vez, no en el reintento de una confirmación sin respuesta.
+  Future<void> _confirm() async {
+    final provider = confirmBookingProvider(_source);
+    final state = ref.read(provider);
+    final withdraw = state.openQuote;
+    if (withdraw != null && !state.retryPending) {
+      final go = await _confirmWithdraw(withdraw);
+      if (!go || !mounted) return;
+    }
+    await ref.read(provider.notifier).confirm();
+  }
+
+  /// «¿Confirmar sin presupuesto?»: el presupuesto abierto se retira (y, si
+  /// la semana 1 tiene menú, el menú se va con ella). true si se eligió
+  /// seguir.
+  Future<bool> _confirmWithdraw(OpenQuoteToWithdraw withdraw) async {
+    final l10n = AppLocalizations.of(context);
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey('booking-withdraw-quote-dialog'),
+        // Hasta cuatro frases: con el texto grande en un teléfono, se desliza
+        // (sin esto, el final se recortaría sin aviso).
+        scrollable: true,
+        title: Text(l10n.bookingWithdrawQuoteTitle),
+        content: Text(
+          l10n.bookingWithdrawsQuoteText(withdraw),
+          key: const ValueKey('booking-withdraw-quote-body'),
+        ),
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            key: const ValueKey('booking-withdraw-quote-cancel'),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.actionCancel),
+          ),
+          FilledButton(
+            key: const ValueKey('booking-withdraw-quote-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.bookingWithdrawQuoteConfirm),
+          ),
+        ],
+      ),
+    );
+    return go ?? false;
+  }
+
   void _leaveAnyway() {
     ref.read(confirmBookingProvider(_source).notifier).leaveAnyway();
     Navigator.of(context).pop();
@@ -252,6 +311,16 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
       if (next.priceEdited) return;
       final text = _suggestedPriceText(next, locale);
       if (_price.text != text) _price.text = text;
+    });
+    // «Preparar presupuesto»: creado, la hoja se reemplaza por el menú de la
+    // semana 1, que sale junto con el presupuesto (al volver, el pedido lo
+    // muestra).
+    ref.listen(provider.select((state) => state.quote?.firstSessionId), (
+      previous,
+      next,
+    ) {
+      if (next == null || previous != null || !mounted) return;
+      context.pushReplacement(AppRoutes.sessionMenu(next));
     });
 
     final result = state.result;
@@ -285,7 +354,7 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
                 : () => Navigator.of(context).maybePop(),
           ),
           title: Text(
-            result == null
+            result == null || state.isQuote
                 ? _sheetTitle(l10n, state.kind)
                 : l10n.bookingDoneTitle,
           ),
@@ -309,6 +378,8 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
                           priceKey: _priceKey,
                           weekKeys: _weekKeys,
                         )
+                      : state.isQuote
+                      ? _QuoteCreated(state: state)
                       : _BookingDone(source: _source, state: state),
                 ),
               ),
@@ -320,8 +391,9 @@ class _ConfirmBookingViewState extends ConsumerState<_ConfirmBookingView> {
                 onShowPrice: _showPrice,
                 onShowWeek: _showWeek,
                 onLeaveAnyway: _leaveAnyway,
+                onConfirm: () => unawaited(_confirm()),
               )
-            else
+            else if (!state.isQuote)
               _DoneBar(
                 source: _source,
                 manual: manual,
@@ -412,7 +484,11 @@ class _BookingForm extends StatelessWidget {
           formatCents(maxBookingCents, locale: locale),
         );
       case null:
-        if (cents != null && weeks > 1) {
+        if (cents != null && weeks > 1 && state.isQuote) {
+          // El presupuesto muestra exactamente cuánto va en cada semana: lo
+          // que ve la clienta y lo que va a guardar la base.
+          priceHelper = l10n.quotePriceSplitText(cents, weeks, locale: locale);
+        } else if (cents != null && weeks > 1) {
           final share = weeklyShare(cents, weeks);
           final amount = formatCents(share.firstWeekCents, locale: locale);
           priceHelper = share.even
@@ -556,9 +632,8 @@ class _BookingForm extends StatelessWidget {
                 : null,
           ),
           _Help(switch (state.kind) {
-            BookingSourceKind.request => l10n.bookingCookHelp(
-              maxBookingCookMinutes,
-            ),
+            BookingSourceKind.request || BookingSourceKind.quote =>
+              l10n.bookingCookHelp(maxBookingCookMinutes),
             BookingSourceKind.manual => l10n.bookingCookHelpManual(
               maxBookingCookMinutes,
             ),
@@ -599,15 +674,28 @@ class _BookingForm extends StatelessWidget {
               onChanged: controller.setPriceText,
             ),
           ),
+          if (state.rateReferenceCents case final reference?) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.bookingRateReference(
+                formatCents(reference, locale: locale),
+              ),
+              key: const ValueKey('booking-rate-reference'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
   /// Ícono, color y texto de la semana [index], en este orden: lo que impide
-  /// mandar la fecha; un choque o un aviso del servidor; los avisos de la app
-  /// (la llegada de hoy que ya pasó y el feriado, que el servidor no marca);
-  /// «libre» o «verifica in corso».
+  /// mandar la fecha (en el presupuesto, también una llegada que ya pasó); un
+  /// choque o un aviso del servidor; los avisos de la app (la llegada de hoy
+  /// que ya pasó y el feriado, que el servidor no marca); «libre» o «verifica
+  /// in corso».
   _WeekStatus? _weekStatus(
     BuildContext context,
     int index,
@@ -623,6 +711,14 @@ class _BookingForm extends StatelessWidget {
       );
     }
     if (state.blocked) return null;
+    // Un presupuesto con una llegada que ya pasó nacería vencido: no se crea.
+    if (state.isQuote && state.arrivalGone(index)) {
+      return (
+        icon: Icons.error_outline,
+        color: colors.error,
+        text: l10n.quoteBlockArrivalPassed,
+      );
+    }
     final check = state.checkFor(index);
     if (check != null && check.status != BookingDayStatus.ok) {
       return check.status == BookingDayStatus.busy
@@ -756,13 +852,35 @@ class _Header extends StatelessWidget {
           style: theme.textTheme.titleLarge,
           overflow: TextOverflow.ellipsis,
         ),
-        if (request != null)
+        if (request != null) ...[
           Text(
             l10n.requestSummary(request),
             key: const ValueKey('booking-subtitle'),
             style: secondary,
-          )
-        else if (renewedFrom != null) ...[
+          ),
+          // Tiene un presupuesto abierto: confirmar sin presupuesto lo retira
+          // (y, si la semana 1 tiene menú, el menú se va con ella).
+          if (state.openQuote case final withdraw?) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.bookingWithdrawsQuoteText(withdraw),
+              key: const ValueKey('booking-withdraws-quote'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          // El presupuesto: qué pasa al crearlo.
+          if (state.isQuote) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.quoteFormIntro(state.weeks),
+              key: const ValueKey('quote-form-intro'),
+              style: theme.textTheme.bodyMedium,
+            ),
+          ],
+        ] else if (renewedFrom != null) ...[
           Text(
             l10n.bookingRenewalSubtitle(formats.shortDate(renewedFrom)),
             key: const ValueKey('booking-subtitle'),
@@ -900,6 +1018,7 @@ class _ConfirmBar extends StatelessWidget {
     required this.onShowPrice,
     required this.onShowWeek,
     required this.onLeaveAnyway,
+    required this.onConfirm,
   });
 
   final ConfirmBookingState state;
@@ -907,6 +1026,9 @@ class _ConfirmBar extends StatelessWidget {
   final VoidCallback onShowPrice;
   final void Function(int week) onShowWeek;
   final VoidCallback onLeaveAnyway;
+
+  /// Confirmar (con el aviso del presupuesto que se retira, si hay uno).
+  final VoidCallback onConfirm;
 
   @override
   Widget build(BuildContext context) {
@@ -987,10 +1109,14 @@ class _ConfirmBar extends StatelessWidget {
             textKey: 'booking-blocker',
             text: l10n.bookingBlockerText(state, blocker, locale: locale),
             color: theme.colorScheme.error,
-            // El choque llega cuando vuelve el dryRun: el lector de pantalla
-            // lo anuncia (el comienzo, «Controllo le date…», también). El
-            // precio no, que cambia con cada tecla.
-            liveRegion: blocker.kind == BookingBlockKind.clash,
+            // El choque llega cuando vuelve el dryRun y, en el presupuesto, la
+            // llegada que ya pasó puede aparecer al tocar «Crear» (la hora se
+            // mira en ese momento): el lector de pantalla los anuncia (el
+            // comienzo del dryRun, «Controllo le date…», también). El precio
+            // no, que cambia con cada tecla.
+            liveRegion:
+                blocker.kind == BookingBlockKind.clash ||
+                blocker.kind == BookingBlockKind.arrival,
             actionKey: 'booking-blocker-show',
             actionLabel: l10n.bookingShowProblem,
             onAction: switch (blocker) {
@@ -1035,9 +1161,7 @@ class _ConfirmBar extends StatelessWidget {
           ),
         FilledButton(
           key: const ValueKey('booking-confirm'),
-          onPressed: state.canConfirm
-              ? () => unawaited(controller.confirm())
-              : null,
+          onPressed: state.canConfirm ? onConfirm : null,
           child: state.sending
               ? Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1047,12 +1171,20 @@ class _ConfirmBar extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                     const SizedBox(width: 8),
-                    Flexible(child: Text(l10n.bookingSending)),
+                    Flexible(
+                      child: Text(
+                        state.isQuote
+                            ? l10n.quoteCreating
+                            : l10n.bookingSending,
+                      ),
+                    ),
                   ],
                 )
               : Text(
                   state.retryPending
                       ? l10n.actionRetry
+                      : state.isQuote
+                      ? l10n.quoteCreateAction
                       : l10n.bookingConfirmAction(state.weeks),
                 ),
         ),
@@ -1161,6 +1293,54 @@ class _BookingDone extends ConsumerWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// El presupuesto quedó creado: mientras se abre el menú de la semana 1 (la
+/// hoja se reemplaza por él). Sin la sesión de la semana 1 (no debería
+/// pasar), vuelve al pedido, que lo muestra.
+class _QuoteCreated extends StatelessWidget {
+  const _QuoteCreated({required this.state});
+
+  final ConfirmBookingState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final opening = state.quote?.firstSessionId != null;
+    return Center(
+      key: const ValueKey('quote-created'),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (opening) const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                opening
+                    ? l10n.quoteOpeningMenu(
+                        state.result?.weeks.length ?? state.weeks,
+                      )
+                    : l10n.bookingErrorQuoteExists,
+                key: const ValueKey('quote-created-text'),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            if (!opening) ...[
+              const SizedBox(height: 16),
+              FilledButton(
+                key: const ValueKey('quote-created-close'),
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: Text(l10n.actionClose),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

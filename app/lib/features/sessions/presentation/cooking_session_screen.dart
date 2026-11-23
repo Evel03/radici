@@ -9,7 +9,9 @@
 // mandárselo, SPEC 5.8); los datos de la clienta (la dirección, o sin ella la
 // zona, es un enlace a Mapas, como «Come arrivare») y las semanas de su
 // reserva; en la última sesión viva de una reserva semanal, «Rinnova» al
-// final.
+// final. Una semana de un presupuesto sin aceptar (`held`, SPEC 5.8) avisa
+// que moverla o cancelarla cambia el presupuesto (el detalle del pedido dice
+// entonces que hay que mandarlo de nuevo).
 // Abajo, Mover (con «Annulla» después) y Cancelar (con confirmación y
 // «también las siguientes»; si alguna ya está cobrada, el aviso dice cuál y
 // qué se puede hacer). Abierta con un enlace directo, la flecha de volver
@@ -43,6 +45,8 @@ import 'package:radici/features/sessions/presentation/session_actions.dart';
 import 'package:radici/features/sessions/presentation/session_labels.dart';
 import 'package:radici/features/sessions/presentation/session_widgets.dart';
 import 'package:radici/features/week_menu/application/week_menu_summaries.dart';
+import 'package:radici/features/week_menu/domain/week_menu.dart'
+    show quoteWeekRole;
 import 'package:radici/features/week_menu/presentation/week_menu_block.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
@@ -151,10 +155,30 @@ class _SessionView extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             children: [
               _Header(detail: detail),
+              // Una semana de un presupuesto sin aceptar: moverla o
+              // cancelarla cambia el presupuesto (SPEC 5.8). Con una sola
+              // semana viva, «una fecha».
+              if (session.status == SessionStatus.held)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: MergeSemantics(
+                    child: Text(
+                      AppLocalizations.of(context)
+                          .sessionQuoteHeldHint(detail.position?.weeks ?? 1),
+                      key: const ValueKey('session-quote-held'),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 16),
               _ContactButtons(session: session),
               SessionAllergies(session: session),
-              WeekMenuBlock(session: session),
+              WeekMenuBlock(
+                session: session,
+                quoteRole: quoteWeekRole(session, detail.booking),
+              ),
               _Client(session: session),
               if (detail.weeks.length > 1) _Weeks(detail: detail),
               // Al final: el día de la última sesión es el de cocinar, y
