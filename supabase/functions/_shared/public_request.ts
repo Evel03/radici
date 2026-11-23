@@ -2,13 +2,14 @@
 // Fuente única de verdad: la web arma el payload con estos tipos y el servidor lo valida
 // con `parsePublicRequest`. Si cambia el contrato, subir PUBLIC_REQUEST_VERSION.
 // Solo sintaxis borrable: corre en Node (tests), Deno (Edge Functions) y Vite (web).
-import { calcQuote, LIMITS, NO_AUTO_PRICE_REASONS, type NoAutoPriceReason, type Quote, type QuoteInput } from "./quote.ts";
+import { LIMITS, type QuoteInput } from "./cook_load.ts";
 
 /**
  * Versión del contrato: la que manda la web. Una página de una versión que el servidor ya no acepta
  * recibe `version: "invalid"` y la web pide recargarla.
  * 2: la pregunta de alergias (`noAllergies`, y las alergias escritas en `restrictionsNote`).
- * 3: las semanas del pedido semanal (`weeks`, obligatorio) y la estimación con el precio por semana (§2).
+ * 3: las semanas del pedido semanal (`weeks`, obligatorio) y la estimación con el precio por semana (§2). Desde el
+ * 22/11/2026 el 201 ya no lleva estimación ni precio (la respuesta cambió, no lo que manda la web).
  * 4: los platos que eligió el cliente en la pestaña «Menù» (`menu`, opcional; decisión del 19/11/2026).
  */
 export const PUBLIC_REQUEST_VERSION = 4;
@@ -263,7 +264,7 @@ export interface NormalizedPublicRequest {
 }
 
 export type ParseResult =
-  | { ok: true; value: NormalizedPublicRequest; estimate: Quote }
+  | { ok: true; value: NormalizedPublicRequest }
   | { ok: false; errors: PublicRequestErrors };
 
 // ---------------------------------------------------------------------------
@@ -570,101 +571,5 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     menu,
     quoteInput,
   };
-  return { ok: true, value, estimate: calcQuote(quoteInput) };
-}
-
-// ---------------------------------------------------------------------------
-// Estimación del 201 (contrato §2)
-// ---------------------------------------------------------------------------
-
-/** Lo de cualquier estimación: lo de una semana (una sesión) y las semanas del pedido. */
-interface EstimateBase {
-  weeks: number;
-  portions: number;
-  recipes: number;
-  cookMinutes: number;
-}
-
-export interface PricedEstimate extends EstimateBase {
-  autoPrice: true;
-  weeklyServiceCents: number;
-  serviceCents: number;
-  savingsCents: number;
-}
-
-export interface UnpricedEstimate extends EstimateBase {
-  autoPrice: false;
-  /** Más personas que el tope del precio automático, o una sesión extra: la cocinera pasa el precio. */
-  reason: NoAutoPriceReason;
-}
-
-/**
- * La estimación que devuelve el 201: la del motor con las tarifas de la cocinera, sin las tarifas. Sin
- * precio automático no lleva claves de precio. Desde el 19/11/2026 no lleva la compra (groceriesEstCents)
- * ni el total de servicio y compra (totalCents), porque la compra la hace el cliente: a una página de antes
- * su readPublicEstimate le da null y la pantalla de gracias muestra su propio cálculo hasta que se recarga.
- */
-export type PublicRequestEstimate = PricedEstimate | UnpricedEstimate;
-
-export function publicEstimate(quote: Quote): PublicRequestEstimate {
-  const base: EstimateBase = {
-    weeks: quote.weeks,
-    portions: quote.portions,
-    recipes: quote.recipes,
-    cookMinutes: quote.cookMinutes,
-  };
-  if (!quote.autoPrice) return { ...base, autoPrice: false, reason: quote.reason };
-  return {
-    ...base,
-    autoPrice: true,
-    weeklyServiceCents: quote.weeklyServiceCents,
-    serviceCents: quote.serviceCents,
-    savingsCents: quote.savingsCents,
-  };
-}
-
-/**
- * Lee una estimación: la del 201 (en la web) o la guardada en requests.estimate (en la función, para un
- * reintento; trae además pricing y otras claves del motor). Las guardadas antes del precio por semana no
- * tienen autoPrice ni weeks: eran de una semana y con precio (el servicio por hora), sin ahorro. Las de
- * antes del 19/11/2026 traen además la compra y el total (groceriesEstCents, totalCents): se ignoran, como
- * cualquier otra clave de más. null si le falta algo o un número no es un entero ≥ 0.
- */
-export function readPublicEstimate(value: unknown): PublicRequestEstimate | null {
-  if (!isRecord(value)) return null;
-  const int = (key: string, min = 0, max = Number.MAX_SAFE_INTEGER): number | null => {
-    const item = value[key];
-    return typeof item === "number" && Number.isInteger(item) && item >= min && item <= max ? item : null;
-  };
-  const portions = int("portions");
-  const recipes = int("recipes");
-  const cookMinutes = int("cookMinutes");
-  const serviceCents = int("serviceCents");
-  if (portions === null || recipes === null || cookMinutes === null) return null;
-
-  const autoPrice = value["autoPrice"];
-  if (autoPrice === undefined) {
-    if (serviceCents === null) return null;
-    return {
-      weeks: 1,
-      portions,
-      recipes,
-      cookMinutes,
-      autoPrice: true,
-      weeklyServiceCents: serviceCents,
-      serviceCents,
-      savingsCents: 0,
-    };
-  }
-  const weeks = int("weeks", 1, LIMITS.maxWeeks);
-  if (weeks === null) return null;
-  const base: EstimateBase = { weeks, portions, recipes, cookMinutes };
-  if (autoPrice === false) {
-    const reason = value["reason"];
-    return isOneOf(NO_AUTO_PRICE_REASONS, reason) ? { ...base, autoPrice: false, reason } : null;
-  }
-  const weeklyServiceCents = int("weeklyServiceCents");
-  const savingsCents = int("savingsCents");
-  if (autoPrice !== true || weeklyServiceCents === null || serviceCents === null || savingsCents === null) return null;
-  return { ...base, autoPrice: true, weeklyServiceCents, serviceCents, savingsCents };
+  return { ok: true, value };
 }

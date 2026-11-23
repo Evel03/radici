@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { AVAILABILITY_DAYS, AVAILABILITY_PATH, buildAvailabilityResponse } from "../_shared/availability.ts";
 import { hashSubject } from "../_shared/client_ip.ts";
 import { MENU_PATH, buildMenuResponse, recipePhotoUrls, type MenuChoice, type MenuDish } from "../_shared/menu.ts";
-import { CONSENT_VERSION, HEALTH_CONSENT_VERSION, PUBLIC_REQUEST_VERSION, publicEstimate, type PublicRequestPayload } from "../_shared/public_request.ts";
+import { CONSENT_VERSION, HEALTH_CONSENT_VERSION, PUBLIC_REQUEST_VERSION, type PublicRequestPayload } from "../_shared/public_request.ts";
 import { DEFAULT_PRICING, calcQuote } from "../_shared/quote.ts";
 import { RESEND_API_URL } from "../_shared/resend.ts";
 import { TURNSTILE_VERIFY_URL } from "../_shared/turnstile.ts";
@@ -207,7 +207,6 @@ class FakeStore implements PublicRequestStore {
     const saved: SubmitResult = {
       requestId: requestIdFor(this.submitted.length),
       duplicate: false,
-      storedEstimate: params.estimate,
       storedMenu,
     };
     this.submitted.push(params);
@@ -520,7 +519,7 @@ test("la cocinera de CHEF_ID no existe: 500", async () => {
 // Éxito y notificaciones
 // ---------------------------------------------------------------------------
 
-test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; guarda el pedido normalizado", async () => {
+test("éxito: 201 con el id y sin estimación ni precio; guarda el pedido normalizado con la estimación de las tarifas de la cocinera", async () => {
   const { handle, store, background } = harness();
   const response = await handle(post(payload()));
   assert.equal(response.status, 201);
@@ -530,20 +529,10 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
 
   const quote = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 }, CHEF.pricing);
   assert.ok(quote.autoPrice && quote.serviceCents === 16000, "con 160 € por semana el servicio no es el del vector 1");
-  assert.deepEqual(await json(response), {
-    requestId: REQUEST_ID,
-    estimate: {
-      weeks: 1,
-      portions: 20,
-      recipes: 3,
-      cookMinutes: 180,
-      autoPrice: true,
-      weeklyServiceCents: 16000,
-      serviceCents: 16000,
-      savingsCents: 0,
-    },
-    menu: [],
-  });
+  // La web no recibe ninguna estimación ni precio (decisión del 22/11/2026): solo el id y el menù.
+  const body = await json(response);
+  assert.deepEqual(body, { requestId: REQUEST_ID, menu: [] });
+  assert.doesNotMatch(JSON.stringify(body), /estimate|cents|price/i);
 
   assert.deepEqual(store.submitted[0], {
     chef_id: CHEF_ID,
@@ -572,7 +561,7 @@ test("éxito: 201 con el id y la estimación con las tarifas de la cocinera; gua
     request_key: null,
     wishes: [],
   });
-  // Sin compra (la hace el cliente): ni la estimación ni las tarifas por porción en requests.estimate.
+  // Lo guardado es la referencia interna de Evelyn (con precio); sin compra (la hace el cliente): ni la estimación ni las tarifas por porción.
   const stored = store.submitted[0]?.estimate as unknown as Record<string, unknown>;
   for (const key of [...Object.keys(stored), ...Object.keys(stored["pricing"] as object)]) {
     assert.doesNotMatch(key, /grocer|preauth|hold|total|portionCents/i, `requests.estimate no lleva ${key}`);
@@ -590,29 +579,31 @@ function emailText(run: Harness, to: string): string {
   return String((call?.body as Record<string, unknown> | undefined)?.["text"] ?? "");
 }
 
-test("4 semanas: weeks a la base, estimación con el descuento de la cocinera y los emails con las semanas, las fechas y el precio", async () => {
+test("4 semanas: weeks a la base, estimación guardada con el descuento de la cocinera; Evelyn ve la referencia y el cliente ningún precio", async () => {
   const run = harness();
   const response = await run.handle(post(payload({ weeks: 4 })));
   assert.equal(response.status, 201);
   const quote = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 4 }, CHEF.pricing);
-  assert.deepEqual((await json(response) as { estimate: unknown }).estimate, publicEstimate(quote));
+  assert.ok(!("estimate" in ((await json(response)) as object)), "el 201 no lleva estimación");
   assert.ok(quote.autoPrice && quote.weeklyServiceCents === 15000 && quote.serviceCents === 60000 && quote.savingsCents === 4000);
   assert.equal(run.store.submitted[0]?.weeks, 4);
   assert.deepEqual(run.store.submitted[0]?.estimate, { ...quote, pricing: CHEF.pricing });
   await run.settle();
   const chef = emailText(run, "evelyn@example.test");
   for (const line of ["Semanas: 4", "Semanas siguientes: 1 nov · 8 nov · 15 nov", "Servicio por semana: 150,00 €",
-    "Servicio, 4 semanas: 600,00 €", "Ahorro: 40,00 € frente a 160,00 € por semana", "Esto es una estimación."]) {
+    "Servicio, 4 semanas: 600,00 €", "Ahorro: 40,00 € frente a 160,00 € por semana", "REFERENCIA DE TARIFA (INTERNA)"]) {
     assert.ok(chef.includes(line), `Evelyn: falta «${line}»`);
   }
   // A Evelyn, nada de compra.
   assert.doesNotMatch(chef, /compra/i);
   const client = emailText(run, "giulia.pii@example.test");
-  for (const line of ["Settimane: 4", "Settimane successive: 1 nov · 8 nov · 15 nov", "Servizio, 4 settimane: 600,00 €",
-    "Risparmio: 40,00 € rispetto a 160,00 € a settimana", "Questa è una stima. La spesa la fai tu, con la lista che ti manda Evelyn.",
-    "prezzo finale"]) {
+  for (const line of ["Settimane: 4", "Settimane successive: 1 nov · 8 nov · 15 nov",
+    "Evelyn ti prepara un preventivo su misura e te lo manda per email o WhatsApp.",
+    "La spesa la fai tu, con la lista che ti manda Evelyn."]) {
     assert.ok(client.includes(line), `cliente: falta «${line}»`);
   }
+  // Ningún precio al cliente (decisión del 22/11/2026).
+  assert.doesNotMatch(client, /€|\d+[.,]\d{2}|stima|prezzo|Risparmio|Servizio/i);
   assert.doesNotMatch(client, /spesa stimata|scontrino/i);
 });
 
@@ -622,12 +613,11 @@ test("versión 2 (la web de antes, sin weeks): se guarda de una semana con la es
   const response = await run.handle(post(v2));
   assert.equal(response.status, 201);
   assert.equal(run.store.submitted[0]?.weeks, 1);
-  const body = (await json(response)) as { estimate: Record<string, unknown> };
-  for (const key of ["portions", "recipes", "cookMinutes", "serviceCents"]) {
-    assert.equal(typeof body.estimate[key], "number", key);
-  }
-  // Desde el 19/11/2026 no hay compra ni total: la página de la versión 2 muestra su propio cálculo.
-  for (const key of ["groceriesEstCents", "totalCents"]) assert.ok(!(key in body.estimate), key);
+  // Desde el 22/11/2026 el 201 no lleva estimación: la página de la versión 2 muestra su propio cálculo
+  // hasta que se recarga. Lo guardado trae precio (referencia de Evelyn).
+  assert.ok(!("estimate" in ((await json(response)) as object)));
+  const stored = run.store.submitted[0]?.estimate as unknown as Record<string, unknown>;
+  for (const key of ["portions", "recipes", "cookMinutes", "serviceCents"]) assert.equal(typeof stored[key], "number", key);
   await run.settle();
 });
 
@@ -647,38 +637,37 @@ test("semanas: sin el campo (versión 3), fuera de rango o en una sesión extra 
   assert.equal(store.hits.length, 0);
 });
 
-test("sin precio automático (más personas que el tope de la cocinera o sesión extra): 201 sin claves de precio, se guarda así y los emails lo dicen", async () => {
+test("sin precio automático (más personas que el tope de la cocinera o sesión extra): el 201 no dice nada, se guarda sin claves de precio, Evelyn lo lee en su email y el cliente lo mismo que siempre", async () => {
   // Con el tope de la cocinera, no el de DEFAULT_PRICING: con hasta 6 personas en sus tarifas (como Giulia
   // en el seed), un pedido de 7 dice «más de 6».
   const upTo6: ChefInfo = { ...CHEF, pricing: { ...CHEF.pricing, weeklyRateMaxPeople: 6 } };
-  for (const [overrides, reason, chefLine, clientLine, chef] of [
-    [{ adults: 3, kids: 3 }, "people", "Más de 5 personas: sin precio automático, prepara tú el presupuesto.",
-      "Per più di 5 persone il preventivo per il servizio te lo prepara Evelyn.", CHEF],
-    [{ adults: 4, kids: 3 }, "people", "Más de 6 personas: sin precio automático, prepara tú el presupuesto.",
-      "Per più di 6 persone il preventivo per il servizio te lo prepara Evelyn.", upTo6],
-    [{ type: "extra" as const }, "extra", "Evento o sesión extra: sin precio automático, prepara tú el presupuesto.",
-      "Per eventi e sessioni extra il preventivo per il servizio te lo prepara Evelyn.", CHEF],
+  for (const [overrides, reason, chefLine, chef] of [
+    [{ adults: 3, kids: 3 }, "people", "Más de 5 personas: sin precio automático, prepara tú el presupuesto.", CHEF],
+    [{ adults: 4, kids: 3 }, "people", "Más de 6 personas: sin precio automático, prepara tú el presupuesto.", upTo6],
+    [{ type: "extra" as const }, "extra", "Evento o sesión extra: sin precio automático, prepara tú el presupuesto.", CHEF],
   ] as const) {
     const run = harness();
     run.store.chef = chef;
     const response = await run.handle(post(payload(overrides)));
     assert.equal(response.status, 201, reason);
-    const estimate = ((await json(response)) as { estimate: Record<string, unknown> }).estimate;
-    assert.equal(estimate["autoPrice"], false);
-    assert.equal(estimate["reason"], reason);
+    assert.ok(!("estimate" in ((await json(response)) as object)), `${reason}: el 201 no lleva estimación`);
+    const stored = run.store.submitted[0]?.estimate as unknown as Record<string, unknown>;
+    assert.equal(stored["autoPrice"], false);
+    assert.equal(stored["reason"], reason);
     for (const key of ["weeklyServiceCents", "serviceCents", "savingsCents", "totalCents", "groceriesEstCents"]) {
-      assert.ok(!(key in estimate), `${reason}: el 201 no lleva ${key}`);
-      assert.ok(!(key in (run.store.submitted[0]?.estimate ?? {})), `${reason}: no se guarda ${key}`);
+      assert.ok(!(key in stored), `${reason}: no se guarda ${key}`);
     }
     await run.settle();
     assert.ok(emailText(run, "evelyn@example.test").includes(chefLine), `${reason}: Evelyn`);
-    assert.ok(emailText(run, "giulia.pii@example.test").includes(clientLine), `${reason}: cliente`);
+    const clientText = emailText(run, "giulia.pii@example.test");
+    assert.ok(clientText.includes("Evelyn ti prepara un preventivo su misura"), `${reason}: cliente`);
+    assert.doesNotMatch(clientText, /€|sessioni extra|senza prezzo/i, `${reason}: nada de precio ni de motivos al cliente`);
   }
   // Con ese mismo tope, 6 personas sí tienen precio.
   const six = harness();
   six.store.chef = upTo6;
-  const priced = ((await json(await six.handle(post(payload({ adults: 3, kids: 3 }))))) as { estimate: Record<string, unknown> }).estimate;
-  assert.equal(priced["autoPrice"], true);
+  await six.handle(post(payload({ adults: 3, kids: 3 })));
+  assert.equal((six.store.submitted[0]?.estimate as unknown as Record<string, unknown>)["autoPrice"], true);
   await six.settle();
 });
 
@@ -958,7 +947,7 @@ test("dos envíos simultáneos con la misma requestKey: los dos 201 iguales, un 
   assert.deepEqual([a.status, b.status], [201, 201]);
   const bodies = [(await json(a)) as Record<string, unknown>, (await json(b)) as Record<string, unknown>];
   assert.deepEqual(bodies[0]?.["requestId"], bodies[1]?.["requestId"]);
-  assert.deepEqual(bodies[0]?.["estimate"], bodies[1]?.["estimate"]);
+  assert.deepEqual(bodies[0]?.["menu"], bodies[1]?.["menu"]);
   assert.deepEqual(bodies.map((body) => body["duplicate"] === true).sort(), [false, true], "uno guardó, el otro es el reintento");
   assert.equal(run.store.submitted.length, 1);
   assert.deepEqual(
@@ -969,56 +958,22 @@ test("dos envíos simultáneos con la misma requestKey: los dos 201 iguales, un 
   assert.equal(whatsAppCalls(run).length, 1);
 });
 
-test("duplicado: responde con la estimación guardada aunque hoy las tarifas den otra (y aunque pida otras semanas)", async () => {
+test("duplicado: responde con el id y el menù guardados, sin ninguna estimación aunque haya una guardada, ni avisos (aunque pida otras semanas)", async () => {
   const run = harness();
   // El original se guardó con las tarifas de entonces (o la cocinera las cambió después).
   const original = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 4 }, DEFAULT_PRICING);
   run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, {
     requestId: REQUEST_ID,
     duplicate: false,
-    storedEstimate: { ...original, pricing: DEFAULT_PRICING },
     storedMenu: [],
   });
+  assert.ok(original.autoPrice);
   const response = await run.handle(post(payload({ requestKey: REQUEST_KEY, weeks: 2 })));
   await run.settle();
   assert.equal(response.status, 201);
-  assert.deepEqual(await json(response), { requestId: REQUEST_ID, estimate: publicEstimate(original), menu: [], duplicate: true });
+  assert.deepEqual(await json(response), { requestId: REQUEST_ID, menu: [], duplicate: true });
   assert.equal(run.fetchCalls.filter((call) => call.url !== TURNSTILE_VERIFY_URL).length, 0, "ni emails ni WhatsApp");
   assert.deepEqual(run.store.marked, []);
-});
-
-test("duplicado de un pedido guardado antes del precio por semana: la estimación por hora, como una semana con precio y sin compra", async () => {
-  const run = harness();
-  // La forma de requests.estimate de antes: calcQuote con la tarifa por hora, sin weeks ni autoPrice.
-  const stored = {
-    adultPortions: 10, kidPortions: 10, portions: 20, recipes: 3, cookMinutes: 180, serviceCents: 7800, groceriesEstCents: 6300,
-    preauthCents: 7245, holdCents: 15045, totalCents: 14100,
-    pricing: { hourlyRateCents: 2200, travelFeeCents: 1200, adultPortionCents: 380, kidPortionCents: 250, preauthBufferPct: 15, minCookMinutes: 90 },
-  };
-  // Y sin menu: la base de antes de la versión 4 no lo devolvía.
-  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: stored, storedMenu: null });
-  const response = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
-  assert.equal(response.status, 201);
-  assert.deepEqual(await json(response), {
-    requestId: REQUEST_ID,
-    estimate: {
-      weeks: 1, portions: 20, recipes: 3, cookMinutes: 180,
-      autoPrice: true, weeklyServiceCents: 7800, serviceCents: 7800, savingsCents: 0,
-    },
-    menu: [],
-    duplicate: true,
-  });
-  assert.ok(!run.logs.some((entry) => entry.event === "stored_estimate_invalid"));
-});
-
-test("duplicado con una estimación guardada rota: responde con la calculada y lo avisa en el log", async () => {
-  const run = harness();
-  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: { totalCents: "x" }, storedMenu: [] });
-  const response = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
-  assert.equal(response.status, 201);
-  const quote = calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 }, CHEF.pricing);
-  assert.deepEqual((await json(response) as { estimate: unknown }).estimate, publicEstimate(quote));
-  assert.ok(run.logs.some((entry) => entry.event === "stored_estimate_invalid" && entry.level === "warn"));
 });
 
 test("otra requestKey (u otra vez sin clave) es otro pedido", async () => {
@@ -1032,19 +987,17 @@ test("otra requestKey (u otra vez sin clave) es otro pedido", async () => {
   assert.equal(run.logs.filter((entry) => entry.event === "email_logged").length, 8);
 });
 
-test("submitResultFromRpc: solo acepta {request_id uuid, duplicate bool, estimate, menu}", () => {
+test("submitResultFromRpc: solo acepta {request_id uuid, duplicate bool, menu}; no lee el estimate", () => {
   const menu = [choiceOf(LASAGNE)];
   assert.deepEqual(submitResultFromRpc({ request_id: REQUEST_ID, duplicate: true, estimate: { totalCents: 1 }, menu }), {
     requestId: REQUEST_ID,
     duplicate: true,
-    storedEstimate: { totalCents: 1 },
     storedMenu: menu,
   });
   // Sin estimate ni menu (la base de antes de la versión 4 no devolvía menu): null, sin fallar.
   assert.deepEqual(submitResultFromRpc({ request_id: REQUEST_ID, duplicate: false }), {
     requestId: REQUEST_ID,
     duplicate: false,
-    storedEstimate: null,
     storedMenu: null,
   });
   for (const bad of [REQUEST_ID, null, [], { request_id: "x", duplicate: false }, { request_id: REQUEST_ID }, { request_id: REQUEST_ID, duplicate: "no" }]) {
@@ -1549,7 +1502,6 @@ test("reintento: el 201 trae el menù guardado del original, aunque el reintento
   await run.settle();
   assert.deepEqual(await json(again), {
     requestId: REQUEST_ID,
-    estimate: publicEstimate(calcQuote({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 }, CHEF.pricing)),
     menu: [choiceOf(LASAGNE)],
     duplicate: true,
   });
@@ -1557,7 +1509,7 @@ test("reintento: el 201 trae el menù guardado del original, aunque el reintento
 
 test("la base devuelve un menu con otra forma: el 201 sale igual, con menu vacío, y se avisa en el log", async () => {
   const run = harness();
-  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedEstimate: null, storedMenu: [{ id: "x" }] });
+  run.store.byKey.set(`${CHEF_ID}:${REQUEST_KEY}`, { requestId: REQUEST_ID, duplicate: false, storedMenu: [{ id: "x" }] });
   const response = await run.handle(post(payload({ requestKey: REQUEST_KEY })));
   assert.equal(response.status, 201);
   assert.deepEqual(((await json(response)) as { menu: unknown }).menu, []);

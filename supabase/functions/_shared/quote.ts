@@ -11,9 +11,16 @@
 // pasa el presupuesto. La compra la hace el cliente (decisión del 19/11/2026), así que el motor no
 // la estima. El tiempo de cocina se estima como siempre: de él dependen los días libres del
 // calendario (get_free_days) y el tope de cocina del horario.
+//
+// Referencia interna (decisión del 22/11/2026): la fórmula ya no fija el precio que ve el cliente. Evelyn
+// escribe a mano el precio de cada presupuesto; esta tarifa es solo su referencia, y el servidor la sigue
+// calculando y guardando en requests.estimate. La web pública no la importa (usa cook_load.ts).
 
-/** "week": semana de comidas (1 a 8 semanas, precio por semana); "extra": sesión extra suelta (sin precio automático). */
-export type QuoteType = "week" | "extra";
+import { assertInt, calcCookLoad, DEFAULT_MIN_COOK_MINUTES, LIMITS, validateInput, type QuoteInput } from "./cook_load.ts";
+
+// Lo que no es dinero (límites, entrada, carga de cocina) vive en cook_load.ts, que no lleva tarifas.
+export { LIMITS, validateInput } from "./cook_load.ts";
+export type { QuoteInput, QuoteType } from "./cook_load.ts";
 
 export interface PricingSettings {
   /** Servicio de una semana (un menú y una sesión de cocina), traslado incluido. */
@@ -25,18 +32,6 @@ export interface PricingSettings {
   /** Hasta cuántas personas (adultos y niños) tiene precio automático un pedido semanal. */
   weeklyRateMaxPeople: number;
   minCookMinutes: number;
-}
-
-export interface QuoteInput {
-  type: QuoteType;
-  adults: number;
-  kids: number;
-  /** Días de comidas de cada semana (1 a 7). */
-  days: number;
-  /** Comidas por día: 1 (almuerzo o cena) o 2 (almuerzo y cena). */
-  meals: number;
-  /** Semanas del pedido semanal (1 a 8). Una sesión extra siempre es de 1. */
-  weeks: number;
 }
 
 /** Lo que vale para cualquier pedido: lo de una semana (una sesión) y las semanas del pedido. */
@@ -73,51 +68,16 @@ export interface UnpricedQuote extends QuoteBase {
 export type Quote = PricedQuote | UnpricedQuote;
 
 /**
- * Los valores por defecto de chef_settings (quote.test.ts lo compara con las migraciones): la web
- * muestra el precio con estos y el servidor lo calcula con los de la cocinera.
+ * Los valores por defecto de chef_settings (quote.test.ts lo compara con las migraciones). El servidor
+ * calcula con los de la cocinera; la web no los usa.
  */
 export const DEFAULT_PRICING: PricingSettings = {
   weeklyRateCents: 15000,
   weeklyRateDiscountedCents: 14000,
   weeklyDiscountMinWeeks: 4,
   weeklyRateMaxPeople: 5,
-  minCookMinutes: 90,
+  minCookMinutes: DEFAULT_MIN_COOK_MINUTES,
 };
-
-export const LIMITS = {
-  maxPeople: 30,
-  maxDays: 7,
-  maxMeals: 2,
-  /** Lo mismo que el check requests_semanas_validas de la base. */
-  maxWeeks: 8,
-  minRecipes: 2,
-  maxRecipes: 6,
-} as const;
-
-/** División entera hacia arriba para enteros no negativos. */
-function divUp(a: number, b: number): number {
-  return Math.floor((a + b - 1) / b);
-}
-
-function assertInt(name: string, value: number, min: number, max: number): void {
-  if (!Number.isInteger(value) || value < min || value > max) {
-    throw new RangeError(`${name} debe ser un entero entre ${min} y ${max} (recibido: ${value})`);
-  }
-}
-
-export function validateInput(input: QuoteInput): void {
-  if (input.type !== "week" && input.type !== "extra") {
-    throw new RangeError(`type debe ser week o extra (recibido: ${String(input.type)})`);
-  }
-  assertInt("adults", input.adults, 0, LIMITS.maxPeople);
-  assertInt("kids", input.kids, 0, LIMITS.maxPeople);
-  assertInt("days", input.days, 1, LIMITS.maxDays);
-  assertInt("meals", input.meals, 1, LIMITS.maxMeals);
-  assertInt("weeks", input.weeks, 1, input.type === "week" ? LIMITS.maxWeeks : 1);
-  if (input.adults + input.kids < 1) {
-    throw new RangeError("Tiene que haber al menos una persona");
-  }
-}
 
 /** Los rangos incluyen los checks de chef_settings: una fila que la base guarda nunca hace fallar el cálculo. */
 function validateSettings(s: PricingSettings): void {
@@ -132,21 +92,7 @@ export function calcQuote(input: QuoteInput, settings: PricingSettings = DEFAULT
   validateInput(input);
   validateSettings(settings);
 
-  // Una semana: los días y las comidas de cada sesión.
-  const adultPortions = input.adults * input.days * input.meals;
-  const kidPortions = input.kids * input.days * input.meals;
-  const portions = adultPortions + kidPortions;
-
-  const recipes = Math.min(
-    LIMITS.maxRecipes,
-    Math.max(LIMITS.minRecipes, Math.min(divUp(input.days * input.meals, 2), Math.floor(portions / 2))),
-  );
-
-  // ceil_a_30(60 + 30·recetas + 1,2·porciones), multiplicado por 5 para quedar en enteros.
-  const cookMinutes = Math.max(
-    settings.minCookMinutes,
-    divUp(300 + 150 * recipes + 6 * portions, 150) * 30,
-  );
+  const { adultPortions, kidPortions, portions, recipes, cookMinutes } = calcCookLoad(input, settings.minCookMinutes);
 
   const base: QuoteBase = {
     weeks: input.weeks,
