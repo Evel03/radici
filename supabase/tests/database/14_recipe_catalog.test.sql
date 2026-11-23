@@ -17,6 +17,17 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
+-- Desde la migración client_rls_lockdown lo nuevo nace sin EXECUTE para nadie: las ayudas de pg_temp
+-- de este test las llaman authenticated y service_role, así que en pg_temp nacen ejecutables
+-- (solo dentro de esta transacción: el default privilege y el esquema temporal se van con el rollback).
+create temp table zz_esquema_temp (i int) on commit drop;
+do $$
+begin
+  execute format('alter default privileges in schema %I grant execute on functions to public',
+    (select nspname from pg_namespace where oid = pg_my_temp_schema()));
+end
+$$;
+
 select plan(142);
 
 -- ---------------------------------------------------------------------
@@ -236,9 +247,8 @@ select is(
   (select array_agg(format('%s | %s | %s', p.policyname, p.cmd, p.roles::text) order by p.policyname)
    from pg_policies p
    where p.schemaname = 'public' and p.tablename = 'recipe_allergens'),
-  array['recipe_allergens: el cliente lee los de las recetas que ve | SELECT | {authenticated}',
-        'recipe_allergens: la cocinera gestiona los suyos | ALL | {authenticated}'],
-  'recipe_allergens: el cliente lee solo los de las recetas que ve (la política de antes miraba solo la cocinera)'
+  array['recipe_allergens: la cocinera gestiona los suyos | ALL | {authenticated}'],
+  'recipe_allergens: solo la política de la cocinera (el cliente no tiene ninguna: la clienta lee por Edge Functions)'
 );
 
 -- =====================================================================
@@ -982,8 +992,8 @@ select is(
   (select array_agg(name_it order by name_it) from public.recipes
    where id in ('7e5c6000-0000-4000-8000-000000000001', '7e5c6000-0000-4000-8000-000000000002',
                 '7e5c6000-0000-4000-8000-000000000004', '7e5c6000-0000-4000-8000-000000000005')),
-  array['Lasagne verdi', 'Lasagne verdi (copia)'],
-  'A ve los platos activos del catálogo de su cocinera: no el desactivado ni la receta de evento'
+  null::text[],
+  'A no ve ningún plato (RLS de la clienta cerrada): ni los del catálogo de su cocinera'
 );
 select is(
   (select count(*)::int from public.recipe_ingredients),
@@ -994,8 +1004,8 @@ select is(
   (select array_agg(r.name_it || ': ' || coalesce((select n.notes from public.recipe_notes n where n.recipe_id = r.id),
                                                   'sin notas a la vista'))
    from public.recipes r where r.id = '7e5c6000-0000-4000-8000-000000000009'),
-  array['Prova: sin notas a la vista'],
-  'A ve el plato, pero no su nota: las notas son de la cocinera'
+  null::text[],
+  'A no ve el plato ni su nota: las notas son de la cocinera'
 );
 select is(
   (select count(*)::int from public.recipe_allergens
@@ -1007,8 +1017,8 @@ select is(
 select is(
   (select array_agg(allergen order by allergen)::text from public.recipe_allergens
    where recipe_id = '7e5c6000-0000-4000-8000-000000000001'),
-  '{gluten,milk,celery}',
-  'y sí los de un plato que ve'
+  null::text,
+  'ni los de un plato del catálogo de su cocinera'
 );
 select throws_ok(
   $$ select public.save_recipe(pg_temp.dish('7e5c6000-0000-4000-8000-0000000000a1')) $$,

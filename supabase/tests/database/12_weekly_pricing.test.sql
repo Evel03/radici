@@ -16,6 +16,17 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
+-- Desde la migración client_rls_lockdown lo nuevo nace sin EXECUTE para nadie: las ayudas de pg_temp
+-- de este test las llaman authenticated y service_role, así que en pg_temp nacen ejecutables
+-- (solo dentro de esta transacción: el default privilege y el esquema temporal se van con el rollback).
+create temp table zz_esquema_temp (i int) on commit drop;
+do $$
+begin
+  execute format('alter default privileges in schema %I grant execute on functions to public',
+    (select nspname from pg_namespace where oid = pg_my_temp_schema()));
+end
+$$;
+
 select plan(61);
 
 -- ---------------------------------------------------------------------
@@ -408,8 +419,6 @@ select is(
    where p.schemaname = 'public' and p.tablename in ('requests', 'chef_settings')),
   array[
     'chef_settings | chef_settings: la cocinera gestiona las suyas | ALL | {authenticated}',
-    'requests | requests: el cliente crea los suyos (siempre como new) | INSERT | {authenticated}',
-    'requests | requests: el cliente lee los suyos | SELECT | {authenticated}',
     'requests | requests: la cocinera gestiona los suyos | ALL | {authenticated}'
   ],
   'RLS: las políticas de requests y chef_settings son las mismas'
@@ -464,15 +473,16 @@ select throws_ok(
   '42501', null,
   'A: no elige las semanas al crear un pedido desde la app'
 );
-select lives_ok(
+select throws_ok(
   $$ insert into public.requests (chef_id, client_id, type, adults, kids, days, meals)
      values ('7e621000-0000-4000-8000-000000000001', '7e622000-0000-4000-8000-00000000000a', 'week', 2, 0, 5, '{lunch}') $$,
-  'A: crea un pedido como antes, sin weeks'
+  '42501', null,
+  'A: no crea pedidos por la API (RLS de la clienta cerrada: los crea la Edge Function)'
 );
-select results_eq(
-  $$ select r.weeks::int from public.requests r order by r.weeks, r.created_at $$,
-  $$ values (1), (1), (1), (8) $$,
-  'A: ve las semanas de sus pedidos y solo de los suyos (el que acaba de crear, en 1)'
+select is(
+  (select count(*)::int from public.requests),
+  0,
+  'A: no ve ningún pedido, tampoco las semanas de los suyos'
 );
 
 -- Anónimo

@@ -41,11 +41,9 @@ select throws_ok(
 );
 
 -- ---------------------------------------------------------------------
--- Flujo del cliente con cuenta
+-- Flujo de la ficha de una cuenta (desde PR02 la clienta no escribe por la API: los registra la service
+-- role desde las Edge Functions; los triggers valen igual para todos los roles)
 -- ---------------------------------------------------------------------
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"7e570000-0000-4000-8000-00000000a001","role":"authenticated"}';
-
 select throws_ok(
   $$ insert into public.client_restrictions (chef_id, client_id, allergen)
      values ('7e571000-0000-4000-8000-000000000001', '7e572000-0000-4000-8000-00000000000a', 'gluten') $$,
@@ -53,17 +51,22 @@ select throws_ok(
   'cliente: sin consentimiento no puede guardar su restricción'
 );
 
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"7e570000-0000-4000-8000-00000000a001","role":"authenticated"}';
+
 select throws_ok(
   $$ insert into public.consents (chef_id, client_id, kind, text_version, granted_at)
      values ('7e571000-0000-4000-8000-000000000001', '7e572000-0000-4000-8000-00000000000a', 'health_data', 'health-v1', now() - interval '1 year') $$,
   '42501', null,
-  'cliente: no puede antedatar el consentimiento (granted_at lo pone la base)'
+  'cliente: no escribe consentimientos por la API (tampoco antedatados: los registra la Edge Function)'
 );
+
+reset role;
 
 select lives_ok(
   $$ insert into public.consents (chef_id, client_id, kind, text_version)
      values ('7e571000-0000-4000-8000-000000000001', '7e572000-0000-4000-8000-00000000000a', 'health_data', 'health-v1') $$,
-  'cliente: otorga el consentimiento de salud'
+  'se registra el consentimiento de salud de la ficha (service role)'
 );
 
 select throws_ok(
@@ -92,11 +95,14 @@ select throws_ok(
   'una fila es un alérgeno o una dieta, no ambos'
 );
 
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"7e570000-0000-4000-8000-00000000a001","role":"authenticated"}';
 select throws_ok(
   $$ delete from public.consents where client_id = '7e572000-0000-4000-8000-00000000000a' $$,
   '42501', null,
   'cliente: no puede borrar consentimientos (son la prueba del consentimiento)'
 );
+reset role;
 
 select lives_ok(
   $$ update public.consents set revoked_at = now()

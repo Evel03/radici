@@ -13,6 +13,17 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
+-- Desde la migración client_rls_lockdown lo nuevo nace sin EXECUTE para nadie: las ayudas de pg_temp
+-- de este test las llaman authenticated y service_role, así que en pg_temp nacen ejecutables
+-- (solo dentro de esta transacción: el default privilege y el esquema temporal se van con el rollback).
+create temp table zz_esquema_temp (i int) on commit drop;
+do $$
+begin
+  execute format('alter default privileges in schema %I grant execute on functions to public',
+    (select nspname from pg_namespace where oid = pg_my_temp_schema()));
+end
+$$;
+
 select plan(44);
 
 -- ---------------------------------------------------------------------
