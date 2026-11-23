@@ -29,7 +29,7 @@ jobs:
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: 2.9.8
-      # Los tipos de las tres funciones con sus dependencias reales (supabase-js y el SDK de Anthropic).
+      # Los tipos de las funciones con sus dependencias reales (supabase-js y el SDK de Anthropic).
       # chef carga claude_translator.ts con un import dinámico: va explícito. --node-modules-dir=none:
       # el package.json de la raíz es de los tests de Node, no de las funciones. --no-lock: el repo no
       # tiene deno.lock (las versiones van fijas en cada import npm:).
@@ -38,6 +38,7 @@ jobs:
           supabase/functions/chef/index.ts
           supabase/functions/chef/claude_translator.ts
           supabase/functions/public-request/index.ts
+          supabase/functions/menu-reminders/index.ts
           supabase/functions/client-link/index.ts
 
   web:

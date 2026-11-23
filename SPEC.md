@@ -470,6 +470,29 @@ La clienta recibe siempre la foto de la vista previa: hace falta otra vista prev
 - La clienta confirma el menú de una semana (`POST /confirm`) o pide cambios con un mensaje de 1 a 1000 caracteres (`POST /changes`); el campo pide no escribir datos de salud. Si Evelyn mandó un menú más nuevo, se contesta ese (`menuOutdated`) y la página lo muestra. Uno confirmado no se cambia desde el link: se habla con Evelyn. Una semana cancelada después del envío ya no se contesta (`sessionCancelled`), y una ya cocinada se ve sin botones ni promesas.
 - Cada respuesta le avisa a Evelyn por email (`CHEF_NOTIFY_EMAIL`, en `CHEF_LOCALE`, con el botón al pedido en la bandeja), salvo una confirmación repetida. El mensaje de la clienta no va en el email (es una nota libre, §6): Evelyn lo lee en la app. Un email que falla no rompe la respuesta de la clienta.
 - La página sale en el idioma de la reserva, salvo que la clienta haya elegido otro; el token nunca sale de la URL (los links de idioma y las anclas internas lo conservan); nunca se indexa y su CSP suma solo el origen de Supabase (la función y las fotos). Cuando llegue el presupuesto, se acepta en esta misma página, arriba de las semanas.
+
+**Avisos a Evelyn** (migración `20261121110000_menu_reminders.sql`, tests pgTAP `21_menu_reminders`; Edge Function `menu-reminders`). Una semana está pendiente si:
+- es de una reserva y está confirmada (una `held` es de un presupuesto sin aceptar);
+- empieza dentro de 4 días;
+- no tiene ningún envío del menú que haya salido, o en el último la clienta pidió cambios;
+- se creó hace más de una hora.
+
+Para una semana pendiente, Evelyn recibe un email a `CHEF_NOTIFY_EMAIL`, en `CHEF_LOCALE`:
+- 4 días antes de la cocina;
+- 72 h antes, si sigue pendiente;
+- pasado el límite de 48 h, cada 2 horas, hasta que lo envíe o empiece la sesión.
+
+Si Evelyn mueve la semana, los avisos vuelven a empezar para la fecha nueva. Los de cada 2 horas tienen 5 minutos de tolerancia, porque pg_cron pasa cada 15 minutos.
+
+Ningún aviso sale de noche: solo de 8:00 a 20:59, hora de Roma (§8). El que cae de noche sale a las 8:00. Las semanas que tocan en un mismo turno van en un solo email, con la clienta, la semana, el día y la hora de la cocina, el límite y el link al pedido en `/gestione/`. Nunca lleva alergias ni direcciones.
+
+Cómo funciona:
+1. pg_cron corre `private.call_menu_reminders()` cada 15 minutos.
+2. Esa función llama a la Edge Function con pg_net, usando la URL y un secreto que el despliegue genera en cada corrida y guarda en Vault y como `MENU_REMINDERS_SECRET` de la función. Sin ellos, en local, no hace nada.
+3. La función lee `menu_reminders_due` y manda el email.
+4. Recién entonces marca los avisos con `menu_reminders_mark`. Si el email falla, el turno siguiente lo reintenta.
+
+Los avisos se prenden con el primer despliegue que guarda la URL y el secreto en Vault. Por eso este cambio se mergea después de la pantalla de envío de la app: si no, a Evelyn le llegarían avisos de semanas que todavía no puede mandar.
 ---
 
 ## 6. Seguridad, privacidad y RGPD
@@ -570,6 +593,7 @@ Un prospecto con cuenta ve Inicio, Pedir (sin platos deseados) y su perfil; no v
 | Cocinado: porciones listas | cliente | push |
 | Pedido especial aprobado o con alternativa (M2b) | cliente | push |
 | Pago pendiente (24 h y 72 h después) | cliente | push + email |
+| Menú de la semana sin enviar (4 días y 72 h antes de la cocina; pasado el límite de 48 h, cada 2 horas), 5.8 | Evelyn | email |
 | Porción vence mañana (F2) | cliente | push a las 8:00 |
 | Ingrediente compartido vence y hay sesión en ≤ 3 días (F2) | Evelyn | push |
 
