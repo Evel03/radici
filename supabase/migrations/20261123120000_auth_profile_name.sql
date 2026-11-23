@@ -5,7 +5,7 @@
 -- Los metadatos de un usuario los escribe el propio usuario al registrarse (signUp data): un nombre
 -- puesto ahí llegaba al perfil sin que nadie lo hubiera verificado, y el perfil se muestra a la cocina.
 -- Desde ahora el perfil nace siempre como client y sin nombre; el nombre lo escribe la persona en su
--- perfil (la RLS le deja cambiar full_name, phone y locale de su propia fila) o lo pone la cocina.
+-- perfil (hoy la RLS solo le deja cambiar locale: desde client_rls_lockdown no hay otro camino por la API) o lo pone la cocina.
 -- Lo demás queda igual que en 20261019100100_helpers_and_triggers.sql: rol siempre 'client' (nunca de
 -- los metadatos), locale solo si es it, es o en, y on conflict do nothing.
 --

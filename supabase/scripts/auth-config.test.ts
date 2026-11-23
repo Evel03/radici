@@ -231,8 +231,10 @@ test("plantillas: .Data solo para comparar el idioma; nada del usuario sale en e
   // Lo único que la plantilla imprime es el código; nada de links ni datos del usuario.
   const printed = [...TEMPLATE.matchAll(/\{\{\s*([^}]*?)\s*\}\}/g)].map((m) => m[1] ?? "").filter((a) => !/^(if|else|end)\b/.test(a));
   assert.deepEqual(printed, [".Token"]);
+  // Lo mismo para los asuntos de config.toml: nada del usuario.
   for (const banned of [".ConfirmationURL", ".TokenHash", ".SiteURL", ".RedirectTo", ".Email", ".NewEmail"]) {
     assert.ok(!TEMPLATE.includes(banned), `la plantilla no usa ${banned}`);
+    assert.ok(!CONFIG.includes(banned), `los asuntos de config.toml no usan ${banned}`);
   }
 });
 

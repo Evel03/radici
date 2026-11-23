@@ -76,12 +76,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.stdout.write(`Resend: ${result.domains} dominio(s) sin seguimiento de aperturas ni de clics.\n`);
   } else if (result.kind === "tracking_on") {
     const list = result.domains.map((d) => `${d.name} (${d.tracking.join(", ")})`).join("; ");
-    fail(`Resend tiene prendido el seguimiento: ${list}. Apagarlo en resend.com → Domains → cada dominio → Open Tracking y Click Tracking, y volver a desplegar.`);
+    fail(`Resend tiene prendido el seguimiento (se revisan todos los dominios de la cuenta): ${list}. Apagarlo en resend.com → Domains → cada dominio → Open Tracking y Click Tracking, y volver a desplegar.`);
   } else if (result.kind === "restricted") {
     if (process.env.RESEND_TRACKING_RESTRICTED_OK === "true") {
       process.stderr.write("::warning::Con una clave solo de envío no se pudo comprobar el seguimiento de Resend (RESEND_TRACKING_RESTRICTED_OK=true): mirar en el panel que Open Tracking y Click Tracking estén apagados.\n");
     } else {
-      fail("RESEND_API_KEY es una clave solo de envío: Resend no deja leer el seguimiento de los dominios con ella. Crear una clave con acceso completo y cargarla como RESEND_API_KEY, o (después de mirar el panel) poner la variable RESEND_TRACKING_RESTRICTED_OK=true.");
+      fail("RESEND_API_KEY es una clave solo de envío: Resend no deja leer el seguimiento de los dominios con ella. Crear una clave con acceso completo, solo para leer, y cargarla como el secreto RESEND_READ_KEY (RESEND_API_KEY la usa la función y sigue siendo solo de envío), o (después de mirar el panel) poner la variable RESEND_TRACKING_RESTRICTED_OK=true.");
     }
   } else {
     fail(`No se pudo comprobar el seguimiento de Resend: ${result.message}.`);

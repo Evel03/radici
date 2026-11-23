@@ -219,7 +219,7 @@ jobs:
       - name: Seguimiento de Resend apagado
         if: env.HAS_SUPABASE == 'true'
         env:
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_READ_KEY || secrets.RESEND_API_KEY }}
           RESEND_TRACKING_RESTRICTED_OK: ${{ vars.RESEND_TRACKING_RESTRICTED_OK }}
         run: node supabase/scripts/resend-tracking.ts
 

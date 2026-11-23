@@ -230,7 +230,7 @@ test("Auth y seguimiento de Resend: los dos pasos van antes de db push, con las 
 
 test("seguimiento de Resend: con seguimiento de clics o de aperturas prendido, el paso falla (sin ignorar el resultado)", () => {
   const run = code(TRACKING_STEP);
-  assert.match(run, /RESEND_API_KEY: \$\{\{ secrets\.RESEND_API_KEY \}\}/, "la clave que ya existe, como secreto");
+  assert.match(run, /RESEND_API_KEY: \$\{\{ secrets\.RESEND_READ_KEY \|\| secrets\.RESEND_API_KEY \}\}/, "clave de lectura propia, con respaldo en la que ya existe");
   assert.match(run, /run: node supabase\/scripts\/resend-tracking\.ts$/m);
   assert.ok(!/\|\| true|continue-on-error/.test(run), "ningún resultado se ignora");
   assert.ok(!/echo[^\n]*RESEND_API_KEY/.test(run), "ningún echo imprime la clave");
@@ -253,6 +253,8 @@ test("Auth: cada PATCH se vuelve a leer y se compara con el cuerpo pedido; un ca
   assert.ok(patchFn.includes('verify "$1"'), "dentro de patch(): ninguna parte queda sin verificar");
   assert.ok(patchFn.indexOf('verify "$1"') > patchFn.indexOf("-X PATCH"), "verifica lo que devolvió el PATCH");
   assert.match(patchFn, /Auth no quedó como pide el repo/);
+  // Un verify fallido tiene que cortar: el `if !` termina en exit 1 (sin eso el paso seguiría hasta db push).
+  assert.match(patchFn, /if ! node supabase\/scripts\/auth-config\.ts verify "\$1" < "\$\{response\}"; then\n\s+echo "::error::Auth no quedó como pide el repo[^\n]*\n\s+exit 1\n\s+fi/, "verify fallido: exit 1");
   // Las tres partes siguen: security siempre; smtp y templates con RESEND_SMTP_KEY.
   for (const part of ["security", "smtp", "templates"]) assert.match(run, new RegExp(`^\\s+patch ${part}$`, "m"));
   // Lo viejo se mantiene: las altas apagadas y la plantilla guardada.
@@ -276,7 +278,7 @@ test("Auth: una sola vez anota la versión de GoTrue y los campos que cambian, e
   assert.match(run, /::warning::[^\n]*versión de GoTrue/);
 });
 
-test("config.toml: con autoconfirm prendido no se llega a ninguna llamada (el script falla con código 2)", () => {
+test("config.toml: el script sale con código 2 y el paso corta con set -e (el rechazo de autoconfirm en sí lo prueba auth-config.test.ts)", () => {
   // authSecurityConfig lanza (auth-config.test.ts) y la línea de comandos sale con 2: con set -e el paso corta.
   const script = readFileSync(repo("supabase/scripts/auth-config.ts"), "utf8");
   assert.match(script, /process\.exit\(2\)/);
