@@ -697,8 +697,8 @@ select throws_ok(
   $$ select private.sync_chef_members(array['socio@colaboradores.test']) $$,
   'P0001', 'single_chef_required', 'sin decir la cocina, con más de una: error (producción tiene una sola)');
 -- Una clienta con ficha (la cuenta A, «Cliente A») no puede ser colaboradora: cortaría el acceso a las
--- alergias y direcciones de la cocina para una cuenta que se registra sola. Nada cambia, ni para el
--- socio, que va en la misma lista.
+-- alergias y direcciones de la cocina para una cuenta que se registra sola. El error revierte todo, también
+-- lo del socio, que va en la misma lista; que la guarda corte antes de tocar a nadie lo fija el test estructural.
 select throws_ok(
   $$ select private.sync_chef_members(array['socio@colaboradores.test', 'a@colaboradores.test'],
                                       '7e5f1000-0000-4000-8000-000000000001') $$,

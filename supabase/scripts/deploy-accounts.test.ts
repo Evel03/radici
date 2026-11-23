@@ -216,6 +216,19 @@ test("colaboradores: avisa si en Auth hay alguien más que la cocinera y sus col
   assert.match(run.out, /^::warning::Hay 1 usuarios en Auth que no son la cocinera, ni sus colaboradores, ni tienen ficha de cliente/m);
 });
 
+test("colaboradores: el aviso de usuarios de más cuenta solo a quien no tiene ficha (con una clienta con ficha y otra sin)", { skip }, () => {
+  const run = accounts(
+    "members",
+    {
+      chefs: [EVELYN],
+      users: [confirmed(EVELYN), { email: "clienta@gmail.com", confirmed: true, client: true }, { email: "suelta@gmail.com", confirmed: true }],
+      members: [],
+    },
+  );
+  assert.equal(run.code, 0, run.out);
+  assert.match(run.out, /^::warning::Hay 1 usuarios en Auth que no son la cocinera/m);
+});
+
 const OTRA = "otra@ejemplo.test";
 
 test("colaboradores: dos cocinas cortan el paso antes de crear cuentas o sincronizar", { skip }, () => {
@@ -231,14 +244,14 @@ test("colaboradores: dos cocinas cortan el paso antes de crear cuentas o sincron
   assertNoEmails(run.out, [EVELYN, OTRA, NUEVA]);
 });
 
-test("colaboradores: un usuario anónimo corta el paso (las altas anónimas están apagadas)", { skip }, () => {
+test("colaboradores: un usuario anónimo corta el paso, pero después de aplicar la lista (una baja no espera)", { skip }, () => {
   const run = accounts(
     "members",
     { chefs: [EVELYN], users: [confirmed(EVELYN), { email: "", confirmed: false, anonymous: true }], members: [] },
   );
   assert.equal(run.code, 1, run.out);
   assert.match(run.out, /^::error::Hay 1 usuarios anónimos en Auth/m);
-  assert.deepEqual(syncCalls(run), []);
+  assert.deepEqual(syncCalls(run), [syncMembersSql([])]);
 });
 
 test("colaboradores: si después de sincronizar chef_members no es la lista (de más o de menos) corta el paso", { skip }, () => {

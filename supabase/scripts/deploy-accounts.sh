@@ -14,9 +14,10 @@
 #            que ser la cocinera y sus colaboradores. Va después de publicar las funciones: un error en la
 #            lista deja el despliegue en rojo, pero no deja la base migrada con las funciones viejas.
 #
-#            Además exige (corta el paso): una sola fila en chefs, ningún usuario anónimo y, después de
-#            sincronizar, chef_members igual a la lista. Avisa, sin cortar, si una cuenta de la cocina tiene
-#            identidades que no son de email (el hook de la cocina solo con código, PR08, las deja sin uso),
+#            Además exige (corta el paso): una sola fila en chefs y, después de
+#            sincronizar, chef_members igual a la lista y ningún usuario anónimo (también después de sincronizar: una baja
+#            de la lista se aplica aunque haya que limpiar otra cosa). Avisa, sin cortar, si una cuenta de la cocina tiene
+#            identidades que no son de email (el hook de la cocina solo con código las deja sin uso),
 #            e informa cuántas cuentas hay de clientas, de prueba y sin confirmar: solo números, nunca emails.
 #
 # Las cuentas nacen confirmadas, con una contraseña al azar que nadie conoce (se entra con el código por
@@ -186,7 +187,6 @@ members() {
   done < <(jq -r '.[].email' <<< "${list}")
   total_list=$(jq 'length' <<< "${list}")
 
-  account_checks
   chefs=$(count "select count(*)::int as n from public.chefs")
   if [ "${chefs}" -gt 1 ]; then
     echo "::error::Hay ${chefs} cocinas en public.chefs y tiene que haber una sola (SPEC §6): no se sincronizan colaboradores."
@@ -227,6 +227,9 @@ members() {
       exit 1
     fi
   fi
+
+  # Después de sincronizar: una baja de la lista no espera a que alguien limpie un usuario anónimo.
+  account_checks
 
   # Usuarios en Auth: la cocinera, sus colaboradores y las clientas (cuentas con ficha en public.clients).
   # Una cuenta que salió de la lista y no se pudo borrar, o que se creó a mano en el panel, queda de más
