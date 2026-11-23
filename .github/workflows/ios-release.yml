@@ -159,14 +159,12 @@ jobs:
             exit 1
           fi
 
-      # Archivo con firma automática: -allowProvisioningUpdates + la clave dejan que Xcode cree el perfil y
-      # los certificados en la nube de Apple. El equipo viene del secreto, no del repo.
-      - name: iOS - archivar y firmar
+      # Archivo SIN firmar (como `flutter build ios --no-codesign`): la firma va toda en la exportación, que
+      # usa el certificado de distribución y el perfil de App Store. Firmar acá con la firma automática
+      # pediría un perfil de desarrollo, y ese perfil exige un iPhone registrado en la cuenta (primer run
+      # del 23/11/2026: «Your team has no devices»); el de App Store no lleva dispositivos.
+      - name: iOS - archivar (sin firmar)
         if: env.HAS_SIGNING_KEY == 'true'
-        env:
-          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           xcodebuild archive \
@@ -175,12 +173,9 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "${RUNNER_TEMP}/Runner.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "${ASC_KEYS_DIR}/AuthKey_${KEY_ID}.p8" \
-            -authenticationKeyID "${KEY_ID}" \
-            -authenticationKeyIssuerID "${ISSUER_ID}" \
-            DEVELOPMENT_TEAM="${TEAM_ID}" \
-            CODE_SIGN_STYLE=Automatic
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
 
       # Exporta el .ipa firmado con el certificado de distribución (cloud signing). ExportOptions.plist se
       # copia al temporal y se le pone el equipo ahí: el del repo queda sin datos de la cuenta.
