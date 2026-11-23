@@ -1,0 +1,627 @@
+/* El libro del menú (/prenotazione/, SPEC 5.8): el menú de una semana como el libro de un restaurante, un plato por
+   página (reservation/book/). En el teléfono ocupa toda la pantalla; en la computadora, un libro centrado sobre un
+   fondo oscuro. Misma identidad que la web: papel crema, filetes terra, versalitas oliva, Cormorant y Cinzel.
+   Contrastes (WCAG AA) con los roles de base.css: texto ≥ 4.5:1 y bordes de controles ≥ 3:1.
+   La hoja se da vuelta con CSS 3D (rotateY desde el lomo, a la izquierda); con prefers-reduced-motion, sin
+   animación. Sin estilos en línea (la CSP no los deja): el arrastre corre la hoja con la variable --book-drag. */
+
+/* Con el libro abierto, la página de atrás no se mueve. */
+.book-open,
+.book-open body {
+  overflow: hidden;
+}
+
+/* El botón de cada semana que abre el libro. */
+.week__book {
+  width: 100%;
+  margin: 0 0 1.25rem;
+}
+
+.week__book::after {
+  content: " \2192";
+  content: " \2192" / "";
+}
+
+.book {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(44 43 32 / 62%);
+}
+
+.book__frame {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  background: var(--crema);
+  color: var(--text);
+}
+
+@media (min-width: 40rem) and (min-height: 36rem) {
+  .book {
+    padding: 1.5rem;
+  }
+
+  .book__frame {
+    width: min(100%, 38rem);
+    height: min(100%, 58rem);
+    overflow: hidden;
+    border: 1px solid var(--lino);
+    border-radius: var(--radius);
+    box-shadow: 0 30px 80px rgb(20 19 12 / 40%);
+  }
+}
+
+/* Arriba: qué libro es y cerrar. */
+.book__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.25rem 0.25rem 0.25rem 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.book__bar-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--olive);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  letter-spacing: 0.2em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.book__close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.book__close:hover {
+  background: var(--olive-soft);
+}
+
+.book__cross {
+  position: relative;
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.book__cross::before,
+.book__cross::after {
+  position: absolute;
+  top: calc(50% - 1px);
+  left: 0;
+  width: 100%;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  content: "";
+}
+
+.book__cross::before {
+  transform: rotate(45deg);
+}
+
+.book__cross::after {
+  transform: rotate(-45deg);
+}
+
+/* Las páginas, una encima de otra. El navegador sigue haciendo el scroll vertical y el zoom con dos dedos; el
+   gesto horizontal es de página (gestures.ts). */
+.book__viewport {
+  position: relative;
+  overflow: hidden;
+  perspective: 2200px;
+  touch-action: pan-y pinch-zoom;
+}
+
+.book.is-dragging .book__viewport {
+  cursor: grabbing;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.book__page {
+  position: absolute;
+  inset: 0;
+  background: var(--crema-light);
+  transform: translateX(var(--book-drag, 0px));
+  transform-origin: left center;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/* Solo se ve la actual (y la que se va mientras da vuelta la hoja). */
+.book__page:not(.is-current):not(.is-leaving) {
+  visibility: hidden;
+}
+
+.book__page.is-current,
+.book__page.is-leaving {
+  z-index: 1;
+}
+
+/* La hoja recibe el foco al abrir y al pasar de página (sin contorno: view.ts); con Tab, un contorno oliva
+   adentro de la página (6.8:1 sobre el papel). */
+.book__sheet:focus {
+  outline: none;
+}
+
+.book__sheet:focus-visible {
+  outline: 2px solid var(--olive);
+  outline-offset: -6px;
+}
+
+/* La sombra de la hoja que gira (más oscura cuanto más se levanta). */
+.book__page::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to left, rgb(44 43 32 / 30%), rgb(44 43 32 / 0%) 75%);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Cada página tiene su propio scroll (una larga, en un teléfono chico). El touch-action va acá: el navegador lo
+   mira desde lo que se toca hasta el contenedor de scroll más cercano, y con el del visor solo cancelaba el gesto. */
+.book__sheet {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y pinch-zoom;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Al soltar sin pasar de página, la hoja vuelve a su lugar. */
+  .book__page.is-current {
+    transition: transform 0.25s ease-out;
+  }
+
+  .book.is-dragging .book__page {
+    transition: none;
+  }
+
+  .book__page.is-turning-next,
+  .book__page.is-turning-prev {
+    z-index: 3;
+    animation: book-turn-next 0.55s cubic-bezier(0.45, 0.05, 0.3, 1) forwards;
+  }
+
+  .book__page.is-turning-prev {
+    animation-name: book-turn-prev;
+  }
+
+  .book__page.is-turning-next::after {
+    animation: book-shade 0.55s ease-in forwards;
+  }
+
+  .book__page.is-turning-prev::after {
+    animation: book-shade 0.55s ease-out reverse forwards;
+  }
+}
+
+@keyframes book-turn-next {
+  from {
+    transform: rotateY(0deg);
+  }
+
+  to {
+    transform: rotateY(-100deg);
+  }
+}
+
+@keyframes book-turn-prev {
+  from {
+    transform: rotateY(-100deg);
+  }
+
+  to {
+    transform: rotateY(0deg);
+  }
+}
+
+@keyframes book-shade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .book__page {
+    transform: none;
+    animation: none !important;
+  }
+}
+
+/* La tapa y la última página: centradas, con el doble filete de una carta de restaurante. Si el texto no entra (un
+   teléfono apaisado o chico), corre adentro del marco y se corta en su línea de adentro, sin pisarlo. */
+.book__page--cover,
+.book__page--closing {
+  /* Del borde de la página al filete, y a su línea de adentro (1 px terra, 4 px crema y 1 px lino). */
+  --book-frame-out: 0.75rem;
+  --book-frame-in: calc(var(--book-frame-out) + 6px);
+}
+
+/* La hoja ocupa toda la página, con un borde transparente hasta la línea de adentro del filete: el scroll recorta el
+   texto ahí y la banda del marco sigue siendo de la hoja (el dedo o la rueda la mueven también desde ahí). */
+.book__page--cover .book__sheet,
+.book__page--closing .book__sheet {
+  display: flex;
+  border: var(--book-frame-in) solid transparent;
+}
+
+/* top/right/bottom/left y no inset: con var(), el build no puede bajar inset para Safari 14.0, que no lo conoce. */
+.book__page--cover::before,
+.book__page--closing::before {
+  position: absolute;
+  top: var(--book-frame-out);
+  right: var(--book-frame-out);
+  bottom: var(--book-frame-out);
+  left: var(--book-frame-out);
+  border: 1px solid var(--terra);
+  box-shadow: inset 0 0 0 4px var(--crema-light), inset 0 0 0 5px var(--lino);
+  content: "";
+  pointer-events: none;
+}
+
+.book__cover,
+.book__closing {
+  width: 100%;
+  /* Las medidas de siempre desde el borde de la página (30rem de ancho, 3rem y 1.75rem de aire), ahora que lo de
+     adentro de la hoja empieza en la línea de adentro del filete: el texto queda igual que antes. */
+  max-width: calc(30rem - 2 * var(--book-frame-in));
+  margin: auto;
+  padding: calc(3rem - var(--book-frame-in)) calc(1.75rem - var(--book-frame-in));
+  text-align: center;
+}
+
+.book__logo {
+  margin: 0;
+}
+
+.book__logo .logo__name {
+  font-size: 2.5rem;
+}
+
+.book__logo .logo__tag {
+  font-size: 0.62rem;
+}
+
+.book__title {
+  margin: 1.75rem 0 0.4rem;
+  font-size: clamp(2.1rem, 8.5vw, 2.9rem);
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+.book__by {
+  margin: 0;
+  color: var(--terra-ink);
+  font-size: 1.4rem;
+  font-style: italic;
+}
+
+/* Filete con un rombo al medio. */
+.book__ornament {
+  position: relative;
+  width: 6.5rem;
+  height: 1px;
+  margin: 1.4rem auto;
+  background: var(--terra);
+}
+
+.book__ornament::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.45rem;
+  height: 0.45rem;
+  border: 1px solid var(--terra);
+  background: var(--crema-light);
+  content: "";
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.book__when {
+  margin: 0 0 0.3rem;
+  font-size: 1.25rem;
+}
+
+.book__count-dishes {
+  margin: 0;
+  color: var(--muted);
+}
+
+.book__hint {
+  margin: 2.25rem 0 0;
+  color: var(--muted);
+  font-size: 1.1rem;
+  font-style: italic;
+}
+
+/* Un plato: la foto grande y centrada arriba, o una lámina con la inicial. */
+.book__photo {
+  position: relative;
+  width: calc(100% - 2rem);
+  max-width: 34rem;
+  max-height: 52vh;
+  margin: 1rem auto 0;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--lino);
+  background: radial-gradient(circle at 50% 40%, var(--crema-light), var(--crema-dark));
+}
+
+/* Sin aspect-ratio (Safari 14, en algunos navegadores de WhatsApp): una altura fija. */
+@supports not (aspect-ratio: 4 / 3) {
+  .book__photo {
+    height: 15rem;
+  }
+}
+
+.book__photo-mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--terra);
+  font-family: var(--font-display);
+  font-size: clamp(3.5rem, 18vw, 5.5rem);
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.book__photo--empty::before {
+  position: absolute;
+  inset: 0.6rem;
+  border: 1px solid var(--rule);
+  content: "";
+}
+
+.book__img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  -webkit-user-drag: none;
+}
+
+.book__body {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 1.15rem 1.5rem 2.25rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.book__eyebrow,
+.book__label {
+  margin: 0 0 0.4rem;
+  color: var(--olive);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.book__dish {
+  margin: 0;
+  font-size: clamp(1.95rem, 7.5vw, 2.5rem);
+  font-weight: 500;
+  line-height: 1.12;
+}
+
+.book__desc {
+  margin: 0.6rem 0 0;
+  font-size: 1.3rem;
+  font-style: italic;
+}
+
+.book__body .book__ornament {
+  margin: 1.1rem auto;
+}
+
+.book__part + .book__part {
+  margin-top: 1.1rem;
+}
+
+.book__ingredients {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  font-size: 1.22rem;
+  list-style: none;
+}
+
+.book__ingredient:not(:last-child)::after {
+  margin: 0 0.45em;
+  color: var(--terra-ink);
+  content: "·";
+  content: "·" / "";
+}
+
+.book__badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.book__badge {
+  padding: 0 0.7rem;
+  border: 1px solid var(--terra);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--terra-ink);
+  font-size: 1.08rem;
+  line-height: 1.65;
+}
+
+.book__badge--diet {
+  border-color: var(--olive);
+  color: var(--olive);
+}
+
+.book__none {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.12rem;
+}
+
+.book__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 1.25rem 0 0;
+  color: var(--muted);
+  font-size: 1.15rem;
+}
+
+/* La última página: lo que se puede hacer en la semana. */
+.book__closing-text {
+  max-width: 26rem;
+  margin: 0 auto 1.6rem;
+  font-size: 1.28rem;
+}
+
+.book__actions {
+  justify-content: center;
+}
+
+.book__actions .btn {
+  flex: 1 1 14rem;
+}
+
+/* Abajo: las flechas, «2 / 7» y los puntos (24 px cada uno, para el dedo). */
+.book__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 4.25rem;
+  padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--rule);
+  background: var(--crema);
+}
+
+.book__arrow {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid var(--olive);
+  border-radius: 50%;
+  background: var(--crema-light);
+  color: var(--olive);
+  cursor: pointer;
+}
+
+.book__arrow:hover {
+  background: var(--olive-soft);
+}
+
+.book__arrow[aria-disabled="true"] {
+  border-color: var(--lino);
+  background: transparent;
+  color: var(--salvia);
+  cursor: default;
+}
+
+.book__chevron {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+
+.book__arrow--next .book__chevron {
+  transform: translateX(-2px) rotate(45deg);
+}
+
+.book__arrow--prev .book__chevron {
+  transform: translateX(2px) rotate(-135deg);
+}
+
+.book__progress {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.book__count {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: 0.14em;
+}
+
+.book__dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.book__dot {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.book__dot::before {
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 1px solid var(--terra);
+  border-radius: 50%;
+  content: "";
+}
+
+.book__dot[aria-current="true"]::before {
+  background: var(--terra);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .book__dot::before {
+    transition: background-color 0.2s ease;
+  }
+}

@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  BOOK_FRAGMENT_PARAM,
   CHANGES_TEXT_MAX,
   CLIENT_LINK_ROUTES,
   CLIENT_LINK_VERSION,
@@ -14,10 +15,12 @@ import {
   cleanChangesText,
   hashClientLinkToken,
   isClientLinkToken,
+  menuBookUrl,
   menuState,
   newClientLinkToken,
   normalizeChangesText,
   parseClientLinkView,
+  readMenuContent,
   QUOTE_CLOSED_REASONS,
   QUOTE_STATUSES,
   quoteSummaryFromSnapshot,
@@ -354,6 +357,59 @@ test("parseClientLinkView: con otra forma, null (la página dice que hubo un pro
     ],
   ];
   for (const [label, value] of cases) assert.equal(parseClientLinkView(value, ORIGIN), null, label);
+});
+
+// ---------------------------------------------------------------------------
+// Libro del menú
+// ---------------------------------------------------------------------------
+
+test("menuBookUrl: el link de la reserva con la sesión de la semana, también en el fragmento (#t=…&libro=…)", () => {
+  assert.equal(BOOK_FRAGMENT_PARAM, "libro");
+  assert.equal(
+    menuBookUrl("https://radicicucina.app/", TOKEN, SESSION_1.toUpperCase()),
+    `https://radicicucina.app/prenotazione/#t=${TOKEN}&libro=${SESSION_1}`,
+  );
+  const url = new URL(menuBookUrl("https://radicicucina.app", TOKEN, SESSION_1));
+  assert.equal(url.search, "", "nunca en la query");
+  const fragment = new URLSearchParams(url.hash.slice(1));
+  assert.equal(fragment.get("t"), TOKEN);
+  assert.equal(fragment.get(BOOK_FRAGMENT_PARAM), SESSION_1);
+});
+
+test("readMenuSnapshot: los ingredientes de un plato (libro del menú) pasan, solo los nombres; sin ingredientes, sin la clave", () => {
+  const raw = snapshot({
+    dishes: [
+      { name: "Lasaña", description: null, allergens: [], diet: null, portions: 6, photo: null, ingredients: [" Pasta al huevo ", "Ragú", "Bechamel"] },
+      { name: "Minestrone", description: null, allergens: [], diet: "vegan", portions: 4, photo: null },
+    ],
+  });
+  const content = readMenuSnapshot(raw, ORIGIN);
+  assert.deepEqual(content?.dishes[0]?.ingredients, ["Pasta al huevo", "Ragú", "Bechamel"]);
+  assert.equal(content && "ingredients" in content.dishes[1]!, false, "una foto de antes del libro: sin la clave");
+  // Y la página los lee igual de la respuesta.
+  assert.deepEqual(readMenuContent(JSON.parse(JSON.stringify(content)), ORIGIN), content);
+});
+
+test("readMenuSnapshot: unos ingredientes rotos nunca descartan el plato (como la foto): quedan los nombres que sirven", () => {
+  const dish = (ingredients: unknown): Record<string, unknown> => ({
+    name: "Lasaña",
+    description: null,
+    allergens: [],
+    diet: null,
+    portions: 6,
+    photo: null,
+    ingredients,
+  });
+  const read = (ingredients: unknown): string[] | undefined =>
+    readMenuSnapshot(snapshot({ dishes: [dish(ingredients)] }), ORIGIN)?.dishes[0]?.ingredients;
+  for (const value of ["Pasta, ragú", { name: "Pasta" }, 3, [], ["  "], [{ name: "Pasta", quantity: 500, unit: "g" }]]) {
+    assert.ok(readMenuSnapshot(snapshot({ dishes: [dish(value)] }), ORIGIN), JSON.stringify(value));
+    assert.equal(read(value), undefined, JSON.stringify(value));
+  }
+  // De una lista: los textos en una línea y de hasta 80 caracteres, sin repetir (sin distinguir mayúsculas), hasta 50.
+  assert.deepEqual(read(["Sal", 5, "sal", "Aceite\nde oliva", "x".repeat(81), "🍅".repeat(80), "SAL", "Aceite"]), ["Sal", "🍅".repeat(80), "Aceite"]);
+  const many = Array.from({ length: 60 }, (_, i) => `Ingrediente ${i + 1}`);
+  assert.deepEqual(read(many), many.slice(0, 50));
 });
 
 test("parseClientLinkView: el presupuesto y el de cada envío, tal cual después de pasar por JSON", () => {

@@ -5,7 +5,7 @@ import { find, findAll, textOf, toHtml, type VNode } from "../lib/vdom.ts";
 import { i18nFor } from "../request/fixtures.ts";
 import type { Message, PageState, QuoteUi, WeekUi } from "./controller.ts";
 import { PHOTO, SEND_1, SESSION_1, SESSION_2, content, menu, quoteView, resentQuoteView, view, week } from "./fixtures.ts";
-import { DISH_PHOTO_SIZE, changesCountText, focusId, messageText, reservationTree, weekDomId } from "./render.ts";
+import { DISH_PHOTO_SIZE, bookButtonId, changesCountText, focusId, messageText, reservationTree, weekDomId } from "./render.ts";
 
 const NBSP = String.fromCharCode(0xa0);
 const EMPTY_UI: WeekUi = { formOpen: false, draft: "", draftFor: null, busy: null, error: null, textError: null, notice: null };
@@ -463,6 +463,33 @@ describe("piezas", () => {
   });
 });
 
+describe("el libro del menú en cada semana", () => {
+  it("una semana con el menú: «Sfoglia il menù», que abre su libro (data-action open-book, con su id)", () => {
+    const tree = render(ready());
+    const button = byId(tree, bookButtonId(SESSION_1));
+    expect(button?.attrs).toEqual({
+      class: "btn btn--ghost week__book",
+      type: "button",
+      id: `${W1}-book`,
+      "data-action": "open-book",
+      "data-session": SESSION_1,
+    });
+    expect(button && textOf(button)).toBe("Sfoglia il menù");
+    expect(textOf(byId(render(ready(), { lang: "es" }), bookButtonId(SESSION_1)) ?? "")).toBe("Hojea el menú");
+    expect(textOf(byId(render(ready(), { lang: "en" }), bookButtonId(SESSION_1)) ?? "")).toBe("Browse the menu");
+  });
+
+  it("también confirmada o ya cocinada (el libro se puede volver a hojear); sin menú o con uno que no se lee, no", () => {
+    const confirmed = view({
+      weeks: [week({ done: true, menu: menu({ state: "confirmed", confirmedAt: "2027-02-26T10:00:00Z" }) }), week({ sessionId: SESSION_2, week: 2, menu: menu({ content: null }) })],
+    });
+    const tree = render(ready(confirmed));
+    expect(byId(tree, bookButtonId(SESSION_1))).not.toBeNull();
+    expect(byId(tree, bookButtonId(SESSION_2))).toBeNull();
+    expect(byId(render(ready()), bookButtonId(SESSION_2))).toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // El presupuesto (SPEC 5.8)
 // ---------------------------------------------------------------------------
@@ -586,7 +613,8 @@ describe("el presupuesto: estados", () => {
       expect(byId(tree, "quote")?.attrs["class"], status).toBe("quote quote--closed");
       expect(quoteStatusText(tree), status).toBe(expected);
       expect(byClass(tree, "quote__week"), status).toEqual([]);
-      expect(findAll(tree, (node) => node.tag === "button"), status).toEqual([]);
+      // Sin botones de contestar: solo queda «Sfoglia il menù» (el libro se puede hojear, no contesta nada).
+      expect(findAll(tree, (node) => node.tag === "button" && node.attrs["data-action"] !== "open-book"), status).toEqual([]);
       expect(statusText(tree), status).toBe("Inviato Evelyn ti ha mandato questo menù insieme al preventivo giovedì 25 febbraio 2027.");
     }
   });

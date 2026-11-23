@@ -6,8 +6,12 @@
 // Nunca se registran en la consola el token, la reserva ni el mensaje de la clienta.
 import "../styles/base.css";
 import "../styles/reservation.css";
+import "../styles/book.css";
+import type { ClientLinkWeek } from "../../../supabase/functions/_shared/client_link.ts";
 import { mount } from "../lib/vdom.ts";
-import { createReservation, type ActionResult, type Focus, type Message } from "../reservation/controller.ts";
+import { NO_QUOTE, createBookHistory, createFocusReveal, type BookQuote, type RevealTarget } from "../reservation/book/state.ts";
+import { attachBookView, type BookView } from "../reservation/book/view.ts";
+import { createReservation, menuQuoteMode, quoteView, type ActionResult, type Focus, type Message } from "../reservation/controller.ts";
 import { changesCountText, focusId, messageText, reservationTree, weekDomId } from "../reservation/render.ts";
 import { hashChangeAction, readToken, tokenFragment } from "../reservation/token.ts";
 import { config } from "../site-config.ts";
@@ -22,6 +26,36 @@ function byId<T extends HTMLElement = HTMLElement>(id: string): T {
 const root = byId("reservation");
 const live = byId("reservation-live");
 const token = readToken(window.location.hash);
+
+/** Lo que Espacio y Enter tocan (button) y donde escriben (text); en lo demás, Espacio mueve la página. */
+const BUTTON = "button, [role='button'], input[type='button'], input[type='submit'], input[type='reset'], input[type='checkbox'], input[type='radio']";
+const TEXT = "textarea, select, input, [contenteditable]:not([contenteditable='false'])";
+
+/** Lo que tiene el foco en la reserva, para createFocusReveal: su caja, cómo traerlo a la vista y qué es. */
+function focusedInReservation(): RevealTarget | null {
+  const el = document.activeElement;
+  if (!(el instanceof HTMLElement) || !root.contains(el)) return null;
+  return {
+    rect: () => el.getBoundingClientRect(),
+    reveal: () => {
+      try {
+        el.scrollIntoView({ block: "center", behavior: "instant" });
+      } catch {
+        // Un navegador que no conozca "instant" tira TypeError (WebIDL): centrado igual, con el scroll-behavior de la página.
+        el.scrollIntoView({ block: "center" });
+      }
+    },
+    kind: el.matches(BUTTON) ? "button" : el.matches(TEXT) ? "text" : "other",
+  };
+}
+
+// El libro del menú, desde el primer script, antes de pedir los textos y la reserva: «adelante» puede volver a la
+// entrada del libro antes de que la página termine de cargar, y createBookHistory tiene que haber visto la entrada de la
+// página para decidir si cerrarlo vuelve atrás (onBookEntry). createFocusReveal escucha popstate y hashchange desde ya:
+// después de cerrar el libro o de una vuelta del historial, lo que tiene el foco en la reserva queda a la vista.
+const bookHistory = createBookHistory(window);
+const focusReveal = createFocusReveal(window, focusedInReservation);
+
 const reservation = createReservation({ supabaseUrl: config.supabaseUrl, token });
 // La reserva se pide enseguida, junto con los textos: si la visitante nunca eligió un idioma, se usan los de la
 // reserva (y la página no se pinta dos veces).
@@ -42,6 +76,8 @@ window.addEventListener("hashchange", () => {
 function start(shell: Shell): void {
   /** Miniaturas que no cargaron: se pintan sin foto. */
   const failedPhotos = new Set<string>();
+  /** El libro del menú (reservation/book/): se conecta después de pintar la página por primera vez. */
+  let book: BookView | null = null;
 
   /** Pinta el estado. El foco va a `focus` o, si no, se queda en el mismo elemento (por id). */
   const paint = (focus: Focus | null = null): void => {
@@ -101,6 +137,9 @@ function start(shell: Shell): void {
       case "close-changes":
         finish(reservation.closeChanges(session));
         break;
+      case "open-book":
+        book?.open(session, target.id || null);
+        break;
       // El presupuesto: aceptarlo, o rechazarlo después de confirmar.
       case "accept-quote":
         void reservation.acceptQuote().then(finish);
@@ -155,6 +194,32 @@ function start(shell: Shell): void {
   );
 
   paint();
+
+  /**
+   * Cómo va el menú de una semana con el presupuesto, para la última página del libro (la misma cuenta que la semana
+   * en la página: menuQuoteMode). Abierto, lleva a «Accetto il preventivo» si se puede aceptar, o a su estado.
+   */
+  const bookQuote = (week: ClientLinkWeek): BookQuote => {
+    const state = reservation.state;
+    if (state.kind !== "ready" || !week.menu) return NO_QUOTE;
+    const mode = menuQuoteMode(state.view, week.menu);
+    if (mode === "none") return NO_QUOTE;
+    if (mode !== "open") return { mode, target: null };
+    return { mode, target: focusId({ kind: quoteView(state.view)?.canAccept ? "quoteAccept" : "quoteStatus" }) };
+  };
+
+  // El libro del menú: «Sfoglia il menù» en cada semana o libro=<sesión> en el fragmento (el link del mensaje).
+  book = attachBookView({
+    token,
+    brand: config.brandName,
+    i18n: () => shell.i18n,
+    state: () => reservation.state,
+    onStateChange: (listener) => reservation.subscribe(listener),
+    onLanguageChange: (listener) => shell.onLanguageChange(() => listener()),
+    history: bookHistory,
+    reveal: focusReveal,
+    quote: bookQuote,
+  });
 }
 
 // Si no llegan los textos, initShell muestra el aviso y se resuelve recién si un reintento funciona.

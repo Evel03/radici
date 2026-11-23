@@ -84,7 +84,9 @@ function snapshot(): Record<string, unknown> {
         portions: 6,
         photo: recipePhotoUrls(STORAGE, CHEF_ID, RECIPE_ID, PHOTO_ID),
         recipeId: RECIPE_ID,
-        ingredients: ["no tendría que pasar"],
+        // Del plato, para el libro del menú, pasan los nombres de los ingredientes; nada más de la receta.
+        ingredients: ["Pasta al huevo", "Ragú-ingrediente-qqq"],
+        notes: "no tendría que pasar",
       },
     ],
     items: [
@@ -610,10 +612,14 @@ test("/view: la reserva con el último menú de cada semana, leído campo por ca
     ],
   });
   const body = JSON.stringify(await json(await handle(post("/view", { token: TOKEN }))));
-  // Lo que no es del contrato no sale: ni el nombre completo, ni el pedido, ni el id de la receta, ni los ingredientes.
-  for (const hidden of ["Bianchiqwe", REQUEST_ID, RECIPE_ID + '"', "ingredients", "no tendría que pasar", "requestId"]) {
+  // Lo que no es del contrato no sale: ni el nombre completo, ni el pedido, ni el id de la receta, ni sus notas.
+  for (const hidden of ["Bianchiqwe", REQUEST_ID, RECIPE_ID + '"', "notes", "no tendría que pasar", "requestId"]) {
     assert.ok(!body.includes(hidden), hidden);
   }
+  // Los nombres de los ingredientes sí (el libro del menú), y nunca en los logs.
+  assert.deepEqual(content?.dishes[0]?.ingredients, ["Pasta al huevo", "Ragú-ingrediente-qqq"]);
+  assert.ok(body.includes('"ingredients":["Pasta al huevo","Ragú-ingrediente-qqq"]'));
+  assert.ok(!JSON.stringify(logs).includes("Ragú-ingrediente"));
   assert.ok(logs.some((log) => log.event === "link_viewed" && log.fields["requestId"] === REQUEST_ID && log.fields["weeks"] === 2 && log.fields["menus"] === 1));
   assertNoLeaks(logs);
 });

@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  bookLinkPlaceholder,
   formatQuantity,
   italianDateWithArticle,
   linkPlaceholder,
@@ -402,6 +403,76 @@ test("la nota: una palabra larga (un link) se parte y no ensancha el email en el
 });
 
 // ---------------------------------------------------------------------------
+// Libro del menú: el segundo link, junto al de confirmar
+// ---------------------------------------------------------------------------
+
+const BOOK = `${LINK}&libro=5e550000-0000-4000-8000-000000000003`;
+
+test("libro del menú: el email y el WhatsApp llevan el link para hojear el menú, con su invitación, antes del de confirmar", () => {
+  const message = renderMenuMessage(input({ bookLink: BOOK }));
+  assert.ok(
+    message.text.includes(
+      `Sfoglia il menù della settimana: ${BOOK}
+Un piatto per pagina, come al ristorante.
+
+Apri il tuo link per vedere il menù completo`,
+    ),
+    message.text,
+  );
+  assert.ok(
+    message.whatsapp.includes(`*Sfoglia il menù della settimana* · _Un piatto per pagina, come al ristorante._
+${BOOK}
+
+Apri il tuo link`),
+    message.whatsapp,
+  );
+  // En el HTML, un link (con el & escapado) y la invitación debajo, antes del botón de confirmar.
+  const bookHref = `href="${BOOK.replace("&", "&amp;")}"`;
+  assert.ok(message.html.includes(`${bookHref} style="color:`), "el link al libro");
+  assert.ok(message.html.includes(">Sfoglia il menù della settimana</a>"));
+  assert.ok(message.html.indexOf("Un piatto per pagina, come al ristorante.") > message.html.indexOf(bookHref), "la invitación, debajo");
+  assert.ok(message.html.indexOf(bookHref) < message.html.indexOf(`href="${LINK}"`), "primero se hojea, después se confirma");
+  for (const text of [message.text, message.whatsapp, message.html]) {
+    assert.ok(!text.includes(bookLinkPlaceholder("it")), "sin el texto de reemplazo");
+    assert.ok(!text.includes("?libro"), "nunca en la query");
+  }
+});
+
+test("libro del menú: en español y en inglés, con sus textos", () => {
+  const es = renderMenuMessage(input({ snapshot: snapshot("es"), bookLink: BOOK }));
+  assert.ok(es.text.includes(`Hojea el menú de la semana: ${BOOK}
+Un plato por página, como en un restaurante.`));
+  assert.ok(es.whatsapp.includes(`*Hojea el menú de la semana* · _Un plato por página, como en un restaurante._
+${BOOK}`));
+  const en = renderMenuMessage(input({ snapshot: snapshot("en"), bookLink: BOOK }));
+  assert.ok(en.text.includes(`Browse this week's menu: ${BOOK}
+One dish per page, like at a restaurant.`));
+  assert.ok(en.html.includes(">Browse this week&#39;s menu</a>"));
+});
+
+test("libro del menú: la vista previa lleva los dos textos de reemplazo; un envío sin el link al libro sale como antes", () => {
+  for (const locale of LOCALES) {
+    const preview = renderMenuMessage(input({ snapshot: snapshot(locale), link: null, bookLink: null }));
+    for (const text of [preview.text, preview.whatsapp, preview.html]) {
+      assert.ok(text.includes(bookLinkPlaceholder(locale)), `${locale}: el reemplazo del libro`);
+      assert.ok(text.includes(linkPlaceholder(locale)), `${locale}: el reemplazo de confirmar`);
+      assert.ok(!text.includes("/prenotazione/") && !text.includes("#t="), `${locale}: sin link`);
+    }
+    // Aunque llegue un link al libro, la vista previa nunca lo muestra (los links se crean al enviar).
+    const sneaky = renderMenuMessage(input({ snapshot: snapshot(locale), link: null, bookLink: BOOK }));
+    assert.ok(!sneaky.text.includes(BOOK) && !sneaky.whatsapp.includes(BOOK), locale);
+  }
+  assert.equal(bookLinkPlaceholder("it"), "[link personale per sfogliare il menù]");
+  assert.equal(bookLinkPlaceholder("es"), "[enlace personal para hojear el menú]");
+  assert.equal(bookLinkPlaceholder("en"), "[personal link to browse the menu]");
+
+  const withoutBook = renderMenuMessage(input());
+  for (const text of [withoutBook.text, withoutBook.whatsapp, withoutBook.html]) {
+    assert.ok(!text.includes("Sfoglia il menù"), "sin link al libro, sin la invitación");
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Con el presupuesto (la semana 1 de un presupuesto abierto, SPEC 5.8)
 // ---------------------------------------------------------------------------
 
@@ -556,6 +627,26 @@ test("un reenvío (versión 2 o más): el asunto y el texto dicen que es el pres
     assert.equal(message.subject, expected[locale].subject, locale);
     assert.ok(message.text.includes(expected[locale].lead), `${locale}: ${message.text}`);
   }
+});
+
+test("con el presupuesto y el libro: primero el presupuesto, después el menú y el link al libro, y al final aceptar (todo en los tres formatos)", () => {
+  for (const locale of LOCALES) {
+    const message = renderMenuMessage(input({ snapshot: quoteSnapshot(locale), bookLink: BOOK }));
+    const accept = `: ${LINK}`;
+    for (const [format, text] of [["texto", message.text], ["whatsapp", message.whatsapp]] as const) {
+      const quoteAt = text.search(/IL PREVENTIVO|EL PRESUPUESTO|THE QUOTE|\*Il preventivo\*|\*El presupuesto\*|\*The quote\*/i);
+      const bookAt = text.indexOf(BOOK);
+      const acceptAt = text.lastIndexOf(LINK);
+      assert.ok(quoteAt >= 0 && bookAt > quoteAt && acceptAt > bookAt, `${locale} ${format}: ${quoteAt} ${bookAt} ${acceptAt}`);
+    }
+    assert.ok(message.text.includes(accept), locale);
+    assert.ok(message.html.indexOf(BOOK.replace("&", "&amp;")) > 0 && message.html.indexOf(BOOK.replace("&", "&amp;")) < message.html.lastIndexOf(`href="${LINK}"`), `${locale} html`);
+    // Con el presupuesto, el libro no cambia el botón: se acepta, no se confirma.
+    assert.ok(!/Vedi e conferma il menù/.test(message.text), locale);
+  }
+  // Sin libro (sin bookLink), el mensaje con el presupuesto es el de siempre.
+  const plain = renderMenuMessage(input({ snapshot: quoteSnapshot("it") }));
+  assert.ok(!plain.text.includes("Sfoglia") && !plain.text.includes("libro="));
 });
 
 test("español e inglés con el presupuesto: sus textos y el € con los separadores de cada idioma", () => {

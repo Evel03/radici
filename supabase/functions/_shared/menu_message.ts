@@ -55,6 +55,11 @@ export interface MenuMessageInput {
   /** El link de la clienta; null en la vista previa: va el texto de reemplazo (linkPlaceholder). */
   link: string | null;
   /**
+   * El link al libro del menú de esa semana (el mismo token, #t=…&libro=<sesión>). En la vista previa (link null) va
+   * su texto de reemplazo (bookLinkPlaceholder); con link y sin bookLink, el mensaje sale sin el libro.
+   */
+  bookLink?: string | null;
+  /**
    * Ahora (al armar la vista previa o al mandar): con el presupuesto, decide el plazo que dice el mensaje (las
    * horas, o la primera llegada si es antes), como chef_complete_menu_send al marcarlo enviado.
    */
@@ -109,6 +114,11 @@ interface MenuMessages {
   button: string;
   /** En la vista previa, donde va el link (que se crea recién al enviar). */
   linkPlaceholder: string;
+  /** El link al libro del menú (su texto) y la frase que va debajo, que invita a hojearlo. */
+  bookLink: string;
+  bookInvite: string;
+  /** En la vista previa, donde va el link al libro. */
+  bookPlaceholder: string;
   replyEmail: string;
   replyWhatsapp: string;
   /** El eslogan de la marca, el mismo de la web (common.slogan) y de la confirmación del pedido. */
@@ -216,6 +226,9 @@ const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
       "Apri il tuo link per vedere il menù completo, con le foto dei piatti, e confermarlo. Se vuoi cambiare qualcosa, puoi chiederlo da lì.",
     button: "Vedi e conferma il menù",
     linkPlaceholder: "[link personale per confermare]",
+    bookInvite: "Un piatto per pagina, come al ristorante.",
+    bookLink: "Sfoglia il menù della settimana",
+    bookPlaceholder: "[link personale per sfogliare il menù]",
     replyEmail: "Hai domande? Rispondi a questa email.",
     replyWhatsapp: "Hai domande? Rispondi a questo messaggio.",
     slogan: "Cucina autentica, a casa tua.",
@@ -305,6 +318,9 @@ const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
       "Abre tu enlace para ver el menú completo, con las fotos de los platos, y confirmarlo. Si quieres cambiar algo, puedes pedirlo desde ahí.",
     button: "Ver y confirmar el menú",
     linkPlaceholder: "[enlace personal para confirmar]",
+    bookInvite: "Un plato por página, como en un restaurante.",
+    bookLink: "Hojea el menú de la semana",
+    bookPlaceholder: "[enlace personal para hojear el menú]",
     replyEmail: "¿Tienes dudas? Responde a este email.",
     replyWhatsapp: "¿Tienes dudas? Responde a este mensaje.",
     slogan: "Cocina auténtica, en tu casa.",
@@ -393,6 +409,9 @@ const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
       "Open your link to see the full menu, with photos of the dishes, and confirm it. If you'd like to change anything, you can ask from there.",
     button: "See and confirm the menu",
     linkPlaceholder: "[personal link to confirm]",
+    bookInvite: "One dish per page, like at a restaurant.",
+    bookLink: "Browse this week's menu",
+    bookPlaceholder: "[personal link to browse the menu]",
     replyEmail: "Any questions? Just reply to this email.",
     replyWhatsapp: "Any questions? Just reply to this message.",
     slogan: "Authentic cooking, in your home.",
@@ -431,6 +450,11 @@ const MESSAGES: Readonly<Record<Locale, MenuMessages>> = {
 /** El texto de reemplazo del link en la vista previa, en ese idioma. */
 export function linkPlaceholder(locale: Locale): string {
   return MESSAGES[locale].linkPlaceholder;
+}
+
+/** El texto de reemplazo del link al libro del menú en la vista previa, en ese idioma. */
+export function bookLinkPlaceholder(locale: Locale): string {
+  return MESSAGES[locale].bookPlaceholder;
 }
 
 // ---------------------------------------------------------------------------
@@ -606,6 +630,8 @@ interface MessageParts {
   confirm: string;
   button: string;
   link: string | null;
+  /** El libro del menú: null, no va; con link null, la vista previa (su texto de reemplazo). */
+  book: { link: string | null } | null;
 }
 
 function messageParts(input: MenuMessageInput): MessageParts {
@@ -646,6 +672,7 @@ function messageParts(input: MenuMessageInput): MessageParts {
     confirm: quote ? messages.quote.confirm : messages.confirm,
     button: quote ? messages.quote.button : messages.button,
     link: input.link,
+    book: input.link === null ? { link: null } : input.bookLink ? { link: input.bookLink } : null,
   };
 }
 
@@ -695,6 +722,16 @@ function emailHtml(input: MenuMessageInput, parts: MessageParts, subject: string
     blocks.push({ kind: "title", text: messages.noteTitle(parts.chef) });
     for (const line of parts.note) blocks.push({ kind: "paragraph", text: line });
   }
+  // El link al libro del menú, justo antes del de confirmar (primero se hojea, después se confirma), con la frase
+  // que invita debajo (la nota también separa el link del párrafo que sigue).
+  if (parts.book) {
+    blocks.push(
+      parts.book.link
+        ? { kind: "link", label: messages.bookLink, href: parts.book.link }
+        : { kind: "paragraph", text: `${messages.bookLink}: ${messages.bookPlaceholder}` },
+      { kind: "note", text: messages.bookInvite },
+    );
+  }
   blocks.push(
     { kind: "paragraph", text: parts.confirm },
     parts.link
@@ -741,6 +778,7 @@ function emailText(input: MenuMessageInput, parts: MessageParts): string {
     }
   }
   if (parts.note.length > 0) out.push("", messages.noteTitle(parts.chef).toUpperCase(), ...parts.note);
+  if (parts.book) out.push("", `${messages.bookLink}: ${parts.book.link ?? messages.bookPlaceholder}`, messages.bookInvite);
   out.push(
     "",
     parts.confirm,
@@ -779,6 +817,7 @@ function whatsappText(parts: MessageParts): string {
     }
   }
   if (parts.note.length > 0) out.push("", `*${messages.noteTitle(parts.chef)}*`, ...parts.note);
+  if (parts.book) out.push("", `*${messages.bookLink}* · _${messages.bookInvite}_`, parts.book.link ?? messages.bookPlaceholder);
   out.push("", parts.confirm, parts.link ?? messages.linkPlaceholder, "", messages.replyWhatsapp);
   return out.join("\n");
 }

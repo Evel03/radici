@@ -18,9 +18,9 @@
 //   traductor (200, 422, 503 o 500).
 // - /menus/preview: lo necesario para el mensaje (chef_menu_send_context: 404, o 409 si la semana ya
 //   no se manda; una semana held sin su presupuesto abierto o que no es la primera, otra versión del menú
-//   o un menú sin platos, 409, antes de gastar una traducción) → si la clienta no lee español y hay lista,
-//   la traducción de sus renglones (nunca la nota), como /translate y con el mismo límite → la foto del
-//   envío (con el presupuesto, en la semana 1 de uno abierto) y el envío sin salir (chef_prepare_menu_send,
+//   o un menú sin platos, 409, antes de gastar una traducción) → si la clienta no lee español y hay lista o
+//   ingredientes, la traducción de sus nombres (nunca la nota), como /translate y con el mismo límite → la foto
+//   del envío (con el presupuesto, en la semana 1 de uno abierto) y el envío sin salir (chef_prepare_menu_send,
 //   con la huella del contexto: si algo cambió mientras tanto, 409) → 200 con el mensaje sin el link.
 // - /menus/send: la web del link configurada (500) → el email configurado, si lo pidió (503) → el link
 //   (un token nuevo; la base guarda su hash: chef_link_menu_send) → el contacto (409 sin email o sin
@@ -65,6 +65,7 @@ import {
   type NormalizedBooking,
   type TranslationSource,
 } from "../_shared/chef_api.ts";
+import { menuBookUrl } from "../_shared/client_link.ts";
 import { corsHeaders, parseAllowedOrigins, type OriginRule } from "../_shared/cors.ts";
 import {
   StoreError,
@@ -79,7 +80,7 @@ import {
 import { brandFromMailFrom, safeHttpUrl } from "../_shared/emails.ts";
 import { photoOrigin } from "../_shared/menu.ts";
 import { renderMenuMessage } from "../_shared/menu_message.ts";
-import { readMenuSnapshot, type MenuSnapshot } from "../_shared/menu_snapshot.ts";
+import { fitMenuSnapshotSize, readMenuSnapshot, type MenuSnapshot } from "../_shared/menu_snapshot.ts";
 import { isIsoDate, isOneOf, isUuid, romeToday, type Locale, type Meal, type RequestType } from "../_shared/public_request.ts";
 import type { EmailMessage, SendOutcome } from "../_shared/resend.ts";
 import {
@@ -95,6 +96,7 @@ import {
   type MenuSendContext,
 } from "./menu_send.ts";
 import {
+  menuTextNames,
   menuTextSource,
   readMenuTranslationOutput,
   translatedItemNames,
@@ -1011,8 +1013,8 @@ function earlyMenuRejection(context: MenuSendContext, menuVersion: number): Chef
 
 /**
  * POST /menus/preview: la vista previa del mensaje en el idioma de la clienta. Si no lee español y hay
- * lista, los nombres de sus renglones se traducen con Claude (como /translate, con el mismo límite;
- * translate: false los deja como están). La nota nunca se traduce: sale como la escribió Evelyn. Guarda
+ * lista o ingredientes en los platos, sus nombres se traducen con Claude en un solo pedido (como /translate,
+ * con el mismo límite; translate: false los deja como están). La nota nunca se traduce: sale como la escribió Evelyn. Guarda
  * el envío sin salir con la foto de lo que va a recibir y la huella del contexto, y devuelve el mensaje
  * sin el link (se crea al enviar) y el contacto, para que Evelyn lo revise.
  */
@@ -1034,14 +1036,15 @@ async function menuPreviewRoute(deps: ChefHandlerDeps, caller: Caller, input: un
   const early = earlyMenuRejection(context, menuVersion);
   if (early) return menuRejected(log, route, early, reply);
 
-  // La lista la escribe Evelyn (en español): sus renglones, a otro idioma con Claude. Los platos ya tienen
-  // sus traducciones guardadas y la nota sale como ella la escribió (nunca va a Anthropic).
+  // La lista la escribe Evelyn (en español): sus renglones, a otro idioma con Claude, junto con los nombres de los
+  // ingredientes de los platos (el libro del menú), en el mismo pedido. Los platos ya tienen sus traducciones
+  // guardadas y la nota sale como ella la escribió (nunca va a Anthropic).
   const locale = context.locale;
-  const itemNames = context.menu.items.map((item) => item.name);
+  const textNames = menuTextNames(context.menu.items, context.menu.dishes);
   let names: ReadonlyMap<string, string> | null = null;
   let translated = false;
-  if (translate && locale !== "es" && itemNames.length > 0) {
-    const source = menuTextSource(locale, itemNames);
+  if (translate && locale !== "es" && textNames.length > 0) {
+    const source = menuTextSource(locale, textNames);
     const translation = await runTranslation<MenuTextTranslation>(
       deps,
       caller,
@@ -1058,7 +1061,8 @@ async function menuPreviewRoute(deps: ChefHandlerDeps, caller: Caller, input: un
     translated = true;
   }
 
-  const snapshot = buildMenuSnapshot(context, { chefId: caller.chefId, photoOrigin: config.photoOrigin, itemNames: names });
+  // Si con los ingredientes la foto no entra en la base (un menú enorme), sale sin ellos: el menú se manda igual.
+  const snapshot = fitMenuSnapshotSize(buildMenuSnapshot(context, { chefId: caller.chefId, photoOrigin: config.photoOrigin, itemNames: names }));
   let prepared: unknown;
   try {
     prepared = await deps.store.prepareMenuSend({
@@ -1195,6 +1199,8 @@ async function menuSendRoute(deps: ChefHandlerDeps, caller: Caller, input: unkno
     clientName: linked.contact.name,
     snapshot,
     link: clientLinkUrl(siteUrl, token.token),
+    // El libro del menú de esa semana: el mismo token, también en el fragmento.
+    bookLink: menuBookUrl(siteUrl, token.token, linked.sessionId),
     // Con el presupuesto, el plazo que dice el mensaje es el de ahora (como chef_complete_menu_send, enseguida).
     now: deps.now(),
   });
