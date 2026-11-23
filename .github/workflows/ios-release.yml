@@ -1,0 +1,248 @@
+# App de iOS firmada y subida a TestFlight (pruebas internas) desde un runner de macOS de GitHub, sin Mac
+# propia y sin certificados a mano: firma automática en la nube de Apple con una clave de la API de
+# App Store Connect (xcodebuild -allowProvisioningUpdates + -authenticationKey*). Cómo se usa y cómo se
+# agregan testers: app/README.md, "iOS: TestFlight".
+# - ejecución manual (workflow_dispatch): compila, firma y sube a TestFlight. Input "upload" en false:
+#   compila y firma pero no sube (para probar la firma).
+# - pull_request: solo si cambia este workflow o los archivos de firma de iOS. Compila y firma, NUNCA sube.
+#   Sin acceso a los secretos (PR desde un fork) solo compila sin firmar.
+# Es manual a propósito: el repo es público solo hasta ~30/11 (minutos de macOS gratis); después los
+# minutos de macOS cuestan 10 veces los de Linux y no se gasta ninguno sin que alguien lo pida.
+#
+# Necesita, en Settings → Secrets and variables → Actions del repo:
+# - secretos APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_API_KEY (el contenido
+#   del .p8) y APPLE_TEAM_ID. La clave tiene que ser de equipo con rol Admin: App Manager no puede crear
+#   el certificado de distribución administrado en la nube (app/README.md).
+# - variables SUPABASE_URL y SUPABASE_PUBLISHABLE_KEY (las mismas que usa deploy-web.yml para /gestione/).
+# - variable opcional IOS_BUILD_NUMBER_OFFSET (entero, 0 por omisión): número de build = run_number + offset.
+# Las actions de terceros van fijadas por SHA (Dependabot las actualiza: .github/dependabot.yml).
+name: iOS release
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ios-release.yml"
+      - "app/ios/ExportOptions.plist"
+      - "app/ios/Runner/Info.plist"
+      - "app/ios/Runner/*.entitlements"
+      - "app/ios/Runner.xcodeproj/project.pbxproj"
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Subir a TestFlight (si no, solo compila y firma)"
+        type: boolean
+        default: true
+
+# Un grupo por rama. Un build en curso no se corta (la subida a medias dejaría un build a medias).
+concurrency:
+  group: ios-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # Versiones fijas y no las del día: se actualizan a propósito, con un PR. La imagen y el Xcode van
+  # juntos: si GitHub retira ese Xcode de la imagen, el paso "Elegir Xcode" falla con un mensaje claro.
+  FLUTTER_VERSION: "3.47.7"
+  XCODE_VERSION: "26.6"
+
+jobs:
+  ios:
+    name: Compilar, firmar y subir
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      # Los secretos no se pueden usar en "if"; esto deja un "true"/"false".
+      HAS_SIGNING_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY != '' && secrets.APP_STORE_CONNECT_KEY_ID != '' && secrets.APP_STORE_CONNECT_ISSUER_ID != '' && secrets.APPLE_TEAM_ID != '' }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+      BUILD_NUMBER_OFFSET: ${{ vars.IOS_BUILD_NUMBER_OFFSET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Elegir Xcode
+        run: |
+          set -euo pipefail
+          xcode="/Applications/Xcode_${XCODE_VERSION}.app"
+          if [ ! -d "${xcode}" ]; then
+            echo "::error::${xcode} no está en la imagen del runner: actualizar XCODE_VERSION (ver runner-images, macos-26-arm64-Readme.md)."
+            exit 1
+          fi
+          sudo xcode-select -s "${xcode}/Contents/Developer"
+          xcodebuild -version
+
+      # La app va a la tienda con el backend de producción (APP_ENV=prod). Sin el secreto de firma esto
+      # es un PR desde un fork: se compila sin backend, solo para ver que compile.
+      - name: Revisar la configuración
+        run: |
+          set -euo pipefail
+          if [ "${HAS_SIGNING_KEY}" != "true" ]; then
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+              echo "::error::Faltan secretos de Apple (APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_API_KEY, APPLE_TEAM_ID)."
+              exit 1
+            fi
+            echo "::notice::Sin los secretos de Apple (PR desde un fork): se compila sin firmar y sin backend."
+            exit 0
+          fi
+          problems=()
+          if ! [[ "${SUPABASE_URL}" =~ ^https://[A-Za-z0-9.-]+$ ]]; then
+            problems+=("SUPABASE_URL tiene que ser solo el origen, sin ruta ni barra final: https://<ref>.supabase.co")
+          fi
+          # Lista de permitidas: la clave termina dentro de la app, solo una publicable.
+          if ! [[ "${SUPABASE_PUBLISHABLE_KEY}" =~ ^sb_publishable_[A-Za-z0-9_-]+$ ]]; then
+            problems+=("Falta SUPABASE_PUBLISHABLE_KEY o no es una clave publicable (sb_publishable_...): nunca una secreta.")
+          fi
+          if [ -n "${BUILD_NUMBER_OFFSET}" ] && ! [[ "${BUILD_NUMBER_OFFSET}" =~ ^[0-9]{1,6}$ ]]; then
+            problems+=("IOS_BUILD_NUMBER_OFFSET tiene que ser un entero (0 a 999999).")
+          fi
+          if [ "${#problems[@]}" -gt 0 ]; then
+            for p in "${problems[@]}"; do echo "::error::${p}"; done
+            exit 1
+          fi
+          # Número de build: crece con cada ejecución de este workflow (PRs incluidos) y no se repite.
+          # TestFlight exige que cada build de una misma versión tenga un número mayor que el anterior.
+          # 10# fuerza base 10 (un offset con ceros a la izquierda no se lee como octal).
+          echo "BUILD_NUMBER=$(( GITHUB_RUN_NUMBER + 10#${BUILD_NUMBER_OFFSET:-0} ))" >> "${GITHUB_ENV}"
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # El código generado (freezed, json, l10n) no se versiona.
+      - name: App - dependencias y código generado
+        working-directory: app
+        run: |
+          flutter pub get
+          dart run build_runner build
+
+      # Sin secretos: compilación de prueba sin firmar y sin backend. Termina acá.
+      - name: App - compilar sin firmar (sin secretos)
+        if: env.HAS_SIGNING_KEY != 'true'
+        working-directory: app
+        run: flutter build ios --release --no-codesign --dart-define=APP_ENV=dev
+
+      # Deja en ios/Flutter/Generated.xcconfig la versión, el número de build y los --dart-define (los lee el
+      # script de compilación de Flutter dentro de xcodebuild) y resuelve las dependencias nativas. No firma.
+      - name: App - configuración de producción
+        if: env.HAS_SIGNING_KEY == 'true'
+        working-directory: app
+        run: |
+          set -euo pipefail
+          flutter build ios --config-only --release --no-codesign \
+            --build-number "${BUILD_NUMBER}" \
+            --dart-define=APP_ENV=prod \
+            "--dart-define=SUPABASE_URL=${SUPABASE_URL}" \
+            "--dart-define=SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}"
+
+      # La clave .p8 vive solo en el directorio temporal del runner, con permisos 600, y se borra al final.
+      # Se escribe con printf desde una variable de entorno: no pasa por la línea de comandos ni por el log.
+      - name: Guardar la clave de App Store Connect
+        if: env.HAS_SIGNING_KEY == 'true'
+        env:
+          API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          keys_dir="${RUNNER_TEMP}/asc-keys"
+          mkdir -p "${keys_dir}"
+          chmod 700 "${keys_dir}"
+          umask 077
+          # altool exige el nombre AuthKey_<id>.p8 y xcodebuild acepta cualquiera: se usa el mismo archivo.
+          printf '%s\n' "${API_KEY_CONTENT}" > "${keys_dir}/AuthKey_${KEY_ID}.p8"
+          if ! head -n 1 "${keys_dir}/AuthKey_${KEY_ID}.p8" | grep -q -- '-----BEGIN PRIVATE KEY-----'; then
+            echo "::error::APP_STORE_CONNECT_API_KEY no parece el contenido de un .p8 (tiene que empezar con BEGIN PRIVATE KEY)."
+            exit 1
+          fi
+          echo "ASC_KEYS_DIR=${keys_dir}" >> "${GITHUB_ENV}"
+
+      # Archivo con firma automática: -allowProvisioningUpdates + la clave dejan que Xcode cree el perfil y
+      # los certificados en la nube de Apple. El equipo viene del secreto, no del repo.
+      - name: iOS - archivar y firmar
+        if: env.HAS_SIGNING_KEY == 'true'
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -workspace app/ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "${RUNNER_TEMP}/Runner.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "${ASC_KEYS_DIR}/AuthKey_${KEY_ID}.p8" \
+            -authenticationKeyID "${KEY_ID}" \
+            -authenticationKeyIssuerID "${ISSUER_ID}" \
+            DEVELOPMENT_TEAM="${TEAM_ID}" \
+            CODE_SIGN_STYLE=Automatic
+
+      # Exporta el .ipa firmado con el certificado de distribución (cloud signing). ExportOptions.plist se
+      # copia al temporal y se le pone el equipo ahí: el del repo queda sin datos de la cuenta.
+      - name: iOS - exportar el .ipa
+        if: env.HAS_SIGNING_KEY == 'true'
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          options="${RUNNER_TEMP}/ExportOptions.plist"
+          cp app/ios/ExportOptions.plist "${options}"
+          /usr/libexec/PlistBuddy -c "Set :teamID ${TEAM_ID}" "${options}"
+          xcodebuild -exportArchive \
+            -archivePath "${RUNNER_TEMP}/Runner.xcarchive" \
+            -exportPath "${RUNNER_TEMP}/export" \
+            -exportOptionsPlist "${options}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "${ASC_KEYS_DIR}/AuthKey_${KEY_ID}.p8" \
+            -authenticationKeyID "${KEY_ID}" \
+            -authenticationKeyIssuerID "${ISSUER_ID}"
+          ipa=$(find "${RUNNER_TEMP}/export" -maxdepth 1 -name '*.ipa' | head -n 1)
+          if [ -z "${ipa}" ]; then
+            echo "::error::xcodebuild no generó ningún .ipa."
+            exit 1
+          fi
+          echo "IPA_PATH=${ipa}" >> "${GITHUB_ENV}"
+          # El bundle id es el definitivo y el número de build el de esta ejecución.
+          unzip -q -o "${ipa}" -d "${RUNNER_TEMP}/ipa-check"
+          app=$(find "${RUNNER_TEMP}/ipa-check/Payload" -maxdepth 1 -name '*.app' | head -n 1)
+          bundle=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${app}/Info.plist")
+          build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${app}/Info.plist")
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app}/Info.plist")
+          if [ "${bundle}" != "app.radicicucina" ] || [ "${build}" != "${BUILD_NUMBER}" ]; then
+            echo "::error::El .ipa trae ${bundle} (${version}+${build}); se esperaba app.radicicucina con build ${BUILD_NUMBER}."
+            exit 1
+          fi
+          echo "ipa: ${bundle} ${version} (${build})"
+
+      # Solo con ejecución manual y upload=true. altool sube con la misma clave (API_PRIVATE_KEYS_DIR absoluto:
+      # un ./private_keys relativo falla en --upload-app). --upload-app figura como obsoleto en la man page
+      # pero sigue funcionando; si Apple lo retira, el reemplazo es --upload-package.
+      - name: TestFlight - subir el build
+        if: env.HAS_SIGNING_KEY == 'true' && github.event_name == 'workflow_dispatch' && inputs.upload
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          API_PRIVATE_KEYS_DIR="${ASC_KEYS_DIR}" xcrun altool --upload-app --type ios \
+            --file "${IPA_PATH}" --apiKey "${KEY_ID}" --apiIssuer "${ISSUER_ID}"
+          {
+            echo "### Build subido a TestFlight"
+            echo "- Número de build: ${BUILD_NUMBER}"
+            echo "- Apple lo procesa unos minutos antes de mostrarlo en App Store Connect → TestFlight."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      # Siempre, aunque algo haya fallado antes. El runner se descarta igual, pero la clave no se deja.
+      - name: Borrar la clave de App Store Connect
+        if: always()
+        run: |
+          if [ -n "${ASC_KEYS_DIR:-}" ] && [ -d "${ASC_KEYS_DIR}" ]; then
+            rm -f "${ASC_KEYS_DIR:?}"/*.p8
+            rmdir "${ASC_KEYS_DIR:?}"
+          fi
