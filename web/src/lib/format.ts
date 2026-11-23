@@ -1,4 +1,5 @@
-// Formato de importes y fechas. Los importes siempre llegan en centavos enteros.
+// Formato de importes y fechas. Los importes siempre llegan en centavos enteros. La web pública no muestra precios
+// (decisión del 22/11/2026): el único importe es el que Evelyn escribe en su presupuesto, en la página de la reserva.
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 
 export function formatCents(cents: number, locale: string): string {

@@ -21,6 +21,7 @@ import {
   type AllergyAnswer,
   type ChefNotificationInput,
   type ClientConfirmationInput,
+  type EstimateSummary,
   type RequestSummary,
 } from "./emails.ts";
 
@@ -30,7 +31,13 @@ const REQUEST_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427";
 const nbspHtml = (text: string): string => escapeHtml(text).replace(/ /g, "&nbsp;").replace(/&nbsp;·&nbsp;/g, "&nbsp;· ");
 
 /** 4 semanas desde el domingo 25/10/2026, con la tarifa con descuento (vector 3). */
-const SUMMARY: RequestSummary = {
+/**
+ * Estos resúmenes llevan la referencia de tarifa (la que recibe el aviso a Evelyn). A la confirmación al cliente
+ * se le pasan igual: no tiene que mostrar ningún precio aunque el llamador los mande de más (decisión del 22/11/2026).
+ */
+type WithEstimate = RequestSummary & { estimate: EstimateSummary };
+
+const SUMMARY: WithEstimate = {
   requestId: REQUEST_ID,
   type: "week",
   adults: 2,
@@ -52,14 +59,14 @@ const SUMMARY: RequestSummary = {
 };
 
 /** Una semana, sin descuento (vector 1). */
-const ONE_WEEK: RequestSummary = {
+const ONE_WEEK: WithEstimate = {
   ...SUMMARY,
   weeks: 1,
   estimate: { autoPrice: true, weeklyServiceCents: 15000, serviceCents: 15000, savingsCents: 0, regularWeeklyCents: 15000 },
 };
 
 /** 6 personas: sin precio automático (vector 7). */
-const SIX_PEOPLE: RequestSummary = {
+const SIX_PEOPLE: WithEstimate = {
   ...SUMMARY,
   adults: 3,
   kids: 3,
@@ -68,7 +75,7 @@ const SIX_PEOPLE: RequestSummary = {
 };
 
 /** Sesión extra: sin precio automático ni semanas (vector 8). */
-const EXTRA: RequestSummary = {
+const EXTRA: WithEstimate = {
   ...SUMMARY,
   type: "extra",
   adults: 10,
@@ -243,35 +250,37 @@ test("URLs: bandeja con el id del pedido, privacy en el idioma, solo http(s)", (
   assert.equal(safeHttpUrl(null), null);
 });
 
+const REFERENCE_TITLE = { it: "Riferimento tariffa (interno)", es: "Referencia de tarifa (interna)", en: "Rate reference (internal)" } as const;
+
 const EXPECTED_CLIENT = {
   it: {
     subject: "Radici: abbiamo ricevuto la tua richiesta",
-    lines: ["Grazie, Giulia!", "Evelyn ti contatterà al più presto", "prezzo finale", "Settimana di pasti", "Settimane: 4",
+    lines: ["Grazie, Giulia!", "Evelyn ti contatterà al più presto", "Settimana di pasti", "Settimane: 4",
       "2 adulti e 2 bambini", "Giorni a settimana: 5", "Cena", "domenica 25 ottobre 2026", "Pomeriggio",
-      "Settimane successive: 1 nov · 8 nov · 15 nov", "Servizio a settimana: 140,00 €",
-      "Servizio, 4 settimane: 560,00 €", "Risparmio: 40,00 € rispetto a 150,00 € a settimana",
-      "Questa è una stima. La spesa la fai tu, con la lista che ti manda Evelyn."],
+      "Settimane successive: 1 nov · 8 nov · 15 nov",
+      "Evelyn ti prepara un preventivo su misura e te lo manda per email o WhatsApp.",
+      "La spesa la fai tu, con la lista che ti manda Evelyn."],
   },
   es: {
     subject: "Radici: hemos recibido tu solicitud",
-    lines: ["¡Gracias, Giulia!", "Evelyn te contactará lo antes posible", "precio final", "Semana de comidas", "Semanas: 4",
+    lines: ["¡Gracias, Giulia!", "Evelyn te contactará lo antes posible", "Semana de comidas", "Semanas: 4",
       "2 adultos y 2 niños", "Días por semana: 5", "Cena", "domingo, 25 de octubre de 2026", "Tarde",
-      "Semanas siguientes: 1 nov · 8 nov · 15 nov", "Servicio por semana: 140,00 €",
-      "Servicio, 4 semanas: 560,00 €", "Ahorro: 40,00 € frente a 150,00 € por semana",
-      "Esto es una estimación. La compra la haces tú, con la lista que te manda Evelyn."],
+      "Semanas siguientes: 1 nov · 8 nov · 15 nov",
+      "Evelyn te prepara un presupuesto a tu medida y te lo manda por email o WhatsApp.",
+      "La compra la haces tú, con la lista que te manda Evelyn."],
   },
   en: {
     subject: "Radici: we've received your request",
-    lines: ["Thank you, Giulia!", "Evelyn will contact you as soon as possible", "final price", "A week of meals", "Weeks: 4",
+    lines: ["Thank you, Giulia!", "Evelyn will contact you as soon as possible", "A week of meals", "Weeks: 4",
       "2 adults and 2 children", "Days per week: 5", "Dinner", "Sunday 25 October 2026", "Afternoon",
-      "Following weeks: 1 Nov · 8 Nov · 15 Nov", "Service per week: €140.00",
-      "Service, 4 weeks: €560.00", "Saving: €40.00 compared with €150.00 a week",
-      "This is an estimate. You do the shopping, with the list Evelyn sends you."],
+      "Following weeks: 1 Nov · 8 Nov · 15 Nov",
+      "Evelyn will prepare a quote tailored to you and send it by email or WhatsApp.",
+      "You do the shopping, with the list Evelyn sends you."],
   },
 } as const;
 
 for (const locale of LOCALES) {
-  test(`cliente (${locale}): asunto sin datos personales; saludo, resumen, aviso genérico y estimación`, () => {
+  test(`cliente (${locale}): asunto sin datos personales; saludo, resumen, presupuesto a medida y sin ningún precio`, () => {
     const email = renderClientConfirmation(clientInput(), locale);
     const expected = EXPECTED_CLIENT[locale];
     assert.equal(email.subject, expected.subject);
@@ -286,7 +295,19 @@ for (const locale of LOCALES) {
     assert.ok(email.text.includes("https://radicicucina.app/privacy/"));
     assert.ok(email.text.includes(REQUEST_ID.slice(0, 8)), "referencia corta del pedido");
     assert.ok(!email.text.includes("Rossi") && !email.html.includes("Rossi"), "solo el nombre de pila");
+    assertNoPrice(email, locale);
   });
+}
+
+/** El cliente no ve precios (decisión del 22/11/2026): ni importes, ni «€», ni la referencia de tarifa. */
+function assertNoPrice(email: { subject: string; html: string; text: string }, locale: Locale): void {
+  for (const [name, value] of [["asunto", email.subject], ["texto", email.text], ["HTML", email.html]] as const) {
+    assert.doesNotMatch(value, /€|&euro;|\bEUR\b/, `${name}: sin importes`);
+  }
+  assert.doesNotMatch(email.text, /\d+[.,]\d{2}/, "texto: sin importes");
+  for (const word of [REFERENCE_TITLE[locale], "stima", "estimación", "estimate", "prezzo", "precio", "price"]) {
+    assert.ok(!email.text.toLowerCase().includes(word.toLowerCase()), `sin «${word}»`);
+  }
 }
 
 test("los textos del usuario se escapan y no hay imágenes remotas ni scripts", () => {
@@ -318,19 +339,25 @@ test("cliente: sin fecha, 'sin preferencia'; ambas comidas; un evento", () => {
   assert.ok(!email.text.includes("Settimane"));
 });
 
-test("una semana: una sola fila de servicio, sin ahorro ni semanas siguientes", () => {
-  for (const email of [renderClientConfirmation(clientInput({ summary: ONE_WEEK }), "it"), renderChefNotification(chefInput({ summary: ONE_WEEK }), "it")]) {
+test("una semana: sin semanas siguientes; Evelyn ve una sola fila de referencia y el cliente ningún precio", () => {
+  const client = renderClientConfirmation(clientInput({ summary: ONE_WEEK }), "it");
+  const chef = renderChefNotification(chefInput({ summary: ONE_WEEK }), "it");
+  for (const email of [client, chef]) {
     assert.ok(email.text.includes("Settimane: 1\n"));
-    assert.ok(email.text.includes("Servizio: 150,00 €\n"));
-    assert.ok(email.html.includes("<strong>150,00 €</strong>"), "el servicio destacado");
-    assert.ok(email.text.includes("Questa è una stima."));
-    for (const absent of ["Servizio a settimana", "Risparmio", "Settimane successive"]) assert.ok(!email.text.includes(absent), absent);
+    assert.ok(!email.text.includes("Settimane successive"));
   }
+  assertNoPrice(client, "it");
+  assert.ok(chef.text.includes("RIFERIMENTO TARIFFA (INTERNO)"));
+  assert.ok(chef.text.includes("Servizio: 150,00 €\n"));
+  assert.ok(chef.html.includes("<strong>150,00 €</strong>"), "el servicio destacado");
+  for (const absent of ["Servizio a settimana", "Risparmio", "Questa è una stima"]) assert.ok(!chef.text.includes(absent), absent);
 });
 
-test("varias semanas: el total del servicio destacado y las fechas de las semanas siguientes, también cruzando el año", () => {
-  const email = renderClientConfirmation(clientInput(), "it");
+test("varias semanas: Evelyn ve el total de referencia destacado; las fechas de las semanas siguientes, también cruzando el año", () => {
+  const email = renderChefNotification(chefInput(), "it");
   assert.ok(email.html.includes("<strong>560,00 €</strong>"));
+  assert.ok(email.text.includes("Servizio a settimana: 140,00 €"));
+  assert.ok(email.text.includes("Risparmio: 40,00 € rispetto a 150,00 € a settimana"));
   // Sin fecha preferida no hay fechas que repetir.
   const noDate = renderClientConfirmation(clientInput({ summary: { ...SUMMARY, preferredDate: null } }), "it");
   assert.ok(!noDate.text.includes("Settimane successive"));
@@ -362,21 +389,21 @@ test("fechas de las semanas siguientes en el HTML: espacios duros dentro de cada
   assert.ok(renderChefNotification(chefInput({ summary: eight }), "es").text.includes("Semanas siguientes: 10 dic · 17 dic · 24 dic · 31 dic · 7 ene 2027 · 14 ene 2027 · 21 ene 2027\n"));
 });
 
-/** La nota de la estimación (con precio automático) y la frase de la compra (siempre, solo al cliente). */
-const ESTIMATE_NOTE = { it: "Questa è una stima.", es: "Esto es una estimación.", en: "This is an estimate." } as const;
+/** La frase de la compra (siempre, solo al cliente). */
 const SHOPPING = {
   it: "La spesa la fai tu, con la lista che ti manda Evelyn.",
   es: "La compra la haces tú, con la lista que te manda Evelyn.",
   en: "You do the shopping, with the list Evelyn sends you.",
 } as const;
 
+const QUOTE_LINE = {
+  it: "Evelyn ti prepara un preventivo su misura e te lo manda per email o WhatsApp.",
+  es: "Evelyn te prepara un presupuesto a tu medida y te lo manda por email o WhatsApp.",
+  en: "Evelyn will prepare a quote tailored to you and send it by email or WhatsApp.",
+} as const;
+
 const NO_PRICE = {
   people: {
-    client: {
-      it: "Per più di 5 persone il preventivo per il servizio te lo prepara Evelyn.",
-      es: "Para más de 5 personas, el presupuesto del servicio te lo prepara Evelyn.",
-      en: "For more than 5 people, Evelyn will send you a quote for the service.",
-    },
     chef: {
       it: "Più di 5 persone: senza prezzo automatico, prepara tu il preventivo.",
       es: "Más de 5 personas: sin precio automático, prepara tú el presupuesto.",
@@ -384,11 +411,6 @@ const NO_PRICE = {
     },
   },
   extra: {
-    client: {
-      it: "Per eventi e sessioni extra il preventivo per il servizio te lo prepara Evelyn.",
-      es: "Para eventos y sesiones extra, el presupuesto del servicio te lo prepara Evelyn.",
-      en: "For events and extra sessions, Evelyn will send you a quote for the service.",
-    },
     chef: {
       it: "Evento o sessione extra: senza prezzo automatico, prepara tu il preventivo.",
       es: "Evento o sesión extra: sin precio automático, prepara tú el presupuesto.",
@@ -398,17 +420,16 @@ const NO_PRICE = {
 } as const;
 
 for (const locale of LOCALES) {
-  test(`sin precio automático (${locale}): ni servicio ni total; el cliente lee que se lo prepara Evelyn y ella, que lo prepare`, () => {
+  test(`sin precio automático (${locale}): ni servicio ni total; Evelyn lee que lo prepare ella y el cliente, que se lo prepara Evelyn`, () => {
     for (const [summary, reason] of [[SIX_PEOPLE, "people"], [EXTRA, "extra"]] as const) {
       const client = renderClientConfirmation(clientInput({ summary }), locale);
       const chef = renderChefNotification(chefInput({ summary }), locale);
-      assert.ok(client.text.includes(NO_PRICE[reason].client[locale]), `${reason}: cliente`);
-      assert.ok(client.html.includes(escapeHtml(NO_PRICE[reason].client[locale])));
+      // Con o sin precio automático, el cliente lee lo mismo: Evelyn le prepara un presupuesto a medida.
+      assertNoPrice(client, locale);
+      assert.ok(client.text.includes(QUOTE_LINE[locale]), `${reason}: cliente`);
       assert.ok(chef.text.includes(NO_PRICE[reason].chef[locale]), `${reason}: Evelyn`);
       for (const email of [client, chef]) {
         assert.ok(!/<strong>/.test(email.html), `${reason}: ningún importe destacado`);
-        // Sin importe no hay estimación que aclarar.
-        assert.ok(!email.text.includes(ESTIMATE_NOTE[locale]), `${reason}: sin «es una estimación»`);
       }
       // Al cliente igual se le dice que la compra la hace él.
       assert.ok(client.text.includes(SHOPPING[locale]), `${reason}: la compra, al cliente`);
@@ -496,6 +517,8 @@ test("Evelyn (it): asunto con el nombre de pila, contacto con links, botón a la
     assert.ok(email.text.includes(line), `falta en el texto: ${line}`);
     assert.ok(email.html.includes(escapeHtml(line)) || email.html.includes(nbspHtml(line)), `falta en el HTML: ${line}`);
   }
+  assert.ok(email.text.includes("RIFERIMENTO TARIFFA (INTERNO)"));
+  assert.ok(email.html.includes("Riferimento tariffa (interno)"));
   const inbox = `https://radicicucina.app/gestione/#/richieste/${REQUEST_ID}`;
   assert.ok(email.html.includes(`href="${inbox}"`));
   assert.ok(email.text.includes(inbox));
@@ -514,6 +537,9 @@ test("Evelyn en español e inglés, sin notas ni WhatsApp", () => {
   const en = renderChefNotification(chefInput(), "en");
   assert.equal(en.subject, "New request from Giulia");
   assert.ok(en.text.includes("Open in the inbox"));
+  // La referencia de tarifa, rotulada como interna, en cada idioma.
+  assert.ok(es.text.includes("REFERENCIA DE TARIFA (INTERNA)"));
+  assert.ok(en.text.includes("RATE REFERENCE (INTERNAL)"));
 });
 
 const CHEF_ALLERGIES: Readonly<Record<Locale, Readonly<Record<AllergyAnswer, string>>>> = {
@@ -736,7 +762,7 @@ test("Evelyn: un email largo se parte dentro de su columna y no ensancha la tarj
 test("Outlook (Word) no hereda letra ni color en tablas anidadas: las tablas de filas los declaran", () => {
   for (const email of [renderClientConfirmation(clientInput(), "it"), renderChefNotification(chefInput(), "es")]) {
     const tables = email.html.match(/<table [^>]*border-collapse:collapse[^>]*>/g) ?? [];
-    assert.ok(tables.length >= 2);
+    assert.ok(tables.length >= 1);
     for (const table of tables) assert.match(table, /font-family:'Palatino Linotype',[^;]*;color:#2c2b20;/);
   }
 });

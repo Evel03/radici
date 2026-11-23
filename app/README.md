@@ -583,8 +583,8 @@ flutter build web --release --base-href /gestione/ --no-web-resources-cdn --csp 
 
 En Git Bash (Windows) anteponer `MSYS_NO_PATHCONV=1`: si no, `/gestione/` se convierte en una ruta de Windows.
 
-`deploy-web.yml` la compila con el backend de producción solo en `main`. En las vistas previas de los
-PR (código sin revisar en una URL pública) va con `APP_ENV=dev` y sin Supabase: muestra "Backend non
+`deploy-web.yml` la compila con el backend de producción solo en `main`. En las vistas previas (a pedido: Actions → Deploy web → Run workflow sobre la rama; los
+PR ya no las disparan; código sin revisar en una URL pública) va con `APP_ENV=dev` y sin Supabase: muestra "Backend non
 configurato" y no se conecta a los datos de producción. En los dos casos agrega
 `--dart-define=BUILD_ID=<sha corto>` y publica `gestione/build.json` (ver "Versión nueva"); a mano no
 hace falta: sin `BUILD_ID` la app no avisa nada.

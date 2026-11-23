@@ -35,6 +35,7 @@ import {
   renderChefNotification,
   renderClientConfirmation,
   safeFirstName,
+  type EstimateSummary,
   type RequestSummary,
 } from "../_shared/emails.ts";
 import { MENU_PATH, buildMenuResponse, readMenuChoices, type MenuChoice, type MenuDish } from "../_shared/menu.ts";
@@ -46,8 +47,6 @@ import {
   isIsoDate,
   isOneOf,
   parsePublicRequest,
-  publicEstimate,
-  readPublicEstimate,
   romeToday,
   type Allergen,
   type Diet,
@@ -239,8 +238,6 @@ export interface SubmitResult {
   requestId: string;
   /** true: la clave ya existía y es el pedido guardado antes (la base no cambió nada). */
   duplicate: boolean;
-  /** requests.estimate tal como quedó guardado (en un duplicado, la del pedido original). */
-  storedEstimate: unknown;
   /**
    * Los platos guardados ([{ id, name }], en orden), tal como los devolvió la base (en un duplicado, los del
    * pedido original); null si no vinieron. Se leen con readMenuChoices.
@@ -306,7 +303,8 @@ export function chefFromRow(row: Readonly<Record<string, unknown>>): ChefInfo {
 
 /**
  * Resultado de public.submit_public_request ({request_id, duplicate, estimate, menu}), o null si no tiene
- * esa forma. estimate y menu no se validan acá: el pedido ya está guardado y el 201 sale igual.
+ * esa forma. El menu no se valida acá: el pedido ya está guardado y el 201 sale igual. El estimate (la
+ * referencia interna de Evelyn) no se lee: no sale hacia la web.
  */
 export function submitResultFromRpc(data: unknown): SubmitResult | null {
   if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
@@ -314,7 +312,7 @@ export function submitResultFromRpc(data: unknown): SubmitResult | null {
   const requestId = record["request_id"];
   const duplicate = record["duplicate"];
   if (typeof requestId !== "string" || !UUID_PATTERN.test(requestId) || typeof duplicate !== "boolean") return null;
-  return { requestId, duplicate, storedEstimate: record["estimate"] ?? null, storedMenu: record["menu"] ?? null };
+  return { requestId, duplicate, storedMenu: record["menu"] ?? null };
 }
 
 /**
@@ -628,13 +626,11 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
       if (!menu) log("warn", "stored_menu_invalid", { requestId });
 
       if (saved.duplicate) {
-        // Reintento de un pedido ya guardado: el mismo id, la estimación y los platos guardados, ningún
-        // aviso, y duplicate: true para que la web no muestre como enviado lo que se cambió después
-        // (contrato §2). La guardada puede ser de antes del precio por semana: readPublicEstimate la lee igual.
+        // Reintento de un pedido ya guardado: el mismo id y los platos guardados, ningún aviso, y duplicate:
+        // true para que la web no muestre como enviado lo que se cambió después (contrato §2). Sin precio:
+        // lo guardado en requests.estimate es la referencia interna de Evelyn y no sale hacia afuera.
         log("info", "request_duplicate", { requestId });
-        const stored = readPublicEstimate(saved.storedEstimate);
-        if (!stored) log("warn", "stored_estimate_invalid", { requestId });
-        return reply(201, { requestId, estimate: stored ?? publicEstimate(estimate), menu: menu ?? [], duplicate: true });
+        return reply(201, { requestId, menu: menu ?? [], duplicate: true });
       }
       log("info", "request_saved", { requestId });
 
@@ -644,7 +640,7 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
         }),
       );
 
-      return reply(201, { requestId, estimate: publicEstimate(estimate), menu: menu ?? [] });
+      return reply(201, { requestId, menu: menu ?? [] });
     } catch (error) {
       // Solo el tipo de error: el mensaje podría traer datos del pedido.
       log("error", "unexpected_error", { error: error instanceof Error ? error.name : "unknown" });
@@ -668,8 +664,9 @@ interface NotifyContext {
 
 type Recipient = "chef" | "client";
 
+/** Lo que puede ver el cliente: el pedido, sin ningún precio (decisión del 22/11/2026). */
 function summaryOf(context: NotifyContext): RequestSummary {
-  const { value, estimate, chef } = context;
+  const { value } = context;
   return {
     requestId: context.requestId,
     type: value.type,
@@ -681,7 +678,15 @@ function summaryOf(context: NotifyContext): RequestSummary {
     preferredDate: value.preferredDate,
     slot: value.slot,
     allergies: allergyAnswer(value.noAllergies, value.hasRestrictions),
-    // El precio con las tarifas de la cocinera: el mismo que se guardó y que vio el 201.
+    menu: context.menu,
+  };
+}
+
+/** Lo de Evelyn: el pedido y la fórmula con sus tarifas (la misma que se guardó), como referencia interna. */
+function chefSummaryOf(context: NotifyContext): RequestSummary & { estimate: EstimateSummary } {
+  const { estimate, chef } = context;
+  return {
+    ...summaryOf(context),
     estimate: estimate.autoPrice
       ? {
           autoPrice: true,
@@ -695,7 +700,6 @@ function summaryOf(context: NotifyContext): RequestSummary {
           reason: estimate.reason,
           maxPeople: chef.pricing.weeklyRateMaxPeople,
         },
-    menu: context.menu,
   };
 }
 
@@ -745,7 +749,7 @@ async function notifyChef(deps: HandlerDeps, context: NotifyContext): Promise<vo
       email: value.email,
       whatsappOptIn: value.whatsappOptIn,
       hasNotes: value.notes !== "",
-      summary: summaryOf(context),
+      summary: chefSummaryOf(context),
       inboxUrl: config.inboxUrl,
     },
     config.chefLocale,
