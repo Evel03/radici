@@ -149,10 +149,12 @@ pregunta por el cumplimiento de exportación en cada build.
 3. **Pruebas externas** (opcional): grupo externo con invitación por email o enlace público; el primer
    build de cada versión pasa por una revisión corta de Apple.
 
-Si falla: «No devices» al archivar (Xcode quiere un perfil de desarrollo y el equipo no tiene ningún
-dispositivo registrado) se resuelve registrando un iPhone en developer.apple.com → Devices; «No
-profiles for app.radicicucina» o permisos de nube, ver el rol de la clave arriba. Todavía sin Sign in
-with Apple: cuando llegue su PR, el `.entitlements` se suma a la lista de archivos que disparan el PR.
+No hace falta registrar ningún iPhone: el archivo se firma directo para distribución («Apple
+Distribution», perfil de App Store, sin lista de dispositivos). Con la identidad de desarrollo del
+proyecto fallaba con «Your team has no devices from which to generate a provisioning profile» (primer
+run del 23/11/2026). Si falla con «No profiles for app.radicicucina» o con permisos de nube, ver el rol
+de la clave arriba. Todavía sin Sign in with Apple: cuando llegue su PR, el `.entitlements` se suma a la
+lista de archivos que disparan el PR.
 
 ## Verificar (lo mismo que el CI)
 

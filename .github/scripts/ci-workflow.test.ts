@@ -59,6 +59,8 @@ test("iOS release: manual o PR acotado a sus archivos, la subida solo manual, im
   assert.doesNotMatch(on, /push:/, "no corre solo en cada push (los minutos de macOS cuestan)");
   assert.match(text, /runs-on: macos-\d+\n/, "imagen de macOS fija, no macos-latest");
   assert.match(text, /XCODE_VERSION: "\d+\.\d+(\.\d+)?"/, "Xcode fijo");
+  // Firma directo para distribución: un perfil de desarrollo exigiría un iPhone registrado en la cuenta.
+  assert.match(text, /\n\s+CODE_SIGN_IDENTITY="Apple Distribution" \\\n\s+"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]=Apple Distribution"\n/, "archiva con la identidad de distribución");
   const upload = /- name: TestFlight - subir el build\n\s+if: ([^\n]+)/.exec(text)?.[1] ?? "";
   assert.match(upload, /github\.event_name == 'workflow_dispatch'/, "un PR nunca sube");
   assert.match(text, /- name: Borrar la clave[^\n]*\n\s+if: always\(\)/, "la clave .p8 se borra siempre");
