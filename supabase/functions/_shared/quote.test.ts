@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
+import { calcCookLoad, DEFAULT_MIN_COOK_MINUTES } from "./cook_load.ts";
 import { calcQuote, DEFAULT_PRICING, LIMITS, type PricingSettings, type Quote, type QuoteInput } from "./quote.ts";
 
 interface Fixture {
@@ -243,4 +244,27 @@ test("validSettings de quote_vectors.json tiene el mínimo y el máximo de cada 
       assert.ok(settings[key] >= min && settings[key] <= max, `${c.label}: ${key}`);
     }
   }
+});
+
+test("cook_load.ts (lo que usa la web, sin tarifas): porciones, recetas y minutos iguales a los del motor en todos los vectores", () => {
+  assert.equal(DEFAULT_MIN_COOK_MINUTES, DEFAULT_PRICING.minCookMinutes);
+  for (const v of fixture.vectors) {
+    const minutes = v.settings?.minCookMinutes ?? DEFAULT_PRICING.minCookMinutes;
+    const load = calcCookLoad(v.input, minutes);
+    for (const key of ["adultPortions", "kidPortions", "portions", "recipes", "cookMinutes"] as const) {
+      if (key in v.expected) assert.equal(load[key], v.expected[key], `vector ${v.id}: ${key}`);
+    }
+  }
+  // Y la misma carga que calcQuote devuelve, con cualquier entrada válida.
+  for (const v of fixture.vectors) {
+    const quote = calcQuote(v.input, { ...DEFAULT_PRICING, ...v.settings });
+    const load = calcCookLoad(v.input, v.settings?.minCookMinutes ?? DEFAULT_PRICING.minCookMinutes);
+    for (const key of ["adultPortions", "kidPortions", "portions", "recipes", "cookMinutes"] as const) assert.equal(load[key], quote[key], `vector ${v.id}: ${key}`);
+  }
+  for (const bad of fixture.invalid) assert.throws(() => calcCookLoad(bad.input), RangeError, bad.label);
+});
+
+test("cook_load.ts no lleva ninguna tarifa ni importe (la web no los puede traer)", () => {
+  const source = readFileSync(new URL("./cook_load.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /Cents|DEFAULT_PRICING|rate/i);
 });

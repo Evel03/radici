@@ -30,5 +30,5 @@
     "outDir": "node_modules/.tmp/shared",
     "tsBuildInfoFile": "node_modules/.tmp/shared.tsbuildinfo"
   },
-  "files": ["../supabase/functions/_shared/public_request.ts", "../supabase/functions/_shared/quote.ts"]
+  "files": ["../supabase/functions/_shared/public_request.ts", "../supabase/functions/_shared/cook_load.ts"]
 }
