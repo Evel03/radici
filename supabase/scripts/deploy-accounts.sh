@@ -78,7 +78,7 @@ admin_key() {
   fi
 }
 
-# Cuenta confirmada para $1, con una contraseña al azar y el idioma del email del código. $2 dice de quién
+# Cuenta confirmada para $1, con una contraseña al azar (no sobrevive: auth.md §4; la fija después promote_to_chef o sync_chef_members) y el idioma del email del código. $2 dice de quién
 # es en los mensajes ("de la cocinera", "del colaborador s***@…"; nunca el email de un colaborador).
 create_user() {
   local created status

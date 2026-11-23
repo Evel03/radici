@@ -21,6 +21,10 @@
 --   escribir user_metadata desde su copia en memoria (agrega email_verified) y, medido contra GoTrue
 --   v2.197.0, esa segunda escritura devolvía los metadatos de más. Por eso también corre cuando
 --   cambian los metadatos de una cuenta ya confirmada; la contraseña solo se borra en la primera vez.
+--   * Cambio de email de una cuenta confirmada (updateUser({email}) con la doble confirmación): al
+--     confirmarlo GoTrue pone email = email_change y no toca email_confirmed_at. Sin este caso, quien
+--     registró un email propio con una contraseña que conoce y lo cambia al de otra persona conservaría
+--     la contraseña cuando la víctima confirma el cambio: el mismo secuestro previo por otro camino.
 -- Una cuenta creada ya confirmada (INSERT con email_confirmed_at) no dispara nada: la demo, con
 -- contraseña, se crea confirmada y la contraseña se fija después. Una cuenta de la cocina (código, sin
 -- contraseña) no cambia: promote_to_chef y sync_chef_members actualizan la contraseña sin tocar
@@ -44,8 +48,8 @@ declare
   v_locale text;
   v_meta   jsonb := '{}'::jsonb;
 begin
-  -- Solo en la primera confirmación; una escritura posterior de metadatos no toca la contraseña.
-  if old.email_confirmed_at is null then
+  -- Solo en la primera confirmación o al cambiar el email; una escritura posterior de metadatos no toca la contraseña.
+  if old.email_confirmed_at is null or old.email is distinct from new.email then
     new.encrypted_password := null;
   end if;
 
@@ -72,8 +76,8 @@ comment on function public.auth_confirm_clears_password() is
 revoke all on function public.auth_confirm_clears_password() from public, anon, authenticated, service_role;
 
 create trigger on_auth_user_confirmed_clear_password
-  before update of email_confirmed_at, raw_user_meta_data on auth.users
+  before update of email, email_confirmed_at, raw_user_meta_data on auth.users
   for each row
   when (new.email_confirmed_at is not null
-        and (old.email_confirmed_at is null or old.raw_user_meta_data is distinct from new.raw_user_meta_data))
+        and (old.email_confirmed_at is null or old.email is distinct from new.email or old.raw_user_meta_data is distinct from new.raw_user_meta_data))
   execute function public.auth_confirm_clears_password();
