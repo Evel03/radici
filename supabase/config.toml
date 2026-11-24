@@ -215,7 +215,10 @@ token_refresh = 150
 # Number of sign up and sign-in requests that can be made in a 5 minute interval per IP address (excludes anonymous users).
 sign_in_sign_ups = 30
 # Number of OTP / Magic link verifications that can be made in a 5 minute interval per IP address.
-token_verifications = 30
+# Radici (PR04): 10, como en producción (rate_limit_verify). GoTrue lo aplica como un cubo de ráfaga fija de 30
+# que recarga 10 cada 5 minutos por IP (el 31.º seguido da 429; contrato auth.md §6), y solo si el servidor
+# conoce la IP (con `supabase start` no se aplica).
+token_verifications = 10
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.
 web3 = 30
 
@@ -236,7 +239,10 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# Radici (PR04): prendido, como en producción (mailer_autoconfirm = false): ninguna cuenta nace confirmada
+# sin probar que el email es suyo. Las de Evelyn y sus colaboradores las crea confirmadas el despliegue.
+# auth-config.ts corta el despliegue si esto vuelve a false.
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
@@ -286,7 +292,8 @@ content_path = "./supabase/templates/login_code.html"
 # Allow/disallow new user signups via SMS to your project.
 enable_signup = false
 # If enabled, users need to confirm their phone number before signing in.
-enable_confirmations = false
+# Radici (PR04): prendido (sms_autoconfirm = false); el teléfono sigue apagado como proveedor.
+enable_confirmations = true
 # Template for sending OTP to users
 template = "Your code is {{ .Code }}"
 # Controls the minimum amount of time that must pass before sending another sms otp.

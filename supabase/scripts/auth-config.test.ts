@@ -4,7 +4,15 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { authSecurityConfig, authSmtpConfig, authTemplatesConfig, parseMailFrom, tomlSection } from "./auth-config.ts";
+import {
+  authSecurityConfig,
+  authSmtpConfig,
+  authTemplatesConfig,
+  changedFields,
+  parseMailFrom,
+  tomlSection,
+  verifyAuthConfig,
+} from "./auth-config.ts";
 
 const read = (path: string): string => readFileSync(new URL(`../../${path.replace(/^\.\//, "")}`, import.meta.url), "utf8");
 const CONFIG = read("supabase/config.toml");
@@ -34,6 +42,7 @@ test("TOML: secciones, cadenas con comillas escapadas, enteros, booleanos y come
 test("security: altas apagadas, código de 8 cifras por 10 minutos y sin CAPTCHA; nada de correo", () => {
   const body = authSecurityConfig(CONFIG);
   assert.deepEqual(body, {
+    ...PINNED, // lo del PR04 (más abajo)
     disable_signup: true,
     external_email_enabled: true,
     mailer_otp_length: 8,
@@ -92,4 +101,147 @@ test("línea de comandos (la del workflow): una parte por llamada; sin la clave,
   assert.equal(JSON.parse(run("smtp", { RESEND_SMTP_KEY: "re_x", MAIL_FROM: "Radici <ciao@x.example>" })).smtp_pass, "re_x");
   assert.throws(() => run("smtp"), (error: { status?: number }) => error.status === 2);
   assert.throws(() => run("otra"), (error: { status?: number }) => error.status === 2);
+});
+
+// ---------------------------------------------------------------------------------------------
+// PR04: Auth fijada desde el repo (contrato auth.md). Los nombres de los campos son los de la
+// Management API (PATCH /v1/projects/{ref}/config/auth, OpenAPI https://api.supabase.com/api/v1-json).
+// ---------------------------------------------------------------------------------------------
+
+// Los campos del PATCH del OpenAPI público (leído el 23/11/2026) que usa este repo: si un nombre se
+// equivoca, la API lo ignora en silencio, así que el test lo compara con esta lista.
+const MANAGEMENT_API_AUTH_FIELDS = [
+  "site_url", "uri_allow_list", "disable_signup", "external_email_enabled", "external_phone_enabled",
+  "external_anonymous_users_enabled", "external_google_enabled", "external_apple_enabled",
+  "external_web3_solana_enabled", "external_web3_ethereum_enabled", "saml_enabled",
+  "external_email_magic_link_disabled", "mailer_autoconfirm", "sms_autoconfirm",
+  "mailer_allow_unverified_email_sign_ins", "mailer_secure_email_change_enabled",
+  "security_manual_linking_enabled", "security_captcha_enabled", "rate_limit_verify", "rate_limit_email_sent",
+  "mailer_otp_length", "mailer_otp_exp", "smtp_host", "smtp_port", "smtp_user", "smtp_pass",
+  "smtp_admin_email", "smtp_sender_name", "mailer_subjects_magic_link", "mailer_subjects_confirmation",
+  "mailer_templates_magic_link_content", "mailer_templates_confirmation_content",
+];
+
+const PINNED = {
+  site_url: "https://radicicucina.app/app/",
+  uri_allow_list: "https://radicicucina.app/app/",
+  mailer_autoconfirm: false,
+  sms_autoconfirm: false,
+  mailer_allow_unverified_email_sign_ins: false,
+  mailer_secure_email_change_enabled: true,
+  security_manual_linking_enabled: false,
+  external_email_magic_link_disabled: false,
+  rate_limit_verify: 10,
+  external_google_enabled: false,
+  external_apple_enabled: false,
+  external_phone_enabled: false,
+  external_anonymous_users_enabled: false,
+  external_web3_solana_enabled: false,
+  external_web3_ethereum_enabled: false,
+  saml_enabled: false,
+};
+
+test("security: el cuerpo fija cada ajuste del PR04 con el nombre de campo de la Management API", () => {
+  const body = authSecurityConfig(CONFIG);
+  for (const [key, value] of Object.entries(PINNED)) assert.deepEqual(body[key], value, key);
+  // Lo de antes sigue igual: Evelyn entra con el mismo código de 8 cifras.
+  assert.equal(body.disable_signup, true);
+  assert.equal(body.external_email_enabled, true);
+  assert.equal(body.mailer_otp_length, 8);
+  assert.equal(body.mailer_otp_exp, 600);
+  assert.equal(body.security_captcha_enabled, false);
+});
+
+test("los campos de las tres partes existen en la Management API", () => {
+  const all = [
+    ...Object.keys(authSecurityConfig(CONFIG)),
+    ...Object.keys(authSmtpConfig({ key: "re_x", mailFrom: "a@b.test" })),
+    ...Object.keys(authTemplatesConfig(CONFIG, read)),
+  ];
+  for (const key of all) assert.ok(MANAGEMENT_API_AUTH_FIELDS.includes(key), `campo desconocido: ${key}`);
+});
+
+test("combinaciones prohibidas: config.toml que prende autoconfirm (email o sms) o afloja algo, corta", () => {
+  const swap = (from: RegExp, to: string): string => {
+    const out = CONFIG.replace(from, to);
+    assert.notEqual(out, CONFIG, `el test tiene que encontrar ${from}`);
+    return out;
+  };
+  // enable_confirmations = false equivale a autoconfirm = true.
+  assert.throws(() => authSecurityConfig(swap(/(\[auth\.email\][^[]*?)enable_confirmations = true/s, "$1enable_confirmations = false")), /autoconfirm/);
+  assert.throws(() => authSecurityConfig(swap(/(\[auth\.sms\][^[]*?)enable_confirmations = true/s, "$1enable_confirmations = false")), /autoconfirm/);
+  assert.throws(() => authSecurityConfig(swap(/enable_manual_linking = false/, "enable_manual_linking = true")), /linking/);
+  assert.throws(() => authSecurityConfig(swap(/enable_anonymous_sign_ins = false/, "enable_anonymous_sign_ins = true")), /anónimos/);
+  assert.throws(() => authSecurityConfig(swap(/double_confirm_changes = true/, "double_confirm_changes = false")), /cambio de email/);
+  assert.throws(() => authSecurityConfig(swap(/token_verifications = 10/, "token_verifications = 30")), /token_verifications/);
+  assert.throws(() => authSecurityConfig(swap(/(\[auth\.external\.apple\][^[]*?)enabled = false/s, "$1enabled = true")), /apple/i);
+  assert.throws(() => authSecurityConfig(swap(/(\[auth\.web3\.solana\][^[]*?)enabled = false/s, "$1enabled = true")), /web3/i);
+});
+
+test("config.toml del repo: confirmaciones prendidas para email y sms, y 10 verificaciones cada 5 minutos", () => {
+  assert.equal(tomlSection(CONFIG, "auth.email").get("enable_confirmations"), true);
+  assert.equal(tomlSection(CONFIG, "auth.sms").get("enable_confirmations"), true);
+  assert.equal(tomlSection(CONFIG, "auth.rate_limit").get("token_verifications"), 10);
+  assert.equal(tomlSection(CONFIG, "auth").get("enable_signup"), false, "las altas siguen apagadas hasta M2");
+});
+
+const live = (): Record<string, unknown> => ({ ...authSecurityConfig(CONFIG), unrelated: "x" });
+
+test("verifyAuthConfig: devuelve los campos que no quedaron como se pidieron, sin sus valores", () => {
+  const body = authSecurityConfig(CONFIG);
+  assert.deepEqual(verifyAuthConfig(body, live()), []);
+  const bad: Record<string, unknown> = { ...live(), mailer_autoconfirm: true, rate_limit_verify: 30 };
+  delete bad.site_url;
+  assert.deepEqual(verifyAuthConfig(body, bad).sort(), ["mailer_autoconfirm", "rate_limit_verify", "site_url"]);
+  // Un nombre de campo equivocado (la API lo ignora y no lo devuelve) no pasa en silencio.
+  assert.deepEqual(verifyAuthConfig({ campo_inventado: true }, live()), ["campo_inventado"]);
+});
+
+test("verifyAuthConfig: cada combinación prohibida en la respuesta de la API se detecta", () => {
+  const body = authSecurityConfig(CONFIG);
+  for (const [key, value] of Object.entries(PINNED)) {
+    const bad = typeof value === "boolean" ? !value : typeof value === "number" ? value + 1 : `${value}x`;
+    assert.deepEqual(verifyAuthConfig(body, { ...live(), [key]: bad }), [key], key);
+  }
+});
+
+test("changedFields: solo los nombres de lo que cambia en producción, nunca valores", () => {
+  assert.deepEqual(changedFields({ a: true, b: "secreto-b", c: 10, d: 1 }, { a: false, b: "otro", c: 10 }), ["a", "b", "d"]);
+  assert.deepEqual(changedFields({ a: true }, { a: true }), []);
+});
+
+test("línea de comandos: verify compara la respuesta de la API con el cuerpo; changed lista los nombres", () => {
+  const run = (args: string[], input: string): string => execFileSync(process.execPath, [SCRIPT, ...args], { input, encoding: "utf8" });
+  assert.equal(run(["verify", "security"], JSON.stringify(live())), "");
+  assert.throws(
+    () => run(["verify", "security"], JSON.stringify({ ...live(), mailer_autoconfirm: true })),
+    (error: { status?: number; stderr?: Buffer | string }) => error.status === 2 && String(error.stderr).includes("mailer_autoconfirm"),
+  );
+  assert.equal(run(["changed", "security"], JSON.stringify({ ...live(), rate_limit_verify: 30 })).trim(), "rate_limit_verify");
+});
+
+test("plantillas: .Data solo para comparar el idioma; nada del usuario sale en el email", () => {
+  const actions = [...CONFIG.matchAll(/\{\{[^}]*\}\}/g), ...TEMPLATE.matchAll(/\{\{[^}]*\}\}/g)].map((m) => m[0]);
+  const withData = actions.filter((a) => a.includes(".Data"));
+  assert.ok(withData.length > 0);
+  for (const action of withData) {
+    assert.match(action, /^\{\{ (else )?if and \.Data\.locale \(eq \.Data\.locale \\?"(es|en)\\?"\) \}\}$/, `.Data fuera de una comparación: ${action}`);
+  }
+  for (const text of [TEMPLATE, CONFIG]) assert.ok(!/\.Data(?!\.locale\b)/.test(text), ".Data sin .locale");
+  // Lo único que la plantilla imprime es el código; nada de links ni datos del usuario.
+  const printed = [...TEMPLATE.matchAll(/\{\{\s*([^}]*?)\s*\}\}/g)].map((m) => m[1] ?? "").filter((a) => !/^(if|else|end)\b/.test(a));
+  assert.deepEqual(printed, [".Token"]);
+  // Lo mismo para los asuntos de config.toml: nada del usuario.
+  for (const banned of [".ConfirmationURL", ".TokenHash", ".SiteURL", ".RedirectTo", ".Email", ".NewEmail"]) {
+    assert.ok(!TEMPLATE.includes(banned), `la plantilla no usa ${banned}`);
+    assert.ok(!CONFIG.includes(banned), `los asuntos de config.toml no usan ${banned}`);
+  }
+});
+
+test("login_code: avisa en los tres idiomas que el código no se comparte con nadie, ni con Evelyn", () => {
+  assert.match(TEMPLATE, /Non condividere questo codice con nessuno, nemmeno con Evelyn\./);
+  assert.match(TEMPLATE, /No compartas este código con nadie, ni siquiera con Evelyn\./);
+  assert.match(TEMPLATE, /Don't share this code with anyone, not even Evelyn\./);
+  assert.ok(TEMPLATE.includes("{{ .Token }}"));
+  assert.ok(!/href=/i.test(TEMPLATE), "sin link");
 });

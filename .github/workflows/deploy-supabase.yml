@@ -5,7 +5,8 @@
 # semana, SPEC 5.8) y client-link (el link de la clienta) y, al final, las cuentas de sus colaboradores,
 # en cada despliegue.
 # Contratos:
-# docs/contracts/public-request.md §8 y §10.1, docs/contracts/chef-api.md §9 y docs/contracts/client-link.md §8.
+# docs/contracts/public-request.md §8 y §10.1, docs/contracts/chef-api.md §9, docs/contracts/client-link.md §8
+# y docs/contracts/auth.md (la configuración de Auth que fija este workflow).
 # - push a main que toque supabase/** (o este archivo) → producción
 # - workflow_dispatch → a mano, desde la pestaña Actions
 # Antes de tocar producción corre los tests de TypeScript y los de la base (pgTAP, base local).
@@ -34,10 +35,15 @@
 #     despliegue: después de editarlo, correr Deploy Supabase a mano (Actions → Deploy Supabase → Run
 #     workflow). Va como secreto y no como variable: los valores de las variables salen en claro en el
 #     log del paso, y estos emails no se publican.
+#   · RESEND_API_KEY también sirve para comprobar que Resend no tiene prendido el seguimiento de clics ni
+#     de aperturas (open_tracking y click_tracking de cada dominio): con seguimiento prendido el despliegue
+#     corta antes de db push. Lo apaga la dueña de la cuenta de Resend, nunca este workflow. Con una clave
+#     «solo de envío» Resend no deja leerlo (restricted_api_key): el paso corta, salvo que la variable
+#     RESEND_TRACKING_RESTRICTED_OK sea true (después de mirar el panel). Contrato auth.md §5.
 # - variables: SUPABASE_PROJECT_REF, CHEF_NOTIFY_EMAIL, MAIL_FROM, MAIL_REPLY_TO, ALLOWED_ORIGINS,
 #   INBOX_URL, PUBLIC_SITE_URL
 #   (opcionales: CHEF_LOGIN_EMAIL y CHEF_DISPLAY_NAME para crear la cuenta de la cocinera; CHEF_ID,
-#   CHEF_LOCALE, EMAIL_TRANSPORT, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE)
+#   CHEF_LOCALE, EMAIL_TRANSPORT, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE, RESEND_TRACKING_RESTRICTED_OK)
 #   · CHEF_ID: sin él no hace falta conocer el id al desplegar: la función usa la única cocinera de
 #     public.chefs. Hasta correr promote_to_chef responde 500 (chef_id_unresolved, no_chef). Fijarlo
 #     solo si hay más de una cocinera.
@@ -206,11 +212,26 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
         run: supabase link --project-ref "${SUPABASE_PROJECT_REF}"
 
-      # Antes que nada, las altas apagadas. Tres PATCH (supabase/scripts/auth-config.ts): security
-      # siempre; smtp y templates solo con RESEND_SMTP_KEY, porque en un proyecto Free Supabase no deja
-      # cambiar las plantillas sin SMTP propio (el email traería un link y no el código). Los cuerpos
-      # van directo del script al curl, y la respuesta (la configuración entera, con la clave del
-      # SMTP) queda en un archivo que solo lee jq: nada de eso se imprime.
+      # Antes de tocar Auth: Resend no puede tener prendido el seguimiento de aperturas ni de clics
+      # (reescribiría los links de los emails de Auth y vería los tokens). Solo lee, con la clave que ya
+      # existe; apagarlo lo hace la dueña de la cuenta de Resend. Corta antes de db push
+      # (supabase/scripts/resend-tracking.ts, con tests; contrato auth.md §5).
+      - name: Seguimiento de Resend apagado
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_READ_KEY || secrets.RESEND_API_KEY }}
+          RESEND_TRACKING_RESTRICTED_OK: ${{ vars.RESEND_TRACKING_RESTRICTED_OK }}
+        run: node supabase/scripts/resend-tracking.ts
+
+      # Antes que nada, las altas apagadas y el resto de lo fijo de Auth. Tres PATCH
+      # (supabase/scripts/auth-config.ts): security siempre; smtp y templates solo con RESEND_SMTP_KEY,
+      # porque en un proyecto Free Supabase no deja cambiar las plantillas sin SMTP propio (el email
+      # traería un link y no el código). Los cuerpos van directo del script al curl, y la respuesta (la
+      # configuración entera, con la clave del SMTP) queda en un archivo que solo leen jq y auth-config.ts:
+      # nada de eso se imprime. Después de cada PATCH se compara lo que Supabase guardó con el cuerpo
+      # (auth-config.ts verify): un campo distinto, o un nombre de campo que la API ignoró, corta antes de
+      # db push. Una sola vez (mientras haya algo que cambiar) el resumen del paso anota, sin valores, la
+      # versión de GoTrue y los nombres de los campos de producción que cambian (contrato auth.md §3).
       - name: Auth desde el repo (altas, código, SMTP y plantilla)
         if: env.HAS_SUPABASE == 'true'
         env:
@@ -221,17 +242,46 @@ jobs:
           set -euo pipefail
           response="$(mktemp)"
           trap 'rm -f "${response}"' EXIT
+          api="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}"
+          all_changed=""
+          # La configuración vigente, antes del primer PATCH: de ahí salen los campos que cambian.
+          status=$(curl -sS -o "${response}" -w '%{http_code}' -X GET "${api}/config/auth" \
+            -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}")
+          if [ "${status}" != "200" ]; then
+            echo "::error::La Management API respondió ${status} al leer la configuración de Auth."
+            exit 1
+          fi
           patch() {
-            local body status
+            local body status changed
             body=$(node supabase/scripts/auth-config.ts "$1")
+            changed=$(node supabase/scripts/auth-config.ts changed "$1" < "${response}" | tr '\n' ' ')
+            all_changed="${all_changed}${changed}"
             status=$(curl -sS -o "${response}" -w '%{http_code}' \
-              -X PATCH "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth" \
+              -X PATCH "${api}/config/auth" \
               -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
               -H "Content-Type: application/json" \
               --data-binary @- <<< "${body}")
             if [ "${status}" != "200" ]; then
               echo "::error::La Management API respondió ${status} al configurar Auth (${1}): $(jq -r '.message // .error // "sin mensaje"' "${response}" 2>/dev/null || echo "sin mensaje")"
               exit 1
+            fi
+            # Lo que Supabase guardó tiene que ser lo pedido, campo por campo (solo nombres en el error).
+            if ! node supabase/scripts/auth-config.ts verify "$1" < "${response}"; then
+              echo "::error::Auth no quedó como pide el repo (${1}): revisar los nombres de campo de la Management API."
+              exit 1
+            fi
+          }
+          note_summary() {
+            local version
+            version=$(curl -sS -m 20 "${api}/health?services=auth" -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" | jq -r '.[0].info.version // empty' 2>/dev/null || true)
+            if [ -z "${version}" ]; then
+              echo "::warning::No se pudo leer la versión de GoTrue (no cambia nada: es solo para el resumen)."
+              version="no disponible"
+            fi
+            if [ -n "${all_changed// /}" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+              echo "### Auth desde el repo" >> "${GITHUB_STEP_SUMMARY}"
+              echo "- Versión de GoTrue: ${version}" >> "${GITHUB_STEP_SUMMARY}"
+              echo "- Campos de producción que cambian (solo nombres): ${all_changed}" >> "${GITHUB_STEP_SUMMARY}"
             fi
           }
           patch security
@@ -241,6 +291,7 @@ jobs:
           fi
           if [ -z "${RESEND_SMTP_KEY:-}" ]; then
             echo "::warning::Sin RESEND_SMTP_KEY no hay SMTP propio: en un proyecto Free Supabase no deja cambiar la plantilla y el email trae un link en lugar del código, así que Evelyn todavía no puede entrar a la app. Cargar la segunda clave de Resend y volver a desplegar."
+            note_summary
             exit 0
           fi
           patch smtp
@@ -252,6 +303,7 @@ jobs:
             echo "::error::Supabase no guardó la plantilla del código: el email traería un link en lugar del código."
             exit 1
           fi
+          note_summary
 
       - name: Migraciones (db push)
         id: db_push
