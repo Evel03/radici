@@ -223,6 +223,16 @@ jobs:
           RESEND_TRACKING_RESTRICTED_OK: ${{ vars.RESEND_TRACKING_RESTRICTED_OK }}
         run: node supabase/scripts/resend-tracking.ts
 
+      # Antes del PATCH que prende el hook de la cocina (auth.md §8): la función tiene que existir en producción,
+      # ser security definer y ejecutarla solo supabase_auth_admin. Se mira la base por la Management API (solo
+      # lectura). Si no está bien, corta antes de tocar Auth: un hook prendido que apunta a una función que no
+      # está dejaría a Evelyn sin entrar (supabase/scripts/auth-hook-check.ts, con tests).
+      - name: "Hook de la cocina: la función existe"
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: node supabase/scripts/auth-hook-check.ts
+
       # Antes que nada, las altas apagadas y el resto de lo fijo de Auth. Tres PATCH
       # (supabase/scripts/auth-config.ts): security siempre; smtp y templates solo con RESEND_SMTP_KEY,
       # porque en un proyecto Free Supabase no deja cambiar las plantillas sin SMTP propio (el email

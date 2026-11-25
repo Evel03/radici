@@ -2,7 +2,8 @@
 -- Radici · datos de desarrollo (solo local; nunca en producción)
 --
 -- Usuarios (contraseña de desarrollo para todos: radici-dev-2026; también
--- sirve el login por OTP con Mailpit en http://127.0.0.1:54324):
+-- sirve el login por OTP con Mailpit en http://127.0.0.1:54324). La cocina (evelyn@, marco@, giulia@)
+-- entra solo con el código: con la contraseña el hook de config.toml da 403 kitchen_code_only (auth.md §8):
 --   evelyn@example.test   cocinera (Bergamo)
 --   marco@example.test    colaborador de Evelyn (chef_members): entra a su área con su cuenta
 --   giulia@example.test   segunda cocinera, para probar aislamiento entre chefs

@@ -71,3 +71,20 @@ test("iOS release: manual o PR acotado a sus archivos, la subida solo manual, im
     if (/^\s*run:/.test(line)) runIndent = indent;
   }
 });
+
+test("workflows: ningún valor sin comillas lleva «: » (YAML lo rechaza y GitHub no corre el workflow)", () => {
+  // El 25/11/2026 un paso «- name: Hook de la cocina: la función existe» dejó a deploy-supabase.yml sin poder
+  // leerse: GitHub no corrió ningún paso. Los tests que leen el workflow como texto no lo veían. Un valor
+  // plano (sin comillas, sin | ni >) no puede tener dos puntos seguidos de un espacio; se mira sin el
+  // comentario del final de la línea.
+  for (const name of readdirSync(workflows).filter((file) => file.endsWith(".yml"))) {
+    const lines = readFileSync(new URL(name, workflows), "utf8").split("\n");
+    lines.forEach((line, i) => {
+      const m = /^\s*(?:- )?[A-Za-z_][\w-]*: (.*)$/.exec(line);
+      if (!m) return;
+      const value = m[1].replace(/\s+#.*$/, "").trim();
+      if (value === "" || /^["'|>{[&*!]/.test(value)) return;
+      assert.ok(!value.includes(": "), `${name}:${i + 1}: «${line.trim()}» lleva «: » sin comillas`);
+    });
+  }
+});
