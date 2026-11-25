@@ -212,6 +212,14 @@
                 <p class="menu__count" id="menu-count" aria-live="polite" hidden></p>
                 <p class="field__error" id="err-menu" hidden></p>
                 <p class="menu__status" id="menu-status" role="status"></p>
+                <!-- Buscador de platos (src/request/menu-search.ts): sin name, no viaja con el pedido. Se muestra con platos para
+                     elegir; el aviso en vivo dice cuántos quedan y, sin resultados, ofrece borrar la búsqueda. -->
+                <div class="menu__search" id="menu-search" hidden>
+                  <label class="field__label" for="menu-search-input" data-i18n="request.menu.searchLabel"></label>
+                  <input class="input menu__search-input" id="menu-search-input" type="search" autocomplete="off" enterkeyhint="search" spellcheck="false" aria-controls="menu-list" data-i18n-attr="placeholder:request.menu.searchPlaceholder" />
+                  <p class="menu__search-status" id="menu-search-status" role="status" aria-live="polite"></p>
+                  <button class="btn btn--ghost menu__search-clear" id="menu-search-clear" type="button" hidden data-i18n="request.menu.searchClear"></button>
+                </div>
                 <div class="choices menu__list" id="menu-list" role="group" tabindex="-1" aria-labelledby="menu-legend menu-count" hidden></div>
               </div>
             </fieldset>

@@ -209,7 +209,13 @@
       "removedOne": "{dishes} no es de temporada para la fecha del menú y ya no está en él.",
       "removedOther": "{dishes} no son de temporada para la fecha del menú y ya no están en él.",
       "allergens": "Alérgenos: {list}",
-      "allergensNone": "Ninguno de los 14 alérgenos principales"
+      "allergensNone": "Ninguno de los 14 alérgenos principales",
+      "searchLabel": "Buscar un plato",
+      "searchPlaceholder": "Buscar: nombre, carne, pollo, verdura, verano…",
+      "searchClear": "Borrar la búsqueda",
+      "searchOne": "{n} plato",
+      "searchMany": "{n} platos",
+      "searchNone": "Ningún plato coincide con «{query}» para la fecha del menú."
     },
     "contactLegend": "Tus datos",
     "nameLabel": "Nombre",

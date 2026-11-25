@@ -157,6 +157,10 @@ const menuEls = {
   count: byId("menu-count"),
   status: byId("menu-status"),
   list: byId("menu-list"),
+  search: byId("menu-search"),
+  searchInput: byId<HTMLInputElement>("menu-search-input"),
+  searchStatus: byId("menu-search-status"),
+  searchClear: byId<HTMLButtonElement>("menu-search-clear"),
 };
 
 /** Nombre accesible de cada día del calendario según su estado. */
@@ -349,6 +353,8 @@ function startRequestPage(shell: Shell): void {
   let menuSelection: string[] = [];
   /** Los que se quitaron por la temporada en el último cambio de fecha: se avisa hasta que toque otra casilla. */
   let menuRemoved: MenuDish[] = [];
+  /** Lo escrito en el buscador de platos: solo filtra lo que se ve, la selección no depende de él. */
+  const menuQuery = (): string => menuEls.searchInput.value;
   /** Lo que se pintó por última vez: si no cambió, no se rehacen las tarjetas (la casilla con foco no lo pierde). */
   let menuPainted = "";
 
@@ -577,9 +583,13 @@ function startRequestPage(shell: Shell): void {
   const renderMenu = (data: RequestData): void => {
     const { i18n } = shell;
     const view = menuPanelView(
-      { state: menu, selected: data.menu, days: data.days, month: seasonMonth(data.preferredDate, todayInRome()), removed: menuRemoved },
+      { state: menu, selected: data.menu, days: data.days, month: seasonMonth(data.preferredDate, todayInRome()), removed: menuRemoved, query: menuQuery() },
       i18n,
     );
+    // El buscador está fuera de la lista: repintar las tarjetas no le quita el foco al que escribe.
+    menuEls.search.hidden = !view.searchVisible;
+    setText(menuEls.searchStatus, view.searchStatus);
+    menuEls.searchClear.hidden = !view.searchEmpty;
     menuEls.hint.hidden = view.hint === null;
     setText(menuEls.hint, view.hint ?? "");
     menuEls.count.hidden = view.count === null;
@@ -944,6 +954,16 @@ function startRequestPage(shell: Shell): void {
     menuSelection = toggleDish(menuSelection, input.value, input.checked, menuMax(readFields().days));
     menuRemoved = [];
   };
+  // Enter en el buscador no envía el formulario (la búsqueda ya filtra al escribir).
+  menuEls.searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") event.preventDefault();
+  });
+  // «Borrar la búsqueda»: vacía la caja y le devuelve el foco (el botón se oculta al quedar sin búsqueda).
+  menuEls.searchClear.addEventListener("click", () => {
+    menuEls.searchInput.value = "";
+    update();
+    menuEls.searchInput.focus();
+  });
   menuEls.list.addEventListener("input", onDishToggle);
   menuEls.list.addEventListener("change", onDishToggle);
 

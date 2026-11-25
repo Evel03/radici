@@ -477,8 +477,8 @@ async function availabilityRoute(deps: HandlerDeps, request: Request, url: URL, 
 
 /**
  * GET …/menu (contrato §12): los platos publicados de la cocinera para la pestaña «Menù» del formulario
- * (get_public_menu: activos, visibles en el catálogo y con descripción en italiano), sin ingredientes ni
- * notas. El 200 depende solo de la cocinera: caché pública de un minuto. Los errores, no-store; si falla la
+ * (get_public_menu: activos, visibles en el catálogo y con descripción en italiano), con los nombres de los ingredientes (solo para el
+ * buscador de la web) y sin cantidades, unidades, secciones ni notas. El 200 depende solo de la cocinera: caché pública de un minuto. Los errores, no-store; si falla la
  * base, 503 { error: "unavailable" } y el formulario dice que el menù lo propone Evelyn.
  */
 async function menuRoute(deps: HandlerDeps, request: Request, reply: Reply): Promise<Response> {

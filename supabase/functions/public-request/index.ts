@@ -140,7 +140,7 @@ function createStore(): PublicRequestStore {
     async publicMenu(chefId) {
       const { data, error } = await supabase.rpc("get_public_menu", { p_chef_id: chefId });
       if (error) throw storeError("public_menu", error);
-      // Se arma de nuevo plato por plato: nada que no sea del contrato (ingredientes, notas) sale a la web.
+      // Se arma de nuevo plato por plato: nada que no sea del contrato (cantidades, unidades, secciones, notas) sale a la web.
       // La foto: las URL públicas de sus archivos (photoId de la base, este origen y la cocinera).
       const result = menuDishesFromRpc(data, { origin: storageOrigin, chefId });
       if (!result) throw new StoreError("public_menu", null, "unexpected_result");

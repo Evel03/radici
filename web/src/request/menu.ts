@@ -10,6 +10,9 @@
 // - Foto (20/11/2026): la miniatura de cada plato que la tiene, a la izquierda del texto. Solo se aceptan las
 //   del bucket recipe-photos del mismo proyecto de Supabase que la función (la CSP de /richiesta/* deja
 //   cargar imágenes de ese origen). Sin foto, o si no carga, la tarjeta se ve como antes.
+// - Buscador (menu-search.ts): una caja arriba de la lista filtra los platos mientras se escribe (nombre, tipo como
+//   «carne» o «verdura», dieta y temporada). Aparece cuando hay platos para elegir. Solo filtra lo que se ve: los
+//   elegidos siguen elegidos (y contados) aunque el filtro los esconda.
 // Los nombres y descripciones van en el idioma de la página, con respaldo al italiano.
 import {
   MENU_PATH,
@@ -21,6 +24,7 @@ import {
 } from "../../../supabase/functions/_shared/menu.ts";
 import { LIMITS } from "../engine.ts";
 import type { I18n } from "../i18n/core.ts";
+import { filterDishes, queryWords } from "./menu-search.ts";
 import type { RequestData } from "./model.ts";
 import { FUNCTION_REGION, PUBLIC_REQUEST_PATH } from "./submit.ts";
 
@@ -137,6 +141,13 @@ export interface MenuPanelView {
   count: string | null;
   /** Más elegidos que días: el contador queda en error. */
   overLimit: boolean;
+  /** La caja de búsqueda: se muestra si hay platos para elegir (aunque el filtro los esconda a todos). */
+  searchVisible: boolean;
+  /** Para el aviso en vivo: «3 platos» o «Ningún plato coincide…»; "" sin búsqueda. */
+  searchStatus: string;
+  /** Hay búsqueda y ningún plato la cumple (la página ofrece borrarla). */
+  searchEmpty: boolean;
+  /** Los platos que se ven: los de temporada que cumplen la búsqueda. */
   cards: DishCard[];
 }
 
@@ -149,12 +160,17 @@ export interface MenuPanelInput {
   month: number;
   /** Los que se quitaron por la temporada en el último cambio de fecha (para avisar); [] si ninguno. */
   removed: readonly MenuDish[];
+  /** Lo que escribió en el buscador; "" o sin definir = todos. */
+  query?: string;
 }
 
 /** Lo que muestra el panel «Menù». */
 export function menuPanelView(input: MenuPanelInput, i18n: I18n): MenuPanelView {
   const { t, lang } = i18n;
-  const dishes = dishesInSeason(input.state, input.month);
+  const inSeason = dishesInSeason(input.state, input.month);
+  const query = input.query ?? "";
+  const searching = queryWords(query).length > 0;
+  const dishes = filterDishes(inSeason, query);
   const max = menuMax(input.days);
   const chosen = input.selected.length;
   const messages: string[] = [];
@@ -164,7 +180,7 @@ export function menuPanelView(input: MenuPanelInput, i18n: I18n): MenuPanelView 
   }
   if (input.state.kind === "loading") messages.push(t("request.menu.loading"));
   else if (input.state.kind === "error") messages.push(t("request.menu.error"));
-  else if (dishes.length === 0) messages.push(t("request.menu.empty"));
+  else if (inSeason.length === 0) messages.push(t("request.menu.empty"));
 
   const overLimit = chosen > max;
   const cards = dishes.map((dish): DishCard => {
@@ -183,7 +199,12 @@ export function menuPanelView(input: MenuPanelInput, i18n: I18n): MenuPanelView 
       disabled: !checked && chosen >= max,
     };
   });
-  const some = cards.length > 0;
+  // Con el filtro puesto, «hay platos» sigue siendo lo de la temporada: la ayuda y el contador no desaparecen.
+  const some = inSeason.length > 0;
+  const searchEmpty = searching && dishes.length === 0;
+  let searchStatus = "";
+  if (searchEmpty) searchStatus = t("request.menu.searchNone", { query: query.trim().replace(/\s+/g, " ") });
+  else if (searching) searchStatus = t(dishes.length === 1 ? "request.menu.searchOne" : "request.menu.searchMany", { n: dishes.length });
   return {
     hint: some ? (max === 1 ? t("request.menu.hintOne") : t("request.menu.hint", { days: max })) : null,
     message: messages.join(" "),
@@ -193,6 +214,9 @@ export function menuPanelView(input: MenuPanelInput, i18n: I18n): MenuPanelView 
         : t("request.menu.count", { chosen, max })
       : null,
     overLimit,
+    searchVisible: some,
+    searchStatus,
+    searchEmpty,
     cards,
   };
 }

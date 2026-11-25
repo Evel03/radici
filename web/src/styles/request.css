@@ -433,6 +433,34 @@ input[type="radio"] {
   clip-path: inset(50%);
 }
 
+/* Buscador de platos: la caja a todo el ancho, con la letra a 16 px como mínimo (el iPhone no hace zoom al enfocar).
+   El aviso en vivo, vacío, sale de la grilla sin el hueco del gap pero sigue en el árbol de accesibilidad. */
+.menu__search {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: start;
+}
+
+.menu__search-input {
+  font-size: max(1rem, 16px);
+  max-width: 100%;
+}
+
+.menu__search-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+
+.menu__search-status:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
 .menu__list:focus {
   outline: none;
 }
