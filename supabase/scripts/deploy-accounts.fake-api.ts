@@ -14,6 +14,12 @@ export interface FakeUser {
   email: string;
   confirmed: boolean;
   locale?: string;
+  /** Usuario anónimo (auth.users.is_anonymous). */
+  anonymous?: boolean;
+  /** Proveedores de sus identidades (auth.identities); por defecto, solo email. */
+  providers?: string[];
+  /** Tiene ficha en public.clients (clients.profile_id). */
+  client?: boolean;
 }
 
 export interface FakeState {
@@ -27,6 +33,8 @@ export interface FakeState {
   undeletable?: string[];
   /** Respuesta forzada de Auth al crear una cuenta (por ejemplo, 500). */
   adminStatus?: number;
+  /** private.sync_chef_members no cambia nada (para probar la verificación posterior de la lista). */
+  syncIgnored?: boolean;
 }
 
 /** Una llamada anotada en FAKE_LOG. */
@@ -99,6 +107,34 @@ function main(): void {
     if (query === "select count(*)::int as n from public.chefs") rows(state.chefs.length);
     if (query === "select count(*)::int as n from public.chef_members") rows(state.members.length);
     if (query === "select count(*)::int as n from auth.users") rows(state.users.length);
+    if (query === "select count(*)::int as n from auth.users where is_anonymous") {
+      rows(state.users.filter((user) => user.anonymous === true).length);
+    }
+    const kitchen = (): string[] => [...state.chefs, ...state.members];
+    const kitchenIds = "select profile_id from public.chefs union select profile_id from public.chef_members";
+    if (query === `select count(*)::int as n from auth.identities where provider <> 'email' and user_id in (${kitchenIds})`) {
+      const other = state.users
+        .filter((user) => kitchen().includes(user.email))
+        .flatMap((user) => user.providers ?? ["email"])
+        .filter((provider) => provider !== "email");
+      rows(other.length);
+    }
+    const notKitchen = `select count(*)::int as n from auth.users where id not in (${kitchenIds})`;
+    if (query === notKitchen) rows(state.users.filter((user) => !kitchen().includes(user.email)).length);
+    if (query === `select count(*)::int as n from auth.users u where u.id not in (${kitchenIds}) and not exists (select 1 from public.clients c where c.profile_id = u.id)`) {
+      rows(state.users.filter((user) => !kitchen().includes(user.email) && user.client !== true).length);
+    }
+    if (query === `${notKitchen} and email ~* '(@example\\.(com|org|net)|\\.test|\\.invalid)$'`) {
+      rows(state.users.filter((user) => !kitchen().includes(user.email) && /(@example\.(com|org|net)|\.test|\.invalid)$/i.test(user.email)).length);
+    }
+    if (query === "select count(*)::int as n from auth.users where email_confirmed_at is null") {
+      rows(state.users.filter((user) => !user.confirmed).length);
+    }
+    const matched = /^select count\(\*\)::int as n from public\.chef_members m join auth\.users u on u\.id = m\.profile_id where lower\(u\.email\) = any \(array\[(.*)\]::text\[\]\)$/.exec(query);
+    if (matched) {
+      const emails = [...(matched[1] ?? "").matchAll(/'([^']*)'/g)].map((match) => match[1] ?? "");
+      rows(state.members.filter((email) => emails.includes(email)).length);
+    }
     const usersWith = /^select count\(\*\)::int as n from auth\.users where lower\(email\) = lower\('([^']*)'\)( and email_confirmed_at is null)?$/.exec(query);
     if (usersWith) {
       const email = (usersWith[1] ?? "").toLowerCase();
@@ -127,6 +163,7 @@ function main(): void {
         if (user === undefined) return respond(400, { message: "member_user_not_found" });
         if (!user.confirmed) return respond(400, { message: "member_user_not_confirmed" });
       }
+      if (state.syncIgnored) respond(201, [{ result: { members: emails.length, added: 0, kept: 0, removed: 0, accounts_deleted: 0 } }]);
       const removed = state.members.filter((email) => !emails.includes(email));
       const kept = state.members.filter((email) => emails.includes(email));
       const added = emails.filter((email) => !state.members.includes(email));
