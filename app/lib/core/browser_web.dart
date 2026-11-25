@@ -28,6 +28,17 @@ class WebBrowser implements Browser {
   }
 
   @override
+  String? readMeta(String name) {
+    try {
+      return web.document
+          .querySelector('meta[name="$name"]')
+          ?.getAttribute('content');
+    } on Object {
+      return null;
+    }
+  }
+
+  @override
   void reload() => web.window.location.reload();
 
   @override

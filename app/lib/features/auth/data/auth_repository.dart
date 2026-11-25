@@ -1,6 +1,8 @@
 // Inicio de sesión con código por email (Supabase Auth, OTP) y sesión.
 // La sesión la persiste supabase_flutter (SharedPreferences en móvil,
 // localStorage en la web) y se recupera sola al arrancar.
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/supabase_client.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
@@ -13,6 +15,12 @@ abstract interface class AuthRepository {
   /// Emite el usuario cada vez que cambia la sesión (null al salir). Puede
   /// repetir el mismo usuario (por ejemplo al renovar el token).
   Stream<AppUser?> userChanges();
+
+  /// Los errores de Auth que no vienen de una acción de la pantalla: sobre
+  /// todo el link de acceso que llega con un error (vencido, ya usado). Nunca
+  /// trae el texto del servidor, solo el tipo. No incluye los de renovar la
+  /// sesión (un token vencido simplemente cierra la sesión).
+  Stream<AuthFailure> failures();
 
   /// Manda el código de acceso a [email], solo si ya tiene usuario (no crea
   /// cuentas). [locale] (it, es, en) es el idioma de la interfaz: si alguna
@@ -46,6 +54,17 @@ class SupabaseAuthRepository implements AuthRepository {
   @override
   Stream<AppUser?> userChanges() =>
       _auth.onAuthStateChange.map((state) => _toAppUser(state.session?.user));
+
+  @override
+  Stream<AuthFailure> failures() => _auth.onAuthStateChange.transform(
+    StreamTransformer<AuthState, AuthFailure>.fromHandlers(
+      handleData: (_, _) {},
+      handleError: (error, _, sink) {
+        final failure = authLinkFailureOf(error);
+        if (failure != null) sink.add(failure);
+      },
+    ),
+  );
 
   @override
   Future<void> sendEmailCode(String email, {String? locale, String? captchaToken}) async {
@@ -131,6 +150,28 @@ AuthFailureKind authFailureKindOf(Object error, {bool verifying = false}) {
   };
 }
 
+/// El error de Auth que llega por [AuthRepository.failures], o null si no
+/// hay que mostrarlo: un fallo de red, o uno de la sesión (renovar un token
+/// vencido o ya usado: la sesión se cierra sola y el login queda como está).
+AuthFailure? authLinkFailureOf(Object error) {
+  if (error is! AuthException || error is AuthRetryableFetchException) {
+    return null;
+  }
+  final code = error.code ?? '';
+  if (code.startsWith('refresh_token') ||
+      code.startsWith('session_') ||
+      code == 'bad_jwt') {
+    return null;
+  }
+  // En un link con error, `statusCode` trae el `error_code` de la URL.
+  return AuthFailure(
+    error.statusCode == 'over_request_rate_limit' ||
+            error.statusCode == 'over_email_send_rate_limit'
+        ? AuthFailureKind.rateLimited
+        : AuthFailureKind.unknown,
+  );
+}
+
 /// Sin Supabase configurado (dev sin backend): no hay sesión posible.
 class NoBackendAuthRepository implements AuthRepository {
   const NoBackendAuthRepository();
@@ -140,6 +181,9 @@ class NoBackendAuthRepository implements AuthRepository {
 
   @override
   Stream<AppUser?> userChanges() => const Stream.empty();
+
+  @override
+  Stream<AuthFailure> failures() => const Stream.empty();
 
   @override
   Future<void> sendEmailCode(String email, {String? locale, String? captchaToken}) =>

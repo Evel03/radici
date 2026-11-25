@@ -48,25 +48,28 @@ class MemoryLanguageCache implements LanguageCache {
 /// En SharedPreferences (localStorage en la web), con una sola clave cuyo
 /// valor es `código:id del usuario`: idioma y usuario se escriben juntos.
 class SharedPreferencesLanguageCache implements LanguageCache {
-  SharedPreferencesLanguageCache._(this._preferences);
+  SharedPreferencesLanguageCache._(this._preferences, this._key);
 
+  /// La clave de la cocina (/gestione/), la de siempre. La entrada de la
+  /// clienta (/app/) usa la suya (AppEntry.languageKey): comparten origen.
   static const String key = 'radici.ui_language';
 
   final SharedPreferencesWithCache _preferences;
+  final String _key;
 
-  /// Lee lo guardado (una lectura del disco o de localStorage).
-  static Future<SharedPreferencesLanguageCache> load() async =>
-      SharedPreferencesLanguageCache._(
-        await SharedPreferencesWithCache.create(
-          cacheOptions: const SharedPreferencesWithCacheOptions(
-            allowList: {key},
-          ),
-        ),
-      );
+  /// Lee lo guardado (una lectura del disco o de localStorage) bajo [key].
+  static Future<SharedPreferencesLanguageCache> load({
+    String key = SharedPreferencesLanguageCache.key,
+  }) async => SharedPreferencesLanguageCache._(
+    await SharedPreferencesWithCache.create(
+      cacheOptions: SharedPreferencesWithCacheOptions(allowList: {key}),
+    ),
+    key,
+  );
 
   @override
   CachedLanguage? read() {
-    final Object? raw = _preferences.get(key);
+    final Object? raw = _preferences.get(_key);
     if (raw is! String) return null;
     final separator = raw.indexOf(':');
     if (separator <= 0) return null;
@@ -80,7 +83,7 @@ class SharedPreferencesLanguageCache implements LanguageCache {
   Future<void> write(CachedLanguage value) async {
     try {
       await _preferences.setString(
-        key,
+        _key,
         '${value.language.code}:${value.userId}',
       );
     } on Object {
@@ -91,7 +94,7 @@ class SharedPreferencesLanguageCache implements LanguageCache {
   @override
   Future<void> clear() async {
     try {
-      await _preferences.remove(key);
+      await _preferences.remove(_key);
     } on Object {
       // Ver write.
     }

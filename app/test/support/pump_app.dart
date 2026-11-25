@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/app.dart';
+import 'package:radici/core/app_entry.dart';
 import 'package:radici/core/captcha/captcha_service.dart';
 import 'package:radici/core/clock.dart';
 import 'package:radici/core/env.dart';
@@ -53,25 +54,31 @@ Future<void> pumpLocalized(
 /// [isWeb] simula la versión web (/gestione/); [clock] es "ahora" (por
 /// defecto, siempre [testNow]); [retry], los reintentos automáticos de
 /// Riverpod (por defecto, ninguno); [captcha], el captcha de Auth del login
-/// (por defecto, sin token: nunca se abre la página /captcha/).
+/// (por defecto, sin token: nunca se abre la página /captcha/). [entry] es
+/// la entrada de la app (por defecto, la de la cocina, /gestione/);
+/// [observers] ven los providers que se crean.
 Future<ProviderContainer> pumpRadiciApp(
   WidgetTester tester, {
   List<Override> overrides = const [],
   AppEnv env = const AppEnv(environment: AppEnvironment.prod),
   List<Locale> deviceLocales = const [Locale('it', 'IT')],
   bool isWeb = false,
+  AppEntry entry = AppEntry.kitchen,
   bool settle = true,
   DateTime Function()? clock,
   RetryDelay retry = noRetry,
   CaptchaService captcha = const NoCaptchaService(),
+  List<ProviderObserver> observers = const [],
 }) async {
   tester.platformDispatcher.localesTestValue = deviceLocales;
   addTearDown(tester.platformDispatcher.clearLocalesTestValue);
   await tester.pumpWidget(
     ProviderScope(
       retry: retry,
+      observers: observers,
       overrides: [
         appEnvProvider.overrideWithValue(env),
+        appEntryProvider.overrideWithValue(entry),
         isWebProvider.overrideWithValue(isWeb),
         clockProvider.overrideWithValue(clock ?? () => testNow),
         // Sin WebView ni iframe: los tests de la app no abren la página del captcha.

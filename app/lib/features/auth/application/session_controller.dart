@@ -29,9 +29,12 @@ sealed class SessionState with _$SessionState {
     AppLanguage? language,
   }) = ChefSession;
 
-  /// Cualquier otro usuario: área de clientes (en preparación).
-  const factory SessionState.client(AppUser user, {AppLanguage? language}) =
-      ClientSession;
+  /// Cualquier otro usuario: la clienta (área en preparación).
+  const factory SessionState.client(
+    AppUser user,
+    ClientAccount client, {
+    AppLanguage? language,
+  }) = ClientSession;
 
   /// Hay sesión pero no se pudo leer la cuenta.
   const factory SessionState.failed(AppUser user, AccountFailureKind kind) =
@@ -109,7 +112,11 @@ class SessionController extends Notifier<SessionState> {
       final chef = account.chef;
       next = account.role == AccountRole.chef && chef != null
           ? SessionState.chef(user, chef, language: account.language)
-          : SessionState.client(user, language: account.language);
+          : SessionState.client(
+              user,
+              account.client ?? const ClientAccount(),
+              language: account.language,
+            );
     } on AccountFailure catch (failure) {
       next = SessionState.failed(user, failure.kind);
     } on Object {

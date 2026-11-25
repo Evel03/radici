@@ -769,6 +769,27 @@ base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-re
   vieja. Cada deploy de producción comprueba que `main.dart.js` y `flutter_bootstrap.js` lleguen con
   `no-cache` y, si no, queda en rojo (`.github/scripts/check-gestione-cache.sh`, contrato §8).
 
+## Entradas: /gestione/ (cocina) y /app/ (clientas)
+
+La misma app sirve tres modos (`lib/core/app_entry.dart`, `AppEntry`): dos entradas web estrictas, cada una con un solo rol, y la app nativa, que sirve a los dos según la cuenta (decisión del 25/11/2026).
+
+| | Cocina (`AppEntry.kitchen`) | Clienta (`AppEntry.client`) | App nativa (`AppEntry.auto`) |
+|---|---|---|---|
+| Dónde | `/gestione/` (web y PWA de Evelyn y sus colaboradores) | `/app/` (web, PR13) | iOS y Android |
+| Cuenta | `profiles.role = chef` (dueña o colaborador), con el código del email | cualquier otra (las clientas) | las dos: la cocina ve su área, la clienta la suya |
+| Rutas | `/oggi`, `/richieste`, `/agenda`, `/altro`… | `/area/*` (`ClientShell`, provisorio: sin datos, con idioma y salir) | las del rol de la cuenta |
+| Sesión (localStorage / SharedPreferences) | `sb-<ref>-auth-token` (la de siempre) | `sb-<ref>-app-auth-token` | `sb-<ref>-auth-token` (la de siempre) |
+| Verificador PKCE | `supabase.auth.token-code-verifier` (clave fija de gotrue 2.27.3) | `radici.app.supabase.auth.token-code-verifier` (`PrefixedGotrueAsyncStorage`) | `supabase.auth.token-code-verifier` (la de siempre) |
+| Idioma guardado | `radici.ui_language` (la de siempre) | `radici.app.ui_language` | `radici.ui_language` (la de siempre) |
+| Links de Auth en la URL | no (`detectSessionInUri: false`: entra con el código) | solo su ruta `/app/…` y solo PKCE: `code` o un error; un `access_token` o `refresh_token` nunca abre sesión (`isAuthCallbackUri`) | igual que la clienta (sin deep links configurados todavía) |
+
+- **Cómo se elige.** En iOS y Android, siempre `auto`. En la web, por `<meta name="radici-entry" content="app|gestione">` de `web/index.html` (`resolveAppEntry`, antes de inicializar Supabase). Sin la marca, o con un valor desconocido, es la cocina: el build actual de `/gestione/` sigue igual. El build de `/app/` (con `content="app"`, `--base-href /app/`) lo arma el deploy en PR13.
+- **Mismo origen, claves aparte.** `radicicucina.app/gestione/` y `/app/` comparten localStorage: por eso cada una tiene su sesión, su verificador PKCE y su idioma (el verificador lleva prefijo porque gotrue 2.27.3 usa una clave fija). Las claves de la cocina no cambiaron: Evelyn no sale de su sesión al actualizar (`test/core/app_entry_test.dart` fija las tres). La app nativa (`auto`) usa esas mismas claves: la sesión que Evelyn ya tiene en TestFlight sobrevive a la actualización (`app_entry_test.dart`). Solo `/app/` en la web usa las claves con prefijo `app`.
+- **App nativa (`auto`).** No tiene «otra entrada»: después del login la cocina va a Hoy (como en `/gestione/`) y la clienta a `/area`, y ninguna abre las rutas de la otra (`resolveRedirect`). El aviso de pedidos nuevos y los providers de la cocina solo viven con una cuenta de la cocina (`kitchenAlertsEnabledProvider`; los de la cocina dependen de la cocina de la sesión, así que al salir quedan vacíos), y los de la clienta se crean recién cuando una pantalla suya los usa. Probado: `entry_smoke_test.dart` (cada rol y el cambio de cuenta).
+- **Cuenta de la otra entrada (solo web).** Una clienta que abre `/gestione/`, o una cuenta de la cocina que abre `/app/`, va a `/ingresso` (`WrongEntryScreen`): «esta cuenta es de la cocina, entra por /gestione/» (o al revés) y un botón para salir. Nunca se abre el área de la otra, ni siquiera con un enlace directo. En `/app/` tampoco corre el aviso de pedidos nuevos.
+- **Errores de Auth.** Un link de acceso con error (vencido, ya usado) llega por `AuthRepository.failures()` a `authLinkErrorProvider` y el login lo dice (`authErrorLink`); se borra al pedir un código nuevo. No se muestran los errores de renovar la sesión ni los de red.
+- **Providers de la clienta** (`features/client/application/`): se crean recién cuando una pantalla de la clienta los usa; en `/gestione/` ninguno llega a existir (`test/core/entry_smoke_test.dart`). El login de la clienta (PR17) y sus pantallas vienen en PRs siguientes: hoy puede haber una sesión de clienta (cuenta sin cocina) y va a `/area`.
+
 ## Captcha de Auth (`lib/core/captcha/`)
 
 Cada pedido de código de acceso saca antes un token de captcha (Turnstile de Auth) y se lo pasa a `signInWithOtp(captchaToken: …)`. Auth todavía **no** lo exige (PR11 lo prende): hasta entonces, si no hay token el login sigue sin él (`captchaRequired = false` en `captcha_service.dart`; PR11 lo pone en `true`). Contrato y protocolo: `../docs/contracts/auth.md` §10.
@@ -782,9 +803,9 @@ Cada pedido de código de acceso saca antes un token de captcha (Turnstile de Au
 
 ```
 lib/
-  main.dart            arranque: entorno, Supabase (si está configurado), licencias, ProviderScope
+  main.dart            arranque: entorno, entrada (cocina o clienta), Supabase (si está configurado), licencias, ProviderScope
   app.dart             MaterialApp.router, tema, localizaciones, aviso de pedidos nuevos y avisos de la web
-  core/                env, id del build, rutas y router (go_router), tema, dinero, teléfonos, fechas
+  core/                env, entradas (app_entry, auth_options), id del build, rutas y router (go_router), tema, dinero, teléfonos, fechas
                        de Roma, navegador (browser*.dart: solo hace algo en la web)
   features/<feature>/
     domain/            Dart puro (modelos, reglas). Ej.: quote/domain/quote.dart, copia del motor quote.ts

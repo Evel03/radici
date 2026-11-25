@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/platform.dart';
 import 'package:radici/core/radici_logo.dart';
+import 'package:radici/features/auth/application/auth_link_error.dart';
 import 'package:radici/features/auth/application/login_controller.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:radici/l10n/app_localizations.dart';
@@ -37,6 +38,7 @@ class LoginScreen extends ConsumerWidget {
                 children: [
                   const _BrandHeader(),
                   const SizedBox(height: 32),
+                  const _LinkError(),
                   AutofillGroup(
                     child: switch (step) {
                       LoginStep.email => const _EmailStep(),
@@ -46,6 +48,33 @@ class LoginScreen extends ConsumerWidget {
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// El link de acceso que llegó con un error (vencido, ya usado): se dice acá
+/// y se pide un código nuevo.
+class _LinkError extends ConsumerWidget {
+  const _LinkError();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(authLinkErrorProvider) == null) {
+      return const SizedBox.shrink();
+    }
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Semantics(
+        liveRegion: true,
+        child: Text(
+          AppLocalizations.of(context).authErrorLink,
+          key: const ValueKey('login-link-error'),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.error,
           ),
         ),
       ),

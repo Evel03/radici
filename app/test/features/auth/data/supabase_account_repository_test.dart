@@ -101,14 +101,18 @@ void main() {
     ]);
     expect(
       await repository.fetchAccount('user-2'),
-      const Account(role: AccountRole.client, language: AppLanguage.it),
+      const Account(
+        role: AccountRole.client,
+        client: ClientAccount(),
+        language: AppLanguage.it,
+      ),
     );
     expect(server.requests, hasLength(1));
 
     server.handler = (_) async => jsonResponse(<Object>[]);
     expect(
       await repository.fetchAccount('user-3'),
-      const Account(role: AccountRole.client),
+      const Account(role: AccountRole.client, client: ClientAccount()),
     );
   });
 

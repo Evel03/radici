@@ -101,4 +101,20 @@ void main() {
       );
     });
   }
+
+  test('los textos de entrada cruzada nombran la puerta correcta', () {
+    // Una clienta en /gestione/ va a /app/; la cocina en /app/ va a /gestione/.
+    for (final locale in ['it', 'es', 'en']) {
+      final arb = _arb(locale);
+      expect(arb['wrongEntryClientBody'], contains('radicicucina.app/app/'));
+      expect(arb['wrongEntryClientBody'], isNot(contains('/gestione/')));
+      expect(
+        arb['wrongEntryKitchenBody'],
+        contains('radicicucina.app/gestione/'),
+      );
+      expect(arb['wrongEntryKitchenBody'], isNot(contains('/app/')));
+      expect(arb['wrongEntryTitle'], isA<String>());
+      expect(arb['authErrorLink'], isA<String>());
+    }
+  });
 }

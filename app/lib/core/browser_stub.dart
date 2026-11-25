@@ -14,6 +14,9 @@ class NoBrowser implements Browser {
   Future<String?> fetchFresh(Uri uri) async => null;
 
   @override
+  String? readMeta(String name) => null;
+
+  @override
   void reload() {}
 
   @override

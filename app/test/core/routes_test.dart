@@ -1,5 +1,6 @@
 // Redirecciones según la sesión (core/routes.dart).
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/app_entry.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
@@ -15,7 +16,10 @@ void main() {
   const loading = SessionState.loading(chefUser);
   const failed = SessionState.failed(chefUser, AccountFailureKind.unavailable);
   const chef = SessionState.chef(chefUser, chefAccount);
-  const client = SessionState.client(AppUser(id: 'client', email: 'c@x.test'));
+  const client = SessionState.client(
+    AppUser(id: 'client', email: 'c@x.test'),
+    ClientAccount(),
+  );
 
   group('sin sesión', () {
     test('el área de la cocinera pide login y recuerda a dónde iba', () {
@@ -35,7 +39,7 @@ void main() {
       expect(_redirect(signedOut, '/'), isNull);
       expect(_redirect(signedOut, '/preventivo'), isNull);
       expect(_redirect(signedOut, '/accedi'), isNull);
-      expect(_redirect(signedOut, '/area-clienti'), '/');
+      expect(_redirect(signedOut, '/area'), '/');
       expect(_redirect(signedOut, '/caricamento'), '/');
     });
 
@@ -87,7 +91,7 @@ void main() {
           '/accedi?from=${Uri.encodeQueryComponent(path)}',
           reason: path,
         );
-        expect(_redirect(client, path), '/area-clienti', reason: path);
+        expect(_redirect(client, path), '/ingresso', reason: path);
       }
       expect(_redirect(chef, '/accedi?from=%2Faltro%2Fpiatti'), '/altro/piatti');
       expect(_redirect(chef, '/altrove'), '/oggi');
@@ -98,7 +102,7 @@ void main() {
         expect(_redirect(chef, '/', isWeb: web), '/oggi');
         expect(_redirect(chef, '/accedi', isWeb: web), '/oggi');
         expect(_redirect(chef, '/caricamento', isWeb: web), '/oggi');
-        expect(_redirect(chef, '/area-clienti', isWeb: web), '/oggi');
+        expect(_redirect(chef, '/area', isWeb: web), '/oggi');
       }
       // El botón del email abre el pedido, también después del login.
       expect(
@@ -127,19 +131,179 @@ void main() {
       expect(isChefPath('/oggi/abc'), isFalse);
       expect(_redirect(signedOut, '/oggi'), '/accedi?from=%2Foggi');
       expect(_redirect(loading, '/oggi'), '/caricamento?from=%2Foggi');
-      expect(_redirect(client, '/oggi'), '/area-clienti');
+      expect(_redirect(client, '/oggi'), '/ingresso');
       expect(_redirect(chef, '/accedi?from=%2Foggi'), '/oggi');
     });
   });
 
-  group('cliente', () {
-    test('siempre al área de clientes (salvo la calculadora)', () {
-      expect(_redirect(client, '/area-clienti'), isNull);
-      expect(_redirect(client, '/'), '/area-clienti');
-      expect(_redirect(client, '/richieste'), '/area-clienti');
-      expect(_redirect(client, '/impostazioni'), '/area-clienti');
-      expect(_redirect(client, '/accedi'), '/area-clienti');
+  group('cliente en /gestione/ (la entrada de la cocina)', () {
+    test('su cuenta no es de esta entrada: «ingresso», nunca el área', () {
+      for (final path in [
+        '/',
+        '/accedi',
+        '/area',
+        '/area/pedidos',
+        '/richieste',
+        '/impostazioni',
+        '/caricamento',
+      ]) {
+        expect(_redirect(client, path), '/ingresso', reason: path);
+      }
+      expect(_redirect(client, '/ingresso'), isNull);
       expect(_redirect(client, '/preventivo'), isNull);
+    });
+  });
+
+  group('entrada de la clienta (/app/ y las apps)', () {
+    String? app(SessionState session, String location, {bool isWeb = true}) =>
+        resolveRedirect(
+          session: session,
+          location: Uri.parse(location),
+          isWeb: isWeb,
+          entry: AppEntry.client,
+        );
+
+    test('la clienta se queda en /area/* y lo demás la lleva ahí', () {
+      expect(AppRoutes.area, '/area');
+      expect(app(client, '/area'), isNull);
+      expect(app(client, '/area/pedidos'), isNull);
+      expect(app(client, '/'), '/area');
+      expect(app(client, '/accedi'), '/area');
+      expect(app(client, '/caricamento'), '/area');
+      expect(app(client, '/preventivo'), isNull);
+      expect(app(client, '/ingresso'), '/area');
+    });
+
+    test('vuelve a donde iba (`from`), solo dentro de /area', () {
+      expect(app(client, '/accedi?from=%2Farea%2Fpedidos'), '/area/pedidos');
+      expect(app(client, '/caricamento?from=%2Farea%2Fpedidos'), '/area/pedidos');
+      expect(app(client, '/accedi?from=%2Foggi'), '/area');
+      expect(app(client, '/accedi?from=%2Frichieste%2Fabc'), '/area');
+      expect(app(client, '/accedi?from=https%3A%2F%2Fevil.example%2Farea'), '/area');
+      expect(app(client, '/accedi?from=%2F%2Fevil.example'), '/area');
+    });
+
+    test('sin sesión: /area pide login y recuerda a dónde iba', () {
+      expect(app(signedOut, '/area'), '/accedi?from=%2Farea');
+      expect(app(signedOut, '/area/pedidos'), '/accedi?from=%2Farea%2Fpedidos');
+      expect(app(signedOut, '/'), '/accedi');
+      expect(app(signedOut, '/accedi'), isNull);
+      expect(app(signedOut, '/', isWeb: false), isNull);
+    });
+
+    test('no abre ninguna ruta de la cocina, con o sin sesión', () {
+      for (final path in [
+        '/oggi',
+        '/richieste',
+        '/richieste/abc',
+        '/agenda',
+        '/impostazioni',
+        '/altro/piatti',
+        '/sessioni/abc/menu',
+      ]) {
+        expect(isChefPath(path), isTrue, reason: path);
+        expect(app(client, path), '/area', reason: path);
+        expect(app(signedOut, path), '/accedi', reason: path);
+        expect(app(loading, path), '/caricamento', reason: path);
+      }
+    });
+
+    test('la cuenta de la cocina no entra: «ingresso»', () {
+      for (final path in ['/', '/accedi', '/area', '/oggi', '/richieste/abc']) {
+        expect(app(chef, path), '/ingresso', reason: path);
+      }
+      expect(app(chef, '/ingresso'), isNull);
+    });
+
+    test('cargando la cuenta, conserva el destino de la clienta', () {
+      expect(app(loading, '/area/pedidos'), '/caricamento?from=%2Farea%2Fpedidos');
+      expect(app(loading, '/caricamento'), isNull);
+    });
+  });
+
+  group('app nativa (auto): cada cuenta a su área, sin «ingresso»', () {
+    String? auto(SessionState session, String location) => resolveRedirect(
+      session: session,
+      location: Uri.parse(location),
+      isWeb: false,
+      entry: AppEntry.auto,
+    );
+
+    test('la cocina va a Hoy y se queda en sus rutas', () {
+      expect(auto(chef, '/'), '/oggi');
+      expect(auto(chef, '/accedi'), '/oggi');
+      expect(auto(chef, '/caricamento'), '/oggi');
+      expect(auto(chef, '/area'), '/oggi');
+      expect(auto(chef, '/ingresso'), '/oggi');
+      expect(auto(chef, '/oggi'), isNull);
+      expect(auto(chef, '/richieste/abc'), isNull);
+      expect(auto(chef, '/accedi?from=%2Frichieste%2Fabc'), '/richieste/abc');
+      // Un `from` de la clienta no sirve a la cocina.
+      expect(auto(chef, '/accedi?from=%2Farea%2Fpedidos'), '/oggi');
+    });
+
+    test('la clienta va a /area y no abre rutas de la cocina', () {
+      expect(auto(client, '/'), '/area');
+      expect(auto(client, '/accedi'), '/area');
+      expect(auto(client, '/caricamento'), '/area');
+      expect(auto(client, '/ingresso'), '/area');
+      expect(auto(client, '/area'), isNull);
+      expect(auto(client, '/area/pedidos'), isNull);
+      for (final path in ['/oggi', '/richieste/abc', '/impostazioni']) {
+        expect(auto(client, path), '/area', reason: path);
+      }
+      expect(auto(client, '/accedi?from=%2Farea%2Fpedidos'), '/area/pedidos');
+      expect(auto(client, '/accedi?from=%2Frichieste%2Fabc'), '/area');
+    });
+
+    test('sin sesión: las dos áreas piden login y recuerdan a dónde iba', () {
+      expect(auto(signedOut, '/'), isNull);
+      expect(
+        auto(signedOut, '/richieste/abc'),
+        '/accedi?from=%2Frichieste%2Fabc',
+      );
+      expect(
+        auto(signedOut, '/area/pedidos'),
+        '/accedi?from=%2Farea%2Fpedidos',
+      );
+      expect(auto(signedOut, '/ingresso'), '/');
+    });
+
+    test('cargando, conserva el destino de cualquiera de las dos', () {
+      expect(
+        auto(loading, '/richieste/abc'),
+        '/caricamento?from=%2Frichieste%2Fabc',
+      );
+      expect(
+        auto(loading, '/area/pedidos'),
+        '/caricamento?from=%2Farea%2Fpedidos',
+      );
+      expect(auto(loading, '/accedi?from=%2Farea'), '/caricamento?from=%2Farea');
+    });
+  });
+
+  group('la cocina no abre rutas de la clienta', () {
+    test('/area y /area/* no existen para ella', () {
+      expect(isClientPath('/area'), isTrue);
+      expect(isClientPath('/area/pedidos'), isTrue);
+      expect(isClientPath('/areas'), isFalse);
+      expect(isClientPath('/oggi'), isFalse);
+      expect(_redirect(chef, '/area'), '/oggi');
+      expect(_redirect(chef, '/area/pedidos'), '/oggi');
+      expect(_redirect(chef, '/accedi?from=%2Farea'), '/oggi');
+      expect(_redirect(signedOut, '/area', isWeb: true), '/accedi');
+      expect(_redirect(signedOut, '/area/pedidos'), '/');
+    });
+
+    test('sin `entry`, la entrada es la de la cocina (como antes)', () {
+      expect(
+        resolveRedirect(
+          session: chef,
+          location: Uri.parse('/richieste/abc'),
+          isWeb: true,
+        ),
+        isNull,
+      );
     });
   });
 
@@ -171,7 +335,7 @@ void main() {
     );
     // Sin id no es una ruta (ni del área).
     expect(isChefPath('/sessioni'), isFalse);
-    expect(_redirect(client, '/sessioni/abc'), '/area-clienti');
+    expect(_redirect(client, '/sessioni/abc'), '/ingresso');
   });
 
   test('la hoja «Conferma prenotazione» cuelga del detalle y es del área de la cocinera', () {

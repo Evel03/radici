@@ -47,6 +47,10 @@ abstract interface class Browser {
   /// Nunca lanza.
   Future<String?> fetchFresh(Uri uri);
 
+  /// El `content` del `<meta name="[name]">` de la página, o null (sin ese
+  /// meta, o fuera de la web). Nunca lanza.
+  String? readMeta(String name);
+
   /// Recarga la página. Fuera de la web no hace nada.
   void reload();
 
@@ -66,6 +70,10 @@ abstract interface class Browser {
   /// no hace nada. Nunca lanza.
   void revokeObjectUrl(String url);
 }
+
+/// El navegador de esta plataforma, para lo que se lee antes de armar
+/// Riverpod (la entrada, ver app_entry.dart).
+Browser createPlatformBrowser() => createBrowser();
 
 /// El navegador real en la web; fuera de la web, uno que no hace nada.
 final browserProvider = Provider<Browser>((ref) => createBrowser());
