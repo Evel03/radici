@@ -36,7 +36,7 @@
   X-Robots-Tag: noindex, nofollow
 
 # Captcha de Auth: la verificación anti-spam del acceso a la app (Turnstile con la sitekey de Auth). La abre la
-# app de Evelyn en un iframe del mismo sitio (/gestione/, más adelante /app/) o en una WebView; no es una página
+# app de Evelyn en un iframe del mismo sitio (/gestione/ y /app/) o en una WebView; no es una página
 # para visitar. Solo lo que Turnstile necesita (script e iframe de challenges.cloudflare.com); sin Supabase, sin
 # fotos. Es la única página que se deja enmarcar, y solo por el propio sitio: frame-ancestors 'self' y
 # X-Frame-Options SAMEORIGIN (el DENY de /* se quita acá: sin eso el navegador no la mostraría en el marco).
@@ -63,6 +63,17 @@
 # Caché: los archivos de Flutter NO llevan hash en el nombre (main.dart.js, canvaskit/…): cada carga
 # revalida (ETag → 304 si no cambió). La regla de /assets/* no alcanza a /gestione/assets/*.
 /gestione/*
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: __SUPABASE_ORIGIN__; connect-src 'self' blob: __SUPABASE_ORIGIN__ __SUPABASE_WS_ORIGIN__; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
+  Cache-Control: no-cache
+  X-Robots-Tag: noindex, nofollow
+
+# Área de la clienta: la misma app Flutter web, publicada en dist/app/ (PR13; el mismo build que /gestione/ con otra
+# entrada, ver .github/scripts/publish-app-entries.sh). Mismas reglas que /gestione/ (CSP, sin caché larga,
+# noindex), en una regla propia porque Pages no admite una lista de rutas: si cambia una, cambia la otra
+# (headers.test.ts compara las dos). frame-src 'self' es el marco del captcha de Auth (/captcha/, mismo origen).
+# Hasta PR69 ningún link público lleva a /app/ (web/src/build/no-app-links.test.ts).
+/app/*
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: __SUPABASE_ORIGIN__; connect-src 'self' blob: __SUPABASE_ORIGIN__ __SUPABASE_WS_ORIGIN__; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
   Cache-Control: no-cache

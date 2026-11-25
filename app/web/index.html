@@ -2,8 +2,9 @@
 <html lang="it">
 <head>
   <!--
-    Radici · gestione (Flutter web), publicada en /gestione/ del sitio.
-    El build completa el href de <base> con el valor de --base-href.
+    Radici (Flutter web), publicada en /gestione/ del sitio y, con otra marca de
+    entrada, en /app/. El build completa el href de <base> con el valor de
+    --base-href.
     Sin scripts ni estilos inline: la CSP de /gestione/* no los permite
     (ver app/README.md, "Web /gestione/").
   -->
@@ -16,9 +17,10 @@
   <meta name="description" content="Radici: richieste e agenda di Evelyn.">
   <!-- Área privada: que no la indexe ningún buscador. -->
   <meta name="robots" content="noindex, nofollow">
-  <!-- Qué entrada es este build: gestione (la cocina, este build) o app (las
-       clientas, /app/; el deploy lo cambia en PR13). Sin la marca, gestione.
-       Ver lib/core/app_entry.dart. -->
+  <!-- Qué entrada es esta copia: gestione (la cocina) o app (las clientas).
+       Acá va gestione; deploy-web copia el build a /app/ y cambia esta marca,
+       el <base> y el manifest (.github/scripts/publish-app-entries.sh).
+       Sin la marca, gestione. Ver lib/core/app_entry.dart. -->
   <meta name="radici-entry" content="gestione">
   <!-- El fondo del tema (core/theme.dart), en claro y en oscuro. -->
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5ede1">

@@ -35,10 +35,11 @@ function production(overrides: Partial<Record<string, Handler>> = {}): Handler {
   return (path, n, res) => {
     const override = overrides[path];
     if (override) return override(path, n, res);
-    if (path === "/gestione/build.json") return send(res, 200, "no-cache", `{"buildId":"${BUILD_ID}"}\n`);
-    if (path === "/gestione/main.dart.js") return send(res, 200, "no-cache", "// main\n");
+    // /gestione/ y /app/ son el mismo build: los mismos archivos y el mismo id.
+    if (path === "/gestione/build.json" || path === "/app/build.json") return send(res, 200, "no-cache", `{"buildId":"${BUILD_ID}"}\n`);
+    if (path === "/gestione/main.dart.js" || path === "/app/main.dart.js") return send(res, 200, "no-cache", "// main\n");
     // Una lista y en mayúsculas: también vale.
-    if (path === "/gestione/flutter_bootstrap.js") return send(res, 200, "public, No-Cache", "// bootstrap\n");
+    if (path === "/gestione/flutter_bootstrap.js" || path === "/app/flutter_bootstrap.js") return send(res, 200, "public, No-Cache", "// bootstrap\n");
     send(res, 404, "no-store", "404");
   };
 }
@@ -83,7 +84,10 @@ test("producción bien: verde, sin avisos", { skip }, async () => {
   await withServer(production(), async (site) => {
     const { code, out } = await check({ SITE_URL: `${site}/` });
     assert.equal(code, 0, out);
-    assert.match(out, /build\.json \(intento 1\/3\): abc1234/);
+    assert.match(out, /\/gestione\/build\.json \(intento 1\/3\): abc1234/);
+    assert.match(out, /\/app\/build\.json \(intento 1\/3\): abc1234/);
+    assert.match(out, /\/app\/main\.dart\.js \(intento 1\/3\): HTTP 200, Cache-Control: no-cache/);
+    assert.match(out, /\/app\/flutter_bootstrap\.js \(intento 1\/3\): HTTP 200, Cache-Control: public, No-Cache/);
     assert.match(out, /main\.dart\.js \(intento 1\/3\): HTTP 200, Cache-Control: no-cache/);
     assert.doesNotMatch(out, /::(error|warning)::/);
   });
@@ -95,6 +99,24 @@ test("con la caché de Cloudflare (max-age=14400): rojo, con la indicación de C
     assert.equal(code, 1, out);
     assert.match(out, /main\.dart\.js \(intento 3\/3\)/);
     assert.match(out, /::error::.*main\.dart\.js llega con Cache-Control: max-age=14400.*Respect Existing Headers/);
+  });
+});
+
+test("/app/ con la caché de Cloudflare: rojo, aunque /gestione/ esté bien", { skip }, async () => {
+  await withServer(production({ "/app/main.dart.js": cloudflareTtl }), async (site) => {
+    const { code, out } = await check({ SITE_URL: site });
+    assert.equal(code, 1, out);
+    assert.match(out, /::error::.*\/app\/main\.dart\.js llega con Cache-Control: max-age=14400/);
+    assert.doesNotMatch(out, /::error::.*\/gestione\//);
+  });
+});
+
+test("/app/ sin publicar (404): rojo", { skip }, async () => {
+  const missing: Handler = (_path, _n, res) => send(res, 404, "no-store", "404");
+  await withServer(production({ "/app/main.dart.js": missing, "/app/flutter_bootstrap.js": missing }), async (site) => {
+    const { code, out } = await check({ SITE_URL: site });
+    assert.equal(code, 1, out);
+    assert.match(out, /::error::.*\/app\/main\.dart\.js: HTTP 404/);
   });
 });
 
@@ -148,8 +170,9 @@ test("build.json todavía sin este id: solo avisa", { skip }, async () => {
   await withServer(production({ "/gestione/build.json": old }), async (site) => {
     const { code, out } = await check({ SITE_URL: site });
     assert.equal(code, 0, out);
-    assert.match(out, /build\.json \(intento 3\/3\): 0000000/);
-    assert.match(out, /::warning::.*no muestra este build \(abc1234\)/);
+    assert.match(out, /\/gestione\/build\.json \(intento 3\/3\): 0000000/);
+    assert.match(out, /::warning::.*\/gestione\/build\.json no muestra este build \(abc1234\)/);
+    assert.doesNotMatch(out, /::warning::.*\/app\/build\.json/);
   });
 });
 
