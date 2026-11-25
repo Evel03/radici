@@ -39,7 +39,7 @@ class WrongEntryScreen extends ConsumerWidget {
                   Text(
                     key: const ValueKey('wrong-entry-body'),
                     switch (entry) {
-                      AppEntry.kitchen => l10n.wrongEntryClientBody,
+                      AppEntry.kitchen || AppEntry.auto => l10n.wrongEntryClientBody,
                       AppEntry.client => l10n.wrongEntryKitchenBody,
                     },
                     textAlign: TextAlign.center,

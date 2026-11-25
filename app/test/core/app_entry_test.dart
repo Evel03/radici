@@ -35,12 +35,12 @@ class _MemoryStorage extends GotrueAsyncStorage {
 void main() {
   group('qué entrada es', () {
     test(
-      'nativo (iOS y Android): siempre la clienta, diga lo que diga la marca',
+      'nativo (iOS y Android): las dos cuentas (auto), diga lo que diga la marca',
       () {
         for (final meta in [null, 'gestione', 'app', 'otra']) {
           expect(
             resolveAppEntry(isWeb: false, metaContent: meta),
-            AppEntry.client,
+            AppEntry.auto,
             reason: '$meta',
           );
         }
@@ -112,6 +112,22 @@ void main() {
       },
     );
 
+    test('la app nativa (auto) usa las de siempre: su sesión sobrevive', () {
+      // Las de la compilación de TestFlight que ya usa Evelyn.
+      expect(AppEntry.auto.persistSessionKey(_url), 'sb-abcdefgh-auth-token');
+      expect(AppEntry.auto.languageKey, 'radici.ui_language');
+      expect(AppEntry.auto.pkceKeyPrefix, '');
+      expect(
+        AppEntry.auto.persistSessionKey(_url),
+        AppEntry.kitchen.persistSessionKey(_url),
+      );
+      expect(AppEntry.auto.languageKey, AppEntry.kitchen.languageKey);
+      expect(
+        AppEntry.auto.persistSessionKey(_url),
+        isNot(AppEntry.client.persistSessionKey(_url)),
+      );
+    });
+
     test('/app/ tiene las suyas, distintas de las de la cocina', () {
       expect(
         AppEntry.client.persistSessionKey(_url),
@@ -141,6 +157,34 @@ void main() {
       // Sin almacenamiento propio del verificador: queda el de
       // supabase_flutter, con la clave fija de siempre.
       expect(options.pkceAsyncStorage, isNull);
+    });
+
+    test('app nativa: claves de siempre, PKCE y el predicado restringido', () {
+      final options = buildAuthOptions(AppEntry.auto, _url);
+      expect(options.authFlowType, AuthFlowType.pkce);
+      expect(
+        (options.localStorage! as SharedPreferencesLocalStorage)
+            .persistSessionKey,
+        'sb-abcdefgh-auth-token',
+      );
+      // El verificador: el almacenamiento de supabase_flutter, sin prefijo.
+      expect(options.pkceAsyncStorage, isNull);
+      expect(options.detectSessionInUri, isTrue);
+      final detect = options.detectSessionInUriPredicate!;
+      expect(detect(Uri.parse('https://radicicucina.app/app/?code=abc')), isTrue);
+      expect(
+        detect(Uri.parse('https://radicicucina.app/gestione/?code=abc')),
+        isFalse,
+      );
+      expect(
+        detect(
+          Uri.parse(
+            'https://radicicucina.app/app/#access_token=x&refresh_token=y',
+          ),
+        ),
+        isFalse,
+      );
+      expect(detect(Uri.parse('app.radicicucina:///app/?access_token=x')), isFalse);
     });
 
     test('clienta: claves propias, PKCE y el predicado de su ruta', () {

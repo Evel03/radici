@@ -147,11 +147,16 @@ bool isChefPath(String path) =>
     path.startsWith('${AppRoutes.more}/');
 
 /// Las rutas que abre [entry]: las de la cocina en /gestione/, las de la
-/// clienta en /app/ y en las apps.
+/// clienta en /app/ y, en la app nativa (sin cuenta todavía), las dos.
 bool isEntryPath(AppEntry entry, String path) => switch (entry) {
   AppEntry.kitchen => isChefPath(path),
   AppEntry.client => isClientPath(path),
+  AppEntry.auto => isChefPath(path) || isClientPath(path),
 };
+
+/// La entrada que ve una cuenta: en la app nativa (`auto`) es la de su rol.
+AppEntry _accountEntry(AppEntry entry, AppEntry role) =>
+    entry == AppEntry.auto ? role : entry;
 
 /// A dónde redirigir [location] según [session], o null para quedarse.
 ///
@@ -165,6 +170,8 @@ bool isEntryPath(AppEntry entry, String path) => switch (entry) {
 ///   email).
 /// - La cuenta de la otra entrada (una clienta en /gestione/, la cocina en
 ///   /app/): `/ingresso`, que lo explica y deja salir. Nunca se mezclan.
+/// - En la app nativa (`auto`) no hay otra entrada: cada cuenta va a su área
+///   según su rol y nunca abre la del otro rol.
 /// La calculadora (`/preventivo`) es pública siempre.
 String? resolveRedirect({
   required SessionState session,
@@ -175,8 +182,8 @@ String? resolveRedirect({
   final path = location.path;
   if (path == AppRoutes.quote) return null;
   final ownRoute = isEntryPath(entry, path);
-  final from = _safeFrom(entry, location.queryParameters[AppRoutes.fromParam]);
-  final home = entry == AppEntry.kitchen ? AppRoutes.today : AppRoutes.area;
+  final fromParam = location.queryParameters[AppRoutes.fromParam];
+  final from = _safeFrom(entry, fromParam);
 
   switch (session) {
     case SignedOut():
@@ -198,20 +205,22 @@ String? resolveRedirect({
         ownRoute ? location.toString() : from,
       );
     case ChefSession():
+      final own = _accountEntry(entry, AppEntry.kitchen);
       return _forAccount(
-        ownEntry: entry == AppEntry.kitchen,
-        ownRoute: ownRoute,
+        ownEntry: own == AppEntry.kitchen,
+        ownRoute: isChefPath(path),
         path: path,
-        from: from,
-        home: home,
+        from: _safeFrom(own, fromParam),
+        home: AppRoutes.today,
       );
     case ClientSession():
+      final own = _accountEntry(entry, AppEntry.client);
       return _forAccount(
-        ownEntry: entry == AppEntry.client,
-        ownRoute: ownRoute,
+        ownEntry: own == AppEntry.client,
+        ownRoute: isClientPath(path),
         path: path,
-        from: from,
-        home: home,
+        from: _safeFrom(own, fromParam),
+        home: AppRoutes.area,
       );
   }
 }

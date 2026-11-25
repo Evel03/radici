@@ -26,7 +26,7 @@ class RadiciApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final showBackendNotice = ref.watch(appEnvProvider).showBackendNotice;
-    final entry = ref.watch(appEntryProvider);
+    final kitchenAlerts = ref.watch(kitchenAlertsEnabledProvider);
 
     return MaterialApp.router(
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
@@ -48,7 +48,7 @@ class RadiciApp extends ConsumerWidget {
         final routed = child ?? const SizedBox.shrink();
         final content = CaptchaHost(
           child: WebAppNotices(
-            child: entry == AppEntry.kitchen
+            child: kitchenAlerts
                 ? NewRequestAlertListener(child: routed)
                 : routed,
           ),

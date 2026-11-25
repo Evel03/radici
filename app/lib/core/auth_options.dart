@@ -9,13 +9,13 @@ const String clientCallbackPath = '/app';
 
 /// ¿Es [uri] la vuelta de un link de Auth de la entrada [entry]?
 ///
-/// - La cocina no usa links (entra con el código): nunca.
-/// - La clienta, solo en su ruta y solo con PKCE: un `code` o un error de
+/// - La cocina web no usa links (entra con el código): nunca.
+/// - La clienta (web) y la app nativa, solo en su ruta y solo con PKCE: un `code` o un error de
 ///   Auth, en la query. Un `access_token` (flujo implícito) o un
 ///   `refresh_token`, en la query o en el fragmento, nunca abre una sesión:
 ///   cualquiera puede armar esa URL con un token que no es de quien la abre.
 bool isAuthCallbackUri(AppEntry entry, Uri uri) {
-  if (entry != AppEntry.client) return false;
+  if (entry == AppEntry.kitchen) return false;
   final path = uri.path;
   if (path != clientCallbackPath && !path.startsWith('$clientCallbackPath/')) {
     return false;
@@ -69,8 +69,10 @@ class PrefixedGotrueAsyncStorage extends GotrueAsyncStorage {
 ///
 /// - Cocina: la sesión y el verificador con las claves de siempre, y sin
 ///   detectar sesión en la URL (su login es el código del email).
-/// - Clienta: claves propias, y solo detecta la vuelta de sus links
+/// - Clienta (web): claves propias, y solo detecta la vuelta de sus links
 ///   ([isAuthCallbackUri]).
+/// - App nativa (`auto`): las claves de siempre (la sesión que ya hay en el
+///   teléfono sigue) y el mismo predicado restringido de la clienta.
 ///
 /// [pkceStorage] es el almacenamiento real del verificador (en los tests, uno
 /// en memoria); por defecto, el de supabase_flutter.
@@ -80,6 +82,7 @@ FlutterAuthClientOptions buildAuthOptions(
   GotrueAsyncStorage? pkceStorage,
 }) {
   final isClient = entry == AppEntry.client;
+  final detects = entry != AppEntry.kitchen;
   return FlutterAuthClientOptions(
     authFlowType: AuthFlowType.pkce,
     localStorage: SharedPreferencesLocalStorage(
@@ -92,8 +95,8 @@ FlutterAuthClientOptions buildAuthOptions(
             pkceStorage ?? SharedPreferencesGotrueAsyncStorage(),
           )
         : pkceStorage,
-    detectSessionInUri: isClient,
-    detectSessionInUriPredicate: isClient
+    detectSessionInUri: detects,
+    detectSessionInUriPredicate: detects
         ? (uri) => isAuthCallbackUri(entry, uri)
         : null,
   );

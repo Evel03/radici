@@ -7,12 +7,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/core/app_entry.dart';
 import 'package:radici/core/router.dart';
+import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/wrong_entry_screen.dart';
+import 'package:radici/features/client/application/client_providers.dart';
 import 'package:radici/features/client/presentation/client_shell.dart';
+import 'package:radici/features/requests/application/chef_inbox_controller.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/today/presentation/today_screen.dart';
 
@@ -276,6 +279,107 @@ void main() {
         ],
       );
       expect(find.byType(ClientShell), findsOneWidget);
+    });
+  });
+
+  group('app nativa (auto): las dos cuentas', () {
+    testWidgets('la cocina llega a Hoy sin crear providers de la clienta', (
+      tester,
+    ) async {
+      final created = _Created();
+      await pumpRadiciApp(
+        tester,
+        entry: AppEntry.auto,
+        observers: [created],
+        overrides: [
+          authRepositoryProvider.overrideWithValue(
+            FakeAuthRepository(user: chefUser),
+          ),
+          accountRepositoryProvider.overrideWithValue(
+            FakeAccountRepository(chefAccountData),
+          ),
+          chefRequestsRepositoryProvider.overrideWithValue(
+            FakeChefRequestsRepository([buildRequest()]),
+          ),
+        ],
+      );
+      expect(find.byType(TodayScreen), findsOneWidget);
+      expect(find.byType(WrongEntryScreen), findsNothing);
+      expect(created.names, isNot(contains('clientAccount')));
+    });
+
+    testWidgets('la clienta llega a /area sin crear providers de la cocina', (
+      tester,
+    ) async {
+      var kitchenRepositoryCreated = false;
+      final container = await pumpRadiciApp(
+        tester,
+        entry: AppEntry.auto,
+        overrides: [
+          authRepositoryProvider.overrideWithValue(
+            FakeAuthRepository(user: _clientUser),
+          ),
+          accountRepositoryProvider.overrideWithValue(
+            FakeAccountRepository(const Account(role: AccountRole.client)),
+          ),
+          chefRequestsRepositoryProvider.overrideWith((ref) {
+            kitchenRepositoryCreated = true;
+            return FakeChefRequestsRepository(const []);
+          }),
+        ],
+      );
+      expect(find.byType(ClientShell), findsOneWidget);
+      expect(find.byType(WrongEntryScreen), findsNothing);
+      expect(container.read(kitchenAlertsEnabledProvider), isFalse);
+      for (final path in ['/oggi', '/richieste/abc', '/agenda']) {
+        container.read(routerProvider).go(path);
+        await tester.pumpAndSettle();
+        expect(find.byType(ClientShell), findsOneWidget, reason: path);
+        expect(find.byType(TodayScreen), findsNothing, reason: path);
+      }
+      expect(kitchenRepositoryCreated, isFalse);
+    });
+
+    testWidgets('salir y entrar con la otra cuenta no deja nada de la anterior', (
+      tester,
+    ) async {
+      final auth = FakeAuthRepository(user: chefUser);
+      final accounts = FakeAccountRepository(chefAccountData);
+      final requests = FakeChefRequestsRepository([buildRequest()]);
+      final container = await pumpRadiciApp(
+        tester,
+        entry: AppEntry.auto,
+        overrides: [
+          authRepositoryProvider.overrideWithValue(auth),
+          accountRepositoryProvider.overrideWithValue(accounts),
+          chefRequestsRepositoryProvider.overrideWithValue(requests),
+        ],
+      );
+      expect(find.byType(TodayScreen), findsOneWidget);
+      expect(container.read(kitchenAlertsEnabledProvider), isTrue);
+      expect(container.read(chefInboxProvider).value, isNotEmpty);
+
+      // Sale la cocina y entra una clienta.
+      await container.read(sessionControllerProvider.notifier).signOut();
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginScreen), findsOneWidget);
+      accounts.account = const Account(role: AccountRole.client);
+      auth.emit(_clientUser);
+      await tester.pumpAndSettle();
+      expect(find.byType(ClientShell), findsOneWidget);
+      expect(container.read(kitchenAlertsEnabledProvider), isFalse);
+      expect(container.read(chefInboxProvider).value, isEmpty);
+      expect(container.read(currentChefProvider), isNull);
+
+      // Y al revés: sale la clienta y vuelve la cocina.
+      await container.read(sessionControllerProvider.notifier).signOut();
+      await tester.pumpAndSettle();
+      accounts.account = chefAccountData;
+      auth.emit(chefUser);
+      await tester.pumpAndSettle();
+      expect(find.byType(TodayScreen), findsOneWidget);
+      expect(container.read(kitchenAlertsEnabledProvider), isTrue);
+      expect(container.read(clientAccountProvider), isNull);
     });
   });
 

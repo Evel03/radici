@@ -221,6 +221,67 @@ void main() {
     });
   });
 
+  group('app nativa (auto): cada cuenta a su área, sin «ingresso»', () {
+    String? auto(SessionState session, String location) => resolveRedirect(
+      session: session,
+      location: Uri.parse(location),
+      isWeb: false,
+      entry: AppEntry.auto,
+    );
+
+    test('la cocina va a Hoy y se queda en sus rutas', () {
+      expect(auto(chef, '/'), '/oggi');
+      expect(auto(chef, '/accedi'), '/oggi');
+      expect(auto(chef, '/caricamento'), '/oggi');
+      expect(auto(chef, '/area'), '/oggi');
+      expect(auto(chef, '/ingresso'), '/oggi');
+      expect(auto(chef, '/oggi'), isNull);
+      expect(auto(chef, '/richieste/abc'), isNull);
+      expect(auto(chef, '/accedi?from=%2Frichieste%2Fabc'), '/richieste/abc');
+      // Un `from` de la clienta no sirve a la cocina.
+      expect(auto(chef, '/accedi?from=%2Farea%2Fpedidos'), '/oggi');
+    });
+
+    test('la clienta va a /area y no abre rutas de la cocina', () {
+      expect(auto(client, '/'), '/area');
+      expect(auto(client, '/accedi'), '/area');
+      expect(auto(client, '/caricamento'), '/area');
+      expect(auto(client, '/ingresso'), '/area');
+      expect(auto(client, '/area'), isNull);
+      expect(auto(client, '/area/pedidos'), isNull);
+      for (final path in ['/oggi', '/richieste/abc', '/impostazioni']) {
+        expect(auto(client, path), '/area', reason: path);
+      }
+      expect(auto(client, '/accedi?from=%2Farea%2Fpedidos'), '/area/pedidos');
+      expect(auto(client, '/accedi?from=%2Frichieste%2Fabc'), '/area');
+    });
+
+    test('sin sesión: las dos áreas piden login y recuerdan a dónde iba', () {
+      expect(auto(signedOut, '/'), isNull);
+      expect(
+        auto(signedOut, '/richieste/abc'),
+        '/accedi?from=%2Frichieste%2Fabc',
+      );
+      expect(
+        auto(signedOut, '/area/pedidos'),
+        '/accedi?from=%2Farea%2Fpedidos',
+      );
+      expect(auto(signedOut, '/ingresso'), '/');
+    });
+
+    test('cargando, conserva el destino de cualquiera de las dos', () {
+      expect(
+        auto(loading, '/richieste/abc'),
+        '/caricamento?from=%2Frichieste%2Fabc',
+      );
+      expect(
+        auto(loading, '/area/pedidos'),
+        '/caricamento?from=%2Farea%2Fpedidos',
+      );
+      expect(auto(loading, '/accedi?from=%2Farea'), '/caricamento?from=%2Farea');
+    });
+  });
+
   group('la cocina no abre rutas de la clienta', () {
     test('/area y /area/* no existen para ella', () {
       expect(isClientPath('/area'), isTrue);
