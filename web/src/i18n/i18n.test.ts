@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import notFoundHtml from "../../404.html?raw";
+import captchaHtml from "../../captcha/index.html?raw";
 import indexHtml from "../../index.html?raw";
 import reservationHtml from "../../prenotazione/index.html?raw";
 import privacyHtml from "../../privacy/index.html?raw";
@@ -20,7 +21,7 @@ import { createSiteI18n } from "./site.ts";
 const dicts = { it: flatten(itJson), es: flatten(es), en: flatten(en) };
 const itKeys = Object.keys(dicts.it).sort();
 
-const htmlFiles = { indexHtml, requestHtml, privacyHtml, reservationHtml, notFoundHtml, headerHtml, footerHtml };
+const htmlFiles = { indexHtml, requestHtml, privacyHtml, reservationHtml, captchaHtml, notFoundHtml, headerHtml, footerHtml };
 
 /** Claves que el HTML pide con data-i18n, data-i18n-html y data-i18n-attr. */
 function htmlKeys(html: string): string[] {

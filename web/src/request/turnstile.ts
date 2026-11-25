@@ -38,6 +38,10 @@ export interface TurnstileRenderOptions {
   theme?: "auto" | "light" | "dark";
   language?: string;
   size?: "normal" | "flexible" | "compact";
+  /** "interaction-only": el widget solo se ve si Cloudflare pide que la persona lo toque (/captcha/, Auth). */
+  appearance?: "always" | "execute" | "interaction-only";
+  /** "manual": un token vencido no se renueva solo (/captcha/ pide un desafío nuevo en cada pedido). */
+  "refresh-expired"?: "auto" | "manual" | "never";
   "response-field"?: boolean;
   callback?: (token: string) => void;
   "error-callback"?: (code: string) => boolean | void;

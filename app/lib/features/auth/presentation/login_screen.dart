@@ -71,6 +71,7 @@ String authErrorText(AppLocalizations l10n, AuthFailureKind kind) =>
       AuthFailureKind.network => l10n.authErrorNetwork,
       AuthFailureKind.notAllowed => l10n.authErrorNotAllowed,
       AuthFailureKind.noBackend => l10n.authErrorNoBackend,
+      AuthFailureKind.captcha => l10n.authErrorCaptcha,
       AuthFailureKind.unknown => l10n.authErrorUnknown,
     };
 

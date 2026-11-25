@@ -567,5 +567,15 @@
         "goneReplaced": "No pudimos registrar tu respuesta: mientras tanto, {chef} te mandó un presupuesto nuevo, que tienes aquí abajo."
       }
     }
+  },
+  "captcha": {
+    "metaTitle": "Verificación anti-spam · {brand}",
+    "metaDescription": "Página técnica que completa la verificación anti-spam al entrar en la app de {brand}: la abre la app, no hace falta visitarla.",
+    "title": "Verificación anti-spam",
+    "working": "Estamos completando la verificación…",
+    "interactive": "Toca la casilla para confirmar que eres una persona.",
+    "cancel": "Cancelar",
+    "noscript": "Para completar la verificación anti-spam hace falta JavaScript: actívalo en el navegador.",
+    "standalone": "Esta página solo sirve a la app de {brand} para completar la verificación anti-spam al entrar. Puedes cerrarla."
   }
 }

@@ -1,7 +1,9 @@
 // Login con código por email, de punta a punta en la app (repos falsos).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:radici/core/captcha/captcha_service.dart';
 import 'package:radici/core/radici_logo.dart';
 import 'package:radici/core/router.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
@@ -12,6 +14,7 @@ import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/requests/presentation/request_detail_screen.dart';
 import 'package:radici/features/today/presentation/today_screen.dart';
 
+import '../../../support/captcha_fakes.dart';
 import '../../../support/fakes.dart';
 import '../../../support/pump_app.dart';
 import '../../../support/request_fixtures.dart';
@@ -24,12 +27,15 @@ void main() {
     WidgetTester tester, {
     Locale locale = const Locale('it', 'IT'),
     bool isWeb = true,
+    List<Override> overrides = const [],
+    CaptchaService captcha = const NoCaptchaService(),
   }) {
     setSurfaceSize(tester, const Size(400, 900));
     auth = FakeAuthRepository();
     return pumpRadiciApp(
       tester,
       isWeb: isWeb,
+      captcha: captcha,
       deviceLocales: [locale],
       overrides: [
         authRepositoryProvider.overrideWithValue(auth),
@@ -40,6 +46,7 @@ void main() {
         chefRequestsRepositoryProvider.overrideWithValue(
           FakeChefRequestsRepository([buildRequest(id: 'req-42')]),
         ),
+        ...overrides,
       ],
     );
   }
@@ -141,6 +148,34 @@ void main() {
       find.text('Hai chiesto troppi codici. Aspetta un minuto e riprova.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('el captcha de Auth: el envío lleva su token, y sin él (fail-open) el código se pide igual', (tester) async {
+    final captcha = FakeCaptchaService();
+    final container = await pumpLogin(tester, captcha: captcha);
+    expect(container.read(captchaRequiredProvider), isFalse);
+    await enterEmail(tester, 'evelyn@example.test');
+    expect(auth.sentCaptchaTokens, ['captcha-token-1']);
+    expect(captcha.locales, ['it']);
+    expect(find.byKey(const ValueKey('login-code')), findsOneWidget);
+  });
+
+  testWidgets('sin token y con el captcha obligatorio (PR11): lo explica y se reintenta con el mismo botón', (tester) async {
+    final captcha = FakeCaptchaService(available: false);
+    await pumpLogin(
+      tester,
+      captcha: captcha,
+      overrides: [captchaRequiredProvider.overrideWithValue(true)],
+    );
+    await enterEmail(tester, 'evelyn@example.test');
+    expect(find.textContaining('verifica anti-spam'), findsOneWidget);
+    expect(auth.sentTo, isEmpty);
+
+    captcha.available = true;
+    await tester.tap(find.byKey(const ValueKey('login-send-code')));
+    await tester.pumpAndSettle();
+    expect(auth.sentTo, ['evelyn@example.test']);
+    expect(find.byKey(const ValueKey('login-code')), findsOneWidget);
   });
 
   testWidgets('en español', (tester) async {

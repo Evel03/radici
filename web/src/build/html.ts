@@ -24,8 +24,11 @@ export interface RenderOptions {
 /** La página 404 (dist/404.html): Cloudflare Pages la sirve con estado 404 en cualquier ruta que no existe. */
 export const NOT_FOUND_PATH = "/404.html";
 
-/** Páginas que se abren solo con un link personal (/prenotazione/#t=…): nunca se indexan. */
-export const PRIVATE_PATHS: readonly string[] = ["/prenotazione/"];
+/**
+ * Páginas que no son para visitar: /prenotazione/ se abre solo con un link personal (#t=…) y /captcha/ la abre la app
+ * (en un marco o una WebView). Nunca se indexan ni declaran canonical.
+ */
+export const PRIVATE_PATHS: readonly string[] = ["/prenotazione/", "/captcha/"];
 
 export function escapeHtml(value: string): string {
   return value

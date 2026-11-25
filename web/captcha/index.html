@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="it" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="captcha.metaTitle"></title>
+    <meta name="description" data-i18n-attr="content:captcha.metaDescription" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f5ede1" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script type="module" src="/src/pages/captcha.ts"></script>
+  </head>
+  <body class="captcha-body">
+    <!-- La verificación anti-spam del acceso a la app (Turnstile de Auth). No es una página para leer: la abre la
+         app en un marco o una ventana propia y habla con ella por mensajes (src/captcha/protocol.ts). -->
+    <main id="captcha" class="captcha" data-state="idle">
+      <noscript>
+        <p class="captcha__text" data-i18n="captcha.noscript"></p>
+      </noscript>
+      <h1 class="captcha__title" id="captcha-title" data-i18n="captcha.title"></h1>
+      <p class="captcha__text" id="captcha-working" role="status" data-i18n="captcha.working" hidden></p>
+      <p class="captcha__text" id="captcha-interactive" data-i18n="captcha.interactive" hidden></p>
+      <div id="captcha-widget" class="captcha__widget"></div>
+      <button id="captcha-cancel" class="btn btn--ghost btn--sm" type="button" data-i18n="captcha.cancel" hidden></button>
+      <p class="captcha__text" id="captcha-standalone" data-i18n="captcha.standalone" hidden></p>
+    </main>
+  </body>
+</html>

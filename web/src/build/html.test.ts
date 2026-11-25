@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import notFoundHtml from "../../404.html?raw";
+import captchaHtml from "../../captcha/index.html?raw";
 import indexHtml from "../../index.html?raw";
 import reservationHtml from "../../prenotazione/index.html?raw";
 import privacyHtml from "../../privacy/index.html?raw";
@@ -23,6 +24,7 @@ const baseConfig: AppConfig = {
   supabaseUrl: null,
   supabasePublishableKey: null,
   turnstileSiteKey: null,
+  turnstileAuthSiteKey: null,
 };
 const i18n = createSiteI18n("it", flatten(itJson), "Radici");
 const partials = { header, footer };
@@ -53,6 +55,7 @@ describe("renderPage con las páginas reales", () => {
     ["/richiesta/", requestHtml],
     ["/privacy/", privacyHtml],
     ["/prenotazione/", reservationHtml],
+    ["/captcha/", captchaHtml],
   ] as const;
 
   for (const [path, html] of pages) {
@@ -259,6 +262,27 @@ describe("vista previa al compartir (Open Graph y X)", () => {
       const out = renderPage(html, { i18n, config: baseConfig, pagePath: path, partials });
       expect(out).not.toContain("og:image");
       expect(out).toContain('<meta name="twitter:card" content="summary">');
+    }
+  });
+});
+
+describe("página del captcha de Auth (/captcha/)", () => {
+  const render = (config: AppConfig) => renderPage(captchaHtml, { i18n, config, pagePath: "/captcha/", partials });
+
+  it("no es para visitar: nunca se indexa ni declara una URL propia, ni con el sitio indexable", () => {
+    const out = render({ ...baseConfig, noindex: false, siteUrl: "https://radicicucina.app" });
+    expect(out).toContain('<meta name="robots" content="noindex, nofollow">');
+    expect(out).not.toMatch(/rel="canonical"|og:url|application\/ld\+json/);
+  });
+
+  it("sin cabecera ni pie, con el script propio y sin estilos ni scripts inline (la CSP no los deja)", () => {
+    const out = render(baseConfig);
+    expect(out).toContain('<script type="module" src="/src/pages/captcha.ts"></script>');
+    expect(out).not.toMatch(/<header|<footer|data-lang=/);
+    expect(out).not.toMatch(/\sstyle=|<style|<script(?![^>]*src=)/);
+    // Los elementos que usa pages/captcha.ts.
+    for (const id of ["captcha", "captcha-working", "captcha-interactive", "captcha-widget", "captcha-cancel", "captcha-standalone"]) {
+      expect(out, id).toContain(`id="${id}"`);
     }
   });
 });

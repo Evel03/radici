@@ -23,6 +23,7 @@ describe("resolveConfig", () => {
       supabaseUrl: null,
       supabasePublishableKey: null,
       turnstileSiteKey: null,
+      turnstileAuthSiteKey: null,
     });
   });
 
@@ -34,6 +35,7 @@ describe("resolveConfig", () => {
       VITE_SUPABASE_URL: " https://abcdefgh.supabase.co/ ",
       VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_abc123",
       VITE_TURNSTILE_SITE_KEY: "0x4AAAAAAAexample",
+      VITE_TURNSTILE_AUTH_SITE_KEY: "0x4AAAAAAAauth",
     });
     expect(config).toEqual({
       brandName: "Cucina di Eve",
@@ -42,6 +44,7 @@ describe("resolveConfig", () => {
       supabaseUrl: "https://abcdefgh.supabase.co",
       supabasePublishableKey: "sb_publishable_abc123",
       turnstileSiteKey: "0x4AAAAAAAexample",
+      turnstileAuthSiteKey: "0x4AAAAAAAauth",
     });
   });
 
@@ -58,6 +61,8 @@ describe("resolveConfig", () => {
   it("claves con espacios o caracteres raros se ignoran (terminan en el HTML y en la CSP)", () => {
     expect(resolveConfig({ VITE_TURNSTILE_SITE_KEY: "0x4AA AAA" }).turnstileSiteKey).toBeNull();
     expect(resolveConfig({ VITE_TURNSTILE_SITE_KEY: "<script>" }).turnstileSiteKey).toBeNull();
+    expect(resolveConfig({ VITE_TURNSTILE_AUTH_SITE_KEY: "0x4AA AAA" }).turnstileAuthSiteKey).toBeNull();
+    expect(resolveConfig({ VITE_TURNSTILE_AUTH_SITE_KEY: "<script>" }).turnstileAuthSiteKey).toBeNull();
     expect(resolveConfig({ VITE_SUPABASE_PUBLISHABLE_KEY: "sb publishable" }).supabasePublishableKey).toBeNull();
   });
 });
@@ -91,11 +96,13 @@ describe("configuración del navegador (site-config.ts)", () => {
       VITE_SUPABASE_URL: "https://abcdefgh.supabase.co",
       VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_abc123",
       VITE_TURNSTILE_SITE_KEY: "0x4AAAAAAAexample",
+      VITE_TURNSTILE_AUTH_SITE_KEY: "0x4AAAAAAAauth",
     });
     expect(toSiteConfig(full)).toEqual({
       brandName: "Radici",
       supabaseUrl: "https://abcdefgh.supabase.co",
       turnstileSiteKey: "0x4AAAAAAAexample",
+      turnstileAuthSiteKey: "0x4AAAAAAAauth",
     });
   });
 

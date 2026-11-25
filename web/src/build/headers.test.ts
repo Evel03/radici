@@ -221,8 +221,59 @@ describe("public/_headers real", () => {
     expect(headersFor(rules, "/prenotazionex", "radicicucina.app").has("X-Robots-Tag")).toBe(false);
   });
 
+  // Captcha de Auth: la abre la app de Evelyn en un iframe del mismo sitio (o en una WebView).
+  const captchaPaths = ["/captcha/", "/captcha/index.html"];
+
+  it("/captcha/: solo lo que Turnstile necesita (script y marco de Cloudflare); sin Supabase ni fotos", () => {
+    for (const path of captchaPaths) {
+      const policy = csp(path);
+      expect(policy.get("default-src"), path).toEqual(["'self'"]);
+      expect(policy.get("script-src"), path).toEqual(["'self'", "https://challenges.cloudflare.com"]);
+      expect(policy.get("frame-src"), path).toEqual(["https://challenges.cloudflare.com"]);
+      expect(policy.get("connect-src"), path).toEqual(["'self'"]);
+      expect(policy.get("img-src"), path).toEqual(["'self'", "data:"]);
+      expect(policy.get("object-src"), path).toEqual(["'none'"]);
+      expect(policy.get("base-uri"), path).toEqual(["'self'"]);
+    }
+  });
+
+  it("/captcha/ es la única página que se deja enmarcar, y solo por el propio sitio (frame-ancestors 'self' y SAMEORIGIN)", () => {
+    for (const path of captchaPaths) {
+      expect(csp(path).get("frame-ancestors"), path).toEqual(["'self'"]);
+      // El DENY de /* se quita (si quedara, el navegador mostraría el marco en blanco) y no se junta con coma.
+      expect(headersFor(rules, path, "radicicucina.app").get("X-Frame-Options"), path).toBe("SAMEORIGIN");
+    }
+    for (const path of ["/", "/richiesta/", "/prenotazione/", "/privacy/", "/gestione/", "/captchax"]) {
+      expect(csp(path).get("frame-ancestors"), path).toEqual(["'none'"]);
+      expect(headersFor(rules, path).get("X-Frame-Options"), path).toBe("DENY");
+    }
+  });
+
+  it("/captcha/ es la CSP base más Turnstile (script y marco) y frame-ancestors 'self' (no se desalinean)", () => {
+    const base = csp("/");
+    const page = csp("/captcha/");
+    for (const [directive, sources] of base) {
+      const extra = (page.get(directive) ?? []).filter((s) => !sources.includes(s));
+      if (directive === "script-src") expect(extra).toEqual(["https://challenges.cloudflare.com"]);
+      else if (directive === "frame-ancestors") expect(page.get(directive)).toEqual(["'self'"]);
+      else expect(page.get(directive), directive).toEqual(sources);
+    }
+    expect([...page.keys()].filter((d) => !base.has(d))).toEqual(["frame-src"]);
+  });
+
+  it("/captcha/ nunca se indexa y conserva las demás cabeceras de seguridad de /*", () => {
+    for (const path of captchaPaths) {
+      const headers = headersFor(rules, path, "radicicucina.app");
+      expect(headers.get("X-Robots-Tag"), path).toBe("noindex, nofollow");
+      expect(headers.get("X-Content-Type-Options")).toBe("nosniff");
+      expect(headers.get("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
+      expect(headers.get("Strict-Transport-Security")).toBe("max-age=31536000");
+    }
+    expect(headersFor(rules, "/captchax", "radicicucina.app").has("X-Robots-Tag")).toBe(false);
+  });
+
   it("páginas públicas: nada de 'unsafe-inline', 'unsafe-eval' ni comodines", () => {
-    for (const path of ["/", "/privacy/", "/richiesta/", "/prenotazione/", "/no-existe"]) {
+    for (const path of ["/", "/privacy/", "/richiesta/", "/prenotazione/", "/captcha/", "/no-existe"]) {
       const value = headersFor(rules, path).get("Content-Security-Policy") ?? "";
       expect(value, path).not.toContain("unsafe-inline");
       expect(value, path).not.toContain("unsafe-eval");
@@ -266,7 +317,8 @@ describe("public/_headers real", () => {
       expect(policy.get("form-action"), path).toEqual(["'none'"]);
       expect(policy.get("frame-ancestors"), path).toEqual(["'none'"]);
       expect(policy.has("upgrade-insecure-requests"), path).toBe(true);
-      expect(policy.has("frame-src"), path).toBe(false);
+      // El marco del captcha de Auth (/captcha/, mismo origen): ningún tercero puede ir en un marco de la app.
+      expect(policy.get("frame-src"), path).toEqual(["'self'"]);
     }
   });
 

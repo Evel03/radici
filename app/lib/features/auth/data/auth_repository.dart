@@ -17,8 +17,10 @@ abstract interface class AuthRepository {
   /// Manda el código de acceso a [email], solo si ya tiene usuario (no crea
   /// cuentas). [locale] (it, es, en) es el idioma de la interfaz: si alguna
   /// vez se crea el usuario así, queda en `user_metadata.locale`, que usan la
-  /// plantilla del email del código y el perfil. Lanza [AuthFailure].
-  Future<void> sendEmailCode(String email, {String? locale});
+  /// plantilla del email del código y el perfil. [captchaToken] es el token
+  /// del captcha de Auth (Turnstile, un solo uso): lo exige Auth cuando tiene
+  /// el captcha prendido (PR11). Lanza [AuthFailure].
+  Future<void> sendEmailCode(String email, {String? locale, String? captchaToken});
 
   /// Verifica el código y abre la sesión. Lanza [AuthFailure].
   Future<void> verifyEmailCode({required String email, required String code});
@@ -46,7 +48,7 @@ class SupabaseAuthRepository implements AuthRepository {
       _auth.onAuthStateChange.map((state) => _toAppUser(state.session?.user));
 
   @override
-  Future<void> sendEmailCode(String email, {String? locale}) async {
+  Future<void> sendEmailCode(String email, {String? locale, String? captchaToken}) async {
     try {
       // No crea usuarios: hasta el área de clientes (M2) solo entra quien ya
       // tiene uno (Evelyn, creada confirmada desde el panel y promovida con
@@ -57,6 +59,9 @@ class SupabaseAuthRepository implements AuthRepository {
         email: email,
         shouldCreateUser: false,
         data: {if (_supportedLocales.contains(locale)) 'locale': locale},
+        // Viaja como gotrue_meta_security.captcha_token; Auth lo verifica
+        // contra Turnstile solo si tiene el captcha prendido.
+        captchaToken: captchaToken,
       );
     } on Object catch (error) {
       throw AuthFailure(authFailureKindOf(error));
@@ -137,7 +142,7 @@ class NoBackendAuthRepository implements AuthRepository {
   Stream<AppUser?> userChanges() => const Stream.empty();
 
   @override
-  Future<void> sendEmailCode(String email, {String? locale}) =>
+  Future<void> sendEmailCode(String email, {String? locale, String? captchaToken}) =>
       Future.error(const AuthFailure(AuthFailureKind.noBackend));
 
   @override

@@ -24,11 +24,12 @@
 # - variables SUPABASE_URL (https://<ref>.supabase.co) y SUPABASE_PUBLISHABLE_KEY (sb_publishable_...):
 #   un solo valor para la web (VITE_SUPABASE_URL, CSP de _headers) y para /gestione/ (dart-define),
 #   así la CSP siempre deja pasar al backend de la app
-# - variables VITE_TURNSTILE_SITE_KEY, VITE_SITE_URL, VITE_NOINDEX (opcional VITE_BRAND_NAME)
+# - variables VITE_TURNSTILE_SITE_KEY (formulario), VITE_TURNSTILE_AUTH_SITE_KEY (captcha de Auth, /captcha/: otro
+#   widget, otra sitekey), VITE_SITE_URL, VITE_NOINDEX (opcional VITE_BRAND_NAME)
 # - lee también ALLOWED_ORIGINS (la de deploy-supabase.yml), para comprobar que incluya VITE_SITE_URL, y
 #   la opcional ALLOW_DRAFT_PRIVACY (ver abajo)
 # Sin el secreto, todo se construye y testea pero no se publica. Con el secreto, si falta la
-# configuración de Supabase o Turnstile: en producción falla antes de publicar (el formulario y la
+# configuración de Supabase o Turnstile (las dos sitekeys): en producción falla antes de publicar (el formulario y la
 # bandeja quedarían rotos); en una vista previa solo avisa. Una SUPABASE_PUBLISHABLE_KEY que no sea
 # publicable corta siempre. En producción también corta si la privacy sigue en borrador (marcadores
 # [...] o el aviso de borrador): solo para pruebas internas, ALLOW_DRAFT_PRIVACY=true lo deja pasar.
@@ -75,6 +76,7 @@ jobs:
       SUPABASE_URL: ${{ vars.SUPABASE_URL }}
       SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
       TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
+      TURNSTILE_AUTH_SITE_KEY: ${{ vars.VITE_TURNSTILE_AUTH_SITE_KEY }}
     defaults:
       run:
         working-directory: web
@@ -125,6 +127,15 @@ jobs:
             problems+=("Falta la variable VITE_TURNSTILE_SITE_KEY.")
           elif [[ "${TURNSTILE_SITE_KEY}" =~ ^[123]x0{20}[A-Z]{2}$ ]]; then
             problems+=("VITE_TURNSTILE_SITE_KEY es una sitekey de prueba: el servidor rechaza su token.")
+          fi
+          # La del captcha de Auth (/captcha/): otro widget, otra sitekey. Sin ella o con una de prueba, el
+          # login no puede mandar un token válido el día que Auth exija captcha (PR11).
+          if [ -z "${TURNSTILE_AUTH_SITE_KEY}" ]; then
+            problems+=("Falta la variable VITE_TURNSTILE_AUTH_SITE_KEY (la sitekey del widget de Turnstile de Auth, distinta de la del formulario).")
+          elif [[ "${TURNSTILE_AUTH_SITE_KEY}" =~ ^[123]x0{20}[A-Z]{2}$ ]]; then
+            problems+=("VITE_TURNSTILE_AUTH_SITE_KEY es una sitekey de prueba: Supabase Auth rechaza su token.")
+          elif [ "${TURNSTILE_AUTH_SITE_KEY}" = "${TURNSTILE_SITE_KEY}" ]; then
+            problems+=("VITE_TURNSTILE_AUTH_SITE_KEY es igual a VITE_TURNSTILE_SITE_KEY: cada widget lleva su propia sitekey (la secreta de Auth va en Supabase, la del formulario en la Edge Function).")
           fi
 
           if [ "${#problems[@]}" -eq 0 ]; then
@@ -199,6 +210,7 @@ jobs:
           VITE_SUPABASE_URL: ${{ env.SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ env.SUPABASE_PUBLISHABLE_KEY }}
           VITE_TURNSTILE_SITE_KEY: ${{ env.TURNSTILE_SITE_KEY }}
+          VITE_TURNSTILE_AUTH_SITE_KEY: ${{ env.TURNSTILE_AUTH_SITE_KEY }}
           VITE_SITE_URL: ${{ vars.VITE_SITE_URL }}
           VITE_NOINDEX: ${{ vars.VITE_NOINDEX }}
           VITE_BRAND_NAME: ${{ vars.VITE_BRAND_NAME }}

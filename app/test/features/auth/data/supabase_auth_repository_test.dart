@@ -42,6 +42,21 @@ void main() {
     expect(body['data'], {'locale': 'es'});
   });
 
+  test('con captchaToken lo manda en gotrue_meta_security (Auth lo verifica si tiene el captcha prendido)', () async {
+    await repository.sendEmailCode('evelyn@example.test', locale: 'it', captchaToken: 'tok.en-1');
+    final body = jsonBodyOf(server.last);
+    expect(server.last.url.path, '/auth/v1/otp');
+    expect(body['gotrue_meta_security'], {'captcha_token': 'tok.en-1'});
+    // El token no se mezcla con lo demás del pedido.
+    expect(body['email'], 'evelyn@example.test');
+    expect(body['data'], {'locale': 'it'});
+  });
+
+  test('sin captchaToken, el campo viaja vacío (Auth sin captcha no lo mira)', () async {
+    await repository.sendEmailCode('evelyn@example.test');
+    expect(jsonBodyOf(server.last)['gotrue_meta_security'], {'captcha_token': null});
+  });
+
   test('sin idioma (o uno no soportado) no manda metadata', () async {
     await repository.sendEmailCode('evelyn@example.test');
     expect(jsonBodyOf(server.last)['data'], isEmpty);

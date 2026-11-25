@@ -769,6 +769,15 @@ base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-re
   vieja. Cada deploy de producción comprueba que `main.dart.js` y `flutter_bootstrap.js` lleguen con
   `no-cache` y, si no, queda en rojo (`.github/scripts/check-gestione-cache.sh`, contrato §8).
 
+## Captcha de Auth (`lib/core/captcha/`)
+
+Cada pedido de código de acceso saca antes un token de captcha (Turnstile de Auth) y se lo pasa a `signInWithOtp(captchaToken: …)`. Auth todavía **no** lo exige (PR11 lo prende): hasta entonces, si no hay token el login sigue sin él (`captchaRequired = false` en `captcha_service.dart`; PR11 lo pone en `true`). Contrato y protocolo: `../docs/contracts/auth.md` §11.
+
+- `CaptchaService.token({locale})` (provider `captchaServiceProvider`): una página y un id nuevos por llamada, de a uno, nunca lanza; `null` si no hay token a los 20 s (120 s si Cloudflare pide tocar la casilla) o si la plataforma no puede abrir la página. Reintentar es llamar de nuevo.
+- Web (`/gestione/`, después `/app/`): `captcha_platform_web.dart` abre un iframe del mismo sitio con `/captcha/` y habla con `postMessage`, comparando el origen exacto y la ventana del iframe, con ese origen como destino (nunca `*`). Pide `frame-src 'self'` en la CSP de `/gestione/` (está en `web/public/_headers`).
+- iOS y Android: `captcha_platform_native.dart` usa `webview_flutter` **4.14.1** (fijada, sin `^`; compatible con el SDK 3.47.7) con `https://radicicucina.app/captcha/?channel=native`, un canal JavaScript `RadiciCaptcha` y un `NavigationDelegate` que solo deja pasar esa página y los marcos de `challenges.cloudflare.com` (`captcha_navigation.dart`, con tests). `CaptchaHost` (en el `builder` de `app.dart`) dibuja la WebView encima de la app: 1×1 px mientras Turnstile resuelve solo, en grande si pide tocar la casilla. No hizo falta tocar `Info.plist` ni `AndroidManifest.xml` (`INTERNET` ya estaba; el sitio es https).
+- En los tests, `pumpRadiciApp` pone un captcha sin token (`NoCaptchaService`) y los tests de login usan `FakeCaptchaService`: nunca se abre una WebView ni un iframe.
+
 ## Estructura
 
 ```

@@ -61,6 +61,7 @@
   "authErrorNetwork": "We couldn't connect. Check your connection and try again.",
   "authErrorNotAllowed": "This email address isn't allowed to sign in.",
   "authErrorNoBackend": "The service isn't configured in this version of the app.",
+  "authErrorCaptcha": "We couldn't complete the anti-spam check. Please try again; if it keeps failing, check your connection or any content blockers.",
   "authErrorUnknown": "Something went wrong. Please try again.",
   "sessionLoading": "One moment…",
   "sessionErrorUnavailable": "We couldn't load your account. Check your connection and try again.",

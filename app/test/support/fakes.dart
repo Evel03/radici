@@ -55,6 +55,9 @@ class FakeAuthRepository implements AuthRepository {
   /// Idioma recibido en cada pedido de código.
   final List<String?> sentLocales = [];
 
+  /// Token de captcha recibido en cada pedido de código (null: sin token).
+  final List<String?> sentCaptchaTokens = [];
+
   void emit(AppUser? next) {
     user = next;
     _changes.add(next);
@@ -67,11 +70,12 @@ class FakeAuthRepository implements AuthRepository {
   Stream<AppUser?> userChanges() => _changes.stream;
 
   @override
-  Future<void> sendEmailCode(String email, {String? locale}) async {
+  Future<void> sendEmailCode(String email, {String? locale, String? captchaToken}) async {
     final failure = sendFailure;
     if (failure != null) throw AuthFailure(failure);
     sentTo.add(email);
     sentLocales.add(locale);
+    sentCaptchaTokens.add(captchaToken);
   }
 
   @override
