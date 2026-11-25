@@ -34,6 +34,7 @@ const LASAGNE_ROW = {
   diet: null,
   seasonMonths: [10, 11, 12],
   photoId: PHOTO_ID,
+  ingredients: ["Carne de res", "Pasta all'uovo", "Leche"],
 };
 
 const MINESTRONE_ROW = {
@@ -44,6 +45,7 @@ const MINESTRONE_ROW = {
   diet: "vegan",
   seasonMonths: null,
   photoId: null,
+  ingredients: [],
 };
 
 const LASAGNE_PHOTO = {
@@ -67,12 +69,12 @@ test("get_public_menu: los platos tal como los manda la base, en su orden, con l
   assert.deepEqual(menuDishesFromRpc([], PHOTOS), { dishes: [], skipped: 0 }, "sin platos publicados: un array vacío");
 });
 
-test("un plato se arma solo con las claves del contrato: nunca ingredientes ni notas", () => {
-  const row = { ...LASAGNE_ROW, ingredients: [{ name: "farina" }], notes: "NOTA-PRIVADA", active: true };
+test("un plato se arma solo con las claves del contrato: nunca cantidades, unidades, secciones ni notas", () => {
+  const row = { ...LASAGNE_ROW, quantity: 400, unit: "g", section: "pantry", notes: "NOTA-PRIVADA", active: true };
   const fromRpc = menuDishesFromRpc([row], PHOTOS)?.dishes[0];
-  const fromResponse = readMenuDish({ ...LASAGNE, ingredients: [{ name: "farina" }], notes: "NOTA-PRIVADA" }, ORIGIN);
+  const fromResponse = readMenuDish({ ...LASAGNE, quantity: 400, notes: "NOTA-PRIVADA" }, ORIGIN);
   for (const dish of [fromRpc, fromResponse]) {
-    assert.deepEqual(Object.keys(dish ?? {}).sort(), ["allergens", "description", "diet", "id", "name", "photo", "seasonMonths"]);
+    assert.deepEqual(Object.keys(dish ?? {}).sort(), ["allergens", "description", "diet", "id", "ingredients", "name", "photo", "seasonMonths"]);
     assert.ok(!JSON.stringify(dish).includes("NOTA-PRIVADA"));
   }
   assert.ok(!("photoId" in (fromRpc ?? {})), "el photoId de la base no sale tal cual: sale la foto con sus URL");
@@ -241,4 +243,32 @@ test("temporada: todo el año (null) o uno de sus meses", () => {
   assert.ok(dishInSeason({ seasonMonths: null }, 7));
   assert.ok(dishInSeason({ seasonMonths: [10, 11, 12] }, 11));
   assert.ok(!dishInSeason({ seasonMonths: [10, 11, 12] }, 1));
+});
+
+test("ingredientes (solo para el buscador): los nombres tal cual, y con otra forma el plato sale con []", () => {
+  const read = (ingredients: unknown) => menuDishesFromRpc([{ ...LASAGNE_ROW, ingredients }], PHOTOS)?.dishes[0]?.ingredients;
+  assert.deepEqual(read(["Carne de res", "Leche"]), ["Carne de res", "Leche"]);
+  assert.deepEqual(read([]), []);
+  // Un plato de una función o una base de antes (sin la clave) sale sin ingredientes.
+  const { ingredients: _omitted, ...old } = LASAGNE_ROW;
+  assert.deepEqual(menuDishesFromRpc([old], PHOTOS)?.dishes[0]?.ingredients, []);
+  assert.deepEqual(readMenuDish(old, ORIGIN)?.ingredients, []);
+  // Cualquier otra forma: [] para ese plato, sin romper el menú (ni saltear el plato).
+  const tooMany = Array.from({ length: 41 }, (_, i) => `Ingrediente ${i}`);
+  const bad: unknown[] = [
+    null, "carne", { name: "carne" }, [{ name: "carne", quantity: 400 }], ["carne", 3], ["carne", ""], ["carne", "   "],
+    ["carne\ncerdo"], ["x".repeat(81)], tooMany,
+  ];
+  for (const value of bad) assert.deepEqual(read(value), [], JSON.stringify(value));
+  assert.equal(menuDishesFromRpc([{ ...LASAGNE_ROW, ingredients: tooMany }], PHOTOS)?.skipped, 0);
+  // En el límite: 40 nombres de 80 caracteres.
+  const limit = Array.from({ length: 40 }, () => "x".repeat(80));
+  assert.deepEqual(read(limit), limit);
+});
+
+test("GET …/menu: la web lee los ingredientes con la misma validación; una versión vieja de la web los ignora", () => {
+  const response = buildMenuResponse([LASAGNE, MINESTRONE].map((dish) => ({ ...dish, photo: dish.photo })));
+  const parsed = parseMenuResponse(JSON.parse(JSON.stringify(response)), ORIGIN);
+  assert.deepEqual(parsed?.dishes[0]?.ingredients, ["Carne de res", "Pasta all'uovo", "Leche"]);
+  assert.equal(response.version, 1, "MENU_VERSION sigue en 1: el campo es nuevo y el lector viejo arma cada plato campo por campo");
 });

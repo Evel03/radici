@@ -38,6 +38,7 @@ const LASAGNE: MenuDish = {
   diet: null,
   seasonMonths: [10, 11, 12],
   photo: LASAGNE_PHOTO,
+  ingredients: ["Carne de res", "Leche"],
 };
 const MINESTRONE: MenuDish = {
   id: "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
@@ -47,6 +48,7 @@ const MINESTRONE: MenuDish = {
   diet: "vegan",
   seasonMonths: null,
   photo: null,
+  ingredients: [],
 };
 const PANZANELLA: MenuDish = {
   id: "2a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
@@ -56,6 +58,7 @@ const PANZANELLA: MenuDish = {
   diet: "vegetarian",
   seasonMonths: [6, 7, 8],
   photo: null,
+  ingredients: ["Pan duro"],
 };
 const READY: MenuState = { kind: "ready", dishes: [LASAGNE, MINESTRONE, PANZANELLA] };
 const NOVEMBER = 11;
@@ -323,5 +326,63 @@ describe("pantalla de gracias", () => {
     expect(doneMenu(data, null, READY)).toEqual([choice(MINESTRONE), choice(LASAGNE)]);
     expect(doneMenu(data, null, { kind: "error" })).toEqual([]);
     expect(doneMenu(null, [choice(LASAGNE)], READY)).toEqual([]);
+  });
+});
+
+describe("buscador", () => {
+  it("sin búsqueda: todos los de temporada, la caja visible y sin aviso", () => {
+    const panel = view();
+    expect(panel.searchVisible).toBe(true);
+    expect(panel.searchStatus).toBe("");
+    expect(panel.searchEmpty).toBe(false);
+    expect(panel.cards).toHaveLength(2);
+    expect(view({ query: "   " }).cards).toHaveLength(2);
+  });
+
+  it("filtra por nombre, tipo y temporada, y avisa cuántos hay", () => {
+    expect(view({ query: "lasa" }, "es").searchStatus).toBe("1 plato");
+    expect(view({ query: "lasa" }).cards.map((card) => card.name)).toEqual(["Lasagne"]);
+    // Minestrone: vegano, y «verdura» también en su texto.
+    expect(view({ query: "verdura" }).cards.map((card) => card.name)).toEqual(["Minestrone"]);
+    // Las lasagne son de octubre a diciembre: «invierno» (diciembre) las encuentra; el minestrone, de todo el año, no.
+    expect(view({ query: "invierno" }, "es").cards.map((card) => card.name)).toEqual(["Lasaña"]);
+    expect(view({ query: "" }, "es").searchStatus).toBe("");
+  });
+
+  it("una búsqueda sin resultados lo dice con lo escrito, y la ayuda y el contador siguen", () => {
+    const none = view({ query: "  sushi   rollo ", selected: [LASAGNE.id] }, "es");
+    expect(none.cards).toEqual([]);
+    expect(none.searchEmpty).toBe(true);
+    expect(none.searchStatus).toBe("Ningún plato coincide con «sushi rollo» para la fecha del menú.");
+    expect(none.searchVisible).toBe(true);
+    expect(none.count).toBe("Elegidos: 1 de 5");
+    expect(none.hint).not.toBeNull();
+  });
+
+  it("los elegidos siguen elegidos (y contados) aunque el filtro los esconda; el tope no cambia", () => {
+    const filtered = view({ query: "minestrone", selected: [LASAGNE.id], days: 1 });
+    expect(filtered.cards.map((card) => [card.name, card.checked, card.disabled])).toEqual([["Minestrone", false, true]]);
+    expect(filtered.count).toBe("Scelti: 1 di 1");
+  });
+
+  it("sin platos de temporada (o sin catálogo) no hay buscador", () => {
+    expect(view({ month: 3 }).searchVisible).toBe(true); // el minestrone es de todo el año
+    expect(view({ state: { kind: "ready", dishes: [] } }).searchVisible).toBe(false);
+    expect(view({ state: { kind: "loading" } }).searchVisible).toBe(false);
+    expect(view({ state: { kind: "error" } }).searchVisible).toBe(false);
+    expect(view({ state: { kind: "ready", dishes: [LASAGNE] }, month: 3 }).searchVisible).toBe(false);
+  });
+});
+
+describe("ingredientes: solo para buscar", () => {
+  it("el buscador los encuentra, pero ni la tarjeta ni el panel llevan su texto", () => {
+    const byIngredient = view({ query: "carne de res" });
+    expect(byIngredient.cards.map((card) => card.name)).toEqual(["Lasagne"]);
+    for (const query of ["", "carne", "leche"]) {
+      const panel = view({ query, month: 7 });
+      const shown = JSON.stringify({ ...panel });
+      for (const text of ["Carne de res", "Leche", "Pan duro", "ingredients"]) expect(shown).not.toContain(text);
+      expect(panel.cards.every((card) => !("ingredients" in card))).toBe(true);
+    }
   });
 });

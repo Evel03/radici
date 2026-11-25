@@ -516,8 +516,8 @@ select is(
 select is(
   (select array_agg(distinct k order by k)
    from jsonb_array_elements(public.get_public_menu(pg_temp.id('C1'))) as d, jsonb_object_keys(d) as k),
-  array['allergens', 'description', 'diet', 'id', 'name', 'photoId', 'seasonMonths'],
-  'cada plato trae siete claves: las de antes más photoId'
+  array['allergens', 'description', 'diet', 'id', 'ingredients', 'name', 'photoId', 'seasonMonths'],
+  'cada plato trae ocho claves: las de antes más ingredients (20261125100000)'
 );
 select is(
   public.get_public_menu(pg_temp.id('C2')) -> 0 -> 'photoId',

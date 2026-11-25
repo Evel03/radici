@@ -1,7 +1,7 @@
 // Menù de la web: los platos publicados de la cocinera, para la pestaña «Menù» del formulario de pedido.
 // GET <función public-request>/menu (docs/contracts/public-request.md §12) y el `menu` del 201 (§2).
 // Contrato compartido entre la Edge Function y la web: un solo origen, nada copiado.
-// Un plato se arma solo con lo que lista este archivo: nunca ingredientes ni notas, aunque la base
+// Un plato se arma solo con lo que lista este archivo: nunca cantidades, unidades, secciones ni notas, aunque la base
 // mandara de más. Los nombres de los platos no son datos de salud; sus alérgenos los marca Evelyn.
 // La foto (20/11/2026) son dos URL públicas de Supabase Storage: la base da el photoId y la función arma
 // las URL con SUPABASE_URL; la web solo acepta las de ese origen y ese bucket.
@@ -51,6 +51,12 @@ export interface MenuDish extends MenuChoice {
   seasonMonths: number[] | null;
   /** null = sin foto (o una que no es del bucket recipe-photos en el origen de Supabase). */
   photo: MenuPhoto | null;
+  /**
+   * Los nombres de los ingredientes, como los escribió la cocinera (en español), sin repetir y en el orden del
+   * plato; [] sin ingredientes. SOLO PARA EL BUSCADOR de la web: nada los muestra (decisión de la dueña,
+   * 25/11/2026). Nunca cantidades, unidades, secciones ni notas.
+   */
+  ingredients: string[];
 }
 
 export interface MenuResponse {
@@ -198,6 +204,22 @@ function readSeason(value: unknown): number[] | null | undefined {
   return [...(value as number[])].sort((a, b) => a - b);
 }
 
+/** Cuántos nombres de ingredientes lleva un plato, como máximo, y el largo máximo de cada uno (como la base). */
+export const MAX_INGREDIENTS = 40;
+export const MAX_INGREDIENT_LENGTH = 80;
+
+/**
+ * Los nombres de los ingredientes (solo para el buscador): un array de hasta 40 textos de una línea, no vacíos y
+ * de hasta 80 caracteres. Ausente o con cualquier otra forma, []: un campo roto nunca saca el plato del menú.
+ */
+function readIngredients(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > MAX_INGREDIENTS) return [];
+  const valid = value.every(
+    (item) => typeof item === "string" && item.trim() !== "" && item.length <= MAX_INGREDIENT_LENGTH && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(item),
+  );
+  return valid ? [...(value as string[])] : [];
+}
+
 /** Lo de un plato que es igual en get_public_menu y en GET …/menu (todo menos la foto); null con otra forma. */
 function readDishFields(value: unknown): Omit<MenuDish, "photo"> | null {
   const choice = readChoice(value);
@@ -209,7 +231,7 @@ function readDishFields(value: unknown): Omit<MenuDish, "photo"> | null {
   const seasonMonths = readSeason(value["seasonMonths"]);
   if (!description || !allergens || diet === undefined || seasonMonths === undefined) return null;
   // Se arma de nuevo, campo por campo: nada que no sea del contrato sale hacia la web.
-  return { id: choice.id, name: choice.name, description, allergens, diet, seasonMonths };
+  return { id: choice.id, name: choice.name, description, allergens, diet, seasonMonths, ingredients: readIngredients(value["ingredients"]) };
 }
 
 /**
