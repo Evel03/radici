@@ -1,0 +1,44 @@
+/* /captcha/: la verificación anti-spam del acceso a la app, dentro de un marco (la web de Evelyn) o de una ventana de
+   la app nativa. Casi siempre el marco mide 1 px y no se ve: solo se muestra algo si Cloudflare pide que la persona
+   toque la casilla (data-state="interactive"). Mismo fondo crema de la marca, sin cabecera ni pie. */
+
+.captcha-body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.captcha {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.captcha__title {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.captcha__text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.15rem;
+}
+
+.captcha__widget {
+  min-height: 65px;
+}
+
+/* Sin que nadie tenga que tocar nada no hay nada que mirar: el título y el widget (vacío) se ocultan a la vista. */
+.captcha[data-state="idle"] .captcha__title,
+.captcha[data-state="idle"] .captcha__widget,
+.captcha[data-state="working"] .captcha__title,
+.captcha[data-state="working"] .captcha__widget {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}

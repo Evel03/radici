@@ -36,6 +36,8 @@ dependencies:
   # build.json sin caché, recargar y el aviso de Safari. Ya venía con
   # url_launcher y shared_preferences.
   web: ^1.1.1
+  # WebView de Turnstile para el captcha de Auth en iOS y Android (lib/core/captcha/): fijada, sin ^.
+  webview_flutter: 4.14.1
 
 dev_dependencies:
   flutter_test:

@@ -35,6 +35,18 @@
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: __SUPABASE_ORIGIN__; font-src 'self'; connect-src 'self' __SUPABASE_ORIGIN__; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
   X-Robots-Tag: noindex, nofollow
 
+# Captcha de Auth: la verificación anti-spam del acceso a la app (Turnstile con la sitekey de Auth). La abre la
+# app de Evelyn en un iframe del mismo sitio (/gestione/, más adelante /app/) o en una WebView; no es una página
+# para visitar. Solo lo que Turnstile necesita (script e iframe de challenges.cloudflare.com); sin Supabase, sin
+# fotos. Es la única página que se deja enmarcar, y solo por el propio sitio: frame-ancestors 'self' y
+# X-Frame-Options SAMEORIGIN (el DENY de /* se quita acá: sin eso el navegador no la mostraría en el marco).
+/captcha/*
+  ! Content-Security-Policy
+  ! X-Frame-Options
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; upgrade-insecure-requests
+  X-Frame-Options: SAMEORIGIN
+  X-Robots-Tag: noindex, nofollow
+
 # Bandeja y agenda de Evelyn: la app Flutter web (build en dist/gestione/, ver app/README.md "Web
 # /gestione/"). Todo se sirve desde el mismo origen; la CSP de /* no le alcanza:
 # - script-src 'wasm-unsafe-eval': CanvasKit es WebAssembly (sin él la app no arranca). Nada de
@@ -44,13 +56,15 @@
 #   una URL blob: (las fotos de los platos y la vista previa de la elegida), e image_picker carga ahí la
 #   foto elegida para achicarla. El origen de Supabase (bucket recipe-photos), por si una imagen se carga
 #   con un <img>: hoy el motor las pide con XMLHttpRequest (connect-src).
+# - frame-src 'self': el marco del captcha de Auth (/captcha/, mismo origen: lo abre CaptchaService para pedir el
+#   token del login). Nada de terceros: Turnstile corre dentro de /captcha/, no acá.
 # - connect-src: Supabase por https (Auth, REST, Storage) y wss (Realtime, el aviso de pedido nuevo), y
 #   blob: (la foto elegida se lee de su URL blob: con XMLHttpRequest).
 # Caché: los archivos de Flutter NO llevan hash en el nombre (main.dart.js, canvaskit/…): cada carga
 # revalida (ETag → 304 si no cambió). La regla de /assets/* no alcanza a /gestione/assets/*.
 /gestione/*
   ! Content-Security-Policy
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: __SUPABASE_ORIGIN__; connect-src 'self' blob: __SUPABASE_ORIGIN__ __SUPABASE_WS_ORIGIN__; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: __SUPABASE_ORIGIN__; connect-src 'self' blob: __SUPABASE_ORIGIN__ __SUPABASE_WS_ORIGIN__; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
   Cache-Control: no-cache
   X-Robots-Tag: noindex, nofollow
 

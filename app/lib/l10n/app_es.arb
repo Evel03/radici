@@ -61,6 +61,7 @@
   "authErrorNetwork": "No pudimos conectarnos. Revisa la conexión y vuelve a intentarlo.",
   "authErrorNotAllowed": "Este email no está habilitado para entrar.",
   "authErrorNoBackend": "El servicio no está configurado en esta versión de la app.",
+  "authErrorCaptcha": "No pudimos completar la verificación anti-spam. Vuelve a intentarlo; si no funciona, revisa la conexión o los bloqueadores de contenido.",
   "authErrorUnknown": "Algo salió mal. Vuelve a intentarlo.",
   "sessionLoading": "Un momento…",
   "sessionErrorUnavailable": "No pudimos cargar tu cuenta. Revisa la conexión y vuelve a intentarlo.",

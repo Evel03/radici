@@ -567,5 +567,15 @@
         "goneReplaced": "We couldn't record your answer: in the meantime, {chef} sent you a new quote, which you'll find below."
       }
     }
+  },
+  "captcha": {
+    "metaTitle": "Anti-spam check · {brand}",
+    "metaDescription": "Technical page that completes the anti-spam check when signing in to the {brand} app: the app opens it, there is no need to visit it.",
+    "title": "Anti-spam check",
+    "working": "Completing the check…",
+    "interactive": "Tap the box to confirm you are a person.",
+    "cancel": "Cancel",
+    "noscript": "JavaScript is needed to complete the anti-spam check: turn it on in your browser.",
+    "standalone": "This page only serves the {brand} app to complete the anti-spam check when signing in. You can close it."
   }
 }

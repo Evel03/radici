@@ -273,6 +273,10 @@
   "@authErrorNoBackend": {
     "description": "Error: la app se compiló sin Supabase."
   },
+  "authErrorCaptcha": "Non siamo riusciti a completare la verifica anti-spam. Riprova; se non funziona, controlla la connessione o i blocchi dei contenuti.",
+  "@authErrorCaptcha": {
+    "description": "Error: no se obtuvo el token del captcha de Auth (Turnstile). Solo aparece cuando Auth exige el captcha."
+  },
   "authErrorUnknown": "Qualcosa è andato storto. Riprova.",
   "@authErrorUnknown": {
     "description": "Error genérico de autenticación."

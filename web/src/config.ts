@@ -19,6 +19,11 @@ export interface AppConfig {
   supabasePublishableKey: string | null;
   /** Sitekey de Cloudflare Turnstile. null si falta o no es válida. */
   turnstileSiteKey: string | null;
+  /**
+   * Sitekey de Turnstile de Auth (/captcha/, el captcha de los pedidos a Supabase Auth). Es otro widget que el del
+   * formulario: su propio par de claves, y la secreta vive en Supabase (no en el repo). null si falta o no es válida.
+   */
+  turnstileAuthSiteKey: string | null;
 }
 
 type EnvLike = Readonly<Record<string, unknown>>;
@@ -79,6 +84,7 @@ export function resolveConfig(env: EnvLike): AppConfig {
     supabaseUrl: normalizeSupabaseUrl(readString(env, "VITE_SUPABASE_URL")),
     supabasePublishableKey: normalizeKey(readString(env, "VITE_SUPABASE_PUBLISHABLE_KEY")),
     turnstileSiteKey: normalizeKey(readString(env, "VITE_TURNSTILE_SITE_KEY")),
+    turnstileAuthSiteKey: normalizeKey(readString(env, "VITE_TURNSTILE_AUTH_SITE_KEY")),
   };
 }
 
@@ -87,11 +93,21 @@ export function resolveConfig(env: EnvLike): AppConfig {
  * robots.txt); la clave publicable de Supabase todavía no la usa nadie: si un día hace falta, se suma acá
  * y en site-config.ts.
  */
-export type SiteConfig = Pick<AppConfig, "brandName" | "supabaseUrl" | "turnstileSiteKey">;
+export type SiteConfig = Pick<AppConfig, "brandName" | "supabaseUrl" | "turnstileSiteKey" | "turnstileAuthSiteKey">;
 
 /** Variables que lee el navegador: las únicas que Vite pone en el JS publicado. */
-export const SITE_ENV_KEYS = ["VITE_BRAND_NAME", "VITE_SUPABASE_URL", "VITE_TURNSTILE_SITE_KEY"] as const;
+export const SITE_ENV_KEYS = [
+  "VITE_BRAND_NAME",
+  "VITE_SUPABASE_URL",
+  "VITE_TURNSTILE_SITE_KEY",
+  "VITE_TURNSTILE_AUTH_SITE_KEY",
+] as const;
 
 export function toSiteConfig(full: AppConfig): SiteConfig {
-  return { brandName: full.brandName, supabaseUrl: full.supabaseUrl, turnstileSiteKey: full.turnstileSiteKey };
+  return {
+    brandName: full.brandName,
+    supabaseUrl: full.supabaseUrl,
+    turnstileSiteKey: full.turnstileSiteKey,
+    turnstileAuthSiteKey: full.turnstileAuthSiteKey,
+  };
 }
