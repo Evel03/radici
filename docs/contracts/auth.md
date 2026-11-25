@@ -82,3 +82,81 @@ Resend no deja leer los dominios con una clave «solo de envío» (`restricted_a
 ## 7. Plantillas
 
 `login_code.html` imprime solo `{{ .Token }}`. Usa `.Data` únicamente para comparar `.Data.locale` con `es` o `en` (un test lo exige, también para los asuntos de `config.toml`): nunca imprime metadatos del usuario, ni `.Email`, `.ConfirmationURL`, `.TokenHash`, `.SiteURL` ni `.RedirectTo`.
+
+## 8. Hooks de Auth: la cocina solo con código y el freno de altas (PR07: las funciones, sin prender)
+
+Migración `20261126100000_auth_hooks.sql`, pgTAP `26_auth_hooks`. **Este PR no prende ningún hook** (ni `auth-config.ts` ni `config.toml` los mencionan): el PATCH de Auth corre antes de `db push`, así que un hook prendido que apunta a una función que todavía no existe rompería el login de todos. Primero llegan las funciones (este PR), después se prende el de la cocina (PR08) y, bastante después, el de las altas (PR20, cuando se abran).
+
+### Contratos de Supabase (leídos el 25/11/2026)
+
+Fuentes: https://supabase.com/docs/guides/auth/auth-hooks, https://supabase.com/docs/guides/auth/auth-hooks/custom-access-token-hook, https://supabase.com/docs/guides/auth/auth-hooks/before-user-created-hook y, para los valores de `amr`, https://supabase.com/docs/guides/auth/auth-mfa.
+
+- **Custom Access Token hook.** Entrada: `{user_id, claims, authentication_method}`; `claims` trae `aud, exp, iat, sub, email, phone, app_metadata, user_metadata, role, aal, amr, session_id, is_anonymous`, y `amr` es una lista de `{method, timestamp}` con el método más reciente primero. Salida: `{claims}` (los claims finales; si falta uno obligatorio, Auth da error) o `{error: {http_code, message}}`. Sin `http_code`, 500.
+- **Before User Created hook.** Entrada: `{metadata: {uuid, time, name: "before-user-created", ip_address}, user: {…forma de auth.users…}}` (el usuario todavía no está en la base). Salida: `{}` para dejar pasar, o `{error: {http_code, message}}` para rechazar.
+- **Postgres hooks:** 2 segundos de plazo, dentro de una transacción; los errores no se reintentan. Grants según la documentación: `grant execute … to supabase_auth_admin` y `revoke execute … from authenticated, anon, public`.
+- **Medido contra GoTrue v2.197.0 local** (el del CLI 2.121.0), con `pg-functions://postgres/public/<función>`: el error de un hook de Postgres llega al cliente con el `http_code` que devuelve la función (el aviso de la documentación de que 403 y 400 de los hooks HTTP pasan a 500 no vale para los de Postgres) y con `msg` igual al `message` de la función: `403 {"code":403,"error_code":"unknown","msg":"kitchen_code_only"}`. El `error_code` es siempre `unknown`: el cliente distingue por `msg`. Una excepción de la función da 500.
+
+### `public.kitchen_access_token_hook(event jsonb)`
+
+Para el dueño de una cocina (`chefs.profile_id`) o un colaborador (`chef_members.profile_id`): si `claims.amr` no es una lista no vacía donde **todos** los métodos son `otp` o `magiclink`, responde `{error: {http_code: 403, message: "kitchen_code_only"}}`. A cualquier otra cuenta (las clientas) le devuelve `{claims}` tal como llegaron. Decide por `claims.amr` y **nunca** por `authentication_method`: en un refresh vale `token_refresh` (documentado) y lo que cuenta es con qué se abrió la sesión. Un `amr` que falta, vacío, que no es lista, con elementos que no son objetos, con `method` que no es texto o en otra capitalización: 403 (falla cerrado). El orden no importa y una lista con `otp` y `password` juntos también es 403. Un `user_id` ausente o que no es uuid lanza una excepción (500): nunca deja pasar por las dudas.
+
+Una sesión de la cocina abierta con contraseña (antes de prender el hook) se corta en su próximo refresh (el `amr` conserva `password`): hay que volver a entrar con código. Es lo buscado; avisarle a Evelyn y a sus colaboradores al prender el hook (PR08).
+
+### `amr` por flujo (medido contra GoTrue v2.197.0 local, 25/11/2026)
+
+| Flujo | `claims.amr` | Con el hook, en una cuenta de la cocina |
+|---|---|---|
+| Contraseña (`/token?grant_type=password`) | `[{"method":"password"}]` | 403 `kitchen_code_only` (medido: cocinera y colaborador) |
+| Código del email (`/otp` + `/verify type=email`) | `[{"method":"otp"}]` | pasa (medido: cocinera y colaborador) |
+| Refresh de una sesión abierta con código | `[{"method":"otp"}]` (el `amr` de la sesión se conserva; en el evento, `authentication_method` vale `token_refresh`, según la documentación) | pasa (medido) |
+| Refresh de una sesión abierta con contraseña | `[{"method":"password"}]` (medido en una clienta) | 403 (pgTAP, con `token_refresh` y `amr` password) |
+| Confirmación del alta (código de 8 cifras, `/verify type=signup`) | `[{"method":"otp"}]` | n/a (es una clienta) |
+| Recuperación de contraseña (link del email, `/verify type=recovery`) | `[{"method":"otp"}]` (no `recovery`) | pasaría: es tener el email, igual que el código; si después fija una contraseña, el login con contraseña sí da 403 |
+| Admin (`generate_link` magiclink + `/verify` con `token_hash`) | `[{"method":"otp"}]` | pasa (medido) |
+| Google en la web (`signInWithOAuth`) | no se puede correr en local (sin proveedores). La documentación lo da como `oauth` | 403 (por la lista blanca, sea cual sea el valor) |
+| Google o Apple con `id_token` (`signInWithIdToken`) | no se puede correr en local; sin medir (la documentación no lo lista aparte) | 403 (por la lista blanca: solo `otp` y `magiclink` pasan) |
+
+Por eso es una lista blanca (`otp`, `magiclink`) y no una lista de métodos prohibidos: cualquier método que GoTrue agregue o llame distinto queda afuera de la cocina sin tocar nada. `magiclink` se acepta porque es la variante documentada del link del email (en este GoTrue los links dan `otp`).
+
+### `public.before_user_created_guard(event jsonb)`
+
+Se evalúa en este orden, todo dentro de un candado de transacción (`pg_advisory_xact_lock`): dos altas simultáneas no leen el mismo contador (medido: 10 altas simultáneas de la misma IP con el tope en 5 dejaron pasar exactamente 5).
+
+1. **Pausa** (`private.auth_guard.paused`): `403 signups_paused`.
+2. **Tope diario** (`daily_cap`, por defecto **50**): altas permitidas en las últimas 24 h; `429 signups_daily_cap`.
+3. **Tope por IP y hora** (`ip_hour_cap`, por defecto **5**): altas permitidas de esa IP en la última hora; `429 signups_ip_cap`.
+
+Solo cuentan las altas **permitidas** (una rechazada no deja renglón: quien insiste no alarga su propio bloqueo ni infla el tope diario). Cuenta toda alta que crea un usuario por Auth (`/signup`, `/otp` con `create_user: true`, Google o Apple con cuenta nueva: medido que `/otp` con `create_user: true` pasa por el hook); **no** frena el alta por la API de admin (`POST /admin/users`: medido, pasa aun en pausa), así que el despliegue que crea la cuenta de la cocinera y las de los colaboradores no depende del freno. Un `/signup` de un email que ya existe no crea usuario y no cuenta.
+
+- **IP.** Entra por `metadata.ip_address`. IPv4 tal cual; **IPv6 reducida a su /64** (rotar dentro de un /64 no da un cubo nuevo); una IPv4 mapeada (`::ffff:a.b.c.d`) cuenta como la IPv4. Sin IP o con un texto que no es una IP: un cubo único `sin-ip` (no es un permiso: comparte el tope por IP). Local: GoTrue toma la IP de `X-Forwarded-For` (medido) y, sin la cabecera, la del socket.
+- **Hash.** `HMAC-SHA-256(clave = pepper, mensaje = IP normalizada)` en hexadecimal (`extensions.hmac`, pgcrypto). El pepper (`private.auth_guard.ip_pepper`, 32 bytes al azar generados por la migración) vive en la misma base que los hashes: no protege contra quien lea la base entera, sí contra quien lea solo la tabla `signup_attempts` (un volcado parcial), porque un SHA-256 pelado de una IPv4 se invierte por fuerza bruta en segundos. La IP nunca se guarda ni se loguea. Cambiar el pepper solo reinicia los contadores por IP.
+- **Purga a las 48 h.** Cada llamada borra los renglones de más de 48 h (`private.purge_signup_attempts()`) y además corre por pg_cron cada hora (`radici-purge-signup-attempts`, minuto 17), para que no queden hashes viejos si un día no hay altas. La ventana de conteo es de 24 h; las 48 h son margen.
+- **Fallo cerrado.** Si falta la fila de `private.auth_guard`, la función lanza y el alta no pasa.
+
+**Permisos.** Las dos funciones son `security definer` (dueño `postgres`, `search_path` vacío): las tablas que tocan (`chefs`, `chef_members`, `auth_guard`, `signup_attempts`) están cerradas y `supabase_auth_admin` no tiene ningún privilegio de tabla ni `usage` sobre `private`, y no se le da. Lo único que se le concede es `EXECUTE` sobre las dos funciones; a `public`, `anon`, `authenticated` y `service_role` se les quita (pgTAP lo comprueba, además del inventario de `00_schema`). `private.purge_signup_attempts()` no la ejecuta nadie de la API ni de Auth.
+
+### Runbook: pausar las altas en una emergencia
+
+Cuando el hook de las altas esté prendido (PR20), desde el SQL editor del panel de Supabase (o `psql` como `postgres`):
+
+```sql
+update private.auth_guard set paused = true;    -- pausa: las altas dan 403 signups_paused
+update private.auth_guard set paused = false;   -- las reabre
+update private.auth_guard set daily_cap = 100, ip_hour_cap = 10;   -- cambiar los topes
+select paused, daily_cap, ip_hour_cap from private.auth_guard;    -- ver los valores (sin el pepper)
+select count(*) from private.signup_attempts where created_at > now() - interval '24 hours';  -- altas de hoy
+```
+
+Rige en la próxima alta (los valores se leen en cada llamada). No toca el login de nadie ni las cuentas que crea el despliegue. Un atacante puede gastar el tope diario (50) y dejar sin alta a la gente de verdad por un día: la salida es subir `daily_cap`, o pausar y abrir de a poco. Es el costo de un tope que no depende de la IP.
+
+### Qué se acepta a sabiendas
+
+- **Rotar de IP.** Quien tiene muchas direcciones (o IPv6 repartida en muchos /64, por ejemplo un /48) evita el tope por IP; lo frena el diario (50). Con IPv6 el límite por IP es por /64, no por dirección.
+- **IP spoofeable según el borde.** En local GoTrue confía en `X-Forwarded-For`. En producción la IP del hook la fija la cabecera que Supabase configura detrás de su proxy; no se midió (nada de este PR toca producción). Si no fuera confiable, el tope por IP sería inútil y quedaría el diario: medirlo antes de PR20.
+- **IP compartida.** Una red con NAT (una oficina, un operador móvil) comparte el tope de 5 por hora: con altas poco frecuentes no debería pasar; el síntoma es `signups_ip_cap` y se arregla subiendo `ip_hour_cap`.
+- **Sin IP.** Todas las altas sin IP comparten un cubo de 5 por hora: más estricto que con IP, a propósito.
+- **Altas que fallan después del hook.** Si el alta falla luego (la transacción se revierte), el renglón del contador también: no cuenta.
+
+### Orden de rollback para PR08
+
+Cuando PR08 prenda el hook de la cocina en `auth-config.ts`: si hay que apagarlo, **primero** el PATCH de Auth con el hook apagado (`hook_custom_access_token_enabled: false`; corre antes de `db push`) y **después**, recién, tocar o borrar la función en una migración. Al revés, un hook prendido apuntaría a una función que ya no existe y rompería el login de todos. Lo mismo vale para el hook de las altas (PR20): una función de hook no se borra ni cambia de firma mientras haya un hook prendido que la use.
