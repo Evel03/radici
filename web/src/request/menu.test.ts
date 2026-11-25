@@ -325,3 +325,48 @@ describe("pantalla de gracias", () => {
     expect(doneMenu(null, [choice(LASAGNE)], READY)).toEqual([]);
   });
 });
+
+describe("buscador", () => {
+  it("sin búsqueda: todos los de temporada, la caja visible y sin aviso", () => {
+    const panel = view();
+    expect(panel.searchVisible).toBe(true);
+    expect(panel.searchStatus).toBe("");
+    expect(panel.searchEmpty).toBe(false);
+    expect(panel.cards).toHaveLength(2);
+    expect(view({ query: "   " }).cards).toHaveLength(2);
+  });
+
+  it("filtra por nombre, tipo y temporada, y avisa cuántos hay", () => {
+    expect(view({ query: "lasa" }, "es").searchStatus).toBe("1 plato");
+    expect(view({ query: "lasa" }).cards.map((card) => card.name)).toEqual(["Lasagne"]);
+    // Minestrone: vegano, y «verdura» también en su texto.
+    expect(view({ query: "verdura" }).cards.map((card) => card.name)).toEqual(["Minestrone"]);
+    // Las lasagne son de octubre a diciembre: «invierno» (diciembre) las encuentra; el minestrone, de todo el año, no.
+    expect(view({ query: "invierno" }, "es").cards.map((card) => card.name)).toEqual(["Lasaña"]);
+    expect(view({ query: "" }, "es").searchStatus).toBe("");
+  });
+
+  it("una búsqueda sin resultados lo dice con lo escrito, y la ayuda y el contador siguen", () => {
+    const none = view({ query: "  sushi   rollo ", selected: [LASAGNE.id] }, "es");
+    expect(none.cards).toEqual([]);
+    expect(none.searchEmpty).toBe(true);
+    expect(none.searchStatus).toBe("Ningún plato coincide con «sushi rollo» para la fecha del menú.");
+    expect(none.searchVisible).toBe(true);
+    expect(none.count).toBe("Elegidos: 1 de 5");
+    expect(none.hint).not.toBeNull();
+  });
+
+  it("los elegidos siguen elegidos (y contados) aunque el filtro los esconda; el tope no cambia", () => {
+    const filtered = view({ query: "minestrone", selected: [LASAGNE.id], days: 1 });
+    expect(filtered.cards.map((card) => [card.name, card.checked, card.disabled])).toEqual([["Minestrone", false, true]]);
+    expect(filtered.count).toBe("Scelti: 1 di 1");
+  });
+
+  it("sin platos de temporada (o sin catálogo) no hay buscador", () => {
+    expect(view({ month: 3 }).searchVisible).toBe(true); // el minestrone es de todo el año
+    expect(view({ state: { kind: "ready", dishes: [] } }).searchVisible).toBe(false);
+    expect(view({ state: { kind: "loading" } }).searchVisible).toBe(false);
+    expect(view({ state: { kind: "error" } }).searchVisible).toBe(false);
+    expect(view({ state: { kind: "ready", dishes: [LASAGNE] }, month: 3 }).searchVisible).toBe(false);
+  });
+});

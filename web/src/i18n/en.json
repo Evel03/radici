@@ -209,7 +209,13 @@
       "removedOne": "{dishes} isn't in season for the menu's date, so it's no longer in your menu.",
       "removedOther": "{dishes} aren't in season for the menu's date, so they're no longer in your menu.",
       "allergens": "Allergens: {list}",
-      "allergensNone": "None of the 14 major allergens"
+      "allergensNone": "None of the 14 major allergens",
+      "searchLabel": "Search for a dish",
+      "searchPlaceholder": "Search: name, meat, chicken, vegetables, summer…",
+      "searchClear": "Clear the search",
+      "searchOne": "{n} dish",
+      "searchMany": "{n} dishes",
+      "searchNone": "No dish matches «{query}» for the menu's date."
     },
     "contactLegend": "Your details",
     "nameLabel": "Name",
