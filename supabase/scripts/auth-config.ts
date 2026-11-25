@@ -137,6 +137,11 @@ export function authSecurityConfig(toml: string): AuthBody {
   requireLocalMatch(toml, "auth.sms", "enable_signup", false, "[auth.sms] enable_signup prende el teléfono");
   requireLocalMatch(toml, "auth.web3.solana", "enabled", false, "[auth.web3.solana] enabled prende Web3");
   requireLocalMatch(toml, "auth.rate_limit", "token_verifications", 10, "[auth.rate_limit] token_verifications tiene que ser 10 (rate_limit_verify de producción)");
+  requireLocalMatch(toml, "auth.rate_limit", "token_refresh", 20, "[auth.rate_limit] token_refresh tiene que ser 20 (rate_limit_token_refresh de producción)");
+  requireLocalMatch(toml, "auth.rate_limit", "sign_in_sign_ups", 10, "[auth.rate_limit] sign_in_sign_ups tiene que ser 10 (rate_limit_otp de producción)");
+  requireLocalMatch(toml, "auth.rate_limit", "anonymous_users", 1, "[auth.rate_limit] anonymous_users tiene que ser 1 (rate_limit_anonymous_users de producción)");
+  requireLocalMatch(toml, "auth.rate_limit", "sms_sent", 1, "[auth.rate_limit] sms_sent tiene que ser 1 (rate_limit_sms_sent de producción)");
+  requireLocalMatch(toml, "auth.rate_limit", "web3", 1, "[auth.rate_limit] web3 tiene que ser 1 (rate_limit_web3 de producción)");
   const providers = enabledExternalProviders(toml);
   if (providers.length > 0) {
     throw new Error(`config.toml prende proveedores externos (${providers.join(", ")}): Google y Apple se prenden en su PR, con su secreto en auth-config.ts`);
@@ -159,6 +164,19 @@ export function authSecurityConfig(toml: string): AuthBody {
     // false = el magic link / código por email prendido (signInWithOtp de la app lo usa).
     external_email_magic_link_disabled: false,
     rate_limit_verify: 10,
+    // Límites de intentos por IP (contrato auth.md §9). GoTrue usa cubos de ráfaga fija de 30 y el valor es lo que
+    // recarga cada 5 minutos: no baja la ráfaga, frena el goteo sostenido.
+    //  - /token (contraseña y refresh_token comparten el cubo): 20 cada 5 minutos = un intento cada 15 s tras la
+    //    ráfaga. Un uso normal (un refresh por hora por dispositivo, aun con varias personas en una misma IP) queda
+    //    muy por debajo.
+    //  - /otp, /signup, /recover, /resend, /magiclink y PUT /user (un solo cubo): 10 cada 5 minutos, además de
+    //    rate_limit_email_sent (100 por hora, de la plantilla).
+    //  - anónimos, SMS y Web3 están apagados: el mínimo que acepta la API (1).
+    rate_limit_token_refresh: 20,
+    rate_limit_otp: 10,
+    rate_limit_anonymous_users: 1,
+    rate_limit_sms_sent: 1,
+    rate_limit_web3: 1,
     external_google_enabled: false,
     external_apple_enabled: false,
     external_phone_enabled: false,
