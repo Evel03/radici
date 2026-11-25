@@ -38,6 +38,9 @@ export type AuthBody = Record<string, TomlValue>;
  * Pares `clave = valor` de una sección de un TOML simple: cadenas básicas (con \" y \\), enteros y
  * booleanos. Lo demás (listas, tablas en línea) se ignora: config.toml no lo usa en estas secciones.
  */
+/** La función del hook Custom Access Token (migración 20261126100000_auth_hooks.sql). */
+export const KITCHEN_HOOK_URI = "pg-functions://postgres/public/kitchen_access_token_hook";
+
 export function tomlSection(toml: string, section: string): Map<string, TomlValue> {
   const values = new Map<string, TomlValue>();
   let current = "";
@@ -137,6 +140,12 @@ export function authSecurityConfig(toml: string): AuthBody {
   requireLocalMatch(toml, "auth.sms", "enable_signup", false, "[auth.sms] enable_signup prende el teléfono");
   requireLocalMatch(toml, "auth.web3.solana", "enabled", false, "[auth.web3.solana] enabled prende Web3");
   requireLocalMatch(toml, "auth.rate_limit", "token_verifications", 10, "[auth.rate_limit] token_verifications tiene que ser 10 (rate_limit_verify de producción)");
+  // Hooks (contrato auth.md §8): el de la cocina prendido con su función, el de las altas apagado (PR20).
+  requireLocalMatch(toml, "auth.hook.custom_access_token", "enabled", true, "[auth.hook.custom_access_token] enabled tiene que ser true (la cocina entra solo con código)");
+  requireLocalMatch(toml, "auth.hook.custom_access_token", "uri", KITCHEN_HOOK_URI, `[auth.hook.custom_access_token] uri tiene que ser ${KITCHEN_HOOK_URI}`);
+  if (tomlSection(toml, "auth.hook.before_user_created").get("enabled") === true) {
+    throw new Error("config.toml: [auth.hook.before_user_created] prende el hook de las altas: va en su PR (PR20), con las altas abiertas");
+  }
   requireLocalMatch(toml, "auth.rate_limit", "token_refresh", 20, "[auth.rate_limit] token_refresh tiene que ser 20 (rate_limit_token_refresh de producción)");
   requireLocalMatch(toml, "auth.rate_limit", "sign_in_sign_ups", 10, "[auth.rate_limit] sign_in_sign_ups tiene que ser 10 (rate_limit_otp de producción)");
   requireLocalMatch(toml, "auth.rate_limit", "anonymous_users", 1, "[auth.rate_limit] anonymous_users tiene que ser 1 (rate_limit_anonymous_users de producción)");
@@ -164,6 +173,14 @@ export function authSecurityConfig(toml: string): AuthBody {
     // false = el magic link / código por email prendido (signInWithOtp de la app lo usa).
     external_email_magic_link_disabled: false,
     rate_limit_verify: 10,
+    // Hooks de Auth (contrato auth.md §8). La cocina (dueña y colaboradores) entra solo con código del
+    // email: el hook rechaza con 403 kitchen_code_only a quien traiga otro método (contraseña, Google). Los
+    // pgTAP y el paso «Hook de la cocina» del despliegue (auth-hook-check.ts) comprueban la función antes de
+    // este PATCH. Vuelta atrás: primero este campo en false, después tocar la función. El de las altas sigue
+    // apagado hasta PR20.
+    hook_custom_access_token_enabled: true,
+    hook_custom_access_token_uri: KITCHEN_HOOK_URI,
+    hook_before_user_created_enabled: false,
     // Límites de intentos por IP (contrato auth.md §9). GoTrue usa cubos de ráfaga fija de 30 y el valor es lo que
     // recarga cada 5 minutos: no baja la ráfaga, frena el goteo sostenido.
     //  - /token (contraseña y refresh_token comparten el cubo): 20 cada 5 minutos = un intento cada 15 s tras la

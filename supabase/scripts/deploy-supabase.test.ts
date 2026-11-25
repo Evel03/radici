@@ -290,3 +290,20 @@ test("el encabezado del workflow remite a auth.md y dice que el seguimiento de R
   assert.match(header, /docs\/contracts\/auth\.md/);
   assert.match(header, /seguimiento de (clics|aperturas)/i);
 });
+
+test("hook de la cocina: antes del PATCH de Auth se comprueba que la función existe con sus grants, y si no, corta", () => {
+  // El PATCH que prende el hook corre antes de db push: con un hook prendido que apunta a una función que no
+  // está, nadie puede entrar. Por eso se mira la base de producción (Management API, solo lectura) primero.
+  const check = WORKFLOW.indexOf("- name: Hook de la cocina: la función existe");
+  const resend = WORKFLOW.indexOf("- name: Seguimiento de Resend apagado");
+  const auth = WORKFLOW.indexOf("- name: Auth desde el repo");
+  assert.ok(check !== -1 && auth !== -1, "están los dos pasos");
+  assert.ok(check > resend && check < auth, "la comprobación corre antes del PATCH de Auth");
+  assert.ok(auth < WORKFLOW.indexOf("- name: Migraciones (db push)"));
+  const run = step("Hook de la cocina: la función existe");
+  assert.match(run, /if: env\.HAS_SUPABASE == 'true'/);
+  assert.match(run, /node supabase\/scripts\/auth-hook-check\.ts/);
+  assert.match(run, /SUPABASE_PROJECT_REF: \$\{\{ vars\.SUPABASE_PROJECT_REF \}\}/);
+  assert.ok(!run.includes("continue-on-error"), "si falla, corta");
+  assert.ok(!/echo.*SUPABASE_ACCESS_TOKEN/.test(run), "nunca imprime el token");
+});
