@@ -25,6 +25,7 @@ Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo s
 | security | `security_manual_linking_enabled` | `false` | `enable_manual_linking = false` |
 | security | `external_email_magic_link_disabled` | `false` | (magic link y código por email prendidos: el código de Evelyn sale de esa plantilla) |
 | security | `rate_limit_verify` | `10` | `[auth.rate_limit] token_verifications = 10` |
+| security | `rate_limit_token_refresh`, `rate_limit_otp`, `rate_limit_anonymous_users`, `rate_limit_sms_sent`, `rate_limit_web3` | `20`, `10`, `1`, `1`, `1` (§9) | `token_refresh`, `sign_in_sign_ups`, `anonymous_users`, `sms_sent`, `web3` |
 | security | `external_google_enabled`, `external_apple_enabled`, `external_phone_enabled`, `external_anonymous_users_enabled`, `external_web3_solana_enabled`, `external_web3_ethereum_enabled`, `saml_enabled` | `false` | sin proveedores en `config.toml` |
 | smtp | `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `smtp_admin_email`, `smtp_sender_name` | Resend, remitente de `MAIL_FROM` | |
 | templates | `mailer_subjects_magic_link`, `mailer_subjects_confirmation`, `mailer_templates_*_content`, `rate_limit_email_sent` | asunto de `config.toml`, `login_code.html`, 100 | |
@@ -160,3 +161,27 @@ Rige en la próxima alta (los valores se leen en cada llamada). No toca el login
 ### Orden de rollback para PR08
 
 Cuando PR08 prenda el hook de la cocina en `auth-config.ts`: si hay que apagarlo, **primero** el PATCH de Auth con el hook apagado (`hook_custom_access_token_enabled: false`; corre antes de `db push`) y **después**, recién, tocar o borrar la función en una migración. Al revés, un hook prendido apuntaría a una función que ya no existe y rompería el login de todos. Lo mismo vale para el hook de las altas (PR20): una función de hook no se borra ni cambia de firma mientras haya un hook prendido que la use.
+
+## 9. Límites de intentos
+
+`auth-config.ts` fija los siete límites que la Management API deja cambiar (`rate_limit_*`, todos enteros de 1 a 2147483647; sin ellos valen los de fábrica de Supabase: 150 por 5 minutos para `/token`, 30 para `/otp` y familia). Cada uno tiene su par en `[auth.rate_limit]` de `config.toml` y `authSecurityConfig` corta si no coincide, igual que `token_verifications`. Fuentes (GoTrue v2.197.0): https://github.com/supabase/auth/blob/v2.197.0/internal/api/api.go (qué limitador lleva cada ruta), https://github.com/supabase/auth/blob/v2.197.0/internal/api/apilimiter/apilimiter.go (cómo se arma cada cubo), https://github.com/supabase/auth/blob/v2.197.0/internal/conf/configuration.go (campos y valores de fábrica), https://supabase.com/docs/guides/auth/rate-limits y el OpenAPI público `UpdateAuthConfigBody` (https://api.supabase.com/api/v1-json, leído el 25/11/2026). Sin números de línea: se citan por nombre de archivo e identificador.
+
+**Cómo cuenta GoTrue.** Cada límite es un cubo por IP de **ráfaga fija de 30** (excepto anónimos, cuya ráfaga es el propio valor) que se recarga a `valor / 300` por segundo, o sea `valor` solicitudes cada 5 minutos. El valor **no baja la ráfaga**: frena el goteo sostenido, después de los primeros 30. Todo cuenta por IP: un NAT compartido comparte el cubo. Los límites solo funcionan si GoTrue conoce la IP (`GOTRUE_RATE_LIMIT_HEADER`; con `supabase start` a secas no se aplican). En Supabase alojado lo fija la plataforma; no se midió contra producción.
+
+| Endpoint | Limitador (`apilimiter`) | Campo | Valor fijado | Qué frena | Qué no frena |
+|---|---|---|---|---|---|
+| `POST /token` (`grant_type=password`, `refresh_token`, id_token, PKCE; también cuenta la contraseña buena) | `Token` (se aplica dentro del handler) | `rate_limit_token_refresh` | **20** cada 5 min (de fábrica, 150) | Adivinar contraseñas desde una IP: 30 seguidos y después uno cada 15 s (240 por hora). Medido: el intento 31 da 429 | Un ataque repartido en muchas IP contra una cuenta (lo frenan el CAPTCHA, PR09–PR11; el hook de la cocina, PR07/PR08; y la política de contraseñas, PR14) |
+| `POST /otp`, `/magiclink`, `/recover`, `/resend`, `/signup` (con email), `PUT /user` | `Otp`, `MagicLink`, `Recover`, `Resend`, `Signups`, `User` (todos el mismo valor, cada uno su cubo) | `rate_limit_otp` | **10** cada 5 min (de fábrica, 30) | Pedir códigos en ráfaga (spam de emails a una persona, enumeración de cuentas): 30 seguidos y después 10 cada 5 min | Más pedidos desde muchas IP (los acota `rate_limit_email_sent`, 100 por hora en todo el proyecto, y el máximo por usuario de 1 s/60 s de `[auth.email]`) |
+| `GET/POST /verify` | `Verify` | `rate_limit_verify` | **10** cada 5 min (PR04) | Probar códigos de 8 cifras: el 31.º seguido da 429 (§6) | Muchas IP contra un mismo código (vale 600 s) |
+| `POST /signup` sin email ni teléfono (anónimos) | `AnonymousSignIns` | `rate_limit_anonymous_users` | **1** por hora (mínimo de la API) | Nada que cuidar: los anónimos están apagados | — |
+| SMS (`rate_limit_sms_sent`) y Web3 en `/token` (`rate_limit_web3`) | `Phone`, `Web3` | `rate_limit_sms_sent`, `rate_limit_web3` | **1** (mínimo de la API) | Nada que cuidar: teléfono y Web3 están apagados | — |
+| Emails enviados | `Email` | `rate_limit_email_sent` | **100** por hora, todo el proyecto (PR04, parte `templates`) | Un tope al costo y a un ataque de emails | Para uno a uno por usuario, ver `[auth.email] max_frequency` |
+
+No se pueden fijar desde el repo (la Management API no los expone): `/sso` y SAML (apagados), passkeys (apagados), registro de clientes OAuth (apagado) y el límite de MFA challenge y verify (15 por minuto, no se personaliza; MFA está apagado: `/factors` da 422).
+
+**Por qué estos valores.**
+- `/token`, 20: la app de Evelyn y la de las clientas renuevan la sesión una vez por hora por dispositivo (la ráfaga de 30 aguanta un NAT con varias personas entrando a la vez). 20 cada 5 minutos baja el goteo sostenido por debajo del de fábrica sin tocar el uso normal. Es poco más que un tope de comodidad: la ráfaga de 30 no se puede bajar, así que quien prueba contraseñas desde una IP todavía hace 30 seguidos y 240 por hora. Lo que de verdad detiene ese ataque no es el límite sino la cocina solo con código (PR07/PR08), el CAPTCHA (PR09–PR11) y la política de contraseñas (PR14).
+- `/otp` y familia, 10: pedir un código es una acción rara (una por login). 10 cada 5 minutos sobra para una persona y para la oficina de una clienta.
+- Los flujos apagados (anónimos, SMS, Web3): 1, lo mínimo que acepta la API. Si algún día se prenden, hay que subirlo en el mismo PR.
+
+**Medido** (GoTrue v2.197.0 local, 25/11/2026, IP por `X-Forwarded-For` con `GOTRUE_RATE_LIMIT_HEADER`): contraseña mala desde una IP: 30 respuestas sin 429 y la 31.ª da `429 over_request_rate_limit`; la contraseña buena de esa IP también da 429 hasta que recarga (el cubo es de `/token`); otra IP no se afecta (200); `refresh_token` comparte el mismo cubo (el 31.º da 429); tras 16 s se recupera un intento (1 cada 15 s). `/otp` desde una IP: 30 envíos y el 32.º da 429 (la recarga de 10 cada 5 minutos devolvió uno durante la prueba). Uso normal desde otra IP: código, verificación y refresh dan 200.

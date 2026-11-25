@@ -117,6 +117,7 @@ const MANAGEMENT_API_AUTH_FIELDS = [
   "external_email_magic_link_disabled", "mailer_autoconfirm", "sms_autoconfirm",
   "mailer_allow_unverified_email_sign_ins", "mailer_secure_email_change_enabled",
   "security_manual_linking_enabled", "security_captcha_enabled", "rate_limit_verify", "rate_limit_email_sent",
+  "rate_limit_token_refresh", "rate_limit_otp", "rate_limit_anonymous_users", "rate_limit_sms_sent", "rate_limit_web3",
   "mailer_otp_length", "mailer_otp_exp", "smtp_host", "smtp_port", "smtp_user", "smtp_pass",
   "smtp_admin_email", "smtp_sender_name", "mailer_subjects_magic_link", "mailer_subjects_confirmation",
   "mailer_templates_magic_link_content", "mailer_templates_confirmation_content",
@@ -132,6 +133,12 @@ const PINNED = {
   security_manual_linking_enabled: false,
   external_email_magic_link_disabled: false,
   rate_limit_verify: 10,
+  // Límites de intentos (contrato auth.md §9): /token (contraseña y refresh), /otp y familia, y los flujos apagados al mínimo.
+  rate_limit_token_refresh: 20,
+  rate_limit_otp: 10,
+  rate_limit_anonymous_users: 1,
+  rate_limit_sms_sent: 1,
+  rate_limit_web3: 1,
   external_google_enabled: false,
   external_apple_enabled: false,
   external_phone_enabled: false,
@@ -174,6 +181,12 @@ test("combinaciones prohibidas: config.toml que prende autoconfirm (email o sms)
   assert.throws(() => authSecurityConfig(swap(/enable_anonymous_sign_ins = false/, "enable_anonymous_sign_ins = true")), /anónimos/);
   assert.throws(() => authSecurityConfig(swap(/double_confirm_changes = true/, "double_confirm_changes = false")), /cambio de email/);
   assert.throws(() => authSecurityConfig(swap(/token_verifications = 10/, "token_verifications = 30")), /token_verifications/);
+  // Los límites de intentos de login: si config.toml los afloja, el despliegue corta (local y producción no se separan).
+  assert.throws(() => authSecurityConfig(swap(/token_refresh = d+/, "token_refresh = 150")), /token_refresh/);
+  assert.throws(() => authSecurityConfig(swap(/sign_in_sign_ups = d+/, "sign_in_sign_ups = 30")), /sign_in_sign_ups/);
+  assert.throws(() => authSecurityConfig(swap(/anonymous_users = d+/, "anonymous_users = 30")), /anonymous_users/);
+  assert.throws(() => authSecurityConfig(swap(/sms_sent = d+/, "sms_sent = 30")), /sms_sent/);
+  assert.throws(() => authSecurityConfig(swap(/^web3 = d+/m, "web3 = 30")), /web3/);
   assert.throws(() => authSecurityConfig(swap(/(\[auth\.external\.apple\][^[]*?)enabled = false/s, "$1enabled = true")), /apple/i);
   assert.throws(() => authSecurityConfig(swap(/(\[auth\.web3\.solana\][^[]*?)enabled = false/s, "$1enabled = true")), /web3/i);
 });
@@ -182,6 +195,8 @@ test("config.toml del repo: confirmaciones prendidas para email y sms, y 10 veri
   assert.equal(tomlSection(CONFIG, "auth.email").get("enable_confirmations"), true);
   assert.equal(tomlSection(CONFIG, "auth.sms").get("enable_confirmations"), true);
   assert.equal(tomlSection(CONFIG, "auth.rate_limit").get("token_verifications"), 10);
+  const limits = tomlSection(CONFIG, "auth.rate_limit");
+  assert.deepEqual(["token_refresh", "sign_in_sign_ups", "anonymous_users", "sms_sent", "web3"].map((k) => limits.get(k)), [20, 10, 1, 1, 1]);
   assert.equal(tomlSection(CONFIG, "auth").get("enable_signup"), false, "las altas siguen apagadas hasta M2");
 });
 
