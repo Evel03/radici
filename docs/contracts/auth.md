@@ -229,7 +229,7 @@ curl -sS -X PATCH "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/
 
 Eso corta el hook en el acto (los refresh vuelven a pasar). **El próximo despliegue lo vuelve a prender**: para que quede apagado hay que revertir el PR (o poner `enabled = false` en `config.toml` y `hook_custom_access_token_enabled: false` en `auth-config.ts` en un PR), y el despliegue de ese PR corta si ambos no coinciden. Nunca se cambia ni se borra la función con el hook prendido.
 
-## 11. Captcha de Auth: la página `/captcha/` (PR09, 25/11/2026; Auth todavía lo tiene apagado)
+## 10. Captcha de Auth: la página `/captcha/` (PR09, 25/11/2026; Auth todavía lo tiene apagado)
 
 Supabase Auth puede exigir un token de Turnstile en cada pedido que lo necesita (`signInWithOtp` para pedir el código, y después el alta, la contraseña y la recuperación). Este PR agrega **el lado de la app**: cómo se obtiene el token y cómo viaja. **No prende el captcha en Auth** (`security_captcha_enabled` sigue en `false`, §2): eso es PR11, cuando las dos apps ya lo manden y estén publicadas.
 

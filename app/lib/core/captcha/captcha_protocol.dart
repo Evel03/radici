@@ -1,5 +1,5 @@
 // Protocolo con la página /captcha/ de la web (el Turnstile de Auth); el lado
-// de la web está en web/src/captcha/protocol.ts y docs/contracts/auth.md §11.
+// de la web está en web/src/captcha/protocol.ts y docs/contracts/auth.md §10.
 // Lógica pura, sin plataforma: la comparten la versión web (iframe) y la nativa
 // (WebView).
 //

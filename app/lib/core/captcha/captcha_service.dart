@@ -3,7 +3,7 @@
 //
 // Cómo se obtiene: la página https://radicicucina.app/captcha/ dibuja el
 // Turnstile de Auth y devuelve el token por mensajes (docs/contracts/auth.md
-// §11). En la web (/gestione/, más adelante /app/) va en un iframe del mismo
+// §10). En la web (/gestione/, más adelante /app/) va en un iframe del mismo
 // sitio; en iOS y Android, en una WebView fijada a esa página
 // (captcha_navigation.dart). Cada llamada abre la página de nuevo y pide un
 // token con un id nuevo: un token de Turnstile sirve una sola vez (~300 s) y
