@@ -38,6 +38,7 @@ const LASAGNE: MenuDish = {
   diet: null,
   seasonMonths: [10, 11, 12],
   photo: LASAGNE_PHOTO,
+  ingredients: ["Carne de res", "Leche"],
 };
 const MINESTRONE: MenuDish = {
   id: "1a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
@@ -47,6 +48,7 @@ const MINESTRONE: MenuDish = {
   diet: "vegan",
   seasonMonths: null,
   photo: null,
+  ingredients: [],
 };
 const PANZANELLA: MenuDish = {
   id: "2a1b2c3d-4e5f-4a6b-8c7d-0123456789ab",
@@ -56,6 +58,7 @@ const PANZANELLA: MenuDish = {
   diet: "vegetarian",
   seasonMonths: [6, 7, 8],
   photo: null,
+  ingredients: ["Pan duro"],
 };
 const READY: MenuState = { kind: "ready", dishes: [LASAGNE, MINESTRONE, PANZANELLA] };
 const NOVEMBER = 11;
@@ -368,5 +371,18 @@ describe("buscador", () => {
     expect(view({ state: { kind: "loading" } }).searchVisible).toBe(false);
     expect(view({ state: { kind: "error" } }).searchVisible).toBe(false);
     expect(view({ state: { kind: "ready", dishes: [LASAGNE] }, month: 3 }).searchVisible).toBe(false);
+  });
+});
+
+describe("ingredientes: solo para buscar", () => {
+  it("el buscador los encuentra, pero ni la tarjeta ni el panel llevan su texto", () => {
+    const byIngredient = view({ query: "carne de res" });
+    expect(byIngredient.cards.map((card) => card.name)).toEqual(["Lasagne"]);
+    for (const query of ["", "carne", "leche"]) {
+      const panel = view({ query, month: 7 });
+      const shown = JSON.stringify({ ...panel });
+      for (const text of ["Carne de res", "Leche", "Pan duro", "ingredients"]) expect(shown).not.toContain(text);
+      expect(panel.cards.every((card) => !("ingredients" in card))).toBe(true);
+    }
   });
 });

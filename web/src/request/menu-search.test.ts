@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dishMatches, filterDishes, normalizeText, queryWords, type SearchableDish } from "./menu-search.ts";
 
-type Extra = { es?: [string, string]; en?: [string, string]; diet?: SearchableDish["diet"]; seasonMonths?: number[] };
+type Extra = { es?: [string, string]; en?: [string, string]; diet?: SearchableDish["diet"]; seasonMonths?: number[]; ingredients?: string[] };
 
 function dish(name: string, description: string, extra: Extra = {}): SearchableDish {
   return {
@@ -9,6 +9,7 @@ function dish(name: string, description: string, extra: Extra = {}): SearchableD
     description: { it: description, es: extra.es?.[1] ?? null, en: extra.en?.[1] ?? null },
     diet: extra.diet ?? null,
     seasonMonths: extra.seasonMonths ?? null,
+    ingredients: extra.ingredients ?? [],
   };
 }
 
@@ -160,5 +161,35 @@ describe("temporada", () => {
   it("se combina con otras palabras (Y)", () => {
     expect(names("verano vegetariano")).toEqual(sorted([PANZANELLA, PARMIGIANA]));
     expect(names("verano carne")).toEqual([]);
+  });
+});
+
+describe("ingredientes (solo para buscar)", () => {
+  const CHILI = dish("Chili", "Un plato de olla.", { ingredients: ["Carne de res", "Frijoles", "Cebolla"] });
+  const RAGU = dish("Ragù bianco", "Lento.", { ingredients: ["Cerdo", "Zanahoria", "Vino blanco"] });
+  const CREMA = dish("Crema", "Suave.", { ingredients: ["Calabacines", "Papa"] });
+  const SIN = dish("Pan", "Crujiente.");
+  const LIST = [CHILI, RAGU, CREMA, SIN];
+  const found = (query: string): string[] => filterDishes(LIST, query).map((d) => d.name.it);
+
+  it("una palabra que está en un ingrediente encuentra el plato, sin acentos ni mayúsculas", () => {
+    expect(found("frijoles")).toEqual(["Chili"]);
+    expect(found("ZANAHORIA")).toEqual(["Ragù bianco"]);
+    expect(found("vino")).toEqual(["Ragù bianco"]);
+  });
+  it("con la tolerancia al plural de siempre", () => {
+    expect(found("cebollas")).toEqual(["Chili"]);
+    expect(found("frijol")).toEqual(["Chili"]);
+  });
+  it("las categorías valen para los ingredientes: «carne» encuentra «carne de res» y «cerdo»", () => {
+    expect(found("carne")).toEqual(["Chili", "Ragù bianco"]);
+    expect(found("meat")).toEqual(["Chili", "Ragù bianco"]);
+    expect(found("verdura")).toEqual(["Chili", "Ragù bianco", "Crema"]);
+    expect(dishMatches(CREMA, "carne")).toBe(false);
+  });
+  it("se combina con las demás palabras (Y) y un plato sin ingredientes sigue buscándose por su texto", () => {
+    expect(found("carne cebolla")).toEqual(["Chili"]);
+    expect(found("crujiente")).toEqual(["Pan"]);
+    expect(found("papa")).toEqual(["Crema"]);
   });
 });

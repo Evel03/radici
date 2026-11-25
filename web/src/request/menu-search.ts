@@ -6,11 +6,12 @@
 //   «lasaña» valen aunque la página esté en italiano), con tolerancia al plural: las palabras de 5 letras o más
 //   también se prueban sin la última («verduras» → «verdura», «polli» → «poll», que está en «pollo»).
 // - Además, tres tipos de palabras con significado propio: estaciones, dieta y categorías (listas de abajo).
-// - Los ingredientes no llegan a la web a propósito: solo se busca en lo que el plato muestra.
+// - Los nombres de los ingredientes (en español, como los escribió Evelyn) también se buscan, igual que el resto
+//   (plural y categorías incluidos), pero la página nunca los muestra (decisión de la dueña, 25/11/2026).
 import type { MenuDish } from "../../../supabase/functions/_shared/menu.ts";
 
-/** Lo que el buscador lee de un plato. */
-export type SearchableDish = Pick<MenuDish, "name" | "description" | "diet" | "seasonMonths">;
+/** Lo que el buscador lee de un plato (los ingredientes solo se buscan: nada los muestra). */
+export type SearchableDish = Pick<MenuDish, "name" | "description" | "diet" | "seasonMonths" | "ingredients">;
 
 /** Minúsculas, sin acentos (NFD), lo que no es letra ni número pasa a espacio y los espacios se colapsan. */
 export function normalizeText(text: string): string {
@@ -131,14 +132,14 @@ const NORMALIZED_CATEGORIES = CATEGORIES.map((category) => ({
 }));
 
 interface Haystack {
-  /** Nombre y descripción de los tres idiomas, normalizados, en una cadena. */
+  /** Nombre, descripción (los tres idiomas) e ingredientes, normalizados, en una cadena. */
   text: string;
   /** Las palabras de ese texto, cada una sin la última letra si es larga (para comparar con las categorías). */
   stems: Set<string>;
 }
 
 function haystack(dish: SearchableDish): Haystack {
-  const parts = [dish.name.it, dish.name.es, dish.name.en, dish.description.it, dish.description.es, dish.description.en];
+  const parts = [dish.name.it, dish.name.es, dish.name.en, dish.description.it, dish.description.es, dish.description.en, ...dish.ingredients];
   const text = normalizeText(parts.filter((part): part is string => part !== null).join(" "));
   return { text, stems: new Set(text.split(" ").map(stem)) };
 }
