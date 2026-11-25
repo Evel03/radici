@@ -227,7 +227,7 @@ jobs:
       # ser security definer y ejecutarla solo supabase_auth_admin. Se mira la base por la Management API (solo
       # lectura). Si no está bien, corta antes de tocar Auth: un hook prendido que apunta a una función que no
       # está dejaría a Evelyn sin entrar (supabase/scripts/auth-hook-check.ts, con tests).
-      - name: Hook de la cocina: la función existe
+      - name: "Hook de la cocina: la función existe"
         if: env.HAS_SUPABASE == 'true'
         env:
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
