@@ -117,6 +117,7 @@ const MANAGEMENT_API_AUTH_FIELDS = [
   "external_email_magic_link_disabled", "mailer_autoconfirm", "sms_autoconfirm",
   "mailer_allow_unverified_email_sign_ins", "mailer_secure_email_change_enabled",
   "security_manual_linking_enabled", "security_captcha_enabled", "rate_limit_verify", "rate_limit_email_sent",
+  "hook_custom_access_token_enabled", "hook_custom_access_token_uri", "hook_before_user_created_enabled",
   "rate_limit_token_refresh", "rate_limit_otp", "rate_limit_anonymous_users", "rate_limit_sms_sent", "rate_limit_web3",
   "mailer_otp_length", "mailer_otp_exp", "smtp_host", "smtp_port", "smtp_user", "smtp_pass",
   "smtp_admin_email", "smtp_sender_name", "mailer_subjects_magic_link", "mailer_subjects_confirmation",
@@ -133,6 +134,10 @@ const PINNED = {
   security_manual_linking_enabled: false,
   external_email_magic_link_disabled: false,
   rate_limit_verify: 10,
+  // Hooks de Auth (contrato auth.md §8): el de la cocina prendido; el de las altas apagado hasta PR20.
+  hook_custom_access_token_enabled: true,
+  hook_custom_access_token_uri: "pg-functions://postgres/public/kitchen_access_token_hook",
+  hook_before_user_created_enabled: false,
   // Límites de intentos (contrato auth.md §9): /token (contraseña y refresh), /otp y familia, y los flujos apagados al mínimo.
   rate_limit_token_refresh: 20,
   rate_limit_otp: 10,
@@ -181,6 +186,14 @@ test("combinaciones prohibidas: config.toml que prende autoconfirm (email o sms)
   assert.throws(() => authSecurityConfig(swap(/enable_anonymous_sign_ins = false/, "enable_anonymous_sign_ins = true")), /anónimos/);
   assert.throws(() => authSecurityConfig(swap(/double_confirm_changes = true/, "double_confirm_changes = false")), /cambio de email/);
   assert.throws(() => authSecurityConfig(swap(/token_verifications = 10/, "token_verifications = 30")), /token_verifications/);
+  // Los hooks: si config.toml apaga el de la cocina, cambia su función o prende el de las altas, el despliegue corta.
+  assert.throws(() => authSecurityConfig(swap(/(\[auth\.hook\.custom_access_token\][^[]*?)enabled = true/s, "$1enabled = false")), /custom_access_token/);
+  assert.throws(() => authSecurityConfig(swap(/kitchen_access_token_hook"/, 'otra_funcion"')), /custom_access_token/);
+  assert.throws(() => authSecurityConfig(`${CONFIG}
+[auth.hook.before_user_created]
+enabled = true
+uri = "pg-functions://postgres/public/before_user_created_guard"
+`), /before_user_created/);
   // Los límites de intentos de login: si config.toml los afloja, el despliegue corta (local y producción no se separan).
   assert.throws(() => authSecurityConfig(swap(/token_refresh = d+/, "token_refresh = 150")), /token_refresh/);
   assert.throws(() => authSecurityConfig(swap(/sign_in_sign_ups = d+/, "sign_in_sign_ups = 30")), /sign_in_sign_ups/);
@@ -189,6 +202,13 @@ test("combinaciones prohibidas: config.toml que prende autoconfirm (email o sms)
   assert.throws(() => authSecurityConfig(swap(/^web3 = d+/m, "web3 = 30")), /web3/);
   assert.throws(() => authSecurityConfig(swap(/(\[auth\.external\.apple\][^[]*?)enabled = false/s, "$1enabled = true")), /apple/i);
   assert.throws(() => authSecurityConfig(swap(/(\[auth\.web3\.solana\][^[]*?)enabled = false/s, "$1enabled = true")), /web3/i);
+});
+
+test("config.toml del repo: el hook de la cocina prendido con su función, y el de las altas apagado", () => {
+  const kitchen = tomlSection(CONFIG, "auth.hook.custom_access_token");
+  assert.equal(kitchen.get("enabled"), true);
+  assert.equal(kitchen.get("uri"), "pg-functions://postgres/public/kitchen_access_token_hook");
+  assert.notEqual(tomlSection(CONFIG, "auth.hook.before_user_created").get("enabled"), true, "el hook de las altas sigue apagado (PR20)");
 });
 
 test("config.toml del repo: confirmaciones prendidas para email y sms, y 10 verificaciones cada 5 minutos", () => {

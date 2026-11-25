@@ -25,6 +25,8 @@ Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo s
 | security | `security_manual_linking_enabled` | `false` | `enable_manual_linking = false` |
 | security | `external_email_magic_link_disabled` | `false` | (magic link y código por email prendidos: el código de Evelyn sale de esa plantilla) |
 | security | `rate_limit_verify` | `10` | `[auth.rate_limit] token_verifications = 10` |
+| security | `hook_custom_access_token_enabled`, `hook_custom_access_token_uri` | `true`, `pg-functions://postgres/public/kitchen_access_token_hook` (§8: la cocina solo entra con código) | `[auth.hook.custom_access_token] enabled`, `uri` |
+| security | `hook_before_user_created_enabled` | `false` (el freno de altas se prende en PR20, con las altas) | sin `[auth.hook.before_user_created]` |
 | security | `rate_limit_token_refresh`, `rate_limit_otp`, `rate_limit_anonymous_users`, `rate_limit_sms_sent`, `rate_limit_web3` | `20`, `10`, `1`, `1`, `1` (§9) | `token_refresh`, `sign_in_sign_ups`, `anonymous_users`, `sms_sent`, `web3` |
 | security | `external_google_enabled`, `external_apple_enabled`, `external_phone_enabled`, `external_anonymous_users_enabled`, `external_web3_solana_enabled`, `external_web3_ethereum_enabled`, `saml_enabled` | `false` | sin proveedores en `config.toml` |
 | smtp | `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `smtp_admin_email`, `smtp_sender_name` | Resend, remitente de `MAIL_FROM` | |
@@ -86,7 +88,7 @@ Resend no deja leer los dominios con una clave «solo de envío» (`restricted_a
 
 ## 8. Hooks de Auth: la cocina solo con código y el freno de altas (PR07: las funciones, sin prender)
 
-Migración `20261126100000_auth_hooks.sql`, pgTAP `26_auth_hooks`. **Este PR no prende ningún hook** (ni `auth-config.ts` ni `config.toml` los mencionan): el PATCH de Auth corre antes de `db push`, así que un hook prendido que apunta a una función que todavía no existe rompería el login de todos. Primero llegan las funciones (este PR), después se prende el de la cocina (PR08) y, bastante después, el de las altas (PR20, cuando se abran).
+Migración `20261126100000_auth_hooks.sql`, pgTAP `26_auth_hooks`. **PR07 trajo las funciones sin prender nada** (el PATCH de Auth corre antes de `db push`: un hook prendido que apunta a una función que todavía no existe rompería el login de todos). **PR08 prende el de la cocina** (§8.1); el de las altas sigue apagado hasta PR20, cuando se abran.
 
 ### Contratos de Supabase (leídos el 25/11/2026)
 
@@ -158,9 +160,9 @@ Rige en la próxima alta (los valores se leen en cada llamada). No toca el login
 - **Sin IP.** Todas las altas sin IP comparten un cubo de 5 por hora: más estricto que con IP, a propósito.
 - **Altas que fallan después del hook.** Si el alta falla luego (la transacción se revierte), el renglón del contador también: no cuenta.
 
-### Orden de rollback para PR08
+### Orden de rollback
 
-Cuando PR08 prenda el hook de la cocina en `auth-config.ts`: si hay que apagarlo, **primero** el PATCH de Auth con el hook apagado (`hook_custom_access_token_enabled: false`; corre antes de `db push`) y **después**, recién, tocar o borrar la función en una migración. Al revés, un hook prendido apuntaría a una función que ya no existe y rompería el login de todos. Lo mismo vale para el hook de las altas (PR20): una función de hook no se borra ni cambia de firma mientras haya un hook prendido que la use.
+Si hay que apagar el hook de la cocina (§8.1 trae el comando): **primero** el PATCH de Auth con el hook apagado (`hook_custom_access_token_enabled: false`; corre antes de `db push`) y **después**, recién, tocar o borrar la función en una migración. Al revés, un hook prendido apuntaría a una función que ya no existe y rompería el login de todos. Lo mismo vale para el hook de las altas (PR20): una función de hook no se borra ni cambia de firma mientras haya un hook prendido que la use.
 
 ## 9. Límites de intentos
 
@@ -185,3 +187,44 @@ No se pueden fijar desde el repo (la Management API no los expone): `/sso` y SAM
 - Los flujos apagados (anónimos, SMS, Web3): 1, lo mínimo que acepta la API. Si algún día se prenden, hay que subirlo en el mismo PR.
 
 **Medido** (GoTrue v2.197.0 local, 25/11/2026, IP por `X-Forwarded-For` con `GOTRUE_RATE_LIMIT_HEADER`): contraseña mala desde una IP: 30 respuestas sin 429 y la 31.ª da `429 over_request_rate_limit`; la contraseña buena de esa IP también da 429 hasta que recarga (el cubo es de `/token`); otra IP no se afecta (200); `refresh_token` comparte el mismo cubo (el 31.º da 429); tras 16 s se recupera un intento (1 cada 15 s). `/otp` desde una IP: 30 envíos y el 32.º da 429 (la recarga de 10 cada 5 minutos devolvió uno durante la prueba). Uso normal desde otra IP: código, verificación y refresh dan 200.
+
+### 8.1 El hook de la cocina, prendido (PR08)
+
+`auth-config.ts` (parte `security`) fija `hook_custom_access_token_enabled: true` y `hook_custom_access_token_uri: "pg-functions://postgres/public/kitchen_access_token_hook"`, y `hook_before_user_created_enabled: false`. Los nombres son los del OpenAPI público (`UpdateAuthConfigBody` en https://api.supabase.com/api/v1-json, leído el 25/11/2026): cada hook tiene `hook_<nombre>_enabled` (boolean), `hook_<nombre>_uri` (texto) y `hook_<nombre>_secrets` (texto; solo para los hooks HTTP, un hook de Postgres no lleva secreto). `config.toml` lo repite (`[auth.hook.custom_access_token] enabled = true` y la misma `uri`) y `authSecurityConfig` corta si no coincide, o si `config.toml` prende `[auth.hook.before_user_created]`. El despliegue vuelve a leer lo que Supabase guardó (campo por campo, §3).
+
+**Antes del PATCH, el despliegue mira la base de producción.** El paso «Hook de la cocina: la función existe» (`supabase/scripts/auth-hook-check.ts`, con tests y una API falsa) pregunta por `POST /v1/projects/{ref}/database/query/read-only` (Management API, solo lectura, con `SUPABASE_ACCESS_TOKEN`; nunca se imprime) si `public.kitchen_access_token_hook(jsonb)`: existe, es `security definer`, trae la regla `kitchen_code_only`, la ejecuta `supabase_auth_admin` y no la ejecutan `anon`, `authenticated`, `service_role` ni `PUBLIC`. La consulta:
+
+```sql
+select p.prosecdef as security_definer,
+  has_function_privilege('supabase_auth_admin', p.oid, 'EXECUTE') as auth_admin,
+  has_function_privilege('anon', p.oid, 'EXECUTE') as anon,
+  has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated,
+  has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role,
+  exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+          where a.grantee = 0 and a.privilege_type = 'EXECUTE') as public_exec,
+  position('kitchen_code_only' in p.prosrc) > 0 as has_rule
+from pg_proc p where p.oid = to_regprocedure('public.kitchen_access_token_hook(jsonb)')
+```
+
+Sin fila (la función no existe), con un grant de más o de menos, o con una respuesta que no se puede leer: el paso falla y **Auth no se toca**. Va antes de «Auth desde el repo» y después de la comprobación de Resend.
+
+**Medido en local** (GoTrue v2.197.0, hook prendido; 25/11/2026): la cocinera y el colaborador entran con código (`amr` `otp`) y 5 refresh encadenados dan 200 en cada uno; con contraseña los dos dan `403 kitchen_code_only`; una clienta entra con contraseña (200) y renueva (200).
+
+**Qué hace la app con un 403 en el refresh** (leído en `gotrue` 2.27.3, el de `pubspec.lock`, y en `session_controller.dart`): un 403 es una `AuthApiException`, no una `AuthRetryableFetchException` (esa es solo de red y de 5xx). `GoTrueClient._doRefresh` borra la sesión y emite `signedOut` (`SignOutReason.sessionExpired`); `SessionController._onUserChanged(null)` pasa a `SessionState.signedOut()` y `routes.dart` manda a la pantalla de login. No hay bucle: la sesión ya no existe y no se vuelve a pedir un refresh. No muestra ningún mensaje: la persona vuelve a la pantalla del código y entra con el código. Una excepción de la función (500) sí es reintentable: la app conserva la sesión y reintenta, sin cerrarla. La verificación con la app real (iOS, Android y `/gestione/`) está pendiente: se midió el comportamiento de GoTrue y se leyó el código de la app, no se corrió.
+
+**Prueba en producción, por Nicolas (después del primer despliegue con el hook prendido):**
+1. En una ventana privada, entrar a `/gestione/` con su cuenta de colaborador y el **código** del email (no hay otra manera: la cocina no tiene contraseña).
+2. Comprobar que ve el área de Evelyn.
+3. Esperar a que venza el token (más de 1 hora; `jwt_expiry` es 3600) y volver a abrir la ventana, o cerrar y reabrir la app pasado ese plazo: el cliente renueva la sesión y ese es el refresh que el hook revisa. Seguir adentro significa que el refresh pasó. Si lo manda a la pantalla del código, el hook rechazó el refresh (la sesión se abrió con otro método): apagar el hook (abajo) y avisar.
+4. Con la sesión abierta, probar que otra pestaña con una contraseña no entra (la cocina no tiene contraseña; con una asignada por error daría 403).
+Las sesiones de la cocina abiertas antes del despliegue con otro método (contraseña) se cortan en su próximo refresh: se vuelve a entrar con el código. Avisarle a Evelyn y a sus colaboradores antes del primer despliegue.
+
+**Vuelta atrás (un comando).** Apagar el hook con la Management API; recién después tocar la función. Con `SUPABASE_ACCESS_TOKEN` (token personal, https://supabase.com/dashboard/account/tokens) y la referencia del proyecto (`SUPABASE_PROJECT_REF`):
+
+```sh
+curl -sS -X PATCH "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/config/auth" \
+  -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" -H "Content-Type: application/json" \
+  -d '{"hook_custom_access_token_enabled": false}'
+```
+
+Eso corta el hook en el acto (los refresh vuelven a pasar). **El próximo despliegue lo vuelve a prender**: para que quede apagado hay que revertir el PR (o poner `enabled = false` en `config.toml` y `hook_custom_access_token_enabled: false` en `auth-config.ts` en un PR), y el despliegue de ese PR corta si ambos no coinciden. Nunca se cambia ni se borra la función con el hook prendido.
