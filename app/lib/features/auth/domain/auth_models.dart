@@ -35,12 +35,21 @@ abstract class ChefAccount with _$ChefAccount {
   }) = _ChefAccount;
 }
 
+/// Ficha de una clienta con sesión. Por ahora sin datos: el área de clientes
+/// (PRs siguientes) le suma lo que lea. Existe para que `SessionState.client`
+/// ya lleve su cuenta, como `SessionState.chef` lleva la de la cocinera.
+@freezed
+abstract class ClientAccount with _$ClientAccount {
+  const factory ClientAccount() = _ClientAccount;
+}
+
 /// Lo que la app necesita saber del usuario después del login.
 @freezed
 abstract class Account with _$Account {
   const factory Account({
     required AccountRole role,
     ChefAccount? chef,
+    ClientAccount? client,
 
     /// Idioma de la interfaz (`profiles.locale`); null si el perfil no trae
     /// uno que esta versión conozca: entonces manda el dispositivo.

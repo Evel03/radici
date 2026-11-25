@@ -4,6 +4,11 @@
 // En la web (/gestione/) las rutas van en el fragmento: /gestione/#/richieste.
 // Así un enlace directo (el botón del email a Evelyn: INBOX_URL#/richieste/<id>)
 // funciona sin reglas de reescritura en Cloudflare Pages.
+//
+// Las rutas de la clienta (/area/*) se sirven en /app/ (y en las apps) y las
+// de la cocina en /gestione/; cada entrada (app_entry.dart) abre solo las
+// suyas y manda a la otra cuenta a «entrá por la otra puerta».
+import 'package:radici/core/app_entry.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 
@@ -15,7 +20,13 @@ abstract final class AppRoutes {
 
   /// Mientras se carga la cuenta (o si falló).
   static const String session = '/caricamento';
-  static const String clientArea = '/area-clienti';
+
+  /// El área de la clienta (ClientShell; sus pantallas cuelgan de acá).
+  static const String area = '/area';
+
+  /// «Esta cuenta es de la otra entrada»: la de la cocina en /app/ y la de
+  /// una clienta en /gestione/.
+  static const String wrongEntry = '/ingresso';
 
   /// Hoy, el inicio de la cocinera (después del login y al abrir la app).
   static const String today = '/oggi';
@@ -120,6 +131,10 @@ abstract final class AppRoutes {
   static const String fromParam = 'from';
 }
 
+/// Rutas del área de la clienta.
+bool isClientPath(String path) =>
+    path == AppRoutes.area || path.startsWith('${AppRoutes.area}/');
+
 /// Rutas del área de la cocinera.
 bool isChefPath(String path) =>
     path == AppRoutes.today ||
@@ -131,30 +146,47 @@ bool isChefPath(String path) =>
     path == AppRoutes.more ||
     path.startsWith('${AppRoutes.more}/');
 
+/// Las rutas que abre [entry]: las de la cocina en /gestione/, las de la
+/// clienta en /app/ y en las apps.
+bool isEntryPath(AppEntry entry, String path) => switch (entry) {
+  AppEntry.kitchen => isChefPath(path),
+  AppEntry.client => isClientPath(path),
+};
+
 /// A dónde redirigir [location] según [session], o null para quedarse.
 ///
-/// - Sin sesión: el área de la cocinera pide login (recordando a dónde iba).
-///   En la web no hay inicio público: `/` es el login.
+/// - Sin sesión: el área de la entrada pide login (recordando a dónde iba);
+///   las del otro lado, no se abren. En la web no hay inicio público: `/` es
+///   el login.
 /// - Cargando la cuenta (o con error): pantalla de carga.
-/// - La cocinera o un colaborador suyo (ChefSession, rol `chef`): el área de
-///   la cocinera, que empieza en Hoy (o a donde iba antes del login, como el
-///   pedido del botón del email).
-/// - Cualquier otro usuario: área de clientes.
+/// - La cuenta de la entrada (la cocinera o un colaborador suyo en /gestione/,
+///   una clienta en /app/): su área, que empieza en Hoy o en el inicio de la
+///   clienta (o a donde iba antes del login, como el pedido del botón del
+///   email).
+/// - La cuenta de la otra entrada (una clienta en /gestione/, la cocina en
+///   /app/): `/ingresso`, que lo explica y deja salir. Nunca se mezclan.
 /// La calculadora (`/preventivo`) es pública siempre.
 String? resolveRedirect({
   required SessionState session,
   required Uri location,
   required bool isWeb,
+  AppEntry entry = AppEntry.kitchen,
 }) {
   final path = location.path;
   if (path == AppRoutes.quote) return null;
-  final chefRoute = isChefPath(path);
-  final from = _safeFrom(location.queryParameters[AppRoutes.fromParam]);
+  final ownRoute = isEntryPath(entry, path);
+  final from = _safeFrom(entry, location.queryParameters[AppRoutes.fromParam]);
+  final home = entry == AppEntry.kitchen ? AppRoutes.today : AppRoutes.area;
 
   switch (session) {
     case SignedOut():
-      if (chefRoute) return _withFrom(AppRoutes.login, location.toString());
-      if (path == AppRoutes.session || path == AppRoutes.clientArea) {
+      if (ownRoute) return _withFrom(AppRoutes.login, location.toString());
+      // Las rutas de la otra entrada y las de «ya con sesión» no tienen nada
+      // que mostrar sin sesión.
+      if (path == AppRoutes.session ||
+          path == AppRoutes.wrongEntry ||
+          isChefPath(path) ||
+          isClientPath(path)) {
         return isWeb ? AppRoutes.login : AppRoutes.home;
       }
       if (path == AppRoutes.home && isWeb) return AppRoutes.login;
@@ -163,23 +195,49 @@ String? resolveRedirect({
       if (path == AppRoutes.session) return null;
       return _withFrom(
         AppRoutes.session,
-        chefRoute ? location.toString() : from,
+        ownRoute ? location.toString() : from,
       );
     case ChefSession():
-      if (chefRoute) return null;
-      return from ?? AppRoutes.today;
+      return _forAccount(
+        ownEntry: entry == AppEntry.kitchen,
+        ownRoute: ownRoute,
+        path: path,
+        from: from,
+        home: home,
+      );
     case ClientSession():
-      if (path == AppRoutes.clientArea) return null;
-      return AppRoutes.clientArea;
+      return _forAccount(
+        ownEntry: entry == AppEntry.client,
+        ownRoute: ownRoute,
+        path: path,
+        from: from,
+        home: home,
+      );
   }
 }
 
-/// Solo se vuelve a rutas internas de la cocinera (nada de URLs externas).
-String? _safeFrom(String? from) {
+/// Con la cuenta ya cargada: en su entrada, su área; en la otra, `/ingresso`.
+String? _forAccount({
+  required bool ownEntry,
+  required bool ownRoute,
+  required String path,
+  required String? from,
+  required String home,
+}) {
+  if (!ownEntry) {
+    return path == AppRoutes.wrongEntry ? null : AppRoutes.wrongEntry;
+  }
+  if (ownRoute) return null;
+  return from ?? home;
+}
+
+/// Solo se vuelve a rutas internas del área de [entry] (nada de URLs
+/// externas ni de la otra entrada).
+String? _safeFrom(AppEntry entry, String? from) {
   if (from == null || from.isEmpty) return null;
   final uri = Uri.tryParse(from);
   if (uri == null || uri.hasScheme || uri.hasAuthority) return null;
-  return isChefPath(uri.path) ? uri.toString() : null;
+  return isEntryPath(entry, uri.path) ? uri.toString() : null;
 }
 
 String _withFrom(String base, String? from) => from == null

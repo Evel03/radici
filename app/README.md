@@ -769,6 +769,26 @@ base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-re
   vieja. Cada deploy de producción comprueba que `main.dart.js` y `flutter_bootstrap.js` lleguen con
   `no-cache` y, si no, queda en rojo (`.github/scripts/check-gestione-cache.sh`, contrato §8).
 
+## Entradas: /gestione/ (cocina) y /app/ (clientas)
+
+La misma app sirve dos entradas (`lib/core/app_entry.dart`, `AppEntry`):
+
+| | Cocina (`AppEntry.kitchen`) | Clienta (`AppEntry.client`) |
+|---|---|---|
+| Dónde | `/gestione/` (web y PWA de Evelyn y sus colaboradores) | `/app/` (web, PR13) y las apps de iOS y Android |
+| Cuenta | `profiles.role = chef` (dueña o colaborador), con el código del email | cualquier otra (las clientas) |
+| Rutas | `/oggi`, `/richieste`, `/agenda`, `/altro`… | `/area/*` (`ClientShell`, provisorio: sin datos, con idioma y salir) |
+| Sesión (localStorage) | `sb-<ref>-auth-token` (la de siempre) | `sb-<ref>-app-auth-token` |
+| Verificador PKCE | `supabase.auth.token-code-verifier` (clave fija de gotrue 2.27.3) | `radici.app.supabase.auth.token-code-verifier` (`PrefixedGotrueAsyncStorage`) |
+| Idioma guardado | `radici.ui_language` (la de siempre) | `radici.app.ui_language` |
+| Links de Auth en la URL | no (`detectSessionInUri: false`: entra con el código) | solo su ruta `/app/…` y solo PKCE: `code` o un error; un `access_token` o `refresh_token` nunca abre sesión (`isAuthCallbackUri`) |
+
+- **Cómo se elige.** En iOS y Android, siempre la clienta: la cocina sigue entrando por `/gestione/`. En la web, por `<meta name="radici-entry" content="app|gestione">` de `web/index.html` (`resolveAppEntry`, antes de inicializar Supabase). Sin la marca, o con un valor desconocido, es la cocina: el build actual de `/gestione/` sigue igual. El build de `/app/` (con `content="app"`, `--base-href /app/`) lo arma el deploy en PR13.
+- **Mismo origen, claves aparte.** `radicicucina.app/gestione/` y `/app/` comparten localStorage: por eso cada una tiene su sesión, su verificador PKCE y su idioma (el verificador lleva prefijo porque gotrue 2.27.3 usa una clave fija). Las claves de la cocina no cambiaron: Evelyn no sale de su sesión al actualizar (`test/core/app_entry_test.dart` fija las tres). En los móviles ya instalados, la sesión de la clienta es nueva (la entrada nativa deja de usar la clave de la cocina).
+- **Cuenta de la otra entrada.** Una clienta que abre `/gestione/`, o una cuenta de la cocina que abre `/app/` o la app, va a `/ingresso` (`WrongEntryScreen`): «esta cuenta es de la cocina, entra por /gestione/» (o al revés) y un botón para salir. Nunca se abre el área de la otra, ni siquiera con un enlace directo. En `/app/` tampoco corre el aviso de pedidos nuevos.
+- **Errores de Auth.** Un link de acceso con error (vencido, ya usado) llega por `AuthRepository.failures()` a `authLinkErrorProvider` y el login lo dice (`authErrorLink`); se borra al pedir un código nuevo. No se muestran los errores de renovar la sesión ni los de red.
+- **Providers de la clienta** (`features/client/application/`): se crean recién cuando una pantalla de la clienta los usa; en `/gestione/` ninguno llega a existir (`test/core/entry_smoke_test.dart`). El login de la clienta (PR17) y sus pantallas vienen en PRs siguientes: hoy puede haber una sesión de clienta (cuenta sin cocina) y va a `/area`.
+
 ## Captcha de Auth (`lib/core/captcha/`)
 
 Cada pedido de código de acceso saca antes un token de captcha (Turnstile de Auth) y se lo pasa a `signInWithOtp(captchaToken: …)`. Auth todavía **no** lo exige (PR11 lo prende): hasta entonces, si no hay token el login sigue sin él (`captchaRequired = false` en `captcha_service.dart`; PR11 lo pone en `true`). Contrato y protocolo: `../docs/contracts/auth.md` §10.
@@ -782,9 +802,9 @@ Cada pedido de código de acceso saca antes un token de captcha (Turnstile de Au
 
 ```
 lib/
-  main.dart            arranque: entorno, Supabase (si está configurado), licencias, ProviderScope
+  main.dart            arranque: entorno, entrada (cocina o clienta), Supabase (si está configurado), licencias, ProviderScope
   app.dart             MaterialApp.router, tema, localizaciones, aviso de pedidos nuevos y avisos de la web
-  core/                env, id del build, rutas y router (go_router), tema, dinero, teléfonos, fechas
+  core/                env, entradas (app_entry, auth_options), id del build, rutas y router (go_router), tema, dinero, teléfonos, fechas
                        de Roma, navegador (browser*.dart: solo hace algo en la web)
   features/<feature>/
     domain/            Dart puro (modelos, reglas). Ej.: quote/domain/quote.dart, copia del motor quote.ts

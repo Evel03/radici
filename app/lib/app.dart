@@ -1,6 +1,7 @@
 // Raíz de la UI: router, tema y localizaciones.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:radici/core/app_entry.dart';
 import 'package:radici/core/captcha/captcha_host.dart';
 import 'package:radici/core/env.dart';
 import 'package:radici/core/router.dart';
@@ -25,6 +26,7 @@ class RadiciApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final showBackendNotice = ref.watch(appEnvProvider).showBackendNotice;
+    final entry = ref.watch(appEntryProvider);
 
     return MaterialApp.router(
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
@@ -41,12 +43,14 @@ class RadiciApp extends ConsumerWidget {
         // rutas (ver NewRequestAlertListener). Arriba, los avisos de la web:
         // versión nueva y Safari fuera de la app instalada (ver WebAppNotices).
         // CaptchaHost, encima de todo: la WebView del captcha de Auth en iOS y
-        // Android (en la web no dibuja nada).
+        // Android (en la web no dibuja nada). El aviso de pedidos es solo de
+        // la entrada de la cocina: en /app/ no se escucha la bandeja.
+        final routed = child ?? const SizedBox.shrink();
         final content = CaptchaHost(
           child: WebAppNotices(
-            child: NewRequestAlertListener(
-              child: child ?? const SizedBox.shrink(),
-            ),
+            child: entry == AppEntry.kitchen
+                ? NewRequestAlertListener(child: routed)
+                : routed,
           ),
         );
         if (!showBackendNotice) return content;

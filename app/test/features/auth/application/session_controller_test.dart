@@ -69,7 +69,10 @@ void main() {
     const user = AppUser(id: 'u2', email: 'cliente@example.test');
     auth.emit(user);
     await pumpEventQueue();
-    expect(c.read(sessionControllerProvider), const SessionState.client(user));
+    expect(
+      c.read(sessionControllerProvider),
+      const SessionState.client(user, ClientAccount()),
+    );
     expect(c.read(currentChefProvider), isNull);
   });
 
@@ -150,7 +153,10 @@ void main() {
     slow.complete('u2', const Account(role: AccountRole.client));
     slow.complete(chefUser.id, chefAccountData);
     await pumpEventQueue();
-    expect(c.read(sessionControllerProvider), const SessionState.client(other));
+    expect(
+      c.read(sessionControllerProvider),
+      const SessionState.client(other, ClientAccount()),
+    );
   });
 }
 

@@ -69,6 +69,14 @@ class FakeAuthRepository implements AuthRepository {
   @override
   Stream<AppUser?> userChanges() => _changes.stream;
 
+  final _failures = StreamController<AuthFailure>.broadcast();
+
+  /// Un error de Auth que llega solo (un link con error).
+  void emitFailure(AuthFailureKind kind) => _failures.add(AuthFailure(kind));
+
+  @override
+  Stream<AuthFailure> failures() => _failures.stream;
+
   @override
   Future<void> sendEmailCode(String email, {String? locale, String? captchaToken}) async {
     final failure = sendFailure;

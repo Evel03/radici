@@ -6,6 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/app.dart';
+import 'package:radici/core/app_entry.dart';
+import 'package:radici/core/auth_options.dart';
+import 'package:radici/core/browser.dart';
 import 'package:radici/core/env.dart';
 import 'package:radici/features/settings/data/language_cache.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -27,6 +30,12 @@ Future<void> main() async {
   });
 
   final env = AppEnv.fromDefines();
+  // La entrada fija dónde se guardan la sesión y el idioma: se resuelve antes
+  // de inicializar Supabase (ver app_entry.dart).
+  final entry = resolveAppEntry(
+    isWeb: kIsWeb,
+    metaContent: createPlatformBrowser().readMeta(entryMetaName),
+  );
 
   // Sin URL o sin clave la app arranca igual, sin backend (en dev se avisa).
   // supabase_flutter recupera la sesión guardada antes de seguir.
@@ -34,6 +43,7 @@ Future<void> main() async {
     await Supabase.initialize(
       url: env.supabaseUrl,
       publishableKey: env.supabasePublishableKey,
+      authOptions: buildAuthOptions(entry, env.supabaseUrl),
     );
   }
 
@@ -41,7 +51,10 @@ Future<void> main() async {
     ProviderScope(
       overrides: [
         appEnvProvider.overrideWithValue(env),
-        languageCacheProvider.overrideWithValue(await _loadLanguageCache()),
+        appEntryProvider.overrideWithValue(entry),
+        languageCacheProvider.overrideWithValue(
+          await _loadLanguageCache(entry),
+        ),
       ],
       child: const RadiciApp(),
     ),
@@ -51,9 +64,9 @@ Future<void> main() async {
 /// Idioma guardado de quien tiene la sesión: se lee antes del primer cuadro
 /// para que la app arranque ya en ese idioma. Si el almacenamiento falla, la
 /// app sigue con la caché en memoria (el idioma llega con el perfil).
-Future<LanguageCache> _loadLanguageCache() async {
+Future<LanguageCache> _loadLanguageCache(AppEntry entry) async {
   try {
-    return await SharedPreferencesLanguageCache.load();
+    return await SharedPreferencesLanguageCache.load(key: entry.languageKey);
   } on Object {
     return MemoryLanguageCache();
   }

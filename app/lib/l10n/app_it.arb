@@ -277,6 +277,22 @@
   "@authErrorCaptcha": {
     "description": "Error: no se obtuvo el token del captcha de Auth (Turnstile). Solo aparece cuando Auth exige el captcha."
   },
+  "authErrorLink": "Il link di accesso non è valido o è scaduto. Richiedi un nuovo codice.",
+  "@authErrorLink": {
+    "description": "Error en el login: llegó un link de acceso de Auth con un error (vencido, ya usado)."
+  },
+  "wrongEntryTitle": "Account non abilitato qui",
+  "@wrongEntryTitle": {
+    "description": "Título de la pantalla que explica que la cuenta es de la otra entrada (cocina o clienta)."
+  },
+  "wrongEntryClientBody": "Questo accesso è riservato alla cucina. Per entrare come cliente usa l'app Radici (radicicucina.app/app/).",
+  "@wrongEntryClientBody": {
+    "description": "Una cuenta de clienta abrió la entrada de la cocina (/gestione/)."
+  },
+  "wrongEntryKitchenBody": "Questo account è della cucina: entra da radicicucina.app/gestione/.",
+  "@wrongEntryKitchenBody": {
+    "description": "Una cuenta de la cocina abrió la entrada de la clienta (/app/ o la app)."
+  },
   "authErrorUnknown": "Qualcosa è andato storto. Riprova.",
   "@authErrorUnknown": {
     "description": "Error genérico de autenticación."

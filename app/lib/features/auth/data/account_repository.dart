@@ -46,6 +46,7 @@ class SupabaseAccountRepository implements AccountRepository {
       if (profile?['role'] != 'chef') {
         return Account(
           role: AccountRole.client,
+          client: const ClientAccount(),
           language: AppLanguage.fromCode(profile?['locale']),
         );
       }

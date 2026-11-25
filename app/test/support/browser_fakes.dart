@@ -40,6 +40,12 @@ class FakeBrowser implements Browser {
 
   int reloads = 0;
 
+  /// `<meta name=… content=…>` de la página.
+  final Map<String, String> metas = {};
+
+  @override
+  String? readMeta(String name) => metas[name];
+
   /// Marcas guardadas (localStorage).
   final Map<String, String> flags = {};
 

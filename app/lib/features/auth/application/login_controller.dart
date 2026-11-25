@@ -5,6 +5,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:radici/core/captcha/captcha_service.dart';
+import 'package:radici/features/auth/application/auth_link_error.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
 
@@ -81,6 +82,10 @@ class LoginController extends Notifier<LoginState> {
       return;
     }
     state = state.copyWith(busy: true, error: null, codeResent: false);
+    // Si el aviso del link existe (la app lo crea al arrancar), se borra.
+    if (ref.exists(authLinkErrorProvider)) {
+      ref.read(authLinkErrorProvider.notifier).clear();
+    }
     try {
       final (outcome, captchaToken) = await _captcha(locale);
       if (!ref.mounted) return;

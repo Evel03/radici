@@ -4,13 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/app.dart';
+import 'package:radici/core/app_entry.dart';
 import 'package:radici/core/env.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
-import 'package:radici/features/auth/presentation/client_area_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
+import 'package:radici/features/client/presentation/client_shell.dart';
 import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/today/presentation/today_screen.dart';
@@ -124,7 +125,7 @@ void main() {
       expect(find.byType(TodayScreen), findsOneWidget);
     });
 
-    testWidgets('otro usuario ve el área de clientes y puede salir', (
+    testWidgets('la clienta, en su entrada, ve su área y puede salir', (
       tester,
     ) async {
       final auth = FakeAuthRepository(
@@ -132,6 +133,7 @@ void main() {
       );
       await pumpRadiciApp(
         tester,
+        entry: AppEntry.client,
         overrides: [
           authRepositoryProvider.overrideWithValue(auth),
           accountRepositoryProvider.overrideWithValue(
@@ -139,7 +141,7 @@ void main() {
           ),
         ],
       );
-      expect(find.byType(ClientAreaScreen), findsOneWidget);
+      expect(find.byType(ClientShell), findsOneWidget);
       expect(find.text("L'area clienti è in preparazione"), findsOneWidget);
       // Debajo del texto: el selector de idioma y el botón para salir.
       expect(find.byKey(const ValueKey('language-selector')), findsOneWidget);
@@ -149,7 +151,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('client-area-logout')));
       await tester.pumpAndSettle();
       expect(auth.user, isNull);
-      expect(find.text('Cucina di casa, a casa tua'), findsOneWidget);
+      // Sale al login (como la cocina al salir de una ruta de su área).
+      expect(find.byType(LoginScreen), findsOneWidget);
     });
 
     testWidgets('si no se puede leer la cuenta: error con reintentar', (

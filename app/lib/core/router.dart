@@ -6,19 +6,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:radici/core/app_entry.dart';
 import 'package:radici/core/open_dialogs.dart';
 import 'package:radici/core/platform.dart';
 import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/routes.dart';
+import 'package:radici/features/auth/application/auth_link_error.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
-import 'package:radici/features/auth/presentation/client_area_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
+import 'package:radici/features/auth/presentation/wrong_entry_screen.dart';
 import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
 import 'package:radici/features/bookings/presentation/confirm_booking_screen.dart';
 import 'package:radici/features/bookings/presentation/new_booking_client_screen.dart';
 import 'package:radici/features/bookings/presentation/new_client_screen.dart';
+import 'package:radici/features/client/presentation/client_shell.dart';
 import 'package:radici/features/home/presentation/home_screen.dart';
 import 'package:radici/features/more/presentation/more_screen.dart';
 import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
@@ -42,7 +45,11 @@ final routerProvider = Provider<GoRouter>((ref) {
   final refresh = _RouterRefresh();
   // El router no se reconstruye con la sesión: se le avisa que reevalúe.
   ref.listen(sessionControllerProvider, (_, _) => refresh.notify());
+  // Los errores de los links de Auth pueden llegar antes de abrir el login
+  // (la URL de arranque): se escuchan desde ya.
+  ref.listen(authLinkErrorProvider, (_, _) {});
   final isWeb = ref.watch(isWebProvider);
+  final entry = ref.watch(appEntryProvider);
 
   final router = GoRouter(
     navigatorKey: rootNavigatorKey,
@@ -55,6 +62,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       session: ref.read(sessionControllerProvider),
       location: state.uri,
       isWeb: isWeb,
+      entry: entry,
     ),
     errorPageBuilder: (context, state) =>
         _page(state, const NotFoundScreen()),
@@ -80,9 +88,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _page(state, const SessionScreen()),
       ),
       GoRoute(
-        path: AppRoutes.clientArea,
+        path: AppRoutes.wrongEntry,
         pageBuilder: (context, state) =>
-            _page(state, const ClientAreaScreen()),
+            _page(state, const WrongEntryScreen()),
+      ),
+      // El área de la clienta (entrada /app/). Provisoria: sus pantallas
+      // cuelgan de acá en los PRs siguientes.
+      GoRoute(
+        path: AppRoutes.area,
+        pageBuilder: (context, state) => _page(state, const ClientShell()),
       ),
       // Fuera de la estructura con pestañas: tapa la barra de navegación y
       // se abre con push desde el menú de la cuenta.
