@@ -5,7 +5,10 @@
 //   de prueba de Cloudflare) y Cloudflare la reconoce. Se le pregunta a siteverify con un token inventado: con una
 //   secreta válida responde «invalid-input-response» (el token no sirve); con una que no existe, «invalid-input-secret».
 //   Si algo no da, corta antes de tocar Auth.
-// - `auth`, DESPUÉS del PATCH: Auth exige el captcha y tiene la secreta buena. Se le pide un código a una dirección que
+// - `auth`, DESPUÉS del PATCH: Auth exige el captcha y tiene la secreta buena. Supabase aplica la configuración nueva
+//   reiniciando Auth, y eso tarda: el primer despliegue (26/11/2026) preguntó enseguida, Auth todavía respondía con la
+//   configuración vieja y el control apagó el captcha. Por eso se pregunta cada 10 s, hasta 3 minutos, antes de decidir.
+//   Se le pide un código a una dirección que
 //   no existe (sin crear la cuenta): sin token tiene que responder captcha_failed («no captcha_token found»), y con un
 //   token inventado, captcha_failed por «invalid-input-response» (Supabase le preguntó a Cloudflare con su secreta y
 //   Cloudflare la reconoció). En los dos casos Auth corta antes de hacer nada: no se manda ningún email. Si no da, el
@@ -72,7 +75,14 @@ export interface AuthCheckOptions {
   /** Solo los tests la cambian. */
   authBase?: string;
   managementBase?: string;
+  /** Cuántas veces se pregunta antes de decidir (por defecto 18: 3 minutos con 10 s entre una y otra). */
+  attempts?: number;
+  intervalMs?: number;
+  sleep?: (ms: number) => Promise<void>;
 }
+
+export const CHECK_ATTEMPTS = 18;
+export const CHECK_INTERVAL_MS = 10_000;
 
 interface AuthReply {
   status: number;
@@ -101,20 +111,50 @@ async function requestCode(options: AuthCheckOptions, token: string | null): Pro
   }
 }
 
-/** Después del PATCH: Auth exige el captcha y Cloudflare reconoce la secreta que tiene Supabase. */
-export async function checkAuthRequiresCaptcha(options: AuthCheckOptions): Promise<CheckResult> {
-  const without = await requestCode(options, null);
-  if (!without) return { kind: "bad", message: "Auth no respondió al pedido de código de prueba" };
-  if (without.status !== 400 || without.code !== "captcha_failed") {
-    return { kind: "bad", message: `sin token, Auth respondió ${without.status} ${without.code ?? ""} en lugar de captcha_failed: no está exigiendo el captcha` };
-  }
-  const dummy = await requestCode(options, DUMMY_TOKEN);
-  if (!dummy) return { kind: "bad", message: "Auth no respondió al pedido con el token inventado" };
-  if (dummy.code === "captcha_failed" && dummy.message.includes("invalid-input-response")) return { kind: "ok" };
-  if (dummy.message.includes("invalid-input-secret")) {
+/** Lo que dice cada respuesta: listo, todavía no (se vuelve a preguntar) o un error que no se arregla esperando. */
+type Probe = { kind: "ok" } | { kind: "wait"; message: string } | { kind: "bad"; message: string };
+
+/** Sin token: Auth tiene que rechazar el pedido por el captcha. Otra respuesta = todavía no lo exige. */
+function probeWithout(reply: AuthReply | null): Probe {
+  if (!reply) return { kind: "wait", message: "Auth no respondió al pedido de código de prueba" };
+  if (reply.status === 400 && reply.code === "captcha_failed") return { kind: "ok" };
+  return { kind: "wait", message: `sin token, Auth respondió ${reply.status} ${reply.code ?? ""} en lugar de captcha_failed: no está exigiendo el captcha` };
+}
+
+/** Con un token inventado: Cloudflare tiene que reconocer la secreta de Supabase (invalid-input-response). */
+function probeDummy(reply: AuthReply | null): Probe {
+  if (!reply) return { kind: "wait", message: "Auth no respondió al pedido con el token inventado" };
+  if (reply.code === "captcha_failed" && reply.message.includes("invalid-input-response")) return { kind: "ok" };
+  // Una secreta que Cloudflare no reconoce no se arregla esperando.
+  if (reply.message.includes("invalid-input-secret")) {
     return { kind: "bad", message: "Supabase tiene una secreta que Cloudflare no reconoce (invalid-input-secret)" };
   }
-  return { kind: "bad", message: `con un token inventado, Auth respondió ${dummy.status} ${dummy.code ?? ""}: el captcha no quedó bien` };
+  // Un 500 «captcha verification process failed» (Cloudflare no contestó) o un reinicio en curso: se vuelve a preguntar.
+  return { kind: "wait", message: `con un token inventado, Auth respondió ${reply.status} ${reply.code ?? ""}: el captcha no quedó bien` };
+}
+
+/**
+ * Después del PATCH: Auth exige el captcha y Cloudflare reconoce la secreta que tiene Supabase. Pregunta hasta
+ * [AuthCheckOptions.attempts] veces (cada [AuthCheckOptions.intervalMs]) mientras la respuesta sea «todavía no».
+ */
+export async function checkAuthRequiresCaptcha(options: AuthCheckOptions): Promise<CheckResult> {
+  const attempts = Math.max(1, options.attempts ?? CHECK_ATTEMPTS);
+  const interval = options.intervalMs ?? CHECK_INTERVAL_MS;
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let last = "";
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (attempt > 1) await sleep(interval);
+    const without = probeWithout(await requestCode(options, null));
+    if (without.kind !== "ok") {
+      last = without.message;
+      continue;
+    }
+    const dummy = probeDummy(await requestCode(options, DUMMY_TOKEN));
+    if (dummy.kind === "ok") return { kind: "ok" };
+    if (dummy.kind === "bad") return dummy;
+    last = dummy.message;
+  }
+  return { kind: "bad", message: `${last} (después de ${attempts} ${attempts === 1 ? "intento" : "intentos"})` };
 }
 
 /** Vuelta atrás automática: apaga el captcha de Auth (el login sigue como antes de prenderlo). */
