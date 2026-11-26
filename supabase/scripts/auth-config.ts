@@ -14,7 +14,9 @@
 //   números, con la actual para cambiarla (contrato docs/contracts/auth.md).
 //   No depende del plan.
 // - smtp: el SMTP de Resend (necesita RESEND_SMTP_KEY y MAIL_FROM).
-// - templates: asuntos, plantilla del código, el aviso de contraseña cambiada y límite de emails. En un proyecto Free (desde junio de
+// - templates: asuntos y plantillas de los seis emails de Auth (auth.md §13: el código de la cocina, el alta y la
+//   recuperación con link a /accesso/, y tres que Radici no usa, sin link ni código), el aviso de contraseña cambiada y
+//   el límite de emails. En un proyecto Free (desde junio de
 //   2026) Supabase solo deja cambiar las plantillas con SMTP propio: sin él, el email del código trae
 //   el link de la plantilla por defecto y no el código, y la app no deja entrar. Por eso va después
 //   del SMTP y nunca sin él.
@@ -26,6 +28,7 @@
 // Solo sintaxis borrable: corre con node, sin compilar.
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { AUTH_EMAIL_KINDS, TEMPLATE_FILES, goTrueSubject } from "../functions/_shared/auth_emails.ts";
 
 export interface SmtpSettings {
   /** Clave de Resend ("Sending access") que hace de contraseña del SMTP. */
@@ -272,19 +275,30 @@ export function authSmtpConfig(smtp: SmtpSettings): AuthBody {
   };
 }
 
-/** Asuntos y plantillas del código y del aviso de contraseña (rutas de config.toml, leídas con [readFile]) y límite de emails. */
+/** Asuntos y plantillas de Auth y del aviso de contraseña (rutas de config.toml, leídas con [readFile]) y límite de emails. */
 export function authTemplatesConfig(toml: string, readFile: (path: string) => string): AuthBody {
-  const magicLink = tomlSection(toml, "auth.email.template.magic_link");
-  const confirmation = tomlSection(toml, "auth.email.template.confirmation");
   const passwordChanged = tomlSection(toml, "auth.email.notification.password_changed");
   if (passwordChanged.get("enabled") !== true) {
     throw new Error("config.toml: [auth.email.notification.password_changed] tiene que estar prendido (auth.md §12)");
   }
+  // Las seis plantillas de Auth (auth.md §13). config.toml tiene que apuntar a los archivos que genera
+  // auth-templates.ts y llevar los asuntos de auth_emails.ts: si alguien los cambia a mano, el despliegue corta.
+  const templates: AuthBody = {};
+  for (const kind of AUTH_EMAIL_KINDS) {
+    const section = tomlSection(toml, `auth.email.template.${kind}`);
+    const subject = requireValue<string>(section, "subject", "string");
+    const path = requireValue<string>(section, "content_path", "string");
+    if (subject !== goTrueSubject(kind)) {
+      throw new Error(`config.toml: el asunto de [auth.email.template.${kind}] no es el de auth_emails.ts (correr auth-templates.ts y copiarlo)`);
+    }
+    if (path !== `./supabase/templates/${TEMPLATE_FILES[kind]}`) {
+      throw new Error(`config.toml: [auth.email.template.${kind}] tiene que usar ./supabase/templates/${TEMPLATE_FILES[kind]}`);
+    }
+    templates[`mailer_subjects_${kind}`] = subject;
+    templates[`mailer_templates_${kind}_content`] = readFile(path);
+  }
   return {
-    mailer_subjects_magic_link: requireValue<string>(magicLink, "subject", "string"),
-    mailer_templates_magic_link_content: readFile(requireValue<string>(magicLink, "content_path", "string")),
-    mailer_subjects_confirmation: requireValue<string>(confirmation, "subject", "string"),
-    mailer_templates_confirmation_content: readFile(requireValue<string>(confirmation, "content_path", "string")),
+    ...templates,
     // El aviso «cambió tu contraseña» (PR14): después de cada cambio, sin link ni datos de la cuenta.
     mailer_notifications_password_changed_enabled: true,
     mailer_subjects_password_changed_notification: requireValue<string>(passwordChanged, "subject", "string"),

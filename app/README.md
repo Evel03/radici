@@ -176,7 +176,7 @@ repositorios falsos (`test/support/fakes.dart`).
 
 ## Qué hace
 
-- **Login** con código por email (Supabase Auth, OTP de 8 cifras que vale 10 minutos; la app acepta de
+- **Login** con código por email (Supabase Auth, OTP de 10 cifras que vale una hora desde PR16; la app acepta de
   6 a 10): email → código → sesión. No crea usuarios (`shouldCreateUser: false`): hasta el área de
   clientes (M2) solo entra quien ya tiene uno; un email desconocido ve "non è abilitato all'accesso".
   La sesión la guarda supabase_flutter (SharedPreferences en el teléfono, localStorage en la web). El

@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PASSWORD_MIN_LENGTH as WEB_PASSWORD_MIN_LENGTH, passwordProblem } from "../../web/src/access/password.ts";
+import { AUTH_EMAIL_KINDS, TEMPLATE_FILES, goTrueSubject, goTrueTemplate } from "../functions/_shared/auth_emails.ts";
 import {
   LETTERS_DIGITS,
   PASSWORD_MIN_LENGTH,
@@ -44,14 +45,14 @@ test("TOML: secciones, cadenas con comillas escapadas, enteros, booleanos y come
   assert.equal(tomlSection(toml, "no.existe").size, 0);
 });
 
-test("security: altas apagadas, código de 8 cifras por 10 minutos y el captcha de Auth (Turnstile); nada de correo", () => {
+test("security: altas apagadas, código de 10 cifras por 1 hora y el captcha de Auth (Turnstile); nada de correo", () => {
   const body = authSecurityConfig(CONFIG);
   assert.deepEqual(body, {
     ...PINNED, // lo del PR04 (más abajo)
     disable_signup: true,
     external_email_enabled: true,
-    mailer_otp_length: 8,
-    mailer_otp_exp: 600,
+    mailer_otp_length: 10,
+    mailer_otp_exp: 3600,
     security_captcha_enabled: true,
     security_captcha_provider: "turnstile",
   });
@@ -67,16 +68,24 @@ test("captcha: la secreta viene de TURNSTILE_AUTH_SECRET_KEY, sin espacios; sin 
   assert.deepEqual(verifyAuthConfig({ security_captcha_enabled: true }, { security_captcha_enabled: false }), ["security_captcha_enabled"]);
 });
 
-test("templates: las dos plantillas son el código del repo, con el asunto en el idioma del usuario", () => {
+test("templates: las seis plantillas son las del repo (auth_emails.ts), con el asunto en el idioma del usuario", () => {
   const body = authTemplatesConfig(CONFIG, read);
-  for (const kind of ["magic_link", "confirmation"]) {
-    assert.equal(body[`mailer_templates_${kind}_content`], TEMPLATE);
-    assert.ok(String(body[`mailer_templates_${kind}_content`]).includes("{{ .Token }}"), "la plantilla trae el código");
+  for (const kind of AUTH_EMAIL_KINDS) {
+    assert.equal(body[`mailer_templates_${kind}_content`], read(`supabase/templates/${TEMPLATE_FILES[kind]}`), kind);
+    assert.equal(body[`mailer_templates_${kind}_content`], goTrueTemplate(kind), `${kind}: el archivo es el generado`);
     const subject = String(body[`mailer_subjects_${kind}`]);
-    for (const text of ["Tu código de acceso", "Your sign-in code", "Il tuo codice di accesso"]) {
-      assert.ok(subject.includes(text), `${kind}: falta ${text}`);
-    }
+    assert.equal(subject, goTrueSubject(kind));
     assert.ok(!subject.includes('\\"'), "comillas sin escapar");
+  }
+  // La del código de la cocina: el código, sin link. La del alta y la de recuperación: el link, sin código.
+  assert.equal(body.mailer_templates_magic_link_content, TEMPLATE);
+  assert.ok(String(body.mailer_templates_magic_link_content).includes("{{ .Token }}"));
+  for (const text of ["Tu código de acceso", "Your sign-in code", "Il tuo codice di accesso"]) {
+    assert.ok(String(body.mailer_subjects_magic_link).includes(text), `magic_link: falta ${text}`);
+  }
+  for (const kind of ["confirmation", "recovery"]) {
+    const html = String(body[`mailer_templates_${kind}_content`]);
+    assert.ok(html.includes("{{ .TokenHash }}") && !html.includes("{{ .Token }}"), kind);
   }
   assert.equal(body.rate_limit_email_sent, 100);
   assert.ok(Object.keys(body).every((key) => !key.startsWith("smtp_")));
@@ -165,6 +174,10 @@ const MANAGEMENT_API_AUTH_FIELDS = [
   "mailer_subjects_password_changed_notification", "mailer_templates_password_changed_notification_content",
   // PR11: el captcha de Auth y la frecuencia de los emails.
   "security_captcha_provider", "security_captcha_secret", "smtp_max_frequency",
+  // PR16: las otras cuatro plantillas de Auth (OpenAPI leído el 26/11/2026).
+  "mailer_subjects_recovery", "mailer_templates_recovery_content", "mailer_subjects_email_change",
+  "mailer_templates_email_change_content", "mailer_subjects_reauthentication", "mailer_templates_reauthentication_content",
+  "mailer_subjects_invite", "mailer_templates_invite_content",
 ];
 
 const PINNED = {
@@ -207,8 +220,8 @@ test("security: el cuerpo fija cada ajuste del PR04 con el nombre de campo de la
   // Lo de antes sigue igual: Evelyn entra con el mismo código de 8 cifras.
   assert.equal(body.disable_signup, true);
   assert.equal(body.external_email_enabled, true);
-  assert.equal(body.mailer_otp_length, 8);
-  assert.equal(body.mailer_otp_exp, 600);
+  assert.equal(body.mailer_otp_length, 10);
+  assert.equal(body.mailer_otp_exp, 3600);
   assert.equal(body.security_captcha_enabled, true);
 });
 
@@ -317,9 +330,9 @@ test("plantillas: .Data solo para comparar el idioma; nada del usuario sale en e
     assert.match(action, /^\{\{ (else )?if and \.Data\.locale \(eq \.Data\.locale \\?"(es|en)\\?"\) \}\}$/, `.Data fuera de una comparación: ${action}`);
   }
   for (const text of [TEMPLATE, PASSWORD_NOTICE, CONFIG]) assert.ok(!/\.Data(?!\.locale\b)/.test(text), ".Data sin .locale");
-  // Lo único que la plantilla imprime es el código; nada de links ni datos del usuario.
+  // Lo único que la plantilla del código imprime es el código (una vez por idioma); nada de links ni datos del usuario.
   const printed = [...TEMPLATE.matchAll(/\{\{\s*([^}]*?)\s*\}\}/g)].map((m) => m[1] ?? "").filter((a) => !/^(if|else|end)\b/.test(a));
-  assert.deepEqual(printed, [".Token"]);
+  assert.deepEqual([...new Set(printed)], [".Token"]);
   // Lo mismo para los asuntos de config.toml: nada del usuario.
   for (const banned of [".ConfirmationURL", ".TokenHash", ".SiteURL", ".RedirectTo", ".Email", ".NewEmail"]) {
     assert.ok(!TEMPLATE.includes(banned), `la plantilla no usa ${banned}`);

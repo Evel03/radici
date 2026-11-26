@@ -257,11 +257,13 @@ secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
 # Number of characters used in the email OTP.
-# Radici: 8 cifras y 10 minutos, como en producción (Email OTP Length / Expiration): un código más
-# largo y más corto en el tiempo es más difícil de adivinar. La app acepta de 6 a 10 cifras.
-otp_length = 8
+# Radici (PR16, contrato auth.md §13): 10 cifras y 1 hora, como en producción (Email OTP Length / Expiration). La
+# hora es por los links de alta y de recuperación (abrir el email en otro dispositivo, más tarde); las 10 cifras
+# compensan ese tiempo para el código de la cocina, junto con las 10 verificaciones cada 5 minutos por IP. La app
+# acepta de 6 a 10 cifras.
+otp_length = 10
 # Number of seconds before the email OTP expires (defaults to 1 hour).
-otp_expiry = 600
+otp_expiry = 3600
 
 # Use a production-ready SMTP server
 # [auth.email.smtp]
@@ -273,23 +275,36 @@ otp_expiry = 600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Uncomment to customize email template
-# [auth.email.template.invite]
-# subject = "You have been invited"
-# content_path = "./supabase/templates/invite.html"
-
-# Login con código (OTP) de la app: el email lleva el código de 8 cifras ({{ .Token }}), sin link.
-# signInWithOtp manda "magic_link" a un usuario existente y "confirmation" al que entra por
-# primera vez (con las altas apagadas, solo "magic_link"); los dos usan la misma plantilla. En
-# producción los aplica deploy-supabase.yml desde este archivo (supabase/scripts/auth-config.ts):
-# asuntos, HTML, altas apagadas, OTP de 8 cifras por 600 s y SMTP propio (Resend) (contrato §10).
+# Emails de Auth (PR16, contrato auth.md §13): las seis plantillas salen de supabase/functions/_shared/auth_emails.ts
+# (node supabase/scripts/auth-templates.ts las escribe en supabase/templates/; un test comprueba que coinciden, y también
+# estos asuntos). En it, es y en según user_metadata.locale. En producción las aplica deploy-supabase.yml
+# (supabase/scripts/auth-config.ts, la parte de plantillas, con SMTP propio).
+# - magic_link: el código de la cocina ({{ .Token }}, 10 cifras, 1 hora), sin link.
+# - confirmation y recovery: el link a https://radicicucina.app/accesso/ con el token_hash en el fragmento (contrato §11).
+# - email_change, reauthentication e invite: Radici no los usa; sin link ni código.
 [auth.email.template.magic_link]
 subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Tu código de acceso{{ else if and .Data.locale (eq .Data.locale \"en\") }}Your sign-in code{{ else }}Il tuo codice di accesso{{ end }}"
 content_path = "./supabase/templates/login_code.html"
 
 [auth.email.template.confirmation]
-subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Tu código de acceso{{ else if and .Data.locale (eq .Data.locale \"en\") }}Your sign-in code{{ else }}Il tuo codice di accesso{{ end }}"
-content_path = "./supabase/templates/login_code.html"
+subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Activa tu cuenta de Radici{{ else if and .Data.locale (eq .Data.locale \"en\") }}Activate your Radici account{{ else }}Attiva il tuo account Radici{{ end }}"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Elige una contraseña nueva{{ else if and .Data.locale (eq .Data.locale \"en\") }}Choose a new password{{ else }}Scegli una nuova password{{ end }}"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Pedido de cambio de email{{ else if and .Data.locale (eq .Data.locale \"en\") }}Email change request{{ else }}Richiesta di cambio email{{ end }}"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.template.reauthentication]
+subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Verificación de tu cuenta{{ else if and .Data.locale (eq .Data.locale \"en\") }}Account verification{{ else }}Verifica del tuo account{{ end }}"
+content_path = "./supabase/templates/reauthentication.html"
+
+[auth.email.template.invite]
+subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Radici{{ else if and .Data.locale (eq .Data.locale \"en\") }}Radici{{ else }}Radici{{ end }}"
+content_path = "./supabase/templates/invite.html"
 
 # Aviso «cambió tu contraseña» (PR14, contrato auth.md §12): Auth lo manda después de cada cambio de contraseña,
 # sin link ni datos de la cuenta. En producción lo aplica deploy-supabase.yml (la parte de plantillas, con SMTP).

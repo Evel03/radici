@@ -320,8 +320,9 @@ jobs:
           patch smtp
           patch templates
           # Si Supabase ignorara la plantilla (plan o SMTP), el despliegue tiene que fallar, no quedar verde.
+          # (Las demás plantillas las compara verify; esta, además, por su nombre: sin ella Evelyn no entra.)
           if ! jq -e --rawfile template supabase/templates/login_code.html \
-            '.mailer_templates_magic_link_content == $template and .mailer_templates_confirmation_content == $template' \
+            '.mailer_templates_magic_link_content == $template' \
             "${response}" > /dev/null; then
             echo "::error::Supabase no guardó la plantilla del código: el email traería un link en lugar del código."
             exit 1
