@@ -29,12 +29,15 @@ Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo s
 | security | `hook_before_user_created_enabled` | `false` (el freno de altas se prende en PR20, con las altas) | sin `[auth.hook.before_user_created]` |
 | security | `rate_limit_token_refresh`, `rate_limit_otp`, `rate_limit_anonymous_users`, `rate_limit_sms_sent`, `rate_limit_web3` | `20`, `10`, `1`, `1`, `1` (§9) | `token_refresh`, `sign_in_sign_ups`, `anonymous_users`, `sms_sent`, `web3` |
 | security | `external_google_enabled`, `external_apple_enabled`, `external_phone_enabled`, `external_anonymous_users_enabled`, `external_web3_solana_enabled`, `external_web3_ethereum_enabled`, `saml_enabled` | `false` | sin proveedores en `config.toml` |
+| security | `password_min_length`, `password_required_characters` | `10`, letras y números (§12) | `[auth] minimum_password_length = 10`, `password_requirements = "letters_digits"` |
+| security | `security_update_password_require_current_password`, `security_update_password_require_reauthentication` | `true`, `false` (§12) | (la CLI 2.121 no tiene el primero), `[auth.email] secure_password_change = false` |
 | smtp | `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `smtp_admin_email`, `smtp_sender_name` | Resend, remitente de `MAIL_FROM` | |
 | templates | `mailer_subjects_magic_link`, `mailer_subjects_confirmation`, `mailer_templates_*_content`, `rate_limit_email_sent` | asunto de `config.toml`, `login_code.html`, 100 | |
+| templates | `mailer_notifications_password_changed_enabled`, `mailer_subjects_password_changed_notification`, `mailer_templates_password_changed_notification_content` | `true`, asunto de `config.toml`, `password_changed.html` (§12) | `[auth.email.notification.password_changed]` |
 
 `site_url` y `uri_allow_list` son la única URL del área de clientes (`/app/`). No incluyen `/gestione/`, porque el login de Evelyn no redirige. Si algún día `/gestione/` usara `emailRedirectTo` (links en lugar de código), hay que sumarlo a `uri_allow_list` en `auth-config.ts` (una lista exacta, sin comodines).
 
-Cada ajuste de la tabla que tiene su par en `config.toml` se comprueba también ahí: `authSecurityConfig` falla si `config.toml` prende un autoconfirm (`enable_confirmations = false`), el linking manual, los anónimos, el teléfono, Web3 o cualquier `[auth.external.*]`, apaga el cambio de email seguro o cambia `token_verifications` (tiene que ser 10). Así lo local y lo de producción no se separan y el despliegue corta (con código 2) antes de la primera llamada a la API.
+Cada ajuste de la tabla que tiene su par en `config.toml` se comprueba también ahí: `authSecurityConfig` falla si `config.toml` prende un autoconfirm (`enable_confirmations = false`), el linking manual, los anónimos, el teléfono, Web3 o cualquier `[auth.external.*]`, apaga el cambio de email seguro, cambia `token_verifications` (tiene que ser 10) o afloja las contraseñas (§12). Así lo local y lo de producción no se separan y el despliegue corta (con código 2) antes de la primera llamada a la API.
 
 ## 3. Cómo se comprueba, y por qué corta antes de migrar
 
@@ -295,3 +298,23 @@ https://radicicucina.app/accesso/?lang=<it|es|en>#token_hash=<{{ .TokenHash }}>&
 - Quien tiene el link puede elegir la contraseña de esa cuenta: es lo mismo que tener el buzón. Por eso el link dura poco y se usa una vez (PR16), y la página muestra de qué cuenta es antes de pedir la contraseña.
 - Si alguien cierra la página entre «Conferma» y guardar la contraseña, la sesión queda abierta en el servidor hasta que vence (nadie más la tiene: vivía solo en esa pestaña). La cuenta confirmada queda sin contraseña (PR05): el login y «Crea account» sugieren «Password dimenticata?» (PR17).
 - El aviso «Troppi tentativi» de `/verify` sale del límite por IP de Auth (§9), compartido con el código de Evelyn.
+
+## 12. Contraseñas (PR14, 26/11/2026)
+
+Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerradas). Las fija el repo antes de que existan, para que la primera que se elija ya cumpla la regla.
+
+**La regla.** 10 caracteres o más, con al menos una letra (a-z o A-Z) y un dígito: `password_min_length = 10` y `password_required_characters` = letras y dígitos (`letters_digits` en `config.toml`). GoTrue la aplica en el alta, en `PUT /user` y en las altas y cambios del panel de admin (`weak_password`, con las razones `length` y `characters`). No acepta más de 72 bytes (bcrypt). Entrar con una contraseña vieja que ya no cumple sigue andando (GoTrue solo avisa). La página `/accesso/` (`web/src/access/password.ts`) aplica la misma regla, y un test de `auth-config.test.ts` compara las dos.
+
+**Cambiarla.**
+- Con una sesión abierta con contraseña, hace falta la actual (`security_update_password_require_current_password`): sin ella, 400 `current_password_required`; con una equivocada, 400 `current_password_invalid` (GoTrue v2.197.0; el código fuente más nuevo lo llama `current_password_mismatch`: la app, PR17, acepta los dos).
+- Con una sesión de `POST /verify` (amr `otp`: la de `/accesso/`, la recuperación y el código), no: GoTrue la cuenta como recuperación (`Session.IsRecovery`).
+- Sin reautenticación por código (`security_update_password_require_reauthentication = false`, `secure_password_change = false`): con la actual alcanza.
+- El cambio **cierra las demás sesiones** de la cuenta (la que la cambió sigue) y borra los links pendientes (confirmación, recuperación).
+
+**El aviso.** Después de cada cambio, Auth manda «La password del tuo account è cambiata» (`supabase/templates/password_changed.html`, con el asunto de `config.toml`), en el idioma de `user_metadata.locale`, sin link ni datos de la cuenta, con qué hacer si no fue ella («Password dimenticata?» en la app y avisar a Evelyn). Va en la parte de plantillas (necesita el SMTP propio).
+
+**HIBP** (rechazar contraseñas filtradas, Have I Been Pwned) necesita el plan Pro: `password_hibp_enabled` no va en el cuerpo hasta pasar a Pro (se prende en ese PR, antes del lanzamiento; la puerta de PR69 lo exige). Si un día HIBP no responde, GoTrue deja pasar la contraseña: se acepta a sabiendas.
+
+**Las cuentas que crea el despliegue** (`deploy-accounts.sh`: 64 hexadecimales al azar, que nadie usa) cumplen la regla salvo con probabilidad menor a 10⁻¹³.
+
+**Probado** contra GoTrue v2.197.0 con esta configuración (un contenedor aparte sobre la base local, porque la CLI 2.121 no sabe poner `require_current_password`): contraseñas cortas, sin números y sin letras rechazadas (también en el alta), `current_password_required` y `current_password_invalid`, el cambio con la actual, la otra sesión cerrada y la que la cambió viva, el cambio sin la actual con una sesión de `/verify` de recuperación, y el aviso en it, es y en (asunto, texto y `lang`), sin link ni el email.

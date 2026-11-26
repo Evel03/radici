@@ -9,10 +9,11 @@
 // API ignora en silencio, corta el despliegue antes de db push):
 // - security: altas apagadas, código de 8 cifras y su vencimiento, CAPTCHA, sin autoconfirm, sin entrar
 //   con emails sin verificar, cambio de email seguro, linking manual apagado, 10 verificaciones cada 5
-//   minutos, URLs de redirección exactas y solo el email como proveedor (contrato docs/contracts/auth.md).
+//   minutos, URLs de redirección exactas, solo el email como proveedor y contraseñas de 10 o más con letras y
+//   números, con la actual para cambiarla (contrato docs/contracts/auth.md).
 //   No depende del plan.
 // - smtp: el SMTP de Resend (necesita RESEND_SMTP_KEY y MAIL_FROM).
-// - templates: asuntos, plantilla del código y límite de emails. En un proyecto Free (desde junio de
+// - templates: asuntos, plantilla del código, el aviso de contraseña cambiada y límite de emails. En un proyecto Free (desde junio de
 //   2026) Supabase solo deja cambiar las plantillas con SMTP propio: sin él, el email del código trae
 //   el link de la plantilla por defecto y no el código, y la app no deja entrar. Por eso va después
 //   del SMTP y nunca sin él.
@@ -97,6 +98,13 @@ function requireValue<T extends TomlValue>(section: Map<string, TomlValue>, key:
   return value as T;
 }
 
+/**
+ * Contraseñas (PR14, contrato auth.md §12): 10 o más caracteres, con letras y números. password_required_characters
+ * es el valor de la Management API para letters_digits de config.toml (una letra de a-z o A-Z y un dígito).
+ */
+export const PASSWORD_MIN_LENGTH = 10;
+export const LETTERS_DIGITS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789";
+
 /** Única URL de redirección de Auth: el área de clientes (M2). /gestione/ entra con el código de 8 cifras, sin redirección. */
 export const AUTH_SITE_URL = "https://radicicucina.app/app/";
 
@@ -151,6 +159,10 @@ export function authSecurityConfig(toml: string): AuthBody {
   requireLocalMatch(toml, "auth.rate_limit", "anonymous_users", 1, "[auth.rate_limit] anonymous_users tiene que ser 1 (rate_limit_anonymous_users de producción)");
   requireLocalMatch(toml, "auth.rate_limit", "sms_sent", 1, "[auth.rate_limit] sms_sent tiene que ser 1 (rate_limit_sms_sent de producción)");
   requireLocalMatch(toml, "auth.rate_limit", "web3", 1, "[auth.rate_limit] web3 tiene que ser 1 (rate_limit_web3 de producción)");
+  // Contraseñas (auth.md §12): la misma regla en local y en producción; si config.toml la afloja, corta.
+  requireLocalMatch(toml, "auth", "minimum_password_length", PASSWORD_MIN_LENGTH, `[auth] minimum_password_length tiene que ser ${PASSWORD_MIN_LENGTH}`);
+  requireLocalMatch(toml, "auth", "password_requirements", "letters_digits", '[auth] password_requirements tiene que ser "letters_digits"');
+  requireLocalMatch(toml, "auth.email", "secure_password_change", false, "[auth.email] secure_password_change: producción pide la contraseña actual, no reautenticarse");
   const providers = enabledExternalProviders(toml);
   if (providers.length > 0) {
     throw new Error(`config.toml prende proveedores externos (${providers.join(", ")}): Google y Apple se prenden en su PR, con su secreto en auth-config.ts`);
@@ -194,6 +206,15 @@ export function authSecurityConfig(toml: string): AuthBody {
     rate_limit_anonymous_users: 1,
     rate_limit_sms_sent: 1,
     rate_limit_web3: 1,
+    // Contraseñas (contrato auth.md §12): 10 o más, con letras y números. Para cambiarla, la actual
+    // (require_current_password), salvo con una sesión de recuperación: GoTrue cuenta como recuperación toda sesión de
+    // POST /verify (amr otp), la de /accesso/ incluida. Sin reautenticación por código (secure_password_change). La CLI
+    // 2.121 no sabe poner require_current_password en local: se probó con un GoTrue aparte (auth.md §12).
+    // HIBP (contraseñas filtradas) necesita el plan Pro: no va en el cuerpo hasta pasar a Pro (se prende en ese PR).
+    password_min_length: PASSWORD_MIN_LENGTH,
+    password_required_characters: LETTERS_DIGITS,
+    security_update_password_require_current_password: true,
+    security_update_password_require_reauthentication: false,
     external_google_enabled: false,
     external_apple_enabled: false,
     external_phone_enabled: false,
@@ -233,15 +254,23 @@ export function authSmtpConfig(smtp: SmtpSettings): AuthBody {
   };
 }
 
-/** Asuntos y plantilla del código (rutas de config.toml, leídas con [readFile]) y límite de emails. */
+/** Asuntos y plantillas del código y del aviso de contraseña (rutas de config.toml, leídas con [readFile]) y límite de emails. */
 export function authTemplatesConfig(toml: string, readFile: (path: string) => string): AuthBody {
   const magicLink = tomlSection(toml, "auth.email.template.magic_link");
   const confirmation = tomlSection(toml, "auth.email.template.confirmation");
+  const passwordChanged = tomlSection(toml, "auth.email.notification.password_changed");
+  if (passwordChanged.get("enabled") !== true) {
+    throw new Error("config.toml: [auth.email.notification.password_changed] tiene que estar prendido (auth.md §12)");
+  }
   return {
     mailer_subjects_magic_link: requireValue<string>(magicLink, "subject", "string"),
     mailer_templates_magic_link_content: readFile(requireValue<string>(magicLink, "content_path", "string")),
     mailer_subjects_confirmation: requireValue<string>(confirmation, "subject", "string"),
     mailer_templates_confirmation_content: readFile(requireValue<string>(confirmation, "content_path", "string")),
+    // El aviso «cambió tu contraseña» (PR14): después de cada cambio, sin link ni datos de la cuenta.
+    mailer_notifications_password_changed_enabled: true,
+    mailer_subjects_password_changed_notification: requireValue<string>(passwordChanged, "subject", "string"),
+    mailer_templates_password_changed_notification_content: readFile(requireValue<string>(passwordChanged, "content_path", "string")),
     // Cualquiera puede pedir un código por minuto para el email de Evelyn (60 por hora), y el límite es
     // de todo el proyecto. Supabase solo deja cambiarlo con SMTP propio.
     rate_limit_email_sent: 100,
