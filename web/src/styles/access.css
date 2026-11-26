@@ -45,6 +45,11 @@
   font-size: 1.15rem;
 }
 
+/* Una nota al pie de la página, separada de los botones (el link a la privacy de /preferenze/). */
+.access__footnote {
+  margin-top: 1.5rem;
+}
+
 /* El email enmascarado: sin partirlo en el medio de una palabra si no hace falta. */
 .access__account strong {
   overflow-wrap: anywhere;

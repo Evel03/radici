@@ -195,6 +195,15 @@ describe("translateErrors (respuesta 400 del servidor)", () => {
     });
   });
 
+  it("la versión de la casilla de ofertas que el servidor no acepta: pide recargar (marcarla otra vez no lo arregla)", () => {
+    const sent = { privacy: "x", health: null, marketing: "2026-11-27" };
+    expect(translateErrors({ consentMarketing: "invalid" }, sent)).toEqual({ fields: {}, outdated: true });
+    // Sin la casilla en lo que se mandó (otra página), el error es del campo: «invalid».
+    expect(translateErrors({ consentMarketing: "invalid" }, { privacy: "x", health: null, marketing: null }).fields).toEqual({
+      consentMarketing: { key: "errors.invalid" },
+    });
+  });
+
   it("un error en alérgenos o dietas (que la web manda vacíos) es de otra versión del servidor: pide recargar", () => {
     expect(translateErrors({ diets: "invalid" })).toEqual({ fields: {}, outdated: true });
     expect(translateErrors({ allergens: "invalid", name: "required" })).toEqual({

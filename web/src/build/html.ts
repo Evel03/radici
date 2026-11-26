@@ -29,7 +29,7 @@ export const NOT_FOUND_PATH = "/404.html";
  * (en un marco o una WebView) y /accesso/, el link de un email de Auth (#token_hash=…). Nunca se indexan ni declaran
  * canonical.
  */
-export const PRIVATE_PATHS: readonly string[] = ["/prenotazione/", "/captcha/", "/accesso/"];
+export const PRIVATE_PATHS: readonly string[] = ["/prenotazione/", "/captcha/", "/accesso/", "/preferenze/"];
 
 export function escapeHtml(value: string): string {
   return value

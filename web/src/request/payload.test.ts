@@ -5,6 +5,7 @@ import { TEST_TOKEN, TODAY, validRequest } from "./fixtures.ts";
 import {
   CONSENT_VERSION,
   HEALTH_CONSENT_VERSION,
+  MARKETING_CONSENT_VERSION,
   MAX_PAYLOAD_BYTES,
   PUBLIC_REQUEST_VERSION,
   TEXT_LIMITS,
@@ -31,6 +32,13 @@ describe("buildPayload", () => {
     expect(result.value.consents).toEqual({ privacy: CONSENT_VERSION, health: null, marketing: null });
     // La entrada del motor es la del vector 1 (el precio lo calcula solo el servidor, y la web no lo muestra).
     expect(result.value.quoteInput).toEqual({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 });
+  });
+
+  it("la casilla de ofertas: marcada, la versión de su texto (y el servidor la acepta); sin marcar, null", () => {
+    const ticked = serverParse(validRequest({ consentMarketing: true }));
+    expect(ticked.ok && ticked.value.consents.marketing).toBe(MARKETING_CONSENT_VERSION);
+    expect(buildPayload(validRequest({ consentMarketing: true }), { locale: "it", turnstileToken: "t" }).consents.marketing).toBe(MARKETING_CONSENT_VERSION);
+    expect(buildPayload(validRequest(), { locale: "it", turnstileToken: "t" }).consents.marketing).toBeNull();
   });
 
   it("manda las semanas del pedido semanal; una sesión extra, siempre 1", () => {

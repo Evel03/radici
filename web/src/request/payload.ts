@@ -4,6 +4,7 @@
 import {
   CONSENT_VERSION,
   HEALTH_CONSENT_VERSION,
+  MARKETING_CONSENT_VERSION,
   PUBLIC_REQUEST_VERSION,
   cleanMultiLine,
   cleanOneLine,
@@ -56,6 +57,8 @@ export function buildPayload(data: RequestData, opts: PayloadOptions): PublicReq
       // Solo con alergias escritas: sin datos de salud no hay consentimiento de salud que guardar. Con la
       // versión del texto de salud, no la de la privacy (HEALTH_CONSENT_VERSION).
       health: hasHealthData(data) && data.consentHealth ? HEALTH_CONSENT_VERSION : null,
+      // Ofertas y novedades: la versión de su texto solo si marcó la casilla; si no, null.
+      marketing: data.consentMarketing ? MARKETING_CONSENT_VERSION : null,
     },
     turnstileToken: opts.turnstileToken,
     // Los platos elegidos, en el orden en que los tildó ([] si el menù lo propone Evelyn).

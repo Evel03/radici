@@ -325,8 +325,46 @@ describe("public/_headers real", () => {
     expect(headersFor(rules, "/accessox", "radicicucina.app").has("X-Robots-Tag")).toBe(false);
   });
 
+  // /preferenze/: el link de ofertas y novedades (docs/contracts/public-request.md §13). POST a public-request con el token.
+  const preferencesPaths = ["/preferenze/", "/preferenze/index.html"];
+
+  it("/preferenze/: solo Supabase (la función) en connect-src; sin marcos, sin terceros, form-action 'none'", () => {
+    for (const path of preferencesPaths) {
+      const policy = csp(path);
+      expect(policy.get("default-src"), path).toEqual(["'self'"]);
+      expect(policy.get("script-src"), path).toEqual(["'self'"]);
+      expect(policy.get("connect-src"), path).toEqual(["'self'", origin]);
+      expect(policy.get("img-src"), path).toEqual(["'self'", "data:"]);
+      expect(policy.has("frame-src"), path).toBe(false);
+      expect(policy.get("form-action"), path).toEqual(["'none'"]);
+      expect(policy.get("frame-ancestors"), path).toEqual(["'none'"]);
+    }
+  });
+
+  it("/preferenze/ es la CSP base más Supabase, con form-action 'none' (no se desalinean)", () => {
+    const base = csp("/");
+    const page = csp("/preferenze/");
+    for (const [directive, sources] of base) {
+      const extra = (page.get(directive) ?? []).filter((s) => !sources.includes(s));
+      if (directive === "connect-src") expect(extra, directive).toEqual([origin]);
+      else if (directive === "form-action") expect(page.get(directive)).toEqual(["'none'"]);
+      else expect(page.get(directive), directive).toEqual(sources);
+    }
+    expect([...page.keys()].filter((d) => !base.has(d))).toEqual([]);
+  });
+
+  it("/preferenze/: sin Referer, sin caché y nunca se indexa ni se deja enmarcar", () => {
+    for (const path of preferencesPaths) {
+      const headers = headersFor(rules, path, "radicicucina.app");
+      expect(headers.get("Referrer-Policy"), path).toBe("no-referrer");
+      expect(headers.get("Cache-Control"), path).toBe("no-store");
+      expect(headers.get("X-Robots-Tag"), path).toBe("noindex, nofollow");
+      expect(headers.get("X-Frame-Options"), path).toBe("DENY");
+    }
+  });
+
   it("páginas públicas: nada de 'unsafe-inline', 'unsafe-eval' ni comodines", () => {
-    for (const path of ["/", "/privacy/", "/richiesta/", "/prenotazione/", "/captcha/", "/accesso/", "/no-existe"]) {
+    for (const path of ["/", "/privacy/", "/richiesta/", "/prenotazione/", "/captcha/", "/accesso/", "/preferenze/", "/no-existe"]) {
       const value = headersFor(rules, path).get("Content-Security-Policy") ?? "";
       expect(value, path).not.toContain("unsafe-inline");
       expect(value, path).not.toContain("unsafe-eval");

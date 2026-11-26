@@ -559,6 +559,15 @@ input[type="radio"] {
   gap: 1rem;
 }
 
+/* Ofertas y novedades: opcional, sin el peso de la privacy; la ayuda alineada con el texto de la casilla. */
+.consent--optional .check {
+  font-weight: 400;
+}
+
+.consent--optional .field__hint {
+  margin-inline-start: calc(1.4rem + 0.75rem);
+}
+
 .panel--submit .notice {
   margin: 0;
 }

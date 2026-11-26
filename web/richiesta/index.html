@@ -297,6 +297,15 @@
                 </label>
                 <p class="field__error" id="err-consentPrivacy" hidden></p>
               </div>
+              <!-- Ofertas y novedades (contrato §13): opcional y sin marcar; confirmada después por email. -->
+              <div class="consent consent--optional">
+                <label class="check">
+                  <input id="consentMarketing" name="consentMarketing" type="checkbox" aria-describedby="hint-consentMarketing" />
+                  <span data-i18n="request.marketingConsentLabel"></span>
+                </label>
+                <p class="field__hint" id="hint-consentMarketing" data-i18n-html="request.marketingConsentHint"></p>
+                <p class="field__error" id="err-consentMarketing" hidden></p>
+              </div>
               <div class="field field--turnstile">
                 <p class="field__label" id="turnstile-label" data-i18n="request.turnstileLabel"></p>
                 <div id="turnstile-widget" class="turnstile" tabindex="-1" role="group" aria-labelledby="turnstile-label" aria-describedby="hint-turnstile"></div>

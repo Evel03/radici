@@ -35,6 +35,7 @@ export function validRequest(overrides: Partial<RequestData> = {}): RequestData 
     whatsappOptIn: false,
     notes: "",
     consentPrivacy: true,
+    consentMarketing: false,
     noAllergies: true,
     restrictionsNote: "",
     consentHealth: false,

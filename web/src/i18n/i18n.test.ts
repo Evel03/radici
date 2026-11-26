@@ -157,6 +157,15 @@ describe("claves usadas por la web", () => {
     }
   });
 
+  it("la casilla de ofertas y la página /preferenze/ llevan a su sección de la privacy (punto 6), en los tres idiomas", () => {
+    expect(privacyHtml).toContain('id="p-marketing"');
+    for (const lang of LANGS) {
+      expect(dicts[lang]["request.marketingConsentHint"], lang).toContain('<a href="/privacy/#p-marketing">');
+      expect(dicts[lang]["privacy.marketingTitle"], lang).toMatch(/^6\. /);
+      expect(dicts[lang]["privacy.changesTitle"], lang).toMatch(/^14\. /);
+    }
+  });
+
   it("el consentimiento de salud lleva a la sección de salud de la privacy, en los tres idiomas", () => {
     expect(privacyHtml).toContain('id="p-health"');
     for (const lang of LANGS) {
