@@ -141,6 +141,8 @@ Se reutiliza lo que ya conocés de Se Puso La 10, sin servidor propio.
 
 **Web pública:** Flutter web es pesado para la primera carga y no posiciona; el cliente nuevo llega desde un link de WhatsApp en el celular. Por eso la web pública (landing, `/richiesta`, seguimiento y aceptación del presupuesto) es estática y aparte. Flutter web solo se usa para la bandeja de Evelyn en `/gestione/` (la misma app, publicada dentro del sitio; contrato public-request §7).
 
+**Entradas web de la app (PR13):** la app Flutter web se publica en el mismo sitio dos veces, `/gestione/` (la cocina, Evelyn y sus colaboradores) y `/app/` (las clientas). Es un solo build: el deploy copia `app/build/web` a `dist/gestione/` y a `dist/app/` y, en la segunda, cambia el `<base href>`, el `<meta name="radici-entry" content="app">` y el manifest (`id` `/app/`). Cada una exige su meta (nunca cruzados) y sus cabeceras son las mismas (CSP de Flutter con `frame-src 'self'` para el captcha, `no-cache`, `noindex`). Sin service worker, sin sitemap ni link público a `/app/` hasta PR69. Detalle: `app/README.md`, «Entradas».
+
 **Analítica:** sin Google Analytics (Garante). Si hace falta, una sin cookies (Plausible, Umami): así no se necesita banner de cookies.
 
 ---

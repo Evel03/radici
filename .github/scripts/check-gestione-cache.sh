@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Deploy web, producción, después de publicar (paso «Comprobar la caché de /gestione/ en el dominio»).
-# Los archivos de /gestione/ no llevan hash en el nombre, así que el navegador tiene que revalidarlos
+# Deploy web, producción, después de publicar (paso «Comprobar la caché de /gestione/ y /app/ en el dominio»).
+# Los archivos de /gestione/ y /app/ (PR13, el mismo build) no llevan hash en el nombre, así que el navegador tiene que revalidarlos
 # en cada carga (Cache-Control: no-cache, de _headers). Si Cloudflare los pisa con su caché del
 # navegador (Browser Cache TTL distinto de «Respect Existing Headers», contrato §10.1, paso 9),
 # «Aggiorna» recarga y Evelyn sigue con la versión vieja: sale con 1 y el run queda en rojo.
 #
-# Primero espera a que el dominio sirva este deploy (build.json con este id; si no llega, solo avisa).
-# Después, por archivo, hasta CACHE_CHECK_ATTEMPTS intentos (6) cada CACHE_CHECK_PAUSE segundos (10),
+# Primero espera a que el dominio sirva este deploy (el build.json de cada entrada con este id; si no llega, solo avisa).
+# Después, por archivo (main.dart.js y flutter_bootstrap.js de cada entrada), hasta CACHE_CHECK_ATTEMPTS intentos (6) cada CACHE_CHECK_PAUSE segundos (10),
 # por la propagación. Un corte de la conexión o un timeout de curl es un intento fallido más. Imprime
 # solo el estado HTTP, Cache-Control y el id.
 #
@@ -31,20 +31,22 @@ fi
 attempts="${CACHE_CHECK_ATTEMPTS:-6}"
 pause="${CACHE_CHECK_PAUSE:-10}"
 
-live=false
-for attempt in $(seq 1 "${attempts}"); do
-  published=$(curl -sS -m 20 "${site}/gestione/build.json?t=$(date +%s)" 2>/dev/null \
-    | jq -r '.buildId // empty' 2>/dev/null)
-  echo "/gestione/build.json (intento ${attempt}/${attempts}): ${published:-sin id}"
-  if [ "${published}" = "${build_id}" ]; then live=true; break; fi
-  if [ "${attempt}" -lt "${attempts}" ]; then sleep "${pause}"; fi
+# build.json de cada entrada (/gestione/ y /app/ son el mismo build: llevan el mismo id).
+for entry in gestione app; do
+  live=false
+  for attempt in $(seq 1 "${attempts}"); do
+    published=$(curl -sS -m 20 "${site}/${entry}/build.json?t=$(date +%s)" 2>/dev/null       | jq -r '.buildId // empty' 2>/dev/null)
+    echo "/${entry}/build.json (intento ${attempt}/${attempts}): ${published:-sin id}"
+    if [ "${published}" = "${build_id}" ]; then live=true; break; fi
+    if [ "${attempt}" -lt "${attempts}" ]; then sleep "${pause}"; fi
+  done
+  if [ "${live}" != true ]; then
+    echo "::warning::${site}/${entry}/build.json no muestra este build (${build_id}): la app instalada no va a avisar que hay una versión nueva hasta que lo muestre."
+  fi
 done
-if [ "${live}" != true ]; then
-  echo "::warning::${site}/gestione/build.json no muestra este build (${build_id}): la app instalada no va a avisar que hay una versión nueva hasta que lo muestre."
-fi
 
 failed=0
-for path in gestione/main.dart.js gestione/flutter_bootstrap.js; do
+for path in gestione/main.dart.js gestione/flutter_bootstrap.js app/main.dart.js app/flutter_bootstrap.js; do
   ok=false
   for attempt in $(seq 1 "${attempts}"); do
     # Con pipefail, rc es el código de curl. Un corte en medio del cuerpo (18) igual deja las cabeceras.

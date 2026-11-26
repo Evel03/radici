@@ -9,9 +9,9 @@ import 'package:radici/features/web_app/domain/published_build.dart';
 import '../support/repo_files.dart';
 
 void main() {
-  final workflow = findRepoFile(
-    '.github/workflows/deploy-web.yml',
-  ).readAsStringSync().replaceAll('\r\n', '\n');
+  final workflow = findRepoFile('.github/workflows/deploy-web.yml')
+      .readAsStringSync()
+      .replaceAll('\r\n', '\n');
 
   /// El bloque de un paso: desde su "- name:" hasta el paso siguiente.
   String step(String name) {
@@ -36,32 +36,51 @@ void main() {
 
   test('la app se compila con ese id: la misma línea para producción y vista previa', () {
     // Con las líneas que siguen a una barra invertida, unidas.
-    final build = step(
-      'App - build web para /gestione/',
-    ).replaceAll(RegExp(r'\\\n\s*'), ' ');
+    final build = step('App - build web para /gestione/')
+        .replaceAll(RegExp(r'\\\n\s*'), ' ');
     final commands = build
         .split('\n')
         .where((line) => line.contains('flutter build web'))
         .toList();
     expect(commands, hasLength(1));
-    expect(commands.single, contains('"--dart-define=$buildIdDefine=\${BUILD_ID}"'));
+    expect(
+      commands.single,
+      contains('"--dart-define=$buildIdDefine=\${BUILD_ID}"'),
+    );
   });
 
-  test('publica gestione/build.json con el mismo id, en la clave que lee la app', () {
-    final copy = step('Copiar /gestione/ al sitio');
+  test('publica build.json con el mismo id en las dos entradas, en la clave que lee la app', () {
+    // El paso corre el script, con sus tests en el npm test de la raíz
+    // (.github/scripts/publish-app-entries.test.ts).
+    const script = '.github/scripts/publish-app-entries.sh';
+    final copy = step('Copiar /gestione/ y /app/ al sitio');
+    expect(copy, contains('run: bash "\${GITHUB_WORKSPACE}/$script"'));
+    expect('- "$script"'.allMatches(workflow), hasLength(1));
+    final publisher = findRepoFile(script).readAsStringSync();
     expect(
-      copy,
+      publisher,
       contains(
-        'printf \'{"$publishedBuildIdKey":"%s"}\\n\' "\${BUILD_ID}" > '
+        'printf \'{"$publishedBuildIdKey":"%s"}\\n\' "\${build_id}" > '
         '"\${out}/$publishedBuildFile"',
       ),
     );
     // Y comprueba que el id quedó compilado en main.dart.js.
-    expect(copy, contains(r'grep -qF "\"${BUILD_ID}\"" "${out}/main.dart.js"'));
+    expect(
+      publisher,
+      contains(r'grep -qF "\"${build_id}\"" "${out}/main.dart.js"'),
+    );
+    // Un solo build de la app para las dos entradas: el script cambia la base y el meta de /app/.
+    expect('flutter build web'.allMatches(workflow).length, 1);
+    expect(publisher, contains('copy_build "\${dist}/gestione"'));
+    expect(publisher, contains('copy_build "\${dist}/app"'));
+    // Cada entrada con su meta, nunca cruzadas.
+    expect(publisher, contains('<meta name="radici-entry" content="app">'));
+    expect(publisher, contains('check_entry "\${dist}/gestione" gestione app'));
+    expect(publisher, contains('check_entry "\${dist}/app" app gestione'));
   });
 
-  test('producción, después de publicar: /gestione/ tiene que llegar con no-cache', () {
-    const name = 'Comprobar la caché de /gestione/ en el dominio';
+  test('producción, después de publicar: /gestione/ y /app/ tienen que llegar con no-cache', () {
+    const name = 'Comprobar la caché de /gestione/ y /app/ en el dominio';
     const script = '.github/scripts/check-gestione-cache.sh';
     expect(
       workflow.indexOf('- name: $name'),
@@ -75,7 +94,13 @@ void main() {
     // (.github/scripts/check-gestione-cache.test.ts).
     expect(check, contains('run: bash "\${GITHUB_WORKSPACE}/$script"'));
     final checker = findRepoFile(script).readAsStringSync();
-    expect(checker, contains('gestione/main.dart.js gestione/flutter_bootstrap.js'));
+    expect(
+      checker,
+      contains(
+        'gestione/main.dart.js gestione/flutter_bootstrap.js '
+        'app/main.dart.js app/flutter_bootstrap.js',
+      ),
+    );
     // Un cambio solo en el script también dispara el workflow (el push a main).
     expect('- "$script"'.allMatches(workflow), hasLength(1));
   });

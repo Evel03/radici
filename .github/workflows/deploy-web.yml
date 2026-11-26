@@ -1,5 +1,6 @@
 # Publica en Cloudflare Pages (Direct Upload) la web pública (web/) y, dentro del mismo sitio, la
-# bandeja de Evelyn en /gestione/ (la app Flutter compilada para la web). Contrato:
+# bandeja de Evelyn en /gestione/ y el área de las clientas en /app/ (la app Flutter compilada para la web,
+# un solo build copiado dos veces; hasta PR69 ningún link público lleva a /app/). Contrato:
 # docs/contracts/public-request.md §6–§8.
 # - push a main  → producción (rama de producción del proyecto: main). Se sirve en el dominio
 #   propio https://radicicucina.app (dominio personalizado del proyecto, se agrega una vez
@@ -14,9 +15,9 @@
 # compila la web y prueba la app. Para ver un PR en una URL: Actions → Deploy web → Run workflow → elegir
 # la rama del PR (o: gh workflow run deploy-web.yml --ref <rama>).
 # Antes de publicar corre los tests de la web (npm test) y de la app (flutter analyze + flutter test).
-# Cada deploy (producción y vistas previas) compila /gestione/ con su id (BUILD_ID, el commit) y publica
-# el mismo en gestione/build.json: la app los compara y avisa cuando hay una versión nueva. En
-# producción, después de publicar, comprueba que /gestione/ llegue con Cache-Control: no-cache.
+# Cada deploy (producción y vistas previas) compila la app con su id (BUILD_ID, el commit) y publica
+# el mismo en gestione/build.json y app/build.json: la app los compara y avisa cuando hay una versión nueva. En
+# producción, después de publicar, comprueba que /gestione/ y /app/ lleguen con Cache-Control: no-cache.
 #
 # Necesita, en Settings → Secrets and variables → Actions del repo:
 # - secreto  CLOUDFLARE_API_TOKEN   token con solo "Account > Cloudflare Pages > Edit"
@@ -45,6 +46,7 @@ on:
       - "supabase/functions/_shared/**"
       - ".github/workflows/deploy-web.yml"
       - ".github/scripts/check-gestione-cache.sh"
+      - ".github/scripts/publish-app-entries.sh"
   workflow_dispatch:
 
 # Un grupo por rama. Un deploy en curso no se corta: hace cola.
@@ -276,62 +278,16 @@ jobs:
           flutter build web --release --base-href /gestione/ --no-web-resources-cdn --csp \
             "--dart-define=BUILD_ID=${BUILD_ID}" "${defines[@]}"
 
-      # A dist/gestione/, sin lo que un build JS con CanvasKit nunca carga (42 MB → ~18 MB): los
-      # renderers skwasm, wimp y webparagraph, los símbolos de depuración y el service worker (no se
-      # registra). Se conservan canvaskit/ (Safari, Firefox) y canvaskit/chromium/ (Chrome, Edge).
-      # Suma build.json con el id del build (el de version.json no sirve: es siempre 1.0.0+1).
-      - name: Copiar /gestione/ al sitio
-        run: |
-          set -euo pipefail
-          src=../app/build/web
-          out=dist/gestione
-          if grep -q '"renderer":"skwasm"' "${src}/flutter_bootstrap.js"; then
-            echo "::error::El build de la app usa skwasm (--wasm): revisar qué archivos se descartan en este paso."
-            exit 1
-          fi
-          # vite build vacía dist/: gestione/ no puede existir todavía.
-          if [ -e "${out}" ]; then
-            echo "::error::${out} ya existe: el build de la web tendría que haberlo vaciado."
-            exit 1
-          fi
-          mkdir -p "${out}"
-          tar -C "${src}" -cf - \
-            --exclude='./canvaskit/skwasm*' --exclude='./canvaskit/wimp*' --exclude='./canvaskit/webparagraph' \
-            --exclude='*.symbols' --exclude='./.last_build_id' --exclude='./flutter_service_worker.js' \
-            . | tar -C "${out}" -xf -
-          if find "${out}" \( -name '*.symbols' -o -name 'skwasm*' -o -name 'wimp*' -o -name webparagraph \) | grep -q .; then
-            echo "::error::Se copiaron archivos que se tenían que descartar (revisar los --exclude de tar)."
-            exit 1
-          fi
-
-          # El aviso de versión nueva compara el id compilado con este: sin el id en main.dart.js, la app
-          # nunca avisaría.
-          if ! grep -qF "\"${BUILD_ID}\"" "${out}/main.dart.js"; then
-            echo "::error::main.dart.js no tiene el id del build (${BUILD_ID}): revisar --dart-define=BUILD_ID en el build de la app."
-            exit 1
-          fi
-          printf '{"buildId":"%s"}\n' "${BUILD_ID}" > "${out}/build.json"
-
-          for f in index.html flutter_bootstrap.js main.dart.js build.json canvaskit/canvaskit.js canvaskit/canvaskit.wasm \
-                   canvaskit/chromium/canvaskit.js canvaskit/chromium/canvaskit.wasm; do
-            if [ ! -s "${out}/${f}" ]; then
-              echo "::error::Falta dist/gestione/${f}"
-              exit 1
-            fi
-          done
-          if ! grep -q '<base href="/gestione/">' "${out}/index.html"; then
-            echo "::error::dist/gestione/index.html no tiene <base href=\"/gestione/\">"
-            exit 1
-          fi
-          if ! grep -q '"useLocalCanvasKit":true' "${out}/flutter_bootstrap.js"; then
-            echo "::error::CanvasKit no es local (falta --no-web-resources-cdn): la CSP lo bloquearía."
-            exit 1
-          fi
-          if grep -q '__SUPABASE' dist/_headers; then
-            echo "::error::dist/_headers tiene marcadores de Supabase sin completar."
-            exit 1
-          fi
-          echo "dist/gestione: $(du -sh "${out}" | cut -f1) en $(find "${out}" -type f | wc -l) archivos"
+      # Un solo build para las dos entradas (PR13): .github/scripts/publish-app-entries.sh lo copia a
+      # dist/gestione/ (la cocina) y a dist/app/ (las clientas) y, en la copia de /app/, cambia el <base>, el
+      # <meta name="radici-entry"> (app), el manifest (id /app/) y los textos. No hace falta un segundo
+      # flutter build (~1,5 min de más): el JS no lleva la ruta base y la app elige su entrada por el meta;
+      # el script corta si eso dejara de ser cierto. Ver el encabezado del script y app/README.md, «Entradas».
+      # Descarta lo que un build JS con CanvasKit nunca carga (42 MB → ~18 MB por copia), suma build.json con
+      # el id del build, exige el meta de cada entrada (app en dist/app, gestione en dist/gestione, nunca
+      # cruzados), avisa si main.dart.js pasa los 6 MB y no deja /app/ en sitemap.xml ni robots.txt.
+      - name: Copiar /gestione/ y /app/ al sitio
+        run: bash "${GITHUB_WORKSPACE}/.github/scripts/publish-app-entries.sh"
 
       # ---- Publicación ----------------------------------------------------------------------------
       - name: Sin token, no se publica
@@ -417,16 +373,17 @@ jobs:
             echo "- Deploy: ${{ steps.deploy.outputs.deployment-url }}"
             echo "- Alias: ${{ steps.deploy.outputs.pages-deployment-alias-url }}"
             echo "- Bandeja de Evelyn: ${{ steps.deploy.outputs.deployment-url }}/gestione/ (versión ${BUILD_ID})"
+            echo "- Área de la clienta (sin links públicos hasta PR69): ${{ steps.deploy.outputs.deployment-url }}/app/"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      # Producción: los archivos de /gestione/ no llevan hash en el nombre, así que el navegador tiene que
+      # Producción: los archivos de /gestione/ y /app/ no llevan hash en el nombre, así que el navegador tiene que
       # revalidarlos en cada carga (Cache-Control: no-cache, de _headers). Si Cloudflare los pisa con su
       # caché del navegador (Browser Cache TTL distinto de «Respect Existing Headers», contrato §10.1,
       # paso 9), «Aggiorna» recarga y Evelyn sigue con la versión vieja: el run queda en rojo.
       # El script espera a que el dominio sirva este deploy (build.json con este id; si no llega, solo
       # avisa) y prueba cada archivo hasta 6 veces, cada 10 s; un corte de curl es un intento más.
       # Tiene tests contra un servidor local (check-gestione-cache.test.ts, npm test en la raíz).
-      - name: Comprobar la caché de /gestione/ en el dominio
+      - name: Comprobar la caché de /gestione/ y /app/ en el dominio
         if: env.HAS_CF_TOKEN == 'true' && github.event_name != 'pull_request' && github.ref_name == 'main'
         env:
           SITE_URL: ${{ vars.VITE_SITE_URL }}

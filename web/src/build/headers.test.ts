@@ -337,6 +337,60 @@ describe("public/_headers real", () => {
     expect(headersFor(rules, "/gestionex").get("X-Robots-Tag")).toBeUndefined();
   });
 
+  // La misma app Flutter web, publicada también en /app/ (clientas, PR13): mismas reglas que /gestione/.
+  const appPaths = gestionePaths.map((p) => p.replace("/gestione/", "/app/"));
+
+  it("/app/: la misma CSP que /gestione/ (CanvasKit, estilos del motor, Supabase https y wss, fotos, marco del captcha)", () => {
+    for (const path of appPaths) {
+      const policy = csp(path);
+      expect(policy.get("script-src"), path).toEqual(["'self'", "'wasm-unsafe-eval'"]);
+      expect(policy.get("style-src"), path).toEqual(["'self'", "'unsafe-inline'"]);
+      expect(policy.get("img-src"), path).toEqual(["'self'", "blob:", origin]);
+      expect(policy.get("connect-src"), path).toEqual(["'self'", "blob:", origin, "wss://abcdefgh.supabase.co"]);
+      expect(policy.get("frame-src"), path).toEqual(["'self'"]);
+      expect(policy.get("frame-ancestors"), path).toEqual(["'none'"]);
+      expect(policy.get("form-action"), path).toEqual(["'none'"]);
+      expect(policy.has("upgrade-insecure-requests"), path).toBe(true);
+      // Ni Turnstile ni ningún tercero: el captcha corre dentro de /captcha/, no acá.
+      expect(headersFor(rules, path).get("Content-Security-Policy"), path).not.toContain("challenges.cloudflare.com");
+    }
+    for (const [i, path] of appPaths.entries()) {
+      const g = headersFor(rules, gestionePaths[i] ?? "");
+      const a = headersFor(rules, path);
+      for (const name of ["Content-Security-Policy", "Cache-Control", "X-Robots-Tag", "X-Frame-Options", "Strict-Transport-Security"]) {
+        expect(a.get(name), `${path} ${name}`).toBe(g.get(name));
+      }
+    }
+  });
+
+  it("/app/: no-cache, noindex, nofollow y las cabeceras de seguridad de /*; fuera de /app/ nada cambia", () => {
+    for (const path of [...appPaths, "/app/assets/AssetManifest.bin", "/app/build.json", "/app/manifest.json"]) {
+      const headers = headersFor(rules, path);
+      expect(headers.get("Cache-Control"), path).toBe("no-cache");
+      expect(headers.get("X-Robots-Tag"), path).toBe("noindex, nofollow");
+      expect(headers.get("X-Content-Type-Options"), path).toBe("nosniff");
+      expect(headers.get("X-Frame-Options"), path).toBe("DENY");
+    }
+    expect(headersFor(rules, "/appx").get("X-Robots-Tag")).toBeUndefined();
+    expect(headersFor(rules, "/application/").get("Cache-Control")).toBeUndefined();
+    // /gestione/ y /app/ no se pisan entre sí.
+    expect(headersFor(rules, "/gestione/").get("Content-Security-Policy")).toContain("'wasm-unsafe-eval'");
+  });
+
+  it("/app/ en una vista previa de *.pages.dev suma su noindex a los propios", () => {
+    expect(headersFor(rules, "/app/", "radici.pages.dev").get("X-Robots-Tag")).toBe("noindex, nofollow, noindex");
+  });
+
+  it("/app/ sin Supabase configurado y en local sigue a /gestione/", () => {
+    const bare = parseHeadersFile(renderHeadersFile(headersFile, null));
+    const bareCsp = cspDirectives(headersFor(bare, "/app/").get("Content-Security-Policy") ?? "");
+    expect(bareCsp.get("img-src")).toEqual(["'self'", "blob:"]);
+    expect(bareCsp.get("connect-src")).toEqual(["'self'", "blob:"]);
+    const local = parseHeadersFile(renderHeadersFile(headersFile, "http://127.0.0.1:54321"));
+    const localCsp = cspDirectives(headersFor(local, "/app/").get("Content-Security-Policy") ?? "");
+    expect(localCsp.get("connect-src")).toEqual(["'self'", "blob:", "http://127.0.0.1:54321", "ws://127.0.0.1:54321"]);
+  });
+
   it("*.pages.dev (producción y vistas previas) nunca se indexa; el dominio propio no cambia", () => {
     const pagesHosts = ["radici.pages.dev", "radici-3xv.pages.dev", "f1-pedidos-bandeja.radici.pages.dev", "a1b2c3d4.radici.pages.dev:443"];
     for (const host of pagesHosts) {
@@ -371,7 +425,7 @@ describe("public/_headers real", () => {
     expect(policy.get("connect-src")).toEqual(["'self'", "blob:"]);
   });
 
-  it("blob: solo en /gestione/ (la app Flutter): las páginas públicas no lo necesitan", () => {
+  it("blob: solo en /gestione/ y /app/ (la app Flutter): las páginas públicas no lo necesitan", () => {
     for (const path of ["/", "/privacy/", "/richiesta/", "/no-existe"]) {
       expect(headersFor(rules, path).get("Content-Security-Policy"), path).not.toContain("blob:");
     }
