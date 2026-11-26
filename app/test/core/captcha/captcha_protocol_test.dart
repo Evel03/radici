@@ -88,13 +88,39 @@ void main() {
       }
     });
 
-    test('el diagnóstico de una navegación frenada: esquema y host, sin ruta ni query', () {
-      expect(captchaBlockedSummary('https://otro.example.com/a/b?c=d#e'), 'https:otro.example.com');
-      expect(captchaBlockedSummary('blob:https://radicicucina.app/123'), 'blob');
-      expect(captchaBlockedSummary('about:blank#x'), 'about');
-      expect(captchaBlockedSummary('data:text/html,<b>'), 'data');
-      expect(captchaBlockedSummary(''), 'unknown');
-      expect(captchaBlockedSummary('https://${'a' * 80}.com/').length, 40);
+    test('la vuelta del canal «return»: token o código del pedido; otra cosa, null', () {
+      expect(
+        parseCaptchaReturn('radicicaptcha://result?id=$id&token=0.ok', id),
+        isA<CaptchaToken>().having((r) => r.token, 'token', '0.ok'),
+      );
+      expect(
+        parseCaptchaReturn('radicicaptcha://result?id=$id&code=600010', id),
+        isA<CaptchaError>().having((r) => r.code, 'code', '600010'),
+      );
+      expect(
+        parseCaptchaReturn('radicicaptcha://result?id=$id&token=con%20espacio', id),
+        isA<CaptchaError>().having((r) => r.code, 'code', 'token-shape'),
+      );
+      expect(
+        parseCaptchaReturn('radicicaptcha://result?id=$id&code=%3Cb%3E', id),
+        isA<CaptchaError>().having((r) => r.code, 'code', 'unknown'),
+      );
+      for (final bad in [
+        'radicicaptcha://result?id=${'f' * 32}&token=x',
+        'https://result?id=$id&token=x',
+        'radicicaptcha://otro?id=$id&token=x',
+        'radicicaptcha://result?id=$id',
+        '::',
+      ]) {
+        expect(parseCaptchaReturn(bad, id), isNull, reason: bad);
+      }
+    });
+
+    test('códigos seguros: solo letras, dígitos, _ y -', () {
+      expect(safeCaptchaCode('CANCELED'), 'CANCELED');
+      expect(safeCaptchaCode('600010'), '600010');
+      expect(safeCaptchaCode('<b>'), 'unknown');
+      expect(safeCaptchaCode('x' * 33), 'unknown');
     });
 
     test('un token acepta hasta 2048 caracteres', () {
@@ -119,18 +145,21 @@ void main() {
   });
 
   group('captchaPageUri', () {
+    test('canal «return» (iOS y Android): channel=return y el id del pedido; un id que no es id no se usa', () {
+      final uri = captchaPageUri('https://radicicucina.app', locale: 'en', returnId: id);
+      expect(uri.toString(), 'https://radicicucina.app/captcha/?channel=return&id=$id&lang=en');
+      expect(captchaPageUri('https://radicicucina.app', returnId: 'x').queryParameters, isEmpty);
+    });
+
+
     test('web: la página del mismo origen, con el idioma', () {
       expect(captchaPageUri('https://radicicucina.app', locale: 'es').toString(), 'https://radicicucina.app/captcha/?lang=es');
       expect(captchaPageUri('https://radicicucina.app').toString(), 'https://radicicucina.app/captcha/');
       expect(captchaPageUri('http://localhost:5173', locale: 'it').toString(), 'http://localhost:5173/captcha/?lang=it');
     });
 
-    test('nativa: channel=native; solo idiomas soportados', () {
-      expect(
-        captchaPageUri(captchaProductionOrigin, locale: 'en', native: true).toString(),
-        'https://radicicucina.app/captcha/?channel=native&lang=en',
-      );
-      expect(captchaPageUri(captchaProductionOrigin, locale: 'fr', native: true).toString(), 'https://radicicucina.app/captcha/?channel=native');
+    test('solo idiomas soportados', () {
+      expect(captchaPageUri(captchaProductionOrigin, locale: 'fr').toString(), 'https://radicicucina.app/captcha/');
     });
   });
 }

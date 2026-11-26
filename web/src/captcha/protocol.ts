@@ -23,7 +23,16 @@ export const NATIVE_CHANNEL = "RadiciCaptcha";
 /** Función global con la que la app nativa le hace un pedido a la página. */
 export const NATIVE_REQUEST_FN = "radiciCaptchaRequest";
 
-export type CaptchaMode = "frame" | "native" | "standalone";
+export type CaptchaMode = "frame" | "native" | "return" | "standalone";
+
+/**
+ * Canal «return» (desde el 26/11/2026, el de iOS y Android): la app abre /captcha/?channel=return&id=<id> en el Safari
+ * real (ASWebAuthenticationSession) o en una pestaña de Chrome, porque Turnstile no acepta la WebView de la app
+ * (error 600010). La página pide el token sola, con ese id, y vuelve a la app con el resultado:
+ *   radicicaptcha://result?id=<id>&token=<token>   o   radicicaptcha://result?id=<id>&code=<código>
+ * El esquema es fijo (nunca sale de la URL: no hay redirección abierta) y solo lo atiende la sesión que abrió la app.
+ */
+export const RETURN_SCHEME = "radicicaptcha";
 
 export type PageMessage =
   | { type: "ready" }
@@ -92,7 +101,9 @@ export function isTrustedHostEvent(event: Pick<FrameEvent, "origin" | "source">,
 
 /** Cómo se abrió la página: dentro de la app nativa, en un iframe, o suelta (alguien entró por la URL). */
 export function detectMode(search: string, hasNativeChannel: boolean, framed: boolean): CaptchaMode {
-  if (new URLSearchParams(search).get("channel") === "native") return hasNativeChannel ? "native" : "standalone";
+  const channel = new URLSearchParams(search).get("channel");
+  if (channel === "return") return returnRequestId(search) !== null ? "return" : "standalone";
+  if (channel === "native") return hasNativeChannel ? "native" : "standalone";
   return framed ? "frame" : "standalone";
 }
 
@@ -180,4 +191,39 @@ export function isTrustedPageEvent(event: Pick<FrameEvent, "origin" | "source">,
 /** Un id de pedido nuevo: 128 bits al azar en hexadecimal (isRequestId). */
 export function newRequestId(fillRandom: (bytes: Uint8Array<ArrayBuffer>) => Uint8Array): string {
   return Array.from(fillRandom(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+// ── Canal «return» ────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** El id del pedido en ?id= (solo si es un id: 32 hexadecimales), o null. */
+export function returnRequestId(search: string): string | null {
+  const id = new URLSearchParams(search).get("id");
+  return isRequestId(id) ? id : null;
+}
+
+/** La dirección con la que la página vuelve a la app: el esquema fijo, el id y el token o el código. */
+export function returnUrl(id: string, result: { token: string } | { code: string }): string {
+  const params = new URLSearchParams("token" in result ? { id, token: result.token } : { id, code: result.code });
+  return `${RETURN_SCHEME}://result?${params.toString()}`;
+}
+
+/** Lo que usa el canal «return» de la ventana (en los tests, simulado). */
+export interface ReturnWindow {
+  readonly location: { replace(url: string): void };
+}
+
+/**
+ * Canal «return»: el pedido sale solo (con el id de la URL) y el token o el error vuelven a la app cambiando de
+ * dirección. «ready» e «interactive» no van a ningún lado: la página ya está a la vista.
+ */
+export function returnTransport(win: ReturnWindow, id: string): PageTransport {
+  return {
+    post(message) {
+      if (message.type === "token" && message.id === id) win.location.replace(returnUrl(id, { token: message.token }));
+      else if (message.type === "error" && message.id === id) win.location.replace(returnUrl(id, { code: message.code }));
+    },
+    onRequest(handler) {
+      handler(id);
+    },
+  };
 }

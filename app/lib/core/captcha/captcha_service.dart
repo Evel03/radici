@@ -2,12 +2,12 @@
 // código de acceso; después, registro, contraseña y recuperación).
 //
 // Cómo se obtiene: la página https://radicicucina.app/captcha/ dibuja el
-// Turnstile de Auth y devuelve el token por mensajes (docs/contracts/auth.md
-// §10). En la web (/gestione/, más adelante /app/) va en un iframe del mismo
-// sitio; en iOS y Android, en una WebView fijada a esa página
-// (captcha_navigation.dart). Cada llamada abre la página de nuevo y pide un
-// token con un id nuevo: un token de Turnstile sirve una sola vez (~300 s) y
-// nunca queda uno suelto en la app.
+// Turnstile de Auth (docs/contracts/auth.md §10). En la web (/gestione/, /app/)
+// va en un iframe del mismo sitio y habla por mensajes (CaptchaBroker). En iOS y
+// Android se abre en el navegador real del sistema y vuelve con el token
+// (captcha_return.dart): la WebView de la app no pasa Turnstile (error 600010).
+// Cada llamada pide un token con un id nuevo: un token de Turnstile sirve una
+// sola vez (~300 s) y nunca queda uno suelto en la app.
 //
 // OBLIGATORIO EN PRODUCCIÓN (PR11, 26/11/2026): Auth de producción exige el
 // captcha (docs/contracts/auth.md §10). Con APP_ENV=prod (la web, iOS y
@@ -16,7 +16,6 @@
 // sigue fail-open: el Supabase local no exige captcha y, en local, la página
 // /captcha/ no está en el origen de la app, así que el pedido sale sin token.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:radici/core/captcha/captcha_broker.dart';
 import 'package:radici/core/captcha/captcha_platform_native.dart'
     if (dart.library.js_interop) 'package:radici/core/captcha/captcha_platform_web.dart';
 import 'package:radici/core/env.dart';
@@ -44,5 +43,5 @@ abstract interface class CaptchaService {
 }
 
 final captchaServiceProvider = Provider<CaptchaService>(
-  (ref) => CaptchaBroker(sessionFactory: createCaptchaSessionFactory(ref)),
+  createCaptchaService,
 );
