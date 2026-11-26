@@ -1,5 +1,5 @@
-// Pestaña «Altro» (Más) de la cocinera: la cuenta, el catálogo de platos,
-// Impostazioni (idioma) y salir. En el teléfono reemplaza al menú de la cuenta
+// Pestaña «Altro» (Más) de la cocinera: la cuenta, el catálogo de platos, los
+// contactos para las ofertas, Impostazioni (idioma) y salir. En el teléfono reemplaza al menú de la cuenta
 // de la barra superior. Cada destino aparece cuando su función existe: más
 // adelante, Clientes y Mi horario.
 import 'package:flutter/material.dart';
@@ -49,6 +49,14 @@ class MoreScreen extends ConsumerWidget {
                 subtitle: Text(l10n.moreRecipesSubtitle),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.go(AppRoutes.recipes),
+              ),
+              ListTile(
+                key: const ValueKey('more-marketing'),
+                leading: const Icon(Icons.campaign_outlined),
+                title: Text(l10n.marketingTitle),
+                subtitle: Text(l10n.moreMarketingSubtitle),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.go(AppRoutes.marketing),
               ),
               ListTile(
                 key: const ValueKey('more-settings'),

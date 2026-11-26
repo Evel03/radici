@@ -82,6 +82,29 @@ class WebBrowser implements Browser {
       // Ya estaba suelta: nada que hacer.
     }
   }
+
+  @override
+  bool downloadText(String fileName, String text, String mimeType) {
+    try {
+      final blob = web.Blob(
+        [text.toJS].toJS,
+        web.BlobPropertyBag(type: mimeType),
+      );
+      final url = web.URL.createObjectURL(blob);
+      final link = web.HTMLAnchorElement()
+        ..href = url
+        ..download = fileName;
+      web.document.body?.append(link);
+      link.click();
+      link.remove();
+      // Algunos navegadores leen el Blob después del click: se suelta un rato
+      // más tarde, no enseguida.
+      Future<void>.delayed(const Duration(seconds: 30), () => web.URL.revokeObjectURL(url));
+      return true;
+    } on Object {
+      return false;
+    }
+  }
 }
 
 extension on web.Navigator {

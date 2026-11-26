@@ -49,6 +49,10 @@ abstract final class AppRoutes {
   /// Catálogo de platos, dentro de «Altro».
   static const String recipes = '$more/piatti';
 
+  /// «Contatti per le offerte»: la lista de ofertas y novedades, dentro de
+  /// «Altro» (contrato public-request §13).
+  static const String marketing = '$more/contatti';
+
   /// Editor de un plato nuevo.
   static const String recipeNew = '$recipes/nuovo';
 

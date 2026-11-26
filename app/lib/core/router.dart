@@ -24,6 +24,7 @@ import 'package:radici/features/bookings/presentation/new_booking_client_screen.
 import 'package:radici/features/bookings/presentation/new_client_screen.dart';
 import 'package:radici/features/client/presentation/client_shell.dart';
 import 'package:radici/features/home/presentation/home_screen.dart';
+import 'package:radici/features/marketing/presentation/marketing_contacts_screen.dart';
 import 'package:radici/features/more/presentation/more_screen.dart';
 import 'package:radici/features/recipes/application/recipe_editor_controller.dart';
 import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
@@ -280,6 +281,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                     _page(state, const MoreScreen()),
                 routes: [
                   // Dentro de la pestaña: la barra sigue a la vista.
+                  GoRoute(
+                    path: AppRoutes.marketing.substring(
+                      AppRoutes.more.length + 1,
+                    ),
+                    pageBuilder: (context, state) =>
+                        _page(state, const MarketingContactsScreen()),
+                  ),
                   GoRoute(
                     path: AppRoutes.recipes.substring(AppRoutes.more.length + 1),
                     pageBuilder: (context, state) =>

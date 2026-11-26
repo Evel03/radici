@@ -30,4 +30,7 @@ class NoBrowser implements Browser {
 
   @override
   void revokeObjectUrl(String url) {}
+
+  @override
+  bool downloadText(String fileName, String text, String mimeType) => false;
 }

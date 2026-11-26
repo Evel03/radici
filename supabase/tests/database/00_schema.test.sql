@@ -289,6 +289,7 @@ select is(
      and p.proname not like 'zz\_%'
      and has_function_privilege('authenticated', p.oid, 'EXECUTE')),
   array[
+    'public.chef_marketing_withdraw(p_email text)',  -- rpc de la app: la cocina da de baja un contacto de su lista (valida current_chef_id())
     'public.current_chef_id()',        -- las políticas de la cocina y la app (rpc)
     'public.current_client_ids()',     -- clients_guard_update, que corre con el rol de la cocinera
     'public.is_chef_of(p_chef_id uuid)',

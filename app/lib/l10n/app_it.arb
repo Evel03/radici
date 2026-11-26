@@ -435,6 +435,150 @@
   "@changePasswordForgot": {
     "description": "Debajo del formulario de «Cambia password»."
   },
+  "marketingTitle": "Contatti per le offerte",
+  "@marketingTitle": {
+    "description": "Título de la lista de ofertas y novedades (Altro) y de su entrada."
+  },
+  "moreMarketingSubtitle": "Chi ha chiesto offerte e novità",
+  "@moreMarketingSubtitle": {
+    "description": "Debajo de «Contatti per le offerte» en Altro."
+  },
+  "marketingIntro": "Qui ci sono le persone che hanno chiesto offerte e novità segnando la casella del modulo. Scrivi solo a chi ha confermato, sempre in copia nascosta (Ccn), e ricorda in ogni messaggio come cancellarsi: basta rispondere.",
+  "@marketingIntro": {
+    "description": "Texto arriba de la lista: a quiénes escribir y cómo (Ccn y la baja en cada mensaje)."
+  },
+  "marketingConfirmedCount": "{count, plural, =0{Nessuno confermato} =1{1 confermato} other{{count} confermati}}",
+  "@marketingConfirmedCount": {
+    "description": "Cuántos confirmaron (los que se exportan).",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "12"
+      }
+    }
+  },
+  "marketingPendingCount": "{count, plural, =0{nessuno in attesa} =1{1 in attesa di conferma} other{{count} in attesa di conferma}}",
+  "@marketingPendingCount": {
+    "description": "Cuántos marcaron la casilla y todavía no confirmaron.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "marketingCopy": "Copia gli indirizzi",
+  "@marketingCopy": {
+    "description": "Copia los emails de los confirmados, separados por coma (para pegarlos en Ccn)."
+  },
+  "marketingCopied": "{count, plural, =1{1 indirizzo copiato} other{{count} indirizzi copiati}}",
+  "@marketingCopied": {
+    "description": "Aviso después de copiar.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "12"
+      }
+    }
+  },
+  "marketingDownload": "Scarica CSV",
+  "@marketingDownload": {
+    "description": "Solo en la web: descarga los confirmados en un CSV."
+  },
+  "marketingDownloaded": "File scaricato.",
+  "@marketingDownloaded": {
+    "description": "Aviso después de descargar el CSV."
+  },
+  "marketingDownloadFailed": "Non è stato possibile scaricare il file.",
+  "@marketingDownloadFailed": {
+    "description": "El navegador no dejó descargar el CSV."
+  },
+  "marketingEmpty": "Nessuno ha ancora chiesto offerte e novità.",
+  "@marketingEmpty": {
+    "description": "La lista está vacía."
+  },
+  "marketingConfirmedSection": "Confermati",
+  "@marketingConfirmedSection": {
+    "description": "Título de la sección de los confirmados."
+  },
+  "marketingPendingSection": "In attesa di conferma",
+  "@marketingPendingSection": {
+    "description": "Título de la sección de los pendientes."
+  },
+  "marketingPendingHint": "Non hanno ancora confermato: non scrivergli. Se non confermano entro 7 giorni, spariscono da soli.",
+  "@marketingPendingHint": {
+    "description": "Debajo del título de los pendientes."
+  },
+  "marketingConfirmedOn": "confermato il {date}",
+  "@marketingConfirmedOn": {
+    "description": "De un contacto confirmado: la fecha.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "27/11/2026"
+      }
+    }
+  },
+  "marketingPendingSince": "chiesto il {date}",
+  "@marketingPendingSince": {
+    "description": "De un contacto pendiente: cuándo marcó la casilla.",
+    "placeholders": {
+      "date": {
+        "type": "String",
+        "example": "27/11/2026"
+      }
+    }
+  },
+  "marketingWithdraw": "Togli dalla lista",
+  "@marketingWithdraw": {
+    "description": "Botón de cada contacto (también su texto para el lector de pantalla)."
+  },
+  "marketingWithdrawTitle": "Togliere {email} dalla lista?",
+  "@marketingWithdrawTitle": {
+    "description": "Título del diálogo de quitar a alguien.",
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "giulia@esempio.it"
+      }
+    }
+  },
+  "marketingWithdrawBody": "Fallo quando questa persona ti chiede di non ricevere più offerte. Non riceverà più niente; resta solo la prova della cancellazione.",
+  "@marketingWithdrawBody": {
+    "description": "Texto del diálogo de quitar a alguien."
+  },
+  "marketingWithdrawConfirm": "Togli",
+  "@marketingWithdrawConfirm": {
+    "description": "Botón que confirma quitar a alguien de la lista."
+  },
+  "marketingWithdrawn": "Tolto dalla lista.",
+  "@marketingWithdrawn": {
+    "description": "Aviso después de quitar a alguien."
+  },
+  "marketingLoadFailed": "Non è stato possibile caricare la lista. Controlla la connessione e riprova.",
+  "@marketingLoadFailed": {
+    "description": "Error al leer la lista."
+  },
+  "marketingActionFailed": "Non è stato possibile completare l'operazione. Riprova.",
+  "@marketingActionFailed": {
+    "description": "Error al quitar a alguien de la lista."
+  },
+  "marketingCsvEmail": "Email",
+  "@marketingCsvEmail": {
+    "description": "Encabezado de la columna del email en el CSV."
+  },
+  "marketingCsvName": "Nome",
+  "@marketingCsvName": {
+    "description": "Encabezado de la columna del nombre en el CSV."
+  },
+  "marketingCsvLanguage": "Lingua",
+  "@marketingCsvLanguage": {
+    "description": "Encabezado de la columna del idioma en el CSV."
+  },
+  "marketingCsvConfirmed": "Confermato il",
+  "@marketingCsvConfirmed": {
+    "description": "Encabezado de la columna de la fecha de confirmación en el CSV (AAAA-MM-DD)."
+  },
   "wrongEntryTitle": "Account non abilitato qui",
   "@wrongEntryTitle": {
     "description": "Título de la pantalla que explica que la cuenta es de la otra entrada (cocina o clienta)."
