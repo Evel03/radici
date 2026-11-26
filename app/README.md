@@ -793,7 +793,7 @@ La misma app sirve tres modos (`lib/core/app_entry.dart`, `AppEntry`): dos entra
 
 ## Captcha de Auth (`lib/core/captcha/`)
 
-Cada pedido de código de acceso saca antes un token de captcha (Turnstile de Auth) y se lo pasa a `signInWithOtp(captchaToken: …)`. Auth todavía **no** lo exige (PR11 lo prende): hasta entonces, si no hay token el login sigue sin él (`captchaRequired = false` en `captcha_service.dart`; PR11 lo pone en `true`). Contrato y protocolo: `../docs/contracts/auth.md` §10.
+Cada pedido de código de acceso saca antes un token de captcha (Turnstile de Auth) y se lo pasa a `signInWithOtp(captchaToken: …)`. Auth de producción lo exige desde PR11: con `APP_ENV=prod` (`captchaRequiredProvider` en `captcha_service.dart`) sin token el pedido no sale y la pantalla dice «Riprova» (`AuthFailureKind.captcha`, también si Auth rechaza el token: `captcha_failed`). Con `APP_ENV=dev` sigue sin token si no hay (el Supabase local no lo exige). Contrato y protocolo: `../docs/contracts/auth.md` §10.
 
 - `CaptchaService.token({locale})` (provider `captchaServiceProvider`): una página y un id nuevos por llamada, de a uno, nunca lanza; `null` si no hay token a los 20 s (120 s si Cloudflare pide tocar la casilla) o si la plataforma no puede abrir la página. Reintentar es llamar de nuevo.
 - Web (`/gestione/`, después `/app/`): `captcha_platform_web.dart` abre un iframe del mismo sitio con `/captcha/` y habla con `postMessage`, comparando el origen exacto y la ventana del iframe, con ese origen como destino (nunca `*`). Pide `frame-src 'self'` en la CSP de `/gestione/` (está en `web/public/_headers`).

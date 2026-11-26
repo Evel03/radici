@@ -8,6 +8,7 @@ import { PASSWORD_MIN_LENGTH as WEB_PASSWORD_MIN_LENGTH, passwordProblem } from 
 import {
   LETTERS_DIGITS,
   PASSWORD_MIN_LENGTH,
+  authCaptchaConfig,
   authSecurityConfig,
   authSmtpConfig,
   authTemplatesConfig,
@@ -43,7 +44,7 @@ test("TOML: secciones, cadenas con comillas escapadas, enteros, booleanos y come
   assert.equal(tomlSection(toml, "no.existe").size, 0);
 });
 
-test("security: altas apagadas, código de 8 cifras por 10 minutos y sin CAPTCHA; nada de correo", () => {
+test("security: altas apagadas, código de 8 cifras por 10 minutos y el captcha de Auth (Turnstile); nada de correo", () => {
   const body = authSecurityConfig(CONFIG);
   assert.deepEqual(body, {
     ...PINNED, // lo del PR04 (más abajo)
@@ -51,8 +52,19 @@ test("security: altas apagadas, código de 8 cifras por 10 minutos y sin CAPTCHA
     external_email_enabled: true,
     mailer_otp_length: 8,
     mailer_otp_exp: 600,
-    security_captcha_enabled: false,
+    security_captcha_enabled: true,
+    security_captcha_provider: "turnstile",
   });
+  // La secreta nunca sale de config.toml ni del cuerpo fijo: la suma authCaptchaConfig desde el entorno.
+  assert.equal("security_captcha_secret" in body, false);
+});
+
+test("captcha: la secreta viene de TURNSTILE_AUTH_SECRET_KEY, sin espacios; sin ella, falla; nunca se compara (no vuelve en claro)", () => {
+  assert.deepEqual(authCaptchaConfig(" 0x4AAAAAAAsecreta "), { security_captcha_secret: "0x4AAAAAAAsecreta" });
+  assert.throws(() => authCaptchaConfig(""), /TURNSTILE_AUTH_SECRET_KEY/);
+  assert.throws(() => authCaptchaConfig("   "), /TURNSTILE_AUTH_SECRET_KEY/);
+  assert.deepEqual(verifyAuthConfig({ security_captcha_secret: "0x4AAAAAAAsecreta" }, { security_captcha_secret: "otra-o-enmascarada" }), []);
+  assert.deepEqual(verifyAuthConfig({ security_captcha_enabled: true }, { security_captcha_enabled: false }), ["security_captcha_enabled"]);
 });
 
 test("templates: las dos plantillas son el código del repo, con el asunto en el idioma del usuario", () => {
@@ -91,6 +103,7 @@ test("smtp: Resend con el remitente de MAIL_FROM; sin clave, falla", () => {
     smtp_pass: "re_clave",
     smtp_admin_email: "ciao@radicicucina.app",
     smtp_sender_name: "Radici",
+    smtp_max_frequency: 60,
   });
   assert.throws(() => authSmtpConfig({ key: "", mailFrom: "Radici <ciao@x.example>" }), /RESEND_SMTP_KEY/);
   assert.throws(() => authSmtpConfig({ key: "re_clave", mailFrom: "" }), /MAIL_FROM/);
@@ -112,8 +125,15 @@ test("MAIL_FROM: nombre y dirección", () => {
 
 test("línea de comandos (la del workflow): una parte por llamada; sin la clave, smtp sale con error", () => {
   const run = (part: string, env: Record<string, string> = {}): string =>
-    execFileSync(process.execPath, [SCRIPT, part], { env: { ...process.env, RESEND_SMTP_KEY: "", MAIL_FROM: "", ...env }, encoding: "utf8" });
-  assert.deepEqual(JSON.parse(run("security")), authSecurityConfig(CONFIG));
+    execFileSync(process.execPath, [SCRIPT, part], {
+      env: { ...process.env, RESEND_SMTP_KEY: "", MAIL_FROM: "", TURNSTILE_AUTH_SECRET_KEY: "0x4AAAAAAAsecreta", ...env },
+      encoding: "utf8",
+    });
+  assert.deepEqual(JSON.parse(run("security")), { ...authSecurityConfig(CONFIG), security_captcha_secret: "0x4AAAAAAAsecreta" });
+  assert.throws(
+    () => execFileSync(process.execPath, [SCRIPT, "security"], { env: { ...process.env, TURNSTILE_AUTH_SECRET_KEY: "" }, encoding: "utf8", stdio: "pipe" }),
+    (error: { status?: number; stderr?: string }) => error.status === 2 && String(error.stderr).includes("TURNSTILE_AUTH_SECRET_KEY"),
+  );
   assert.equal(JSON.parse(run("templates")).mailer_templates_magic_link_content, TEMPLATE);
   assert.equal(JSON.parse(run("smtp", { RESEND_SMTP_KEY: "re_x", MAIL_FROM: "Radici <ciao@x.example>" })).smtp_pass, "re_x");
   assert.throws(() => run("smtp"), (error: { status?: number }) => error.status === 2);
@@ -143,6 +163,8 @@ const MANAGEMENT_API_AUTH_FIELDS = [
   "password_min_length", "password_required_characters", "security_update_password_require_current_password",
   "security_update_password_require_reauthentication", "mailer_notifications_password_changed_enabled",
   "mailer_subjects_password_changed_notification", "mailer_templates_password_changed_notification_content",
+  // PR11: el captcha de Auth y la frecuencia de los emails.
+  "security_captcha_provider", "security_captcha_secret", "smtp_max_frequency",
 ];
 
 const PINNED = {
@@ -187,13 +209,14 @@ test("security: el cuerpo fija cada ajuste del PR04 con el nombre de campo de la
   assert.equal(body.external_email_enabled, true);
   assert.equal(body.mailer_otp_length, 8);
   assert.equal(body.mailer_otp_exp, 600);
-  assert.equal(body.security_captcha_enabled, false);
+  assert.equal(body.security_captcha_enabled, true);
 });
 
 test("los campos de las tres partes existen en la Management API", () => {
   const all = [
     ...Object.keys(authSecurityConfig(CONFIG)),
     ...Object.keys(authSmtpConfig({ key: "re_x", mailFrom: "a@b.test" })),
+    ...Object.keys(authCaptchaConfig("0x4AAAAAAAx")),
     ...Object.keys(authTemplatesConfig(CONFIG, read)),
   ];
   for (const key of all) assert.ok(MANAGEMENT_API_AUTH_FIELDS.includes(key), `campo desconocido: ${key}`);
@@ -276,7 +299,8 @@ test("changedFields: solo los nombres de lo que cambia en producción, nunca val
 });
 
 test("línea de comandos: verify compara la respuesta de la API con el cuerpo; changed lista los nombres", () => {
-  const run = (args: string[], input: string): string => execFileSync(process.execPath, [SCRIPT, ...args], { input, encoding: "utf8" });
+  const run = (args: string[], input: string): string =>
+    execFileSync(process.execPath, [SCRIPT, ...args], { input, encoding: "utf8", env: { ...process.env, TURNSTILE_AUTH_SECRET_KEY: "0x4AAAAAAAsecreta" } });
   assert.equal(run(["verify", "security"], JSON.stringify(live())), "");
   assert.throws(
     () => run(["verify", "security"], JSON.stringify({ ...live(), mailer_autoconfirm: true })),

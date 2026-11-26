@@ -2,13 +2,25 @@
 // WebView ni un iframe).
 import 'package:radici/core/captcha/captcha_service.dart';
 
-/// Sin token, como cuando la página no responde: el login sigue sin captcha
-/// mientras Auth no lo exige (fail-open).
+/// Sin token, como cuando la página no responde: en producción (captcha
+/// obligatorio, PR11) es el error de captcha; en desarrollo el login sigue sin
+/// token (fail-open).
 class NoCaptchaService implements CaptchaService {
   const NoCaptchaService();
 
   @override
   Future<String?> token({String? locale}) async => null;
+}
+
+/// Siempre el mismo token: el captcha que anda (el de por defecto en
+/// pumpRadiciApp, que arma la app en producción).
+class TokenCaptchaService implements CaptchaService {
+  const TokenCaptchaService();
+
+  static const String value = 'captcha-test-token';
+
+  @override
+  Future<String?> token({String? locale}) async => value;
 }
 
 /// Entrega un token distinto en cada llamada y anota cuántas se pidieron y en

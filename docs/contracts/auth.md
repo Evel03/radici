@@ -17,7 +17,7 @@ Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo s
 | security | `disable_signup` | `true` | `[auth] enable_signup = false` |
 | security | `external_email_enabled` | `true` | `[auth.email] enable_signup = true` |
 | security | `mailer_otp_length`, `mailer_otp_exp` | 8, 600 | `otp_length`, `otp_expiry` |
-| security | `security_captcha_enabled` | `false` | sin `[auth.captcha]` |
+| security | `security_captcha_enabled`, `security_captcha_provider`, `security_captcha_secret` | `true`, `turnstile`, la secreta de `TURNSTILE_AUTH_SECRET_KEY` (§10; no se compara después del PATCH: no vuelve en claro) | sin `[auth.captcha]`: en local va apagado |
 | security | `site_url`, `uri_allow_list` | `https://radicicucina.app/app/` (las dos) | (local usa `127.0.0.1`) |
 | security | `mailer_autoconfirm`, `sms_autoconfirm` | `false` | `[auth.email]` y `[auth.sms]` `enable_confirmations = true` |
 | security | `mailer_allow_unverified_email_sign_ins` | `false` | (por defecto) |
@@ -32,6 +32,7 @@ Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo s
 | security | `password_min_length`, `password_required_characters` | `10`, letras y números (§12) | `[auth] minimum_password_length = 10`, `password_requirements = "letters_digits"` |
 | security | `security_update_password_require_current_password`, `security_update_password_require_reauthentication` | `true`, `false` (§12) | (la CLI 2.121 no tiene el primero), `[auth.email] secure_password_change = false` |
 | smtp | `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `smtp_admin_email`, `smtp_sender_name` | Resend, remitente de `MAIL_FROM` | |
+| smtp | `smtp_max_frequency` | `60`: un email de Auth por cuenta por minuto (§10) | `[auth.email] max_frequency = "1s"` en local, para probar sin esperar |
 | templates | `mailer_subjects_magic_link`, `mailer_subjects_confirmation`, `mailer_templates_*_content`, `rate_limit_email_sent` | asunto de `config.toml`, `login_code.html`, 100 | |
 | templates | `mailer_notifications_password_changed_enabled`, `mailer_subjects_password_changed_notification`, `mailer_templates_password_changed_notification_content` | `true`, asunto de `config.toml`, `password_changed.html` (§12) | `[auth.email.notification.password_changed]` |
 
@@ -232,9 +233,9 @@ curl -sS -X PATCH "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}/
 
 Eso corta el hook en el acto (los refresh vuelven a pasar). **El próximo despliegue lo vuelve a prender**: para que quede apagado hay que revertir el PR (o poner `enabled = false` en `config.toml` y `hook_custom_access_token_enabled: false` en `auth-config.ts` en un PR), y el despliegue de ese PR corta si ambos no coinciden. Nunca se cambia ni se borra la función con el hook prendido.
 
-## 10. Captcha de Auth: la página `/captcha/` (PR09, 25/11/2026; Auth todavía lo tiene apagado)
+## 10. Captcha de Auth: la página `/captcha/` (PR09, 25/11/2026) y Auth que lo exige (PR11, 26/11/2026)
 
-Supabase Auth puede exigir un token de Turnstile en cada pedido que lo necesita (`signInWithOtp` para pedir el código, y después el alta, la contraseña y la recuperación). Este PR agrega **el lado de la app**: cómo se obtiene el token y cómo viaja. **No prende el captcha en Auth** (`security_captcha_enabled` sigue en `false`, §2): eso es PR11, cuando las dos apps ya lo manden y estén publicadas.
+Supabase Auth puede exigir un token de Turnstile en cada pedido que lo necesita (`signInWithOtp` para pedir el código, y después el alta, la contraseña y la recuperación). PR09 agregó **el lado de la app**: cómo se obtiene el token y cómo viaja. **PR11 lo prende en Auth** (§10.1).
 
 **Dónde vive.** Una página estática más del mismo sitio, `https://radicicucina.app/captcha/` (`web/captcha/`), en vez de un dominio aparte (otro proyecto de Cloudflare Pages). Dibuja un widget de Turnstile con la **sitekey de Auth** (`VITE_TURNSTILE_AUTH_SITE_KEY`; no la del formulario, que sigue siendo `VITE_TURNSTILE_SITE_KEY`) con `appearance: interaction-only`: sin casilla a la vista salvo que Cloudflare pida que la persona la toque. No es una página para visitar: abierta suelta muestra un aviso y no carga Turnstile.
 
@@ -258,9 +259,33 @@ Todo lo que no encaja (otra marca, otra versión, un id o un campo con otra form
 
 **Servicio** (`CaptchaService`, `app/lib/core/captcha/`). `Future<String?> token({String? locale})`: una página nueva y un id nuevo por llamada (un token de Turnstile sirve **una sola vez**, ~300 s), de a un pedido por vez, nunca lanza y devuelve `null` si no hay token a los 20 s (120 s si Cloudflare pidió tocar la casilla), si la página no carga o si la plataforma no puede abrir un marco o una WebView. Reintentar es llamar de nuevo: no hay estado que reparar.
 
-**Fail-open hasta PR11.** Hoy Auth no exige captcha y el login de Evelyn no puede depender de una página de un tercero (Edge con la prevención de seguimiento deja Turnstile en blanco sin avisar, SPEC §6). La constante `captchaRequired` de `app/lib/core/captcha/captcha_service.dart` es `false`: el login pide un token por cada envío (y reenvío) del código, se lo pasa a `signInWithOtp(captchaToken: …)` y, si no hay token, **manda el pedido igual, sin token**, sin registrar nada. **PR11 la pone en `true` en el mismo cambio que prende `security_captcha_enabled`** (con `[auth.captcha]` en `config.toml` y la secreta de Turnstile de Auth, que va en Supabase y nunca en el repo): desde ahí la falta de token es el error `AuthFailureKind.captcha` («Riprova»), y nada llega a Auth sin token. Antes de eso hay que publicar las dos apps con este PR y comprobar en producción que los tokens llegan (los pedidos a Auth con y sin `gotrue_meta_security.captcha_token`, en los logs de Auth, sin loguear el token).
+**Fail-open hasta PR11 (histórico; hoy rige §10.1).** Hasta PR11 Auth no exigía captcha y el login de Evelyn no puede depender de una página de un tercero (Edge con la prevención de seguimiento deja Turnstile en blanco sin avisar, SPEC §6). La constante `captchaRequired` de `app/lib/core/captcha/captcha_service.dart` es `false`: el login pide un token por cada envío (y reenvío) del código, se lo pasa a `signInWithOtp(captchaToken: …)` y, si no hay token, **manda el pedido igual, sin token**, sin registrar nada. **PR11 la pone en `true` en el mismo cambio que prende `security_captcha_enabled`** (con `[auth.captcha]` en `config.toml` y la secreta de Turnstile de Auth, que va en Supabase y nunca en el repo): desde ahí la falta de token es el error `AuthFailureKind.captcha` («Riprova»), y nada llega a Auth sin token. Antes de eso hay que publicar las dos apps con este PR y comprobar en producción que los tokens llegan (los pedidos a Auth con y sin `gotrue_meta_security.captcha_token`, en los logs de Auth, sin loguear el token).
 
 **Qué tiene que crear la dueña de la cuenta de Cloudflare.** Un widget de Turnstile **nuevo**, distinto del del formulario: modo **Managed**, hostname `radicicucina.app` (los de `*.pages.dev` solo si quiere probar vistas previas), y copiar su sitekey a la variable de GitHub `VITE_TURNSTILE_AUTH_SITE_KEY` y su secreta, más adelante (PR11), a Supabase Auth. `deploy-web.yml` corta la publicación a producción si la variable falta, es una sitekey de prueba (`1x…`, `2x…`, `3x…`) o es igual a la del formulario.
+
+### 10.1 Auth exige el captcha (PR11, 26/11/2026)
+
+Desde PR11, producción exige el token de Turnstile en `/otp` (pedir el código, también el de Evelyn), `/signup`, `/recover`, `/resend`, `/magiclink` y `/token` con contraseña. **No** lo piden el refresh de la sesión ni el canje PKCE (`/token` con `refresh_token` o `pkce`: las sesiones abiertas siguen, también la de Evelyn), `/verify` (el código y el link de `/accesso/`) ni las llamadas con credenciales de admin (el despliegue). Comprobado contra GoTrue v2.197.0 con el captcha prendido.
+
+**Lo que fija el repo** (`auth-config.ts`, §2): `security_captcha_enabled = true` y `security_captcha_provider = turnstile` en la parte security; la secreta (`security_captcha_secret`) la suma `authCaptchaConfig` desde el secreto de GitHub `TURNSTILE_AUTH_SECRET_KEY` (la Secret Key del widget «Radici login»), como la clave del SMTP: va directo al PATCH y nunca se imprime ni se compara. En local el captcha queda apagado (`config.toml` no tiene `[auth.captcha]`, y `auth-config.ts` corta si alguien lo prende ahí).
+
+**La app**: `captchaRequiredProvider` es `true` con `APP_ENV=prod` (la web de `/gestione/` y `/app/`, iOS y Android publicados) y `false` en desarrollo (el Supabase local no lo exige y la página `/captcha/` no está en el origen de la app). En producción, sin token el pedido no sale: «Non siamo riusciti a completare la verifica anti-spam. Riprova» (`AuthFailureKind.captcha`), lo mismo si Auth rechaza el token (`captcha_failed`). `/accesso/` ya lo exigía («Reinvia l'email»).
+
+**El despliegue, para que un error no deje a nadie afuera** (`supabase/scripts/auth-captcha-check.ts`, con tests y probado contra GoTrue y Cloudflare reales):
+1. **Antes del PATCH** (paso «Captcha de Auth: la secreta es la del widget»): la secreta existe, no es una de prueba de Cloudflare (`1x…`, `2x…`, `3x…`), tiene la forma de una real (`0x…`) y Cloudflare la reconoce (siteverify con un token inventado responde `invalid-input-response`; una secreta que no existe da `invalid-input-secret`). Si no, corta sin tocar Auth.
+2. **Después del PATCH** (paso «Captcha de Auth: Auth lo exige»), como cualquier visitante (con la clave publicable, variable `SUPABASE_PUBLISHABLE_KEY`): un pedido de código para `captcha-check@example.com` con `create_user: false` tiene que dar `captcha_failed` sin token, y `captcha_failed` por `invalid-input-response` con un token inventado (Supabase le preguntó a Cloudflare con la secreta buena). Ninguno de los dos manda un email. Si no da, **el script apaga el captcha** (PATCH `security_captcha_enabled = false`) y el despliegue falla antes de migrar: el login sigue como antes de PR11.
+
+Lo que el despliegue no puede comprobar: que la secreta y la sitekey (`VITE_TURNSTILE_AUTH_SITE_KEY`) sean **del mismo widget**. Si no lo fueran, todos los tokens reales darían `captcha_failed`. Por eso, después de cada cambio de claves, la prueba manual: pedir el código en `/gestione/` (ventana privada) y en el iPhone.
+
+**Vuelta atrás** (si el login falla por el captcha):
+```sh
+curl -sS -X PATCH "https://api.supabase.com/v1/projects/<REF>/config/auth" \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"security_captcha_enabled": false}'
+```
+Apaga el captcha en el acto (los builds publicados siguen mandando el token, que Auth ignora). El próximo despliegue lo vuelve a prender: para dejarlo apagado hay que revertir PR11. Las sesiones abiertas no se ven afectadas en ningún momento.
+
+**Límite de emails** (`smtp_max_frequency = 60`, parte smtp): un email de Auth por cuenta por minuto; antes, 429 `over_email_send_rate_limit` («Aspetta un minuto e riprova» en la app). Una cuenta que existe responde ese 429 a un segundo pedido rápido y una que no existe no: se acepta a sabiendas (el captcha y el límite por IP de §9 hacen caro aprovecharlo). `rate_limit_otp` ya estaba en 10 (§9).
 
 ## 11. La página `/accesso/`: confirmar el alta y elegir la contraseña (PR15, 26/11/2026; todavía no la enlaza ningún email)
 

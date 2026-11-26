@@ -28,7 +28,7 @@ void main() {
     Locale locale = const Locale('it', 'IT'),
     bool isWeb = true,
     List<Override> overrides = const [],
-    CaptchaService captcha = const NoCaptchaService(),
+    CaptchaService captcha = const TokenCaptchaService(),
   }) {
     setSurfaceSize(tester, const Size(400, 900));
     auth = FakeAuthRepository();
@@ -150,23 +150,30 @@ void main() {
     );
   });
 
-  testWidgets('el captcha de Auth: el envío lleva su token, y sin él (fail-open) el código se pide igual', (tester) async {
+  testWidgets('el captcha de Auth: obligatorio en producción, y el envío lleva su token', (tester) async {
     final captcha = FakeCaptchaService();
     final container = await pumpLogin(tester, captcha: captcha);
-    expect(container.read(captchaRequiredProvider), isFalse);
+    expect(container.read(captchaRequiredProvider), isTrue);
     await enterEmail(tester, 'evelyn@example.test');
     expect(auth.sentCaptchaTokens, ['captcha-token-1']);
     expect(captcha.locales, ['it']);
     expect(find.byKey(const ValueKey('login-code')), findsOneWidget);
   });
 
-  testWidgets('sin token y con el captcha obligatorio (PR11): lo explica y se reintenta con el mismo botón', (tester) async {
-    final captcha = FakeCaptchaService(available: false);
+  testWidgets('en desarrollo (sin captcha en el Supabase local) sin token el código se pide igual', (tester) async {
     await pumpLogin(
       tester,
-      captcha: captcha,
-      overrides: [captchaRequiredProvider.overrideWithValue(true)],
+      captcha: const NoCaptchaService(),
+      overrides: [captchaRequiredProvider.overrideWithValue(false)],
     );
+    await enterEmail(tester, 'evelyn@example.test');
+    expect(auth.sentCaptchaTokens, [null]);
+    expect(find.byKey(const ValueKey('login-code')), findsOneWidget);
+  });
+
+  testWidgets('sin token, en producción (PR11): lo explica y se reintenta con el mismo botón', (tester) async {
+    final captcha = FakeCaptchaService(available: false);
+    await pumpLogin(tester, captcha: captcha);
     await enterEmail(tester, 'evelyn@example.test');
     expect(find.textContaining('verifica anti-spam'), findsOneWidget);
     expect(auth.sentTo, isEmpty);

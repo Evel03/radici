@@ -54,7 +54,8 @@ Future<void> pumpLocalized(
 /// [isWeb] simula la versión web (/gestione/); [clock] es "ahora" (por
 /// defecto, siempre [testNow]); [retry], los reintentos automáticos de
 /// Riverpod (por defecto, ninguno); [captcha], el captcha de Auth del login
-/// (por defecto, sin token: nunca se abre la página /captcha/). [entry] es
+/// (por defecto, uno que siempre da token: en producción es obligatorio; nunca
+/// se abre la página /captcha/). [entry] es
 /// la entrada de la app (por defecto, la de la cocina, /gestione/);
 /// [observers] ven los providers que se crean.
 Future<ProviderContainer> pumpRadiciApp(
@@ -67,7 +68,7 @@ Future<ProviderContainer> pumpRadiciApp(
   bool settle = true,
   DateTime Function()? clock,
   RetryDelay retry = noRetry,
-  CaptchaService captcha = const NoCaptchaService(),
+  CaptchaService captcha = const TokenCaptchaService(),
   List<ProviderObserver> observers = const [],
 }) async {
   tester.platformDispatcher.localesTestValue = deviceLocales;
