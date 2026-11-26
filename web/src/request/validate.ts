@@ -55,6 +55,9 @@ export const PAGE_FIELDS = {
   slot: true,
   allergens: true,
   diets: true,
+  // La casilla de ofertas (contrato §13) todavía no está en el formulario: llega en el PR siguiente, que la
+  // pasa a FIELD_ORDER. Hasta entonces la página nunca la manda.
+  consentMarketing: true,
 } as const satisfies Record<Exclude<PublicRequestField, FieldName>, true>;
 
 const ERROR_CODES: readonly ErrorCode[] = [

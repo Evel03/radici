@@ -4,8 +4,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AVAILABILITY_DAYS, AVAILABILITY_PATH, buildAvailabilityResponse } from "../_shared/availability.ts";
 import { hashSubject } from "../_shared/client_ip.ts";
+import { hashClientLinkToken } from "../_shared/client_link.ts";
+import { MARKETING_RATE_LIMITS } from "../_shared/marketing.ts";
 import { MENU_PATH, buildMenuResponse, recipePhotoUrls, type MenuChoice, type MenuDish } from "../_shared/menu.ts";
-import { CONSENT_VERSION, HEALTH_CONSENT_VERSION, PUBLIC_REQUEST_VERSION, type PublicRequestPayload } from "../_shared/public_request.ts";
+import {
+  CONSENT_VERSION,
+  HEALTH_CONSENT_VERSION,
+  MARKETING_CONSENT_VERSION,
+  PUBLIC_REQUEST_VERSION,
+  type PublicRequestPayload,
+} from "../_shared/public_request.ts";
 import { DEFAULT_PRICING, calcQuote } from "../_shared/quote.ts";
 import { RESEND_API_URL } from "../_shared/resend.ts";
 import { TURNSTILE_VERIFY_URL } from "../_shared/turnstile.ts";
@@ -21,6 +29,7 @@ import {
   availabilityRateSubject,
   availableDatesFromRpc,
   menuRateSubject,
+  marketingRateSubject,
   chefFromRow,
   configWarnings,
   createPublicRequestHandler,
@@ -33,6 +42,8 @@ import {
   type DefaultChef,
   type HandlerDeps,
   type LogFields,
+  type MarketingState,
+  type MarketingSubscribeParams,
   type PublicRequestStore,
   type SubmitPublicRequestParams,
   type SubmitResult,
@@ -143,7 +154,7 @@ class FakeStore implements PublicRequestStore {
   chef: ChefInfo | null = CHEF;
   /** Filas de public.chefs (para resolveDefaultChef sin CHEF_ID). */
   chefIds: string[] = [CHEF_ID];
-  failOn: "rate" | "resolve" | "chef" | "submit" | "mark" | "freeDays" | "menu" | null = null;
+  failOn: "rate" | "resolve" | "chef" | "submit" | "mark" | "freeDays" | "menu" | "marketing" | null = null;
   /** true: como hit_public_request_rate, cuenta los intentos de cada clave y aplica los límites (si no, responde allow). */
   countHits = false;
   hits: Array<{ ipHash: string; maxHour: number; maxDay: number }> = [];
@@ -217,6 +228,39 @@ class FakeStore implements PublicRequestStore {
   async markChefNotificationSent(requestId: string): Promise<void> {
     if (this.failOn === "mark") throw new StoreError("mark_sent", "42501", null);
     this.marked.push(requestId);
+  }
+
+  /** Lo que llegó a marketing_subscribe. */
+  marketingCalls: MarketingSubscribeParams[] = [];
+  /** Lo que responde marketing_subscribe en send (false: ya estaba confirmada). */
+  marketingSend = true;
+  /** Contactos por hash del token (marketing_status y marketing_set). */
+  marketing = new Map<string, MarketingState>();
+  marketingSetCalls: Array<{ tokenHash: string; action: string }> = [];
+
+  async subscribeMarketing(params: MarketingSubscribeParams): Promise<{ send: boolean }> {
+    if (this.failOn === "marketing") throw new StoreError("marketing_subscribe", "23514", null);
+    this.marketingCalls.push(params);
+    return { send: this.marketingSend };
+  }
+
+  async marketingStatus(tokenHash: string): Promise<MarketingState | null> {
+    if (this.failOn === "marketing") throw new StoreError("marketing_status", "57014", null);
+    return this.marketing.get(tokenHash) ?? null;
+  }
+
+  async marketingSet(tokenHash: string, action: "confirm" | "withdraw"): Promise<MarketingState | null> {
+    if (this.failOn === "marketing") throw new StoreError("marketing_set", "57014", null);
+    this.marketingSetCalls.push({ tokenHash, action });
+    const current = this.marketing.get(tokenHash);
+    if (!current) return null;
+    const next: MarketingState = {
+      ...current,
+      status: action === "confirm" ? (current.status === "pending" ? "confirmed" : current.status) : "withdrawn",
+      email: null,
+    };
+    this.marketing.set(tokenHash, next);
+    return next;
   }
 }
 
@@ -1630,4 +1674,173 @@ test("safeDbMessage: solo pasan los códigos propios (snake_case), nunca textos 
   assert.equal(safeDbMessage("health_consent_required"), "health_consent_required");
   assert.equal(safeDbMessage('new row for relation "clients" violates check constraint'), null);
   assert.equal(safeDbMessage(undefined), null);
+});
+
+// ---------------------------------------------------------------------------
+// Ofertas y novedades (contrato §13)
+// ---------------------------------------------------------------------------
+
+const MARKETING_TOKEN = "A".repeat(43);
+
+function clientEmailOf(run: Harness): { html: string; text: string } {
+  const call = run.fetchCalls.find((item) => item.url === RESEND_API_URL && (item.body as { to: string[] }).to[0] === "giulia.pii@example.test");
+  assert.ok(call, "salió el email a la clienta");
+  const body = call.body as { html: string; text: string };
+  return { html: body.html, text: body.text };
+}
+
+test("ofertas: con la casilla marcada, el contacto queda pendiente y el email a la clienta lleva el link para confirmar", async () => {
+  const run = harness();
+  const response = await run.handle(post(payload({ consents: { privacy: CONSENT_VERSION, health: HEALTH_CONSENT_VERSION, marketing: MARKETING_CONSENT_VERSION } })));
+  assert.equal(response.status, 201);
+  await run.settle();
+
+  assert.equal(run.store.marketingCalls.length, 1);
+  const call = run.store.marketingCalls[0]!;
+  assert.equal(call.chef_id, CHEF_ID);
+  assert.equal(call.email, "giulia.pii@example.test");
+  assert.equal(call.first_name, "Giuliaxyz", "solo el nombre de pila");
+  assert.equal(call.locale, "it");
+  assert.equal(call.source, "web");
+  assert.equal(call.text_version, MARKETING_CONSENT_VERSION);
+  assert.equal(call.request_id, run.store.marketingCalls[0]!.request_id);
+  assert.match(call.token_hash, /^[0-9a-f]{64}$/);
+
+  const { html, text } = clientEmailOf(run);
+  const match = /https:\/\/radicicucina\.app\/preferenze\/#t=([A-Za-z0-9_-]{43})/.exec(text);
+  assert.ok(match, "el link a /preferenze/ con el token en el fragmento");
+  assert.equal(await hashClientLinkToken(match[1]!), call.token_hash, "la base guarda el hash del token del link");
+  assert.ok(html.includes("Offerte e novità"));
+  assert.ok(html.includes("Confermo"));
+  assert.ok(text.includes("tra 7 giorni la richiesta si cancella da sola"));
+
+  // Nunca el email ni el token en los logs.
+  const logged = JSON.stringify(run.logs);
+  assert.ok(!logged.includes("giulia.pii"));
+  assert.ok(!logged.includes(match[1]!));
+  assert.ok(run.logs.some((entry) => entry.event === "marketing_subscribed" && entry.fields.send === true));
+});
+
+test("ofertas: en español, el link lleva ?lang=es", async () => {
+  const run = harness();
+  await run.handle(post(payload({ locale: "es", consents: { privacy: CONSENT_VERSION, health: HEALTH_CONSENT_VERSION, marketing: MARKETING_CONSENT_VERSION } })));
+  await run.settle();
+  const { text } = clientEmailOf(run);
+  assert.match(text, /https:\/\/radicicucina\.app\/preferenze\/\?lang=es#t=[A-Za-z0-9_-]{43}/);
+  assert.ok(clientEmailOf(run).html.includes("Ofertas y novedades"));
+});
+
+test("ofertas: sin la casilla no se suscribe nada y el email es el de siempre", async () => {
+  const run = harness();
+  await run.handle(post(payload()));
+  await run.settle();
+  assert.equal(run.store.marketingCalls.length, 0);
+  const { text } = clientEmailOf(run);
+  assert.ok(!text.includes("/preferenze/"));
+  assert.ok(!text.includes("Offerte e novità"));
+});
+
+test("ofertas: ya confirmada (send = false), el email no lleva el link", async () => {
+  const run = harness();
+  run.store.marketingSend = false;
+  await run.handle(post(payload({ consents: { privacy: CONSENT_VERSION, health: HEALTH_CONSENT_VERSION, marketing: MARKETING_CONSENT_VERSION } })));
+  await run.settle();
+  assert.equal(run.store.marketingCalls.length, 1);
+  assert.ok(!clientEmailOf(run).text.includes("/preferenze/"));
+});
+
+test("ofertas: si falla la base, el pedido y el email salen igual, sin el link", async () => {
+  const run = harness();
+  run.store.failOn = "marketing";
+  const response = await run.handle(post(payload({ consents: { privacy: CONSENT_VERSION, health: HEALTH_CONSENT_VERSION, marketing: MARKETING_CONSENT_VERSION } })));
+  assert.equal(response.status, 201);
+  await run.settle();
+  assert.ok(!clientEmailOf(run).text.includes("/preferenze/"));
+  assert.ok(run.logs.some((entry) => entry.event === "store_error" || entry.fields.op === "marketing_subscribe"));
+});
+
+test("ofertas: un reintento del mismo pedido (duplicate) no suscribe otra vez", async () => {
+  const run = harness();
+  const body = payload({ requestKey: REQUEST_KEY, consents: { privacy: CONSENT_VERSION, health: HEALTH_CONSENT_VERSION, marketing: MARKETING_CONSENT_VERSION } });
+  await run.handle(post(body));
+  await run.settle();
+  const again = await run.handle(post(body));
+  assert.equal(again.status, 201);
+  await run.settle();
+  assert.equal(run.store.marketingCalls.length, 1);
+});
+
+test("ofertas: una versión del texto que no se acepta es un error del pedido", async () => {
+  const run = harness();
+  const response = await run.handle(post(payload({ consents: { privacy: CONSENT_VERSION, health: HEALTH_CONSENT_VERSION, marketing: "1999-01-01" } })));
+  assert.equal(response.status, 400);
+  assert.deepEqual(((await json(response)) as { errors: Record<string, string> }).errors.consentMarketing, "invalid");
+  assert.equal(run.store.submitted.length, 0);
+});
+
+function marketingPost(route: string, body: unknown, rawBody?: string): Request {
+  return new Request(`${ENDPOINT}/marketing/${route}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "https://radicicucina.app", "cf-connecting-ip": "203.0.113.7" },
+    body: rawBody ?? JSON.stringify(body),
+  });
+}
+
+test("ofertas, el link: status con el email enmascarado, confirm y withdraw", async () => {
+  const run = harness();
+  const hash = await hashClientLinkToken(MARKETING_TOKEN);
+  run.store.marketing.set(hash, { status: "pending", locale: "es", email: "giulia.pii@example.test" });
+
+  const status = await run.handle(marketingPost("status", { token: MARKETING_TOKEN }));
+  assert.equal(status.status, 200);
+  assert.equal(status.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await json(status), { status: "pending", locale: "es", email: "g***@example.test" });
+
+  const confirmed = await run.handle(marketingPost("confirm", { token: MARKETING_TOKEN }));
+  assert.equal(confirmed.status, 200);
+  assert.deepEqual(await json(confirmed), { status: "confirmed", locale: "es" }, "sin el email");
+  assert.deepEqual(run.store.marketingSetCalls, [{ tokenHash: hash, action: "confirm" }]);
+
+  const withdrawn = await run.handle(marketingPost("withdraw", { token: MARKETING_TOKEN }));
+  assert.deepEqual(await json(withdrawn), { status: "withdrawn", locale: "es" });
+
+  // Ni el token ni el email en los logs: solo la ruta y el estado.
+  const logged = JSON.stringify(run.logs);
+  assert.ok(!logged.includes(MARKETING_TOKEN));
+  assert.ok(!logged.includes("giulia.pii"));
+  assert.ok(!logged.includes(hash));
+  // Su propio contador por IP, con sus topes.
+  const ipHash = await hashSubject(marketingRateSubject("203.0.113.7"), ENV.IP_HASH_SALT!);
+  assert.ok(run.store.hits.every((hit) => hit.ipHash === ipHash && hit.maxHour === MARKETING_RATE_LIMITS.perHour && hit.maxDay === MARKETING_RATE_LIMITS.perDay));
+  assert.equal(run.store.hits.length, 3);
+});
+
+test("ofertas, el link: un token que no es de nadie da 404, sin decir más", async () => {
+  const run = harness();
+  const response = await run.handle(marketingPost("confirm", { token: MARKETING_TOKEN }));
+  assert.equal(response.status, 404);
+  assert.deepEqual(await json(response), { error: "notFound" });
+});
+
+test("ofertas, el link: token con otra forma, otro método, sin JSON o un cuerpo grande", async () => {
+  const run = harness();
+  assert.equal((await run.handle(marketingPost("status", { token: "corto" }))).status, 400);
+  assert.equal((await run.handle(marketingPost("status", null, "{no es json"))).status, 400);
+  assert.equal((await run.handle(marketingPost("status", { token: MARKETING_TOKEN, extra: "x".repeat(400) }))).status, 413);
+  const get = await run.handle(new Request(`${ENDPOINT}/marketing/status`, { method: "GET" }));
+  assert.equal(get.status, 405);
+  assert.equal(get.headers.get("allow"), "POST, OPTIONS");
+  assert.equal(run.store.hits.length, 0, "nada de eso gasta el límite");
+});
+
+test("ofertas, el link: con el límite por IP agotado, 429; si falla la base, 503", async () => {
+  const limited = harness();
+  limited.store.allow = false;
+  const response = await limited.handle(marketingPost("status", { token: MARKETING_TOKEN }));
+  assert.equal(response.status, 429);
+  assert.ok(response.headers.get("retry-after"));
+
+  const broken = harness();
+  broken.store.failOn = "marketing";
+  assert.equal((await broken.handle(marketingPost("confirm", { token: MARKETING_TOKEN }))).status, 503);
 });

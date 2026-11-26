@@ -8,6 +8,7 @@
 // sb_secret_…) no son JWT y el chequeo de la plataforma no autentica a nadie: la protección es
 // Turnstile + límite por IP + validación (las lecturas de disponibilidad y del menù: límite por IP propio).
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { marketingStateFromRpc } from "../_shared/marketing.ts";
 import { menuDishesFromRpc, photoOrigin } from "../_shared/menu.ts";
 import {
   CHEF_SETTINGS_COLUMNS,
@@ -60,6 +61,9 @@ function createStore(): PublicRequestStore {
       markChefNotificationSent: () => fail("mark_sent"),
       freeDays: () => fail("free_days"),
       publicMenu: () => fail("public_menu"),
+      subscribeMarketing: () => fail("marketing_subscribe"),
+      marketingStatus: () => fail("marketing_status"),
+      marketingSet: () => fail("marketing_set"),
     };
   }
 
@@ -135,6 +139,32 @@ function createStore(): PublicRequestStore {
       const dates = availableDatesFromRpc(data);
       if (!dates) throw new StoreError("free_days", null, "unexpected_result");
       return dates;
+    },
+
+    async subscribeMarketing(params) {
+      const { data, error } = await supabase.rpc("marketing_subscribe", { p: params });
+      if (error) throw storeError("marketing_subscribe", error);
+      const send = (data as { send?: unknown } | null)?.send;
+      if (typeof send !== "boolean") throw new StoreError("marketing_subscribe", null, "unexpected_result");
+      return { send };
+    },
+
+    async marketingStatus(tokenHash) {
+      const { data, error } = await supabase.rpc("marketing_status", { p_token_hash: tokenHash });
+      if (error) throw storeError("marketing_status", error);
+      if (data === null) return null;
+      const state = marketingStateFromRpc(data);
+      if (!state) throw new StoreError("marketing_status", null, "unexpected_result");
+      return state;
+    },
+
+    async marketingSet(tokenHash, action) {
+      const { data, error } = await supabase.rpc("marketing_set", { p_token_hash: tokenHash, p_action: action });
+      if (error) throw storeError("marketing_set", error);
+      if (data === null) return null;
+      const state = marketingStateFromRpc(data);
+      if (!state) throw new StoreError("marketing_set", null, "unexpected_result");
+      return state;
     },
 
     async publicMenu(chefId) {
