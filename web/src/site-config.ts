@@ -10,6 +10,7 @@ export const config: SiteConfig = toSiteConfig(
   resolveConfig({
     VITE_BRAND_NAME: import.meta.env.VITE_BRAND_NAME,
     VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
     VITE_TURNSTILE_SITE_KEY: import.meta.env.VITE_TURNSTILE_SITE_KEY,
     VITE_TURNSTILE_AUTH_SITE_KEY: import.meta.env.VITE_TURNSTILE_AUTH_SITE_KEY,
   }),

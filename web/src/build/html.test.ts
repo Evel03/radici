@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import notFoundHtml from "../../404.html?raw";
+import accessHtml from "../../accesso/index.html?raw";
 import captchaHtml from "../../captcha/index.html?raw";
 import indexHtml from "../../index.html?raw";
 import reservationHtml from "../../prenotazione/index.html?raw";
@@ -56,6 +57,7 @@ describe("renderPage con las páginas reales", () => {
     ["/privacy/", privacyHtml],
     ["/prenotazione/", reservationHtml],
     ["/captcha/", captchaHtml],
+    ["/accesso/", accessHtml],
   ] as const;
 
   for (const [path, html] of pages) {
@@ -284,6 +286,30 @@ describe("página del captcha de Auth (/captcha/)", () => {
     for (const id of ["captcha", "captcha-working", "captcha-interactive", "captcha-widget", "captcha-cancel", "captcha-standalone"]) {
       expect(out, id).toContain(`id="${id}"`);
     }
+  });
+});
+
+describe("confirmar el alta o elegir la contraseña (/accesso/)", () => {
+  const render = (config: AppConfig) => renderPage(accessHtml, { i18n, config, pagePath: "/accesso/", partials });
+
+  it("nunca se indexa ni declara una URL propia (la suya lleva el token), ni con el sitio indexable", () => {
+    const out = render({ ...baseConfig, noindex: false, siteUrl: "https://radicicucina.app" });
+    expect(out).toContain('<meta name="robots" content="noindex, nofollow">');
+    expect(out).not.toMatch(/rel="canonical"|og:url|application\/ld\+json/);
+  });
+
+  it("con cabecera (el selector de idioma) y pie, el script propio y sin estilos ni scripts inline (la CSP no los deja)", () => {
+    const out = render(baseConfig);
+    expect(out).toContain('<script type="module" src="/src/pages/accesso.ts"></script>');
+    expect(out).toMatch(/data-lang="es"/);
+    expect(out).not.toMatch(/\sstyle=|<style|<script(?![^>]*src=)/);
+  });
+
+  it("los textos del build quedan en italiano, también los mensajes ocultos", () => {
+    const out = render(baseConfig);
+    expect(out).toContain(">Conferma</button>");
+    expect(out).toContain(">La password deve avere almeno 10 caratteri.</span>");
+    expect(out).toContain(">Reinvia l'email</button>".replace("'", "&#39;"));
   });
 });
 

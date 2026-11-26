@@ -8,6 +8,10 @@ import {
   isRequestId,
   isTokenShape,
   isTrustedHostEvent,
+  isTrustedPageEvent,
+  newRequestId,
+  parsePageMessage,
+  requestEnvelope,
   nativeTransport,
   parseRequest,
   safeCode,
@@ -183,5 +187,61 @@ describe("detectMode", () => {
     expect(detectMode("?lang=es", false, true)).toBe("frame");
     expect(detectMode("", false, false)).toBe("standalone");
     expect(detectMode("?channel=otro", true, false)).toBe("standalone");
+  });
+});
+
+describe("lado del host (la web: /accesso/)", () => {
+  const page = (message: Record<string, unknown>) => ({ source: CAPTCHA_SOURCE, v: CAPTCHA_VERSION, ...message });
+
+  it("el pedido lleva la marca, la versión y el id, y la página lo reconoce", () => {
+    expect(requestEnvelope(ID)).toEqual({ source: "radici-captcha", v: 1, type: "request", id: ID });
+    expect(parseRequest(requestEnvelope(ID))).toBe(ID);
+  });
+
+  it("lee lo que manda la página (el mismo sobre que envelope)", () => {
+    expect(parsePageMessage(envelope({ type: "ready" }))).toEqual({ type: "ready" });
+    expect(parsePageMessage(envelope({ type: "interactive", id: ID, visible: true }))).toEqual({ type: "interactive", id: ID, visible: true });
+    expect(parsePageMessage(envelope({ type: "token", id: ID, token: "0.tok-en_1" }))).toEqual({ type: "token", id: ID, token: "0.tok-en_1" });
+    expect(parsePageMessage(envelope({ type: "error", id: ID, code: "300030" }))).toEqual({ type: "error", id: ID, code: "300030" });
+  });
+
+  it("un código de error raro llega como «unknown», nunca como texto libre", () => {
+    expect(parsePageMessage(page({ type: "error", id: ID, code: "<b>hola</b>" }))).toEqual({ type: "error", id: ID, code: "unknown" });
+  });
+
+  it("ignora lo que no es un mensaje válido de la página", () => {
+    const bad: unknown[] = [
+      null,
+      "texto",
+      JSON.stringify(envelope({ type: "ready" })), // el canal frame manda objetos: un string no es de la página
+      { type: "ready" },
+      page({ v: 2, type: "ready" }),
+      { ...page({ type: "ready" }), source: "otro" },
+      page({ type: "request", id: ID }),
+      page({ type: "token", id: "corto", token: "x" }),
+      page({ type: "token", id: ID, token: "con espacio" }),
+      page({ type: "token", id: ID }),
+      page({ type: "interactive", id: ID, visible: "si" }),
+      page({ type: "error", id: 5, code: "x" }),
+      page({ type: "otro", id: ID }),
+    ];
+    for (const raw of bad) expect(parsePageMessage(raw), JSON.stringify(raw)).toBeNull();
+  });
+
+  it("de fiar: el mismo origen exacto y la ventana del marco que se abrió", () => {
+    const frame = {};
+    expect(isTrustedPageEvent({ origin: ORIGIN, source: frame }, ORIGIN, frame)).toBe(true);
+    expect(isTrustedPageEvent({ origin: "https://evil.example", source: frame }, ORIGIN, frame)).toBe(false);
+    expect(isTrustedPageEvent({ origin: `${ORIGIN}:443`, source: frame }, ORIGIN, frame)).toBe(false);
+    expect(isTrustedPageEvent({ origin: ORIGIN, source: {} }, ORIGIN, frame)).toBe(false);
+    expect(isTrustedPageEvent({ origin: ORIGIN, source: null }, ORIGIN, null)).toBe(false);
+    expect(isTrustedPageEvent({ origin: "null", source: frame }, "null", frame)).toBe(false);
+  });
+
+  it("id nuevo: 32 hexadecimales con lo que da el generador al azar", () => {
+    const id = newRequestId((bytes) => bytes.map((_, i) => i * 17));
+    expect(id).toBe("00112233445566778899aabbccddeeff");
+    expect(isRequestId(id)).toBe(true);
+    expect(isRequestId(newRequestId((bytes) => crypto.getRandomValues(bytes)))).toBe(true);
   });
 });

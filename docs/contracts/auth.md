@@ -258,3 +258,40 @@ Todo lo que no encaja (otra marca, otra versión, un id o un campo con otra form
 **Fail-open hasta PR11.** Hoy Auth no exige captcha y el login de Evelyn no puede depender de una página de un tercero (Edge con la prevención de seguimiento deja Turnstile en blanco sin avisar, SPEC §6). La constante `captchaRequired` de `app/lib/core/captcha/captcha_service.dart` es `false`: el login pide un token por cada envío (y reenvío) del código, se lo pasa a `signInWithOtp(captchaToken: …)` y, si no hay token, **manda el pedido igual, sin token**, sin registrar nada. **PR11 la pone en `true` en el mismo cambio que prende `security_captcha_enabled`** (con `[auth.captcha]` en `config.toml` y la secreta de Turnstile de Auth, que va en Supabase y nunca en el repo): desde ahí la falta de token es el error `AuthFailureKind.captcha` («Riprova»), y nada llega a Auth sin token. Antes de eso hay que publicar las dos apps con este PR y comprobar en producción que los tokens llegan (los pedidos a Auth con y sin `gotrue_meta_security.captcha_token`, en los logs de Auth, sin loguear el token).
 
 **Qué tiene que crear la dueña de la cuenta de Cloudflare.** Un widget de Turnstile **nuevo**, distinto del del formulario: modo **Managed**, hostname `radicicucina.app` (los de `*.pages.dev` solo si quiere probar vistas previas), y copiar su sitekey a la variable de GitHub `VITE_TURNSTILE_AUTH_SITE_KEY` y su secreta, más adelante (PR11), a Supabase Auth. `deploy-web.yml` corta la publicación a producción si la variable falta, es una sitekey de prueba (`1x…`, `2x…`, `3x…`) o es igual a la del formulario.
+
+## 11. La página `/accesso/`: confirmar el alta y elegir la contraseña (PR15, 26/11/2026; todavía no la enlaza ningún email)
+
+Es la segunda mitad del alta en dos pasos y de «Password dimenticata?»: el email de Auth lleva a `https://radicicucina.app/accesso/`, la persona toca «Conferma» y elige la contraseña. Página de Vite (`web/accesso/`, lógica en `web/src/access/`) en it, es y en. **Hoy no llega nadie**: las plantillas que la enlazan son PR16, y las altas siguen cerradas hasta PR20.
+
+**El link** (lo arma PR16; contrato para sus plantillas):
+
+```
+https://radicicucina.app/accesso/?lang=<it|es|en>#token_hash=<{{ .TokenHash }}>&type=<email|recovery>
+```
+
+- `type=email` para confirmar el alta, `type=recovery` para la contraseña. Cualquier otro `type` (`magiclink`, `email_change`, `invite`…) la página lo trata como link roto: el código de Evelyn sigue siendo `magic_link` y nunca pasa por acá.
+- El `token_hash` va en el **fragmento**: no llega a ningún servidor ni va en el `Referer`. La página lo lee al abrir, lo saca de la URL enseguida (`history.replaceState`, conserva `?lang=`) y lo guarda solo en memoria hasta el toque.
+- Acepta el token con `pkce_` delante (un alta pedida con PKCE desde la app): **verificado** canjeándolo desde otro navegador, que nunca tuvo el verificador.
+
+**El flujo** (`web/src/access/flow.ts`, con tests):
+
+1. **Sin el toque en «Conferma» no se manda nada**: un escáner de links que abra la página no gasta el link.
+2. «Conferma»: `POST /auth/v1/verify` con **solo** `type` y `token_hash` (GoTrue rechaza con 400 cualquier otro campo junto al `token_hash`). Devuelve una sesión con `amr` `otp`. Vencido, ya usado o mal formado: 403 `otp_expired` (o 400) y la página ofrece «Reinvia». 429: «Troppi tentativi».
+3. Muestra el email de la cuenta **enmascarado** (`ev•••@g•••.com`), para que quien abrió el link sepa de qué cuenta es, y pide la contraseña: 10 o más caracteres, con letras y números, hasta 72 bytes (la regla la fija PR14 en Auth; la página la revisa antes de mandarla, y lo que diga Auth manda).
+4. `PUT /auth/v1/user` con solo `password`. La sesión de `/verify` cuenta como recuperación (`Session.IsRecovery` incluye `otp`), así que no pide la actual aunque PR14 prenda `require_current_password`. Errores: `weak_password` con sus razones (corta, sin letras o números, filtrada), `same_password`, 401/403 o una sesión que ya no sirve (pide otro link).
+5. Cierra la sesión (`POST /auth/v1/logout?scope=local`) **antes** de mostrar «Fatto!». Para entrar, la persona usa su email y la contraseña nueva: en la web, «Vai al login» lleva a `/app/#/accedi?email=<email>` (el email en la ruta de Flutter, o sea en el fragmento: la app lo precarga desde PR17 y hasta entonces lo ignora); en el teléfono, la app de Radici.
+
+**Lo que nunca hace:** guardar el link, la sesión o la contraseña (ni `localStorage`, ni `sessionStorage`, ni cookies: solo queda el idioma elegido, como en el resto del sitio), registrar algo en la consola, usar el refresh token (la sesión dura lo que tarda en elegirse la contraseña) o mandar algo a otro servidor que Supabase Auth. Usa `fetch` sin `supabase-js`, que guardaría la sesión. Un test recorre los módulos de la página y falla si nombran el almacenamiento o la consola.
+
+**«Reinvia l'email»** (link vencido, usado o roto de tipo conocido, o sesión vencida antes de guardar): pide el email y un **token de captcha nuevo**, y manda `POST /auth/v1/resend` (`type: signup`) para el alta o `POST /auth/v1/recover` para la contraseña, con `gotrue_meta_security.captcha_token`. Las dos responden 200 vacío exista o no la cuenta (y `/resend` tampoco manda nada si la cuenta ya está confirmada), y la página muestra el mismo mensaje neutro, que sugiere «Password dimenticata?» a quien ya había activado la cuenta. Sin token de captcha no manda nada. El captcha es el de §10: un iframe de `/captcha/` del mismo origen (`web/src/captcha/host.ts`, el mismo protocolo, los mismos tiempos y las mismas verificaciones de origen y fuente que la app); Turnstile corre dentro de `/captcha/`, nunca en `/accesso/`.
+
+**Cabeceras** (`web/public/_headers`, con tests): CSP propia con `connect-src` solo a Supabase, `frame-src 'self'` (el marco de `/captcha/`), `form-action 'none'` (sin código, un formulario nunca manda la contraseña ni el email), `frame-ancestors 'none'`; `Referrer-Policy: no-referrer` (también en un `<meta>`), `Cache-Control: no-store` y `noindex`. Es una página privada (`PRIVATE_PATHS`): sin canonical ni sitemap.
+
+**Clave publicable en la web.** `/accesso/` es la primera página que llama a Auth: manda `apikey` con `VITE_SUPABASE_PUBLISHABLE_KEY`, la misma variable que ya usaba `deploy-web.yml` (y la app). El build solo la acepta si es `sb_publishable_…` o la `anon` vieja (un JWT con `role: anon`); una secreta o la `service_role` quedan fuera del JS (`normalizePublishableKey`, con tests).
+
+**Probado de punta a punta** contra GoTrue v2.197.0 local, con `vite preview` (las cabeceras reales) y Edge headless: alta con PKCE, el fragmento fuera de la URL, ninguna llamada antes del toque, la contraseña borrada por el trigger de PR05 al confirmar, la contraseña nueva guardada y la sesión cerrada (ninguna abierta en `auth.sessions`), el login con la contraseña nueva, el link reusado (vencido), «Reinvia» con el captcha de prueba de Cloudflare hasta el link de recuperación, `same_password`, y sin violaciones de la CSP ni nada en la consola.
+
+**Qué se acepta a sabiendas:**
+- Quien tiene el link puede elegir la contraseña de esa cuenta: es lo mismo que tener el buzón. Por eso el link dura poco y se usa una vez (PR16), y la página muestra de qué cuenta es antes de pedir la contraseña.
+- Si alguien cierra la página entre «Conferma» y guardar la contraseña, la sesión queda abierta en el servidor hasta que vence (nadie más la tiene: vivía solo en esa pestaña). La cuenta confirmada queda sin contraseña (PR05): el login y «Crea account» sugieren «Password dimenticata?» (PR17).
+- El aviso «Troppi tentativi» de `/verify` sale del límite por IP de Auth (§9), compartido con el código de Evelyn.

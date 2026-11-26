@@ -577,5 +577,61 @@
     "cancel": "Cancel",
     "noscript": "JavaScript is needed to complete the anti-spam check: turn it on in your browser.",
     "standalone": "This page only serves the {brand} app to complete the anti-spam check when signing in. You can close it."
+  },
+  "access": {
+    "metaTitle": "Your account · {brand}",
+    "metaDescription": "Activate your {brand} account or choose a new password from the link we emailed you.",
+    "noscript": "JavaScript is needed to continue: turn it on in your browser and open the link from the email again.",
+    "captchaTitle": "Anti-spam check",
+    "missing": {
+      "title": "Incomplete link",
+      "text": "This address doesn't contain the full link. Open the link from the most recent email we sent you again."
+    },
+    "confirm": {
+      "titleEmail": "Activate your account",
+      "textEmail": "Tap “Confirm” to activate your {brand} account. Right after that, choose your password.",
+      "titleRecovery": "New password",
+      "textRecovery": "Tap “Confirm” to continue. Right after that, choose your new password.",
+      "button": "Confirm"
+    },
+    "password": {
+      "title": "Choose your password",
+      "account": "Account:",
+      "label": "Password",
+      "hint": "At least 10 characters, with letters and numbers.",
+      "show": "Show password",
+      "save": "Save password"
+    },
+    "done": {
+      "title": "Done!",
+      "textEmail": "Your account is active and your password is saved.",
+      "textRecovery": "Your new password is saved.",
+      "login": "Go to sign in",
+      "app": "On your phone? Open the {brand} app and sign in with your email and this password."
+    },
+    "expired": {
+      "titleLink": "This link is no longer valid",
+      "textLink": "The links in our emails work for a limited time and can only be used once. Enter your email and we'll send you a new one.",
+      "titleSession": "Too much time has passed",
+      "textSession": "For security, the password has to be saved soon after tapping “Confirm”. Enter your email and we'll send you a new link.",
+      "email": "Your email",
+      "send": "Resend the email",
+      "sentEmail": "Done. If this email has an account waiting to be activated, a new link is on its way. If you already activated it, sign in or use “Forgot password?”.",
+      "sentRecovery": "Done. If this email has an account, a link to choose your password is on its way.",
+      "spam": "Not there within a few minutes? Check your spam folder too."
+    },
+    "errors": {
+      "network": "We couldn't connect. Check your connection and try again.",
+      "rateLimited": "Too many attempts in a short time. Try again in a few minutes.",
+      "unavailable": "This page isn't working right now. Try again later.",
+      "tooShort": "The password must have at least 10 characters.",
+      "tooLong": "The password is too long: 72 characters at most.",
+      "lettersDigits": "The password must have at least one letter and one number.",
+      "leaked": "This password has appeared in another site's data breach: choose a different one.",
+      "same": "That's the same password as before: choose a different one.",
+      "weak": "This password won't work: choose a different one.",
+      "email": "Enter a valid email address.",
+      "captcha": "The anti-spam check couldn't be completed. Try again."
+    }
   }
 }

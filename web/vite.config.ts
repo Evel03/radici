@@ -17,7 +17,8 @@ const root = fileURLToPath(new URL(".", import.meta.url));
 const sharedDir = resolve(root, "../supabase/functions/_shared");
 // prenotazione: la página de la clienta (su reserva y el menú de cada semana; el token va en el fragmento).
 // captcha: la verificación anti-spam del acceso a la app (Turnstile de Auth), que abre la app en un marco o una WebView.
-const PAGES = ["richiesta", "privacy", "prenotazione", "captcha"];
+// accesso: confirmar el alta o elegir una contraseña nueva desde el link de un email de Auth (el link va en el fragmento).
+const PAGES = ["richiesta", "privacy", "prenotazione", "captcha", "accesso"];
 
 /** /richiesta → /richiesta/ (en dev y preview; el hosting estático debería hacer lo mismo). */
 const trailingSlash: Connect.NextHandleFunction = (req, res, next) => {
@@ -134,6 +135,12 @@ function radiciHtml(): Plugin {
         this.warn("VITE_TURNSTILE_SITE_KEY es una sitekey de prueba: en producción el servidor rechaza su token.");
       }
 
+      if (!appConfig.supabaseUrl || !appConfig.supabasePublishableKey) {
+        this.warn(
+          "Faltan VITE_SUPABASE_URL o VITE_SUPABASE_PUBLISHABLE_KEY (sb_publishable_… o la anon): /accesso/ no podrá confirmar altas ni guardar contraseñas.",
+        );
+      }
+
       if (!appConfig.turnstileAuthSiteKey) {
         this.warn("Falta VITE_TURNSTILE_AUTH_SITE_KEY: /captcha/ no podrá dar tokens de captcha de Auth (el login sigue sin captcha mientras Auth lo tenga apagado).");
       } else if (production && isTurnstileTestKey(appConfig.turnstileAuthSiteKey)) {
@@ -187,6 +194,7 @@ export default defineConfig({
         privacy: resolve(root, "privacy/index.html"),
         prenotazione: resolve(root, "prenotazione/index.html"),
         captcha: resolve(root, "captcha/index.html"),
+        accesso: resolve(root, "accesso/index.html"),
         // dist/404.html: con él Pages responde 404 a lo que no existe (src/build/pages.ts).
         notFound: resolve(root, "404.html"),
       },

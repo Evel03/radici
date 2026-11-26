@@ -16,7 +16,7 @@ import { OG_IMAGE } from "./images.ts";
 export interface RenderOptions {
   i18n: I18n;
   config: AppConfig;
-  /** Ruta pública de la página: "/", "/richiesta/", "/privacy/", "/prenotazione/" o NOT_FOUND_PATH. */
+  /** Ruta pública de la página: "/", "/richiesta/", "/privacy/", "/prenotazione/", "/accesso/"… o NOT_FOUND_PATH. */
   pagePath: string;
   partials: Readonly<Record<string, string>>;
 }
@@ -25,10 +25,11 @@ export interface RenderOptions {
 export const NOT_FOUND_PATH = "/404.html";
 
 /**
- * Páginas que no son para visitar: /prenotazione/ se abre solo con un link personal (#t=…) y /captcha/ la abre la app
- * (en un marco o una WebView). Nunca se indexan ni declaran canonical.
+ * Páginas que no son para visitar: /prenotazione/ se abre solo con un link personal (#t=…), /captcha/ la abre la app
+ * (en un marco o una WebView) y /accesso/, el link de un email de Auth (#token_hash=…). Nunca se indexan ni declaran
+ * canonical.
  */
-export const PRIVATE_PATHS: readonly string[] = ["/prenotazione/", "/captcha/"];
+export const PRIVATE_PATHS: readonly string[] = ["/prenotazione/", "/captcha/", "/accesso/"];
 
 export function escapeHtml(value: string): string {
   return value

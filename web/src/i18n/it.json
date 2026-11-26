@@ -577,5 +577,61 @@
     "cancel": "Annulla",
     "noscript": "Per completare la verifica anti-spam serve JavaScript: attivalo nel browser.",
     "standalone": "Questa pagina serve solo all'app di {brand} per completare la verifica anti-spam durante l'accesso. Puoi chiuderla."
+  },
+  "access": {
+    "metaTitle": "Il tuo account · {brand}",
+    "metaDescription": "Attiva il tuo account di {brand} o scegli una nuova password dal link che ti abbiamo mandato per email.",
+    "noscript": "Per continuare serve JavaScript: attivalo nel browser e riapri il link dall'email.",
+    "captchaTitle": "Verifica anti-spam",
+    "missing": {
+      "title": "Link incompleto",
+      "text": "Questo indirizzo non contiene il link completo. Riapri il link dall'email più recente che ti abbiamo mandato."
+    },
+    "confirm": {
+      "titleEmail": "Attiva il tuo account",
+      "textEmail": "Tocca «Conferma» per attivare il tuo account di {brand}. Subito dopo scegli la password.",
+      "titleRecovery": "Nuova password",
+      "textRecovery": "Tocca «Conferma» per continuare. Subito dopo scegli la nuova password.",
+      "button": "Conferma"
+    },
+    "password": {
+      "title": "Scegli la password",
+      "account": "Account:",
+      "label": "Password",
+      "hint": "Almeno 10 caratteri, con lettere e numeri.",
+      "show": "Mostra la password",
+      "save": "Salva la password"
+    },
+    "done": {
+      "title": "Fatto!",
+      "textEmail": "Il tuo account è attivo e la password è salvata.",
+      "textRecovery": "La nuova password è salvata.",
+      "login": "Vai al login",
+      "app": "Sul telefono? Apri l'app {brand} e accedi con la tua email e questa password."
+    },
+    "expired": {
+      "titleLink": "Il link non è più valido",
+      "textLink": "I link delle nostre email valgono per un tempo limitato e si possono usare una sola volta. Scrivi la tua email e te ne mandiamo uno nuovo.",
+      "titleSession": "È passato troppo tempo",
+      "textSession": "Per sicurezza la password va salvata poco dopo aver toccato «Conferma». Scrivi la tua email e ti mandiamo un nuovo link.",
+      "email": "La tua email",
+      "send": "Reinvia l'email",
+      "sentEmail": "Fatto. Se questa email ha un account da attivare, ti arriva un nuovo link. Se l'hai già attivato, accedi o usa «Password dimenticata?».",
+      "sentRecovery": "Fatto. Se questa email ha un account, ti arriva un link per scegliere la password.",
+      "spam": "Non arriva entro qualche minuto? Guarda anche nella cartella spam."
+    },
+    "errors": {
+      "network": "Non siamo riusciti a collegarci. Controlla la connessione e riprova.",
+      "rateLimited": "Troppi tentativi in poco tempo. Riprova tra qualche minuto.",
+      "unavailable": "Questa pagina non funziona in questo momento. Riprova più tardi.",
+      "tooShort": "La password deve avere almeno 10 caratteri.",
+      "tooLong": "La password è troppo lunga: al massimo 72 caratteri.",
+      "lettersDigits": "La password deve avere almeno una lettera e un numero.",
+      "leaked": "Questa password è comparsa in una fuga di dati di un altro sito: scegline un'altra.",
+      "same": "È la stessa password di prima: scegline una diversa.",
+      "weak": "Questa password non va bene: scegline un'altra.",
+      "email": "Scrivi un indirizzo email valido.",
+      "captcha": "Non è stato possibile completare la verifica anti-spam. Riprova."
+    }
   }
 }
