@@ -1,15 +1,21 @@
-// Inicio (M0): bienvenida y accesos a la calculadora y al login.
+// Inicio de la app sin sesión: bienvenida, «Pedir presupuesto» (el formulario
+// de la web) y el login. Sin precios: desde el 22/11/2026 Evelyn arma cada
+// presupuesto a mano y la tarifa es solo su referencia interna, así que la
+// app ya no tiene la calculadora pública.
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:radici/core/link_launcher.dart';
 import 'package:radici/core/radici_logo.dart';
 import 'package:radici/core/routes.dart';
+import 'package:radici/core/web_links.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
 
@@ -44,10 +50,18 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 32),
                   FilledButton.icon(
-                    key: const ValueKey('home-quote'),
-                    onPressed: () => context.go(AppRoutes.quote),
-                    icon: const Icon(Icons.calculate_outlined),
-                    label: Text(l10n.homeQuoteCta),
+                    key: const ValueKey('home-request'),
+                    // Directo desde el toque: en la web, el navegador
+                    // bloquea la pestaña nueva si antes se espera otra cosa.
+                    onPressed: () => ref
+                        .read(linkLauncherProvider)
+                        .launch(
+                          requestFormUri(
+                            Localizations.localeOf(context).languageCode,
+                          ),
+                        ),
+                    icon: const Icon(Icons.edit_note),
+                    label: Text(l10n.homeRequestCta),
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(

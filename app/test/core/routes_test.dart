@@ -35,9 +35,8 @@ void main() {
       );
     });
 
-    test('móvil: el inicio y la calculadora son públicos', () {
+    test('móvil: el inicio es público (la calculadora ya no existe)', () {
       expect(_redirect(signedOut, '/'), isNull);
-      expect(_redirect(signedOut, '/preventivo'), isNull);
       expect(_redirect(signedOut, '/accedi'), isNull);
       expect(_redirect(signedOut, '/area'), '/');
       expect(_redirect(signedOut, '/caricamento'), '/');
@@ -150,7 +149,6 @@ void main() {
         expect(_redirect(client, path), '/ingresso', reason: path);
       }
       expect(_redirect(client, '/ingresso'), isNull);
-      expect(_redirect(client, '/preventivo'), isNull);
     });
   });
 
@@ -170,7 +168,7 @@ void main() {
       expect(app(client, '/'), '/area');
       expect(app(client, '/accedi'), '/area');
       expect(app(client, '/caricamento'), '/area');
-      expect(app(client, '/preventivo'), isNull);
+      expect(app(client, '/preventivo'), '/area', reason: 'ya no es una ruta pública');
       expect(app(client, '/ingresso'), '/area');
     });
 

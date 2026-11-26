@@ -24,7 +24,6 @@ import 'package:radici/features/bookings/presentation/new_client_screen.dart';
 import 'package:radici/features/client/presentation/client_shell.dart';
 import 'package:radici/features/home/presentation/home_screen.dart';
 import 'package:radici/features/more/presentation/more_screen.dart';
-import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
 import 'package:radici/features/recipes/application/recipe_editor_controller.dart';
 import 'package:radici/features/recipes/presentation/recipe_editor_screen.dart';
 import 'package:radici/features/recipes/presentation/recipes_screen.dart';
@@ -72,11 +71,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _page(state, const HomeScreen()),
         routes: [
           // Hijas de `/`: apilan sobre el inicio y dejan el botón de volver.
-          GoRoute(
-            path: AppRoutes.quote.substring(1),
-            pageBuilder: (context, state) =>
-                _page(state, const QuoteCalculatorScreen()),
-          ),
           GoRoute(
             path: AppRoutes.login.substring(1),
             pageBuilder: (context, state) => _page(state, const LoginScreen()),

@@ -7,13 +7,13 @@ import 'package:radici/app.dart';
 import 'package:radici/core/app_entry.dart';
 import 'package:radici/core/captcha/captcha_service.dart';
 import 'package:radici/core/env.dart';
+import 'package:radici/core/link_launcher.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
 import 'package:radici/features/client/presentation/client_shell.dart';
-import 'package:radici/features/quote/presentation/quote_calculator_screen.dart';
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/today/presentation/today_screen.dart';
 
@@ -29,7 +29,13 @@ Future<void> _pumpApp(
   WidgetTester tester, {
   AppEnv env = _devWithoutBackend,
   List<Locale> deviceLocales = const [Locale('it', 'IT')],
+  LinkLauncher? links,
+  String? initialRoute,
 }) async {
+  if (initialRoute != null) {
+    tester.platformDispatcher.defaultRouteNameTestValue = initialRoute;
+    addTearDown(tester.platformDispatcher.clearDefaultRouteNameTestValue);
+  }
   tester.platformDispatcher.localesTestValue = deviceLocales;
   addTearDown(tester.platformDispatcher.clearLocalesTestValue);
   await tester.pumpWidget(
@@ -39,6 +45,7 @@ Future<void> _pumpApp(
         appEnvProvider.overrideWithValue(env),
         // Sin el navegador del sistema: en los tests el captcha no abre nada.
         captchaServiceProvider.overrideWithValue(const NoCaptchaService()),
+        if (links != null) linkLauncherProvider.overrideWithValue(links),
       ],
       child: const RadiciApp(),
     ),
@@ -53,29 +60,42 @@ void main() {
     // La compra la hace el cliente, no Evelyn.
     expect(find.textContaining('La spesa la fai tu, con la lista che ti manda lei.'), findsOneWidget);
     expect(find.textContaining('Evelyn fa la spesa'), findsNothing);
-    expect(find.text('Calcola preventivo'), findsOneWidget);
+    expect(find.text('Richiedi un preventivo'), findsOneWidget);
     expect(find.text('Accedi'), findsOneWidget);
   });
 
   testWidgets('con un idioma no soportado usa el italiano', (tester) async {
     await _pumpApp(tester, deviceLocales: const [Locale('de', 'DE')]);
-    expect(find.text('Calcola preventivo'), findsOneWidget);
+    expect(find.text('Richiedi un preventivo'), findsOneWidget);
   });
 
   testWidgets('con el dispositivo en español usa el español', (tester) async {
     await _pumpApp(tester, deviceLocales: const [Locale('es', 'AR')]);
-    expect(find.text('Calcular presupuesto'), findsOneWidget);
+    expect(find.text('Pedir presupuesto'), findsOneWidget);
   });
 
-  testWidgets('navega a la calculadora y vuelve', (tester) async {
-    await _pumpApp(tester);
-    await tester.tap(find.byKey(const ValueKey('home-quote')));
+  testWidgets('«Richiedi un preventivo» abre el formulario de la web, en el idioma de la app', (tester) async {
+    final links = FakeLinkLauncher();
+    await _pumpApp(tester, links: links, deviceLocales: const [Locale('es', 'ES')]);
+    await tester.tap(find.byKey(const ValueKey('home-request')));
     await tester.pumpAndSettle();
-    expect(find.byType(QuoteCalculatorScreen), findsOneWidget);
+    expect(links.launched, [Uri.parse('https://radicicucina.app/richiesta/?lang=es')]);
+  });
 
-    await tester.tap(find.byType(BackButton));
-    await tester.pumpAndSettle();
-    expect(find.byType(QuoteCalculatorScreen), findsNothing);
+  // Desde el 22/11/2026 la tarifa es solo la referencia de Evelyn: sin sesión
+  // la app no muestra ningún precio, y la calculadora pública ya no existe.
+  for (final locale in const [Locale('it', 'IT'), Locale('es', 'ES'), Locale('en', 'GB')]) {
+    testWidgets('sin sesión no hay precios en el inicio (${locale.languageCode})', (tester) async {
+      await _pumpApp(tester, deviceLocales: [locale]);
+      expect(find.textContaining('€'), findsNothing);
+      expect(find.byKey(const ValueKey('home-quote')), findsNothing);
+    });
+  }
+
+  testWidgets('/preventivo ya no existe: sin calculadora ni precios', (tester) async {
+    await _pumpApp(tester, initialRoute: '/preventivo');
+    expect(find.textContaining('€'), findsNothing);
+    expect(find.byKey(const ValueKey('home-request')), findsNothing);
   });
 
   testWidgets('sin backend, el login avisa que el servicio no está configurado', (
