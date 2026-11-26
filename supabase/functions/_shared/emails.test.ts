@@ -779,18 +779,20 @@ for (const locale of LOCALES) {
   });
 }
 
-test("la plantilla del código de acceso (Supabase Auth) tiene el mismo logotipo y colores", () => {
-  const template = readFileSync(new URL("../../templates/login_code.html", import.meta.url), "utf8");
-  const email = renderClientConfirmation(clientInput(), "it").html;
-  assert.equal(LOGO.exec(template)?.[0].replaceAll("\n", ""), LOGO.exec(email)?.[0]);
-  for (const color of ["#f5ede1", "#fbf7f1", "#dbc9b4", "#2c2b20", "#5b5847"]) assert.ok(template.includes(color), `falta ${color}`);
-  for (const old of OLD_COLORS) assert.ok(!template.includes(old), `queda ${old}`);
-  // El idioma del documento es el del texto, como en los emails (lectores de pantalla), y sale de
-  // valores fijos: nunca el user_metadata.locale crudo, que escribe el usuario.
-  assert.ok(
-    template.includes(
-      '<html lang="{{ if and .Data.locale (eq .Data.locale "es") }}es{{ else if and .Data.locale (eq .Data.locale "en") }}en{{ else }}it{{ end }}">',
-    ),
-  );
-  assert.ok(!template.includes("{{ .Data.locale }}"));
-});
+for (const name of ["login_code", "password_changed"]) {
+  test(`la plantilla ${name} (Supabase Auth) tiene el mismo logotipo y colores`, () => {
+    const template = readFileSync(new URL(`../../templates/${name}.html`, import.meta.url), "utf8");
+    const email = renderClientConfirmation(clientInput(), "it").html;
+    assert.equal(LOGO.exec(template)?.[0].replaceAll("\n", ""), LOGO.exec(email)?.[0]);
+    for (const color of ["#f5ede1", "#fbf7f1", "#dbc9b4", "#2c2b20", "#5b5847"]) assert.ok(template.includes(color), `falta ${color}`);
+    for (const old of OLD_COLORS) assert.ok(!template.includes(old), `queda ${old}`);
+    // El idioma del documento es el del texto, como en los emails (lectores de pantalla), y sale de
+    // valores fijos: nunca el user_metadata.locale crudo, que escribe el usuario.
+    assert.ok(
+      template.includes(
+        '<html lang="{{ if and .Data.locale (eq .Data.locale "es") }}es{{ else if and .Data.locale (eq .Data.locale "en") }}en{{ else }}it{{ end }}">',
+      ),
+    );
+    assert.ok(!template.includes("{{ .Data.locale }}"));
+  });
+}

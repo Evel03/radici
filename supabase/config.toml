@@ -188,10 +188,12 @@ enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+# Radici (PR14, contrato auth.md §12): 10 o más, con letras y números, como en producción (auth-config.ts corta
+# el despliegue si esto se afloja). La página /accesso/ (web/src/access/password.ts) aplica la misma regla.
+minimum_password_length = 10
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
-password_requirements = ""
+password_requirements = "letters_digits"
 
 # Configure passkey sign-ins.
 # [auth.passkey]
@@ -249,6 +251,8 @@ double_confirm_changes = true
 # auth-config.ts corta el despliegue si esto vuelve a false.
 enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
+# Radici (PR14): apagado, como en producción. En su lugar, producción pide la contraseña actual para cambiarla
+# (security_update_password_require_current_password, que la CLI 2.121 no sabe poner en local: auth.md §12).
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
@@ -287,11 +291,12 @@ content_path = "./supabase/templates/login_code.html"
 subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Tu código de acceso{{ else if and .Data.locale (eq .Data.locale \"en\") }}Your sign-in code{{ else }}Il tuo codice di accesso{{ end }}"
 content_path = "./supabase/templates/login_code.html"
 
-# Uncomment to customize notification email template
-# [auth.email.notification.password_changed]
-# enabled = true
-# subject = "Your password has been changed"
-# content_path = "./supabase/templates/password_changed_notification.html"
+# Aviso «cambió tu contraseña» (PR14, contrato auth.md §12): Auth lo manda después de cada cambio de contraseña,
+# sin link ni datos de la cuenta. En producción lo aplica deploy-supabase.yml (la parte de plantillas, con SMTP).
+[auth.email.notification.password_changed]
+enabled = true
+subject = "{{ if and .Data.locale (eq .Data.locale \"es\") }}Cambió la contraseña de tu cuenta{{ else if and .Data.locale (eq .Data.locale \"en\") }}Your password was changed{{ else }}La password del tuo account è cambiata{{ end }}"
+content_path = "./supabase/templates/password_changed.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.

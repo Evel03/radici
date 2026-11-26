@@ -4,7 +4,10 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { PASSWORD_MIN_LENGTH as WEB_PASSWORD_MIN_LENGTH, passwordProblem } from "../../web/src/access/password.ts";
 import {
+  LETTERS_DIGITS,
+  PASSWORD_MIN_LENGTH,
   authSecurityConfig,
   authSmtpConfig,
   authTemplatesConfig,
@@ -17,6 +20,7 @@ import {
 const read = (path: string): string => readFileSync(new URL(`../../${path.replace(/^\.\//, "")}`, import.meta.url), "utf8");
 const CONFIG = read("supabase/config.toml");
 const TEMPLATE = read("supabase/templates/login_code.html");
+const PASSWORD_NOTICE = read("supabase/templates/password_changed.html");
 const SCRIPT = fileURLToPath(new URL("./auth-config.ts", import.meta.url));
 
 test("TOML: secciones, cadenas con comillas escapadas, enteros, booleanos y comentarios", () => {
@@ -64,6 +68,19 @@ test("templates: las dos plantillas son el código del repo, con el asunto en el
   }
   assert.equal(body.rate_limit_email_sent, 100);
   assert.ok(Object.keys(body).every((key) => !key.startsWith("smtp_")));
+  // El aviso de contraseña cambiada (PR14): prendido, con su plantilla y el asunto en los tres idiomas.
+  assert.equal(body.mailer_notifications_password_changed_enabled, true);
+  assert.equal(body.mailer_templates_password_changed_notification_content, PASSWORD_NOTICE);
+  const subject = String(body.mailer_subjects_password_changed_notification);
+  for (const text of ["Cambió la contraseña de tu cuenta", "Your password was changed", "La password del tuo account è cambiata"]) {
+    assert.ok(subject.includes(text), `aviso: falta ${text}`);
+  }
+});
+
+test("templates: sin el aviso de contraseña prendido en config.toml, corta", () => {
+  const off = CONFIG.replace(/(\[auth\.email\.notification\.password_changed\][^[]*?)enabled = true/s, "$1enabled = false");
+  assert.notEqual(off, CONFIG);
+  assert.throws(() => authTemplatesConfig(off, read), /password_changed/);
 });
 
 test("smtp: Resend con el remitente de MAIL_FROM; sin clave, falla", () => {
@@ -122,6 +139,10 @@ const MANAGEMENT_API_AUTH_FIELDS = [
   "mailer_otp_length", "mailer_otp_exp", "smtp_host", "smtp_port", "smtp_user", "smtp_pass",
   "smtp_admin_email", "smtp_sender_name", "mailer_subjects_magic_link", "mailer_subjects_confirmation",
   "mailer_templates_magic_link_content", "mailer_templates_confirmation_content",
+  // PR14: contraseñas y el aviso de contraseña cambiada (OpenAPI leído el 26/11/2026).
+  "password_min_length", "password_required_characters", "security_update_password_require_current_password",
+  "security_update_password_require_reauthentication", "mailer_notifications_password_changed_enabled",
+  "mailer_subjects_password_changed_notification", "mailer_templates_password_changed_notification_content",
 ];
 
 const PINNED = {
@@ -144,6 +165,11 @@ const PINNED = {
   rate_limit_anonymous_users: 1,
   rate_limit_sms_sent: 1,
   rate_limit_web3: 1,
+  // Contraseñas (contrato auth.md §12): 10 o más con letras y números; la actual para cambiarla; sin reautenticación.
+  password_min_length: 10,
+  password_required_characters: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789",
+  security_update_password_require_current_password: true,
+  security_update_password_require_reauthentication: false,
   external_google_enabled: false,
   external_apple_enabled: false,
   external_phone_enabled: false,
@@ -201,6 +227,10 @@ uri = "pg-functions://postgres/public/before_user_created_guard"
   assert.throws(() => authSecurityConfig(swap(/sms_sent = d+/, "sms_sent = 30")), /sms_sent/);
   assert.throws(() => authSecurityConfig(swap(/^web3 = d+/m, "web3 = 30")), /web3/);
   assert.throws(() => authSecurityConfig(swap(/(\[auth\.external\.apple\][^[]*?)enabled = false/s, "$1enabled = true")), /apple/i);
+  // Las contraseñas (PR14): si config.toml afloja la regla o pide reautenticarse, corta.
+  assert.throws(() => authSecurityConfig(swap(/minimum_password_length = 10/, "minimum_password_length = 8")), /minimum_password_length/);
+  assert.throws(() => authSecurityConfig(swap(/password_requirements = "letters_digits"/, 'password_requirements = ""')), /password_requirements/);
+  assert.throws(() => authSecurityConfig(swap(/secure_password_change = false/, "secure_password_change = true")), /secure_password_change/);
   assert.throws(() => authSecurityConfig(swap(/(\[auth\.web3\.solana\][^[]*?)enabled = false/s, "$1enabled = true")), /web3/i);
 });
 
@@ -256,19 +286,20 @@ test("línea de comandos: verify compara la respuesta de la API con el cuerpo; c
 });
 
 test("plantillas: .Data solo para comparar el idioma; nada del usuario sale en el email", () => {
-  const actions = [...CONFIG.matchAll(/\{\{[^}]*\}\}/g), ...TEMPLATE.matchAll(/\{\{[^}]*\}\}/g)].map((m) => m[0]);
+  const actions = [CONFIG, TEMPLATE, PASSWORD_NOTICE].flatMap((text) => [...text.matchAll(/\{\{[^}]*\}\}/g)]).map((m) => m[0]);
   const withData = actions.filter((a) => a.includes(".Data"));
   assert.ok(withData.length > 0);
   for (const action of withData) {
     assert.match(action, /^\{\{ (else )?if and \.Data\.locale \(eq \.Data\.locale \\?"(es|en)\\?"\) \}\}$/, `.Data fuera de una comparación: ${action}`);
   }
-  for (const text of [TEMPLATE, CONFIG]) assert.ok(!/\.Data(?!\.locale\b)/.test(text), ".Data sin .locale");
+  for (const text of [TEMPLATE, PASSWORD_NOTICE, CONFIG]) assert.ok(!/\.Data(?!\.locale\b)/.test(text), ".Data sin .locale");
   // Lo único que la plantilla imprime es el código; nada de links ni datos del usuario.
   const printed = [...TEMPLATE.matchAll(/\{\{\s*([^}]*?)\s*\}\}/g)].map((m) => m[1] ?? "").filter((a) => !/^(if|else|end)\b/.test(a));
   assert.deepEqual(printed, [".Token"]);
   // Lo mismo para los asuntos de config.toml: nada del usuario.
   for (const banned of [".ConfirmationURL", ".TokenHash", ".SiteURL", ".RedirectTo", ".Email", ".NewEmail"]) {
     assert.ok(!TEMPLATE.includes(banned), `la plantilla no usa ${banned}`);
+    assert.ok(!PASSWORD_NOTICE.includes(banned), `el aviso de contraseña no usa ${banned}`);
     assert.ok(!CONFIG.includes(banned), `los asuntos de config.toml no usan ${banned}`);
   }
 });
@@ -279,4 +310,43 @@ test("login_code: avisa en los tres idiomas que el código no se comparte con na
   assert.match(TEMPLATE, /Don't share this code with anyone, not even Evelyn\./);
   assert.ok(TEMPLATE.includes("{{ .Token }}"));
   assert.ok(!/href=/i.test(TEMPLATE), "sin link");
+});
+
+test("password_changed: el aviso en los tres idiomas, sin link y sin imprimir nada de la cuenta", () => {
+  assert.match(PASSWORD_NOTICE, /La password del tuo account di Radici è appena stata cambiata\./);
+  assert.match(PASSWORD_NOTICE, /La contraseña de tu cuenta de Radici acaba de cambiar\./);
+  assert.match(PASSWORD_NOTICE, /The password of your Radici account has just been changed\./);
+  for (const hint of ["«Password dimenticata?»", "«¿Olvidaste la contraseña?»", "“Forgot password?”"]) assert.ok(PASSWORD_NOTICE.includes(hint), hint);
+  assert.ok(!/href=/i.test(PASSWORD_NOTICE), "sin link");
+  // No imprime nada: ni el email, ni el código, ni la URL del sitio. Solo compara el idioma.
+  const printed = [...PASSWORD_NOTICE.matchAll(/\{\{\s*([^}]*?)\s*\}\}/g)].map((m) => m[1] ?? "").filter((a) => !/^(if|else|end)\b/.test(a));
+  assert.deepEqual(printed, []);
+});
+
+test("contraseñas: la regla de /accesso/ (web) es la misma que fija Auth", () => {
+  const auth = tomlSection(CONFIG, "auth");
+  assert.equal(auth.get("minimum_password_length"), PASSWORD_MIN_LENGTH);
+  assert.equal(auth.get("password_requirements"), "letters_digits");
+  assert.equal(WEB_PASSWORD_MIN_LENGTH, PASSWORD_MIN_LENGTH);
+  // letters_digits = una letra a-z o A-Z y un dígito: la web acepta y rechaza lo mismo.
+  assert.deepEqual(LETTERS_DIGITS.split(":"), ["abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "0123456789"]);
+  for (const [password, ok] of [
+    ["abcdefghi1", true],
+    ["ABCDEFGHI1", true],
+    ["abcdefghij", false],
+    ["1234567890", false],
+    ["abcdefgh1", false],
+    ["èèèèèèèèè1", false],
+  ] as const) {
+    const accepted = password.length >= PASSWORD_MIN_LENGTH && /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
+    assert.equal(accepted, ok, password);
+    assert.equal(passwordProblem(password) === null, ok, `web: ${password}`);
+  }
+});
+
+test("contraseñas: las cuentas que crea el despliegue (64 hexadecimales al azar) cumplen la regla", () => {
+  const script = read("supabase/scripts/deploy-accounts.sh");
+  assert.match(script, /--arg password "\$\(openssl rand -hex 32\)"/);
+  // 64 caracteres de 0-9a-f: más de 10, y sin una letra o sin un dígito con probabilidad < 1e-13 (16^-64 · (6^64+10^64)).
+  assert.ok(64 >= PASSWORD_MIN_LENGTH && 64 <= 72);
 });
