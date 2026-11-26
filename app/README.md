@@ -612,7 +612,7 @@ Rutas (en la web van en el fragmento: `/gestione/#/richieste/<id>`, el enlace de
 `/richieste/:id/prenota`, `/richieste/nuova`, `/richieste/nuova/cliente`, `/richieste/nuova/prenota`
 (con `?cliente=<id>` y, desde el formulario, `&modulo=1`), `/agenda`, `/sessioni/:id`, `/sessioni/:id/sposta` (con `?data=AAAA-MM-DD`
 si la fecha ya se eligió), `/sessioni/:id/rinnova`, `/impostazioni`, `/altro`, `/altro/piatti`, `/altro/piatti/nuovo` (con
-`?copia=<id>`, la copia de un plato) y `/altro/piatti/:id`, más `/` y `/preventivo` (públicas). En la
+`?copia=<id>`, la copia de un plato) y `/altro/piatti/:id`, más `/` (pública). En la
 web `/` lleva al login.
 
 ### Requisitos en Supabase
@@ -825,8 +825,10 @@ test/                  espejo de lib/ y tool/, más support/ con utilidades
 `lib/features/quote/domain/quote.dart` es una copia de `supabase/functions/_shared/quote.ts`, que es la fuente de verdad.
 `test/features/quote/quote_vectors_test.dart` lee `supabase/functions/_shared/quote_vectors.json` y verifica todos los vectores.
 Si cambia la fórmula, se cambian `quote.ts`, los vectores y esta copia en el mismo PR.
-Sin compra (19/11/2026): la hace el cliente, con la lista que le manda Evelyn. El motor no la estima
-y la calculadora (`/preventivo`) muestra porciones, recetas y el servicio.
+Sin compra (19/11/2026): la hace el cliente, con la lista que le manda Evelyn. El motor no la estima.
+Sin precios fuera de la cocina (22/11/2026): la calculadora pública (`/preventivo`) se sacó el 26/11/2026; el
+inicio sin sesión ofrece «Pedir presupuesto», que abre `radicicucina.app/richiesta/` (`lib/core/web_links.dart`).
+La copia del motor la usa solo la cocina, como referencia de la tarifa.
 
 ## Textos
 

@@ -39,23 +39,15 @@
   "@homeBody": {
     "description": "Explicación breve del servicio en la pantalla de inicio (pública: le habla al cliente). La compra la hace el cliente, con la lista que le manda Evelyn."
   },
-  "homeQuoteCta": "Calcola preventivo",
-  "@homeQuoteCta": {
-    "description": "Botón que abre la calculadora de presupuesto."
+  "homeRequestCta": "Richiedi un preventivo",
+  "@homeRequestCta": {
+    "description": "Botón del inicio de la app sin sesión: abre el formulario de pedido de la web (radicicucina.app/richiesta/). La app no muestra precios (22/11/2026)."
   },
   "homeLoginCta": "Accedi",
   "@homeLoginCta": {
     "description": "Botón que abre el inicio de sesión."
   },
 
-  "quoteTitle": "Calcola preventivo",
-  "@quoteTitle": {
-    "description": "Título de la calculadora de presupuesto."
-  },
-  "quotePeopleSection": "Persone",
-  "@quotePeopleSection": {
-    "description": "Encabezado de la sección de adultos y niños."
-  },
   "quoteAdults": "Adulti",
   "@quoteAdults": {
     "description": "Etiqueta del contador de adultos (también en el detalle del pedido)."
@@ -106,10 +98,6 @@
       "label": { "type": "String", "example": "Adulti" }
     }
   },
-  "quoteBreakdownSection": "Stima",
-  "@quoteBreakdownSection": {
-    "description": "Encabezado del desglose del presupuesto."
-  },
   "quotePortions": "Porzioni",
   "@quotePortions": {
     "description": "Fila del desglose: cantidad de porciones."
@@ -129,10 +117,6 @@
       "minutes": { "type": "int", "example": "180" }
     }
   },
-  "quoteService": "Servizio",
-  "@quoteService": {
-    "description": "Fila del detalle de un pedido anterior al precio por semana: el servicio por hora que se guardó."
-  },
   "quoteServiceTotal": "{weeks, plural, =1{Prezzo del servizio} other{Servizio, {weeks} settimane}}",
   "@quoteServiceTotal": {
     "description": "Fila destacada del desglose: el servicio de todas las semanas del pedido (precio por semana, SPEC §5.1).",
@@ -147,22 +131,6 @@
   "quoteSavings": "Risparmi",
   "@quoteSavings": {
     "description": "Fila del desglose: lo que se ahorra frente a la tarifa sin descuento (desde 4 semanas)."
-  },
-  "quoteNoAutoPrice": "Per più di {maxPeople} persone il preventivo per il servizio te lo prepara Evelyn.",
-  "@quoteNoAutoPrice": {
-    "description": "Calculadora sin precio automático: más personas que el tope (5 por defecto).",
-    "placeholders": {
-      "maxPeople": { "type": "int", "example": "5" }
-    }
-  },
-  "quoteFootnote": "Il servizio è a settimana per una famiglia fino a {maxPeople} persone, qualunque siano i giorni e i pasti: comprende lo spostamento e il tempo in cucina. Da {discountWeeks} settimane costa {discountRate} a settimana. La spesa la fai tu, con la lista che ti manda Evelyn. È una stima: il prezzo finale lo conferma lei.",
-  "@quoteFootnote": {
-    "description": "Nota bajo el desglose de la calculadora (pública: le habla al cliente). Los números salen de las tarifas (defaultPricing). La compra la hace el cliente, con la lista que le manda Evelyn.",
-    "placeholders": {
-      "maxPeople": { "type": "int", "example": "5" },
-      "discountWeeks": { "type": "int", "example": "4" },
-      "discountRate": { "type": "String", "example": "140,00 €" }
-    }
   },
 
   "actionRetry": "Riprova",
