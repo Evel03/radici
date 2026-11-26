@@ -15,7 +15,6 @@ import 'package:radici/features/auth/application/session_controller.dart';
 /// Rutas (en italiano, como las de la web).
 abstract final class AppRoutes {
   static const String home = '/';
-  static const String quote = '/preventivo';
   static const String login = '/accedi';
 
   /// Mientras se carga la cuenta (o si falló).
@@ -180,7 +179,6 @@ AppEntry _accountEntry(AppEntry entry, AppEntry role) =>
 ///   /app/): `/ingresso`, que lo explica y deja salir. Nunca se mezclan.
 /// - En la app nativa (`auto`) no hay otra entrada: cada cuenta va a su área
 ///   según su rol y nunca abre la del otro rol.
-/// La calculadora (`/preventivo`) es pública siempre.
 String? resolveRedirect({
   required SessionState session,
   required Uri location,
@@ -188,7 +186,6 @@ String? resolveRedirect({
   AppEntry entry = AppEntry.kitchen,
 }) {
   final path = location.path;
-  if (path == AppRoutes.quote) return null;
   final ownRoute = isEntryPath(entry, path);
   final fromParam = location.queryParameters[AppRoutes.fromParam];
   final from = _safeFrom(entry, fromParam);
