@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
+  CHECK_ATTEMPTS,
   CHECK_EMAIL,
+  CHECK_INTERVAL_MS,
   DUMMY_TOKEN,
   checkAuthRequiresCaptcha,
   checkSecret,
@@ -90,13 +92,20 @@ function fakeAuth(withoutToken: () => Response, withDummy: () => Response, patch
     return body.gotrue_meta_security ? withDummy() : withoutToken();
   });
 }
-const options = (fn: typeof fetch): AuthCheckOptions => ({
+/** Sin esperas reales: anota cada pausa. Por defecto, una sola pregunta (los casos de espera tienen su test). */
+const slept: number[] = [];
+const options = (fn: typeof fetch, attempts = 1): AuthCheckOptions => ({
   projectRef: "abcdefgh",
   publishableKey: "sb_publishable_x",
   accessToken: "sbp_token",
   fetchFn: fn,
   authBase: "https://auth.test",
   managementBase: "https://api.test",
+  attempts,
+  intervalMs: 10_000,
+  sleep: async (ms) => {
+    slept.push(ms);
+  },
 });
 const noToken = () => json(400, { code: "captcha_failed", message: "captcha protection: request disallowed (no captcha_token found)" });
 const goodSecret = () => json(400, { code: "captcha_failed", message: "captcha protection: request disallowed (invalid-input-response)" });
@@ -147,7 +156,7 @@ test("auth: sin respuesta de Auth → falla y apaga", async () => {
   assert.match((await verifyOrRollback(options(fake.fn)))!, /no respondió.*Se apagó/s);
   assert.deepEqual(await checkAuthRequiresCaptcha(options(fakeFetch(() => Promise.reject(new TypeError("x"))).fn)), {
     kind: "bad",
-    message: "Auth no respondió al pedido de código de prueba",
+    message: "Auth no respondió al pedido de código de prueba (después de 1 intento)",
   });
 });
 
@@ -169,4 +178,56 @@ test("línea de comandos: sin la secreta o sin las credenciales sale con error, 
   assert.ok(!testSecret.stderr.includes("1x0000000000000000000000000000000AA"), "no imprime la secreta");
   assert.match(run(["auth"], {}).stderr, /faltan SUPABASE_PROJECT_REF/);
   assert.match(run(["otra"], {}).stderr, /uso:/);
+});
+
+test("auth: espera a que Auth tome la configuración (Supabase la aplica reiniciando Auth) antes de decidir", async () => {
+  // Las dos primeras respuestas son de Auth con la configuración vieja (sin captcha); la tercera ya lo exige.
+  let calls = 0;
+  const fake = fakeFetch((call) => {
+    if (call.url.endsWith("/config/auth")) return new Response("{}", { status: 200 });
+    const body = JSON.parse(String(call.init.body)) as { gotrue_meta_security?: unknown };
+    if (body.gotrue_meta_security) return goodSecret();
+    calls += 1;
+    return calls <= 2 ? json(422, { code: "otp_disabled", message: "Signups not allowed for otp" }) : noToken();
+  });
+  slept.length = 0;
+  assert.equal(await verifyOrRollback(options(fake.fn, 18)), null, "no apaga nada");
+  assert.deepEqual(slept, [10_000, 10_000], "pregunta cada 10 s");
+  assert.equal(fake.calls.filter((c) => c.url.endsWith("/config/auth")).length, 0);
+});
+
+test("auth: un reinicio a medias (sin respuesta, 502) o Cloudflare que no contesta (500) también se esperan", async () => {
+  let step = 0;
+  const fake = fakeFetch((call) => {
+    const body = JSON.parse(String(call.init.body)) as { gotrue_meta_security?: unknown };
+    step += 1;
+    if (step === 1) return Promise.reject(new TypeError("reset"));
+    if (step === 2) return new Response("<html>bad gateway</html>", { status: 502 });
+    if (!body.gotrue_meta_security) return noToken();
+    return step === 4 ? json(500, { code: "unexpected_failure", message: "captcha verification process failed" }) : goodSecret();
+  });
+  slept.length = 0;
+  assert.deepEqual(await checkAuthRequiresCaptcha(options(fake.fn, 18)), { kind: "ok" });
+  assert.equal(slept.length, 3);
+});
+
+test("auth: si después de todos los intentos Auth sigue sin exigirlo, apaga el captcha", async () => {
+  const fake = fakeAuth(() => json(422, { code: "otp_disabled", message: "Signups not allowed for otp" }), goodSecret);
+  slept.length = 0;
+  const error = await verifyOrRollback(options(fake.fn, 18));
+  assert.match(error!, /no está exigiendo el captcha \(después de 18 intentos\)\. Se apagó el captcha/);
+  assert.equal(slept.length, 17, "3 minutos: 18 preguntas, 17 pausas de 10 s");
+  assert.equal(fake.calls.filter((c) => c.url.endsWith("/config/auth")).length, 1);
+});
+
+test("auth: una secreta que Cloudflare no reconoce no se espera: falla y apaga enseguida", async () => {
+  const fake = fakeAuth(noToken, () => json(400, { code: "captcha_failed", message: "captcha protection: request disallowed (invalid-input-secret)" }));
+  slept.length = 0;
+  assert.match((await verifyOrRollback(options(fake.fn, 18)))!, /no reconoce.*Se apagó/s);
+  assert.deepEqual(slept, [], "sin esperas");
+});
+
+test("auth: por defecto, 18 intentos cada 10 s (3 minutos)", () => {
+  assert.equal(CHECK_ATTEMPTS, 18);
+  assert.equal(CHECK_INTERVAL_MS, 10_000);
 });
