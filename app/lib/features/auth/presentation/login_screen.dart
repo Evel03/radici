@@ -93,10 +93,11 @@ class _BrandHeader extends StatelessWidget {
 }
 
 /// El texto del error. Con el del captcha, [detail] (el motivo, para el
-/// diagnóstico) va al final: «… (codice: app-timeout)».
+/// diagnóstico) va primero y en su renglón, así nunca queda cortado:
+/// «(codice: app-timeout)» y debajo «Non siamo riusciti…».
 String authErrorText(AppLocalizations l10n, AuthFailureKind kind, {String? detail}) =>
     kind == AuthFailureKind.captcha && detail != null && detail.isNotEmpty
-    ? '${l10n.authErrorCaptcha} ${l10n.authErrorCode(detail)}'
+    ? '${l10n.authErrorCode(detail)}\n${l10n.authErrorCaptcha}'
     : switch (kind) {
       AuthFailureKind.invalidEmail => l10n.authErrorInvalidEmail,
       AuthFailureKind.invalidCode => l10n.authErrorInvalidCode,
@@ -160,7 +161,7 @@ class _EmailStepState extends ConsumerState<_EmailStep> {
             hintText: l10n.loginEmailHint,
             prefixIcon: const Icon(Icons.mail_outline),
             errorText: error == null ? null : authErrorText(l10n, error, detail: state.errorDetail),
-            errorMaxLines: 3,
+            errorMaxLines: 6,
           ),
         ),
         const SizedBox(height: 16),
@@ -236,7 +237,7 @@ class _CodeStepState extends ConsumerState<_CodeStep> {
             helperText: l10n.loginSpamHint,
             helperMaxLines: 2,
             errorText: error == null ? null : authErrorText(l10n, error, detail: state.errorDetail),
-            errorMaxLines: 3,
+            errorMaxLines: 6,
           ),
         ),
         const SizedBox(height: 16),
