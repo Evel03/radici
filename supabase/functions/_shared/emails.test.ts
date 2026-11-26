@@ -779,7 +779,7 @@ for (const locale of LOCALES) {
   });
 }
 
-for (const name of ["login_code", "password_changed"]) {
+for (const name of ["login_code", "confirmation", "recovery", "email_change", "reauthentication", "invite", "password_changed"]) {
   test(`la plantilla ${name} (Supabase Auth) tiene el mismo logotipo y colores`, () => {
     const template = readFileSync(new URL(`../../templates/${name}.html`, import.meta.url), "utf8");
     const email = renderClientConfirmation(clientInput(), "it").html;

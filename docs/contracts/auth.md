@@ -4,7 +4,7 @@ Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo s
 
 ## 1. Qué hace Auth hoy (M0, altas apagadas)
 
-- Login con **código por email** (OTP de 8 cifras, vale 600 segundos). La app llama a `signInWithOtp(email, shouldCreateUser: false)` y después `verifyOTP(type: email)`; no manda `emailRedirectTo` y el email no lleva link, solo el código. Por eso `site_url` y `uri_allow_list` no intervienen en el login de `/gestione/` (web, iOS y Android): no hay ninguna redirección que permitir.
+- Login con **código por email** (OTP de 10 cifras, vale una hora desde PR16; antes 8 cifras y 600 segundos). La app llama a `signInWithOtp(email, shouldCreateUser: false)` y después `verifyOTP(type: email)`; no manda `emailRedirectTo` y el email no lleva link, solo el código. Por eso `site_url` y `uri_allow_list` no intervienen en el login de `/gestione/` (web, iOS y Android): no hay ninguna redirección que permitir.
 - Las altas están apagadas (`disable_signup`): las cuentas de Evelyn y de sus colaboradores las crea confirmadas el despliegue (contrato public-request §10.1). Se abren en M2, en su propio PR, con Turnstile.
 - El email del código sale por el SMTP de Resend (`RESEND_SMTP_KEY`) con la plantilla `supabase/templates/login_code.html`, que se usa para «Magic link» (usuario existente) y «Confirm signup». Sale en el idioma de `user_metadata.locale` (it, es, en).
 
@@ -16,7 +16,7 @@ Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo s
 |---|---|---|---|
 | security | `disable_signup` | `true` | `[auth] enable_signup = false` |
 | security | `external_email_enabled` | `true` | `[auth.email] enable_signup = true` |
-| security | `mailer_otp_length`, `mailer_otp_exp` | 8, 600 | `otp_length`, `otp_expiry` |
+| security | `mailer_otp_length`, `mailer_otp_exp` | 10, 3600 (§13; hasta PR16, 8 y 600) | `otp_length`, `otp_expiry` |
 | security | `security_captcha_enabled`, `security_captcha_provider`, `security_captcha_secret` | `true`, `turnstile`, la secreta de `TURNSTILE_AUTH_SECRET_KEY` (§10; no se compara después del PATCH: no vuelve en claro) | sin `[auth.captcha]`: en local va apagado |
 | security | `site_url`, `uri_allow_list` | `https://radicicucina.app/app/` (las dos) | (local usa `127.0.0.1`) |
 | security | `mailer_autoconfirm`, `sms_autoconfirm` | `false` | `[auth.email]` y `[auth.sms]` `enable_confirmations = true` |
@@ -33,7 +33,7 @@ Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo s
 | security | `security_update_password_require_current_password`, `security_update_password_require_reauthentication` | `true`, `false` (§12) | (la CLI 2.121 no tiene el primero), `[auth.email] secure_password_change = false` |
 | smtp | `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `smtp_admin_email`, `smtp_sender_name` | Resend, remitente de `MAIL_FROM` | |
 | smtp | `smtp_max_frequency` | `60`: un email de Auth por cuenta por minuto (§10) | `[auth.email] max_frequency = "1s"` en local, para probar sin esperar |
-| templates | `mailer_subjects_magic_link`, `mailer_subjects_confirmation`, `mailer_templates_*_content`, `rate_limit_email_sent` | asunto de `config.toml`, `login_code.html`, 100 | |
+| templates | `mailer_subjects_*` y `mailer_templates_*_content` de `magic_link`, `confirmation`, `recovery`, `email_change`, `reauthentication` e `invite`; `rate_limit_email_sent` | los asuntos de `config.toml` y los HTML de `supabase/templates/`, generados desde `auth_emails.ts` (§13); 100 | `[auth.email.template.*]` |
 | templates | `mailer_notifications_password_changed_enabled`, `mailer_subjects_password_changed_notification`, `mailer_templates_password_changed_notification_content` | `true`, asunto de `config.toml`, `password_changed.html` (§12) | `[auth.email.notification.password_changed]` |
 
 `site_url` y `uri_allow_list` son la única URL del área de clientes (`/app/`). No incluyen `/gestione/`, porque el login de Evelyn no redirige. Si algún día `/gestione/` usara `emailRedirectTo` (links en lugar de código), hay que sumarlo a `uri_allow_list` en `auth-config.ts` (una lista exacta, sin comodines).
@@ -82,13 +82,13 @@ Resend no deja leer los dominios con una clave «solo de envío» (`restricted_a
 ## 6. Qué se acepta a sabiendas
 
 - **Se puede averiguar si un email tiene cuenta.** Por la API de Auth (`/otp` con `create_user: false`, que hoy responde `otp_disabled` si el email no existe; `/signup`; `/recover`; el login con contraseña) alguien puede distinguir un email con cuenta de uno sin cuenta: los mensajes de error y los tiempos difieren, y `/signup`, aun con la confirmación de email prendida, contesta 200 en los dos casos pero con un usuario ofuscado que se distingue (para un email ya confirmado devuelve `role` vacío y sin metadatos; medido el 23/11/2026 contra GoTrue v2.197.0 local). No se promete lo contrario. Mitigaciones: CAPTCHA en cada pedido de código (M2), límites por IP y por email de Auth (`rate_limit_otp`, `max_frequency`, `rate_limit_email_sent`), y que lo único que revela es que una persona tiene cuenta, nunca datos de ella.
-- **`rate_limit_verify = 10` no es «11 intentos y 429».** GoTrue (v2.197.0, la del CLI 2.121.0) usa un cubo con ráfaga fija de 30 y recarga de 10 cada 5 minutos por IP: el intento 31 seguido recibe 429, y después unos 2 por minuto. Medido el 23/11/2026 con un GoTrue local con la cabecera de IP configurada: 11 `/verify` seguidos dan 403 (código inválido) y el 31.º, 429. Contra un código de 8 cifras que vale 10 minutos sigue siendo inviable, pero no hay que prometer un tope de 10. Además, con `supabase start` el límite por IP **no se aplica** (el CLI no configura la cabecera de IP): solo se puede probar con `GOTRUE_RATE_LIMIT_HEADER`. En producción lo aplica la infraestructura de Supabase.
+- **`rate_limit_verify = 10` no es «11 intentos y 429».** GoTrue (v2.197.0, la del CLI 2.121.0) usa un cubo con ráfaga fija de 30 y recarga de 10 cada 5 minutos por IP: el intento 31 seguido recibe 429, y después unos 2 por minuto. Medido el 23/11/2026 con un GoTrue local con la cabecera de IP configurada: 11 `/verify` seguidos dan 403 (código inválido) y el 31.º, 429. Contra un código de 10 cifras que vale una hora (desde PR16; antes, 8 cifras y 10 minutos) sigue siendo inviable, pero no hay que prometer un tope de 10. Además, con `supabase start` el límite por IP **no se aplica** (el CLI no configura la cabecera de IP): solo se puede probar con `GOTRUE_RATE_LIMIT_HEADER`. En producción lo aplica la infraestructura de Supabase.
 - **Linking automático de identidades por email.** Con el linking manual apagado, GoTrue sigue uniendo por email verificado cuando haya proveedores (Google y Apple, en sus PRs). Se acepta para las clientas.
 - **Frase en el email de Evelyn.** El código lleva «non condividere questo codice con nessuno, nemmeno con Evelyn» (y su equivalente en es y en): es el mismo email para todas las cuentas, también para la de ella.
 
 ## 7. Plantillas
 
-`login_code.html` imprime solo `{{ .Token }}`. Usa `.Data` únicamente para comparar `.Data.locale` con `es` o `en` (un test lo exige, también para los asuntos de `config.toml`): nunca imprime metadatos del usuario, ni `.Email`, `.ConfirmationURL`, `.TokenHash`, `.SiteURL` ni `.RedirectTo`.
+Desde PR16 las seis plantillas salen de una sola fuente (§13). `login_code.html` imprime solo `{{ .Token }}`; `confirmation.html` y `recovery.html`, solo `{{ .TokenHash }}` (en el link a `/accesso/`); las otras tres, nada. Todas usan `.Data` únicamente para comparar `.Data.locale` con `es` o `en` (un test lo exige, también para los asuntos de `config.toml`): nunca imprimen metadatos del usuario, ni `.Email`, `.ConfirmationURL`, `.SiteURL` ni `.RedirectTo`.
 
 ## 8. Hooks de Auth: la cocina solo con código y el freno de altas (PR07: las funciones, sin prender)
 
@@ -117,7 +117,7 @@ Una sesión de la cocina abierta con contraseña (antes de prender el hook) se c
 | Código del email (`/otp` + `/verify type=email`) | `[{"method":"otp"}]` | pasa (medido: cocinera y colaborador) |
 | Refresh de una sesión abierta con código | `[{"method":"otp"}]` (el `amr` de la sesión se conserva; en el evento, `authentication_method` vale `token_refresh`, según la documentación) | pasa (medido) |
 | Refresh de una sesión abierta con contraseña | `[{"method":"password"}]` (medido en una clienta) | 403 (pgTAP, con `token_refresh` y `amr` password) |
-| Confirmación del alta (código de 8 cifras, `/verify type=signup`) | `[{"method":"otp"}]` | n/a (es una clienta) |
+| Confirmación del alta (desde PR16, el link de `/accesso/`: `/verify` con `token_hash`) | `[{"method":"otp"}]` | n/a (es una clienta) |
 | Recuperación de contraseña (link del email, `/verify type=recovery`) | `[{"method":"otp"}]` (no `recovery`) | pasaría: es tener el email, igual que el código; si después fija una contraseña, el login con contraseña sí da 403 |
 | Admin (`generate_link` magiclink + `/verify` con `token_hash`) | `[{"method":"otp"}]` | pasa (medido) |
 | Google en la web (`signInWithOAuth`) | no se puede correr en local (sin proveedores). La documentación lo da como `oauth` | 403 (por la lista blanca, sea cual sea el valor) |
@@ -178,7 +178,7 @@ Si hay que apagar el hook de la cocina (§8.1 trae el comando): **primero** el P
 |---|---|---|---|---|---|
 | `POST /token` (`grant_type=password`, `refresh_token`, id_token, PKCE; también cuenta la contraseña buena) | `Token` (se aplica dentro del handler) | `rate_limit_token_refresh` | **20** cada 5 min (de fábrica, 150) | Adivinar contraseñas desde una IP: 30 seguidos y después uno cada 15 s (240 por hora). Medido: el intento 31 da 429 | Un ataque repartido en muchas IP contra una cuenta (lo frenan el CAPTCHA, PR09–PR11; el hook de la cocina, PR07/PR08; y la política de contraseñas, PR14) |
 | `POST /otp`, `/magiclink`, `/recover`, `/resend`, `/signup` (con email), `PUT /user` | `Otp`, `MagicLink`, `Recover`, `Resend`, `Signups`, `User` (todos el mismo valor, cada uno su cubo) | `rate_limit_otp` | **10** cada 5 min (de fábrica, 30) | Pedir códigos en ráfaga (spam de emails a una persona, enumeración de cuentas): 30 seguidos y después 10 cada 5 min | Más pedidos desde muchas IP (los acota `rate_limit_email_sent`, 100 por hora en todo el proyecto, y el máximo por usuario de 1 s/60 s de `[auth.email]`) |
-| `GET/POST /verify` | `Verify` | `rate_limit_verify` | **10** cada 5 min (PR04) | Probar códigos de 8 cifras: el 31.º seguido da 429 (§6) | Muchas IP contra un mismo código (vale 600 s) |
+| `GET/POST /verify` | `Verify` | `rate_limit_verify` | **10** cada 5 min (PR04) | Probar códigos de 10 cifras: el 31.º seguido da 429 (§6) | Muchas IP contra un mismo código (vale 600 s) |
 | `POST /signup` sin email ni teléfono (anónimos) | `AnonymousSignIns` | `rate_limit_anonymous_users` | **1** por hora (mínimo de la API) | Nada que cuidar: los anónimos están apagados | — |
 | SMS (`rate_limit_sms_sent`) y Web3 en `/token` (`rate_limit_web3`) | `Phone`, `Web3` | `rate_limit_sms_sent`, `rate_limit_web3` | **1** (mínimo de la API) | Nada que cuidar: teléfono y Web3 están apagados | — |
 | Emails enviados | `Email` | `rate_limit_email_sent` | **100** por hora, todo el proyecto (PR04, parte `templates`) | Un tope al costo y a un ataque de emails | Para uno a uno por usuario, ver `[auth.email] max_frequency` |
@@ -343,3 +343,24 @@ Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerrada
 **Las cuentas que crea el despliegue** (`deploy-accounts.sh`: 64 hexadecimales al azar, que nadie usa) cumplen la regla salvo con probabilidad menor a 10⁻¹³.
 
 **Probado** contra GoTrue v2.197.0 con esta configuración (un contenedor aparte sobre la base local, porque la CLI 2.121 no sabe poner `require_current_password`): contraseñas cortas, sin números y sin letras rechazadas (también en el alta), `current_password_required` y `current_password_invalid`, el cambio con la actual, la otra sesión cerrada y la que la cambió viva, el cambio sin la actual con una sesión de `/verify` de recuperación, y el aviso en it, es y en (asunto, texto y `lang`), sin link ni el email.
+
+## 13. Los emails de Auth (PR16, 26/11/2026)
+
+**Una sola fuente**, `supabase/functions/_shared/auth_emails.ts`, con los textos de los seis tipos en it, es y en. De ahí salen:
+- las plantillas de GoTrue (`goTrueTemplate`, `goTrueSubject`): un HTML por tipo con una rama por idioma, elegida por `user_metadata.locale` (italiano si no hay). `node supabase/scripts/auth-templates.ts` las escribe en `supabase/templates/`; `config.toml` las usa en local y `auth-config.ts` las manda a producción. Un test comprueba que los archivos son exactamente los generados, y `auth-config.ts` corta el despliegue si `config.toml` cambia un asunto o un archivo;
+- el email de un idioma con los valores reales (`renderAuthEmail`), para el hook de envío de PR19.
+
+| Tipo | Cuándo sale | Qué lleva |
+|---|---|---|
+| `magic_link` (`login_code.html`) | Pedir el código (la cocina) | El **código de 10 cifras**, que vale una hora, y «no lo compartas con nadie, ni con Evelyn». Sin link |
+| `confirmation` | Crear la cuenta (PR17) | Botón y link a `https://radicicucina.app/accesso/?lang=<idioma>#token_hash={{ .TokenHash }}&type=email` (§11) |
+| `recovery` | «Password dimenticata?» | Lo mismo con `type=recovery` |
+| `email_change` | Pedir otro email | Sin link ni código: «por ahora el email no se puede cambiar» (sirve para la dirección vieja y la nueva). Así nadie completa un cambio de email hasta que el hook de PR19 lo bloquee antes de mandar nada (§4) |
+| `reauthentication` | Reautenticarse | Sin código: Radici no usa la reautenticación (§12) |
+| `invite` | Invitar una cuenta | Sin link: Radici no invita |
+
+**El código y los links valen una hora** (`mailer_otp_exp = 3600`): un link de alta o de recuperación se abre a veces más tarde o en otro dispositivo. El código de la cocina pasa a **10 cifras** (`mailer_otp_length = 10`) para compensar ese tiempo, con las 10 verificaciones cada 5 minutos por IP de §9; la app ya acepta de 6 a 10 cifras. El link nunca es el de GoTrue (`{{ .ConfirmationURL }}` lo canjea un GET apenas se abre, y lo gastan los escáneres de links): es el de `/accesso/`, que espera el toque en «Conferma».
+
+**Identidad**: el mismo logotipo, la misma paleta y la misma letra que los emails del pedido (`emails.ts` exporta `logoHtml`, `COLOR`, `FONT` y `FONT_DISPLAY`; un test lo compara). Sin imágenes, sin seguimiento.
+
+**Probado** contra GoTrue v2.197.0 con estas plantillas (un contenedor aparte sobre la base local, con Mailpit): el alta con PKCE hasta `/accesso/` y la contraseña, la recuperación, el código de 10 cifras de la cocina, el pedido de cambio de email sin link y los tres idiomas.

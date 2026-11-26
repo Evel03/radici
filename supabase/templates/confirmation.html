@@ -1,0 +1,39 @@
+<!doctype html>
+<!-- Plantilla «confirmation» de Supabase Auth, en it, es y en según user_metadata.locale. GENERADA desde supabase/functions/_shared/auth_emails.ts con node supabase/scripts/auth-templates.ts: no editar a mano (contrato docs/contracts/auth.md §13). En producción la aplica deploy-supabase.yml (auth-config.ts). -->
+<html lang="{{ if and .Data.locale (eq .Data.locale "es") }}es{{ else if and .Data.locale (eq .Data.locale "en") }}en{{ else }}it{{ end }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Radici</title>
+</head>
+<body style="margin:0;padding:0;background:#f5ede1;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5ede1;">
+<tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:480px;background:#fbf7f1;border:1px solid #dbc9b4;border-radius:2px;font-family:'Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-variant-numeric:lining-nums;color:#2c2b20;">
+<tr><td align="center" style="padding:32px 24px 8px;">
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;"><tr><td align="center" style="padding:0 3px 8px 6px;border-bottom:1px solid #2c2b20;border-bottom-color:currentColor;font-family:Cinzel,'Trajan Pro','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-size:40px;line-height:1;letter-spacing:3.2px;font-variant:small-caps;color:#2c2b20;">Radici</td></tr><tr><td align="center" lang="it" style="padding:9px 0 0 2px;font-family:Cinzel,'Trajan Pro','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-size:9px;line-height:1.2;letter-spacing:2.3px;text-transform:uppercase;color:#2c2b20;">Cucina privata</td></tr></table>
+</td></tr>
+<tr><td style="padding:20px 24px 28px;font-size:17px;line-height:1.55;">
+{{ if and .Data.locale (eq .Data.locale "es") }}
+<p style="margin:0 0 16px;">Para activar tu cuenta de Radici y elegir la contraseña, abre este enlace:</p>
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:8px 0 20px;"><tr><td style="border-radius:2px;background:#4a5a3c;"><a href="https://radicicucina.app/accesso/?lang=es#token_hash={{ .TokenHash }}&type=email" style="display:inline-block;padding:13px 26px;font-family:Cinzel,'Trajan Pro','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-size:17px;letter-spacing:0.06em;font-variant:small-caps;color:#f5ede1;text-decoration:none;border-radius:2px;">Activar la cuenta</a></td></tr></table>
+<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#5b5847;">Si el botón no se abre, copia esta dirección en el navegador:<br><a href="https://radicicucina.app/accesso/?lang=es#token_hash={{ .TokenHash }}&type=email" style="color:#4a5a3c;word-break:break-all;overflow-wrap:anywhere;">https://radicicucina.app/accesso/?lang=es#token_hash={{ .TokenHash }}&type=email</a></p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">El enlace vale una hora y se usa una sola vez. Si no pediste crear una cuenta, ignora este email: sin confirmación la cuenta no se activa.</p>
+{{ else if and .Data.locale (eq .Data.locale "en") }}
+<p style="margin:0 0 16px;">To activate your Radici account and choose your password, open this link:</p>
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:8px 0 20px;"><tr><td style="border-radius:2px;background:#4a5a3c;"><a href="https://radicicucina.app/accesso/?lang=en#token_hash={{ .TokenHash }}&type=email" style="display:inline-block;padding:13px 26px;font-family:Cinzel,'Trajan Pro','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-size:17px;letter-spacing:0.06em;font-variant:small-caps;color:#f5ede1;text-decoration:none;border-radius:2px;">Activate account</a></td></tr></table>
+<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#5b5847;">If the button doesn't open, copy this address into your browser:<br><a href="https://radicicucina.app/accesso/?lang=en#token_hash={{ .TokenHash }}&type=email" style="color:#4a5a3c;word-break:break-all;overflow-wrap:anywhere;">https://radicicucina.app/accesso/?lang=en#token_hash={{ .TokenHash }}&type=email</a></p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">The link is valid for one hour and works once. If you didn't ask to create an account, ignore this email: without confirmation the account isn't activated.</p>
+{{ else }}
+<p style="margin:0 0 16px;">Per attivare il tuo account Radici e scegliere la password, apri questo link:</p>
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:8px 0 20px;"><tr><td style="border-radius:2px;background:#4a5a3c;"><a href="https://radicicucina.app/accesso/?lang=it#token_hash={{ .TokenHash }}&type=email" style="display:inline-block;padding:13px 26px;font-family:Cinzel,'Trajan Pro','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-size:17px;letter-spacing:0.06em;font-variant:small-caps;color:#f5ede1;text-decoration:none;border-radius:2px;">Attiva l'account</a></td></tr></table>
+<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#5b5847;">Se il pulsante non si apre, copia questo indirizzo nel browser:<br><a href="https://radicicucina.app/accesso/?lang=it#token_hash={{ .TokenHash }}&type=email" style="color:#4a5a3c;word-break:break-all;overflow-wrap:anywhere;">https://radicicucina.app/accesso/?lang=it#token_hash={{ .TokenHash }}&type=email</a></p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Il link vale un'ora e si usa una sola volta. Se non hai chiesto tu di creare un account, ignora questa email: senza conferma l'account non si attiva.</p>
+{{ end }}
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

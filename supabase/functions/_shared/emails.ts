@@ -570,8 +570,9 @@ export function privacyPageUrl(siteUrl: string, locale: Locale): string {
 // Armado del HTML y del texto
 // ---------------------------------------------------------------------------
 
-// Paleta de la web (web/src/styles/base.css), con el contraste verificado (WCAG AA) sobre la tarjeta.
-const COLOR = {
+// Paleta de la web (web/src/styles/base.css), con el contraste verificado (WCAG AA) sobre la tarjeta. También la usan
+// los emails de Auth (auth_emails.ts).
+export const COLOR = {
   page: "#f5ede1", // crema
   card: "#fbf7f1", // crema clara
   border: "#dbc9b4", // lino
@@ -584,8 +585,8 @@ const COLOR = {
 // Sin fuentes web: en un email serían un recurso remoto y casi ningún cliente las carga. Palatino y
 // sus parecidas tienen números de caja alta (Georgia no) y se acercan a Cormorant; Cinzel solo si
 // quien lee la tiene instalada.
-const FONT = "'Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif";
-const FONT_DISPLAY = `Cinzel,'Trajan Pro',${FONT}`;
+export const FONT = "'Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif";
+export const FONT_DISPLAY = `Cinzel,'Trajan Pro',${FONT}`;
 /** Rótulo del logotipo: parte de la marca, en italiano en todos los idiomas (como en la web). */
 const BRAND_TAGLINE = "Cucina privata";
 
@@ -700,7 +701,7 @@ function plainText(doc: EmailDocument): string {
  * - El filete toma el color del texto (currentColor, con la tinta de respaldo): Outlook en modo oscuro
  *   aclara el texto pero no los bordes, y un filete tinta desaparecía sobre el fondo oscuro.
  */
-function logoHtml(brand: string): string {
+export function logoHtml(brand: string): string {
   return (
     `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;"><tr>` +
     `<td align="center" style="padding:0 3px 8px 6px;border-bottom:1px solid ${COLOR.text};border-bottom-color:currentColor;` +

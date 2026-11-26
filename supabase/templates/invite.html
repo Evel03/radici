@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- Plantilla «invite» de Supabase Auth, en it, es y en según user_metadata.locale. GENERADA desde supabase/functions/_shared/auth_emails.ts con node supabase/scripts/auth-templates.ts: no editar a mano (contrato docs/contracts/auth.md §13). En producción la aplica deploy-supabase.yml (auth-config.ts). -->
+<html lang="{{ if and .Data.locale (eq .Data.locale "es") }}es{{ else if and .Data.locale (eq .Data.locale "en") }}en{{ else }}it{{ end }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Radici</title>
+</head>
+<body style="margin:0;padding:0;background:#f5ede1;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5ede1;">
+<tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:480px;background:#fbf7f1;border:1px solid #dbc9b4;border-radius:2px;font-family:'Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-variant-numeric:lining-nums;color:#2c2b20;">
+<tr><td align="center" style="padding:32px 24px 8px;">
+<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;"><tr><td align="center" style="padding:0 3px 8px 6px;border-bottom:1px solid #2c2b20;border-bottom-color:currentColor;font-family:Cinzel,'Trajan Pro','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-size:40px;line-height:1;letter-spacing:3.2px;font-variant:small-caps;color:#2c2b20;">Radici</td></tr><tr><td align="center" lang="it" style="padding:9px 0 0 2px;font-family:Cinzel,'Trajan Pro','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-size:9px;line-height:1.2;letter-spacing:2.3px;text-transform:uppercase;color:#2c2b20;">Cucina privata</td></tr></table>
+</td></tr>
+<tr><td style="padding:20px 24px 28px;font-size:17px;line-height:1.55;">
+{{ if and .Data.locale (eq .Data.locale "es") }}
+<p style="margin:0 0 16px;">Radici no manda invitaciones para crear una cuenta.</p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Si recibiste este email por error, ignóralo.</p>
+{{ else if and .Data.locale (eq .Data.locale "en") }}
+<p style="margin:0 0 16px;">Radici doesn't send invitations to create an account.</p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">If you received this email by mistake, ignore it.</p>
+{{ else }}
+<p style="margin:0 0 16px;">Radici non manda inviti a creare un account.</p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Se hai ricevuto questa email per errore, ignorala.</p>
+{{ end }}
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
