@@ -62,6 +62,7 @@
   "authErrorNotAllowed": "This email address isn't allowed to sign in.",
   "authErrorNoBackend": "The service isn't configured in this version of the app.",
   "authErrorCaptcha": "We couldn't complete the anti-spam check. Please try again; if it keeps failing, check your connection or any content blockers.",
+  "authErrorCode": "(code: {code})",
   "authErrorLink": "The sign-in link isn't valid or has expired. Request a new code.",
   "wrongEntryTitle": "Account not allowed here",
   "wrongEntryClientBody": "This sign-in is for the kitchen only. To sign in as a client, use the Radici app (radicicucina.app/app/).",

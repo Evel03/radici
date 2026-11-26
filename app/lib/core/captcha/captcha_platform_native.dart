@@ -32,13 +32,19 @@ class NativeCaptchaSession implements CaptchaSession {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onNavigationRequest: (request) =>
-              isCaptchaNavigationAllowed(request.url, isMainFrame: request.isMainFrame)
-              ? NavigationDecision.navigate
-              : NavigationDecision.prevent,
+          onNavigationRequest: (request) {
+            if (isCaptchaNavigationAllowed(request.url, isMainFrame: request.isMainFrame)) {
+              return NavigationDecision.navigate;
+            }
+            // Para el diagnóstico: qué se frenó (esquema y host, nada más).
+            if (!_replies.isClosed) _replies.add(CaptchaBlocked(captchaBlockedSummary(request.url)));
+            return NavigationDecision.prevent;
+          },
           onWebResourceError: (error) {
             // Solo importa si falla la página en sí (sin red, sin certificado): sin ella no hay token.
-            if (error.isForMainFrame ?? false) _replies.add(const CaptchaLoadFailed());
+            if ((error.isForMainFrame ?? false) && !_replies.isClosed) {
+              _replies.add(CaptchaLoadFailed(code: error.errorCode));
+            }
           },
         ),
       )

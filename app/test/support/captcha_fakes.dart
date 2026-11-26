@@ -10,6 +10,9 @@ class NoCaptchaService implements CaptchaService {
 
   @override
   Future<String?> token({String? locale}) async => null;
+
+  @override
+  String? get lastFailure => 'test-no-token';
 }
 
 /// Siempre el mismo token: el captcha que anda (el de por defecto en
@@ -21,6 +24,9 @@ class TokenCaptchaService implements CaptchaService {
 
   @override
   Future<String?> token({String? locale}) async => value;
+
+  @override
+  String? get lastFailure => null;
 }
 
 /// Entrega un token distinto en cada llamada y anota cuántas se pidieron y en
@@ -38,9 +44,13 @@ class FakeCaptchaService implements CaptchaService {
   int get calls => locales.length;
 
   @override
+  String? lastFailure;
+
+  @override
   Future<String?> token({String? locale}) async {
     locales.add(locale);
     if (failWith) throw StateError('captcha roto');
+    lastFailure = available ? null : 'app-timeout';
     return available ? 'captcha-token-$calls' : null;
   }
 }

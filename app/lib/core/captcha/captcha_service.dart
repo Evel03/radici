@@ -36,6 +36,11 @@ abstract interface class CaptchaService {
   /// Nunca lanza. [locale] (it, es, en): el idioma de lo que la página muestre
   /// si Cloudflare pide tocar la casilla.
   Future<String?> token({String? locale});
+
+  /// Por qué el último [token] dio null, en un código corto y seguro para
+  /// mostrar (captcha_broker.dart); null si dio token. Diagnóstico: nunca lleva
+  /// el token ni datos de la persona.
+  String? get lastFailure;
 }
 
 final captchaServiceProvider = Provider<CaptchaService>(

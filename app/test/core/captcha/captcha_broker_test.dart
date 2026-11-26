@@ -153,6 +153,77 @@ void main() {
     expect(session.disposed, isTrue);
   });
 
+  group('diagnóstico (lastFailure)', () {
+    test('con token, null', () async {
+      final future = broker.token();
+      await pumpEventQueue();
+      sessions.single.say(const CaptchaReady());
+      await pumpEventQueue();
+      sessions.single.say(CaptchaToken(id: idOf(1), token: 'tok'));
+      expect(await future, 'tok');
+      expect(broker.lastFailure, isNull);
+    });
+
+    test('un error de la página: page- y su código (el de Turnstile o token-shape)', () async {
+      final future = broker.token();
+      await pumpEventQueue();
+      sessions.single.say(CaptchaError(id: idOf(1), code: '600010'));
+      expect(await future, isNull);
+      expect(broker.lastFailure, 'page-600010');
+    });
+
+    test('la página no carga: app-load y el código de la WebView', () async {
+      final future = broker.token();
+      await pumpEventQueue();
+      sessions.single.say(const CaptchaLoadFailed(code: -1009));
+      expect(await future, isNull);
+      expect(broker.lastFailure, 'app-load-1009');
+    });
+
+    test('una navegación frenada se suma al motivo, y el pedido sigue', () async {
+      final future = broker.token();
+      await pumpEventQueue();
+      sessions.single.say(const CaptchaReady());
+      sessions.single.say(const CaptchaBlocked('blob:'));
+      await pumpEventQueue();
+      sessions.single.say(CaptchaError(id: idOf(1), code: '300030'));
+      expect(await future, isNull);
+      expect(broker.lastFailure, 'page-300030+blocked-blob:');
+    });
+
+    test('la fábrica lanza: app-unavailable', () async {
+      final failing = CaptchaBroker(sessionFactory: (_) => throw UnsupportedError('sin WebView'));
+      expect(await failing.token(), isNull);
+      expect(failing.lastFailure, 'app-unavailable');
+    });
+
+    test('vence sin ready: app-no-ready; con ready: app-timeout; con la casilla a la vista: app-timeout-interactive', () {
+      fakeAsync((async) {
+        final b = build();
+        b.token();
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 21));
+        expect(b.lastFailure, 'app-no-ready');
+
+        b.token();
+        async.flushMicrotasks();
+        sessions.last.say(const CaptchaReady());
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 21));
+        expect(b.lastFailure, 'app-timeout');
+
+        b.token();
+        async.flushMicrotasks();
+        sessions.last.say(const CaptchaReady());
+        async.flushMicrotasks();
+        sessions.last.say(CaptchaInteractive(id: idOf(3), visible: true));
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 121));
+        expect(b.lastFailure, 'app-timeout-interactive');
+      });
+    });
+  });
+
   group('tiempos', () {
     test('sin respuesta a los 20 s: null y la página se cierra', () {
       fakeAsync((async) {
