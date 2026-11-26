@@ -176,6 +176,10 @@ void main() {
     await pumpLogin(tester, captcha: captcha);
     await enterEmail(tester, 'evelyn@example.test');
     expect(find.textContaining('verifica anti-spam'), findsOneWidget);
+    // El motivo (diagnóstico) va primero, en su renglón: en el teléfono nunca queda cortado.
+    final error = tester.widget<TextField>(find.byKey(const ValueKey('login-email'))).decoration!.errorText!;
+    expect(error.split('\n').first, '(codice: app-timeout)');
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('login-email'))).decoration!.errorMaxLines, greaterThanOrEqualTo(6));
     expect(auth.sentTo, isEmpty);
 
     captcha.available = true;
