@@ -145,7 +145,7 @@ void main() {
     auth.sendFailure = AuthFailureKind.rateLimited;
     await enterEmail(tester, 'evelyn@example.test');
     expect(
-      find.text('Hai chiesto troppi codici. Aspetta un minuto e riprova.'),
+      find.text('Troppi tentativi in poco tempo. Aspetta un minuto e riprova.'),
       findsOneWidget,
     );
   });

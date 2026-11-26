@@ -97,6 +97,83 @@ class FakeAuthRepository implements AuthRepository {
     emit(AppUser(id: 'user-$email', email: email));
   }
 
+  /// Contraseña que acepta [signInWithPassword] (cualquier email).
+  String validPassword = 'Prova12345';
+
+  /// Si no es null, [signInWithPassword] falla con este error.
+  AuthFailureKind? passwordFailure;
+
+  /// Si no es null, [signUp], [requestPasswordReset] y [resendSignupEmail]
+  /// fallan con este error.
+  AuthFailureKind? emailFailure;
+
+  /// Si no es null, [changePassword] falla con este error.
+  AuthFailureKind? changeFailure;
+
+  /// Cada pedido de contraseña, alta, recuperación y reenvío: «tipo:email».
+  final List<String> passwordRequests = [];
+
+  /// Token de captcha recibido en cada uno de esos pedidos.
+  final List<String?> passwordCaptchaTokens = [];
+
+  /// Cada cambio de contraseña: (actual, nueva).
+  final List<(String, String)> passwordChanges = [];
+
+  void _record(String kind, String email, String? captchaToken) {
+    passwordRequests.add('$kind:$email');
+    passwordCaptchaTokens.add(captchaToken);
+  }
+
+  @override
+  Future<void> signInWithPassword({
+    required String email,
+    required String password,
+    String? captchaToken,
+  }) async {
+    _record('signIn', email, captchaToken);
+    final failure = passwordFailure;
+    if (failure != null) throw AuthFailure(failure);
+    if (password != validPassword) {
+      throw const AuthFailure(AuthFailureKind.invalidCredentials);
+    }
+    emit(AppUser(id: 'user-$email', email: email));
+  }
+
+  @override
+  Future<void> signUp({
+    required String email,
+    String? locale,
+    String? captchaToken,
+  }) async {
+    _record('signUp', email, captchaToken);
+    final failure = emailFailure;
+    if (failure != null) throw AuthFailure(failure);
+  }
+
+  @override
+  Future<void> requestPasswordReset(String email, {String? captchaToken}) async {
+    _record('reset', email, captchaToken);
+    final failure = emailFailure;
+    if (failure != null) throw AuthFailure(failure);
+  }
+
+  @override
+  Future<void> resendSignupEmail(String email, {String? captchaToken}) async {
+    _record('resend', email, captchaToken);
+    final failure = emailFailure;
+    if (failure != null) throw AuthFailure(failure);
+  }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final failure = changeFailure;
+    if (failure != null) throw AuthFailure(failure);
+    passwordChanges.add((currentPassword, newPassword));
+  }
+
   @override
   Future<void> signOut() async => emit(null);
 }

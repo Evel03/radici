@@ -385,7 +385,7 @@ void main() {
 
   group('errores de Auth en el login', () {
     testWidgets(
-      'un link con error se dice en el login y se borra al pedir el código',
+      '/app/: un link con error se dice en el login y se borra al entrar con la contraseña',
       (tester) async {
         final auth = FakeAuthRepository();
         await pumpRadiciApp(
@@ -407,19 +407,52 @@ void main() {
         expect(find.byKey(const ValueKey('login-link-error')), findsOneWidget);
         expect(
           find.text(
-            'Il link di accesso non è valido o è scaduto. Richiedi un nuovo codice.',
+            'Il link di accesso non è valido o è scaduto. Prova di nuovo ad accedere.',
           ),
           findsOneWidget,
         );
 
         await tester.enterText(
-          find.byKey(const ValueKey('login-email')),
+          find.byKey(const ValueKey('access-email')),
           'cliente@example.test',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('access-password')),
+          auth.validPassword,
+        );
+        await tester.tap(find.byKey(const ValueKey('access-sign-in')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('login-link-error')), findsNothing);
+        expect(auth.passwordRequests, ['signIn:cliente@example.test']);
+        expect(auth.sentTo, isEmpty, reason: 'en /app/ no hay código');
+      },
+    );
+
+    testWidgets(
+      '/gestione/: un link con error se dice en el login y se borra al pedir el código',
+      (tester) async {
+        final auth = FakeAuthRepository();
+        await pumpRadiciApp(
+          tester,
+          isWeb: true,
+          overrides: [authRepositoryProvider.overrideWithValue(auth)],
+        );
+        auth.emitFailure(AuthFailureKind.unknown);
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            'Il link di accesso non è valido o è scaduto. Richiedi un nuovo codice.',
+          ),
+          findsOneWidget,
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('login-email')),
+          'evelyn@example.test',
         );
         await tester.tap(find.byKey(const ValueKey('login-send-code')));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('login-link-error')), findsNothing);
-        expect(auth.sentTo, ['cliente@example.test']);
+        expect(auth.sentTo, ['evelyn@example.test']);
       },
     );
   });

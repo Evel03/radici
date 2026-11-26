@@ -83,6 +83,33 @@ enum AuthFailureKind {
   /// mismo botón.
   captcha,
 
+  /// Falta la contraseña (se avisa sin llamar al servidor).
+  passwordRequired,
+
+  /// Email o contraseña incorrectos (`invalid_credentials`). También una
+  /// cuenta sin confirmar (`email_not_confirmed`, que Auth solo dice con la
+  /// contraseña correcta): el mismo aviso, que sugiere «Password dimenticata?».
+  invalidCredentials,
+
+  /// Una cuenta de la cocina probó con contraseña: entra solo con el código
+  /// del email (hook `kitchen_access_token_hook`, 403 `kitchen_code_only`).
+  /// Auth lo dice recién con la contraseña correcta.
+  kitchenCodeOnly,
+
+  /// Las altas todavía están cerradas (`signup_disabled`): «Le iscrizioni
+  /// apriranno presto».
+  signupClosed,
+
+  /// Auth rechazó la contraseña nueva por la regla (`weak_password`).
+  weakPassword,
+
+  /// La contraseña nueva es igual a la de antes (`same_password`).
+  samePassword,
+
+  /// La contraseña actual no es correcta (`current_password_invalid`; en
+  /// versiones más nuevas de GoTrue, `current_password_mismatch`).
+  wrongCurrentPassword,
+
   /// Cualquier otro error.
   unknown,
 }

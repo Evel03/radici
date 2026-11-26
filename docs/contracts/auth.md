@@ -366,3 +366,25 @@ Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerrada
 **Identidad**: el mismo logotipo, la misma paleta y la misma letra que los emails del pedido (`emails.ts` exporta `logoHtml`, `COLOR`, `FONT` y `FONT_DISPLAY`; un test lo compara). Sin imágenes, sin seguimiento.
 
 **Probado** contra GoTrue v2.197.0 con estas plantillas (un contenedor aparte sobre la base local, con Mailpit): el alta con PKCE hasta `/accesso/` y la contraseña, la recuperación, el código de 10 cifras de la cocina, el pedido de cambio de email sin link y los tres idiomas.
+
+## 14. La app: contraseña, alta y recuperación (PR17, 26/11/2026)
+
+**Dónde.** En `/app/` (las clientas, web) y en la app nativa. `/gestione/` sigue solo con el código (la cocina, §8.1). En la app nativa, que sirve a las dos cuentas, el login abre con la contraseña y debajo tiene «Accesso cucina: entra con un codice via email», que lleva al login con código (y vuelve). Una cuenta de la cocina que prueba con contraseña recibe el 403 `kitchen_code_only` del hook (Auth lo dice recién con la contraseña correcta) y la app avisa «questo account è della cucina ed entra solo con il codice».
+
+| Acción | Pedido a Auth | Captcha | Qué ve la persona |
+|---|---|---|---|
+| Entrar | `POST /token?grant_type=password` | Sí, un token nuevo por intento | La sesión, o «Email o password non corretti. Se non ricordi la password, usa «Password dimenticata?»». `email_not_confirmed` da el mismo aviso: nadie conoce la contraseña del alta |
+| «Crea account» | `POST /signup` con una contraseña al azar (40 letras y dígitos, `Random.secure`) y `data` solo con `locale` | Sí | Siempre «Se <email> non ha ancora un account, ti arriva un link… Se hai già un account, entra o usa «Password dimenticata?»». Con las altas cerradas (`signup_disabled`, hoy), «Le iscrizioni apriranno presto» |
+| «Password dimenticata?» | `POST /recover` | Sí | Siempre «Se <email> ha un account, ti arriva un link per scegliere la password» |
+| «Reinvia l'email» | `POST /resend` (`type=signup`) o `/recover` otra vez | Sí | «Richiesta inviata di nuovo», exista o no la cuenta |
+| «Cambia password» (área de la clienta) | `PUT /user` con `password` y `current_password` | No (Auth no lo pide) | «Password aggiornata. Le altre sessioni aperte sono state chiuse.» (Auth cierra las otras sesiones y manda el aviso de §12). La actual incorrecta: `current_password_invalid` en GoTrue v2.197 o `current_password_mismatch` en las más nuevas, los dos con el mismo aviso |
+
+**El alta en dos pasos** (diseño del 22/11/2026). La contraseña del alta no la conoce nadie: la clienta elige la suya en `/accesso/` desde el link de confirmación (§11, plantilla `confirmation` de §13), y la primera confirmación borra la del alta (§4). Sin `emailRedirectTo`: las plantillas no usan la URL de GoTrue. Con PKCE (el flujo de supabase_flutter), el `token_hash` del email empieza con `pkce_`, y `/accesso/` lo canjea desde cualquier navegador (probado en PR15).
+
+**Antes de mandar.** La app revisa el email (la regla de `isValidEmail`), que haya contraseña al entrar y, al cambiarla, la misma regla de §12 (`app/lib/features/auth/domain/password_rules.dart`; `auth-config.test.ts` compara las tres copias) y que la nueva no sea igual a la actual. Quien decide es Auth: `weak_password` y `same_password` se muestran igual.
+
+**El link a la informativa** (`https://radicicucina.app/privacy/?lang=<idioma>`) está debajo de los botones del alta: se ve antes de mandar el email.
+
+**`/accedi?email=`.** El «Vai al login» de `/accesso/` lleva a `/app/#/accedi?email=…`: el campo del email arranca con ese valor si es un email válido (si no, vacío).
+
+**Qué se acepta a sabiendas.** Los avisos de la app no dicen si un email tiene cuenta, pero Auth limita a un email por minuto a cada destinatario (`smtp_max_frequency`, §9): un segundo pedido al mismo email dentro del minuto da 429 solo si el primero salió, o sea, si la cuenta existe. Es un oráculo de la API de GoTrue, no de la app (la app dice la verdad: «Troppi tentativi in poco tempo. Aspetta un minuto e riprova.»), y el captcha lo encarece. Los topes por destinatario del hook de envío (PR19) no lo cierran: ese chequeo de GoTrue ocurre antes del hook.

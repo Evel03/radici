@@ -225,9 +225,9 @@
   "@authErrorInvalidCode": {
     "description": "Error: código incorrecto o vencido."
   },
-  "authErrorRateLimited": "Hai chiesto troppi codici. Aspetta un minuto e riprova.",
+  "authErrorRateLimited": "Troppi tentativi in poco tempo. Aspetta un minuto e riprova.",
   "@authErrorRateLimited": {
-    "description": "Error: límite de pedidos de código (Supabase permite uno por minuto)."
+    "description": "Error: Auth frenó por demasiados pedidos (429): códigos, intentos de contraseña, altas o recuperaciones (§9 de docs/contracts/auth.md). Genérico: sirve para todos."
   },
   "authErrorNetwork": "Non riusciamo a collegarci. Controlla la connessione e riprova.",
   "@authErrorNetwork": {
@@ -258,6 +258,182 @@
   "authErrorLink": "Il link di accesso non è valido o è scaduto. Richiedi un nuovo codice.",
   "@authErrorLink": {
     "description": "Error en el login: llegó un link de acceso de Auth con un error (vencido, ya usado)."
+  },
+  "authErrorLinkSignIn": "Il link di accesso non è valido o è scaduto. Prova di nuovo ad accedere.",
+  "@authErrorLinkSignIn": {
+    "description": "Como authErrorLink, en el acceso con contraseña (/app/ y la app nativa): ahí no se pide un código."
+  },
+  "loginPasswordBody": "Entra con la tua email e la tua password.",
+  "@loginPasswordBody": {
+    "description": "Acceso de las clientas (/app/ y la app nativa): el texto arriba del formulario."
+  },
+  "loginPasswordLabel": "Password",
+  "@loginPasswordLabel": {
+    "description": "Etiqueta del campo de la contraseña."
+  },
+  "loginPasswordShow": "Mostra la password",
+  "@loginPasswordShow": {
+    "description": "Botón del ojo: muestra la contraseña escrita (para el lector de pantalla)."
+  },
+  "loginPasswordHide": "Nascondi la password",
+  "@loginPasswordHide": {
+    "description": "Botón del ojo: vuelve a ocultar la contraseña (para el lector de pantalla)."
+  },
+  "loginSignIn": "Accedi",
+  "@loginSignIn": {
+    "description": "Botón: entrar con email y contraseña."
+  },
+  "loginForgotPassword": "Password dimenticata?",
+  "@loginForgotPassword": {
+    "description": "Link al formulario para pedir una contraseña nueva, y su título. Lo citan authErrorInvalidCredentials, signUpSent y changePasswordForgot: si cambia, cambiarlo también ahí."
+  },
+  "loginNoAccount": "Non hai ancora un account?",
+  "@loginNoAccount": {
+    "description": "Arriba del botón «Crea account»."
+  },
+  "loginCreateAccount": "Crea account",
+  "@loginCreateAccount": {
+    "description": "Botón que lleva al alta, y el del alta."
+  },
+  "loginPrivacyNote": "Prima di creare l'account, leggi come trattiamo i tuoi dati:",
+  "@loginPrivacyNote": {
+    "description": "Debajo de los botones del alta, antes del link a la informativa (loginPrivacyLink)."
+  },
+  "loginPrivacyLink": "Informativa sulla privacy",
+  "@loginPrivacyLink": {
+    "description": "Link a la informativa de la web (radicicucina.app/privacy/). El mismo título que la página."
+  },
+  "loginKitchenCode": "Accesso cucina: entra con un codice via email",
+  "@loginKitchenCode": {
+    "description": "Solo en la app nativa: lleva al login con código de la cocina (Evelyn y sus colaboradores)."
+  },
+  "loginUsePassword": "Entra con email e password",
+  "@loginUsePassword": {
+    "description": "Solo en la app nativa, en el login con código: vuelve al acceso con contraseña."
+  },
+  "signUpTitle": "Crea il tuo account",
+  "@signUpTitle": {
+    "description": "Título del alta."
+  },
+  "signUpBody": "Scrivi la tua email: ti mandiamo un link per confermarla e scegliere la password.",
+  "@signUpBody": {
+    "description": "Texto del alta."
+  },
+  "signUpSent": "Fatto. Se {email} non ha ancora un account, ti arriva un link per confermarla e scegliere la password. Se hai già un account, entra o usa «Password dimenticata?».",
+  "@signUpSent": {
+    "description": "Después de «Crea account»: igual exista o no la cuenta (nunca se dice si un email tiene cuenta).",
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "nome@esempio.it"
+      }
+    }
+  },
+  "signUpHaveAccount": "Hai già un account? Accedi",
+  "@signUpHaveAccount": {
+    "description": "En el alta: vuelve al acceso."
+  },
+  "forgotBody": "Scrivi la tua email: se ha un account, ti mandiamo un link per sceglierne una nuova.",
+  "@forgotBody": {
+    "description": "Texto de «Password dimenticata?»."
+  },
+  "forgotSubmit": "Inviami il link",
+  "@forgotSubmit": {
+    "description": "Botón de «Password dimenticata?»."
+  },
+  "resetSent": "Fatto. Se {email} ha un account, ti arriva un link per scegliere la password.",
+  "@resetSent": {
+    "description": "Después de «Password dimenticata?»: igual exista o no la cuenta.",
+    "placeholders": {
+      "email": {
+        "type": "String",
+        "example": "nome@esempio.it"
+      }
+    }
+  },
+  "accessResend": "Reinvia l'email",
+  "@accessResend": {
+    "description": "Manda otra vez el email del alta o de la recuperación."
+  },
+  "accessResent": "Richiesta inviata di nuovo.",
+  "@accessResent": {
+    "description": "Después de «Reinvia l'email» (igual exista o no la cuenta)."
+  },
+  "accessBackToSignIn": "Torna all'accesso",
+  "@accessBackToSignIn": {
+    "description": "Vuelve al formulario para entrar."
+  },
+  "accessSpamHint": "Non arriva entro qualche minuto? Guarda anche nella cartella spam.",
+  "@accessSpamHint": {
+    "description": "Después de mandar el email del alta o de la recuperación (el mismo texto que /accesso/)."
+  },
+  "authErrorPasswordRequired": "Scrivi la password.",
+  "@authErrorPasswordRequired": {
+    "description": "Error: falta la contraseña."
+  },
+  "authErrorInvalidCredentials": "Email o password non corretti. Se non ricordi la password, usa «Password dimenticata?».",
+  "@authErrorInvalidCredentials": {
+    "description": "Error al entrar: email o contraseña incorrectos (no dice cuál)."
+  },
+  "authErrorKitchenCodeOnly": "Questo account è della cucina ed entra solo con il codice via email.",
+  "@authErrorKitchenCodeOnly": {
+    "description": "Error: una cuenta de la cocina probó con contraseña."
+  },
+  "authErrorSignupClosed": "Le iscrizioni apriranno presto.",
+  "@authErrorSignupClosed": {
+    "description": "«Crea account» con las altas todavía cerradas."
+  },
+  "authErrorWeakPassword": "Questa password non va bene: scegline un'altra.",
+  "@authErrorWeakPassword": {
+    "description": "Auth rechazó la contraseña nueva (el mismo texto que /accesso/)."
+  },
+  "authErrorSamePassword": "È la stessa password di prima: scegline una diversa.",
+  "@authErrorSamePassword": {
+    "description": "La contraseña nueva es igual a la de antes (el mismo texto que /accesso/)."
+  },
+  "authErrorWrongCurrentPassword": "La password attuale non è corretta.",
+  "@authErrorWrongCurrentPassword": {
+    "description": "«Cambia password»: la actual no es correcta."
+  },
+  "passwordHint": "Almeno 10 caratteri, con lettere e numeri.",
+  "@passwordHint": {
+    "description": "Ayuda del campo de la contraseña nueva (el mismo texto que /accesso/)."
+  },
+  "passwordTooShort": "La password deve avere almeno 10 caratteri.",
+  "@passwordTooShort": {
+    "description": "La contraseña nueva es corta (el mismo texto que /accesso/)."
+  },
+  "passwordTooLong": "La password è troppo lunga: al massimo 72 caratteri.",
+  "@passwordTooLong": {
+    "description": "La contraseña nueva es larga (el mismo texto que /accesso/)."
+  },
+  "passwordLettersDigits": "La password deve avere almeno una lettera e un numero.",
+  "@passwordLettersDigits": {
+    "description": "A la contraseña nueva le faltan letras o números (el mismo texto que /accesso/)."
+  },
+  "changePasswordTitle": "Cambia password",
+  "@changePasswordTitle": {
+    "description": "Título de la pantalla y botón del área de la clienta."
+  },
+  "changePasswordCurrent": "Password attuale",
+  "@changePasswordCurrent": {
+    "description": "Campo de la contraseña actual."
+  },
+  "changePasswordNew": "Nuova password",
+  "@changePasswordNew": {
+    "description": "Campo de la contraseña nueva."
+  },
+  "changePasswordSave": "Salva la password",
+  "@changePasswordSave": {
+    "description": "Botón que guarda la contraseña nueva."
+  },
+  "changePasswordDone": "Password aggiornata. Le altre sessioni aperte sono state chiuse.",
+  "@changePasswordDone": {
+    "description": "Después de cambiar la contraseña (Auth cierra las otras sesiones)."
+  },
+  "changePasswordForgot": "Non ricordi la password attuale? Esci e usa «Password dimenticata?».",
+  "@changePasswordForgot": {
+    "description": "Debajo del formulario de «Cambia password»."
   },
   "wrongEntryTitle": "Account non abilitato qui",
   "@wrongEntryTitle": {

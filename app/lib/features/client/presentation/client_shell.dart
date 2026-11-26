@@ -1,10 +1,12 @@
 // Marco provisorio del área de la clienta (/area, entrada /app/): una pantalla
-// sin datos todavía, con el idioma y salir. Sus pantallas (pedidos, reservas,
+// sin datos todavía, con el idioma, «Cambia password» y salir. Sus pantallas (pedidos, reservas,
 // menús, presupuestos, perfil) llegan en los PRs siguientes y cuelgan de acá.
 // Como en Impostazioni, el idioma de la interfaz sale del perfil y se puede
 // cambiar.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:radici/core/routes.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/client/application/client_providers.dart';
 import 'package:radici/features/settings/presentation/language_selector.dart';
@@ -85,6 +87,13 @@ class ClientShell extends ConsumerWidget {
                   ),
                   const LanguageSelector(),
                   const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    key: const ValueKey('client-area-change-password'),
+                    onPressed: () => context.push(AppRoutes.areaPassword),
+                    icon: const Icon(Icons.lock_reset),
+                    label: Text(l10n.changePasswordTitle),
+                  ),
+                  const SizedBox(height: 8),
                   OutlinedButton.icon(
                     key: const ValueKey('client-area-logout'),
                     onPressed: ref
