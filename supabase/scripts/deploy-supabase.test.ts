@@ -307,3 +307,27 @@ test("hook de la cocina: antes del PATCH de Auth se comprueba que la función ex
   assert.ok(!run.includes("continue-on-error"), "si falla, corta");
   assert.ok(!/echo.*SUPABASE_ACCESS_TOKEN/.test(run), "nunca imprime el token");
 });
+
+test("captcha de Auth: la secreta se valida antes del PATCH y, después, Auth tiene que exigirlo, antes de migrar", () => {
+  const secret = WORKFLOW.indexOf('- name: "Captcha de Auth: la secreta es la del widget"');
+  const auth = WORKFLOW.indexOf("- name: Auth desde el repo");
+  const enforced = WORKFLOW.indexOf('- name: "Captcha de Auth: Auth lo exige"');
+  const migrations = WORKFLOW.indexOf("- name: Migraciones (db push)");
+  assert.ok(secret !== -1 && enforced !== -1, "están los dos pasos del captcha");
+  assert.ok(secret < auth && auth < enforced && enforced < migrations, "secreta → PATCH de Auth → Auth lo exige → db push");
+
+  const before = step('"Captcha de Auth: la secreta es la del widget"');
+  assert.match(before, /if: env\.HAS_SUPABASE == 'true'/);
+  assert.match(before, /TURNSTILE_AUTH_SECRET_KEY: \$\{\{ secrets\.TURNSTILE_AUTH_SECRET_KEY \}\}/);
+  assert.match(before, /node supabase\/scripts\/auth-captcha-check\.ts secret/);
+
+  // El PATCH de security lleva la secreta (desde el secreto de GitHub, nunca una variable: las variables salen en claro).
+  assert.match(step("Auth desde el repo"), /TURNSTILE_AUTH_SECRET_KEY: \$\{\{ secrets\.TURNSTILE_AUTH_SECRET_KEY \}\}/);
+  assert.ok(!WORKFLOW.includes("vars.TURNSTILE_AUTH_SECRET_KEY"));
+
+  const after = step('"Captcha de Auth: Auth lo exige"');
+  assert.match(after, /if: env\.HAS_SUPABASE == 'true'/);
+  assert.match(after, /SUPABASE_PUBLISHABLE_KEY: \$\{\{ vars\.SUPABASE_PUBLISHABLE_KEY \}\}/);
+  assert.match(after, /node supabase\/scripts\/auth-captcha-check\.ts auth/);
+  assert.ok(!/continue-on-error/.test(after), "si Auth no lo exige, el despliegue falla");
+});

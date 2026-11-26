@@ -77,9 +77,10 @@ enum AuthFailureKind {
   /// La app se compiló sin SUPABASE_URL ni clave.
   noBackend,
 
-  /// No se obtuvo el token del captcha de Auth (Turnstile). Solo se da
-  /// cuando Auth exige el captcha (captchaRequired): hasta PR11 el pedido
-  /// sale sin token. Se reintenta con el mismo botón.
+  /// No se obtuvo el token del captcha de Auth (Turnstile), o Auth lo
+  /// rechazó (captcha_failed). Sin token, solo cuando el captcha es
+  /// obligatorio (producción: captchaRequiredProvider). Se reintenta con el
+  /// mismo botón.
   captcha,
 
   /// Cualquier otro error.

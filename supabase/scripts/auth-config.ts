@@ -7,7 +7,8 @@
 // Tres partes, en este orden (cada una es un PATCH, y el despliegue vuelve a leer lo que Supabase guardó y
 // lo compara con el cuerpo: `verify`; un campo que no quedó igual, o un nombre de campo equivocado que la
 // API ignora en silencio, corta el despliegue antes de db push):
-// - security: altas apagadas, código de 8 cifras y su vencimiento, CAPTCHA, sin autoconfirm, sin entrar
+// - security: altas apagadas, código de 8 cifras y su vencimiento, CAPTCHA de Auth (Turnstile, con su secreta de
+//   TURNSTILE_AUTH_SECRET_KEY), sin autoconfirm, sin entrar
 //   con emails sin verificar, cambio de email seguro, linking manual apagado, 10 verificaciones cada 5
 //   minutos, URLs de redirección exactas, solo el email como proveedor y contraseñas de 10 o más con letras y
 //   números, con la actual para cambiarla (contrato docs/contracts/auth.md).
@@ -19,6 +20,7 @@
 //   del SMTP y nunca sin él.
 //
 // Uso (CI, desde la raíz): node supabase/scripts/auth-config.ts security|smtp|templates > body.json
+//   (security necesita TURNSTILE_AUTH_SECRET_KEY; smtp, RESEND_SMTP_KEY y MAIL_FROM)
 //   node supabase/scripts/auth-config.ts verify <parte> < respuesta.json   (falla con 2 si algo no quedó)
 //   node supabase/scripts/auth-config.ts changed <parte> < respuesta.json  (nombres de campo que cambian)
 // Solo sintaxis borrable: corre con node, sin compilar.
@@ -133,10 +135,10 @@ export function authSecurityConfig(toml: string): AuthBody {
   if (requireValue<boolean>(auth, "enable_signup", "boolean")) {
     throw new Error("config.toml abre las altas ([auth] enable_signup): producción las tiene apagadas hasta M2");
   }
-  // La app no manda captchaToken. Para M2 hay que sumar acá el proveedor y su secreto (y el token en la
-  // app): prenderlo solo en config.toml (o en el panel) no alcanza, y el próximo despliegue lo apagaría.
+  // El captcha de Auth (PR11, auth.md §10) va prendido en producción, con su secreta. En local queda apagado: el
+  // GoTrue local no tiene la secreta de Turnstile y la app de desarrollo (APP_ENV=dev) no lo exige.
   if (tomlSection(toml, "auth.captcha").get("enabled") === true) {
-    throw new Error("config.toml prende el CAPTCHA: falta su proveedor y su secreto en auth-config.ts (M2)");
+    throw new Error("config.toml prende el CAPTCHA: en local va apagado (auth.md §10); el de producción lo pone auth-config.ts con su secreta");
   }
   // enable_confirmations = false es el autoconfirm de la Management API (mailer_autoconfirm y
   // sms_autoconfirm = true): una cuenta quedaría confirmada sin probar que el email es suyo.
@@ -172,7 +174,12 @@ export function authSecurityConfig(toml: string): AuthBody {
     external_email_enabled: true,
     mailer_otp_length: requireValue<number>(email, "otp_length", "number"),
     mailer_otp_exp: requireValue<number>(email, "otp_expiry", "number"),
-    security_captcha_enabled: false,
+    // Captcha de Auth (PR11, contrato auth.md §10): Turnstile en /otp, /signup, /recover, /resend, /magiclink y
+    // /token con contraseña. El refresh de la sesión y el canje PKCE no lo piden (las sesiones abiertas siguen). La
+    // secreta no va acá: la suma authCaptchaConfig desde TURNSTILE_AUTH_SECRET_KEY (el despliegue la valida antes con
+    // auth-captcha-check.ts y, después del PATCH, comprueba que Auth lo exige; si no, lo apaga).
+    security_captcha_enabled: true,
+    security_captcha_provider: "turnstile",
     // /gestione/ entra con el código por email, sin redirección: estas URLs son solo las del área de
     // clientes y no abren /gestione/ a ningún redirect (contrato auth.md §3).
     site_url: AUTH_SITE_URL,
@@ -226,7 +233,7 @@ export function authSecurityConfig(toml: string): AuthBody {
 }
 
 /** Campos que la API guarda pero no devuelve en claro: no se comparan. */
-const NOT_COMPARABLE = new Set(["smtp_pass"]);
+const NOT_COMPARABLE = new Set(["smtp_pass", "security_captcha_secret"]);
 
 const same = (expected: unknown, live: unknown): boolean => live !== undefined && live !== null && String(expected) === String(live);
 
@@ -240,6 +247,13 @@ export function changedFields(body: AuthBody, live: Record<string, unknown>): st
   return verifyAuthConfig(body, live);
 }
 
+/** La secreta del captcha de Auth (TURNSTILE_AUTH_SECRET_KEY: la del widget «Radici login»). Sin ella, falla. */
+export function authCaptchaConfig(secret: string): AuthBody {
+  const value = secret.trim();
+  if (!value) throw new Error("Falta la secreta del captcha de Auth (TURNSTILE_AUTH_SECRET_KEY)");
+  return { security_captcha_secret: value };
+}
+
 /** SMTP de Resend con el remitente de MAIL_FROM. */
 export function authSmtpConfig(smtp: SmtpSettings): AuthBody {
   if (!smtp.key.trim()) throw new Error("Falta la clave del SMTP (RESEND_SMTP_KEY)");
@@ -251,6 +265,10 @@ export function authSmtpConfig(smtp: SmtpSettings): AuthBody {
     smtp_pass: smtp.key.trim(),
     smtp_admin_email: sender.address,
     smtp_sender_name: sender.name,
+    // Un email de Auth por cuenta cada 60 s como mucho (código, alta, recuperación): un pedido antes da 429
+    // over_email_send_rate_limit (la app: «Aspetta un minuto»). Va con el SMTP: es un ajuste del correo propio. En local,
+    // config.toml max_frequency = "1s" (para probar sin esperar).
+    smtp_max_frequency: 60,
   };
 }
 
@@ -288,7 +306,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const bodyOf = (part: string | undefined): AuthBody => {
     const body =
       part === "security"
-        ? authSecurityConfig(toml)
+        ? { ...authSecurityConfig(toml), ...authCaptchaConfig(process.env.TURNSTILE_AUTH_SECRET_KEY ?? "") }
         : part === "smtp"
           ? authSmtpConfig({ key: process.env.RESEND_SMTP_KEY ?? "", mailFrom: process.env.MAIL_FROM ?? "" })
           : part === "templates"

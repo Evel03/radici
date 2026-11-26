@@ -140,6 +140,10 @@ AuthFailureKind authFailureKindOf(Object error, {bool verifying = false}) {
       return AuthFailureKind.notAllowed;
     case 'email_address_invalid':
       return AuthFailureKind.invalidEmail;
+    // Auth rechazó el token del captcha (vencido, ya usado o de otro widget):
+    // se reintenta con uno nuevo, como cuando no llegó.
+    case 'captcha_failed':
+      return AuthFailureKind.captcha;
   }
   return switch (error.statusCode) {
     '429' => AuthFailureKind.rateLimited,

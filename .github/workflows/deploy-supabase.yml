@@ -14,7 +14,9 @@
 #
 # Necesita, en Settings → Secrets and variables → Actions del repo:
 # - secretos: SUPABASE_ACCESS_TOKEN (token personal de supabase.com/dashboard/account/tokens),
-#   SUPABASE_DB_PASSWORD, RESEND_API_KEY, TURNSTILE_SECRET_KEY, IP_HASH_SALT
+#   SUPABASE_DB_PASSWORD, RESEND_API_KEY, TURNSTILE_SECRET_KEY, IP_HASH_SALT, TURNSTILE_AUTH_SECRET_KEY (la Secret
+#   Key del widget de Turnstile «Radici login»: el captcha de Auth, auth.md §10; sin ella, o con una de prueba, el
+#   despliegue corta antes de tocar Auth)
 #   y RESEND_SMTP_KEY (la segunda clave de Resend: SMTP de Auth; en Free, sin SMTP propio Supabase no deja
 #   poner la plantilla del código y Evelyn no puede entrar; sin ella el despliegue sigue y avisa)
 #   (opcionales: WHATSAPP_TOKEN, CHEF_MEMBER_EMAILS y ANTHROPIC_API_KEY)
@@ -41,7 +43,8 @@
 #     «solo de envío» Resend no deja leerlo (restricted_api_key): el paso corta, salvo que la variable
 #     RESEND_TRACKING_RESTRICTED_OK sea true (después de mirar el panel). Contrato auth.md §5.
 # - variables: SUPABASE_PROJECT_REF, CHEF_NOTIFY_EMAIL, MAIL_FROM, MAIL_REPLY_TO, ALLOWED_ORIGINS,
-#   INBOX_URL, PUBLIC_SITE_URL
+#   INBOX_URL, PUBLIC_SITE_URL, SUPABASE_PUBLISHABLE_KEY (la de deploy-web.yml: con ella se comprueba, como un
+#   visitante, que Auth exige el captcha)
 #   (opcionales: CHEF_LOGIN_EMAIL y CHEF_DISPLAY_NAME para crear la cuenta de la cocinera; CHEF_ID,
 #   CHEF_LOCALE, EMAIL_TRANSPORT, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE, RESEND_TRACKING_RESTRICTED_OK)
 #   · CHEF_ID: sin él no hace falta conocer el id al desplegar: la función usa la única cocinera de
@@ -233,6 +236,15 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
         run: node supabase/scripts/auth-hook-check.ts
 
+      # Captcha de Auth (auth.md §10, supabase/scripts/auth-captcha-check.ts, con tests): antes de prenderlo, la secreta
+      # tiene que ser la de un widget real (no una de prueba) y Cloudflare tiene que reconocerla. Si no, corta antes de
+      # tocar Auth: un captcha con una secreta mala deja a todos sin poder pedir el código.
+      - name: "Captcha de Auth: la secreta es la del widget"
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          TURNSTILE_AUTH_SECRET_KEY: ${{ secrets.TURNSTILE_AUTH_SECRET_KEY }}
+        run: node supabase/scripts/auth-captcha-check.ts secret
+
       # Antes que nada, las altas apagadas y el resto de lo fijo de Auth. Tres PATCH
       # (supabase/scripts/auth-config.ts): security siempre; smtp y templates solo con RESEND_SMTP_KEY,
       # porque en un proyecto Free Supabase no deja cambiar las plantillas sin SMTP propio (el email
@@ -248,6 +260,7 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
           RESEND_SMTP_KEY: ${{ secrets.RESEND_SMTP_KEY }}
           MAIL_FROM: ${{ vars.MAIL_FROM }}
+          TURNSTILE_AUTH_SECRET_KEY: ${{ secrets.TURNSTILE_AUTH_SECRET_KEY }}
         run: |
           set -euo pipefail
           response="$(mktemp)"
@@ -314,6 +327,17 @@ jobs:
             exit 1
           fi
           note_summary
+
+      # Después del PATCH, como cualquier visitante: Auth tiene que rechazar un pedido de código sin token y uno con un
+      # token inventado por «invalid-input-response» (Supabase le preguntó a Cloudflare con la secreta buena). Ninguno
+      # manda un email (una dirección que no existe, sin crear la cuenta). Si no da, el script apaga el captcha (el login
+      # sigue como antes) y el despliegue falla antes de migrar.
+      - name: "Captcha de Auth: Auth lo exige"
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: node supabase/scripts/auth-captcha-check.ts auth
 
       - name: Migraciones (db push)
         id: db_push

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:radici/core/captcha/captcha_service.dart';
+import 'package:radici/core/env.dart';
 import 'package:radici/features/auth/application/login_controller.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
@@ -180,9 +181,15 @@ void main() {
       expect(state().step, LoginStep.code);
     });
 
-    test('la bandera de PR11 está apagada hoy', () {
-      expect(captchaRequired, isFalse);
+    test('obligatorio en producción y fail-open en desarrollo (PR11)', () {
+      // Los tests corren sin --dart-define: APP_ENV=dev.
       expect(container.read(captchaRequiredProvider), isFalse);
+      expect(captchaRequiredIn(const AppEnv(environment: AppEnvironment.prod)), isTrue);
+      expect(captchaRequiredIn(const AppEnv(environment: AppEnvironment.dev)), isFalse);
+      final prod = ProviderContainer.test(
+        overrides: [appEnvProvider.overrideWithValue(const AppEnv(environment: AppEnvironment.prod))],
+      );
+      expect(prod.read(captchaRequiredProvider), isTrue);
     });
 
     group('con el captcha obligatorio (PR11)', () {

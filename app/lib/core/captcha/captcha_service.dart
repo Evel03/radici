@@ -9,23 +9,27 @@
 // token con un id nuevo: un token de Turnstile sirve una sola vez (~300 s) y
 // nunca queda uno suelto en la app.
 //
-// FAIL-OPEN HASTA PR11 (decisión del 25/11/2026): Auth todavía no exige captcha
-// y el login de Evelyn no puede depender de una página de un tercero. Mientras
-// [captchaRequired] sea false, si no hay token (tiempo, sin red, Cloudflare
-// bloqueado) el pedido sale igual, sin token. PR11 prende el captcha en Auth y
-// pone [captchaRequired] en true en el mismo cambio: entonces la falta de
-// token es un error que la persona puede reintentar (AuthFailureKind.captcha).
+// OBLIGATORIO EN PRODUCCIÓN (PR11, 26/11/2026): Auth de producción exige el
+// captcha (docs/contracts/auth.md §10). Con APP_ENV=prod (la web, iOS y
+// Android publicados) la falta de token es un error que la persona puede
+// reintentar (AuthFailureKind.captcha) y nada sale sin token. Con APP_ENV=dev
+// sigue fail-open: el Supabase local no exige captcha y, en local, la página
+// /captcha/ no está en el origen de la app, así que el pedido sale sin token.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/captcha/captcha_broker.dart';
 import 'package:radici/core/captcha/captcha_platform_native.dart'
     if (dart.library.js_interop) 'package:radici/core/captcha/captcha_platform_web.dart';
+import 'package:radici/core/env.dart';
 
-/// PR11: cambiar a true cuando Auth exija captcha (security_captcha_enabled).
-/// Con false, un token que no llega nunca impide el login (ver arriba).
-const bool captchaRequired = false;
+/// ¿El captcha es obligatorio? Sí en producción (Auth lo exige desde PR11);
+/// en desarrollo no (ver arriba). Los tests la sobreescriben o cambian el
+/// entorno.
+final captchaRequiredProvider = Provider<bool>(
+  (ref) => captchaRequiredIn(ref.watch(appEnvProvider)),
+);
 
-/// Los tests la sobreescriben para probar los dos modos.
-final captchaRequiredProvider = Provider<bool>((ref) => captchaRequired);
+/// La regla de [captchaRequiredProvider], aparte para los tests.
+bool captchaRequiredIn(AppEnv env) => !env.isDev;
 
 abstract interface class CaptchaService {
   /// Un token nuevo (de un solo uso), o null si no se pudo obtener a tiempo.

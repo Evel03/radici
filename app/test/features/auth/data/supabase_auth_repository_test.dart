@@ -176,6 +176,13 @@ void main() {
         ),
         AuthFailureKind.invalidEmail,
       );
+      // Auth rechazó el token del captcha (PR11): el mismo aviso que sin token.
+      expect(
+        authFailureKindOf(
+          const AuthApiException('captcha protection: request disallowed (timeout-or-duplicate)', statusCode: '400', code: 'captcha_failed'),
+        ),
+        AuthFailureKind.captcha,
+      );
       expect(authFailureKindOf(StateError('x')), AuthFailureKind.unknown);
     });
   });
