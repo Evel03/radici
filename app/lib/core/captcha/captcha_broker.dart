@@ -1,7 +1,8 @@
 // Un token de captcha por llamada: abre una sesión con la página /captcha/,
 // le pide un token con un id nuevo y espera la respuesta con ese id (o un
 // error, o el tiempo). Lógica pura, sin plataforma: la sesión (iframe o
-// WebView) la pone cada plataforma. Nunca lanza: si no hay token, devuelve null.
+// iframe) la pone la web (captcha_platform_web.dart; en iOS y Android el captcha va
+// por el navegador del sistema, captcha_return.dart). Nunca lanza: si no hay token, devuelve null.
 import 'dart:async';
 
 import 'package:radici/core/captcha/captcha_protocol.dart';
@@ -9,7 +10,7 @@ import 'package:radici/core/captcha/captcha_service.dart';
 
 /// Una apertura de la página /captcha/ para un solo pedido. [replies] ya trae
 /// solo lo que pasó la verificación de origen de la plataforma (el origen
-/// exacto en la web, la página fijada en la WebView).
+/// exacto del iframe).
 abstract interface class CaptchaSession {
   Stream<CaptchaReply> get replies;
 
@@ -63,11 +64,10 @@ class CaptchaBroker implements CaptchaService {
     // Para el diagnóstico (lastFailure): qué pasó antes de un fallo.
     var ready = false;
     var interactive = false;
-    String? blocked;
 
     void finish(String? token, [String? failure]) {
       if (done.isCompleted) return;
-      lastFailure = token != null ? null : _diagnostic(failure ?? 'app-unknown', blocked);
+      lastFailure = token != null ? null : _diagnostic(failure ?? 'app-unknown');
       done.complete(token);
     }
 
@@ -101,8 +101,6 @@ class CaptchaBroker implements CaptchaService {
               finish(null, 'page-$code');
             case CaptchaLoadFailed(:final code):
               finish(null, code == null ? 'app-load' : 'app-load$code');
-            case CaptchaBlocked(:final what):
-              blocked = what;
             // Un id que no es el de este pedido, o un aviso fuera de turno: se ignora.
             case CaptchaInteractive() || CaptchaToken() || CaptchaError():
               break;
@@ -114,7 +112,7 @@ class CaptchaBroker implements CaptchaService {
       arm(timeout);
       return await done.future;
     } on Object {
-      // La plataforma no puede abrir la página (sin WebView, sin DOM): sin token.
+      // La plataforma no puede abrir la página (sin DOM): sin token.
       lastFailure = 'app-unavailable';
       return null;
     } finally {
@@ -129,10 +127,8 @@ class CaptchaBroker implements CaptchaService {
   }
 }
 
-/// El código del diagnóstico: el motivo y, si la WebView frenó una navegación,
-/// cuál («…+blocked-https:otro.host»). Solo letras, dígitos y «.:+_-».
-String _diagnostic(String failure, String? blocked) {
-  final text = blocked == null ? failure : '$failure+blocked-$blocked';
-  final safe = text.replaceAll(RegExp(r'[^\w.:+-]'), '');
+/// El código del diagnóstico: solo letras, dígitos y «.:+_-».
+String _diagnostic(String failure) {
+  final safe = failure.replaceAll(RegExp(r'[^\w.:+-]'), '');
   return safe.length > 80 ? safe.substring(0, 80) : safe;
 }

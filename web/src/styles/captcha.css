@@ -31,10 +31,11 @@
   min-height: 65px;
 }
 
-/* Sin que nadie tenga que tocar nada no hay nada que mirar: el título y el widget (vacío) se ocultan a la vista. */
-.captcha[data-state="idle"] .captcha__title,
+/* Sin que nadie tenga que tocar nada no hay nada que mirar: el título y el widget (vacío) se ocultan a la vista.
+   Salvo en el canal «return» (la app abre la página en Safari o en Chrome, a pantalla completa): ahí se ve el título. */
+.captcha:not([data-mode="return"])[data-state="idle"] .captcha__title,
 .captcha[data-state="idle"] .captcha__widget,
-.captcha[data-state="working"] .captcha__title,
+.captcha:not([data-mode="return"])[data-state="working"] .captcha__title,
 .captcha[data-state="working"] .captcha__widget {
   position: absolute;
   width: 1px;

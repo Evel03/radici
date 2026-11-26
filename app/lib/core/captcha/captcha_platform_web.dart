@@ -18,7 +18,11 @@ import 'dart:js_interop';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/captcha/captcha_broker.dart';
 import 'package:radici/core/captcha/captcha_protocol.dart';
+import 'package:radici/core/captcha/captcha_service.dart';
 import 'package:web/web.dart' as web;
+
+/// En la web: el iframe de /captcha/ del mismo sitio, con CaptchaBroker.
+CaptchaService createCaptchaService(Ref ref) => CaptchaBroker(sessionFactory: createCaptchaSessionFactory(ref));
 
 CaptchaSessionFactory createCaptchaSessionFactory(Ref ref) =>
     (locale) => WebCaptchaSession(origin: web.window.location.origin, locale: locale);

@@ -12,6 +12,10 @@ import {
   newRequestId,
   parsePageMessage,
   requestEnvelope,
+  RETURN_SCHEME,
+  returnRequestId,
+  returnTransport,
+  returnUrl,
   nativeTransport,
   parseRequest,
   safeCode,
@@ -243,5 +247,38 @@ describe("lado del host (la web: /accesso/)", () => {
     expect(id).toBe("00112233445566778899aabbccddeeff");
     expect(isRequestId(id)).toBe(true);
     expect(isRequestId(newRequestId((bytes) => crypto.getRandomValues(bytes)))).toBe(true);
+  });
+});
+
+describe("canal «return» (la app nativa abre la página en Safari o en Chrome)", () => {
+  it("se elige con ?channel=return y un id válido; sin id, la página queda suelta", () => {
+    expect(detectMode(`?channel=return&id=${ID}&lang=it`, false, false)).toBe("return");
+    expect(detectMode("?channel=return", false, false)).toBe("standalone");
+    expect(detectMode("?channel=return&id=corto", false, false)).toBe("standalone");
+    expect(detectMode(`?channel=return&id=${ID.toUpperCase()}`, false, false)).toBe("standalone");
+    expect(returnRequestId(`?id=${ID}`)).toBe(ID);
+    expect(returnRequestId("?id=x")).toBeNull();
+  });
+
+  it("la dirección de vuelta: el esquema fijo, el id y el token o el código", () => {
+    expect(RETURN_SCHEME).toBe("radicicaptcha");
+    expect(returnUrl(ID, { token: "0.a-b_c" })).toBe(`radicicaptcha://result?id=${ID}&token=0.a-b_c`);
+    expect(returnUrl(ID, { code: "600010" })).toBe(`radicicaptcha://result?id=${ID}&code=600010`);
+  });
+
+  it("pide el token sola y vuelve a la app con el token o el error del pedido; lo demás no sale", () => {
+    const replaced: string[] = [];
+    const transport = returnTransport({ location: { replace: (url) => void replaced.push(url) } }, ID);
+    const requested: string[] = [];
+    transport.onRequest((id) => requested.push(id));
+    expect(requested).toEqual([ID]);
+    transport.post({ type: "ready" });
+    transport.post({ type: "interactive", id: ID, visible: true });
+    transport.post({ type: "token", id: "f".repeat(32), token: "ajeno" });
+    expect(replaced).toEqual([]);
+    transport.post({ type: "token", id: ID, token: "0.tok" });
+    expect(replaced).toEqual([`radicicaptcha://result?id=${ID}&token=0.tok`]);
+    transport.post({ type: "error", id: ID, code: "cancelled" });
+    expect(replaced[1]).toBe(`radicicaptcha://result?id=${ID}&code=cancelled`);
   });
 });

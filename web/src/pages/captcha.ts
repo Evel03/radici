@@ -7,7 +7,16 @@ import "../styles/captcha.css";
 import { isLang, resolveLang } from "../i18n/core.ts";
 import { readStoredLang } from "../lib/storage.ts";
 import { loadTurnstileScript } from "../request/turnstile.ts";
-import { detectMode, frameTransport, nativeTransport, type FrameWindow, type NativeWindow, type PageTransport } from "../captcha/protocol.ts";
+import {
+  detectMode,
+  frameTransport,
+  nativeTransport,
+  returnRequestId,
+  returnTransport,
+  type FrameWindow,
+  type NativeWindow,
+  type PageTransport,
+} from "../captcha/protocol.ts";
 import { startCaptchaPage, type PageState } from "../captcha/page.ts";
 import { config } from "../site-config.ts";
 import { initShell } from "./shell.ts";
@@ -46,8 +55,14 @@ if (mode === "standalone") {
   root.dataset["state"] = "standalone";
   standalone.hidden = false;
 } else {
+  // «return»: la app la abrió en el Safari real o en Chrome; la página está a la vista y vuelve a la app al terminar.
+  if (mode === "return") root.dataset["mode"] = "return";
   const transport: PageTransport =
-    mode === "native" ? nativeTransport(window as unknown as NativeWindow) : frameTransport(window as unknown as FrameWindow);
+    mode === "return"
+      ? returnTransport(window, returnRequestId(window.location.search) ?? "")
+      : mode === "native"
+        ? nativeTransport(window as unknown as NativeWindow)
+        : frameTransport(window as unknown as FrameWindow);
   show("idle");
   const page = startCaptchaPage({
     siteKey: config.turnstileAuthSiteKey,

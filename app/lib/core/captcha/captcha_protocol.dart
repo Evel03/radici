@@ -1,7 +1,7 @@
 // Protocolo con la página /captcha/ de la web (el Turnstile de Auth); el lado
 // de la web está en web/src/captcha/protocol.ts y docs/contracts/auth.md §10.
 // Lógica pura, sin plataforma: la comparten la versión web (iframe) y la nativa
-// (WebView).
+// (el navegador del sistema, canal «return»: captcha_return.dart).
 //
 // La página no manda nada sola: espera un pedido con un id al azar y contesta
 // con ese id, así un token siempre es la respuesta a un pedido de quien lo
@@ -27,7 +27,7 @@ const String captchaPagePath = '/captcha/';
 
 /// Sitio público: la versión nativa abre siempre esta página (la web usa el
 /// origen en el que corre). No se puede configurar a propósito: la lista de lo
-/// que la WebView deja pasar (captcha_navigation.dart) apunta a este origen.
+/// (y la vuelta del canal «return», captcha_return.dart) apunta a este origen.
 const String captchaProductionOrigin = 'https://radicicucina.app';
 
 /// Lo que dice la página.
@@ -67,29 +67,41 @@ final class CaptchaError extends CaptchaReply {
   final String code;
 }
 
-/// La página no pudo cargar (sin red, error de la WebView): lo avisa el
-/// propio host, no la página. [code]: el código del error de la WebView, si hay.
+/// La página no pudo cargar (sin red): lo avisa el propio host, no la
+/// página. [code]: el código del error, si hay.
 final class CaptchaLoadFailed extends CaptchaReply {
   const CaptchaLoadFailed({this.code});
   final int? code;
 }
 
-/// La WebView frenó una navegación que no está en su lista
-/// (captcha_navigation.dart). [what]: «esquema:host», ya saneado
-/// ([captchaBlockedSummary]); nunca la ruta ni la query. Solo sirve para el
-/// diagnóstico: el pedido sigue.
-final class CaptchaBlocked extends CaptchaReply {
-  const CaptchaBlocked(this.what);
-  final String what;
-}
+/// Esquema con el que la página vuelve a la app en el canal «return» (iOS y
+/// Android): radicicaptcha://result?id=…&token=… o …&code=… (captcha_return.dart).
+const String captchaReturnScheme = 'radicicaptcha';
 
-/// «esquema:host» de [url], con solo letras, dígitos, «.», «-» y «_» (hasta 40
-/// caracteres): lo que se muestra en el diagnóstico, sin la ruta ni la query.
-String captchaBlockedSummary(String url) {
-  final Uri? uri = Uri.tryParse(url);
-  final raw = uri == null ? 'invalid' : (uri.host.isEmpty ? uri.scheme : '${uri.scheme}:${uri.host}');
-  final safe = raw.replaceAll(RegExp(r'[^\w.:-]'), '');
-  return safe.isEmpty ? 'unknown' : (safe.length > 40 ? safe.substring(0, 40) : safe);
+/// Un código corto y seguro para el diagnóstico: solo letras, dígitos, «_» y
+/// «-», hasta 32 caracteres; si no, «unknown» (nunca texto libre).
+String safeCaptchaCode(String code) => _codePattern.hasMatch(code) ? code : 'unknown';
+
+/// Lo que trajo la vuelta del canal «return»: el token del pedido [id], el
+/// error con su código, o null si la dirección no es la esperada (otro
+/// esquema, otro id, un token con otra forma sin código).
+CaptchaReply? parseCaptchaReturn(String url, String id) {
+  final Uri uri;
+  try {
+    uri = Uri.parse(url);
+  } on FormatException {
+    return null;
+  }
+  if (uri.scheme != captchaReturnScheme || uri.host != 'result') return null;
+  final params = uri.queryParameters;
+  if (params['id'] != id || !isCaptchaId(id)) return null;
+  final token = params['token'];
+  if (token != null) {
+    return _tokenPattern.hasMatch(token) ? CaptchaToken(id: id, token: token) : CaptchaError(id: id, code: 'token-shape');
+  }
+  final code = params['code'];
+  if (code != null) return CaptchaError(id: id, code: safeCaptchaCode(code));
+  return null;
 }
 
 final RegExp _idPattern = RegExp(r'^[0-9a-f]{32}$');
@@ -108,7 +120,7 @@ String newCaptchaId([Random? random]) {
 }
 
 /// Lo que dijo la página: [raw] es un string JSON o un mapa (lo que llega por
-/// el canal de la WebView o por postMessage). Todo lo que no encaja (otra
+/// postMessage). Todo lo que no encaja (otra
 /// marca, otra versión, un campo con otra forma) da null: se ignora.
 CaptchaReply? parseCaptchaReply(Object? raw) {
   Object? value = raw;
@@ -157,11 +169,11 @@ String captchaRequestMessage(String id) {
 }
 
 /// Dirección de la página en [origin] (con `?lang=` para que sus textos salgan
-/// en el idioma de la app, y `channel=native` en la WebView).
-Uri captchaPageUri(String origin, {String? locale, bool native = false}) {
+/// en el idioma de la app; en iOS y Android, `channel=return` y el id del pedido).
+Uri captchaPageUri(String origin, {String? locale, String? returnId}) {
   final base = Uri.parse(origin);
   final query = {
-    if (native) 'channel': 'native',
+    if (returnId != null && isCaptchaId(returnId)) ...{'channel': 'return', 'id': returnId},
     if (locale != null && const {'it', 'es', 'en'}.contains(locale)) 'lang': locale,
   };
   return Uri(

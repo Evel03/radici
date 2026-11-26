@@ -180,17 +180,6 @@ void main() {
       expect(broker.lastFailure, 'app-load-1009');
     });
 
-    test('una navegación frenada se suma al motivo, y el pedido sigue', () async {
-      final future = broker.token();
-      await pumpEventQueue();
-      sessions.single.say(const CaptchaReady());
-      sessions.single.say(const CaptchaBlocked('blob:'));
-      await pumpEventQueue();
-      sessions.single.say(CaptchaError(id: idOf(1), code: '300030'));
-      expect(await future, isNull);
-      expect(broker.lastFailure, 'page-300030+blocked-blob:');
-    });
-
     test('la fábrica lanza: app-unavailable', () async {
       final failing = CaptchaBroker(sessionFactory: (_) => throw UnsupportedError('sin WebView'));
       expect(await failing.token(), isNull);

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:radici/app.dart';
 import 'package:radici/core/app_entry.dart';
+import 'package:radici/core/captcha/captcha_service.dart';
 import 'package:radici/core/env.dart';
 import 'package:radici/features/auth/data/account_repository.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
@@ -16,6 +17,7 @@ import 'package:radici/features/quote/presentation/quote_calculator_screen.dart'
 import 'package:radici/features/requests/data/chef_requests_repository.dart';
 import 'package:radici/features/today/presentation/today_screen.dart';
 
+import 'support/captcha_fakes.dart';
 import 'support/fakes.dart';
 import 'support/pump_app.dart';
 import 'support/request_fixtures.dart';
@@ -33,7 +35,11 @@ Future<void> _pumpApp(
   await tester.pumpWidget(
     ProviderScope(
       retry: noRetry,
-      overrides: [appEnvProvider.overrideWithValue(env)],
+      overrides: [
+        appEnvProvider.overrideWithValue(env),
+        // Sin el navegador del sistema: en los tests el captcha no abre nada.
+        captchaServiceProvider.overrideWithValue(const NoCaptchaService()),
+      ],
       child: const RadiciApp(),
     ),
   );

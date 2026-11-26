@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/app_entry.dart';
-import 'package:radici/core/captcha/captcha_host.dart';
 import 'package:radici/core/env.dart';
 import 'package:radici/core/router.dart';
 import 'package:radici/core/theme.dart';
@@ -42,16 +41,13 @@ class RadiciApp extends ConsumerWidget {
         // El aviso de pedidos nuevos escucha desde acá, encima de todas las
         // rutas (ver NewRequestAlertListener). Arriba, los avisos de la web:
         // versión nueva y Safari fuera de la app instalada (ver WebAppNotices).
-        // CaptchaHost, encima de todo: la WebView del captcha de Auth en iOS y
-        // Android (en la web no dibuja nada). El aviso de pedidos es solo de
-        // la entrada de la cocina: en /app/ no se escucha la bandeja.
+        // El aviso de pedidos es solo de la entrada de la cocina: en /app/ no
+        // se escucha la bandeja.
         final routed = child ?? const SizedBox.shrink();
-        final content = CaptchaHost(
-          child: WebAppNotices(
-            child: kitchenAlerts
-                ? NewRequestAlertListener(child: routed)
-                : routed,
-          ),
+        final content = WebAppNotices(
+          child: kitchenAlerts
+              ? NewRequestAlertListener(child: routed)
+              : routed,
         );
         if (!showBackendNotice) return content;
         return Column(

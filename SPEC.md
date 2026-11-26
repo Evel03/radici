@@ -127,7 +127,7 @@ Se reutiliza lo que ya conocés de Se Puso La 10, sin servidor propio.
 | App | **Flutter 3.x** (iOS y Android) | Evelyn y clientes recurrentes |
 | Web pública | **Vite + TypeScript estático** (hosting estático en Cloudflare Pages, en el dominio propio `radicicucina.app`) | Carga instantánea desde el navegador de WhatsApp, posiciona en Google, reutiliza `_shared/quote.ts` |
 | Estado / navegación | Riverpod + go_router | Estándar, testeable |
-| Captcha de Auth | Cloudflare Turnstile en una página propia, `https://radicicucina.app/captcha/`, que la app abre en un iframe (web) o en `webview_flutter` (iOS y Android) para sacar el token de cada pedido a Auth | Sin otro dominio ni otro proyecto de Pages; la página es mínima y la app solo la deja hablar con ella (`docs/contracts/auth.md` §10) |
+| Captcha de Auth | Cloudflare Turnstile en una página propia, `https://radicicucina.app/captcha/`, que la app abre en un iframe (web) o, en iOS y Android, en el navegador real del sistema (Safari / Chrome, con `flutter_web_auth_2`; la WebView da 600010) para sacar el token de cada pedido a Auth | Sin otro dominio ni otro proyecto de Pages; la página es mínima y la app solo la deja hablar con ella (`docs/contracts/auth.md` §10) |
 | Modelos | freezed + json_serializable | Inmutables, menos errores |
 | Backend | **Supabase** (región UE, Frankfurt) | Postgres, Auth, RLS, Storage, Edge Functions, pg_cron |
 | Lógica de servidor | **Supabase Edge Functions** (Deno/TypeScript) | Webhooks de Stripe y tareas programadas sin mantener Render |
