@@ -14,6 +14,13 @@ const files: Record<string, string> = {
   ...import.meta.glob<string>(["../../public/robots.txt", "../../public/sitemap.xml"], { query: "?raw", import: "default", eager: true }),
 };
 
+/**
+ * La única excepción, a propósito: «Vai al login» de /accesso/ (src/access/login-link.ts). A /accesso/ solo se llega desde
+ * el link de un email de Auth (no la enlaza ninguna página ni se indexa) y las altas siguen cerradas hasta PR20: hasta
+ * el lanzamiento, ese botón solo lo ven las cuentas de prueba. Un archivo, un solo link (el test cuenta los dos).
+ */
+const ALLOWED: Record<string, number> = { "../access/login-link.ts": 1 };
+
 /** Un texto entre comillas, un href o una URL que empieza en /app o en <dominio>/app (con barra, ?, # o el cierre). */
 const APP_LINK = /(?:["'(=`]|href=)\s*(?:https?:\/\/[^\s"'`/]+)?\/app(?:[/?#"'`)]|$)/gm;
 
@@ -29,12 +36,20 @@ describe("sin links públicos a /app/ (hasta PR69)", () => {
     expect(names.length).toBeGreaterThan(25);
   });
 
-  it("ningún archivo apunta a /app/", () => {
+  it("ningún archivo apunta a /app/ (salvo la excepción de /accesso/)", () => {
     const found: string[] = [];
     for (const [name, source] of Object.entries(files)) {
+      if (name in ALLOWED) continue;
       for (const match of source.matchAll(APP_LINK)) found.push(`${name}: ${match[0].trim()}`);
     }
     expect(found).toEqual([]);
+  });
+
+  it("la excepción sigue siendo exactamente la que se permitió (si se mueve o crece, este test lo dice)", () => {
+    for (const [name, count] of Object.entries(ALLOWED)) {
+      expect(files[name], name).toBeDefined();
+      expect([...(files[name] ?? "").matchAll(APP_LINK)].length, name).toBe(count);
+    }
   });
 
   it("el detector reconoce los links a /app/ y deja pasar lo que no lo es", () => {

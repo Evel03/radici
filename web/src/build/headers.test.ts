@@ -272,8 +272,61 @@ describe("public/_headers real", () => {
     expect(headersFor(rules, "/captchax", "radicicucina.app").has("X-Robots-Tag")).toBe(false);
   });
 
+  // /accesso/: el link de un email de Auth (docs/contracts/auth.md §11). Canjea el token por una sesión en memoria.
+  const accessPaths = ["/accesso/", "/accesso/index.html"];
+
+  it("/accesso/: solo Supabase (Auth) en connect-src y el marco de /captcha/ (mismo origen); nada de terceros", () => {
+    for (const path of accessPaths) {
+      const policy = csp(path);
+      expect(policy.get("default-src"), path).toEqual(["'self'"]);
+      expect(policy.get("script-src"), path).toEqual(["'self'"]);
+      expect(policy.get("connect-src"), path).toEqual(["'self'", origin]);
+      expect(policy.get("frame-src"), path).toEqual(["'self'"]);
+      expect(policy.get("img-src"), path).toEqual(["'self'", "data:"]);
+      expect(policy.get("frame-ancestors"), path).toEqual(["'none'"]);
+    }
+    expect(renderHeadersFile(headersFile, origin)).not.toMatch(/\/accesso\/\*[^#]*challenges\.cloudflare\.com/);
+  });
+
+  it("/accesso/: form-action 'none' (sin código, un formulario nunca manda la contraseña a ningún lado)", () => {
+    for (const path of accessPaths) expect(csp(path).get("form-action"), path).toEqual(["'none'"]);
+  });
+
+  it("/accesso/ es la CSP base más Supabase y el marco de /captcha/, con form-action 'none' (no se desalinean)", () => {
+    const base = csp("/");
+    const page = csp("/accesso/");
+    for (const [directive, sources] of base) {
+      const extra = (page.get(directive) ?? []).filter((s) => !sources.includes(s));
+      if (directive === "connect-src") expect(extra, directive).toEqual([origin]);
+      else if (directive === "form-action") expect(page.get(directive)).toEqual(["'none'"]);
+      else expect(page.get(directive), directive).toEqual(sources);
+    }
+    expect([...page.keys()].filter((d) => !base.has(d))).toEqual(["frame-src"]);
+  });
+
+  it("/accesso/ sin Supabase configurado: solo lo propio", () => {
+    const bare = parseHeadersFile(renderHeadersFile(headersFile, null));
+    expect(cspDirectives(headersFor(bare, "/accesso/").get("Content-Security-Policy") ?? "").get("connect-src")).toEqual(["'self'"]);
+  });
+
+  it("/accesso/: sin Referer, sin caché, nunca se indexa ni se deja enmarcar; las demás cabeceras de /*", () => {
+    for (const path of accessPaths) {
+      const headers = headersFor(rules, path, "radicicucina.app");
+      // La de /* se quita: si no, Pages las uniría con una coma.
+      expect(headers.get("Referrer-Policy"), path).toBe("no-referrer");
+      expect(headers.get("Cache-Control"), path).toBe("no-store");
+      expect(headers.get("X-Robots-Tag"), path).toBe("noindex, nofollow");
+      expect(headers.get("X-Frame-Options"), path).toBe("DENY");
+      expect(headers.get("X-Content-Type-Options")).toBe("nosniff");
+      expect(headers.get("Strict-Transport-Security")).toBe("max-age=31536000");
+    }
+    // Sus scripts y estilos (en /assets/) siguen con la caché larga: llevan hash en el nombre.
+    expect(headersFor(rules, "/assets/accesso-abc.js").get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+    expect(headersFor(rules, "/accessox", "radicicucina.app").has("X-Robots-Tag")).toBe(false);
+  });
+
   it("páginas públicas: nada de 'unsafe-inline', 'unsafe-eval' ni comodines", () => {
-    for (const path of ["/", "/privacy/", "/richiesta/", "/prenotazione/", "/captcha/", "/no-existe"]) {
+    for (const path of ["/", "/privacy/", "/richiesta/", "/prenotazione/", "/captcha/", "/accesso/", "/no-existe"]) {
       const value = headersFor(rules, path).get("Content-Security-Policy") ?? "";
       expect(value, path).not.toContain("unsafe-inline");
       expect(value, path).not.toContain("unsafe-eval");

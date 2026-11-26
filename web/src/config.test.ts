@@ -3,6 +3,7 @@ import {
   SITE_ENV_KEYS,
   TURNSTILE_TEST_SITE_KEY,
   isTurnstileTestKey,
+  normalizePublishableKey,
   normalizeSupabaseUrl,
   resolveConfig,
   toSiteConfig,
@@ -88,6 +89,34 @@ describe("normalizeSupabaseUrl", () => {
   });
 });
 
+describe("clave publicable (va en el JS público: /accesso/ la manda como apikey a Auth)", () => {
+  const jwt = (payload: Record<string, unknown>) =>
+    `eyJhbGciOiJIUzI1NiJ9.${btoa(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}.firma_x-y`;
+
+  it("acepta sb_publishable_… y la clave anon vieja (la de supabase start)", () => {
+    expect(normalizePublishableKey("sb_publishable_AbC-123_x")).toBe("sb_publishable_AbC-123_x");
+    const anon = jwt({ iss: "supabase-demo", role: "anon", exp: 1983812996 });
+    expect(normalizePublishableKey(anon)).toBe(anon);
+  });
+
+  it("nunca una secreta, la service_role ni otra cosa", () => {
+    for (const bad of [
+      "sb_secret_AbC123",
+      jwt({ role: "service_role" }),
+      jwt({ role: "authenticated" }),
+      jwt({}),
+      "eyJhbGciOiJIUzI1NiJ9.no-es-json.firma",
+      "sb_publishable_con espacio",
+      "sb_publishable_",
+      "cualquier-cosa",
+      "",
+    ]) {
+      expect(normalizePublishableKey(bad), bad).toBeNull();
+    }
+    expect(resolveConfig({ VITE_SUPABASE_PUBLISHABLE_KEY: "sb_secret_AbC123" }).supabasePublishableKey).toBeNull();
+  });
+});
+
 describe("configuración del navegador (site-config.ts)", () => {
   it("toSiteConfig deja solo lo que usa el navegador", () => {
     const full = resolveConfig({
@@ -101,6 +130,7 @@ describe("configuración del navegador (site-config.ts)", () => {
     expect(toSiteConfig(full)).toEqual({
       brandName: "Radici",
       supabaseUrl: "https://abcdefgh.supabase.co",
+      supabasePublishableKey: "sb_publishable_abc123",
       turnstileSiteKey: "0x4AAAAAAAexample",
       turnstileAuthSiteKey: "0x4AAAAAAAauth",
     });

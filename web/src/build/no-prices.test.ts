@@ -10,7 +10,7 @@ const globbed = {
 };
 /** Las rutas de import.meta.glob son relativas a este archivo: todas pasan a una ruta única, «/web/src/…». */
 const sources: Record<string, string> = Object.fromEntries(Object.entries(globbed).map(([key, source]) => [resolveSpec(HERE, key), source]));
-const ENTRIES = ["landing", "richiesta", "privacy", "prenotazione", "captcha", "not-found"].map((page) => `/web/src/pages/${page}.ts`);
+const ENTRIES = ["landing", "richiesta", "privacy", "prenotazione", "captcha", "accesso", "not-found"].map((page) => `/web/src/pages/${page}.ts`);
 
 /** Resuelve un import relativo contra el módulo que lo escribe (rutas con «/», como las de import.meta.glob). */
 function resolveSpec(from: string, spec: string): string {

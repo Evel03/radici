@@ -138,3 +138,46 @@ export function nativeTransport(win: NativeWindow): PageTransport {
     },
   };
 }
+
+// ── Lado del host en la web ────────────────────────────────────────────────────────────────────────────────────
+// Lo usa /accesso/ (src/captcha/host.ts) para pedir un token con el mismo protocolo que la app de Flutter
+// (app/lib/core/captcha/captcha_protocol.dart): el pedido sale con el origen exacto como destino y solo se acepta lo
+// que llega de ese origen y de la ventana del marco que se abrió.
+
+/** El pedido del host a la página: la marca, la versión y el id. */
+export function requestEnvelope(id: string): Record<string, unknown> {
+  return { source: CAPTCHA_SOURCE, v: CAPTCHA_VERSION, type: "request", id };
+}
+
+/** Un mensaje de la página, leído por el host, o null si no es uno válido (otra marca, otra versión, otra forma). */
+export function parsePageMessage(raw: unknown): PageMessage | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const message = raw as Record<string, unknown>;
+  if (message["source"] !== CAPTCHA_SOURCE || message["v"] !== CAPTCHA_VERSION) return null;
+  const id = message["id"];
+  switch (message["type"]) {
+    case "ready":
+      return { type: "ready" };
+    case "interactive":
+      return isRequestId(id) && typeof message["visible"] === "boolean" ? { type: "interactive", id, visible: message["visible"] } : null;
+    case "token":
+      return isRequestId(id) && isTokenShape(message["token"]) ? { type: "token", id, token: message["token"] } : null;
+    case "error":
+      return isRequestId(id) ? { type: "error", id, code: safeCode(message["code"]) } : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Un mensaje de la página es de fiar para el host solo si viene del mismo origen exacto y de la ventana del marco que
+ * abrió (no de otro marco ni de otra ventana del mismo sitio).
+ */
+export function isTrustedPageEvent(event: Pick<FrameEvent, "origin" | "source">, ownOrigin: string, frameWindow: unknown): boolean {
+  return ownOrigin !== "null" && frameWindow !== null && frameWindow !== undefined && event.origin === ownOrigin && event.source === frameWindow;
+}
+
+/** Un id de pedido nuevo: 128 bits al azar en hexadecimal (isRequestId). */
+export function newRequestId(fillRandom: (bytes: Uint8Array<ArrayBuffer>) => Uint8Array): string {
+  return Array.from(fillRandom(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}

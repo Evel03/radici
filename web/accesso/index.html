@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="it" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title data-i18n="access.metaTitle"></title>
+    <meta name="description" data-i18n-attr="content:access.metaDescription" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f5ede1" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script type="module" src="/src/pages/accesso.ts"></script>
+  </head>
+  <body>
+    <!-- partial:header -->
+
+    <!-- Confirmar el alta o elegir una contraseña nueva desde el link de un email de Auth (docs/contracts/auth.md §11).
+         El link va en el fragmento (#token_hash=…&type=…) y lo lee accesso.ts. Todos los textos están acá; el código
+         solo elige qué sección y qué mensaje se ven (src/access/view.ts). -->
+    <main id="main" class="access-page">
+      <div class="container container--narrow">
+        <noscript>
+          <p class="notice notice--warn" data-i18n="access.noscript"></p>
+        </noscript>
+
+        <section id="access-missing" class="access-step" aria-labelledby="access-missing-title" hidden>
+          <h1 class="access__title" id="access-missing-title" tabindex="-1" data-i18n="access.missing.title"></h1>
+          <p class="access__text" data-i18n="access.missing.text"></p>
+        </section>
+
+        <section id="access-confirm" class="access-step" aria-labelledby="access-confirm-title" hidden>
+          <h1 class="access__title" id="access-confirm-title" tabindex="-1">
+            <span data-type="email" data-i18n="access.confirm.titleEmail"></span>
+            <span data-type="recovery" data-i18n="access.confirm.titleRecovery"></span>
+          </h1>
+          <p class="access__text" data-type="email" data-i18n="access.confirm.textEmail"></p>
+          <p class="access__text" data-type="recovery" data-i18n="access.confirm.textRecovery"></p>
+          <p class="access__error" id="access-confirm-error" role="alert">
+            <span data-error="network" data-i18n="access.errors.network" hidden></span>
+            <span data-error="rateLimited" data-i18n="access.errors.rateLimited" hidden></span>
+            <span data-error="unavailable" data-i18n="access.errors.unavailable" hidden></span>
+          </p>
+          <button class="btn btn--primary btn--lg btn--block" id="access-confirm-button" type="button" data-i18n="access.confirm.button"></button>
+        </section>
+
+        <section id="access-password" class="access-step" aria-labelledby="access-password-title" hidden>
+          <h1 class="access__title" id="access-password-title" tabindex="-1" data-i18n="access.password.title"></h1>
+          <p class="access__account">
+            <span data-i18n="access.password.account"></span>
+            <strong id="access-masked-email"></strong>
+          </p>
+          <!-- method="post" y form-action 'none' en la CSP: si el código no corre, el formulario nunca manda la
+               contraseña en una URL. El campo del email no se ve: sirve para que el navegador guarde la contraseña
+               con su cuenta. -->
+          <form class="access__form" id="access-password-form" method="post" novalidate>
+            <input class="access__username" id="access-username" name="username" type="email" autocomplete="username" tabindex="-1" aria-hidden="true" readonly />
+            <div class="field">
+              <label class="field__label" for="access-new-password" data-i18n="access.password.label"></label>
+              <input
+                class="input"
+                id="access-new-password"
+                name="password"
+                type="password"
+                autocomplete="new-password"
+                autocapitalize="off"
+                spellcheck="false"
+                required
+                aria-describedby="access-password-hint access-password-error"
+              />
+              <p class="field__hint" id="access-password-hint" data-i18n="access.password.hint"></p>
+              <label class="check">
+                <input id="access-show-password" type="checkbox" />
+                <span data-i18n="access.password.show"></span>
+              </label>
+            </div>
+            <p class="access__error" id="access-password-error" role="alert">
+              <span data-error="tooShort" data-i18n="access.errors.tooShort" hidden></span>
+              <span data-error="tooLong" data-i18n="access.errors.tooLong" hidden></span>
+              <span data-error="lettersDigits" data-i18n="access.errors.lettersDigits" hidden></span>
+              <span data-error="leaked" data-i18n="access.errors.leaked" hidden></span>
+              <span data-error="same" data-i18n="access.errors.same" hidden></span>
+              <span data-error="weak" data-i18n="access.errors.weak" hidden></span>
+              <span data-error="network" data-i18n="access.errors.network" hidden></span>
+              <span data-error="rateLimited" data-i18n="access.errors.rateLimited" hidden></span>
+              <span data-error="unavailable" data-i18n="access.errors.unavailable" hidden></span>
+            </p>
+            <button class="btn btn--primary btn--lg btn--block" id="access-password-button" type="submit" data-i18n="access.password.save"></button>
+          </form>
+        </section>
+
+        <section id="access-done" class="access-step" aria-labelledby="access-done-title" hidden>
+          <h1 class="access__title" id="access-done-title" tabindex="-1" data-i18n="access.done.title"></h1>
+          <p class="access__text" data-type="email" data-i18n="access.done.textEmail"></p>
+          <p class="access__text" data-type="recovery" data-i18n="access.done.textRecovery"></p>
+          <a class="btn btn--primary btn--lg btn--block" id="access-login" href="#" data-i18n="access.done.login"></a>
+          <p class="access__text access__text--small" data-i18n="access.done.app"></p>
+        </section>
+
+        <section id="access-expired" class="access-step" aria-labelledby="access-expired-title" hidden>
+          <h1 class="access__title" id="access-expired-title" tabindex="-1">
+            <span data-reason="link" data-i18n="access.expired.titleLink"></span>
+            <span data-reason="session" data-i18n="access.expired.titleSession"></span>
+          </h1>
+          <p class="access__text" data-reason="link" data-i18n="access.expired.textLink"></p>
+          <p class="access__text" data-reason="session" data-i18n="access.expired.textSession"></p>
+          <form class="access__form" id="access-resend-form" method="post" novalidate>
+            <div class="field">
+              <label class="field__label" for="access-resend-email" data-i18n="access.expired.email"></label>
+              <input
+                class="input"
+                id="access-resend-email"
+                name="email"
+                type="email"
+                inputmode="email"
+                autocomplete="email"
+                autocapitalize="off"
+                spellcheck="false"
+                required
+                aria-describedby="access-resend-error"
+              />
+            </div>
+            <p class="access__error" id="access-resend-error" role="alert">
+              <span data-error="email" data-i18n="access.errors.email" hidden></span>
+              <span data-error="captcha" data-i18n="access.errors.captcha" hidden></span>
+              <span data-error="network" data-i18n="access.errors.network" hidden></span>
+              <span data-error="rateLimited" data-i18n="access.errors.rateLimited" hidden></span>
+              <span data-error="unavailable" data-i18n="access.errors.unavailable" hidden></span>
+            </p>
+            <button class="btn btn--primary btn--lg btn--block" id="access-resend-button" type="submit" data-i18n="access.expired.send"></button>
+          </form>
+          <div class="access__sent" id="access-resend-sent" role="status">
+            <p data-type="email" data-i18n="access.expired.sentEmail" hidden></p>
+            <p data-type="recovery" data-i18n="access.expired.sentRecovery" hidden></p>
+            <p data-sent-hint data-i18n="access.expired.spam" hidden></p>
+          </div>
+        </section>
+
+        <!-- El nombre del marco del captcha cuando Cloudflare pide tocar la casilla (lo lee accesso.ts). -->
+        <span id="access-captcha-title" data-i18n="access.captchaTitle" hidden></span>
+      </div>
+    </main>
+
+    <!-- partial:footer -->
+  </body>
+</html>
