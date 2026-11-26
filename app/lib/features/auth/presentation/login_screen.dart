@@ -92,8 +92,12 @@ class _BrandHeader extends StatelessWidget {
   }
 }
 
-String authErrorText(AppLocalizations l10n, AuthFailureKind kind) =>
-    switch (kind) {
+/// El texto del error. Con el del captcha, [detail] (el motivo, para el
+/// diagnóstico) va al final: «… (codice: app-timeout)».
+String authErrorText(AppLocalizations l10n, AuthFailureKind kind, {String? detail}) =>
+    kind == AuthFailureKind.captcha && detail != null && detail.isNotEmpty
+    ? '${l10n.authErrorCaptcha} ${l10n.authErrorCode(detail)}'
+    : switch (kind) {
       AuthFailureKind.invalidEmail => l10n.authErrorInvalidEmail,
       AuthFailureKind.invalidCode => l10n.authErrorInvalidCode,
       AuthFailureKind.rateLimited => l10n.authErrorRateLimited,
@@ -155,7 +159,7 @@ class _EmailStepState extends ConsumerState<_EmailStep> {
             labelText: l10n.loginEmailLabel,
             hintText: l10n.loginEmailHint,
             prefixIcon: const Icon(Icons.mail_outline),
-            errorText: error == null ? null : authErrorText(l10n, error),
+            errorText: error == null ? null : authErrorText(l10n, error, detail: state.errorDetail),
             errorMaxLines: 3,
           ),
         ),
@@ -231,7 +235,7 @@ class _CodeStepState extends ConsumerState<_CodeStep> {
             prefixIcon: const Icon(Icons.password),
             helperText: l10n.loginSpamHint,
             helperMaxLines: 2,
-            errorText: error == null ? null : authErrorText(l10n, error),
+            errorText: error == null ? null : authErrorText(l10n, error, detail: state.errorDetail),
             errorMaxLines: 3,
           ),
         ),

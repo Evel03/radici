@@ -66,11 +66,6 @@ void main() {
         message('desconocido'),
         message('token', {'token': 'abc'}),
         message('token', {'id': 'corto', 'token': 'abc'}),
-        message('token', {'id': id}),
-        message('token', {'id': id, 'token': ''}),
-        message('token', {'id': id, 'token': 'con espacio'}),
-        message('token', {'id': id, 'token': 'a' * 2049}),
-        message('token', {'id': id, 'token': 5}),
         message('error', {'id': id, 'code': 'texto <libre>'}),
         message('error', {'id': id, 'code': 'x' * 33}),
         message('error', {'id': id}),
@@ -80,6 +75,26 @@ void main() {
       for (final raw in bad) {
         expect(parseCaptchaReply(raw), isNull, reason: '$raw');
       }
+    });
+
+    test('un token con otra forma (con el id del pedido) termina el pedido con token-shape, para el diagnóstico', () {
+      for (final token in <Object?>[null, '', 'con espacio', 'a' * 2049, 5]) {
+        final raw = token == null ? message('token', {'id': id}) : message('token', {'id': id, 'token': token});
+        expect(
+          parseCaptchaReply(raw),
+          isA<CaptchaError>().having((r) => r.code, 'code', 'token-shape').having((r) => r.id, 'id', id),
+          reason: '$token',
+        );
+      }
+    });
+
+    test('el diagnóstico de una navegación frenada: esquema y host, sin ruta ni query', () {
+      expect(captchaBlockedSummary('https://otro.example.com/a/b?c=d#e'), 'https:otro.example.com');
+      expect(captchaBlockedSummary('blob:https://radicicucina.app/123'), 'blob');
+      expect(captchaBlockedSummary('about:blank#x'), 'about');
+      expect(captchaBlockedSummary('data:text/html,<b>'), 'data');
+      expect(captchaBlockedSummary(''), 'unknown');
+      expect(captchaBlockedSummary('https://${'a' * 80}.com/').length, 40);
     });
 
     test('un token acepta hasta 2048 caracteres', () {

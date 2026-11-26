@@ -29,6 +29,10 @@ abstract class LoginState with _$LoginState {
     /// Error a mostrar, o null.
     AuthFailureKind? error,
 
+    /// Con el error del captcha: el código del motivo (diagnóstico, se muestra
+    /// al lado del texto); «auth» si lo rechazó Auth. Null en los demás.
+    String? errorDetail,
+
     /// Se acaba de mandar otro código (para confirmarlo en pantalla).
     @Default(false) bool codeResent,
 
@@ -72,16 +76,25 @@ class LoginController extends Notifier<LoginState> {
         : (_CaptchaOutcome.skipped, null);
   }
 
+  /// El motivo del último fallo del captcha (diagnóstico), o null.
+  String? _captchaFailure() {
+    try {
+      return ref.read(captchaServiceProvider).lastFailure;
+    } on Object {
+      return null;
+    }
+  }
+
   /// Paso 1: valida el email y pide el código. [locale] es el idioma de la
   /// interfaz (it, es, en): el email del código llega en ese idioma.
   Future<void> submitEmail(String rawEmail, {String? locale}) async {
     if (state.busy) return;
     final email = rawEmail.trim().toLowerCase();
     if (!isValidEmail(email)) {
-      state = state.copyWith(error: AuthFailureKind.invalidEmail);
+      state = state.copyWith(error: AuthFailureKind.invalidEmail, errorDetail: null);
       return;
     }
-    state = state.copyWith(busy: true, error: null, codeResent: false);
+    state = state.copyWith(busy: true, error: null, errorDetail: null, codeResent: false);
     // Si el aviso del link existe (la app lo crea al arrancar), se borra.
     if (ref.exists(authLinkErrorProvider)) {
       ref.read(authLinkErrorProvider.notifier).clear();
@@ -90,7 +103,7 @@ class LoginController extends Notifier<LoginState> {
       final (outcome, captchaToken) = await _captcha(locale);
       if (!ref.mounted) return;
       if (outcome == _CaptchaOutcome.failed) {
-        state = state.copyWith(busy: false, error: AuthFailureKind.captcha);
+        state = state.copyWith(busy: false, error: AuthFailureKind.captcha, errorDetail: _captchaFailure());
         return;
       }
       await _auth.sendEmailCode(email, locale: locale, captchaToken: captchaToken);
@@ -98,7 +111,7 @@ class LoginController extends Notifier<LoginState> {
       state = LoginState(step: LoginStep.code, email: email, locale: locale);
     } on AuthFailure catch (failure) {
       if (!ref.mounted) return;
-      state = state.copyWith(busy: false, error: failure.kind);
+      state = state.copyWith(busy: false, error: failure.kind, errorDetail: failure.kind == AuthFailureKind.captcha ? 'auth' : null);
     }
   }
 
@@ -108,29 +121,29 @@ class LoginController extends Notifier<LoginState> {
     if (state.busy || state.step != LoginStep.code) return;
     final code = normalizeOtp(rawCode);
     if (!isValidOtp(code)) {
-      state = state.copyWith(error: AuthFailureKind.invalidCode);
+      state = state.copyWith(error: AuthFailureKind.invalidCode, errorDetail: null);
       return;
     }
-    state = state.copyWith(busy: true, error: null, codeResent: false);
+    state = state.copyWith(busy: true, error: null, errorDetail: null, codeResent: false);
     try {
       await _auth.verifyEmailCode(email: state.email, code: code);
       if (!ref.mounted) return;
       state = state.copyWith(busy: false);
     } on AuthFailure catch (failure) {
       if (!ref.mounted) return;
-      state = state.copyWith(busy: false, error: failure.kind);
+      state = state.copyWith(busy: false, error: failure.kind, errorDetail: failure.kind == AuthFailureKind.captcha ? 'auth' : null);
     }
   }
 
   /// Manda otro código al mismo email.
   Future<void> resendCode() async {
     if (state.busy || state.step != LoginStep.code) return;
-    state = state.copyWith(busy: true, error: null, codeResent: false);
+    state = state.copyWith(busy: true, error: null, errorDetail: null, codeResent: false);
     try {
       final (outcome, captchaToken) = await _captcha(state.locale);
       if (!ref.mounted) return;
       if (outcome == _CaptchaOutcome.failed) {
-        state = state.copyWith(busy: false, error: AuthFailureKind.captcha);
+        state = state.copyWith(busy: false, error: AuthFailureKind.captcha, errorDetail: _captchaFailure());
         return;
       }
       await _auth.sendEmailCode(state.email, locale: state.locale, captchaToken: captchaToken);
@@ -138,7 +151,7 @@ class LoginController extends Notifier<LoginState> {
       state = state.copyWith(busy: false, codeResent: true);
     } on AuthFailure catch (failure) {
       if (!ref.mounted) return;
-      state = state.copyWith(busy: false, error: failure.kind);
+      state = state.copyWith(busy: false, error: failure.kind, errorDetail: failure.kind == AuthFailureKind.captcha ? 'auth' : null);
     }
   }
 

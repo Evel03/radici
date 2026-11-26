@@ -285,6 +285,8 @@ curl -sS -X PATCH "https://api.supabase.com/v1/projects/<REF>/config/auth" \
 ```
 Apaga el captcha en el acto (los builds publicados siguen mandando el token, que Auth ignora). El próximo despliegue lo vuelve a prender: para dejarlo apagado hay que revertir PR11. Las sesiones abiertas no se ven afectadas en ningún momento.
 
+**Diagnóstico en la app** (26/11/2026). En el iPhone (build 7) el pedido del código llegó a Auth sin token (log: «no captcha_token found») aunque la casilla pasó, y en la web anda. Para ver el motivo en el teléfono, cuando el captcha falla la pantalla del login suma un código corto: «(codice: …)». Los códigos: `page-<código>` (un error de Turnstile o de la página, por ejemplo `page-600010`; `page-token-shape` si llegó un token con otra forma), `app-no-ready` (la página nunca avisó que estaba lista: el canal no anda), `app-timeout` y `app-timeout-interactive` (no llegó el token a tiempo), `app-load-<n>` (la WebView no pudo cargar la página), `app-unavailable` (sin WebView), `auth` (Auth rechazó el token) y, si la WebView frenó una navegación, `+blocked-<esquema:host>`. Nunca lleva el token ni datos de la persona.
+
 **Límite de emails** (`smtp_max_frequency = 60`, parte smtp): un email de Auth por cuenta por minuto; antes, 429 `over_email_send_rate_limit` («Aspetta un minuto e riprova» en la app). Una cuenta que existe responde ese 429 a un segundo pedido rápido y una que no existe no: se acepta a sabiendas (el captcha y el límite por IP de §9 hacen caro aprovecharlo). `rate_limit_otp` ya estaba en 10 (§9).
 
 ## 11. La página `/accesso/`: confirmar el alta y elegir la contraseña (PR15, 26/11/2026; todavía no la enlaza ningún email)

@@ -68,9 +68,28 @@ final class CaptchaError extends CaptchaReply {
 }
 
 /// La página no pudo cargar (sin red, error de la WebView): lo avisa el
-/// propio host, no la página.
+/// propio host, no la página. [code]: el código del error de la WebView, si hay.
 final class CaptchaLoadFailed extends CaptchaReply {
-  const CaptchaLoadFailed();
+  const CaptchaLoadFailed({this.code});
+  final int? code;
+}
+
+/// La WebView frenó una navegación que no está en su lista
+/// (captcha_navigation.dart). [what]: «esquema:host», ya saneado
+/// ([captchaBlockedSummary]); nunca la ruta ni la query. Solo sirve para el
+/// diagnóstico: el pedido sigue.
+final class CaptchaBlocked extends CaptchaReply {
+  const CaptchaBlocked(this.what);
+  final String what;
+}
+
+/// «esquema:host» de [url], con solo letras, dígitos, «.», «-» y «_» (hasta 40
+/// caracteres): lo que se muestra en el diagnóstico, sin la ruta ni la query.
+String captchaBlockedSummary(String url) {
+  final Uri? uri = Uri.tryParse(url);
+  final raw = uri == null ? 'invalid' : (uri.host.isEmpty ? uri.scheme : '${uri.scheme}:${uri.host}');
+  final safe = raw.replaceAll(RegExp(r'[^\w.:-]'), '');
+  return safe.isEmpty ? 'unknown' : (safe.length > 40 ? safe.substring(0, 40) : safe);
 }
 
 final RegExp _idPattern = RegExp(r'^[0-9a-f]{32}$');
@@ -112,7 +131,11 @@ CaptchaReply? parseCaptchaReply(Object? raw) {
       return CaptchaInteractive(id: id as String, visible: visible);
     case 'token':
       final token = value['token'];
-      if (!isCaptchaId(id) || token is! String || !_tokenPattern.hasMatch(token)) return null;
+      if (!isCaptchaId(id)) return null;
+      // Un token con otra forma no se usa, pero el pedido termina con el motivo (para el diagnóstico).
+      if (token is! String || !_tokenPattern.hasMatch(token)) {
+        return CaptchaError(id: id as String, code: 'token-shape');
+      }
       return CaptchaToken(id: id as String, token: token);
     case 'error':
       final code = value['code'];

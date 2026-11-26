@@ -40,6 +40,9 @@ class CaptchaBroker implements CaptchaService {
   final Duration interactiveTimeout;
   final String Function() _newId;
 
+  @override
+  String? lastFailure;
+
   /// Un pedido a la vez: cada uno abre su propia página y un token es de uno
   /// solo.
   Future<void> _tail = Future<void>.value();
@@ -57,14 +60,23 @@ class CaptchaBroker implements CaptchaService {
     Timer? timer;
     StreamSubscription<CaptchaReply>? subscription;
     CaptchaSession? session;
+    // Para el diagnóstico (lastFailure): qué pasó antes de un fallo.
+    var ready = false;
+    var interactive = false;
+    String? blocked;
 
-    void finish(String? token) {
-      if (!done.isCompleted) done.complete(token);
+    void finish(String? token, [String? failure]) {
+      if (done.isCompleted) return;
+      lastFailure = token != null ? null : _diagnostic(failure ?? 'app-unknown', blocked);
+      done.complete(token);
     }
 
     void arm(Duration after) {
       timer?.cancel();
-      timer = Timer(after, () => finish(null));
+      timer = Timer(
+        after,
+        () => finish(null, !ready ? 'app-no-ready' : (interactive ? 'app-timeout-interactive' : 'app-timeout')),
+      );
     }
 
     try {
@@ -73,32 +85,37 @@ class CaptchaBroker implements CaptchaService {
         (reply) {
           switch (reply) {
             case CaptchaReady():
+              ready = true;
               // Una página que se recarga vuelve a avisar: se le repite el pedido.
               try {
                 session?.request(id);
               } on Object {
-                finish(null);
+                finish(null, 'app-request');
               }
             case CaptchaInteractive(id: final replyId, :final visible) when replyId == id:
+              if (visible) interactive = true;
               arm(visible ? interactiveTimeout : timeout);
             case CaptchaToken(id: final replyId, :final token) when replyId == id:
               finish(token);
-            case CaptchaError(id: final replyId) when replyId == id:
-              finish(null);
-            case CaptchaLoadFailed():
-              finish(null);
+            case CaptchaError(id: final replyId, :final code) when replyId == id:
+              finish(null, 'page-$code');
+            case CaptchaLoadFailed(:final code):
+              finish(null, code == null ? 'app-load' : 'app-load$code');
+            case CaptchaBlocked(:final what):
+              blocked = what;
             // Un id que no es el de este pedido, o un aviso fuera de turno: se ignora.
             case CaptchaInteractive() || CaptchaToken() || CaptchaError():
               break;
           }
         },
-        onError: (Object _) => finish(null),
-        onDone: () => finish(null),
+        onError: (Object _) => finish(null, 'app-stream'),
+        onDone: () => finish(null, 'app-closed'),
       );
       arm(timeout);
       return await done.future;
     } on Object {
       // La plataforma no puede abrir la página (sin WebView, sin DOM): sin token.
+      lastFailure = 'app-unavailable';
       return null;
     } finally {
       timer?.cancel();
@@ -110,4 +127,12 @@ class CaptchaBroker implements CaptchaService {
       }
     }
   }
+}
+
+/// El código del diagnóstico: el motivo y, si la WebView frenó una navegación,
+/// cuál («…+blocked-https:otro.host»). Solo letras, dígitos y «.:+_-».
+String _diagnostic(String failure, String? blocked) {
+  final text = blocked == null ? failure : '$failure+blocked-$blocked';
+  final safe = text.replaceAll(RegExp(r'[^\w.:+-]'), '');
+  return safe.length > 80 ? safe.substring(0, 80) : safe;
 }

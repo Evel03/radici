@@ -277,6 +277,16 @@
   "@authErrorCaptcha": {
     "description": "Error: no se obtuvo el token del captcha de Auth (Turnstile). Solo aparece cuando Auth exige el captcha."
   },
+  "authErrorCode": "(codice: {code})",
+  "@authErrorCode": {
+    "description": "Al final del aviso del captcha (authErrorCaptcha): el motivo del fallo, un código corto para el diagnóstico (por ejemplo app-timeout o page-600010). No se traduce el código.",
+    "placeholders": {
+      "code": {
+        "type": "String",
+        "example": "app-timeout"
+      }
+    }
+  },
   "authErrorLink": "Il link di accesso non è valido o è scaduto. Richiedi un nuovo codice.",
   "@authErrorLink": {
     "description": "Error en el login: llegó un link de acceso de Auth con un error (vencido, ya usado)."
