@@ -38,6 +38,16 @@ import {
   type EstimateSummary,
   type RequestSummary,
 } from "../_shared/emails.ts";
+import { hashClientLinkToken, isClientLinkToken, newClientLinkToken } from "../_shared/client_link.ts";
+import {
+  MARKETING_MAX_PAYLOAD_BYTES,
+  MARKETING_RATE_LIMITS,
+  MARKETING_ROUTES,
+  maskEmail,
+  marketingPageUrl,
+  type MarketingRoute,
+  type MarketingStatus,
+} from "../_shared/marketing.ts";
 import { MENU_PATH, buildMenuResponse, readMenuChoices, type MenuChoice, type MenuDish } from "../_shared/menu.ts";
 import {
   DATE_WINDOW,
@@ -85,6 +95,11 @@ export const AVAILABILITY_CACHE_CONTROL = "public, max-age=60";
  */
 export function availabilityRateSubject(ip: string | null): string {
   return `availability:${ip ? rateLimitSubject(ip) : "unknown"}`;
+}
+
+/** Contrato §13: las rutas del link de ofertas por IP, en su propio contador. */
+export function marketingRateSubject(ip: string | null): string {
+  return `marketing:${ip ? rateLimitSubject(ip) : "unknown"}`;
 }
 
 /**
@@ -264,6 +279,15 @@ export interface PublicRequestStore {
    * un horario libre para cookMinutes de cocina.
    */
   freeDays(chefId: string, cookMinutes: number, fromDate: string, days: number): Promise<string[]>;
+  /**
+   * La casilla de ofertas de un pedido (public.marketing_subscribe, contrato §13): el contacto queda
+   * pendiente con el hash del token del link, o, si ya confirmó, anota la actividad. send = mandar el link.
+   */
+  subscribeMarketing(params: MarketingSubscribeParams): Promise<{ send: boolean }>;
+  /** El estado del contacto de un link (por el hash del token), o null si no es de nadie o venció. */
+  marketingStatus(tokenHash: string): Promise<MarketingState | null>;
+  /** Confirma o da de baja; el estado nuevo, o null si el token no es de nadie o venció. */
+  marketingSet(tokenHash: string, action: "confirm" | "withdraw"): Promise<MarketingState | null>;
   /** public.get_public_menu: los platos publicados de la cocinera (activos, visibles y con descripción). */
   publicMenu(chefId: string): Promise<MenuDish[]>;
 }
@@ -276,6 +300,27 @@ export interface PublicRequestStore {
  * estima la compra: no se leen.
  * Un solo literal, sin concatenar: supabase-js lee el tipo del select del texto.
  */
+/** Lo que recibe public.marketing_subscribe (las claves del jsonb). */
+export interface MarketingSubscribeParams {
+  chef_id: string;
+  email: string;
+  /** El nombre de pila, si parece un nombre (safeFirstName); si no, null. */
+  first_name: string | null;
+  locale: Locale;
+  source: "web" | "app";
+  text_version: string;
+  request_id: string;
+  token_hash: string;
+}
+
+/** El estado de un contacto de la lista, como lo devuelven marketing_status y marketing_set. */
+export interface MarketingState {
+  status: MarketingStatus;
+  locale: Locale;
+  /** Solo en marketing_status: la función lo manda enmascarado. */
+  email: string | null;
+}
+
 export const CHEF_SETTINGS_COLUMNS =
   "weekly_rate_cents, weekly_rate_discounted_cents, weekly_discount_min_weeks, weekly_rate_max_people, min_cook_minutes, chefs(display_name)";
 
@@ -528,6 +573,8 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
       const url = new URL(request.url);
       if (url.pathname.endsWith(AVAILABILITY_PATH)) return await availabilityRoute(deps, request, url, reply);
       if (url.pathname.endsWith(MENU_PATH)) return await menuRoute(deps, request, reply);
+      const marketing = marketingRouteOf(url.pathname);
+      if (marketing) return await marketingRoute(deps, request, marketing, reply);
 
       if (request.method !== "POST") return reply(405, { error: "method" }, { Allow: "POST, OPTIONS" });
       if (!isJsonContentType(request.headers.get("content-type"))) return reply(415, { error: "contentType" });
@@ -635,7 +682,7 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
       log("info", "request_saved", { requestId });
 
       deps.waitUntil(
-        sendNotifications(deps, { requestId, value, estimate, chef, menu: menu ?? [] }).catch((error: unknown) => {
+        sendNotifications(deps, { chefId, requestId, value, estimate, chef, menu: menu ?? [] }).catch((error: unknown) => {
           log("error", "notify_crashed", { error: error instanceof Error ? error.name : "unknown" });
         }),
       );
@@ -654,6 +701,7 @@ export function createPublicRequestHandler(deps: HandlerDeps): (request: Request
 // ---------------------------------------------------------------------------
 
 interface NotifyContext {
+  chefId: string;
   requestId: string;
   value: NormalizedPublicRequest;
   estimate: Quote;
@@ -774,6 +822,7 @@ async function notifyClient(deps: HandlerDeps, context: NotifyContext): Promise<
   const { config } = deps;
   const { requestId, value } = context;
   if (!emailReady(deps, "client", requestId)) return;
+  const marketingConfirmUrl = await subscribeMarketing(deps, context);
   const email = renderClientConfirmation(
     {
       brand: brandFromMailFrom(config.mailFrom),
@@ -781,6 +830,7 @@ async function notifyClient(deps: HandlerDeps, context: NotifyContext): Promise<
       customerName: value.name,
       summary: summaryOf(context),
       privacyUrl: config.publicSiteUrl ? privacyPageUrl(config.publicSiteUrl, value.locale) : null,
+      marketingConfirmUrl,
     },
     value.locale,
   );
@@ -811,4 +861,108 @@ async function notifyWhatsApp(deps: HandlerDeps, context: NotifyContext): Promis
   );
   if (outcome.ok) log("info", "whatsapp_sent", { requestId });
   else log("error", "whatsapp_failed", { requestId, status: outcome.status, errorName: outcome.errorName });
+}
+
+// ---------------------------------------------------------------------------
+// Ofertas y novedades (contrato §13)
+// ---------------------------------------------------------------------------
+
+/**
+ * La casilla de ofertas del pedido, antes del email a la clienta (que lleva el link): solo si la marcó, con
+ * la web configurada (el link va a su página). Devuelve el link para confirmar, o null si no hay que
+ * mandarlo (no la marcó, ya estaba confirmada, o falló la base: el pedido ya está guardado y el email sale
+ * igual, sin el link; el contacto no queda). Nunca loguea el email ni el token.
+ */
+async function subscribeMarketing(deps: HandlerDeps, context: NotifyContext): Promise<string | null> {
+  const { config, log } = deps;
+  const { requestId, value } = context;
+  const version = value.consents.marketing;
+  if (!version) return null;
+  if (!config.publicSiteUrl) {
+    log("warn", "marketing_skipped", { requestId, reason: "no_site_url" });
+    return null;
+  }
+  const token = newClientLinkToken();
+  try {
+    const firstName = safeFirstName(value.name);
+    const { send } = await deps.store.subscribeMarketing({
+      chef_id: context.chefId,
+      email: value.email,
+      first_name: firstName === "" ? null : firstName,
+      locale: value.locale,
+      source: "web",
+      text_version: version,
+      request_id: requestId,
+      token_hash: await hashClientLinkToken(token),
+    });
+    log("info", "marketing_subscribed", { requestId, send });
+    return send ? marketingPageUrl(config.publicSiteUrl, value.locale, token) : null;
+  } catch (error) {
+    logStoreError(log, error, "marketing_subscribe");
+    return null;
+  }
+}
+
+/** La ruta del link de ofertas de [pathname], o null. */
+function marketingRouteOf(pathname: string): MarketingRoute | null {
+  for (const [route, path] of Object.entries(MARKETING_ROUTES) as [MarketingRoute, string][]) {
+    if (pathname.endsWith(path)) return route;
+  }
+  return null;
+}
+
+/**
+ * POST …/marketing/status|confirm|withdraw con { token } (contrato §13): el estado del contacto del link,
+ * confirmarlo o darlo de baja. Sin Turnstile (el token tiene 32 bytes al azar), con su propio límite por IP.
+ * Un token que no es de nadie (o un pendiente vencido): 404, sin decir cuál. La respuesta: el estado, el
+ * idioma y, en status, el email enmascarado.
+ */
+async function marketingRoute(deps: HandlerDeps, request: Request, route: MarketingRoute, reply: Reply): Promise<Response> {
+  const { config, log } = deps;
+  if (request.method !== "POST") return reply(405, { error: "method" }, { Allow: "POST, OPTIONS" });
+  if (!isJsonContentType(request.headers.get("content-type"))) return reply(415, { error: "contentType" });
+  const body = await readBodyLimited(request, MARKETING_MAX_PAYLOAD_BYTES);
+  if (!body.ok) return body.reason === "tooLarge" ? reply(413, { error: "tooLarge" }) : reply(400, { error: "token" });
+  let token: unknown;
+  try {
+    token = (JSON.parse(body.text) as { token?: unknown } | null)?.token;
+  } catch {
+    return reply(400, { error: "token" });
+  }
+  if (!isClientLinkToken(token)) return reply(400, { error: "token" });
+
+  if (!config.ipHashSalt) log("error", "config_missing", { missing: ["IP_HASH_SALT"] });
+  if (!config.ipHashSalt) return reply(500, { error: "server" });
+  const ip = clientIp(request.headers);
+  const ipHash = await hashSubject(marketingRateSubject(ip), config.ipHashSalt);
+  let allowed: boolean;
+  try {
+    allowed = await deps.store.hitRateLimit(ipHash, MARKETING_RATE_LIMITS.perHour, MARKETING_RATE_LIMITS.perDay);
+  } catch (error) {
+    logStoreError(log, error, "rate_limit");
+    return reply(503, { error: "server" });
+  }
+  if (!allowed) {
+    log("info", "rate_limited", { route: "marketing" });
+    return reply(429, { error: "rateLimited" }, { "Retry-After": String(RETRY_AFTER_SECONDS) });
+  }
+
+  const tokenHash = await hashClientLinkToken(token);
+  let state: MarketingState | null;
+  try {
+    state = route === "status" ? await deps.store.marketingStatus(tokenHash) : await deps.store.marketingSet(tokenHash, route);
+  } catch (error) {
+    logStoreError(log, error, `marketing_${route}`);
+    return reply(503, { error: "server" });
+  }
+  if (!state) {
+    log("info", "marketing_not_found", { route });
+    return reply(404, { error: "notFound" });
+  }
+  log("info", "marketing_route", { route, status: state.status });
+  return reply(200, {
+    status: state.status,
+    locale: state.locale,
+    ...(route === "status" && state.email ? { email: maskEmail(state.email) } : {}),
+  });
 }

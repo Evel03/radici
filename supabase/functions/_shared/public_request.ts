@@ -70,6 +70,13 @@ export const HEALTH_CONSENT_VERSIONS: readonly string[] = ["2026-11-16"];
  */
 export const HEALTH_CONSENT_VERSION = "2026-11-16";
 
+/**
+ * Versión del texto de la casilla de ofertas y novedades (opcional, sin marcar; contrato §13) que manda la
+ * web en consents.marketing. Lista explícita, como la de salud: una versión que se saca deja de aceptarse.
+ */
+export const MARKETING_CONSENT_VERSION = "2026-11-27";
+export const MARKETING_CONSENT_VERSIONS: readonly string[] = [MARKETING_CONSENT_VERSION];
+
 /** Los 14 alérgenos del Reg. UE 1169/2011, en el orden del enum `allergen` de la base. */
 export const ALLERGENS = [
   "gluten",
@@ -165,8 +172,11 @@ export interface PublicRequestPayload {
   whatsappOptIn: boolean;
   notes: string;
   locale: Locale;
-  /** Versión del texto aceptado; `health` solo si hay restricciones (si no, null). */
-  consents: { privacy: string; health: string | null };
+  /**
+   * Versión del texto aceptado; `health` solo si hay restricciones (si no, null). `marketing` (opcional):
+   * la versión de la casilla de ofertas si la marcó; sin marcar, ausente o null.
+   */
+  consents: { privacy: string; health: string | null; marketing?: string | null };
   /** Token de Cloudflare Turnstile; lo verifica la Edge Function. */
   turnstileToken: string;
   /**
@@ -220,6 +230,7 @@ export type PublicRequestField =
   | "locale"
   | "consentPrivacy"
   | "consentHealth"
+  | "consentMarketing"
   | "turnstileToken"
   | "requestKey";
 
@@ -253,8 +264,8 @@ export interface NormalizedPublicRequest {
   whatsappOptIn: boolean;
   notes: string;
   locale: Locale;
-  /** `health` es null si no hay restricciones. */
-  consents: { privacy: string; health: string | null };
+  /** `health` es null si no hay restricciones; `marketing`, null si no marcó la casilla de ofertas. */
+  consents: { privacy: string; health: string | null; marketing: string | null };
   turnstileToken: string;
   /** UUID en minúsculas, o null si la web no mandó clave. */
   requestKey: string | null;
@@ -379,7 +390,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** El JSON recibido, con las claves del contrato declaradas (valores sin validar). */
 type RawPayload = { [K in keyof PublicRequestPayload]?: unknown };
-type RawConsents = { privacy?: unknown; health?: unknown };
+type RawConsents = { privacy?: unknown; health?: unknown; marketing?: unknown };
 
 /** Lista de valores válidos y sin repetir, devuelta en el orden canónico de `list`. */
 function parseSet<T extends string>(list: readonly T[], value: unknown, max: number): T[] | null {
@@ -515,6 +526,13 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     if (!health) errors.consentHealth = "healthConsentRequired";
   }
 
+  // Ofertas y novedades: opcional. Sin marcar (ausente o null), nada; marcada, con una versión aceptada.
+  let marketing: string | null = null;
+  if (consents.marketing !== undefined && consents.marketing !== null) {
+    if (isOneOf(MARKETING_CONSENT_VERSIONS, consents.marketing)) marketing = consents.marketing;
+    else errors.consentMarketing = "invalid";
+  }
+
   const turnstileToken = raw.turnstileToken;
   if (typeof turnstileToken !== "string" || turnstileToken === "" || turnstileToken.length > 2048) {
     errors.turnstileToken = "required";
@@ -565,7 +583,7 @@ export function parsePublicRequest(input: unknown, opts: { today: string }): Par
     whatsappOptIn: whatsappOptIn as boolean,
     notes,
     locale,
-    consents: { privacy: privacy as string, health },
+    consents: { privacy: privacy as string, health, marketing },
     turnstileToken: turnstileToken as string,
     requestKey,
     menu,

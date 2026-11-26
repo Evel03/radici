@@ -436,3 +436,24 @@ test("helpers de fechas y texto", () => {
   assert.equal(cleanOneLine(" a \n b\t c "), "a b c");
   assert.equal(cleanMultiLine("x\n\n\n\ny"), "x\n\ny");
 });
+
+test("consents.marketing: opcional; marcada, con una versión aceptada; otra versión o tipo, error", async () => {
+  const { MARKETING_CONSENT_VERSION, parsePublicRequest } = await import("./public_request.ts");
+  const base = payload();
+  const parse = (marketing: unknown) =>
+    parsePublicRequest({ ...base, consents: { ...base.consents, ...(marketing === undefined ? {} : { marketing }) } }, { today: TODAY });
+  const absent = parse(undefined);
+  assert.ok(absent.ok);
+  assert.equal(absent.ok && absent.value.consents.marketing, null);
+  const unticked = parse(null);
+  assert.ok(unticked.ok);
+  assert.equal(unticked.ok && unticked.value.consents.marketing, null);
+  const ticked = parse(MARKETING_CONSENT_VERSION);
+  assert.ok(ticked.ok);
+  assert.equal(ticked.ok && ticked.value.consents.marketing, MARKETING_CONSENT_VERSION);
+  for (const bad of ["1999-01-01", true, 1]) {
+    const result = parse(bad);
+    assert.ok(!result.ok);
+    assert.equal(!result.ok && result.errors.consentMarketing, "invalid", String(bad));
+  }
+});

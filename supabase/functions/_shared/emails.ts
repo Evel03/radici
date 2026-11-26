@@ -87,6 +87,11 @@ export interface ClientConfirmationInput {
   customerName: string;
   summary: RequestSummary;
   privacyUrl: string | null;
+  /**
+   * Marcó la casilla de ofertas y novedades: el link para confirmarlo (doble opt-in, contrato §13), o null
+   * (no la marcó, o ya estaba confirmada). Opcional: sin él, el email es el de siempre.
+   */
+  marketingConfirmUrl?: string | null;
 }
 
 export interface ChefNotificationInput {
@@ -171,6 +176,11 @@ interface Messages {
     allergiesNone: string;
     reply: string;
     privacy: string;
+    /** Marcó la casilla de ofertas: el título, el texto, el botón para confirmar y qué pasa si no confirma. */
+    marketingTitle: string;
+    marketingText: (brand: string) => string;
+    marketingButton: string;
+    marketingIgnore: string;
     /** El eslogan de la marca, el mismo de la web (common.slogan). */
     slogan: string;
     footer: (brand: string) => string;
@@ -249,6 +259,11 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       allergiesNone: "Hai confermato che nessuno ha allergie, intolleranze alimentari o celiachia.",
       reply: "Vuoi aggiungere o cambiare qualcosa? Rispondi a questa email.",
       privacy: "Informativa privacy",
+      marketingTitle: "Offerte e novità",
+      marketingText: (brand) =>
+        `Hai chiesto di ricevere offerte e novità di ${brand}. Per attivarle, confermalo qui: senza conferma non ti scriviamo per questo.`,
+      marketingButton: "Confermo",
+      marketingIgnore: "Non l'hai chiesto tu o hai cambiato idea? Ignora il pulsante: tra 7 giorni la richiesta si cancella da sola.",
       slogan: "Cucina autentica, a casa tua.",
       footer: (brand) => `Ricevi questa email perché hai inviato una richiesta dal sito di ${brand}.`,
     },
@@ -327,6 +342,11 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       allergiesNone: "Confirmaste que nadie tiene alergias, intolerancias alimentarias ni celiaquía.",
       reply: "¿Quieres añadir o cambiar algo? Responde a este email.",
       privacy: "Política de privacidad",
+      marketingTitle: "Ofertas y novedades",
+      marketingText: (brand) =>
+        `Pediste recibir ofertas y novedades de ${brand}. Para activarlas, confírmalo aquí: sin confirmación no te escribimos por esto.`,
+      marketingButton: "Confirmo",
+      marketingIgnore: "¿No lo pediste tú o cambiaste de idea? Ignora el botón: en 7 días el pedido se borra solo.",
       slogan: "Cocina auténtica, en tu casa.",
       footer: (brand) => `Recibes este email porque enviaste una solicitud desde la web de ${brand}.`,
     },
@@ -405,6 +425,11 @@ const MESSAGES: Readonly<Record<Locale, Messages>> = {
       allergiesNone: "You confirmed that nobody has any food allergies, intolerances or coeliac disease.",
       reply: "Want to add or change something? Just reply to this email.",
       privacy: "Privacy policy",
+      marketingTitle: "Offers and news",
+      marketingText: (brand) =>
+        `You asked to receive offers and news from ${brand}. To turn them on, confirm here: without confirmation we won't write to you about this.`,
+      marketingButton: "I confirm",
+      marketingIgnore: "Wasn't you, or changed your mind? Just ignore the button: the request deletes itself in 7 days.",
       slogan: "Authentic cooking, in your home.",
       footer: (brand) => `You're receiving this email because you sent a request through the ${brand} website.`,
     },
@@ -833,6 +858,15 @@ export function renderClientConfirmation(input: ClientConfirmationInput, locale:
   blocks.push({ kind: "paragraph", text: messages.client.quote(input.chefName) });
   blocks.push({ kind: "note", text: messages.client.shopping(input.chefName) });
   blocks.push({ kind: "paragraph", text: messages.client.reply });
+  // Ofertas y novedades (doble opt-in): el link con el token, solo si marcó la casilla y no estaba ya
+  // confirmada. Sin un link https válido no se dice nada.
+  const marketingUrl = safeHttpUrl(input.marketingConfirmUrl ?? null);
+  if (marketingUrl) {
+    blocks.push({ kind: "title", text: messages.client.marketingTitle });
+    blocks.push({ kind: "paragraph", text: messages.client.marketingText(input.brand) });
+    blocks.push({ kind: "button", label: messages.client.marketingButton, href: marketingUrl });
+    blocks.push({ kind: "note", text: messages.client.marketingIgnore });
+  }
   if (privacyUrl) blocks.push({ kind: "link", label: messages.client.privacy, href: privacyUrl });
   blocks.push({ kind: "note", text: `${messages.labels.reference}: ${summary.requestId.slice(0, 8)}` });
 
