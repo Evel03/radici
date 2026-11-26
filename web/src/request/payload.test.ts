@@ -27,7 +27,8 @@ describe("buildPayload", () => {
     expect(result.value.phoneE164).toBe("+393331234567");
     expect(result.value.meals).toEqual(["dinner"]);
     expect(result.value.noAllergies).toBe(true);
-    expect(result.value.consents).toEqual({ privacy: CONSENT_VERSION, health: null });
+    // Sin la casilla de ofertas (la web todavía no la muestra: contrato §13), marketing queda en null.
+    expect(result.value.consents).toEqual({ privacy: CONSENT_VERSION, health: null, marketing: null });
     // La entrada del motor es la del vector 1 (el precio lo calcula solo el servidor, y la web no lo muestra).
     expect(result.value.quoteInput).toEqual({ type: "week", adults: 2, kids: 2, days: 5, meals: 1, weeks: 1 });
   });

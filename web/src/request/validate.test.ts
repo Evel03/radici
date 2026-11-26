@@ -8,7 +8,7 @@ import { FIELD_ORDER, PAGE_FIELDS, fieldError, firstErrorField, translateErrors,
 const ALL_FIELDS: readonly PublicRequestField[] = [
   "payload", "version", "type", "adults", "kids", "people", "days", "meals", "weeks", "noAllergies", "allergens", "diets",
   "restrictionsNote", "preferredDate", "menu", "slot", "name", "zone", "phone", "email", "whatsappOptIn", "notes",
-  "locale", "consentPrivacy", "consentHealth", "turnstileToken", "requestKey",
+  "locale", "consentPrivacy", "consentHealth", "consentMarketing", "turnstileToken", "requestKey",
 ];
 const ALL_CODES: readonly ErrorCode[] = [
   "required", "invalid", "range", "tooLong", "dateOutOfRange", "consentRequired", "healthConsentRequired", "tooMany",
