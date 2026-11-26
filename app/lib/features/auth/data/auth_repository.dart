@@ -1,4 +1,5 @@
-// Inicio de sesión con código por email (Supabase Auth, OTP) y sesión.
+// Inicio de sesión (código por email para la cocina; contraseña, alta y
+// recuperación para las clientas) y sesión, con Supabase Auth.
 // La sesión la persiste supabase_flutter (SharedPreferences en móvil,
 // localStorage en la web) y se recupera sola al arrancar.
 import 'dart:async';
@@ -6,6 +7,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/supabase_client.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
+import 'package:radici/features/auth/domain/password_rules.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 abstract interface class AuthRepository {
@@ -32,6 +34,43 @@ abstract interface class AuthRepository {
 
   /// Verifica el código y abre la sesión. Lanza [AuthFailure].
   Future<void> verifyEmailCode({required String email, required String code});
+
+  /// Entra con email y contraseña (las clientas; la cocina entra solo con el
+  /// código: Auth responde [AuthFailureKind.kitchenCodeOnly]). [captchaToken]:
+  /// un token nuevo del captcha de Auth. Lanza [AuthFailure].
+  Future<void> signInWithPassword({
+    required String email,
+    required String password,
+    String? captchaToken,
+  });
+
+  /// «Crea account»: alta con una contraseña al azar que nadie conoce
+  /// ([generateSignupPassword]); la clienta elige la suya en /accesso/ desde
+  /// el link de confirmación. En los metadatos va solo [locale] (it, es, en;
+  /// el idioma de los emails). Auth responde igual exista o no la cuenta;
+  /// con las altas cerradas, [AuthFailureKind.signupClosed]. Lanza
+  /// [AuthFailure].
+  Future<void> signUp({
+    required String email,
+    String? locale,
+    String? captchaToken,
+  });
+
+  /// «Password dimenticata?»: el link para elegir una contraseña nueva. Auth
+  /// responde igual exista o no la cuenta. Lanza [AuthFailure].
+  Future<void> requestPasswordReset(String email, {String? captchaToken});
+
+  /// «Reinvia l'email» del alta: el link de confirmación otra vez. Auth
+  /// responde igual exista o no la cuenta. Lanza [AuthFailure].
+  Future<void> resendSignupEmail(String email, {String? captchaToken});
+
+  /// «Cambia password» con la sesión abierta: Auth pide la actual
+  /// ([currentPassword]) y cierra las otras sesiones de la cuenta. Lanza
+  /// [AuthFailure].
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
 
   Future<void> signOut();
 }
@@ -108,6 +147,83 @@ class SupabaseAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<void> signInWithPassword({
+    required String email,
+    required String password,
+    String? captchaToken,
+  }) async {
+    final AuthResponse response;
+    try {
+      response = await _auth.signInWithPassword(
+        email: email,
+        password: password,
+        captchaToken: captchaToken,
+      );
+    } on Object catch (error) {
+      throw AuthFailure(authFailureKindOf(error));
+    }
+    if (response.session == null) {
+      throw const AuthFailure(AuthFailureKind.unknown);
+    }
+  }
+
+  @override
+  Future<void> signUp({
+    required String email,
+    String? locale,
+    String? captchaToken,
+  }) async {
+    try {
+      // Sin emailRedirectTo: las plantillas (PR16) llevan a /accesso/ con el
+      // token_hash, no a la URL de confirmación de Auth.
+      await _auth.signUp(
+        email: email,
+        password: generateSignupPassword(),
+        data: {if (_supportedLocales.contains(locale)) 'locale': locale},
+        captchaToken: captchaToken,
+      );
+    } on Object catch (error) {
+      throw AuthFailure(authFailureKindOf(error));
+    }
+  }
+
+  @override
+  Future<void> requestPasswordReset(String email, {String? captchaToken}) async {
+    try {
+      await _auth.resetPasswordForEmail(email, captchaToken: captchaToken);
+    } on Object catch (error) {
+      throw AuthFailure(authFailureKindOf(error));
+    }
+  }
+
+  @override
+  Future<void> resendSignupEmail(String email, {String? captchaToken}) async {
+    try {
+      await _auth.resend(
+        email: email,
+        type: OtpType.signup,
+        captchaToken: captchaToken,
+      );
+    } on Object catch (error) {
+      throw AuthFailure(authFailureKindOf(error));
+    }
+  }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      await _auth.updateUser(
+        UserAttributes(password: newPassword, currentPassword: currentPassword),
+      );
+    } on Object catch (error) {
+      throw AuthFailure(authFailureKindOf(error));
+    }
+  }
+
+  @override
   Future<void> signOut() async {
     try {
       await _auth.signOut();
@@ -128,16 +244,30 @@ class SupabaseAuthRepository implements AuthRepository {
 AuthFailureKind authFailureKindOf(Object error, {bool verifying = false}) {
   if (error is AuthRetryableFetchException) return AuthFailureKind.network;
   if (error is! AuthException) return AuthFailureKind.unknown;
+  // El hook de la cocina (kitchen_access_token_hook) corta la entrada con
+  // contraseña: 403 con código «unknown» y el mensaje fijo del hook.
+  if (error.message == 'kitchen_code_only') {
+    return AuthFailureKind.kitchenCodeOnly;
+  }
   switch (error.code) {
     case 'otp_expired':
       return AuthFailureKind.invalidCode;
     case 'over_email_send_rate_limit' || 'over_request_rate_limit':
       return AuthFailureKind.rateLimited;
-    case 'signup_disabled' ||
-        'otp_disabled' ||
-        'email_provider_disabled' ||
-        'user_banned':
+    case 'signup_disabled':
+      return AuthFailureKind.signupClosed;
+    case 'otp_disabled' || 'email_provider_disabled' || 'user_banned':
       return AuthFailureKind.notAllowed;
+    // Sin confirmar: Auth lo dice solo con la contraseña correcta, pero el
+    // aviso es el mismo (nadie conoce la contraseña al azar del alta).
+    case 'invalid_credentials' || 'email_not_confirmed':
+      return AuthFailureKind.invalidCredentials;
+    case 'weak_password':
+      return AuthFailureKind.weakPassword;
+    case 'same_password':
+      return AuthFailureKind.samePassword;
+    case 'current_password_invalid' || 'current_password_mismatch':
+      return AuthFailureKind.wrongCurrentPassword;
     case 'email_address_invalid':
       return AuthFailureKind.invalidEmail;
     // Auth rechazó el token del captcha (vencido, ya usado o de otro widget):
@@ -197,6 +327,34 @@ class NoBackendAuthRepository implements AuthRepository {
   Future<void> verifyEmailCode({
     required String email,
     required String code,
+  }) => Future.error(const AuthFailure(AuthFailureKind.noBackend));
+
+  @override
+  Future<void> signInWithPassword({
+    required String email,
+    required String password,
+    String? captchaToken,
+  }) => Future.error(const AuthFailure(AuthFailureKind.noBackend));
+
+  @override
+  Future<void> signUp({
+    required String email,
+    String? locale,
+    String? captchaToken,
+  }) => Future.error(const AuthFailure(AuthFailureKind.noBackend));
+
+  @override
+  Future<void> requestPasswordReset(String email, {String? captchaToken}) =>
+      Future.error(const AuthFailure(AuthFailureKind.noBackend));
+
+  @override
+  Future<void> resendSignupEmail(String email, {String? captchaToken}) =>
+      Future.error(const AuthFailure(AuthFailureKind.noBackend));
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
   }) => Future.error(const AuthFailure(AuthFailureKind.noBackend));
 
   @override

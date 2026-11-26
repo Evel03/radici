@@ -4,7 +4,7 @@
 // escucha los cambios de sesión) lleva a la cocinera a su área.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:radici/core/captcha/captcha_service.dart';
+import 'package:radici/features/auth/application/auth_captcha.dart';
 import 'package:radici/features/auth/application/auth_link_error.dart';
 import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
@@ -12,8 +12,6 @@ import 'package:radici/features/auth/domain/auth_models.dart';
 part 'login_controller.freezed.dart';
 
 enum LoginStep { email, code }
-
-enum _CaptchaOutcome { token, skipped, failed }
 
 @Freezed(toStringOverride: false)
 abstract class LoginState with _$LoginState {
@@ -58,33 +56,6 @@ class LoginController extends Notifier<LoginState> {
 
   AuthRepository get _auth => ref.read(authRepositoryProvider);
 
-  /// Pide un token de captcha para un pedido de código (uno por envío: sirve
-  /// una sola vez). Devuelve el token; o, si no se pudo y Auth todavía no lo
-  /// exige, [_CaptchaOutcome.skipped] (fail-open, ver captcha_service.dart); o
-  /// [_CaptchaOutcome.failed] si no se pudo y es obligatorio. Nunca lanza ni
-  /// registra nada: el token y el motivo del fallo no se loguean.
-  Future<(_CaptchaOutcome, String?)> _captcha(String? locale) async {
-    String? token;
-    try {
-      token = await ref.read(captchaServiceProvider).token(locale: locale);
-    } on Object {
-      token = null;
-    }
-    if (token != null) return (_CaptchaOutcome.token, token);
-    return ref.read(captchaRequiredProvider)
-        ? (_CaptchaOutcome.failed, null)
-        : (_CaptchaOutcome.skipped, null);
-  }
-
-  /// El motivo del último fallo del captcha (diagnóstico), o null.
-  String? _captchaFailure() {
-    try {
-      return ref.read(captchaServiceProvider).lastFailure;
-    } on Object {
-      return null;
-    }
-  }
-
   /// Paso 1: valida el email y pide el código. [locale] es el idioma de la
   /// interfaz (it, es, en): el email del código llega en ese idioma.
   Future<void> submitEmail(String rawEmail, {String? locale}) async {
@@ -100,10 +71,10 @@ class LoginController extends Notifier<LoginState> {
       ref.read(authLinkErrorProvider.notifier).clear();
     }
     try {
-      final (outcome, captchaToken) = await _captcha(locale);
+      final (outcome, captchaToken) = await requestAuthCaptcha(ref, locale);
       if (!ref.mounted) return;
-      if (outcome == _CaptchaOutcome.failed) {
-        state = state.copyWith(busy: false, error: AuthFailureKind.captcha, errorDetail: _captchaFailure());
+      if (outcome == CaptchaOutcome.failed) {
+        state = state.copyWith(busy: false, error: AuthFailureKind.captcha, errorDetail: lastAuthCaptchaFailure(ref));
         return;
       }
       await _auth.sendEmailCode(email, locale: locale, captchaToken: captchaToken);
@@ -140,10 +111,10 @@ class LoginController extends Notifier<LoginState> {
     if (state.busy || state.step != LoginStep.code) return;
     state = state.copyWith(busy: true, error: null, errorDetail: null, codeResent: false);
     try {
-      final (outcome, captchaToken) = await _captcha(state.locale);
+      final (outcome, captchaToken) = await requestAuthCaptcha(ref, state.locale);
       if (!ref.mounted) return;
-      if (outcome == _CaptchaOutcome.failed) {
-        state = state.copyWith(busy: false, error: AuthFailureKind.captcha, errorDetail: _captchaFailure());
+      if (outcome == CaptchaOutcome.failed) {
+        state = state.copyWith(busy: false, error: AuthFailureKind.captcha, errorDetail: lastAuthCaptchaFailure(ref));
         return;
       }
       await _auth.sendEmailCode(state.email, locale: state.locale, captchaToken: captchaToken);

@@ -360,11 +360,17 @@ test("password_changed: el aviso en los tres idiomas, sin link y sin imprimir na
   assert.deepEqual(printed, []);
 });
 
-test("contraseñas: la regla de /accesso/ (web) es la misma que fija Auth", () => {
+test("contraseñas: la regla de /accesso/ (web) y la de la app son las mismas que fija Auth", () => {
   const auth = tomlSection(CONFIG, "auth");
   assert.equal(auth.get("minimum_password_length"), PASSWORD_MIN_LENGTH);
   assert.equal(auth.get("password_requirements"), "letters_digits");
   assert.equal(WEB_PASSWORD_MIN_LENGTH, PASSWORD_MIN_LENGTH);
+  // La app (Flutter) la revisa antes de mandarla: app/lib/features/auth/domain/password_rules.dart, con los mismos
+  // casos en su test (password_rules_test.dart).
+  const dart = read("app/lib/features/auth/domain/password_rules.dart");
+  assert.match(dart, new RegExp(`const int passwordMinLength = ${PASSWORD_MIN_LENGTH};`));
+  assert.match(dart, /const int passwordMaxBytes = 72;/);
+  assert.ok(dart.includes("RegExp('[A-Za-z]')") && dart.includes("RegExp('[0-9]')"), "app: letras a-z, A-Z y dígitos");
   // letters_digits = una letra a-z o A-Z y un dígito: la web acepta y rechaza lo mismo.
   assert.deepEqual(LETTERS_DIGITS.split(":"), ["abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "0123456789"]);
   for (const [password, ok] of [

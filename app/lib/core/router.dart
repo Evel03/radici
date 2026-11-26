@@ -13,6 +13,7 @@ import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/auth/application/auth_link_error.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/auth/presentation/change_password_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
 import 'package:radici/features/auth/presentation/wrong_entry_screen.dart';
@@ -79,7 +80,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: AppRoutes.login.substring(1),
-            pageBuilder: (context, state) => _page(state, const LoginScreen()),
+            pageBuilder: (context, state) => _page(
+              state,
+              LoginScreen(
+                initialEmail: state.uri.queryParameters[AppRoutes.emailParam],
+              ),
+            ),
           ),
         ],
       ),
@@ -97,6 +103,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.area,
         pageBuilder: (context, state) => _page(state, const ClientShell()),
+        routes: [
+          GoRoute(
+            path: AppRoutes.areaPasswordSegment,
+            pageBuilder: (context, state) =>
+                _page(state, const ChangePasswordScreen()),
+          ),
+        ],
       ),
       // Fuera de la estructura con pestañas: tapa la barra de navegación y
       // se abre con push desde el menú de la cuenta.

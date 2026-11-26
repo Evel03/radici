@@ -1,26 +1,61 @@
-// Login con código por email (dos pasos). Solo muestra el estado de
-// LoginController y le pasa lo que escribe el usuario: no llama a Supabase.
-// Arriba, el logotipo: en la web (/gestione/) es la primera pantalla.
+// El login de cada entrada (app_entry.dart):
+// - /gestione/ (la cocina): solo el código por email, en dos pasos.
+// - /app/ (las clientas): email y contraseña, «Crea account» y «Password
+//   dimenticata?» (PasswordAccessView).
+// - La app nativa (las dos cuentas): el acceso con contraseña y, debajo, el
+//   «Accesso cucina» con el código, para Evelyn y sus colaboradores.
+// Solo muestra el estado de los controllers y les pasa lo que escribe el
+// usuario: no llama a Supabase. Arriba, el logotipo: en la web es la primera
+// pantalla.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:radici/core/app_entry.dart';
 import 'package:radici/core/platform.dart';
 import 'package:radici/core/radici_logo.dart';
 import 'package:radici/features/auth/application/auth_link_error.dart';
 import 'package:radici/features/auth/application/login_controller.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
+import 'package:radici/features/auth/presentation/auth_texts.dart';
+import 'package:radici/features/auth/presentation/busy_button.dart';
+import 'package:radici/features/auth/presentation/password_access_view.dart';
 import 'package:radici/l10n/app_localizations.dart';
 
-class LoginScreen extends ConsumerWidget {
-  const LoginScreen({super.key});
+/// Cómo se entra: con el código del email (la cocina) o con la contraseña
+/// (las clientas).
+enum LoginMethod { code, password }
+
+/// El método con que abre el login en [entry]: el código en /gestione/, la
+/// contraseña en /app/ y en la app nativa.
+LoginMethod initialLoginMethod(AppEntry entry) => switch (entry) {
+  AppEntry.kitchen => LoginMethod.code,
+  AppEntry.client || AppEntry.auto => LoginMethod.password,
+};
+
+class LoginScreen extends ConsumerStatefulWidget {
+  const LoginScreen({super.key, this.initialEmail});
+
+  /// Email ya escrito, de `/accedi?email=` (el «Vai al login» de /accesso/).
+  /// Se usa solo si es un email válido.
+  final String? initialEmail;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  late LoginMethod _method = initialLoginMethod(ref.read(appEntryProvider));
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final step = ref.watch(loginControllerProvider.select((s) => s.step));
     // En la web el login es la primera pantalla: volver llevaría a `/`, que
     // redirige otra vez acá.
     final isWeb = ref.watch(isWebProvider);
+    // Solo la app nativa sirve a las dos cuentas: ahí se pasa de un método
+    // al otro. En la web cada entrada tiene el suyo.
+    final canSwitch = ref.watch(appEntryProvider) == AppEntry.auto;
 
     return Scaffold(
       appBar: AppBar(
@@ -38,13 +73,37 @@ class LoginScreen extends ConsumerWidget {
                 children: [
                   const _BrandHeader(),
                   const SizedBox(height: 32),
-                  const _LinkError(),
+                  _LinkError(method: _method),
                   AutofillGroup(
-                    child: switch (step) {
-                      LoginStep.email => const _EmailStep(),
-                      LoginStep.code => const _CodeStep(),
+                    child: switch (_method) {
+                      LoginMethod.password => PasswordAccessView(
+                        initialEmail: widget.initialEmail,
+                      ),
+                      LoginMethod.code => switch (step) {
+                        LoginStep.email => _EmailStep(
+                          initialEmail: widget.initialEmail,
+                        ),
+                        LoginStep.code => const _CodeStep(),
+                      },
                     },
                   ),
+                  if (canSwitch) ...[
+                    const SizedBox(height: 24),
+                    TextButton(
+                      key: const ValueKey('login-switch-method'),
+                      onPressed: () => setState(
+                        () => _method = _method == LoginMethod.password
+                            ? LoginMethod.code
+                            : LoginMethod.password,
+                      ),
+                      child: Text(
+                        _method == LoginMethod.password
+                            ? l10n.loginKitchenCode
+                            : l10n.loginUsePassword,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -56,9 +115,11 @@ class LoginScreen extends ConsumerWidget {
 }
 
 /// El link de acceso que llegó con un error (vencido, ya usado): se dice acá
-/// y se pide un código nuevo.
+/// y se pide un código nuevo (o, con la contraseña, que se vuelva a entrar).
 class _LinkError extends ConsumerWidget {
-  const _LinkError();
+  const _LinkError({required this.method});
+
+  final LoginMethod method;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -71,7 +132,9 @@ class _LinkError extends ConsumerWidget {
       child: Semantics(
         liveRegion: true,
         child: Text(
-          AppLocalizations.of(context).authErrorLink,
+          method == LoginMethod.code
+              ? AppLocalizations.of(context).authErrorLink
+              : AppLocalizations.of(context).authErrorLinkSignIn,
           key: const ValueKey('login-link-error'),
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.error,
@@ -92,25 +155,10 @@ class _BrandHeader extends StatelessWidget {
   }
 }
 
-/// El texto del error. Con el del captcha, [detail] (el motivo, para el
-/// diagnóstico) va primero y en su renglón, así nunca queda cortado:
-/// «(codice: app-timeout)» y debajo «Non siamo riusciti…».
-String authErrorText(AppLocalizations l10n, AuthFailureKind kind, {String? detail}) =>
-    kind == AuthFailureKind.captcha && detail != null && detail.isNotEmpty
-    ? '${l10n.authErrorCode(detail)}\n${l10n.authErrorCaptcha}'
-    : switch (kind) {
-      AuthFailureKind.invalidEmail => l10n.authErrorInvalidEmail,
-      AuthFailureKind.invalidCode => l10n.authErrorInvalidCode,
-      AuthFailureKind.rateLimited => l10n.authErrorRateLimited,
-      AuthFailureKind.network => l10n.authErrorNetwork,
-      AuthFailureKind.notAllowed => l10n.authErrorNotAllowed,
-      AuthFailureKind.noBackend => l10n.authErrorNoBackend,
-      AuthFailureKind.captcha => l10n.authErrorCaptcha,
-      AuthFailureKind.unknown => l10n.authErrorUnknown,
-    };
-
 class _EmailStep extends ConsumerStatefulWidget {
-  const _EmailStep();
+  const _EmailStep({this.initialEmail});
+
+  final String? initialEmail;
 
   @override
   ConsumerState<_EmailStep> createState() => _EmailStepState();
@@ -118,8 +166,17 @@ class _EmailStep extends ConsumerStatefulWidget {
 
 class _EmailStepState extends ConsumerState<_EmailStep> {
   late final TextEditingController _email = TextEditingController(
-    text: ref.read(loginControllerProvider).email,
+    text: _initialText(),
   );
+
+  /// El email del paso anterior (al volver con «Cambia email») o, si no hay,
+  /// el que llegó en la ruta, si es válido.
+  String _initialText() {
+    final previous = ref.read(loginControllerProvider).email;
+    if (previous.isNotEmpty) return previous;
+    final fromRoute = widget.initialEmail?.trim().toLowerCase() ?? '';
+    return isValidEmail(fromRoute) ? fromRoute : '';
+  }
 
   @override
   void dispose() {
@@ -165,7 +222,7 @@ class _EmailStepState extends ConsumerState<_EmailStep> {
           ),
         ),
         const SizedBox(height: 16),
-        _BusyButton(
+        BusyButton(
           key: const ValueKey('login-send-code'),
           busy: state.busy,
           onPressed: _submit,
@@ -241,7 +298,7 @@ class _CodeStepState extends ConsumerState<_CodeStep> {
           ),
         ),
         const SizedBox(height: 16),
-        _BusyButton(
+        BusyButton(
           key: const ValueKey('login-verify'),
           busy: state.busy,
           onPressed: _submit,
@@ -276,36 +333,6 @@ class _CodeStepState extends ConsumerState<_CodeStep> {
           ],
         ),
       ],
-    );
-  }
-}
-
-/// Botón principal que muestra una rueda mientras espera al servidor.
-class _BusyButton extends StatelessWidget {
-  const _BusyButton({
-    super.key,
-    required this.busy,
-    required this.onPressed,
-    required this.label,
-  });
-
-  final bool busy;
-  final VoidCallback onPressed;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return FilledButton(
-      onPressed: busy ? null : onPressed,
-      child: busy
-          ? SizedBox.square(
-              dimension: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                semanticsLabel: label,
-              ),
-            )
-          : Text(label),
     );
   }
 }

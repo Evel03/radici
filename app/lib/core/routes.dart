@@ -24,6 +24,14 @@ abstract final class AppRoutes {
   /// El área de la clienta (ClientShell; sus pantallas cuelgan de acá).
   static const String area = '/area';
 
+  /// «Cambia password» de la clienta, sobre su área.
+  static const String areaPasswordSegment = 'password';
+  static const String areaPassword = '$area/$areaPasswordSegment';
+
+  /// Parámetro de [login] con el email ya escrito (el «Vai al login» de
+  /// /accesso/: `/app/#/accedi?email=…`).
+  static const String emailParam = 'email';
+
   /// «Esta cuenta es de la otra entrada»: la de la cocina en /app/ y la de
   /// una clienta en /gestione/.
   static const String wrongEntry = '/ingresso';
