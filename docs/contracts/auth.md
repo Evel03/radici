@@ -407,7 +407,7 @@ Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerrada
 
 **La marca.** `app_metadata` (`raw_app_meta_data`) solo la escribe el servidor: la persona no se la puede poner ni sacar, y llega en el JWT (`app_metadata.radici_test`). Hoy nada la lee salvo el informe del despliegue; sirve para que la app y la web reconozcan una cuenta de prueba (por ejemplo, el botón hacia `/app/` antes de abrir las altas). No da ningún permiso: una cuenta de prueba es una clienta más (rol `client`, sin ficha hasta que la tenga), y las políticas no la miran.
 
-**Qué se ve en el log.** Cada email se enmascara (`::add-mask::`) antes de usarlo y los mensajes dicen «n***@g***.com». El informe del final cuenta las cuentas de prueba aparte («de prueba: N») y no las avisa como usuarios de más.
+**Qué se ve en el log.** Cada email se enmascara (`::add-mask::`) antes de usarlo y los mensajes dicen «p***@e***.com». El informe del final cuenta las cuentas de prueba aparte («de prueba: N») y no las avisa como usuarios de más.
 
 **Código.** Migración `20261127120000_test_clients.sql` (`private.sync_test_clients`, solo la ejecuta postgres; pgTAP `29_test_clients`), `supabase/scripts/test-clients.ts` (la lista; la misma regla del email que la base) y `deploy-accounts.sh testers` (tests con la API simulada en `deploy-accounts.test.ts`).
 
