@@ -480,3 +480,30 @@ Decisión de Nicolas del 27/11/2026: el hook de envío y las altas, juntos. Las 
 **Código de emergencia para Evelyn.** Si el hook falla y Evelyn necesita entrar ya: primero `hooks-off` (el código vuelve a salir por GoTrue). Si tampoco sale por GoTrue: un administrador genera un link con la API de administración (`POST /auth/v1/admin/generate_link`, `type: magiclink`) y se lo manda por la API de Resend directo a su email, sin escribirlo nunca en un log ni en un chat.
 
 **Pendiente.** La IP que ve el freno de altas en producción (`metadata.ip_address`, §8, «IP spoofeable según el borde») todavía no se midió: con las primeras altas, mirar en `private.signup_attempts` que los hashes de IP varíen. Si no son confiables, el tope por IP no sirve y queda el diario (50).
+
+## 18. Los datos de la cuenta de una clienta (27/11/2026; los pide la app desde el PR del alta nueva)
+
+**Pedido de Nicolas (27/11/2026).** Al crear la cuenta, la clienta carga sus datos y elige la contraseña (dos veces) en la app, sin esperar un link para ponerla; un código de 10 cifras del email confirma que el email es suyo (PR del alta nueva). Esta sección es dónde se guardan esos datos.
+
+**`public.account_details`** (migración `20261127140000_account_details.sql`, pgTAP `31_account_details`), una fila por cuenta:
+
+| Dato | Al crear la cuenta | Regla |
+|---|---|---|
+| Nombre y apellido | Obligatorio | 1–60 y 1–80 caracteres |
+| Teléfono (WhatsApp) | Obligatorio | E.164 (`+39…`, solo dígitos: la app lo normaliza) |
+| Fecha de nacimiento | Obligatoria | Real, desde 1900, **18 años cumplidos** (en Roma). Declarada, no verificada |
+| Dirección (calle, ciudad, código postal, indicaciones) | Opcional | Toda junta: calle, ciudad y código postal; las indicaciones, hasta 200. Evelyn la necesita antes de la primera reserva |
+| Temporada preferida | Opcional | primavera, verano, otoño, invierno o todas |
+| Cómo nos conoció | Opcional | Instagram, Google, recomendación u otro |
+| Qué le interesa | Opcional | Cocina semanal, cenas privadas, eventos (una o más) |
+| Qué días le vienen mejor | Opcional | Lunes a viernes (el horario de Evelyn), uno o más |
+| Para cuántas personas | Opcional | 1–2, 3–4, 5 o más |
+| Privacy | Obligatoria | La versión aceptada y cuándo (se renueva solo con otra versión) |
+
+Nada de salud: las alergias, intolerancias y dietas van aparte, con su consentimiento (SPEC §6).
+
+**Quién la ve.** La cuenta, la suya (`profile_id = auth.uid()`). La cocina (la cocinera y sus colaboradores), todas (`current_chef_id() is not null`): es una sola cocina y las cuentas son de sus clientas. Nadie más; `anon`, nada.
+
+**Quién la escribe.** Nadie por la API. Solo `public.save_account_details(p jsonb)` (security definer, `authenticated`): la cuenta de la sesión, una clienta (la cocina no: 42501 `not_a_client_account`), guarda o corrige sus datos. Valida cada campo; si alguno no sirve, 22023 `invalid_account_details` con los nombres de los campos en el detalle (`underage` si no tiene 18), nunca los valores, y no guarda nada. Copia el nombre completo y el teléfono a `profiles` (`full_name`, `phone`), lo que ya usa el resto.
+
+**Antes de que la app los pida** hace falta la privacy nueva (qué datos de la cuenta se piden, para qué, por cuánto tiempo y que las respuestas opcionales sirven para mejorar las ofertas), con su versión, que es la que guarda `privacy_version`.

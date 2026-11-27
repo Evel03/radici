@@ -164,7 +164,8 @@ select is(
   (select array_agg(t.tablename::text order by t.tablename)
    from pg_tables t
    where t.schemaname = 'public'
-     and t.tablename not in ('profiles','chefs','push_tokens','notifications')
+     -- account_details: los datos de una cuenta, como profiles (auth.md §18); la cocina los lee por current_chef_id().
+     and t.tablename not in ('profiles','chefs','push_tokens','notifications','account_details')
      and not exists (
        select 1 from information_schema.columns c
        where c.table_schema = 'public' and c.table_name = t.tablename and c.column_name = 'chef_id'
@@ -293,6 +294,7 @@ select is(
     'public.current_chef_id()',        -- las políticas de la cocina y la app (rpc)
     'public.current_client_ids()',     -- clients_guard_update, que corre con el rol de la cocinera
     'public.is_chef_of(p_chef_id uuid)',
+    'public.save_account_details(p jsonb)',                         -- rpc de la app: la clienta guarda sus datos (solo los suyos; la cocina no)
     'public.save_recipe(p jsonb)',                                  -- rpc de la app, valida current_chef_id()
     'public.save_session_menu(p jsonb)',                            -- rpc de la app
     'public.set_recipe_photo(p_recipe_id uuid, p_photo_id uuid)'    -- rpc de la app
@@ -312,6 +314,7 @@ select is(
    where p.schemaname in ('public', 'storage')
      and coalesce(p.qual, '') || ' ' || coalesce(p.with_check, '') !~ '(current_chef_id|is_chef_of)\('),
   array[
+    'public.account_details: la cuenta lee los suyos | SELECT',  -- profile_id = auth.uid(): los datos de la cuenta propia (auth.md §18)
     'public.chefs: la cocinera edita la suya | UPDATE',   -- profile_id = auth.uid(): una cuenta sin cocina no tiene fila
     'public.notifications: el usuario lee las suyas | SELECT',
     'public.profiles: el usuario edita el suyo | UPDATE',  -- con grant solo de locale
@@ -321,14 +324,15 @@ select is(
 );
 
 -- Ninguna política de la cocina mezcla funciones de la clienta ni auth.uid() (una cláusula «o» así
--- le abriría filas a una cuenta sin cocina). Solo las 4 conservadas pueden usar auth.uid().
+-- le abriría filas a una cuenta sin cocina). Solo las 5 conservadas (las de inventario 2) pueden usar auth.uid().
 select is(
   (select array_agg(p.policyname::text order by p.policyname)
    from pg_policies p
    where p.schemaname in ('public', 'storage')
      and coalesce(p.qual, '') || ' ' || coalesce(p.with_check, '')
          ~ '(current_client_ids|current_client_chef_ids|client_can_read_receipt|auth\.uid)'
-     and p.policyname not in ('chefs: la cocinera edita la suya', 'notifications: el usuario lee las suyas',
+     and p.policyname not in ('account_details: la cuenta lee los suyos',
+                              'chefs: la cocinera edita la suya', 'notifications: el usuario lee las suyas',
                               'profiles: el usuario edita el suyo', 'profiles: el usuario lee el suyo')),
   null::text[],
   'ninguna política de la cocina usa funciones de la clienta ni auth.uid()'

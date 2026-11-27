@@ -33,6 +33,7 @@ set local search_path to public, extensions;
 -- cocinera eso deja afuera a sus colaboradores: esas políticas usan current_chef_id() o
 -- is_chef_of(). Las únicas con auth.uid() directo son estas, con su motivo:
 --   * profiles «el usuario lee el suyo» y «el usuario edita el suyo»: el perfil propio.
+--   * account_details «la cuenta lee los suyos»: los datos de la cuenta propia (auth.md §18).
 --   * chefs «la cocinera edita la suya»: la ficha pública de la cocinera (nombre, zona y WhatsApp que
 --     ven los clientes) la cambia solo la dueña; un colaborador la lee y no la edita.
 --   * notifications «el usuario lee las suyas»: cada aviso es de una persona (el del pedido nuevo, de
@@ -45,7 +46,8 @@ select set_eq(
      from pg_policies p
      where p.schemaname in ('public', 'storage')
        and concat_ws(' ', p.qual, p.with_check) ~ '(auth\.(uid|jwt)\(\)|request\.jwt\.claim)' $$,
-  $$ values ('public', 'chefs',         'chefs: la cocinera edita la suya'),
+  $$ values ('public', 'account_details', 'account_details: la cuenta lee los suyos'),
+            ('public', 'chefs',         'chefs: la cocinera edita la suya'),
             ('public', 'notifications', 'notifications: el usuario lee las suyas'),
             ('public', 'profiles',      'profiles: el usuario edita el suyo'),
             ('public', 'profiles',      'profiles: el usuario lee el suyo') $$,
