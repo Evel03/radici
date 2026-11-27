@@ -74,9 +74,16 @@ async function signed(body: string, options: { id?: string; timestamp?: number; 
   });
 }
 
+/** Una falla del hook: el estado HTTP de error. */
 async function expectError(response: Response, status: number, message: string): Promise<void> {
   assert.equal(response.status, status);
   assert.deepEqual(await response.json(), { error: { http_code: status, message } });
+}
+
+/** Una respuesta a la persona: 200 con el error en el cuerpo (lo que GoTrue le devuelve). */
+async function expectRefused(response: Response, httpCode: number, message: string): Promise<void> {
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { error: { http_code: httpCode, message } });
 }
 
 /** Ningún log lleva el email, el código, el token_hash ni el id de la cuenta. */
@@ -126,17 +133,17 @@ test("el código de la cocina: magiclink (y email) salen con el código", async 
   }
 });
 
-test("cambio de email, invitación y reautenticación: 403 sin preguntarle a la base ni mandar nada", async () => {
+test("cambio de email, invitación y reautenticación: 403 (en el cuerpo) sin preguntarle a la base ni mandar nada", async () => {
   for (const action of ["email_change", "invite", "reauthentication", "algo_nuevo"]) {
     const { handler, gates, sent, logs } = setup();
-    await expectError(await handler(await signed(hookBody(action))), 403, "email_not_allowed");
+    await expectRefused(await handler(await signed(hookBody(action))), 403, "email_not_allowed");
     assert.deepEqual(gates, [], action);
     assert.deepEqual(sent, [], action);
     assertCleanLogs(logs);
   }
 });
 
-test("lo que decide la base: skip contesta 200 sin mandar, limited 429, reject 403", async () => {
+test("lo que decide la base: skip contesta 200 sin mandar, limited 429 y reject 403 (en el cuerpo, con estado 200)", async () => {
   const skip = setup({ decision: "skip" });
   const skipped = await skip.handler(await signed(hookBody("magiclink")));
   assert.equal(skipped.status, 200, "el código a una clienta no sale, sin decir por qué");
@@ -144,11 +151,11 @@ test("lo que decide la base: skip contesta 200 sin mandar, limited 429, reject 4
   assert.deepEqual(skip.sent, []);
 
   const limited = setup({ decision: "limited" });
-  await expectError(await limited.handler(await signed(hookBody("recovery"))), 429, "too_many_emails");
+  await expectRefused(await limited.handler(await signed(hookBody("recovery"))), 429, "too_many_emails");
   assert.deepEqual(limited.sent, []);
 
   const reject = setup({ decision: "reject" });
-  await expectError(await reject.handler(await signed(hookBody("recovery"))), 403, "email_not_allowed");
+  await expectRefused(await reject.handler(await signed(hookBody("recovery"))), 403, "email_not_allowed");
   assert.deepEqual(reject.sent, []);
 });
 

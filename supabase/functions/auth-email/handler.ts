@@ -6,7 +6,12 @@
 // Orden: método (405) → cuerpo (413/400) → firma Standard Webhooks (401; sin secreto, 503) → pedido de GoTrue (400)
 // → public.auth_email_gate (500 si falla) → reject (403), skip (200 sin mandar), limited (429) o send → email
 // configurado (503) → Resend (502 si no sale) → 200 {}.
-// Cada error va en la forma que GoTrue devuelve a quien pidió el email: {"error": {"http_code", "message"}}.
+// Dos clases de error (medido contra GoTrue v2.197.0 el 27/11/2026, auth.md §16):
+//   - las respuestas a la persona (reject 403 email_not_allowed, limited 429 too_many_emails) van con estado HTTP 200
+//     y {"error": {"http_code", "message"}} en el cuerpo: así GoTrue le devuelve ese código y ese mensaje. Con un
+//     estado 403 o 429 GoTrue contesta 500 unexpected_failure (y a un 429 además lo reintenta);
+//   - las fallas del hook (método, cuerpo, firma, configuración, base, Resend) van con su estado HTTP: GoTrue las
+//     trata como hook caído (500) y no sale nada.
 //
 // Los logs llevan solo el evento, el tipo de email y la decisión: nunca el destinatario, el código, el token_hash ni
 // el id del usuario.
@@ -60,8 +65,14 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
+/** Una falla del hook: estado HTTP de error (GoTrue contesta 500 y no sale nada). */
 function fail(status: number, message: string): Response {
   return json(status, hookError(status, message));
+}
+
+/** Una respuesta para la persona: 200 con el error en el cuerpo, que GoTrue devuelve tal cual. */
+function refuse(httpCode: number, message: string): Response {
+  return json(200, hookError(httpCode, message));
 }
 
 /** La clave de idempotencia de Resend: el id del webhook (lo repite GoTrue si reintenta), con prefijo. */
@@ -100,14 +111,14 @@ export function createAuthEmailHandler(deps: AuthEmailDeps): (request: Request) 
     }
     if (email.kind === null) {
       log("warn", "hook_rejected", { action: email.action });
-      return fail(403, "email_not_allowed");
+      return refuse(403, "email_not_allowed");
     }
     const kind = email.kind;
     // Cambio de email, invitación y reautenticación: se rechazan acá mismo, aunque la base no conteste (la base dice
     // lo mismo: auth_email_gate devuelve reject).
     if (!SENDABLE_KINDS.includes(kind)) {
       log("info", "hook_rejected", { kind });
-      return fail(403, "email_not_allowed");
+      return refuse(403, "email_not_allowed");
     }
     if (!config.hashSalt) {
       log("error", "hook_not_configured", { missing: ["IP_HASH_SALT"] });
@@ -125,14 +136,14 @@ export function createAuthEmailHandler(deps: AuthEmailDeps): (request: Request) 
     switch (decision) {
       case "reject":
         log("info", "hook_rejected", { kind });
-        return fail(403, "email_not_allowed");
+        return refuse(403, "email_not_allowed");
       case "skip":
         // 200 sin mandar nada: la respuesta no dice si la cuenta es de la cocina.
         log("info", "hook_skipped", { kind });
         return json(200, {});
       case "limited":
         log("warn", "hook_limited", { kind });
-        return fail(429, "too_many_emails");
+        return refuse(429, "too_many_emails");
       case "send":
         break;
     }

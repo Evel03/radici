@@ -46,6 +46,14 @@ export type AuthBody = Record<string, TomlValue>;
  */
 /** La función del hook Custom Access Token (migración 20261126100000_auth_hooks.sql). */
 export const KITCHEN_HOOK_URI = "pg-functions://postgres/public/kitchen_access_token_hook";
+/** El freno de altas: el hook Before User Created (misma migración). */
+export const SIGNUP_HOOK_URI = "pg-functions://postgres/public/before_user_created_guard";
+
+/** La Edge Function del hook de envío (auth.md §16). */
+export function sendEmailHookUri(projectRef: string): string {
+  if (!/^[a-z]{20}$/.test(projectRef)) throw new Error("SUPABASE_PROJECT_REF no es una referencia de proyecto válida");
+  return `https://${projectRef}.supabase.co/functions/v1/auth-email`;
+}
 
 export function tomlSection(toml: string, section: string): Map<string, TomlValue> {
   const values = new Map<string, TomlValue>();
@@ -153,11 +161,12 @@ export function authSecurityConfig(toml: string): AuthBody {
   requireLocalMatch(toml, "auth.sms", "enable_signup", false, "[auth.sms] enable_signup prende el teléfono");
   requireLocalMatch(toml, "auth.web3.solana", "enabled", false, "[auth.web3.solana] enabled prende Web3");
   requireLocalMatch(toml, "auth.rate_limit", "token_verifications", 10, "[auth.rate_limit] token_verifications tiene que ser 10 (rate_limit_verify de producción)");
-  // Hooks (contrato auth.md §8): el de la cocina prendido con su función, el de las altas apagado (PR20).
+  // Hooks (contrato auth.md §8): el de la cocina prendido con su función. El de las altas, si va prendido en local, con
+  // su función (en producción lo prende el paso «Hooks de Auth» con hooks-on, junto con las altas y el de envío).
   requireLocalMatch(toml, "auth.hook.custom_access_token", "enabled", true, "[auth.hook.custom_access_token] enabled tiene que ser true (la cocina entra solo con código)");
   requireLocalMatch(toml, "auth.hook.custom_access_token", "uri", KITCHEN_HOOK_URI, `[auth.hook.custom_access_token] uri tiene que ser ${KITCHEN_HOOK_URI}`);
   if (tomlSection(toml, "auth.hook.before_user_created").get("enabled") === true) {
-    throw new Error("config.toml: [auth.hook.before_user_created] prende el hook de las altas: va en su PR (PR20), con las altas abiertas");
+    requireLocalMatch(toml, "auth.hook.before_user_created", "uri", SIGNUP_HOOK_URI, `[auth.hook.before_user_created] uri tiene que ser ${SIGNUP_HOOK_URI}`);
   }
   requireLocalMatch(toml, "auth.rate_limit", "token_refresh", 20, "[auth.rate_limit] token_refresh tiene que ser 20 (rate_limit_token_refresh de producción)");
   requireLocalMatch(toml, "auth.rate_limit", "sign_in_sign_ups", 10, "[auth.rate_limit] sign_in_sign_ups tiene que ser 10 (rate_limit_otp de producción)");
@@ -173,7 +182,8 @@ export function authSecurityConfig(toml: string): AuthBody {
     throw new Error(`config.toml prende proveedores externos (${providers.join(", ")}): Google y Apple se prenden en su PR, con su secreto en auth-config.ts`);
   }
   return {
-    disable_signup: true,
+    // Las altas (disable_signup) y los hooks de altas y de envío no van acá: los pone el paso «Hooks de Auth» del
+    // despliegue con hooks-on o hooks-off (authHooksConfig), después de publicar la función auth-email.
     external_email_enabled: true,
     mailer_otp_length: requireValue<number>(email, "otp_length", "number"),
     mailer_otp_exp: requireValue<number>(email, "otp_expiry", "number"),
@@ -198,11 +208,9 @@ export function authSecurityConfig(toml: string): AuthBody {
     // Hooks de Auth (contrato auth.md §8). La cocina (dueña y colaboradores) entra solo con código del
     // email: el hook rechaza con 403 kitchen_code_only a quien traiga otro método (contraseña, Google). Los
     // pgTAP y el paso «Hook de la cocina» del despliegue (auth-hook-check.ts) comprueban la función antes de
-    // este PATCH. Vuelta atrás: primero este campo en false, después tocar la función. El de las altas sigue
-    // apagado hasta PR20.
+    // este PATCH. Vuelta atrás: primero este campo en false, después tocar la función.
     hook_custom_access_token_enabled: true,
     hook_custom_access_token_uri: KITCHEN_HOOK_URI,
-    hook_before_user_created_enabled: false,
     // Límites de intentos por IP (contrato auth.md §9). GoTrue usa cubos de ráfaga fija de 30 y el valor es lo que
     // recarga cada 5 minutos: no baja la ráfaga, frena el goteo sostenido.
     //  - /token (contraseña y refresh_token comparten el cubo): 20 cada 5 minutos = un intento cada 15 s tras la
@@ -236,7 +244,32 @@ export function authSecurityConfig(toml: string): AuthBody {
 }
 
 /** Campos que la API guarda pero no devuelve en claro: no se comparan. */
-const NOT_COMPARABLE = new Set(["smtp_pass", "security_captcha_secret"]);
+const NOT_COMPARABLE = new Set(["smtp_pass", "security_captcha_secret", "hook_send_email_secrets"]);
+
+/**
+ * Las altas y los hooks de altas y de envío (PR20, auth.md §16), siempre juntos:
+ * - on: las altas abiertas, el freno de altas (before_user_created_guard) y el hook de envío (la función auth-email,
+ *   con su secreto) prendidos. Solo después de que el despliegue comprobó la función del freno y la de envío;
+ * - off: las altas cerradas y los dos hooks apagados; los emails de Auth salen por GoTrue con sus plantillas. Es la
+ *   vuelta atrás, y lo que queda si falta SEND_EMAIL_HOOK_SECRET o una comprobación falla.
+ */
+export function authHooksConfig(mode: "on" | "off", options: { projectRef?: string; secret?: string } = {}): AuthBody {
+  if (mode === "off") {
+    return { disable_signup: true, hook_before_user_created_enabled: false, hook_send_email_enabled: false };
+  }
+  const secret = (options.secret ?? "").trim();
+  if (!/^v1,whsec_[A-Za-z0-9+/]{43,}={0,2}$/.test(secret)) {
+    throw new Error("SEND_EMAIL_HOOK_SECRET no tiene la forma v1,whsec_<base64 de 32 bytes>");
+  }
+  return {
+    disable_signup: false,
+    hook_before_user_created_enabled: true,
+    hook_before_user_created_uri: SIGNUP_HOOK_URI,
+    hook_send_email_enabled: true,
+    hook_send_email_uri: sendEmailHookUri(options.projectRef ?? ""),
+    hook_send_email_secrets: secret,
+  };
+}
 
 const same = (expected: unknown, live: unknown): boolean => live !== undefined && live !== null && String(expected) === String(live);
 
@@ -325,8 +358,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           ? authSmtpConfig({ key: process.env.RESEND_SMTP_KEY ?? "", mailFrom: process.env.MAIL_FROM ?? "" })
           : part === "templates"
             ? authTemplatesConfig(toml, read)
-            : null;
-    if (!body) throw new Error("Uso: node supabase/scripts/auth-config.ts [verify|changed] security|smtp|templates");
+            : part === "hooks-on"
+              ? authHooksConfig("on", { projectRef: process.env.SUPABASE_PROJECT_REF ?? "", secret: process.env.SEND_EMAIL_HOOK_SECRET ?? "" })
+              : part === "hooks-off"
+                ? authHooksConfig("off")
+                : null;
+    if (!body) throw new Error("Uso: node supabase/scripts/auth-config.ts [verify|changed] security|smtp|templates|hooks-on|hooks-off");
     return body;
   };
   try {

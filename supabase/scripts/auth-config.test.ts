@@ -17,6 +17,9 @@ import {
   parseMailFrom,
   tomlSection,
   verifyAuthConfig,
+  authHooksConfig,
+  sendEmailHookUri,
+  SIGNUP_HOOK_URI,
 } from "./auth-config.ts";
 
 const read = (path: string): string => readFileSync(new URL(`../../${path.replace(/^\.\//, "")}`, import.meta.url), "utf8");
@@ -45,11 +48,10 @@ test("TOML: secciones, cadenas con comillas escapadas, enteros, booleanos y come
   assert.equal(tomlSection(toml, "no.existe").size, 0);
 });
 
-test("security: altas apagadas, código de 10 cifras por 1 hora y el captcha de Auth (Turnstile); nada de correo", () => {
+test("security: código de 10 cifras por 1 hora y el captcha de Auth (Turnstile); nada de correo ni de las altas (van en hooks-on/off)", () => {
   const body = authSecurityConfig(CONFIG);
   assert.deepEqual(body, {
     ...PINNED, // lo del PR04 (más abajo)
-    disable_signup: true,
     external_email_enabled: true,
     mailer_otp_length: 10,
     mailer_otp_exp: 3600,
@@ -164,6 +166,8 @@ const MANAGEMENT_API_AUTH_FIELDS = [
   "mailer_allow_unverified_email_sign_ins", "mailer_secure_email_change_enabled",
   "security_manual_linking_enabled", "security_captcha_enabled", "rate_limit_verify", "rate_limit_email_sent",
   "hook_custom_access_token_enabled", "hook_custom_access_token_uri", "hook_before_user_created_enabled",
+  // PR20: el freno de altas y el hook de envío (OpenAPI leído el 27/11/2026: UpdateAuthConfigBody).
+  "hook_before_user_created_uri", "hook_send_email_enabled", "hook_send_email_uri", "hook_send_email_secrets",
   "rate_limit_token_refresh", "rate_limit_otp", "rate_limit_anonymous_users", "rate_limit_sms_sent", "rate_limit_web3",
   "mailer_otp_length", "mailer_otp_exp", "smtp_host", "smtp_port", "smtp_user", "smtp_pass",
   "smtp_admin_email", "smtp_sender_name", "mailer_subjects_magic_link", "mailer_subjects_confirmation",
@@ -180,6 +184,9 @@ const MANAGEMENT_API_AUTH_FIELDS = [
   "mailer_subjects_invite", "mailer_templates_invite_content",
 ];
 
+const REF = "abcdefghijklmnopqrst";
+const HOOK_SECRET = `v1,whsec_${Buffer.alloc(32, 7).toString("base64")}`;
+
 const PINNED = {
   site_url: "https://radicicucina.app/app/",
   uri_allow_list: "https://radicicucina.app/app/",
@@ -190,10 +197,9 @@ const PINNED = {
   security_manual_linking_enabled: false,
   external_email_magic_link_disabled: false,
   rate_limit_verify: 10,
-  // Hooks de Auth (contrato auth.md §8): el de la cocina prendido; el de las altas apagado hasta PR20.
+  // Hooks de Auth (contrato auth.md §8): el de la cocina prendido. El de las altas y el de envío van en hooks-on/off.
   hook_custom_access_token_enabled: true,
   hook_custom_access_token_uri: "pg-functions://postgres/public/kitchen_access_token_hook",
-  hook_before_user_created_enabled: false,
   // Límites de intentos (contrato auth.md §9): /token (contraseña y refresh), /otp y familia, y los flujos apagados al mínimo.
   rate_limit_token_refresh: 20,
   rate_limit_otp: 10,
@@ -217,8 +223,10 @@ const PINNED = {
 test("security: el cuerpo fija cada ajuste del PR04 con el nombre de campo de la Management API", () => {
   const body = authSecurityConfig(CONFIG);
   for (const [key, value] of Object.entries(PINNED)) assert.deepEqual(body[key], value, key);
-  // Lo de antes sigue igual: Evelyn entra con el mismo código de 8 cifras.
-  assert.equal(body.disable_signup, true);
+  // Lo de antes sigue igual: Evelyn entra con el mismo código.
+  for (const key of ["disable_signup", "hook_before_user_created_enabled", "hook_send_email_enabled"]) {
+    assert.equal(key in body, false, `${key} va en hooks-on/off, no en security`);
+  }
   assert.equal(body.external_email_enabled, true);
   assert.equal(body.mailer_otp_length, 10);
   assert.equal(body.mailer_otp_exp, 3600);
@@ -231,6 +239,8 @@ test("los campos de las tres partes existen en la Management API", () => {
     ...Object.keys(authSmtpConfig({ key: "re_x", mailFrom: "a@b.test" })),
     ...Object.keys(authCaptchaConfig("0x4AAAAAAAx")),
     ...Object.keys(authTemplatesConfig(CONFIG, read)),
+    ...Object.keys(authHooksConfig("on", { projectRef: REF, secret: HOOK_SECRET })),
+    ...Object.keys(authHooksConfig("off")),
   ];
   for (const key of all) assert.ok(MANAGEMENT_API_AUTH_FIELDS.includes(key), `campo desconocido: ${key}`);
 });
@@ -251,11 +261,17 @@ test("combinaciones prohibidas: config.toml que prende autoconfirm (email o sms)
   // Los hooks: si config.toml apaga el de la cocina, cambia su función o prende el de las altas, el despliegue corta.
   assert.throws(() => authSecurityConfig(swap(/(\[auth\.hook\.custom_access_token\][^[]*?)enabled = true/s, "$1enabled = false")), /custom_access_token/);
   assert.throws(() => authSecurityConfig(swap(/kitchen_access_token_hook"/, 'otra_funcion"')), /custom_access_token/);
+  // El de las altas puede ir prendido en local, pero solo con su función.
   assert.throws(() => authSecurityConfig(`${CONFIG}
 [auth.hook.before_user_created]
 enabled = true
-uri = "pg-functions://postgres/public/before_user_created_guard"
+uri = "pg-functions://postgres/public/otra_funcion"
 `), /before_user_created/);
+  assert.doesNotThrow(() => authSecurityConfig(`${CONFIG}
+[auth.hook.before_user_created]
+enabled = true
+uri = "pg-functions://postgres/public/before_user_created_guard"
+`));
   // Los límites de intentos de login: si config.toml los afloja, el despliegue corta (local y producción no se separan).
   assert.throws(() => authSecurityConfig(swap(/token_refresh = d+/, "token_refresh = 150")), /token_refresh/);
   assert.throws(() => authSecurityConfig(swap(/sign_in_sign_ups = d+/, "sign_in_sign_ups = 30")), /sign_in_sign_ups/);
@@ -274,7 +290,9 @@ test("config.toml del repo: el hook de la cocina prendido con su función, y el 
   const kitchen = tomlSection(CONFIG, "auth.hook.custom_access_token");
   assert.equal(kitchen.get("enabled"), true);
   assert.equal(kitchen.get("uri"), "pg-functions://postgres/public/kitchen_access_token_hook");
-  assert.notEqual(tomlSection(CONFIG, "auth.hook.before_user_created").get("enabled"), true, "el hook de las altas sigue apagado (PR20)");
+  // En local las altas no pasan por el freno (en producción lo prende hooks-on).
+  assert.notEqual(tomlSection(CONFIG, "auth.hook.before_user_created").get("enabled"), true);
+  assert.notEqual(tomlSection(CONFIG, "auth.hook.send_email").get("enabled"), true, "en local los emails van a Mailpit, sin el hook");
 });
 
 test("config.toml del repo: confirmaciones prendidas para email y sms, y 10 verificaciones cada 5 minutos", () => {
@@ -394,4 +412,34 @@ test("contraseñas: las cuentas que crea el despliegue (64 hexadecimales al azar
   assert.match(script, /if \$password == "" then \{\} else \{password: \$password\} end/, "sin contraseña, el campo no va");
   // 64 caracteres de 0-9a-f: más de 10, y sin una letra o sin un dígito con probabilidad < 1e-13 (16^-64 · (6^64+10^64)).
   assert.ok(64 >= PASSWORD_MIN_LENGTH && 64 <= 72);
+});
+
+test("hooks-on: las altas abiertas con el freno de altas y el hook de envío, con su secreto", () => {
+  assert.deepEqual(authHooksConfig("on", { projectRef: REF, secret: ` ${HOOK_SECRET} ` }), {
+    disable_signup: false,
+    hook_before_user_created_enabled: true,
+    hook_before_user_created_uri: SIGNUP_HOOK_URI,
+    hook_send_email_enabled: true,
+    hook_send_email_uri: `https://${REF}.supabase.co/functions/v1/auth-email`,
+    hook_send_email_secrets: HOOK_SECRET,
+  });
+  assert.equal(SIGNUP_HOOK_URI, "pg-functions://postgres/public/before_user_created_guard");
+  assert.equal(sendEmailHookUri(REF), `https://${REF}.supabase.co/functions/v1/auth-email`);
+  // Sin secreto (o con otra forma) o con un ref raro, no hay cuerpo: el paso deja todo apagado.
+  for (const secret of ["", "whsec_abc", "v1,whsec_corto", `v2,whsec_${Buffer.alloc(32).toString("base64")}`]) {
+    assert.throws(() => authHooksConfig("on", { projectRef: REF, secret }), /SEND_EMAIL_HOOK_SECRET/, secret);
+  }
+  assert.throws(() => authHooksConfig("on", { projectRef: "otro.dominio", secret: HOOK_SECRET }), /SUPABASE_PROJECT_REF/);
+});
+
+test("hooks-off: las altas cerradas y los dos hooks apagados (la vuelta atrás)", () => {
+  assert.deepEqual(authHooksConfig("off"), { disable_signup: true, hook_before_user_created_enabled: false, hook_send_email_enabled: false });
+});
+
+test("hooks-on: el secreto no se compara (la API no lo devuelve igual), el resto sí", () => {
+  const body = authHooksConfig("on", { projectRef: REF, secret: HOOK_SECRET });
+  const live = { ...body, hook_send_email_secrets: "otro" };
+  assert.deepEqual(verifyAuthConfig(body, live), []);
+  assert.deepEqual(verifyAuthConfig(body, { ...live, hook_send_email_enabled: false }), ["hook_send_email_enabled"]);
+  assert.deepEqual(verifyAuthConfig(body, { ...live, disable_signup: true }), ["disable_signup"]);
 });

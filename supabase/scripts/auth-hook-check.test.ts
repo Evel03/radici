@@ -111,3 +111,21 @@ test("línea de comandos: sin token o sin proyecto, o con una URL que no es loca
   assert.equal(await run({ SUPABASE_ACCESS_TOKEN: "sbp_x", SUPABASE_PROJECT_REF: "abcdefghijklmnopqrst", SUPABASE_API_URL: "https://malo.example" }), 2);
   assert.equal(await run({ SUPABASE_ACCESS_TOKEN: "sbp_x", SUPABASE_PROJECT_REF: "../etc" }), 2);
 });
+
+test("el freno de altas (PR20): la misma consulta, con su función y su regla, y la regla está en la migración", async () => {
+  const { HOOK_FUNCTIONS, hookFunctionSql, checkHookFunction } = await import("./auth-hook-check.ts");
+  const sql = hookFunctionSql(HOOK_FUNCTIONS.signup);
+  assert.match(sql, /to_regprocedure\('public\.before_user_created_guard\(jsonb\)'\)/);
+  assert.match(sql, /position\('signups_daily_cap' in p\.prosrc\)/);
+  assert.ok(!sql.includes("kitchen"), "nada de la función de la cocina");
+  const migration = (await import("node:fs")).readFileSync(new URL("../migrations/20261126100000_auth_hooks.sql", import.meta.url), "utf8");
+  assert.ok(migration.includes("'signups_daily_cap'"), "la regla con la que se la reconoce está en la función del repo");
+
+  const row = { security_definer: true, auth_admin: true, anon: false, authenticated: false, service_role: false, public_exec: false, has_rule: true };
+  const answer = (rows: unknown[]) => (async () => new Response(JSON.stringify(rows), { status: 201 })) as typeof fetch;
+  assert.deepEqual(await checkHookFunction(HOOK_FUNCTIONS.signup, "t", "abcdefghijklmnopqrst", answer([row])), { kind: "ok" });
+  const missing = await checkHookFunction(HOOK_FUNCTIONS.signup, "t", "abcdefghijklmnopqrst", answer([]));
+  assert.deepEqual(missing, { kind: "bad", problems: ["public.before_user_created_guard(jsonb) no existe en la base de producción (falta aplicar la migración)"] });
+  const noRule = await checkHookFunction(HOOK_FUNCTIONS.signup, "t", "abcdefghijklmnopqrst", answer([{ ...row, has_rule: false }]));
+  assert.deepEqual(noRule, { kind: "bad", problems: ["la función no trae la regla signups_daily_cap (no es la del repo)"] });
+});

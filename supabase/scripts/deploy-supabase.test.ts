@@ -288,7 +288,8 @@ test("Auth: cada PATCH se vuelve a leer y se compara con el cuerpo pedido; un ca
   // Las tres partes siguen: security siempre; smtp y templates con RESEND_SMTP_KEY.
   for (const part of ["security", "smtp", "templates"]) assert.match(run, new RegExp(`^\\s+patch ${part}$`, "m"));
   // Lo viejo se mantiene: las altas apagadas y la plantilla guardada.
-  assert.match(run, /\.disable_signup == true/);
+  // Las altas ya no se fijan acá: las abre o las cierra «Hooks de Auth», junto con los hooks (PR20).
+  assert.ok(!run.includes("disable_signup"));
   assert.match(run, /mailer_templates_magic_link_content == \$template/);
 });
 
@@ -362,7 +363,7 @@ test("captcha de Auth: la secreta se valida antes del PATCH y, después, Auth ti
   assert.ok(!/continue-on-error/.test(after), "si Auth no lo exige, el despliegue falla");
 });
 
-test("función auth-email (hook de envío, PR19): se publica después de los secretos, sin JWT, y GoTrue todavía no la llama", () => {
+test("función auth-email (hook de envío, PR19): se publica después de los secretos, sin JWT", () => {
   // La firma Standard Webhooks la protege (auth.md §16); el hook se prende en PR20.
   const secrets = WORKFLOW.indexOf("- name: Secretos de la función");
   const authEmail = WORKFLOW.indexOf("- name: Desplegar auth-email (hook de envío, todavía apagado)");
@@ -381,7 +382,45 @@ test("función auth-email (hook de envío, PR19): se publica después de los sec
   assert.match(secretsStep, /^\s+RESEND_AUTH_KEY: \$\{\{ secrets\.RESEND_SMTP_KEY \}\}$/m);
   assert.match(secretsStep, /for name in RESEND_API_KEY RESEND_AUTH_KEY /);
   assert.ok(!WORKFLOW.includes("vars.RESEND_AUTH_KEY") && !WORKFLOW.includes("vars.RESEND_SMTP_KEY"));
-  // Hasta PR20 nada prende el hook ni carga su secreto.
-  assert.ok(!/SEND_EMAIL_HOOK_SECRETS[:=]/.test(WORKFLOW), "el secreto del hook llega con PR20");
-  assert.ok(!/hook_send_email_enabled["']?\s*[:=]\s*true/.test(readFileSync(repo("supabase/scripts/auth-config.ts"), "utf8")));
+});
+
+const HOOKS_STEP = `"Hooks de Auth: envío de emails y altas"`;
+
+test("hooks de Auth (PR20): al final, después de publicar auth-email; sin el secreto, todo apagado y las altas cerradas", () => {
+  const authEmail = WORKFLOW.indexOf("- name: Desplegar auth-email");
+  const hooks = WORKFLOW.indexOf(`- name: ${HOOKS_STEP}`);
+  const migrations = WORKFLOW.indexOf("- name: Migraciones (db push)");
+  assert.ok(hooks !== -1 && hooks > authEmail && hooks > migrations, "después de db push y de publicar la función");
+  const run = step(HOOKS_STEP);
+  assert.match(run, /if: env\.HAS_SUPABASE == 'true'/);
+  assert.match(run, /^\s+set -euo pipefail$/m);
+  assert.match(run, /^\s+SEND_EMAIL_HOOK_SECRET: \$\{\{ secrets\.SEND_EMAIL_HOOK_SECRET \}\}$/m);
+  assert.ok(!WORKFLOW.includes("vars.SEND_EMAIL_HOOK_SECRET"), "nunca como variable");
+  // Sin secreto: hooks-off y aviso, sin fallar.
+  assert.match(run, /if \[ -z "\$\{SEND_EMAIL_HOOK_SECRET:-\}" \]; then\n\s+patch hooks-off\n\s+echo "::warning::[^\n]*\n\s+exit 0\n\s+fi/);
+});
+
+test("hooks de Auth: primero se comprueban las dos funciones; si algo falla, se apaga todo y el paso queda en rojo", () => {
+  const run = step(HOOKS_STEP);
+  const check = run.indexOf("node supabase/scripts/auth-hook-check.ts signup");
+  const emailCheck = run.indexOf("node supabase/scripts/auth-email-check.ts");
+  const on = run.indexOf("patch hooks-on");
+  assert.ok(check !== -1 && emailCheck !== -1 && on > check && on > emailCheck, "las comprobaciones antes de prender");
+  assert.match(run, /if ! node supabase\/scripts\/auth-hook-check\.ts signup \|\| ! node supabase\/scripts\/auth-email-check\.ts; then\n\s+patch hooks-off\n\s+echo "::error::[^\n]*\n\s+exit 1\n\s+fi/);
+  // Después de prender: lo guardado tiene que ser altas abiertas y los dos hooks; si no, se apaga.
+  assert.match(run, /jq -e '\.disable_signup == false and \.hook_send_email_enabled == true and \.hook_before_user_created_enabled == true'/);
+  const after = run.slice(on);
+  assert.match(after, /then\n\s+patch hooks-off\n\s+echo "::error::[^\n]*\n\s+exit 1/);
+  // Cada PATCH se compara con lo pedido, como en «Auth desde el repo».
+  const patchFn = /patch\(\) \{[\s\S]*?\n          \}\n/.exec(run)?.[0] ?? "";
+  assert.ok(patchFn.indexOf('verify "$1"') > patchFn.indexOf("-X PATCH"));
+});
+
+test("hooks de Auth: la función recibe el mismo secreto (validado) en «Secretos de la función»", () => {
+  const run = step("Secretos de la función");
+  assert.match(run, /^\s+SEND_EMAIL_HOOK_SECRETS: \$\{\{ secrets\.SEND_EMAIL_HOOK_SECRET \}\}$/m);
+  assert.match(run, /for name in RESEND_API_KEY RESEND_AUTH_KEY SEND_EMAIL_HOOK_SECRETS /);
+  assert.match(run, /v1,whsec_\[A-Za-z0-9\+\/\]\{43,\}=\{0,2\}/, "corta si el secreto no tiene la forma");
+  const header = WORKFLOW.slice(0, WORKFLOW.indexOf("\nname: "));
+  assert.match(header, /SEND_EMAIL_HOOK_SECRET: el secreto del hook de envío/);
 });
