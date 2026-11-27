@@ -361,3 +361,27 @@ test("captcha de Auth: la secreta se valida antes del PATCH y, después, Auth ti
   assert.match(after, /node supabase\/scripts\/auth-captcha-check\.ts auth/);
   assert.ok(!/continue-on-error/.test(after), "si Auth no lo exige, el despliegue falla");
 });
+
+test("función auth-email (hook de envío, PR19): se publica después de los secretos, sin JWT, y GoTrue todavía no la llama", () => {
+  // La firma Standard Webhooks la protege (auth.md §16); el hook se prende en PR20.
+  const secrets = WORKFLOW.indexOf("- name: Secretos de la función");
+  const authEmail = WORKFLOW.indexOf("- name: Desplegar auth-email (hook de envío, todavía apagado)");
+  assert.ok(authEmail !== -1 && authEmail > secrets, "después de los secretos");
+  const run = step("Desplegar auth-email (hook de envío, todavía apagado)");
+  assert.match(run, /if: env\.HAS_SUPABASE == 'true'/);
+  assert.match(run, /supabase functions deploy auth-email --project-ref "\$\{SUPABASE_PROJECT_REF\}" --use-api/);
+  assert.ok(!run.includes("--no-verify-jwt"), "verify_jwt sale de config.toml");
+  const config = readFileSync(repo("supabase/config.toml"), "utf8");
+  const section = /\[functions\.auth-email\]\n([\s\S]*?)(?:\n\[|$)/.exec(config)?.[1] ?? "";
+  assert.match(section, /^enabled = true$/m);
+  assert.match(section, /^verify_jwt = false$/m);
+
+  // La clave de Resend de Auth es la del SMTP de Auth, como secreto (nunca una variable), y se carga con las demás.
+  const secretsStep = step("Secretos de la función");
+  assert.match(secretsStep, /^\s+RESEND_AUTH_KEY: \$\{\{ secrets\.RESEND_SMTP_KEY \}\}$/m);
+  assert.match(secretsStep, /for name in RESEND_API_KEY RESEND_AUTH_KEY /);
+  assert.ok(!WORKFLOW.includes("vars.RESEND_AUTH_KEY") && !WORKFLOW.includes("vars.RESEND_SMTP_KEY"));
+  // Hasta PR20 nada prende el hook ni carga su secreto.
+  assert.ok(!/SEND_EMAIL_HOOK_SECRETS[:=]/.test(WORKFLOW), "el secreto del hook llega con PR20");
+  assert.ok(!/hook_send_email_enabled["']?\s*[:=]\s*true/.test(readFileSync(repo("supabase/scripts/auth-config.ts"), "utf8")));
+});

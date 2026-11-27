@@ -108,6 +108,7 @@ jobs:
           supabase/functions/public-request/index.ts
           supabase/functions/menu-reminders/index.ts
           supabase/functions/client-link/index.ts
+          supabase/functions/auth-email/index.ts
 
   web:
     name: Web pública
