@@ -180,6 +180,8 @@
   "changePasswordTitle": "Change password",
   "changePasswordCurrent": "Current password",
   "changePasswordNew": "New password",
+  "changePasswordRepeat": "Repeat the new password",
+  "passwordMismatch": "The two passwords don't match: type them again.",
   "changePasswordSave": "Save password",
   "changePasswordDone": "Password updated. Your other open sessions were signed out.",
   "changePasswordForgot": "Don't remember your current password? Sign out and use “Forgot password?”.",

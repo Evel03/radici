@@ -603,6 +603,7 @@
       "account": "Account:",
       "label": "Password",
       "hint": "At least 10 characters, with letters and numbers.",
+      "repeat": "Repeat the password",
       "show": "Show password",
       "save": "Save password"
     },
@@ -631,6 +632,7 @@
       "tooShort": "The password must have at least 10 characters.",
       "tooLong": "The password is too long: 72 characters at most.",
       "lettersDigits": "The password must have at least one letter and one number.",
+      "mismatch": "The two passwords don't match: type them again.",
       "leaked": "This password has appeared in another site's data breach: choose a different one.",
       "same": "That's the same password as before: choose a different one.",
       "weak": "This password won't work: choose a different one.",

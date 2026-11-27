@@ -13,7 +13,7 @@ import { passwordProblem, type PasswordProblem } from "./password.ts";
 
 /** Lo que puede salir mal en cualquier paso. */
 export type CommonError = "network" | "rateLimited" | "unavailable";
-export type PasswordError = PasswordProblem | "leaked" | "same" | "weak" | CommonError;
+export type PasswordError = PasswordProblem | "mismatch" | "leaked" | "same" | "weak" | CommonError;
 export type ResendError = "email" | "captcha" | CommonError;
 
 export interface ResendState {
@@ -42,7 +42,7 @@ export interface AccessController {
   /** «Conferma»: canjea el link por una sesión (POST /verify). */
   confirm(): Promise<void>;
   /** «Salva la password»: la guarda (PUT /user) y cierra la sesión. */
-  savePassword(password: string): Promise<void>;
+  savePassword(password: string, repeat: string): Promise<void>;
   /** «Reinvia l'email»: pide otro link para `email`, con captcha. */
   resend(email: string): Promise<void>;
   /** Llegó otro link con la página abierta (se pegó en la misma pestaña): se empieza de nuevo con ese. */
@@ -138,12 +138,17 @@ export function createAccess(read: LinkRead, deps: AccessDeps): AccessController
       }
     },
 
-    async savePassword(password) {
+    async savePassword(password, repeat) {
       const current = state;
       if (current.kind !== "password" || current.busy) return;
       const problem = passwordProblem(password);
       if (problem) {
         set({ ...current, error: problem });
+        return;
+      }
+      // Escrita dos veces: un error de tipeo no deja la cuenta con una contraseña que nadie conoce.
+      if (repeat !== password) {
+        set({ ...current, error: "mismatch" });
         return;
       }
       const token = accessToken;

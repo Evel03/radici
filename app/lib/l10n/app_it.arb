@@ -787,6 +787,14 @@
   "@changePasswordNew": {
     "description": "Campo de la contraseña nueva."
   },
+  "changePasswordRepeat": "Ripeti la nuova password",
+  "@changePasswordRepeat": {
+    "description": "Campo para repetir la contraseña nueva: tiene que ser igual a changePasswordNew."
+  },
+  "passwordMismatch": "Le due password non coincidono: scrivile di nuovo.",
+  "@passwordMismatch": {
+    "description": "Error debajo de la repetición cuando no es igual a la contraseña nueva."
+  },
   "changePasswordSave": "Salva la password",
   "@changePasswordSave": {
     "description": "Botón que guarda la contraseña nueva."

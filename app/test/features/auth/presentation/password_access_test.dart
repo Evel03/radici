@@ -225,6 +225,12 @@ void main() {
       expect(find.text('Almeno 10 caratteri, con lettere e numeri.'), findsOneWidget);
       await tester.enterText(key('change-password-current'), 'Vecchia1234');
       await tester.enterText(key('change-password-new'), 'Nuova123456');
+      await tester.enterText(key('change-password-repeat'), 'Nuova123465');
+      await tapAndSettle(tester, 'change-password-save');
+      expect(find.text('Le due password non coincidono: scrivile di nuovo.'), findsOneWidget);
+      expect(auth.passwordChanges, isEmpty);
+
+      await tester.enterText(key('change-password-repeat'), 'Nuova123456');
       await tapAndSettle(tester, 'change-password-save');
       expect(auth.passwordChanges, [('Vecchia1234', 'Nuova123456')]);
       expect(find.text('Password aggiornata. Le altre sessioni aperte sono state chiuse.'), findsOneWidget);
@@ -242,6 +248,7 @@ void main() {
 
       auth.changeFailure = AuthFailureKind.wrongCurrentPassword;
       await tester.enterText(key('change-password-new'), 'Nuova123456');
+      await tester.enterText(key('change-password-repeat'), 'Nuova123456');
       await tapAndSettle(tester, 'change-password-save');
       expect(find.text('La password attuale non è corretta.'), findsOneWidget);
       expect(find.byType(ChangePasswordScreen), findsOneWidget);

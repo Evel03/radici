@@ -603,6 +603,7 @@
       "account": "Cuenta:",
       "label": "Contraseña",
       "hint": "Al menos 10 caracteres, con letras y números.",
+      "repeat": "Repite la contraseña",
       "show": "Mostrar la contraseña",
       "save": "Guardar la contraseña"
     },
@@ -631,6 +632,7 @@
       "tooShort": "La contraseña tiene que tener al menos 10 caracteres.",
       "tooLong": "La contraseña es demasiado larga: como máximo 72 caracteres.",
       "lettersDigits": "La contraseña tiene que tener al menos una letra y un número.",
+      "mismatch": "Las dos contraseñas no coinciden: escríbelas de nuevo.",
       "leaked": "Esta contraseña apareció en una filtración de datos de otro sitio: elige otra.",
       "same": "Es la misma contraseña de antes: elige una distinta.",
       "weak": "Esta contraseña no sirve: elige otra.",
