@@ -1,5 +1,5 @@
 // Tests de deploy-accounts.sh (al lado), el script de los pasos «Cuenta de la cocinera (solo la primera
-// vez)» y «Colaboradores de la cocinera» de deploy-supabase.yml. Lo corren de verdad, con bash, y un curl
+// vez)», «Cuentas de prueba» y «Colaboradores de la cocinera» de deploy-supabase.yml. Lo corren de verdad, con bash, y un curl
 // falso (deploy-accounts.fake-api.ts) en lugar de la Management API y de Auth: sin red ni base.
 // Correr con: npm test (raíz). Necesita bash, jq y openssl, como el runner de ubuntu del CI: si falta
 // alguno, se saltea. En Windows corre solo desde Git Bash (MSYSTEM): desde PowerShell, el bash del PATH
@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { syncMembersSql } from "./chef-members.ts";
+import { syncTestClientsSql } from "./test-clients.ts";
 import { FAKE_SECRET_KEY, type FakeCall, type FakeState } from "./deploy-accounts.fake-api.ts";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
@@ -30,6 +31,8 @@ const EVELYN = "evelyn@ejemplo.test";
 const SOCIO = "socio@ejemplo.test";
 const NUEVA = "nueva@ejemplo.test";
 const VIEJO = "viejo@ejemplo.test";
+const NICO = "nico@ejemplo.test";
+const PRUEBA = "prueba@ejemplo.test";
 const confirmed = (email: string) => ({ email, confirmed: true });
 
 interface Run {
@@ -41,7 +44,7 @@ interface Run {
 }
 
 /** Corre `bash supabase/scripts/deploy-accounts.sh <command>` desde la raíz, con el curl falso. */
-function accounts(command: "chef" | "members", state: FakeState, env: Record<string, string> = {}): Run {
+function accounts(command: "chef" | "members" | "testers", state: FakeState, env: Record<string, string> = {}): Run {
   const dir = mkdtempSync(join(tmpdir(), "deploy-accounts-"));
   try {
     const bin = join(dir, "bin");
@@ -67,6 +70,7 @@ function accounts(command: "chef" | "members", state: FakeState, env: Record<str
         CHEF_DISPLAY_NAME: "",
         CHEF_LOCALE: "",
         CHEF_MEMBER_EMAILS: "",
+        TEST_CLIENT_EMAILS: "",
         ...env,
       },
     });
@@ -87,6 +91,8 @@ function accounts(command: "chef" | "members", state: FakeState, env: Record<str
 
 const syncCalls = (run: Run): string[] =>
   run.calls.map((call) => call.query ?? "").filter((query) => query.includes("sync_chef_members"));
+const testerCalls = (run: Run): string[] =>
+  run.calls.map((call) => call.query ?? "").filter((query) => query.includes("sync_test_clients"));
 const accountsCreated = (run: Run): FakeCall[] => run.calls.filter((call) => call.url.endsWith("/auth/v1/admin/users"));
 
 /** Ninguna línea del log, salvo ::add-mask::, lleva uno de estos emails (ni en mayúsculas). */
@@ -366,9 +372,108 @@ test("cocinera: una cuenta con su email sin confirmar corta el paso antes de pro
   assert.ok(!run.calls.some((call) => call.query?.includes("promote_to_chef")));
 });
 
+test("cuentas de prueba: crea la que falta SIN contraseña, aplica la lista con el SQL de test-clients.ts y no muestra emails", { skip }, () => {
+  const run = accounts(
+    "testers",
+    { chefs: [EVELYN], users: [confirmed(EVELYN), { email: PRUEBA, confirmed: true, tester: true }], members: [] },
+    { TEST_CLIENT_EMAILS: ` ${PRUEBA}, Nico@Ejemplo.test`, CHEF_LOGIN_EMAIL: EVELYN },
+  );
+  assert.equal(run.code, 0, run.out);
+
+  // Cada email se enmascara antes de usarlo, y la clave secreta, apenas se lee.
+  const firstUse = run.out.indexOf("Cuenta de prueba creada");
+  for (const value of [PRUEBA, NICO, FAKE_SECRET_KEY]) {
+    const mask = run.out.indexOf(`::add-mask::${value}\n`);
+    assert.ok(mask !== -1 && mask < firstUse, `${value} se enmascara antes de usarlo`);
+  }
+
+  // Una sola cuenta nueva, confirmada, SIN contraseña (la elige con «Password dimenticata?»).
+  const created = accountsCreated(run);
+  assert.equal(created.length, 1);
+  const body = created[0]?.body as Record<string, unknown>;
+  assert.deepEqual(body, { email: NICO, email_confirm: true, user_metadata: { locale: "es" } });
+  assert.equal(run.state.users.find((user) => user.email === NICO)?.password, false);
+
+  // Una sola sincronización, con la lista entera; las dos quedan marcadas.
+  assert.deepEqual(testerCalls(run), [syncTestClientsSql([PRUEBA, NICO])]);
+  assert.deepEqual(run.state.users.filter((user) => user.tester).map((user) => user.email), [PRUEBA, NICO]);
+  assert.match(run.out, /^Cuenta de prueba creada para n\*\*\*@e\*\*\*\.test: la contraseña se elige en la app con «Password dimenticata\?»\.$/m);
+  assert.match(run.out, /^Cuentas de prueba: 2 en la lista \(nuevas: 1; sin cambios: 1; salieron: 0; cuentas borradas: 0\)\.$/m);
+  assert.doesNotMatch(run.out, /::(error|warning)::/);
+  assertNoEmails(run.out, [EVELYN, PRUEBA, NICO]);
+});
+
+test("cuentas de prueba: la lista manda; la que sale sin ficha se borra, con ficha queda sin la marca; vacía, salen todas", { skip }, () => {
+  const state: FakeState = {
+    chefs: [EVELYN],
+    users: [
+      confirmed(EVELYN),
+      { email: NICO, confirmed: true, tester: true },
+      { email: PRUEBA, confirmed: true, tester: true },
+      { email: VIEJO, confirmed: true, tester: true, client: true },
+    ],
+    members: [],
+  };
+  const run = accounts("testers", state, { TEST_CLIENT_EMAILS: NICO });
+  assert.equal(run.code, 0, run.out);
+  assert.equal(accountsCreated(run).length, 0, "no crea ninguna");
+  assert.equal(run.calls.filter((call) => call.url.endsWith("/api-keys")).length, 0, "ni lee la clave secreta");
+  assert.deepEqual(run.state.users.map((user) => [user.email, user.tester === true]), [[EVELYN, false], [NICO, true], [VIEJO, false]]);
+  assert.match(run.out, /^Cuentas de prueba: 1 en la lista \(nuevas: 0; sin cambios: 1; salieron: 2; cuentas borradas: 1\)\.$/m);
+
+  const empty = accounts("testers", run.state);
+  assert.equal(empty.code, 0, empty.out);
+  assert.deepEqual(testerCalls(empty), [syncTestClientsSql([])]);
+  assert.deepEqual(empty.state.users.map((user) => user.email), [EVELYN, VIEJO]);
+  assert.match(empty.out, /^Cuentas de prueba: 0 en la lista \(nuevas: 0; sin cambios: 0; salieron: 1; cuentas borradas: 1\)\.$/m);
+});
+
+test("cuentas de prueba: una lista inválida o con un email de la cocina corta antes de tocar nada", { skip }, () => {
+  for (const env of [
+    { TEST_CLIENT_EMAILS: `${NICO},x');delete from auth.users;--@a.it` },
+    { TEST_CLIENT_EMAILS: `${NICO},${EVELYN}`, CHEF_LOGIN_EMAIL: EVELYN },
+    { TEST_CLIENT_EMAILS: `${NICO},${SOCIO}`, CHEF_MEMBER_EMAILS: SOCIO },
+  ]) {
+    const run = accounts("testers", { chefs: [EVELYN], users: [confirmed(EVELYN)], members: [SOCIO] }, env);
+    assert.equal(run.code, 1, run.out);
+    assert.match(run.out, /^::error::TEST_CLIENT_EMAILS no es una lista válida/m);
+    assert.deepEqual(run.calls, [], "ni una consulta");
+    assertNoEmails(run.out, [NICO, EVELYN, SOCIO, "delete from"]);
+  }
+});
+
+test("cuentas de prueba: una cuenta sin confirmar, o de la cocina sin los secretos, corta sin cambiar nada", { skip }, () => {
+  const unconfirmed = accounts(
+    "testers",
+    { chefs: [EVELYN], users: [confirmed(EVELYN), { email: NICO, confirmed: false }], members: [] },
+    { TEST_CLIENT_EMAILS: NICO },
+  );
+  assert.equal(unconfirmed.code, 1, unconfirmed.out);
+  assert.match(unconfirmed.out, /^::error::Ya hay una cuenta de prueba n\*\*\*@e\*\*\*\.test sin confirmar/m);
+  assert.deepEqual(testerCalls(unconfirmed), []);
+  assertNoEmails(unconfirmed.out, [NICO]);
+
+  // Sin CHEF_LOGIN_EMAIL el script no reconoce a la cocinera: lo frena la base, sin marcar a nadie.
+  const kitchen = accounts("testers", { chefs: [EVELYN], users: [confirmed(EVELYN)], members: [] }, { TEST_CLIENT_EMAILS: EVELYN });
+  assert.equal(kitchen.code, 1, kitchen.out);
+  assert.match(kitchen.out, /^::error::No se aplicó la lista de cuentas de prueba/m);
+  assert.ok(!kitchen.state.users.some((user) => user.tester), "ninguna marcada");
+  assertNoEmails(kitchen.out, [EVELYN]);
+});
+
+test("colaboradores: las cuentas de prueba no son usuarios de más, y cuentan como de prueba", { skip }, () => {
+  const run = accounts(
+    "members",
+    { chefs: [EVELYN], users: [confirmed(EVELYN), { email: "nico@gmail.com", confirmed: true, tester: true }], members: [] },
+  );
+  assert.equal(run.code, 0, run.out);
+  assert.doesNotMatch(run.out, /::warning::Hay/);
+  assert.match(run.out, /^Cuentas de clientas: 1 \(de prueba: 1; sin confirmar: 0\)\.$/m);
+});
+
 test("sin subcomando (o con otro): código 2 y el uso", { skip }, () => {
   const run = accounts("otra" as "chef", { chefs: [], users: [], members: [] });
   assert.equal(run.code, 2, run.out);
-  assert.match(run.out, /Uso: bash supabase\/scripts\/deploy-accounts\.sh chef\|members/);
+  assert.match(run.out, /Uso: bash supabase\/scripts\/deploy-accounts\.sh chef\|members\|testers/);
   assert.deepEqual(run.calls, []);
 });

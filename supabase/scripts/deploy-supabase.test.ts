@@ -79,6 +79,7 @@ test("función client-link: se despliega después de las migraciones y de los se
 
 const CHEF_STEP = "Cuenta de la cocinera (solo la primera vez)";
 const MEMBERS_STEP = "Colaboradores de la cocinera";
+const TESTERS_STEP = "Cuentas de prueba";
 /** El script de los dos pasos de cuentas (se corre de verdad en deploy-accounts.test.ts). */
 const ACCOUNTS_SCRIPT = readFileSync(repo("supabase/scripts/deploy-accounts.sh"), "utf8");
 
@@ -145,12 +146,41 @@ test("colaboradores: CHEF_MEMBER_EMAILS es un secreto y cada email se enmascara 
   assert.ok(!ACCOUNTS_SCRIPT.includes("${CHEF_MEMBER_EMAILS}"), "la lista la lee solo chef-members.ts (del entorno)");
 });
 
-test("cuentas: una sola manera de crearlas, confirmadas y con una contraseña al azar", () => {
+test("cuentas: una sola manera de crearlas, confirmadas y con una contraseña al azar (las de prueba, sin contraseña)", () => {
   const create = scriptFunction("create_user");
   assert.match(create, /email_confirm: true/);
   assert.match(create, /openssl rand -hex 32/);
-  assert.match(scriptFunction("chef_account"), /create_user "\$\{CHEF_LOGIN_EMAIL\}"/, "la de la cocinera");
-  assert.match(scriptFunction("members"), /create_user "\$\{email\}"/, "y las de los colaboradores");
+  assert.match(scriptFunction("chef_account"), /create_user "\$\{CHEF_LOGIN_EMAIL\}" "de la cocinera"$/m, "la de la cocinera");
+  assert.match(scriptFunction("members"), /create_user "\$\{email\}" "del colaborador \$\{masked\}"$/m, "las de los colaboradores");
+  assert.match(scriptFunction("testers"), /create_user "\$\{email\}" "de prueba \$\{masked\}" sin-contrasena$/m, "y las de prueba");
+  assert.equal(ACCOUNTS_SCRIPT.match(/sin-contrasena/g)?.length, 3, "solo las de prueba nacen sin contraseña");
+});
+
+test("cuentas de prueba: su paso, antes de los colaboradores (que cuentan los usuarios) y con su misma condición", () => {
+  const chefDeploy = WORKFLOW.indexOf("- name: Desplegar chef");
+  const testers = WORKFLOW.indexOf(`- name: ${TESTERS_STEP}`);
+  const members = WORKFLOW.indexOf(`- name: ${MEMBERS_STEP}`);
+  assert.ok(chefDeploy !== -1 && chefDeploy < testers && testers < members, "funciones → cuentas de prueba → colaboradores");
+  const run = step(TESTERS_STEP);
+  assert.match(run, /^\s+if: \$\{\{ !cancelled\(\) && env\.HAS_SUPABASE == 'true' && steps\.db_push\.outcome == 'success' \}\}$/m);
+  assert.match(run, /run: bash supabase\/scripts\/deploy-accounts\.sh testers$/m);
+  // Los emails son secretos (las variables salen en claro en el log) y la cocina se excluye.
+  assert.match(run, /^\s+TEST_CLIENT_EMAILS: \$\{\{ secrets\.TEST_CLIENT_EMAILS \}\}$/m);
+  assert.match(run, /^\s+CHEF_MEMBER_EMAILS: \$\{\{ secrets\.CHEF_MEMBER_EMAILS \}\}$/m);
+  assert.ok(!WORKFLOW.includes("vars.TEST_CLIENT_EMAILS"), "nunca como variable");
+
+  const testersFn = scriptFunction("testers");
+  const mask = testersFn.indexOf('echo "::add-mask::${email}"');
+  assert.ok(mask !== -1 && mask < testersFn.indexOf('users_with "${email}"'), "cada email se enmascara antes de usarlo");
+  const leaks = testersFn
+    .split("\n")
+    .filter((line) => /\becho\b/.test(line) && /\$\{(email|TEST_CLIENT_EMAILS)\}|\$TEST_CLIENT_EMAILS\b/.test(line))
+    .filter((line) => !line.includes("::add-mask::${email}"));
+  assert.deepEqual(leaks, [], "líneas que imprimirían un email");
+  assert.ok(!ACCOUNTS_SCRIPT.includes("${TEST_CLIENT_EMAILS}"), "la lista la lee solo test-clients.ts (del entorno)");
+
+  const header = WORKFLOW.slice(0, WORKFLOW.indexOf("\nname: "));
+  assert.match(header, /TEST_CLIENT_EMAILS: cuentas de prueba/, "el encabezado lo documenta");
 });
 
 test("el encabezado del workflow documenta CHEF_MEMBER_EMAILS entre los secretos, con la privacy y cómo aplicarlo", () => {

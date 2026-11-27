@@ -20,6 +20,10 @@ export interface FakeUser {
   providers?: string[];
   /** Tiene ficha en public.clients (clients.profile_id). */
   client?: boolean;
+  /** Cuenta de prueba: app_metadata.radici_test (private.sync_test_clients). */
+  tester?: boolean;
+  /** Se creó con contraseña (POST /admin/users con password). */
+  password?: boolean;
 }
 
 export interface FakeState {
@@ -29,7 +33,7 @@ export interface FakeState {
   users: FakeUser[];
   /** Emails de los colaboradores (public.chef_members). */
   members: string[];
-  /** Cuentas que sync_chef_members no puede borrar (una ficha de cliente, permisos): quedan en Auth. */
+  /** Cuentas que sync_chef_members o sync_test_clients no pueden borrar (permisos): quedan en Auth. */
   undeletable?: string[];
   /** Respuesta forzada de Auth al crear una cuenta (por ejemplo, 500). */
   adminStatus?: number;
@@ -120,12 +124,13 @@ function main(): void {
       rows(other.length);
     }
     const notKitchen = `select count(*)::int as n from auth.users where id not in (${kitchenIds})`;
+    const isTester = "coalesce(raw_app_meta_data -> 'radici_test' = 'true'::jsonb, false)";
     if (query === notKitchen) rows(state.users.filter((user) => !kitchen().includes(user.email)).length);
-    if (query === `select count(*)::int as n from auth.users u where u.id not in (${kitchenIds}) and not exists (select 1 from public.clients c where c.profile_id = u.id)`) {
-      rows(state.users.filter((user) => !kitchen().includes(user.email) && user.client !== true).length);
+    if (query === `select count(*)::int as n from auth.users u where u.id not in (${kitchenIds}) and not exists (select 1 from public.clients c where c.profile_id = u.id) and not ${isTester}`) {
+      rows(state.users.filter((user) => !kitchen().includes(user.email) && user.client !== true && user.tester !== true).length);
     }
-    if (query === `${notKitchen} and email ~* '(@example\\.(com|org|net)|\\.test|\\.invalid)$'`) {
-      rows(state.users.filter((user) => !kitchen().includes(user.email) && /(@example\.(com|org|net)|\.test|\.invalid)$/i.test(user.email)).length);
+    if (query === `${notKitchen} and (${isTester} or email ~* '(@example\\.(com|org|net)|\\.test|\\.invalid)$')`) {
+      rows(state.users.filter((user) => !kitchen().includes(user.email) && (user.tester === true || /(@example\.(com|org|net)|\.test|\.invalid)$/i.test(user.email))).length);
     }
     if (query === "select count(*)::int as n from auth.users where email_confirmed_at is null") {
       rows(state.users.filter((user) => !user.confirmed).length);
@@ -175,6 +180,31 @@ function main(): void {
         result: { members: emails.length, added: added.length, kept: kept.length, removed: removed.length, accounts_deleted: deleted.length },
       }]);
     }
+    const testers = /^select private\.sync_test_clients\(array\[(.*)\]::text\[\]\) as result$/.exec(query);
+    if (testers) {
+      // Las mismas validaciones que la base, antes de cambiar nada.
+      const emails = [...(testers[1] ?? "").matchAll(/'([^']*)'/g)].map((match) => match[1] ?? "");
+      for (const email of emails) {
+        const user = userOf(email);
+        if (user === undefined) return respond(400, { message: "test_client_user_not_found" });
+        if (!user.confirmed) return respond(400, { message: "test_client_not_confirmed" });
+        if (kitchen().includes(user.email)) return respond(400, { message: "test_client_is_kitchen" });
+      }
+      const old = state.users.filter((user) => user.tester === true);
+      const removed = old.filter((user) => !emails.includes(user.email));
+      const deleted = removed.filter((user) => user.client !== true && !(state.undeletable ?? []).includes(user.email));
+      const kept = old.filter((user) => emails.includes(user.email));
+      state.users = state.users.filter((user) => !deleted.includes(user));
+      for (const user of removed) delete user.tester;
+      for (const email of emails) {
+        const user = userOf(email);
+        if (user) user.tester = true;
+      }
+      save();
+      respond(201, [{
+        result: { testers: emails.length, added: emails.length - kept.length, kept: kept.length, removed: removed.length, accounts_deleted: deleted.length },
+      }]);
+    }
     respond(400, { message: "consulta no simulada" });
   }
 
@@ -188,9 +218,14 @@ function main(): void {
   if (method === "POST" && /^https:\/\/[^/]+\.supabase\.co\/auth\/v1\/admin\/users$/.test(path)) {
     if (!headers.includes(`apikey: ${FAKE_SECRET_KEY}`)) respond(401, { msg: "sin la clave secreta" });
     if (state.adminStatus) respond(state.adminStatus, { msg: "error simulado" });
-    const created = JSON.parse(body ?? "{}") as { email: string; email_confirm?: boolean; user_metadata?: { locale?: string } };
+    const created = JSON.parse(body ?? "{}") as { email: string; password?: unknown; email_confirm?: boolean; user_metadata?: { locale?: string } };
     if (userOf(created.email)) respond(422, { msg: "email_exists" });
-    state.users.push({ email: created.email.toLowerCase(), confirmed: created.email_confirm === true, locale: created.user_metadata?.locale });
+    state.users.push({
+      email: created.email.toLowerCase(),
+      confirmed: created.email_confirm === true,
+      locale: created.user_metadata?.locale,
+      password: typeof created.password === "string" && created.password !== "",
+    });
     save();
     respond(200, { id: `id-${state.users.length}`, email: created.email });
   }

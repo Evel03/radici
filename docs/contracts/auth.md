@@ -5,7 +5,7 @@ Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo s
 ## 1. Qué hace Auth hoy (M0, altas apagadas)
 
 - Login con **código por email** (OTP de 10 cifras, vale una hora desde PR16; antes 8 cifras y 600 segundos). La app llama a `signInWithOtp(email, shouldCreateUser: false)` y después `verifyOTP(type: email)`; no manda `emailRedirectTo` y el email no lleva link, solo el código. Por eso `site_url` y `uri_allow_list` no intervienen en el login de `/gestione/` (web, iOS y Android): no hay ninguna redirección que permitir.
-- Las altas están apagadas (`disable_signup`): las cuentas de Evelyn y de sus colaboradores las crea confirmadas el despliegue (contrato public-request §10.1). Se abren en M2, en su propio PR, con Turnstile.
+- Las altas están apagadas (`disable_signup`): las cuentas de Evelyn y de sus colaboradores las crea confirmadas el despliegue (contrato public-request §10.1), y también las cuentas de prueba de clienta del secreto `TEST_CLIENT_EMAILS` (§15). Se abren en M2, en su propio PR, con Turnstile.
 - El email del código sale por el SMTP de Resend (`RESEND_SMTP_KEY`) con la plantilla `supabase/templates/login_code.html`, que se usa para «Magic link» (usuario existente) y «Confirm signup». Sale en el idioma de `user_metadata.locale` (it, es, en).
 
 ## 2. Lo que fija el repo
@@ -388,3 +388,27 @@ Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerrada
 **`/accedi?email=`.** El «Vai al login» de `/accesso/` lleva a `/app/#/accedi?email=…`: el campo del email arranca con ese valor si es un email válido (si no, vacío).
 
 **Qué se acepta a sabiendas.** Los avisos de la app no dicen si un email tiene cuenta, pero Auth limita a un email por minuto a cada destinatario (`smtp_max_frequency`, §9): un segundo pedido al mismo email dentro del minuto da 429 solo si el primero salió, o sea, si la cuenta existe. Es un oráculo de la API de GoTrue, no de la app (la app dice la verdad: «Troppi tentativi in poco tempo. Aspetta un minuto e riprova.»), y el captcha lo encarece. Los topes por destinatario del hook de envío (PR19) no lo cierran: ese chequeo de GoTrue ocurre antes del hook.
+
+## 15. Cuentas de prueba de clienta (PR18, 27/11/2026)
+
+**Para qué.** Con las altas cerradas (hasta PR20), probar en producción el área de clientas (`/app/` y la app nativa: login con contraseña, «Cambia password», y lo que vaya llegando) con cuentas de clienta que no salen de un alta ni de un pedido. También sirven para la revisión de Apple y Google, que piden un login de prueba.
+
+**Cómo.** El secreto de GitHub `TEST_CLIENT_EMAILS` (emails separados por coma, hasta 10; nunca en el repo ni como variable, que sale en claro en el log). En cada despliegue, el paso «Cuentas de prueba» de `deploy-supabase.yml` (`deploy-accounts.sh testers`, antes de los colaboradores) lo aplica. La lista manda:
+
+| Caso | Qué pasa |
+|---|---|
+| Un email nuevo sin cuenta | El despliegue la crea por la API de administración de Auth, **confirmada y sin contraseña** (`email_confirm` sin `password`, `user_metadata.locale` = `CHEF_LOCALE`). Nadie conoce una contraseña: la persona elige la suya en la app con «Password dimenticata?» (el link lleva a `/accesso/`, §11) |
+| Un email con cuenta confirmada | No se toca: ni la contraseña, ni las sesiones, ni `user_metadata` |
+| Cualquier email de la lista | `private.sync_test_clients` le pone `app_metadata.radici_test = true` |
+| Una cuenta marcada que salió de la lista | Sin ficha de cliente, se borra (en cascada el perfil, las identidades y las sesiones). Con ficha, queda como clienta, sin la marca. Si no se puede borrar, queda sin la marca y sin sesiones (el aviso de usuarios de más la cuenta) |
+| Lista vacía o sin cargar | No queda ninguna cuenta de prueba |
+| Un email de la cocina (`CHEF_LOGIN_EMAIL`, `CHEF_MEMBER_EMAILS` o una cuenta de `chefs`/`chef_members`/rol distinto de `client`) | Corta antes de cambiar nada: una cuenta de la cocina ve las alergias y direcciones de todas las clientas, nunca es de prueba |
+| Una cuenta con ese email sin confirmar | Corta: no la creó el despliegue (como con los colaboradores) |
+
+**La marca.** `app_metadata` (`raw_app_meta_data`) solo la escribe el servidor: la persona no se la puede poner ni sacar, y llega en el JWT (`app_metadata.radici_test`). Hoy nada la lee salvo el informe del despliegue; sirve para que la app y la web reconozcan una cuenta de prueba (por ejemplo, el botón hacia `/app/` antes de abrir las altas). No da ningún permiso: una cuenta de prueba es una clienta más (rol `client`, sin ficha hasta que la tenga), y las políticas no la miran.
+
+**Qué se ve en el log.** Cada email se enmascara (`::add-mask::`) antes de usarlo y los mensajes dicen «p***@e***.com». El informe del final cuenta las cuentas de prueba aparte («de prueba: N») y no las avisa como usuarios de más.
+
+**Código.** Migración `20261127120000_test_clients.sql` (`private.sync_test_clients`, solo la ejecuta postgres; pgTAP `29_test_clients`), `supabase/scripts/test-clients.ts` (la lista; la misma regla del email que la base) y `deploy-accounts.sh testers` (tests con la API simulada en `deploy-accounts.test.ts`).
+
+**Cómo se usa** (Nicolas): cargar el secreto en GitHub → Settings → Secrets and variables → Actions → `TEST_CLIENT_EMAILS`; correr Deploy Supabase (Actions → Run workflow); en la app, «Password dimenticata?» con ese email, elegir la contraseña desde el link, y entrar.
