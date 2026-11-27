@@ -15,9 +15,9 @@ void main() {
   late ProviderContainer container;
 
   ChangePasswordState state() => container.read(changePasswordControllerProvider);
-  Future<void> submit(String current, String next) => container
+  Future<void> submit(String current, String next, [String? repeat]) => container
       .read(changePasswordControllerProvider.notifier)
-      .submit(currentPassword: current, newPassword: next);
+      .submit(currentPassword: current, newPassword: next, repeatPassword: repeat ?? next);
 
   setUp(() {
     auth = FakeAuthRepository();
@@ -49,6 +49,21 @@ void main() {
     expect(state().error, AuthFailureKind.samePassword);
     expect(state().problem, isNull);
     expect(auth.passwordChanges, isEmpty);
+  });
+
+  test('la nueva escrita dos veces: si no coinciden no llama a Auth (la regla se avisa primero)', () async {
+    await submit('Vecchia1234', 'Nuova123456', 'Nuova123465');
+    expect(state().mismatch, isTrue);
+    expect(state().problem, isNull);
+    expect(state().error, isNull);
+    await submit('Vecchia1234', 'corta1', 'otra');
+    expect(state().problem, PasswordProblem.tooShort);
+    expect(state().mismatch, isFalse);
+    expect(auth.passwordChanges, isEmpty);
+
+    await submit('Vecchia1234', 'Nuova123456', 'Nuova123456');
+    expect(state().mismatch, isFalse);
+    expect(auth.passwordChanges, [('Vecchia1234', 'Nuova123456')]);
   });
 
   test('los errores de Auth: la actual incorrecta, débil, de red', () async {

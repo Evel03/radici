@@ -70,6 +70,20 @@
                 aria-describedby="access-password-hint access-password-error"
               />
               <p class="field__hint" id="access-password-hint" data-i18n="access.password.hint"></p>
+            </div>
+            <div class="field">
+              <label class="field__label" for="access-repeat-password" data-i18n="access.password.repeat"></label>
+              <input
+                class="input"
+                id="access-repeat-password"
+                name="password-repeat"
+                type="password"
+                autocomplete="new-password"
+                autocapitalize="off"
+                spellcheck="false"
+                required
+                aria-describedby="access-password-error"
+              />
               <label class="check">
                 <input id="access-show-password" type="checkbox" />
                 <span data-i18n="access.password.show"></span>
@@ -79,6 +93,7 @@
               <span data-error="tooShort" data-i18n="access.errors.tooShort" hidden></span>
               <span data-error="tooLong" data-i18n="access.errors.tooLong" hidden></span>
               <span data-error="lettersDigits" data-i18n="access.errors.lettersDigits" hidden></span>
+              <span data-error="mismatch" data-i18n="access.errors.mismatch" hidden></span>
               <span data-error="leaked" data-i18n="access.errors.leaked" hidden></span>
               <span data-error="same" data-i18n="access.errors.same" hidden></span>
               <span data-error="weak" data-i18n="access.errors.weak" hidden></span>

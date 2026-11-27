@@ -70,7 +70,7 @@ export function viewOf(state: AccessState): AccessView {
  */
 export const STEP_ERRORS = {
   confirm: ["network", "rateLimited", "unavailable"],
-  password: ["tooShort", "tooLong", "lettersDigits", "leaked", "same", "weak", "network", "rateLimited", "unavailable"],
+  password: ["tooShort", "tooLong", "lettersDigits", "mismatch", "leaked", "same", "weak", "network", "rateLimited", "unavailable"],
   expired: ["email", "captcha", "network", "rateLimited", "unavailable"],
 } as const satisfies {
   confirm: readonly CommonError[];

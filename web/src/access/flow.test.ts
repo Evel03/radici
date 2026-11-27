@@ -139,16 +139,30 @@ describe("«Salva la password»", () => {
 
   it("la revisa antes de mandarla: corta o sin números no sale", async () => {
     const { api, access } = await atPassword();
-    await access.savePassword("corta1");
+    await access.savePassword("corta1", "corta1");
     expect(access.state).toMatchObject({ kind: "password", error: "tooShort" });
-    await access.savePassword("sololetrasaqui");
+    await access.savePassword("sololetrasaqui", "sololetrasaqui");
     expect(access.state).toMatchObject({ kind: "password", error: "lettersDigits" });
     expect(api.updatePassword).not.toHaveBeenCalled();
   });
 
+  it("escrita dos veces: si no coinciden no sale (la regla se avisa primero)", async () => {
+    const { api, access } = await atPassword();
+    await access.savePassword("Bergamo2026", "Bergamo2062");
+    expect(access.state).toMatchObject({ kind: "password", error: "mismatch" });
+    await access.savePassword("Bergamo2026", "");
+    expect(access.state).toMatchObject({ kind: "password", error: "mismatch" });
+    await access.savePassword("corta1", "otra");
+    expect(access.state).toMatchObject({ kind: "password", error: "tooShort" });
+    expect(api.updatePassword).not.toHaveBeenCalled();
+
+    await access.savePassword("Bergamo2026", "Bergamo2026");
+    expect(api.updatePassword).toHaveBeenCalledWith(ACCESS_TOKEN, "Bergamo2026");
+  });
+
   it("la guarda con la sesión del link, cierra la sesión y termina", async () => {
     const { api, access, states } = await atPassword({}, "recovery");
-    await access.savePassword("Bergamo2026");
+    await access.savePassword("Bergamo2026", "Bergamo2026");
     expect(api.updatePassword).toHaveBeenCalledWith(ACCESS_TOKEN, "Bergamo2026");
     expect(api.logout).toHaveBeenCalledTimes(1);
     expect(api.logout).toHaveBeenCalledWith(ACCESS_TOKEN);
@@ -159,7 +173,7 @@ describe("«Salva la password»", () => {
   it("cierra la sesión ANTES de mostrar «Fatto»", async () => {
     const logout = deferred<void>();
     const { access } = await atPassword({ logout: vi.fn(() => logout.promise) });
-    const saving = access.savePassword("Bergamo2026");
+    const saving = access.savePassword("Bergamo2026", "Bergamo2026");
     await Promise.resolve();
     await Promise.resolve();
     expect(access.state.kind).toBe("password");
@@ -170,8 +184,8 @@ describe("«Salva la password»", () => {
 
   it("después de terminar, la sesión ya no existe: no se puede volver a usar", async () => {
     const { api, access } = await atPassword();
-    await access.savePassword("Bergamo2026");
-    await access.savePassword("OtraClave2026");
+    await access.savePassword("Bergamo2026", "Bergamo2026");
+    await access.savePassword("OtraClave2026", "OtraClave2026");
     expect(api.updatePassword).toHaveBeenCalledTimes(1);
     expect(api.logout).toHaveBeenCalledTimes(1);
   });
@@ -185,7 +199,7 @@ describe("«Salva la password»", () => {
       [[], "weak"],
     ] as const) {
       const { api, access } = await atPassword({ updatePassword: vi.fn(async (): Promise<UpdateResult> => ({ kind: "weak", reasons })) });
-      await access.savePassword("Bergamo2026");
+      await access.savePassword("Bergamo2026", "Bergamo2026");
       expect(access.state).toEqual({ kind: "password", type: "email", email: EMAIL, busy: false, error });
       expect(api.logout).not.toHaveBeenCalled();
     }
@@ -198,14 +212,14 @@ describe("«Salva la password»", () => {
       [{ kind: "rateLimited" }, "rateLimited"],
     ] as const) {
       const { access } = await atPassword({ updatePassword: vi.fn(async (): Promise<UpdateResult> => result) });
-      await access.savePassword("Bergamo2026");
+      await access.savePassword("Bergamo2026", "Bergamo2026");
       expect(access.state).toMatchObject({ kind: "password", error });
     }
   });
 
   it("la sesión venció: expired por sesión, para pedir otro link", async () => {
     const { api, access } = await atPassword({ updatePassword: vi.fn(async (): Promise<UpdateResult> => ({ kind: "session" })) }, "recovery");
-    await access.savePassword("Bergamo2026");
+    await access.savePassword("Bergamo2026", "Bergamo2026");
     expect(access.state).toEqual({ kind: "expired", type: "recovery", reason: "session", resend: { status: "idle", error: null } });
     expect(api.logout).not.toHaveBeenCalled();
   });
@@ -213,8 +227,8 @@ describe("«Salva la password»", () => {
   it("dos envíos seguidos mandan uno solo", async () => {
     const update = deferred<UpdateResult>();
     const { api, access } = await atPassword({ updatePassword: vi.fn(() => update.promise) });
-    const first = access.savePassword("Bergamo2026");
-    void access.savePassword("Bergamo2026");
+    const first = access.savePassword("Bergamo2026", "Bergamo2026");
+    void access.savePassword("Bergamo2026", "Bergamo2026");
     update.resolve({ kind: "ok" });
     await first;
     expect(api.updatePassword).toHaveBeenCalledTimes(1);

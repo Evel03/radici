@@ -1,5 +1,5 @@
 // «Cambia password» del área de la clienta (/area/password): la actual y la
-// nueva. Solo muestra el estado de ChangePasswordController y le pasa lo que
+// nueva, dos veces. Solo muestra el estado de ChangePasswordController y le pasa lo que
 // escribe la clienta: no llama a Supabase.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,18 +22,24 @@ class ChangePasswordScreen extends ConsumerStatefulWidget {
 class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   final TextEditingController _current = TextEditingController();
   final TextEditingController _next = TextEditingController();
+  final TextEditingController _repeat = TextEditingController();
   bool _obscure = true;
 
   @override
   void dispose() {
     _current.dispose();
     _next.dispose();
+    _repeat.dispose();
     super.dispose();
   }
 
   void _submit() => ref
       .read(changePasswordControllerProvider.notifier)
-      .submit(currentPassword: _current.text, newPassword: _next.text);
+      .submit(
+        currentPassword: _current.text,
+        newPassword: _next.text,
+        repeatPassword: _repeat.text,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -118,8 +124,8 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                       autofillHints: const [AutofillHints.newPassword],
                       autocorrect: false,
                       enableSuggestions: false,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _submit(),
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                       decoration: InputDecoration(
                         labelText: l10n.changePasswordNew,
                         prefixIcon: const Icon(Icons.lock_reset),
@@ -127,6 +133,24 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                         helperText: l10n.passwordHint,
                         helperMaxLines: 2,
                         errorText: newError,
+                        errorMaxLines: 4,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      key: const ValueKey('change-password-repeat'),
+                      controller: _repeat,
+                      enabled: !state.busy,
+                      obscureText: _obscure,
+                      autofillHints: const [AutofillHints.newPassword],
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(),
+                      decoration: InputDecoration(
+                        labelText: l10n.changePasswordRepeat,
+                        prefixIcon: const Icon(Icons.lock_reset),
+                        errorText: state.mismatch ? l10n.passwordMismatch : null,
                         errorMaxLines: 4,
                       ),
                     ),

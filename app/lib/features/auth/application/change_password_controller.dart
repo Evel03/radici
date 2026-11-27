@@ -1,4 +1,5 @@
-// «Cambia password» del área de la clienta: la actual y la nueva. Auth pide la
+// «Cambia password» del área de la clienta: la actual y la nueva, escrita dos
+// veces (un error de tipeo no deja una contraseña que nadie conoce). Auth pide la
 // actual (security_update_password_require_current_password, PR14), manda el
 // aviso de contraseña cambiada y cierra las otras sesiones de la cuenta; esta
 // sigue abierta.
@@ -25,6 +26,9 @@ abstract class ChangePasswordState with _$ChangePasswordState {
     /// Lo que le falta a la contraseña nueva (la regla de Auth), o null.
     PasswordProblem? problem,
 
+    /// La repetición no es igual a la contraseña nueva.
+    @Default(false) bool mismatch,
+
     /// La contraseña quedó cambiada.
     @Default(false) bool done,
   }) = _ChangePasswordState;
@@ -43,6 +47,7 @@ class ChangePasswordController extends Notifier<ChangePasswordState> {
   Future<void> submit({
     required String currentPassword,
     required String newPassword,
+    required String repeatPassword,
   }) async {
     if (state.busy || state.done) return;
     if (currentPassword.isEmpty) {
@@ -52,6 +57,10 @@ class ChangePasswordController extends Notifier<ChangePasswordState> {
     final problem = passwordProblem(newPassword);
     if (problem != null) {
       state = ChangePasswordState(problem: problem);
+      return;
+    }
+    if (repeatPassword != newPassword) {
+      state = const ChangePasswordState(mismatch: true);
       return;
     }
     if (newPassword == currentPassword) {

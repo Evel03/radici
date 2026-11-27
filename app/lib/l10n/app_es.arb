@@ -180,6 +180,8 @@
   "changePasswordTitle": "Cambiar la contraseña",
   "changePasswordCurrent": "Contraseña actual",
   "changePasswordNew": "Contraseña nueva",
+  "changePasswordRepeat": "Repite la contraseña nueva",
+  "passwordMismatch": "Las dos contraseñas no coinciden: escríbelas de nuevo.",
   "changePasswordSave": "Guardar la contraseña",
   "changePasswordDone": "Contraseña actualizada. Se cerraron las otras sesiones abiertas.",
   "changePasswordForgot": "¿No recuerdas la actual? Sal y usa «¿Olvidaste la contraseña?».",

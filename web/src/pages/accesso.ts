@@ -36,6 +36,7 @@ const sections = new Map(STEPS.map((step) => [step, byId(`access-${step}`)]));
 const confirmButton = byId<HTMLButtonElement>("access-confirm-button");
 const passwordForm = byId<HTMLFormElement>("access-password-form");
 const passwordInput = byId<HTMLInputElement>("access-new-password");
+const repeatInput = byId<HTMLInputElement>("access-repeat-password");
 const passwordButton = byId<HTMLButtonElement>("access-password-button");
 const showPassword = byId<HTMLInputElement>("access-show-password");
 const username = byId<HTMLInputElement>("access-username");
@@ -105,7 +106,10 @@ function paint(): void {
   setBusy(confirmButton, view.step === "confirm" && view.busy);
   setBusy(passwordButton, view.step === "password" && view.busy);
   setBusy(resendButton, view.step === "expired" && view.busy);
-  passwordInput.setAttribute("aria-invalid", view.step === "password" && view.error !== null && view.error !== "network" ? "true" : "false");
+  // «No coinciden» marca la repetición; los demás errores de la contraseña, el primer campo.
+  const passwordError = view.step === "password" ? view.error : null;
+  passwordInput.setAttribute("aria-invalid", passwordError !== null && passwordError !== "network" && passwordError !== "mismatch" ? "true" : "false");
+  repeatInput.setAttribute("aria-invalid", passwordError === "mismatch" ? "true" : "false");
 
   maskedEmail.textContent = view.maskedEmail ?? "";
   username.value = view.username ?? "";
@@ -118,8 +122,10 @@ function paint(): void {
 
   if (stepChanged) {
     // La contraseña escrita no sobrevive a un cambio de paso, y la persona sigue desde el título del paso nuevo.
-    passwordInput.value = "";
-    passwordInput.type = "password";
+    for (const input of [passwordInput, repeatInput]) {
+      input.value = "";
+      input.type = "password";
+    }
     showPassword.checked = false;
     if (previous !== null) byId(`access-${view.step}-title`).focus();
   }
@@ -133,11 +139,11 @@ confirmButton.addEventListener("click", () => void access.confirm());
 
 passwordForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  void access.savePassword(passwordInput.value);
+  void access.savePassword(passwordInput.value, repeatInput.value);
 });
 
 showPassword.addEventListener("change", () => {
-  passwordInput.type = showPassword.checked ? "text" : "password";
+  for (const input of [passwordInput, repeatInput]) input.type = showPassword.checked ? "text" : "password";
 });
 
 resendForm.addEventListener("submit", (event) => {
