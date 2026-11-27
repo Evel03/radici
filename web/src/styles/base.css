@@ -272,9 +272,38 @@ svg {
   color: var(--text);
 }
 
+/* El idioma y «Accedi», juntos a la derecha (con letra agrandada, «Accedi» baja de línea). */
+.site-header__end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+
 .lang-switch {
   display: flex;
   gap: 0.15rem;
+}
+
+/* «Accedi»: un botón chico con borde, para que se distinga de los idiomas. */
+.header-login {
+  display: inline-grid;
+  place-items: center;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-decoration: none;
+}
+
+.header-login:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 .lang-switch a {
