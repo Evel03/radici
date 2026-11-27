@@ -1,5 +1,6 @@
-// Abre links externos (wa.me, tel:, mailto:). Detrás de una interfaz para
-// que los tests verifiquen qué se abre sin depender del plugin.
+// Abre links externos (wa.me, tel:, mailto:) y páginas de la web pública.
+// Detrás de una interfaz para que los tests verifiquen qué se abre sin
+// depender del plugin.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -9,6 +10,13 @@ abstract interface class LinkLauncher {
   /// En la web hay que llamarlo directo desde el gesto del usuario (sin
   /// esperar otra cosa antes): si no, el navegador bloquea la ventana nueva.
   Future<bool> launch(Uri uri);
+
+  /// Abre una página de la web de Radici sin salir de la app: una hoja de
+  /// Safari (SFSafariViewController) en iOS y una pestaña de Chrome (Custom
+  /// Tabs) en Android. Es el navegador del sistema, así que el anti-spam
+  /// (Turnstile) funciona como en la web. Si no se puede, abre el navegador.
+  /// Devuelve false si no se pudo abrir de ninguna forma.
+  Future<bool> openPage(Uri uri);
 }
 
 final linkLauncherProvider = Provider<LinkLauncher>(
@@ -28,5 +36,16 @@ class UrlLauncherLinkLauncher implements LinkLauncher {
       // emulador sin teléfono).
       return false;
     }
+  }
+
+  @override
+  Future<bool> openPage(Uri uri) async {
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.inAppBrowserView)) return true;
+    } on Object {
+      // Sin Custom Tabs ni vista de Safari (un Android sin Chrome, por
+      // ejemplo): se prueba con el navegador.
+    }
+    return launch(uri);
   }
 }

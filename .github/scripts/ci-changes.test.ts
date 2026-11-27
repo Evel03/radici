@@ -26,11 +26,17 @@ test("sin cambios no corre nada", () => {
 
 test("solo web (sin i18n): web, sin app ni base", () => {
   assert.deepEqual(areas(["web/src/pages/home.ts", "web/package.json"]), ["web"]);
-  assert.deepEqual(areas(["web/public/_headers", "web/vite.config.ts"]), ["web"]);
+  assert.deepEqual(areas(["web/public/_headers", "web/src/styles/base.css"]), ["web"]);
 });
 
-test("i18n de la web: web y los tests de la raíz (emails.test.ts los lee)", () => {
-  assert.deepEqual(areas(["web/src/i18n/it.json"]), ["quote", "web"]);
+test("i18n de la web: web, los tests de la raíz (emails.test.ts) y la app (la portada copia sus textos)", () => {
+  assert.deepEqual(areas(["web/src/i18n/it.json"]), ["quote", "web", "app"]);
+});
+
+test("fotos y HTML de la portada web: web y app (landing_texts_test.dart los compara)", () => {
+  assert.deepEqual(areas(["web/src/images/cocina.jpg"]), ["web", "app"]);
+  assert.deepEqual(areas(["web/index.html"]), ["web", "app"]);
+  assert.deepEqual(areas(["web/vite.config.ts"]), ["web", "app"]);
 });
 
 test("solo app/**: app, sin raíz", () => {
@@ -79,6 +85,11 @@ test("las dependencias de los tests de la app, la web y la raíz están cubierta
     "supabase/functions/_shared/chef_api.ts",
     "supabase/functions/_shared/public_request.test.ts",
     "supabase/functions/_shared/quote_vectors.json",
+    "supabase/functions/_shared/cook_load.ts",
+    "web/src/i18n/en.json",
+    "web/src/images/tarjeta.jpg",
+    "web/index.html",
+    "web/vite.config.ts",
   ]) assert.ok(areas([f]).includes("app"), `${f} corre la app`);
   for (const f of ["supabase/functions/_shared/quote.ts", "supabase/functions/_shared/menu.ts"]) {
     assert.ok(areas([f]).includes("web"), `${f} corre la web`);

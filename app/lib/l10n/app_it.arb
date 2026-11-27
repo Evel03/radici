@@ -31,17 +31,381 @@
     "description": "Lo que lee VoiceOver en el botón «Chiudi» (actionClose) de esa tarjeta, para distinguirlo de otros «Chiudi» de la pantalla. Tiene que empezar con el texto visible del botón."
   },
 
-  "homeHeadline": "Cucina di casa, a casa tua",
-  "@homeHeadline": {
-    "description": "Título de bienvenida de la pantalla de inicio."
+  "landingHeroEyebrow": "Cuoca a domicilio · Bergamo",
+  "@landingHeroEyebrow": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.eyebrow de la web (lo verifica test/l10n/landing_texts_test.dart)."
   },
-  "homeBody": "Evelyn cucina da te per più giorni e lascia tutto in porzioni etichettate con piatto e data. La spesa la fai tu, con la lista che ti manda lei.",
-  "@homeBody": {
-    "description": "Explicación breve del servicio en la pantalla de inicio (pública: le habla al cliente). La compra la hace el cliente, con la lista que le manda Evelyn."
+  "landingHeroTitle": "Pranzo e cena già pronti. Per tutta la settimana.",
+  "@landingHeroTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.title de la web (lo verifica test/l10n/landing_texts_test.dart)."
   },
-  "homeRequestCta": "Richiedi un preventivo",
-  "@homeRequestCta": {
-    "description": "Botón del inicio de la app sin sesión: abre el formulario de pedido de la web (radicicucina.app/richiesta/). La app no muestra precios (22/11/2026)."
+  "landingHeroLead": "Evelyn cucina a casa tua e ti lascia in frigo porzioni pronte, ognuna con il nome del piatto e la data. Tu torni a casa e devi solo scaldare.",
+  "@landingHeroLead": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.lead de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroCta": "Chiedi il preventivo",
+  "@landingHeroCta": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.cta de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroSecondary": "Come funziona",
+  "@landingHeroSecondary": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.secondary de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroNote": "Nessun impegno. Evelyn ti prepara il preventivo e ti ricontatta al più presto.",
+  "@landingHeroNote": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.note de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroLabel1Title": "Un pensiero in meno",
+  "@landingHeroLabel1Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.label1Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroLabel1Text": "Il menù lo pensa Evelyn",
+  "@landingHeroLabel1Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.label1Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroLabel2Title": "Più tempo per te",
+  "@landingHeroLabel2Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.label2Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroLabel2Text": "Niente ore ai fornelli",
+  "@landingHeroLabel2Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.label2Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroLabel3Title": "Torni ed è già pronto",
+  "@landingHeroLabel3Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.label3Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroLabel3Text": "Basta scaldare",
+  "@landingHeroLabel3Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.label3Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroBenefitsLabel": "Perché sceglierci",
+  "@landingHeroBenefitsLabel": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.benefitsLabel de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHeroPhotoAlt": "Piatti di ceramica, olio d'oliva e un canovaccio su un tavolo di legno",
+  "@landingHeroPhotoAlt": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.hero.photoAlt de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingServicesTitle": "Servizi",
+  "@landingServicesTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.services.title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingServicesWeekly": "Cucina settimanale",
+  "@landingServicesWeekly": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.services.weekly de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingServicesDinners": "Cene private",
+  "@landingServicesDinners": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.services.dinners de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingServicesEvents": "Eventi familiari",
+  "@landingServicesEvents": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.services.events de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowTitle": "Come funziona",
+  "@landingHowTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowIntro": "Quattro passi, dalla richiesta al frigo pieno.",
+  "@landingHowIntro": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.intro de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowStep1Title": "Mandi la richiesta",
+  "@landingHowStep1Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.step1Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowStep1Text": "Ci dici per quante persone e quante settimane, quali giorni e pasti e se ci sono allergie. Nessun impegno.",
+  "@landingHowStep1Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.step1Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowStep2Title": "Ricevi il preventivo",
+  "@landingHowStep2Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.step2Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowStep2Text": "Ti arriva subito un'email di conferma. Poi Evelyn ti contatta, ti propone il menù e insieme fissate giorno e orario.",
+  "@landingHowStep2Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.step2Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowStep3Title": "Cucina a casa tua",
+  "@landingHowStep3Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.step3Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowStep3Text": "La spesa la fai tu, con la lista che ti manda Evelyn. Il giorno stabilito lei cucina nella tua cucina: intanto tu puoi lavorare, uscire o goderti il profumo.",
+  "@landingHowStep3Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.step3Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowStep4Title": "Porzioni etichettate in frigo",
+  "@landingHowStep4Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.step4Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowStep4Text": "Trovi i pasti già divisi in porzioni, con il nome del piatto e la data di preparazione. Basta scaldare e mettersi a tavola.",
+  "@landingHowStep4Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.step4Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingHowPhotoAlt": "Una cuoca con il grembiule di {brand}",
+  "@landingHowPhotoAlt": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.how.photoAlt de la web (lo verifica test/l10n/landing_texts_test.dart).",
+    "placeholders": {
+      "brand": {
+        "type": "String",
+        "example": "Radici"
+      }
+    }
+  },
+  "landingIncludedTitle": "Cosa è compreso",
+  "@landingIncludedTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingIncludedItem1Title": "Un menù su misura",
+  "@landingIncludedItem1Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.item1Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingIncludedItem1Text": "Ricette di casa, varie e di stagione, scelte in base ai gusti di chi siede a tavola.",
+  "@landingIncludedItem1Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.item1Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingIncludedItem2Title": "La lista della spesa",
+  "@landingIncludedItem2Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.item2Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingIncludedItem2Text": "La spesa la fai tu: prima di ogni sessione Evelyn ti manda la lista degli ingredienti, con le quantità.",
+  "@landingIncludedItem2Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.item2Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingIncludedItem3Title": "La cucina, a casa tua",
+  "@landingIncludedItem3Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.item3Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingIncludedItem3Text": "Da {minRecipes} a {maxRecipes} ricette per sessione, preparate sul posto con ingredienti freschi.",
+  "@landingIncludedItem3Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.item3Text de la web (lo verifica test/l10n/landing_texts_test.dart).",
+    "placeholders": {
+      "minRecipes": {
+        "type": "int",
+        "example": "2"
+      },
+      "maxRecipes": {
+        "type": "int",
+        "example": "6"
+      }
+    }
+  },
+  "landingIncludedItem4Title": "Porzioni con etichetta",
+  "@landingIncludedItem4Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.item4Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingIncludedItem4Text": "Ogni porzione ha piatto e data: sai sempre cosa c'è in frigo e cosa mangiare prima.",
+  "@landingIncludedItem4Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.item4Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingIncludedItem5Title": "Attenzione alle allergie",
+  "@landingIncludedItem5Title": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.item5Title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingIncludedItem5Text": "Le ricette tengono conto di allergie, intolleranze e diete che ci indichi.",
+  "@landingIncludedItem5Text": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.item5Text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingIncludedPhotoAlt": "Menù di {brand}: antipasto, primo, secondo e dolce",
+  "@landingIncludedPhotoAlt": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.included.photoAlt de la web (lo verifica test/l10n/landing_texts_test.dart).",
+    "placeholders": {
+      "brand": {
+        "type": "String",
+        "example": "Radici"
+      }
+    }
+  },
+  "landingPricingTitle": "Come si paga",
+  "@landingPricingTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingPricingIntro": "Un preventivo su misura, sempre chiaro. Nessun rinnovo automatico, nessun costo nascosto.",
+  "@landingPricingIntro": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.intro de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingPricingServiceTitle": "Un preventivo su misura",
+  "@landingPricingServiceTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.serviceTitle de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingPricingServiceText": "Evelyn lo prepara per la tua famiglia in base alle persone, ai giorni, ai pasti e alle settimane che chiedi. Te lo manda per email o WhatsApp e lo accetti prima di iniziare: senza impegno.",
+  "@landingPricingServiceText": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.serviceText de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingPricingShoppingTitle": "La spesa la fai tu",
+  "@landingPricingShoppingTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.shoppingTitle de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingPricingShoppingText": "Prima di ogni sessione Evelyn ti manda la lista degli ingredienti, con le quantità. A lei paghi solo il servizio: niente anticipi né rimborsi per la spesa.",
+  "@landingPricingShoppingText": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.shoppingText de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingPricingMethodsTitle": "Come puoi pagare",
+  "@landingPricingMethodsTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.methodsTitle de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingPricingMethodsText": "Contanti, bonifico, Satispay o link di pagamento con carta: scegli tu quando confermi.",
+  "@landingPricingMethodsText": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.methodsText de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingPricingCtaTitle": "Quanto costerebbe per te?",
+  "@landingPricingCtaTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.ctaTitle de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingPricingCtaText": "Raccontaci cosa ti serve e Evelyn ti prepara il preventivo.",
+  "@landingPricingCtaText": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.ctaText de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingPricingCtaLink": "Chiedi il tuo preventivo",
+  "@landingPricingCtaLink": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.pricing.ctaLink de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingWhoTitle": "Per chi è",
+  "@landingWhoTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.who.title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingWhoFamiliesTitle": "Famiglie",
+  "@landingWhoFamiliesTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.who.familiesTitle de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingWhoFamiliesText": "Per chi lavora tutto il giorno e vuole comunque portare in tavola cibo più sano, fatto in casa.",
+  "@landingWhoFamiliesText": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.who.familiesText de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingWhoProsTitle": "Professionisti",
+  "@landingWhoProsTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.who.prosTitle de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingWhoProsText": "Per chi torna tardi, non ha tempo per cucinare ed è stanco di vivere di delivery.",
+  "@landingWhoProsText": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.who.prosText de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingWhoKidsTitle": "Bambini",
+  "@landingWhoKidsTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.who.kidsTitle de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingWhoKidsText": "Piatti semplici e genuini, con porzioni pensate per loro.",
+  "@landingWhoKidsText": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.who.kidsText de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqTitle": "Domande frequenti",
+  "@landingFaqTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqQ1": "In quali zone lavorate?",
+  "@landingFaqQ1": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.q1 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqA1": "A Bergamo e dintorni. Indica la tua zona nella richiesta: ti diciamo subito se riusciamo ad arrivare.",
+  "@landingFaqA1": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.a1 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqQPrice": "Quanto costa?",
+  "@landingFaqQPrice": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.qPrice de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqAPrice": "Il preventivo è su misura: Evelyn lo prepara in base a persone, giorni, pasti e settimane, e te lo manda per email o WhatsApp. La spesa la fai tu, con la lista che ti manda Evelyn.",
+  "@landingFaqAPrice": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.aPrice de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqQWeeks": "Posso prenotare più settimane?",
+  "@landingFaqQWeeks": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.qWeeks de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqAWeeks": "Sì, fino a {maxWeeks} settimane: ogni settimana un menù e una sessione di cucina, lo stesso giorno della settimana. Senza rinnovo automatico: alla fine, se vuoi continuare, mandi una nuova richiesta.",
+  "@landingFaqAWeeks": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.aWeeks de la web (lo verifica test/l10n/landing_texts_test.dart).",
+    "placeholders": {
+      "maxWeeks": {
+        "type": "int",
+        "example": "8"
+      }
+    }
+  },
+  "landingFaqQ2": "Quanto dura una sessione?",
+  "@landingFaqQ2": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.q2 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqA2": "Dipende da quante porzioni e ricette preparare: di solito qualche ora. L'orario lo concordi con Evelyn quando ti contatta.",
+  "@landingFaqA2": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.a2 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqQ3": "Quanto si conservano i piatti?",
+  "@landingFaqQ3": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.q3 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqA3": "In genere 3–4 giorni in frigorifero, a seconda della ricetta. Per i giorni successivi alcuni piatti si possono congelare: Evelyn ti dice quali. Su ogni porzione trovi la data di preparazione.",
+  "@landingFaqA3": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.a3 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqQ4": "Che cosa cucina Evelyn?",
+  "@landingFaqQ4": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.q4 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqA4": "Cucina di casa, semplice e varia: primi, secondi, verdure, zuppe. Il menù lo decidete insieme prima di ogni sessione, in base a gusti e stagione.",
+  "@landingFaqA4": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.a4 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqQ5": "Il preventivo è vincolante?",
+  "@landingFaqQ5": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.q5 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqA5": "No. Il preventivo non ti impegna finché non lo accetti: Evelyn lo prepara dopo averti ascoltato e confermi solo se ti va bene.",
+  "@landingFaqA5": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.a5 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqQ6": "E se devo disdire?",
+  "@landingFaqQ6": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.q6 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFaqA6": "Le condizioni di disdetta te le indichiamo insieme al preventivo, prima che tu confermi.",
+  "@landingFaqA6": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.faq.a6 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingValuesLabel": "I nostri valori",
+  "@landingValuesLabel": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.values.label de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingValuesV1": "Tradizione",
+  "@landingValuesV1": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.values.v1 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingValuesV2": "Stagionalità",
+  "@landingValuesV2": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.values.v2 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingValuesV3": "Qualità",
+  "@landingValuesV3": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.values.v3 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingValuesV4": "Convivialità",
+  "@landingValuesV4": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.values.v4 de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFinalTitle": "Serate libere, frigo pieno.",
+  "@landingFinalTitle": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.final.title de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFinalText": "Raccontaci cosa ti serve. Nessun impegno: Evelyn ti prepara il preventivo e ti ricontatta al più presto.",
+  "@landingFinalText": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.final.text de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFinalCta": "Chiedi il preventivo",
+  "@landingFinalCta": {
+    "description": "Portada de la app sin sesión: copia exacta de landing.final.cta de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFooterSlogan": "Cucina autentica, a casa tua.",
+  "@landingFooterSlogan": {
+    "description": "Portada de la app sin sesión: copia exacta de common.slogan de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFooterTagline": "Cucina di casa a domicilio, a Bergamo e dintorni.",
+  "@landingFooterTagline": {
+    "description": "Portada de la app sin sesión: copia exacta de common.footerTagline de la web (lo verifica test/l10n/landing_texts_test.dart)."
+  },
+  "landingFooterPrivacy": "Informativa privacy",
+  "@landingFooterPrivacy": {
+    "description": "Portada de la app sin sesión: copia exacta de common.footerPrivacy de la web (lo verifica test/l10n/landing_texts_test.dart)."
   },
   "homeLoginCta": "Accedi",
   "@homeLoginCta": {

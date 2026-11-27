@@ -56,30 +56,31 @@ Future<void> _pumpApp(
 void main() {
   testWidgets('arranca en el inicio, en italiano', (tester) async {
     await _pumpApp(tester);
-    expect(find.text('Cucina di casa, a casa tua'), findsOneWidget);
+    expect(find.text('Pranzo e cena già pronti. Per tutta la settimana.'), findsOneWidget);
     // La compra la hace el cliente, no Evelyn.
-    expect(find.textContaining('La spesa la fai tu, con la lista che ti manda lei.'), findsOneWidget);
+    expect(find.text('La spesa la fai tu'), findsOneWidget);
     expect(find.textContaining('Evelyn fa la spesa'), findsNothing);
-    expect(find.text('Richiedi un preventivo'), findsOneWidget);
-    expect(find.text('Accedi'), findsOneWidget);
+    expect(find.text('Chiedi il preventivo'), findsWidgets);
+    expect(find.byKey(const ValueKey('home-login')), findsOneWidget);
   });
 
   testWidgets('con un idioma no soportado usa el italiano', (tester) async {
     await _pumpApp(tester, deviceLocales: const [Locale('de', 'DE')]);
-    expect(find.text('Richiedi un preventivo'), findsOneWidget);
+    expect(find.text('Pranzo e cena già pronti. Per tutta la settimana.'), findsOneWidget);
   });
 
   testWidgets('con el dispositivo en español usa el español', (tester) async {
     await _pumpApp(tester, deviceLocales: const [Locale('es', 'AR')]);
-    expect(find.text('Pedir presupuesto'), findsOneWidget);
+    expect(find.text('Almuerzo y cena, ya listos. Toda la semana.'), findsOneWidget);
   });
 
-  testWidgets('«Richiedi un preventivo» abre el formulario de la web, en el idioma de la app', (tester) async {
+  testWidgets('«Chiedi il preventivo» abre el formulario de la web dentro de la app, en su idioma', (tester) async {
     final links = FakeLinkLauncher();
     await _pumpApp(tester, links: links, deviceLocales: const [Locale('es', 'ES')]);
     await tester.tap(find.byKey(const ValueKey('home-request')));
     await tester.pumpAndSettle();
-    expect(links.launched, [Uri.parse('https://radicicucina.app/richiesta/?lang=es')]);
+    expect(links.pages, [Uri.parse('https://radicicucina.app/richiesta/?lang=es')]);
+    expect(links.launched, isEmpty);
   });
 
   // Desde el 22/11/2026 la tarifa es solo la referencia de Evelyn: sin sesión
