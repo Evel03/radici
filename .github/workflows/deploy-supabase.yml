@@ -19,7 +19,7 @@
 #   despliegue corta antes de tocar Auth)
 #   y RESEND_SMTP_KEY (la segunda clave de Resend: SMTP de Auth; en Free, sin SMTP propio Supabase no deja
 #   poner la plantilla del código y Evelyn no puede entrar; sin ella el despliegue sigue y avisa)
-#   (opcionales: WHATSAPP_TOKEN, CHEF_MEMBER_EMAILS y ANTHROPIC_API_KEY)
+#   (opcionales: WHATSAPP_TOKEN, CHEF_MEMBER_EMAILS, TEST_CLIENT_EMAILS y ANTHROPIC_API_KEY)
 #   · ANTHROPIC_API_KEY: la clave de la API de Claude con que la función chef traduce los platos del
 #     español al italiano y al inglés (POST /chef/translate, contrato chef-api.md §12). A Anthropic solo
 #     van el nombre y la descripción del plato, nunca datos de clientes ni de pedidos. Sin ella la
@@ -37,6 +37,12 @@
 #     despliegue: después de editarlo, correr Deploy Supabase a mano (Actions → Deploy Supabase → Run
 #     workflow). Va como secreto y no como variable: los valores de las variables salen en claro en el
 #     log del paso, y estos emails no se publican.
+#   · TEST_CLIENT_EMAILS: cuentas de prueba de clienta (emails separados por coma, hasta 10; auth.md §15),
+#     para probar en producción el área de clientas (/app/ y la app) con las altas cerradas. La lista
+#     manda: un email nuevo recibe su cuenta confirmada y SIN contraseña (la elige en la app con «Password
+#     dimenticata?»), marcada con app_metadata.radici_test; uno que sale pierde la cuenta (con ficha de
+#     cliente, queda como clienta sin la marca); vacía o sin cargar, ninguna. Nunca un email de la cocina.
+#     Como CHEF_MEMBER_EMAILS: secreto y no variable, y se aplica en el próximo despliegue (Run workflow).
 #   · RESEND_API_KEY también sirve para comprobar que Resend no tiene prendido el seguimiento de clics ni
 #     de aperturas (open_tracking y click_tracking de cada dominio): con seguimiento prendido el despliegue
 #     corta antes de db push. Lo apaga la dueña de la cuenta de Resend, nunca este workflow. Con una clave
@@ -555,6 +561,22 @@ jobs:
             echo "::error::No se pudieron guardar la URL y el secreto de los avisos en Vault: $(jq -r '.message // .error // "sin mensaje"' <<< "${out}" 2>/dev/null || echo "sin mensaje"). Los avisos del menú no salen hasta el próximo despliegue."
             exit 1
           fi
+
+      # Las cuentas de prueba de clienta, en cada despliegue (supabase/scripts/deploy-accounts.sh testers,
+      # con tests; auth.md §15): la lista del secreto TEST_CLIENT_EMAILS manda (la valida test-clients.ts:
+      # ninguna de la cocina). Crea las que faltan, confirmadas y sin contraseña, y
+      # private.sync_test_clients marca a las de la lista y saca a las que ya no están. Va antes de los
+      # colaboradores, que cuentan los usuarios de Auth (las de prueba no son de más), y con la misma
+      # condición: al final, aunque haya fallado otro paso, siempre que db push haya salido bien.
+      - name: Cuentas de prueba
+        if: ${{ !cancelled() && env.HAS_SUPABASE == 'true' && steps.db_push.outcome == 'success' }}
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          CHEF_LOGIN_EMAIL: ${{ vars.CHEF_LOGIN_EMAIL }}
+          CHEF_LOCALE: ${{ vars.CHEF_LOCALE }}
+          CHEF_MEMBER_EMAILS: ${{ secrets.CHEF_MEMBER_EMAILS }}
+          TEST_CLIENT_EMAILS: ${{ secrets.TEST_CLIENT_EMAILS }}
+        run: bash supabase/scripts/deploy-accounts.sh testers
 
       # Los colaboradores de la cocinera, en cada despliegue (supabase/scripts/deploy-accounts.sh members,
       # con tests): la lista del secreto CHEF_MEMBER_EMAILS manda (la valida y la convierte en SQL

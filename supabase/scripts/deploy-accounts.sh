@@ -19,6 +19,12 @@
 #            de la lista se aplica aunque haya que limpiar otra cosa). Avisa, sin cortar, si una cuenta de la cocina tiene
 #            identidades que no son de email (el hook de la cocina solo con código las deja sin uso),
 #            e informa cuántas cuentas hay de clientas, de prueba y sin confirmar: solo números, nunca emails.
+#   testers  «Cuentas de prueba», en cada despliegue, antes de members (auth.md §15). La lista del secreto
+#            TEST_CLIENT_EMAILS manda: la valida test-clients.ts (al lado, con tests; ninguna puede ser de la
+#            cocina), crea las cuentas que faltan, confirmadas y SIN contraseña (cada persona elige la suya
+#            con «Password dimenticata?»), y private.sync_test_clients marca a las de la lista con
+#            app_metadata.radici_test y saca a las que ya no están (sin ficha de cliente, se borra la cuenta).
+#            Con las altas cerradas (hasta PR20), son las únicas cuentas de clienta que no salen de un pedido.
 #
 # Las cuentas nacen confirmadas, con una contraseña al azar que nadie conoce (se entra con el código por
 # email) y con el idioma de los avisos para el email del código. La clave secreta del proyecto se lee una
@@ -26,7 +32,8 @@
 # log: cada uno se enmascara (::add-mask::) antes de usarlo y los mensajes dicen solo «s***@d***.it».
 #
 # Entorno: SUPABASE_PROJECT_REF y SUPABASE_ACCESS_TOKEN; chef: CHEF_LOGIN_EMAIL, CHEF_DISPLAY_NAME y
-# CHEF_LOCALE; members: CHEF_MEMBER_EMAILS, CHEF_LOGIN_EMAIL y CHEF_LOCALE. Necesita curl, jq, openssl y
+# CHEF_LOCALE; members: CHEF_MEMBER_EMAILS, CHEF_LOGIN_EMAIL y CHEF_LOCALE; testers: TEST_CLIENT_EMAILS,
+# CHEF_MEMBER_EMAILS, CHEF_LOGIN_EMAIL y CHEF_LOCALE. Necesita curl, jq, openssl y
 # node. Tests: deploy-accounts.test.ts (al lado), con la Management API y Auth simuladas.
 set -euo pipefail
 
@@ -85,13 +92,16 @@ admin_key() {
 }
 
 # Cuenta confirmada para $1, con una contraseña al azar (no sobrevive: auth.md §4; la fija después promote_to_chef o sync_chef_members) y el idioma del email del código. $2 dice de quién
-# es en los mensajes ("de la cocinera", "del colaborador s***@…"; nunca el email de un colaborador).
+# es en los mensajes ("de la cocinera", "del colaborador s***@…"; nunca el email de un colaborador). Con $3
+# "sin-contrasena" (las cuentas de prueba) nace sin contraseña: la persona elige la suya con «Password
+# dimenticata?» (auth.md §15).
 create_user() {
-  local created status
+  local created status password=""
   admin_key
   created="$(mktemp)"
-  status=$(jq -n --arg email "$1" --arg password "$(openssl rand -hex 32)" --arg locale "${CHEF_LOCALE:-es}" \
-    '{email: $email, password: $password, email_confirm: true, user_metadata: {locale: $locale}}' \
+  if [ "${3:-}" != "sin-contrasena" ]; then password=$(openssl rand -hex 32); fi
+  status=$(jq -n --arg email "$1" --arg password "${password}" --arg locale "${CHEF_LOCALE:-es}" \
+    '{email: $email, email_confirm: true, user_metadata: {locale: $locale}} + (if $password == "" then {} else {password: $password} end)' \
     | curl -sS -o "${created}" -w '%{http_code}' -X POST "https://${SUPABASE_PROJECT_REF}.supabase.co/auth/v1/admin/users" \
         "${admin_headers[@]}" --data-binary @-)
   if [ "${status}" != "200" ] && [ "${status}" != "201" ]; then
@@ -151,6 +161,8 @@ sql_array() {
 
 # Las cuentas de la cocina (la cocinera y sus colaboradores), como subconsulta de ids.
 kitchen_ids="select profile_id from public.chefs union select profile_id from public.chef_members"
+# Una cuenta de prueba (private.sync_test_clients), como condición sobre auth.users.
+is_tester="coalesce(raw_app_meta_data -> 'radici_test' = 'true'::jsonb, false)"
 
 # Lo que se verifica en cada despliegue sobre las cuentas de la cocina y sobre las demás. Todo son números:
 # ningún email sale en el log.
@@ -170,7 +182,7 @@ account_report() {
     echo "::warning::${identities} identidades de las cuentas de la cocina no son de email (por ejemplo Google): la cocina entra solo con el código por email y esas identidades quedan sin uso. Quitarlas en Authentication → Users."
   fi
   clients=$(count "select count(*)::int as n from auth.users where id not in (${kitchen_ids})")
-  test=$(count "select count(*)::int as n from auth.users where id not in (${kitchen_ids}) and email ~* '(@example\.(com|org|net)|\.test|\.invalid)\$'")
+  test=$(count "select count(*)::int as n from auth.users where id not in (${kitchen_ids}) and (${is_tester} or email ~* '(@example\.(com|org|net)|\.test|\.invalid)\$')")
   unconfirmed=$(count "select count(*)::int as n from auth.users where email_confirmed_at is null")
   echo "Cuentas de clientas: ${clients} (de prueba: ${test}; sin confirmar: ${unconfirmed})."
 }
@@ -231,23 +243,59 @@ members() {
   # Después de sincronizar: una baja de la lista no espera a que alguien limpie un usuario anónimo.
   account_checks
 
-  # Usuarios en Auth: la cocinera, sus colaboradores y las clientas (cuentas con ficha en public.clients).
-  # Una cuenta que salió de la lista y no se pudo borrar, o que se creó a mano en el panel, queda de más
-  # (sin ficha): el aviso la cuenta.
+  # Usuarios en Auth: la cocinera, sus colaboradores, las clientas (cuentas con ficha en public.clients) y
+  # las cuentas de prueba (paso anterior). Una cuenta que salió de una lista y no se pudo borrar, o que se
+  # creó a mano en el panel, queda de más (sin ficha): el aviso la cuenta.
   total=$(count "select count(*)::int as n from auth.users")
-  extra=$(count "select count(*)::int as n from auth.users u where u.id not in (${kitchen_ids}) and not exists (select 1 from public.clients c where c.profile_id = u.id)")
+  extra=$(count "select count(*)::int as n from auth.users u where u.id not in (${kitchen_ids}) and not exists (select 1 from public.clients c where c.profile_id = u.id) and not ${is_tester}")
   echo "Usuarios en Auth: ${total} (cocinera: ${chefs}; colaboradores: ${members_db})."
   if [ "${extra}" != "0" ]; then
-    echo "::warning::Hay ${extra} usuarios en Auth que no son la cocinera, ni sus colaboradores, ni tienen ficha de cliente: revisar en el panel que no haya otro."
+    echo "::warning::Hay ${extra} usuarios en Auth que no son la cocinera, ni sus colaboradores, ni tienen ficha de cliente, ni son cuentas de prueba: revisar en el panel que no haya otro."
   fi
   account_report
+}
+
+# Las cuentas de prueba de clienta, en cada despliegue: la lista manda (auth.md §15).
+testers() {
+  local list total email masked users unconfirmed result i
+  if ! list=$(node supabase/scripts/test-clients.ts list); then
+    echo "::error::TEST_CLIENT_EMAILS no es una lista válida (el motivo está arriba). Corregir el secreto y volver a correr Deploy Supabase."
+    exit 1
+  fi
+  while IFS= read -r email; do
+    if [ -n "${email}" ]; then echo "::add-mask::${email}"; fi
+  done < <(jq -r '.[].email' <<< "${list}")
+  total=$(jq 'length' <<< "${list}")
+
+  for ((i = 0; i < total; i++)); do
+    email=$(jq -r --argjson i "${i}" '.[$i].email' <<< "${list}")
+    masked=$(jq -r --argjson i "${i}" '.[$i].masked' <<< "${list}")
+    users=$(users_with "${email}")
+    if [ "${users}" = "0" ]; then
+      create_user "${email}" "de prueba ${masked}" sin-contrasena
+      echo "Cuenta de prueba creada para ${masked}: la contraseña se elige en la app con «Password dimenticata?»."
+      continue
+    fi
+    unconfirmed=$(unconfirmed_with "${email}")
+    if [ "${unconfirmed}" != "0" ]; then
+      echo "::error::Ya hay una cuenta de prueba ${masked} sin confirmar (no la creó este workflow). Borrarla en Authentication → Users y volver a desplegar."
+      exit 1
+    fi
+  done
+
+  if ! result=$(sql "$(node supabase/scripts/test-clients.ts sql)" | jq -c '.[0].result'); then
+    echo "::error::No se aplicó la lista de cuentas de prueba (el motivo está arriba; test_client_is_kitchen: un email es de una cuenta de la cocina). No se cambió ninguna."
+    exit 1
+  fi
+  echo "Cuentas de prueba: $(jq -r '"\(.testers) en la lista (nuevas: \(.added); sin cambios: \(.kept); salieron: \(.removed); cuentas borradas: \(.accounts_deleted))"' <<< "${result}")."
 }
 
 case "${1:-}" in
   chef) chef_account ;;
   members) members ;;
+  testers) testers ;;
   *)
-    echo "Uso: bash supabase/scripts/deploy-accounts.sh chef|members" >&2
+    echo "Uso: bash supabase/scripts/deploy-accounts.sh chef|members|testers" >&2
     exit 2
     ;;
 esac

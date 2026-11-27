@@ -387,9 +387,11 @@ test("contraseñas: la regla de /accesso/ (web) y la de la app son las mismas qu
   }
 });
 
-test("contraseñas: las cuentas que crea el despliegue (64 hexadecimales al azar) cumplen la regla", () => {
+test("contraseñas: las cuentas que crea el despliegue (64 hexadecimales al azar) cumplen la regla; las de prueba no llevan", () => {
   const script = read("supabase/scripts/deploy-accounts.sh");
-  assert.match(script, /--arg password "\$\(openssl rand -hex 32\)"/);
+  assert.match(script, /if \[ "\$\{3:-\}" != "sin-contrasena" \]; then password=\$\(openssl rand -hex 32\); fi/);
+  assert.match(script, /--arg password "\$\{password\}"/);
+  assert.match(script, /if \$password == "" then \{\} else \{password: \$password\} end/, "sin contraseña, el campo no va");
   // 64 caracteres de 0-9a-f: más de 10, y sin una letra o sin un dígito con probabilidad < 1e-13 (16^-64 · (6^64+10^64)).
   assert.ok(64 >= PASSWORD_MIN_LENGTH && 64 <= 72);
 });
