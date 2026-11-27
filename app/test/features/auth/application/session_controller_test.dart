@@ -176,4 +176,8 @@ class _SlowAccounts implements AccountRepository {
     required String userId,
     required AppLanguage language,
   }) => throw UnimplementedError();
+
+  @override
+  Future<void> saveAccountDetails(Map<String, Object?> details) =>
+      throw UnimplementedError();
 }

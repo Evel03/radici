@@ -1,6 +1,6 @@
 // Acceso de las clientas con contraseña (/app/ y la app nativa; /gestione/
-// sigue solo con el código): entrar, «Crea account», «Password dimenticata?»
-// y «Reinvia l'email». Cada pedido lleva un token nuevo del captcha de Auth.
+// sigue solo con el código): entrar, «Password dimenticata?» y «Reinvia
+// l'email». «Crea account» es otra pantalla (/crea-account, SignUpController). Cada pedido lleva un token nuevo del captcha de Auth.
 // El alta, la recuperación y el reenvío confirman siempre con el mismo aviso,
 // exista o no la cuenta: la pantalla nunca dice si un email tiene cuenta (Auth
 // responde igual en los dos casos).
@@ -16,14 +16,11 @@ import 'package:radici/features/auth/domain/auth_models.dart';
 
 part 'password_access_controller.freezed.dart';
 
-/// Qué formulario se ve: entrar, crear la cuenta o pedir una contraseña nueva.
-enum AccessView { signIn, signUp, forgot }
+/// Qué formulario se ve: entrar o pedir una contraseña nueva.
+enum AccessView { signIn, forgot }
 
 /// Lo que se acaba de mandar, para confirmarlo en pantalla.
 enum AccessNotice {
-  /// «Crea account»: el link para confirmar el email y elegir la contraseña.
-  signUpSent,
-
   /// «Password dimenticata?»: el link para elegir una contraseña nueva.
   resetSent,
 }
@@ -108,26 +105,6 @@ class PasswordAccessController extends Notifier<PasswordAccessState> {
     );
   }
 
-  /// «Crea account»: el link para confirmar el email y elegir la contraseña.
-  Future<void> signUp(String rawEmail, {String? locale}) async {
-    if (state.busy) return;
-    final email = _normalize(rawEmail);
-    if (!isValidEmail(email)) {
-      _fail(AuthFailureKind.invalidEmail);
-      return;
-    }
-    await _send(
-      locale,
-      (captchaToken) =>
-          _auth.signUp(email: email, locale: locale, captchaToken: captchaToken),
-      () => PasswordAccessState(
-        view: AccessView.signUp,
-        email: email,
-        notice: AccessNotice.signUpSent,
-      ),
-    );
-  }
-
   /// «Password dimenticata?»: el link para elegir una contraseña nueva.
   Future<void> requestReset(String rawEmail, {String? locale}) async {
     if (state.busy) return;
@@ -156,10 +133,6 @@ class PasswordAccessController extends Notifier<PasswordAccessState> {
     await _send(
       locale,
       (captchaToken) => switch (notice) {
-        AccessNotice.signUpSent => _auth.resendSignupEmail(
-          email,
-          captchaToken: captchaToken,
-        ),
         AccessNotice.resetSent => _auth.requestPasswordReset(
           email,
           captchaToken: captchaToken,

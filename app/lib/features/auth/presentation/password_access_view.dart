@@ -4,7 +4,9 @@
 // escribe la persona: no llama a Supabase.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:radici/core/link_launcher.dart';
+import 'package:radici/core/routes.dart';
 import 'package:radici/core/web_links.dart';
 import 'package:radici/features/auth/application/password_access_controller.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
@@ -68,7 +70,6 @@ class _PasswordAccessViewState extends ConsumerState<PasswordAccessView> {
     if (state.notice != null) return _Sent(state: state, locale: _locale);
     return switch (state.view) {
       AccessView.signIn => _signIn(context, state),
-      AccessView.signUp => _signUp(context, state),
       AccessView.forgot => _forgot(context, state),
     };
   }
@@ -174,47 +175,12 @@ class _PasswordAccessViewState extends ConsumerState<PasswordAccessView> {
         const SizedBox(height: 8),
         OutlinedButton(
           key: const ValueKey('access-go-sign-up'),
-          onPressed: state.busy ? null : () => _show(AccessView.signUp),
+          // «Crear cuenta»: los datos, la contraseña y el código, en su pantalla (auth.md §19).
+          onPressed: state.busy ? null : () => context.push(AppRoutes.signUp),
           child: Text(l10n.loginCreateAccount),
         ),
         const SizedBox(height: 8),
         _PrivacyNote(locale: _locale),
-      ],
-    );
-  }
-
-  Widget _signUp(BuildContext context, PasswordAccessState state) {
-    final l10n = AppLocalizations.of(context);
-    void submit() => _controller.signUp(_email.text, locale: _locale);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Title(l10n.signUpTitle),
-        const SizedBox(height: 8),
-        Text(l10n.signUpBody, style: Theme.of(context).textTheme.bodyLarge),
-        const SizedBox(height: 24),
-        _emailField(
-          l10n,
-          state,
-          action: TextInputAction.send,
-          onSubmitted: submit,
-          errorText: _errorText(l10n, state),
-        ),
-        const SizedBox(height: 16),
-        BusyButton(
-          key: const ValueKey('access-sign-up'),
-          busy: state.busy,
-          onPressed: submit,
-          label: l10n.loginCreateAccount,
-        ),
-        const SizedBox(height: 8),
-        _PrivacyNote(locale: _locale),
-        const SizedBox(height: 8),
-        TextButton(
-          key: const ValueKey('access-back'),
-          onPressed: state.busy ? null : () => _show(AccessView.signIn),
-          child: Text(l10n.signUpHaveAccount),
-        ),
       ],
     );
   }
@@ -284,18 +250,12 @@ class _Sent extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Title(
-          state.notice == AccessNotice.signUpSent
-              ? l10n.signUpTitle
-              : l10n.loginForgotPassword,
-        ),
+        _Title(l10n.loginForgotPassword),
         const SizedBox(height: 16),
         Semantics(
           liveRegion: true,
           child: Text(
-            state.notice == AccessNotice.signUpSent
-                ? l10n.signUpSent(state.email)
-                : l10n.resetSent(state.email),
+            l10n.resetSent(state.email),
             key: const ValueKey('access-sent'),
             style: theme.textTheme.bodyLarge,
           ),

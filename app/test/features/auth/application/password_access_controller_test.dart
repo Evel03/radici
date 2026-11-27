@@ -89,7 +89,7 @@ void main() {
       final first = controller().signIn('cliente@example.test', auth.validPassword);
       expect(state().busy, isTrue);
       await controller().signIn('cliente@example.test', auth.validPassword);
-      controller().show(AccessView.signUp);
+      controller().show(AccessView.forgot);
       expect(state().view, AccessView.signIn, reason: 'no cambia de formulario a mitad de un pedido');
       gate.complete('tok');
       await first;
@@ -102,7 +102,7 @@ void main() {
     test('obligatorio y sin token: aviso con el motivo, sin llamar a Auth', () async {
       container = build(captchaRequired: true);
       captcha.available = false;
-      await controller().signUp('nueva@example.test');
+      await controller().requestReset('cliente@example.test');
       expect(state().error, AuthFailureKind.captcha);
       expect(state().errorDetail, 'app-timeout');
       expect(auth.passwordRequests, isEmpty);
@@ -117,30 +117,14 @@ void main() {
 
     test('sin token y todavía no obligatorio (dev): sigue sin token', () async {
       captcha.available = false;
-      await controller().signUp('nueva@example.test');
-      expect(auth.passwordRequests, ['signUp:nueva@example.test']);
+      await controller().requestReset('cliente@example.test');
+      expect(auth.passwordRequests, ['reset:cliente@example.test']);
       expect(auth.passwordCaptchaTokens, [null]);
     });
   });
 
-  group('alta, recuperación y reenvío: el mismo aviso exista o no la cuenta', () {
-    test('«Crea account» confirma con signUpSent y el email', () async {
-      controller().show(AccessView.signUp);
-      await controller().signUp(' Nueva@Example.test', locale: 'it');
-      expect(auth.passwordRequests, ['signUp:nueva@example.test']);
-      expect(state().notice, AccessNotice.signUpSent);
-      expect(state().email, 'nueva@example.test');
-      expect(state().view, AccessView.signUp);
-      expect(state().error, isNull);
-    });
-
-    test('con las altas cerradas: signupClosed y ningún aviso de envío', () async {
-      auth.emailFailure = AuthFailureKind.signupClosed;
-      await controller().signUp('nueva@example.test');
-      expect(state().error, AuthFailureKind.signupClosed);
-      expect(state().notice, isNull);
-    });
-
+  // El alta es otra pantalla (SignUpController, sign_up_controller_test.dart).
+  group('recuperación y reenvío: el mismo aviso exista o no la cuenta', () {
     test('«Password dimenticata?» confirma con resetSent', () async {
       await controller().requestReset('cliente@example.test');
       expect(auth.passwordRequests, ['reset:cliente@example.test']);
@@ -149,17 +133,12 @@ void main() {
     });
 
     test('«Reinvia l\'email» repite el mismo pedido al mismo email, con otro token', () async {
-      await controller().signUp('nueva@example.test');
+      await controller().requestReset('cliente@example.test');
       await controller().resend(locale: 'en');
-      expect(auth.passwordRequests, ['signUp:nueva@example.test', 'resend:nueva@example.test']);
+      expect(auth.passwordRequests, ['reset:cliente@example.test', 'reset:cliente@example.test']);
       expect(auth.passwordCaptchaTokens, ['captcha-token-1', 'captcha-token-2']);
       expect(state().resent, isTrue);
-      expect(state().notice, AccessNotice.signUpSent);
-
-      controller().show(AccessView.forgot);
-      await controller().requestReset('cliente@example.test');
-      await controller().resend();
-      expect(auth.passwordRequests.skip(2), ['reset:cliente@example.test', 'reset:cliente@example.test']);
+      expect(state().notice, AccessNotice.resetSent);
     });
 
     test('sin nada mandado, «Reinvia» no hace nada', () async {

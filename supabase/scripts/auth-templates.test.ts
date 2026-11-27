@@ -43,7 +43,7 @@ test("cada tipo tiene sus textos en los tres idiomas, sin repetir el idioma", ()
 });
 
 test("solo .Data.locale (para comparar) y, de lo que se imprime, el código o el token_hash: nada del usuario", () => {
-  const allowed: Record<string, string[]> = { magic_link: [".Token"], confirmation: [".TokenHash"], recovery: [".TokenHash"] };
+  const allowed: Record<string, string[]> = { magic_link: [".Token"], confirmation: [".Token"], recovery: [".TokenHash"] };
   for (const kind of AUTH_EMAIL_KINDS) {
     for (const text of [goTrueTemplate(kind), goTrueSubject(kind)]) {
       for (const action of text.match(/\{\{[^}]*\}\}/g) ?? []) {
@@ -60,8 +60,8 @@ test("solo .Data.locale (para comparar) y, de lo que se imprime, el código o el
   }
 });
 
-test("alta y recuperación: el link a /accesso/ con el idioma en la query y el token en el fragmento; nunca la URL de Auth", () => {
-  for (const [kind, type] of [["confirmation", "email"], ["recovery", "recovery"]] as const) {
+test("recuperación: el link a /accesso/ con el idioma en la query y el token en el fragmento; nunca la URL de Auth", () => {
+  for (const [kind, type] of [["recovery", "recovery"]] as const) {
     const html = goTrueTemplate(kind);
     for (const locale of AUTH_LOCALES) {
       const href = `${ACCESS_PAGE}?lang=${locale}#token_hash={{ .TokenHash }}&type=${type}`;
@@ -70,9 +70,10 @@ test("alta y recuperación: el link a /accesso/ con el idioma en la query y el t
     }
     assert.ok(!/supabase\.co|\/auth\/v1|\/verify/.test(html), `${kind}: nunca el link de GoTrue`);
   }
-  for (const kind of ["magic_link", "email_change", "reauthentication", "invite"] as const) {
+  // El código de la cocina y el del alta (que se escribe en la app, auth.md §19): sin link.
+  for (const kind of ["magic_link", "confirmation", "email_change", "reauthentication", "invite"] as const) {
     assert.ok(!/href=/i.test(goTrueTemplate(kind)), `${kind}: sin link`);
-    if (kind !== "magic_link") assert.ok(!goTrueTemplate(kind).includes(".Token"), `${kind}: sin código`);
+    if (kind !== "magic_link" && kind !== "confirmation") assert.ok(!goTrueTemplate(kind).includes(".Token"), `${kind}: sin código`);
   }
 });
 

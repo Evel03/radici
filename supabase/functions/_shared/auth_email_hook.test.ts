@@ -156,7 +156,10 @@ test("el email: el código para la cocina, el link a /accesso/ para el alta y la
   assert.ok(recovery.text.includes(link), recovery.text);
   assert.ok(recovery.html.includes(link.replace("&", "&amp;")) || recovery.html.includes(link));
   assert.ok(!recovery.html.includes("1234567890") && !recovery.text.includes("1234567890"), "el link va sin código");
-  assert.ok(renderHookEmail("confirmation", values).text.includes("&type=email"));
+  // El alta: el código, para escribirlo en la app (sin link).
+  const confirmation = renderHookEmail("confirmation", values);
+  assert.ok(confirmation.html.includes("1234567890") && confirmation.text.includes("1234567890"));
+  assert.ok(!confirmation.html.includes("accesso") && !confirmation.text.includes("accesso"));
   for (const email of [code, recovery]) assert.ok(!/clienta|ejemplo\.test/i.test(email.html + email.text));
 });
 
@@ -164,6 +167,7 @@ test("lo que falta para armar cada email, y el error en la forma de GoTrue", () 
   assert.equal(missingValue("magic_link", { token: "", tokenHash: "x" }), true);
   assert.equal(missingValue("magic_link", { token: "123456", tokenHash: "" }), false);
   assert.equal(missingValue("recovery", { token: "123456", tokenHash: "" }), true);
-  assert.equal(missingValue("confirmation", { token: "", tokenHash: "abc" }), false);
+  assert.equal(missingValue("confirmation", { token: "", tokenHash: "abc" }), true);
+  assert.equal(missingValue("confirmation", { token: "123456", tokenHash: "" }), false);
   assert.deepEqual(hookError(429, "too_many_emails"), { error: { http_code: 429, message: "too_many_emails" } });
 });

@@ -56,6 +56,17 @@ abstract interface class AuthRepository {
     String? captchaToken,
   });
 
+  /// «Crear cuenta» (auth.md §19): el código de 10 cifras del email de alta.
+  /// Confirma el email y abre la sesión (amr otp). Lanza [AuthFailure]
+  /// ([AuthFailureKind.invalidCode] si no es o venció).
+  Future<void> verifySignUpCode({required String email, required String code});
+
+  /// Con la sesión que acaba de abrir el código del alta, la contraseña que
+  /// eligió en el formulario: la primera confirmación borra la del alta
+  /// (auth.md §4) y una sesión del código no pide la actual (§12). Lanza
+  /// [AuthFailure].
+  Future<void> setNewPassword(String password);
+
   /// «Password dimenticata?»: el link para elegir una contraseña nueva. Auth
   /// responde igual exista o no la cuenta. Lanza [AuthFailure].
   Future<void> requestPasswordReset(String email, {String? captchaToken});
@@ -182,6 +193,35 @@ class SupabaseAuthRepository implements AuthRepository {
         data: {if (_supportedLocales.contains(locale)) 'locale': locale},
         captchaToken: captchaToken,
       );
+    } on Object catch (error) {
+      throw AuthFailure(authFailureKindOf(error));
+    }
+  }
+
+  @override
+  Future<void> verifySignUpCode({
+    required String email,
+    required String code,
+  }) async {
+    final AuthResponse response;
+    try {
+      response = await _auth.verifyOTP(
+        email: email,
+        token: code,
+        type: OtpType.signup,
+      );
+    } on Object catch (error) {
+      throw AuthFailure(authFailureKindOf(error, verifying: true));
+    }
+    if (response.session == null) {
+      throw const AuthFailure(AuthFailureKind.unknown);
+    }
+  }
+
+  @override
+  Future<void> setNewPassword(String password) async {
+    try {
+      await _auth.updateUser(UserAttributes(password: password));
     } on Object catch (error) {
       throw AuthFailure(authFailureKindOf(error));
     }
@@ -342,6 +382,16 @@ class NoBackendAuthRepository implements AuthRepository {
     String? locale,
     String? captchaToken,
   }) => Future.error(const AuthFailure(AuthFailureKind.noBackend));
+
+  @override
+  Future<void> verifySignUpCode({
+    required String email,
+    required String code,
+  }) => Future.error(const AuthFailure(AuthFailureKind.noBackend));
+
+  @override
+  Future<void> setNewPassword(String password) =>
+      Future.error(const AuthFailure(AuthFailureKind.noBackend));
 
   @override
   Future<void> requestPasswordReset(String email, {String? captchaToken}) =>

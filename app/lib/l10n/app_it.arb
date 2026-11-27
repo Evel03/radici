@@ -679,23 +679,218 @@
   "@signUpTitle": {
     "description": "Título del alta."
   },
-  "signUpBody": "Scrivi la tua email: ti mandiamo un link per confermarla e scegliere la password.",
-  "@signUpBody": {
-    "description": "Texto del alta."
-  },
-  "signUpSent": "Fatto. Se {email} non ha ancora un account, ti arriva un link per confermarla e scegliere la password. Se hai già un account, entra o usa «Password dimenticata?».",
-  "@signUpSent": {
-    "description": "Después de «Crea account»: igual exista o no la cuenta (nunca se dice si un email tiene cuenta).",
-    "placeholders": {
-      "email": {
-        "type": "String",
-        "example": "nome@esempio.it"
-      }
-    }
-  },
   "signUpHaveAccount": "Hai già un account? Accedi",
   "@signUpHaveAccount": {
     "description": "En el alta: vuelve al acceso."
+  },
+  "signUpIntro": "Inserisci i tuoi dati e scegli la password. Ti mandiamo un codice per email per confermarla.",
+  "@signUpIntro": {
+    "description": "Debajo del título de «Crear cuenta»."
+  },
+  "signUpSectionYou": "I tuoi dati",
+  "@signUpSectionYou": {
+    "description": "Sección de «Crear cuenta»."
+  },
+  "signUpFirstName": "Nome",
+  "@signUpFirstName": {
+    "description": "Campo."
+  },
+  "signUpLastName": "Cognome",
+  "@signUpLastName": {
+    "description": "Campo."
+  },
+  "signUpPhone": "Telefono (WhatsApp)",
+  "@signUpPhone": {
+    "description": "Campo: el teléfono de la clienta, el canal con Evelyn."
+  },
+  "signUpPhoneHint": "Con il prefisso se non è italiano (+34…).",
+  "@signUpPhoneHint": {
+    "description": "Ayuda del teléfono."
+  },
+  "signUpBirthDate": "Data di nascita",
+  "@signUpBirthDate": {
+    "description": "Campo (abre el calendario)."
+  },
+  "signUpBirthDateChoose": "gg/mm/aaaa",
+  "@signUpBirthDateChoose": {
+    "description": "El formato de la fecha de nacimiento (se escribe o se elige en el calendario)."
+  },
+  "signUpBirthDateHint": "Devi avere almeno 18 anni.",
+  "@signUpBirthDateHint": {
+    "description": "Ayuda de la fecha de nacimiento."
+  },
+  "signUpSectionAddress": "Indirizzo (facoltativo)",
+  "@signUpSectionAddress": {
+    "description": "Sección de «Crear cuenta»."
+  },
+  "signUpAddressHint": "Dove cucina Evelyn. Puoi aggiungerlo dopo: serve prima della prima prenotazione.",
+  "@signUpAddressHint": {
+    "description": "Ayuda de la dirección."
+  },
+  "signUpStreet": "Via e numero",
+  "@signUpStreet": {
+    "description": "Campo."
+  },
+  "signUpCity": "Città",
+  "@signUpCity": {
+    "description": "Campo."
+  },
+  "signUpPostalCode": "CAP",
+  "@signUpPostalCode": {
+    "description": "Campo."
+  },
+  "signUpNotes": "Indicazioni (citofono, piano…)",
+  "@signUpNotes": {
+    "description": "Campo opcional de la dirección."
+  },
+  "signUpSectionAccount": "Il tuo account",
+  "@signUpSectionAccount": {
+    "description": "Sección de «Crear cuenta»: email y contraseña."
+  },
+  "signUpRepeat": "Ripeti la password",
+  "@signUpRepeat": {
+    "description": "Campo: la contraseña otra vez."
+  },
+  "signUpSectionExtra": "Per conoscerti meglio (facoltativo)",
+  "@signUpSectionExtra": {
+    "description": "Sección de las respuestas opcionales."
+  },
+  "signUpSeason": "Stagione preferita",
+  "@signUpSeason": {
+    "description": "Pregunta opcional."
+  },
+  "seasonSpring": "Primavera",
+  "@seasonSpring": {
+    "description": "Opción."
+  },
+  "seasonSummer": "Estate",
+  "@seasonSummer": {
+    "description": "Opción."
+  },
+  "seasonAutumn": "Autunno",
+  "@seasonAutumn": {
+    "description": "Opción."
+  },
+  "seasonWinter": "Inverno",
+  "@seasonWinter": {
+    "description": "Opción."
+  },
+  "seasonAny": "Tutte",
+  "@seasonAny": {
+    "description": "Opción: le gustan todas las temporadas."
+  },
+  "signUpHeardFrom": "Come ci hai conosciuto?",
+  "@signUpHeardFrom": {
+    "description": "Pregunta opcional."
+  },
+  "heardInstagram": "Instagram",
+  "@heardInstagram": {
+    "description": "Opción."
+  },
+  "heardGoogle": "Google",
+  "@heardGoogle": {
+    "description": "Opción."
+  },
+  "heardWordOfMouth": "Passaparola",
+  "@heardWordOfMouth": {
+    "description": "Opción: alguien se la recomendó."
+  },
+  "heardOther": "Altro",
+  "@heardOther": {
+    "description": "Opción."
+  },
+  "signUpInterests": "Cosa ti interessa?",
+  "@signUpInterests": {
+    "description": "Pregunta opcional (varias opciones: los servicios de la portada)."
+  },
+  "signUpDays": "Quali giorni ti vanno meglio?",
+  "@signUpDays": {
+    "description": "Pregunta opcional (lunes a viernes)."
+  },
+  "signUpHousehold": "Per quante persone?",
+  "@signUpHousehold": {
+    "description": "Pregunta opcional."
+  },
+  "householdOneTwo": "1–2",
+  "@householdOneTwo": {
+    "description": "Opción."
+  },
+  "householdThreeFour": "3–4",
+  "@householdThreeFour": {
+    "description": "Opción."
+  },
+  "householdFivePlus": "5 o più",
+  "@householdFivePlus": {
+    "description": "Opción."
+  },
+  "signUpPrivacy": "Ho letto l'informativa privacy e accetto di creare l'account.",
+  "@signUpPrivacy": {
+    "description": "Casilla obligatoria."
+  },
+  "signUpPrivacyLink": "Leggi l'informativa privacy",
+  "@signUpPrivacyLink": {
+    "description": "Link a /privacy/."
+  },
+  "signUpSubmit": "Crea l'account",
+  "@signUpSubmit": {
+    "description": "Botón final del formulario."
+  },
+  "signUpErrorRequired": "Questo dato è obbligatorio.",
+  "@signUpErrorRequired": {
+    "description": "Error de un campo."
+  },
+  "signUpErrorPhone": "Scrivi un telefono valido (con il prefisso se non è italiano).",
+  "@signUpErrorPhone": {
+    "description": "Error del teléfono."
+  },
+  "signUpErrorBirthDate": "Scegli la tua data di nascita.",
+  "@signUpErrorBirthDate": {
+    "description": "Error de la fecha."
+  },
+  "signUpErrorUnderage": "Per creare un account devi avere almeno 18 anni.",
+  "@signUpErrorUnderage": {
+    "description": "Error: menor de 18."
+  },
+  "signUpErrorPrivacy": "Per creare l'account devi accettare l'informativa.",
+  "@signUpErrorPrivacy": {
+    "description": "Error: sin la casilla."
+  },
+  "signUpErrorAddress": "Completa l'indirizzo (via, città e CAP) o lascialo vuoto.",
+  "@signUpErrorAddress": {
+    "description": "Error de la dirección."
+  },
+  "signUpErrorFix": "Controlla i campi segnati.",
+  "@signUpErrorFix": {
+    "description": "Debajo del botón, cuando algún campo tiene un error."
+  },
+  "signUpCodeTitle": "Conferma la tua email",
+  "@signUpCodeTitle": {
+    "description": "Título del paso del código."
+  },
+  "signUpCodeBody": "Se {email} non aveva già un account, ti abbiamo mandato un codice di 10 cifre. Scrivilo qui per finire.",
+  "@signUpCodeBody": {
+    "description": "Paso del código. No dice si el email tenía cuenta (Auth contesta igual).",
+    "placeholders": {"email":{"type":"String","example":"anna@example.com"}}
+  },
+  "signUpCodeExisting": "Se hai già un account, entra o usa «Password dimenticata?».",
+  "@signUpCodeExisting": {
+    "description": "Debajo del paso del código."
+  },
+  "signUpCodeConfirm": "Conferma",
+  "@signUpCodeConfirm": {
+    "description": "Botón del paso del código."
+  },
+  "signUpEditData": "Cambia i miei dati o l'email",
+  "@signUpEditData": {
+    "description": "Vuelve al formulario."
+  },
+  "signUpFinishing": "Stiamo creando il tuo account…",
+  "@signUpFinishing": {
+    "description": "Mientras se guardan la contraseña y los datos."
+  },
+  "signUpDone": "Il tuo account è pronto.",
+  "@signUpDone": {
+    "description": "Aviso al terminar."
   },
   "forgotBody": "Scrivi la tua email: se ha un account, ti mandiamo un link per sceglierne una nuova.",
   "@forgotBody": {
