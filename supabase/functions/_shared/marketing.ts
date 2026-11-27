@@ -45,10 +45,10 @@ export function maskEmail(email: string): string {
 export function marketingStateFromRpc(data: unknown): { status: MarketingStatus; locale: Locale; email: string | null } | null {
   if (data === null || typeof data !== "object" || Array.isArray(data)) return null;
   const row = data as Record<string, unknown>;
-  const status = row.status;
-  const locale = row.locale;
+  const status = row["status"];
+  const locale = row["locale"];
   if (typeof status !== "string" || !(MARKETING_STATUSES as readonly string[]).includes(status)) return null;
   if (locale !== "it" && locale !== "es" && locale !== "en") return null;
-  const email = typeof row.email === "string" ? row.email : null;
+  const email = typeof row["email"] === "string" ? row["email"] : null;
   return { status: status as MarketingStatus, locale, email };
 }

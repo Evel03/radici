@@ -36,6 +36,7 @@ export const FIELD_ORDER = [
   "email",
   "notes",
   "consentPrivacy",
+  "consentMarketing",
   "turnstileToken",
 ] as const satisfies readonly PublicRequestField[];
 export type FieldName = (typeof FIELD_ORDER)[number];
@@ -55,9 +56,6 @@ export const PAGE_FIELDS = {
   slot: true,
   allergens: true,
   diets: true,
-  // La casilla de ofertas (contrato §13) todavía no está en el formulario: llega en el PR siguiente, que la
-  // pasa a FIELD_ORDER. Hasta entonces la página nunca la manda.
-  consentMarketing: true,
 } as const satisfies Record<Exclude<PublicRequestField, FieldName>, true>;
 
 const ERROR_CODES: readonly ErrorCode[] = [
@@ -118,6 +116,10 @@ export function fieldError(field: FieldName, code: ErrorCode): FieldError {
       return { key: "errors.privacyRequired" };
     case "consentHealth":
       return { key: "errors.healthRequired" };
+    case "consentMarketing":
+      // Opcional: el único error posible es una versión del texto que el servidor no acepta (una página de
+      // otra versión), y ese se trata como «página desactualizada» (rejectedConsentVersion).
+      return { key: "errors.invalid" };
     case "turnstileToken":
       return { key: "errors.turnstileRequired" };
     case "restrictionsNote":
@@ -150,6 +152,7 @@ function rejectedConsentVersion(field: string, sent: SentConsents | undefined): 
   if (!sent) return false;
   if (field === "consentPrivacy") return sent.privacy !== "";
   if (field === "consentHealth") return sent.health !== null;
+  if (field === "consentMarketing") return sent.marketing !== undefined && sent.marketing !== null;
   return false;
 }
 

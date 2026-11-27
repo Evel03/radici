@@ -11,6 +11,7 @@ import { MEALS, cleanMultiLine, type Meal, type RequestType } from "../../../sup
 export {
   CONSENT_VERSION,
   HEALTH_CONSENT_VERSION,
+  MARKETING_CONSENT_VERSION,
   DATE_WINDOW,
   LOCALES,
   MAX_PAYLOAD_BYTES,
@@ -65,6 +66,11 @@ export interface RequestData {
   whatsappOptIn: boolean;
   notes: string;
   consentPrivacy: boolean;
+  /**
+   * Quiere ofertas y novedades por email (opcional, sin marcar; contrato §13). Marcada, el servidor deja el
+   * contacto pendiente y el email de confirmación del pedido trae el botón para confirmarlo.
+   */
+  consentMarketing: boolean;
   /** Marcó que nadie de quienes van a comer (niños incluidos) tiene alergias, intolerancias ni celiaquía. */
   noAllergies: boolean;
   /** Las alergias e intolerancias escritas. Con `noAllergies` no se manda (aunque quede algo escrito). */

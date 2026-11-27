@@ -18,7 +18,8 @@ const sharedDir = resolve(root, "../supabase/functions/_shared");
 // prenotazione: la página de la clienta (su reserva y el menú de cada semana; el token va en el fragmento).
 // captcha: la verificación anti-spam del acceso a la app (Turnstile de Auth), que abre la app en un marco o una WebView.
 // accesso: confirmar el alta o elegir una contraseña nueva desde el link de un email de Auth (el link va en el fragmento).
-const PAGES = ["richiesta", "privacy", "prenotazione", "captcha", "accesso"];
+// preferenze: confirmar o darse de baja de las ofertas y novedades desde el link del email (el token va en el fragmento).
+const PAGES = ["richiesta", "privacy", "prenotazione", "captcha", "accesso", "preferenze"];
 
 /** /richiesta → /richiesta/ (en dev y preview; el hosting estático debería hacer lo mismo). */
 const trailingSlash: Connect.NextHandleFunction = (req, res, next) => {
@@ -195,6 +196,7 @@ export default defineConfig({
         prenotazione: resolve(root, "prenotazione/index.html"),
         captcha: resolve(root, "captcha/index.html"),
         accesso: resolve(root, "accesso/index.html"),
+        preferenze: resolve(root, "preferenze/index.html"),
         // dist/404.html: con él Pages responde 404 a lo que no existe (src/build/pages.ts).
         notFound: resolve(root, "404.html"),
       },

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="it" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title data-i18n="preferences.metaTitle"></title>
+    <meta name="description" data-i18n-attr="content:preferences.metaDescription" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f5ede1" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script type="module" src="/src/pages/preferenze.ts"></script>
+  </head>
+  <body>
+    <!-- partial:header -->
+    <!-- Ofertas y novedades (docs/contracts/public-request.md §13): confirmar o darse de baja desde el link del email.
+         El token va en el fragmento (#t=…) y lo lee preferenze.ts. Al abrir solo se lee el estado: confirmar o darse de
+         baja necesitan un toque. Todos los textos están acá; el código solo elige qué sección se ve. -->
+    <main id="main" class="access-page">
+      <div class="container container--narrow">
+        <noscript>
+          <p class="notice notice--warn" data-i18n="preferences.noscript"></p>
+        </noscript>
+        <section id="pref-missing" class="access-step" aria-labelledby="pref-missing-title" hidden>
+          <h1 class="access__title" id="pref-missing-title" tabindex="-1" data-i18n="preferences.missing.title"></h1>
+          <p class="access__text" data-i18n="preferences.missing.text"></p>
+        </section>
+        <section id="pref-loading" class="access-step" aria-labelledby="pref-loading-title" hidden>
+          <h1 class="access__title" id="pref-loading-title" tabindex="-1" data-i18n="preferences.loading"></h1>
+        </section>
+        <section id="pref-failed" class="access-step" aria-labelledby="pref-failed-title" hidden>
+          <h1 class="access__title" id="pref-failed-title" tabindex="-1" data-i18n="preferences.failed.title"></h1>
+          <p class="access__error" id="pref-failed-error" role="alert">
+            <span data-error="network" data-i18n="preferences.errors.network" hidden></span>
+            <span data-error="rateLimited" data-i18n="preferences.errors.rateLimited" hidden></span>
+            <span data-error="server" data-i18n="preferences.errors.server" hidden></span>
+          </p>
+          <button class="btn btn--primary btn--lg btn--block" id="pref-retry" type="button" data-i18n="preferences.retry"></button>
+        </section>
+        <section id="pref-notFound" class="access-step" aria-labelledby="pref-notFound-title" hidden>
+          <h1 class="access__title" id="pref-notFound-title" tabindex="-1" data-i18n="preferences.notFound.title"></h1>
+          <p class="access__text" data-i18n="preferences.notFound.text"></p>
+        </section>
+        <section id="pref-pending" class="access-step" aria-labelledby="pref-pending-title" hidden>
+          <h1 class="access__title" id="pref-pending-title" tabindex="-1" data-i18n="preferences.pending.title"></h1>
+          <p class="access__text" data-i18n="preferences.pending.text"></p>
+          <p class="access__account" data-email-line hidden>
+            <span data-i18n="preferences.email"></span>
+            <strong data-email></strong>
+          </p>
+          <p class="access__error" data-action-error role="alert">
+            <span data-error="network" data-i18n="preferences.errors.network" hidden></span>
+            <span data-error="rateLimited" data-i18n="preferences.errors.rateLimited" hidden></span>
+            <span data-error="server" data-i18n="preferences.errors.server" hidden></span>
+          </p>
+          <button class="btn btn--primary btn--lg btn--block" id="pref-confirm" type="button" data-i18n="preferences.pending.confirm"></button>
+          <button class="btn btn--ghost btn--block" id="pref-decline" type="button" data-i18n="preferences.pending.decline"></button>
+        </section>
+        <section id="pref-confirmed" class="access-step" aria-labelledby="pref-confirmed-title" hidden>
+          <h1 class="access__title" id="pref-confirmed-title" tabindex="-1" data-i18n="preferences.confirmed.title"></h1>
+          <p class="access__text" data-i18n="preferences.confirmed.text"></p>
+          <p class="access__account" data-email-line hidden>
+            <span data-i18n="preferences.email"></span>
+            <strong data-email></strong>
+          </p>
+          <p class="access__error" data-action-error role="alert">
+            <span data-error="network" data-i18n="preferences.errors.network" hidden></span>
+            <span data-error="rateLimited" data-i18n="preferences.errors.rateLimited" hidden></span>
+            <span data-error="server" data-i18n="preferences.errors.server" hidden></span>
+          </p>
+          <button class="btn btn--ghost btn--block" id="pref-withdraw" type="button" data-i18n="preferences.confirmed.withdraw"></button>
+        </section>
+        <section id="pref-withdrawn" class="access-step" aria-labelledby="pref-withdrawn-title" hidden>
+          <h1 class="access__title" id="pref-withdrawn-title" tabindex="-1" data-i18n="preferences.withdrawn.title"></h1>
+          <p class="access__text" data-i18n="preferences.withdrawn.text"></p>
+        </section>
+        <p class="access__text access__text--small access__footnote">
+          <a href="/privacy/#p-marketing" data-i18n="preferences.privacy"></a>
+        </p>
+      </div>
+    </main>
+    <!-- partial:footer -->
+  </body>
+</html>

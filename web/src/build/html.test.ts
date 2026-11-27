@@ -3,6 +3,7 @@ import notFoundHtml from "../../404.html?raw";
 import accessHtml from "../../accesso/index.html?raw";
 import captchaHtml from "../../captcha/index.html?raw";
 import indexHtml from "../../index.html?raw";
+import preferencesHtml from "../../preferenze/index.html?raw";
 import reservationHtml from "../../prenotazione/index.html?raw";
 import privacyHtml from "../../privacy/index.html?raw";
 import requestHtml from "../../richiesta/index.html?raw";
@@ -58,6 +59,7 @@ describe("renderPage con las páginas reales", () => {
     ["/prenotazione/", reservationHtml],
     ["/captcha/", captchaHtml],
     ["/accesso/", accessHtml],
+    ["/preferenze/", preferencesHtml],
   ] as const;
 
   for (const [path, html] of pages) {
