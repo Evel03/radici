@@ -54,6 +54,8 @@ dev_dependencies:
   http: ^1.6.0
   json_serializable: ^6.14.1
   mocktail: ^1.0.5
+  # Un UrlLauncherPlatform falso: prueba qué modo usa LinkLauncher sin el plugin.
+  url_launcher_platform_interface: ^2.3.2
   # InMemorySharedPreferencesAsync: prueba la caché del idioma sin plugin.
   shared_preferences_platform_interface: ^2.4.2
   # WebSocket falso: prueba el canal de Realtime (suscripción, avisos y
@@ -71,6 +73,9 @@ flutter:
     - assets/fonts/LICENSE-Roboto.txt
     - assets/fonts/LICENSE-Cinzel.txt
     - assets/fonts/LICENSE-CormorantGaramond.txt
+    # Fotos de la portada sin sesión: las mismas de la web (web/src/images/);
+    # test/l10n/landing_texts_test.dart verifica que sean idénticas.
+    - assets/images/landing/
 
   # Roboto empaquetada: en la web (/gestione/) evita que el motor la descargue
   # de fonts.gstatic.com. El nombre de la familia tiene que ser exactamente

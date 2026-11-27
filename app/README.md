@@ -831,8 +831,9 @@ test/                  espejo de lib/ y tool/, más support/ con utilidades
 `test/features/quote/quote_vectors_test.dart` lee `supabase/functions/_shared/quote_vectors.json` y verifica todos los vectores.
 Si cambia la fórmula, se cambian `quote.ts`, los vectores y esta copia en el mismo PR.
 Sin compra (19/11/2026): la hace el cliente, con la lista que le manda Evelyn. El motor no la estima.
-Sin precios fuera de la cocina (22/11/2026): la calculadora pública (`/preventivo`) se sacó el 26/11/2026; el
-inicio sin sesión ofrece «Pedir presupuesto», que abre `radicicucina.app/richiesta/` (`lib/core/web_links.dart`).
+Sin precios fuera de la cocina (22/11/2026): la calculadora pública (`/preventivo`) se sacó el 26/11/2026. El
+inicio sin sesión es la portada (abajo, «Portada»); sus «Pedir presupuesto» abren `radicicucina.app/richiesta/`
+(`lib/core/web_links.dart`).
 La copia del motor la usa solo la cocina, como referencia de la tarifa.
 
 ## Textos
@@ -841,6 +842,19 @@ Ningún texto de UI va hardcodeado: todo sale de `lib/l10n/*.arb`. La plantilla 
 `test/l10n/arb_keys_test.dart` falla si `es` o `en` no tienen exactamente las mismas claves.
 Los mensajes al cliente (WhatsApp, email) van en el idioma del pedido (`requests.locale`), no en el
 de la interfaz.
+
+### Portada
+
+El inicio sin sesión de iOS y Android (`features/home/`, 27/11/2026) es la portada de la web: las mismas
+secciones, en el mismo orden. Sus textos son las claves `landing*` de los ARB, copia exacta de `landing.*`
+(menos `metaTitle` y `metaDescription`) y de tres `common.*` del pie en `web/src/i18n/{it,es,en}.json`;
+las fotos (`assets/images/landing/`) son las de `web/src/images/`, y los números de los textos salen de
+`QuoteLimits` y `maxBookingWeeks`, que valen lo mismo que `LIMITS` de `cook_load.ts`.
+`test/l10n/landing_texts_test.dart` verifica las tres cosas: si se cambia la portada web, se copia acá en
+el mismo PR. «Pedir presupuesto» y la privacy usan `LinkLauncher.openPage` (hoja de Safari en iOS, Custom
+Tabs en Android, con el navegador como respaldo): el formulario corre en el navegador del sistema, así que
+Turnstile y la casilla de ofertas funcionan como en la web. WhatsApp y el teléfono siguen con `launch`
+(app externa).
 
 ### Idioma
 

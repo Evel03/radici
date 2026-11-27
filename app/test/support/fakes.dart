@@ -1304,9 +1304,18 @@ class FakeLinkLauncher implements LinkLauncher {
   /// Resultado de [launch] (false simula que no hay app para abrirlo).
   bool result = true;
 
+  /// Las páginas de la web abiertas dentro de la app ([openPage]).
+  final List<Uri> pages = [];
+
   @override
   Future<bool> launch(Uri uri) async {
     launched.add(uri);
+    return result;
+  }
+
+  @override
+  Future<bool> openPage(Uri uri) async {
+    pages.add(uri);
     return result;
   }
 }
