@@ -75,6 +75,15 @@ class FakeBrowser implements Browser {
 
   @override
   void revokeObjectUrl(String url) => revoked.add(url);
+
+  /// Archivos descargados con [downloadText]: (nombre, texto, tipo).
+  final List<(String, String, String)> downloads = [];
+
+  @override
+  bool downloadText(String fileName, String text, String mimeType) {
+    downloads.add((fileName, text, mimeType));
+    return true;
+  }
 }
 
 /// El id publicado en build.json, controlable.

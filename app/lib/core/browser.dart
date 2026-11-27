@@ -69,6 +69,11 @@ abstract interface class Browser {
   /// libera lo que guardaba (la foto elegida). Con otra URL y fuera de la web
   /// no hace nada. Nunca lanza.
   void revokeObjectUrl(String url);
+
+  /// Descarga [text] como el archivo [fileName] ([mimeType], por ejemplo
+  /// `text/csv`): un Blob y un link con `download` que se toca solo. true si
+  /// lo pudo armar; fuera de la web, false (no hay descargas). Nunca lanza.
+  bool downloadText(String fileName, String text, String mimeType);
 }
 
 /// El navegador de esta plataforma, para lo que se lee antes de armar
