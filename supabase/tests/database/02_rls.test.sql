@@ -11,7 +11,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(120);
+select plan(122);
 
 -- ---------------------------------------------------------------------
 -- Fixture (como postgres: sin RLS)
