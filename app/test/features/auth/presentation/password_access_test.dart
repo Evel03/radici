@@ -12,6 +12,7 @@ import 'package:radici/features/auth/data/auth_repository.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
 import 'package:radici/features/auth/presentation/change_password_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
+import 'package:radici/features/auth/presentation/sign_up_screen.dart';
 import 'package:radici/features/client/presentation/client_shell.dart';
 
 import '../../../support/fakes.dart';
@@ -140,38 +141,12 @@ void main() {
       expect(tester.widget<TextField>(key('access-email')).controller?.text, 'cliente@example.test');
     });
 
-    testWidgets('«Crea account»: el link a la informativa debajo del botón, y el aviso con las altas cerradas', (tester) async {
+    testWidgets('«Crea account» abre la pantalla del alta (datos, contraseña y código), con la informativa en el acceso', (tester) async {
       await pumpAccess(tester);
-      // Ya en el acceso, debajo de «Crea account».
       expect(key('access-privacy'), findsOneWidget);
       await tapAndSettle(tester, 'access-go-sign-up');
-      expect(find.text('Crea il tuo account'), findsOneWidget);
-      expect(key('access-privacy'), findsOneWidget);
-      await tapAndSettle(tester, 'access-privacy');
-      expect(links.launched, [Uri.parse('https://radicicucina.app/privacy/?lang=it')]);
-      expect(auth.passwordRequests, isEmpty, reason: 'la informativa se ve antes de mandar el email');
-
-      auth.emailFailure = AuthFailureKind.signupClosed;
-      await tester.enterText(key('access-email'), 'nueva@example.test');
-      await tapAndSettle(tester, 'access-sign-up');
-      expect(find.text('Le iscrizioni apriranno presto.'), findsOneWidget);
-      expect(key('access-sent'), findsNothing);
-    });
-
-    testWidgets('«Crea account» con las altas abiertas: el mismo aviso exista o no la cuenta', (tester) async {
-      await pumpAccess(tester, locale: const Locale('es', 'ES'));
-      await tapAndSettle(tester, 'access-go-sign-up');
-      await tester.enterText(key('access-email'), 'nueva@example.test');
-      await tapAndSettle(tester, 'access-sign-up');
-      expect(auth.passwordRequests, ['signUp:nueva@example.test']);
-      expect(
-        find.text(
-          'Listo. Si nueva@example.test todavía no tiene cuenta, te llega un enlace para confirmarlo y elegir la contraseña. Si ya tienes cuenta, entra o usa «¿Olvidaste la contraseña?».',
-        ),
-        findsOneWidget,
-      );
-      await tapAndSettle(tester, 'access-resend');
-      expect(auth.passwordRequests.last, 'resend:nueva@example.test');
+      expect(find.byType(SignUpScreen), findsOneWidget);
+      expect(auth.passwordRequests, isEmpty);
     });
 
     testWidgets('una cuenta de la cocina con contraseña: entra solo con el código', (tester) async {

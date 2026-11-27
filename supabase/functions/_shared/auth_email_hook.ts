@@ -173,12 +173,12 @@ export async function recipientHash(email: string, salt: string): Promise<string
 
 /** Lo que falta para armar el email de [kind]: el código o el token_hash. */
 export function missingValue(kind: AuthEmailKind, email: Pick<HookEmail, "token" | "tokenHash">): boolean {
-  if (kind === "magic_link") return email.token === "";
-  if (kind === "confirmation" || kind === "recovery") return email.tokenHash === "";
+  if (kind === "magic_link" || kind === "confirmation") return email.token === "";
+  if (kind === "recovery") return email.tokenHash === "";
   return false;
 }
 
-/** El email (asunto, HTML y texto) de una plantilla que sale: magic_link, confirmation o recovery. */
+/** El email (asunto, HTML y texto) de una plantilla que sale: el código (magic_link, confirmation) o el link (recovery). */
 export function renderHookEmail(kind: AuthEmailKind, email: Pick<HookEmail, "locale" | "token" | "tokenHash">): {
   subject: string;
   html: string;
@@ -187,9 +187,7 @@ export function renderHookEmail(kind: AuthEmailKind, email: Pick<HookEmail, "loc
   const { subject, html } = renderAuthEmail(kind, email.locale, { token: email.token, tokenHash: email.tokenHash });
   const texts = authEmailTexts(kind, email.locale);
   const middle =
-    kind === "magic_link"
-      ? email.token
-      : accessLink(email.locale, encodeURIComponent(email.tokenHash), kind === "confirmation" ? "email" : "recovery");
+    kind === "recovery" ? accessLink(email.locale, encodeURIComponent(email.tokenHash), "recovery") : email.token;
   return { subject, html, text: `${texts.lead}\n\n${middle}\n\n${texts.note}\n` };
 }
 

@@ -17,6 +17,10 @@ abstract final class AppRoutes {
   static const String home = '/';
   static const String login = '/accedi';
 
+  /// «Crear cuenta» (auth.md §19): datos, email, contraseña y el código del email. Solo para las clientas (en
+  /// /gestione/ no existe).
+  static const String signUp = '/crea-account';
+
   /// Mientras se carga la cuenta (o si falló).
   static const String session = '/caricamento';
 
@@ -183,13 +187,22 @@ AppEntry _accountEntry(AppEntry entry, AppEntry role) =>
 ///   /app/): `/ingresso`, que lo explica y deja salir. Nunca se mezclan.
 /// - En la app nativa (`auto`) no hay otra entrada: cada cuenta va a su área
 ///   según su rol y nunca abre la del otro rol.
+///
+/// [holdSignUp]: mientras «Crear cuenta» verifica el código y termina de guardar la contraseña y los datos
+/// (SignUpState.holdsRoute), la persona se queda en esa pantalla aunque la sesión ya esté abierta (o cargando).
 String? resolveRedirect({
   required SessionState session,
   required Uri location,
   required bool isWeb,
   AppEntry entry = AppEntry.kitchen,
+  bool holdSignUp = false,
 }) {
   final path = location.path;
+  if (path == AppRoutes.signUp) {
+    // La cocina no crea cuentas desde su entrada.
+    if (entry == AppEntry.kitchen) return isWeb ? AppRoutes.login : AppRoutes.home;
+    if (holdSignUp) return null;
+  }
   final ownRoute = isEntryPath(entry, path);
   final fromParam = location.queryParameters[AppRoutes.fromParam];
   final from = _safeFrom(entry, fromParam);

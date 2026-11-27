@@ -7,7 +7,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:radici/core/app_language.dart';
 import 'package:radici/core/supabase_client.dart';
 import 'package:radici/features/auth/domain/auth_models.dart';
+import 'package:radici/features/auth/domain/sign_up_form.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// public.save_account_details rechazó campos (22023 invalid_account_details):
+/// los nombres vienen en el detalle, nunca los valores.
+class AccountDetailsRejected implements Exception {
+  const AccountDetailsRejected(this.fields);
+
+  final Set<SignUpField> fields;
+
+  @override
+  String toString() => 'AccountDetailsRejected(${fields.map((f) => f.name).join(', ')})';
+}
 
 abstract interface class AccountRepository {
   /// Lanza [AccountFailure].
@@ -19,6 +31,12 @@ abstract interface class AccountRepository {
     required String userId,
     required AppLanguage language,
   });
+
+  /// «Crear cuenta»: los datos de la cuenta de la sesión
+  /// (public.save_account_details, auth.md §18), ya armados con
+  /// [accountDetailsPayload]. Lanza [AccountDetailsRejected] con los campos
+  /// que la base rechazó, o [AccountFailure].
+  Future<void> saveAccountDetails(Map<String, Object?> details);
 }
 
 final accountRepositoryProvider = Provider<AccountRepository>((ref) {
@@ -114,6 +132,20 @@ class SupabaseAccountRepository implements AccountRepository {
       // en el idioma anterior.
     }
   }
+
+  @override
+  Future<void> saveAccountDetails(Map<String, Object?> details) async {
+    try {
+      await _client.rpc<Object?>('save_account_details', params: {'p': details});
+    } on PostgrestException catch (error) {
+      if (error.code == '22023') {
+        throw AccountDetailsRejected(fieldsFromDetail(error.details?.toString()));
+      }
+      throw const AccountFailure(AccountFailureKind.unavailable);
+    } on Object {
+      throw const AccountFailure(AccountFailureKind.unavailable);
+    }
+  }
 }
 
 class _NoBackendAccountRepository implements AccountRepository {
@@ -129,4 +161,8 @@ class _NoBackendAccountRepository implements AccountRepository {
     required String userId,
     required AppLanguage language,
   }) => Future.error(_failure);
+
+  @override
+  Future<void> saveAccountDetails(Map<String, Object?> details) =>
+      Future.error(_failure);
 }

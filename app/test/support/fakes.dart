@@ -97,6 +97,33 @@ class FakeAuthRepository implements AuthRepository {
     emit(AppUser(id: 'user-$email', email: email));
   }
 
+  /// Código que acepta [verifySignUpCode] (diez cifras, como el de Auth).
+  String validSignUpCode = '1234567890';
+
+  /// Si no es null, [setNewPassword] falla con este error.
+  AuthFailureKind? setPasswordFailure;
+
+  /// Contraseñas fijadas con [setNewPassword], en orden.
+  final List<String> newPasswords = [];
+
+  @override
+  Future<void> verifySignUpCode({
+    required String email,
+    required String code,
+  }) async {
+    if (code != validSignUpCode) {
+      throw const AuthFailure(AuthFailureKind.invalidCode);
+    }
+    emit(AppUser(id: 'user-$email', email: email));
+  }
+
+  @override
+  Future<void> setNewPassword(String password) async {
+    final failure = setPasswordFailure;
+    if (failure != null) throw AuthFailure(failure);
+    newPasswords.add(password);
+  }
+
   /// Contraseña que acepta [signInWithPassword] (cualquier email).
   String validPassword = 'Prova12345';
 
@@ -198,6 +225,19 @@ class FakeAccountRepository implements AccountRepository {
 
   /// Idiomas guardados con [updateLanguage], en orden.
   final List<({String userId, AppLanguage language})> savedLanguages = [];
+
+  /// Datos guardados con [saveAccountDetails], en orden.
+  final List<Map<String, Object?>> savedDetails = [];
+
+  /// Si no es null, [saveAccountDetails] lanza esto.
+  Exception? detailsFailure;
+
+  @override
+  Future<void> saveAccountDetails(Map<String, Object?> details) async {
+    final failure = detailsFailure;
+    if (failure != null) throw failure;
+    savedDetails.add(details);
+  }
 
   @override
   Future<Account> fetchAccount(String userId) async {

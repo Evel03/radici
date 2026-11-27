@@ -79,16 +79,17 @@ test("templates: las seis plantillas son las del repo (auth_emails.ts), con el a
     assert.equal(subject, goTrueSubject(kind));
     assert.ok(!subject.includes('\\"'), "comillas sin escapar");
   }
-  // La del código de la cocina: el código, sin link. La del alta y la de recuperación: el link, sin código.
+  // La del código de la cocina y la del alta: el código, sin link (el alta se confirma en la app, auth.md §19). La de
+  // recuperación: el link, sin código.
   assert.equal(body.mailer_templates_magic_link_content, TEMPLATE);
   assert.ok(String(body.mailer_templates_magic_link_content).includes("{{ .Token }}"));
   for (const text of ["Tu código de acceso", "Your sign-in code", "Il tuo codice di accesso"]) {
     assert.ok(String(body.mailer_subjects_magic_link).includes(text), `magic_link: falta ${text}`);
   }
-  for (const kind of ["confirmation", "recovery"]) {
-    const html = String(body[`mailer_templates_${kind}_content`]);
-    assert.ok(html.includes("{{ .TokenHash }}") && !html.includes("{{ .Token }}"), kind);
-  }
+  const confirmation = String(body.mailer_templates_confirmation_content);
+  assert.ok(confirmation.includes("{{ .Token }}") && !confirmation.includes("{{ .TokenHash }}") && !/href=/i.test(confirmation), "confirmation");
+  const recovery = String(body.mailer_templates_recovery_content);
+  assert.ok(recovery.includes("{{ .TokenHash }}") && !recovery.includes("{{ .Token }}"), "recovery");
   assert.equal(body.rate_limit_email_sent, 100);
   assert.ok(Object.keys(body).every((key) => !key.startsWith("smtp_")));
   // El aviso de contraseña cambiada (PR14): prendido, con su plantilla y el asunto en los tres idiomas.

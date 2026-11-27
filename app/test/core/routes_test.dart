@@ -408,4 +408,36 @@ void main() {
     expect(AppRoutes.recipeEdit('a/b'), '/altro/piatti/a%2Fb');
     expect(AppRoutes.recipeCopy('abc'), '/altro/piatti/nuovo?copia=abc');
   });
+
+  group('«Crear cuenta» (/crea-account, auth.md §19)', () {
+    String? signUp(SessionState session, {AppEntry entry = AppEntry.client, bool isWeb = true, bool hold = false}) =>
+        resolveRedirect(
+          session: session,
+          location: Uri.parse(AppRoutes.signUp),
+          isWeb: isWeb,
+          entry: entry,
+          holdSignUp: hold,
+        );
+
+    test('sin sesión se abre en /app/ y en la app nativa; en /gestione/ no existe', () {
+      expect(signUp(signedOut), isNull);
+      expect(signUp(signedOut, entry: AppEntry.auto, isWeb: false), isNull);
+      expect(signUp(signedOut, entry: AppEntry.kitchen), '/accedi');
+      expect(signUp(signedOut, entry: AppEntry.kitchen, isWeb: false), '/');
+    });
+
+    test('mientras verifica el código y guarda, la retiene aunque la sesión esté cargando o abierta', () {
+      const loadingClient = SessionState.loading(AppUser(id: 'client', email: 'c@x.test'));
+      expect(signUp(loadingClient, hold: true), isNull);
+      expect(signUp(client, hold: true), isNull);
+      expect(signUp(client, entry: AppEntry.auto, isWeb: false, hold: true), isNull);
+      // Sin retenerla, como cualquier pantalla de fuera del área.
+      expect(signUp(loadingClient), startsWith('/caricamento'));
+      expect(signUp(client), '/area');
+    });
+
+    test('la cocina nunca, ni retenida', () {
+      expect(signUp(chef, entry: AppEntry.kitchen, hold: true), '/accedi');
+    });
+  });
 }

@@ -13,9 +13,11 @@ import 'package:radici/core/rome_time.dart';
 import 'package:radici/core/routes.dart';
 import 'package:radici/features/auth/application/auth_link_error.dart';
 import 'package:radici/features/auth/application/session_controller.dart';
+import 'package:radici/features/auth/application/sign_up_controller.dart';
 import 'package:radici/features/auth/presentation/change_password_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
+import 'package:radici/features/auth/presentation/sign_up_screen.dart';
 import 'package:radici/features/auth/presentation/wrong_entry_screen.dart';
 import 'package:radici/features/bookings/application/booking_seed.dart';
 import 'package:radici/features/bookings/application/confirm_booking_controller.dart';
@@ -64,6 +66,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       location: state.uri,
       isWeb: isWeb,
       entry: entry,
+      holdSignUp: ref.read(signUpControllerProvider).holdsRoute,
     ),
     errorPageBuilder: (context, state) =>
         _page(state, const NotFoundScreen()),
@@ -81,6 +84,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                 initialEmail: state.uri.queryParameters[AppRoutes.emailParam],
               ),
             ),
+          ),
+          GoRoute(
+            path: AppRoutes.signUp.substring(1),
+            pageBuilder: (context, state) =>
+                _page(state, const SignUpScreen()),
           ),
         ],
       ),

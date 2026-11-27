@@ -355,7 +355,7 @@ Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerrada
 | Tipo | Cuándo sale | Qué lleva |
 |---|---|---|
 | `magic_link` (`login_code.html`) | Pedir el código (la cocina) | El **código de 10 cifras**, que vale una hora, y «no lo compartas con nadie, ni con Evelyn». Sin link |
-| `confirmation` | Crear la cuenta (PR17) | Botón y link a `https://radicicucina.app/accesso/?lang=<idioma>#token_hash={{ .TokenHash }}&type=email` (§11) |
+| `confirmation` | Crear la cuenta | Desde el 27/11/2026, **el código de 10 cifras, sin link**, que se escribe en la app (§19). Antes, el link a `/accesso/` con `type=email` |
 | `recovery` | «Password dimenticata?» | Lo mismo con `type=recovery` |
 | `email_change` | Pedir otro email | Sin link ni código: «por ahora el email no se puede cambiar» (sirve para la dirección vieja y la nueva). Así nadie completa un cambio de email hasta que el hook de PR19 lo bloquee antes de mandar nada (§4) |
 | `reauthentication` | Reautenticarse | Sin código: Radici no usa la reautenticación (§12) |
@@ -374,7 +374,7 @@ Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerrada
 | Acción | Pedido a Auth | Captcha | Qué ve la persona |
 |---|---|---|---|
 | Entrar | `POST /token?grant_type=password` | Sí, un token nuevo por intento | La sesión, o «Email o password non corretti. Se non ricordi la password, usa «Password dimenticata?»». `email_not_confirmed` da el mismo aviso: nadie conoce la contraseña del alta |
-| «Crea account» | `POST /signup` con una contraseña al azar (40 letras y dígitos, `Random.secure`) y `data` solo con `locale` | Sí | Siempre «Se <email> non ha ancora un account, ti arriva un link… Se hai già un account, entra o usa «Password dimenticata?»». Con las altas cerradas (`signup_disabled`, hoy), «Le iscrizioni apriranno presto» |
+| «Crea account» | Otra pantalla desde el 27/11/2026: datos, contraseña dos veces y el código del email, todo en la app (§19) | Sí (el alta y el reenvío) | «Si <email> no tenía cuenta, te mandamos un código de 10 cifras…», exista o no la cuenta |
 | «Password dimenticata?» | `POST /recover` | Sí | Siempre «Se <email> ha un account, ti arriva un link per scegliere la password» |
 | «Reinvia l'email» | `POST /resend` (`type=signup`) o `/recover` otra vez | Sí | «Richiesta inviata di nuovo», exista o no la cuenta |
 | «Cambia password» (área de la clienta; la nueva, escrita dos veces: si no coinciden no sale nada) | `PUT /user` con `password` y `current_password` | No (Auth no lo pide) | «Password aggiornata. Le altre sessioni aperte sono state chiuse.» (Auth cierra las otras sesiones y manda el aviso de §12). La actual incorrecta: `current_password_invalid` en GoTrue v2.197 o `current_password_mismatch` en las más nuevas, los dos con el mismo aviso |
@@ -507,3 +507,18 @@ Nada de salud: las alergias, intolerancias y dietas van aparte, con su consentim
 **Quién la escribe.** Nadie por la API. Solo `public.save_account_details(p jsonb)` (security definer, `authenticated`): la cuenta de la sesión, una clienta (la cocina no: 42501 `not_a_client_account`), guarda o corrige sus datos. Valida cada campo; si alguno no sirve, 22023 `invalid_account_details` con los nombres de los campos en el detalle (`underage` si no tiene 18), nunca los valores, y no guarda nada. Copia el nombre completo y el teléfono a `profiles` (`full_name`, `phone`), lo que ya usa el resto.
 
 **Antes de que la app los pida** hace falta la privacy nueva (qué datos de la cuenta se piden, para qué, por cuánto tiempo y que las respuestas opcionales sirven para mejorar las ofertas), con su versión, que es la que guarda `privacy_version`.
+
+## 19. «Crear cuenta»: datos, contraseña y código, todo en la app (27/11/2026)
+
+**Pedido de Nicolas (27/11/2026).** Reemplaza el alta en dos pasos (solo el email y un link a `/accesso/` para elegir la contraseña): en la app (nativa y `/app/`), «Crea account» abre `/crea-account`, donde la clienta carga todo de una vez y confirma el email con un código, sin salir de la app.
+
+**La pantalla** (`features/auth/presentation/sign_up_screen.dart`; reglas en `domain/sign_up_form.dart`, las mismas que la base, §18):
+1. **Formulario:** nombre, apellido, teléfono (se normaliza a E.164: un móvil italiano sin prefijo vale), fecha de nacimiento (escrita `dd/mm/aaaa` o del calendario; 18 años cumplidos hoy en Roma), email, contraseña y la contraseña otra vez (la regla de §12), la dirección (opcional, toda junta), las respuestas opcionales (temporada, cómo nos conoció, qué le interesa, qué días, para cuántas personas) y la casilla de la privacy (versión `accountPrivacyVersion`, igual a `CONSENT_VERSION`; un test las compara), con el link a la informativa (se abre dentro de la app). Cada campo dice qué le falta; con algo mal no sale nada.
+2. **El alta:** `POST /signup` con captcha y una contraseña al azar (como antes: la elegida no viaja hasta tener el email confirmado). Auth contesta igual exista o no la cuenta: la pantalla dice «si <email> no tenía cuenta, te mandamos un código…» y sugiere entrar o «¿Olvidaste la contraseña?».
+3. **El código:** el email de confirmación (plantilla `confirmation`, §13) trae **el código de 10 cifras, sin link**. `verifyOTP(type: signup)` confirma el email y abre la sesión (`amr otp`). «Reenviar el código» (`/resend`, con captcha) y «Cambiar mis datos» (vuelve al formulario con todo escrito).
+4. **Terminar:** con esa sesión, `PUT /user` con la contraseña que eligió (la primera confirmación borró la del alta, §4; una sesión del código no pide la actual, §12) y `save_account_details` con sus datos (§18). Mientras dura, el router la deja en `/crea-account` aunque la sesión ya esté abierta o cargando (`resolveRedirect(holdSignUp:)`, `SignUpState.holdsRoute`); si algo falla, «Reintentar» hace solo lo que falta (la contraseña no se pone dos veces). Si la base rechaza un dato (22023), vuelve al formulario con ese campo marcado y al mandar otra vez solo guarda los datos.
+5. **Listo:** «Tu cuenta está lista» y su área.
+
+El formulario (con la contraseña) vive solo en memoria, en `SignUpController`, y se olvida al terminar o al salir de la pantalla; nada de eso va a un log ni al `toString` del estado. En `/gestione/` la ruta no existe (lleva al login de la cocina).
+
+**Lo que quedó del alta vieja.** `/accesso/` con `type=email` sigue andando para los links que ya salieron, pero ningún email nuevo lo usa. La recuperación de la contraseña no cambia (link a `/accesso/`).

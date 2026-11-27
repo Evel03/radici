@@ -1,7 +1,8 @@
 // Emails de Supabase Auth (PR16, contrato docs/contracts/auth.md §13): una sola fuente para los seis tipos, en it, es y en.
 //
 // - magic_link: el código de acceso de la cocina (Evelyn y colaboradores). Solo el código, sin link.
-// - confirmation: confirmar el alta (segundo paso del alta en dos pasos) → /accesso/ con type=email.
+// - confirmation: el código para confirmar el email del alta, que se escribe en la app («Crear cuenta», auth.md §19).
+//   Solo el código, sin link (como magic_link).
 // - recovery: «Password dimenticata?» → /accesso/ con type=recovery.
 // - email_change, reauthentication, invite: Radici no los usa. Si alguna vez salen, no llevan ni link ni código: nadie
 //   puede completar con ellos un cambio de email (hasta que el hook de PR19 los bloquee antes de mandarlos) ni una
@@ -37,14 +38,14 @@ export const TEMPLATE_FILES: Readonly<Record<AuthEmailKind, string>> = {
 };
 
 /** El type del link de cada plantilla que lleva uno. */
-const LINK_TYPE: Partial<Record<AuthEmailKind, "email" | "recovery">> = { confirmation: "email", recovery: "recovery" };
+const LINK_TYPE: Partial<Record<AuthEmailKind, "email" | "recovery">> = { recovery: "recovery" };
 
 interface Texts {
   subject: string;
   lead: string;
-  /** Solo magic_link: el código, grande. */
+  /** magic_link y confirmation: el código, grande. */
   code?: true;
-  /** Solo confirmation y recovery: el botón al link. */
+  /** Solo recovery: el botón al link. */
   button?: string;
   /** Debajo del botón: el mismo link en texto, para quien no puede tocar el botón. */
   fallback?: string;
@@ -75,24 +76,21 @@ const TEXTS: Readonly<Record<AuthEmailKind, Readonly<Record<Locale, Texts>>>> = 
   confirmation: {
     it: {
       subject: "Attiva il tuo account Radici",
-      lead: "Per attivare il tuo account Radici e scegliere la password, apri questo link:",
-      button: "Attiva l'account",
-      fallback: "Se il pulsante non si apre, copia questo indirizzo nel browser:",
-      note: "Il link vale un'ora e si usa una sola volta. Se non hai chiesto tu di creare un account, ignora questa email: senza conferma l'account non si attiva.",
+      lead: "Il tuo codice per attivare l'account Radici:",
+      code: true,
+      note: "Scrivilo nell'app per finire di creare l'account. Vale un'ora. Non condividerlo con nessuno, nemmeno con Evelyn. Se non hai chiesto tu di creare un account, ignora questa email: senza il codice l'account non si attiva.",
     },
     es: {
       subject: "Activa tu cuenta de Radici",
-      lead: "Para activar tu cuenta de Radici y elegir la contraseña, abre este enlace:",
-      button: "Activar la cuenta",
-      fallback: "Si el botón no se abre, copia esta dirección en el navegador:",
-      note: "El enlace vale una hora y se usa una sola vez. Si no pediste crear una cuenta, ignora este email: sin confirmación la cuenta no se activa.",
+      lead: "Tu código para activar la cuenta de Radici:",
+      code: true,
+      note: "Escríbelo en la app para terminar de crear la cuenta. Vale una hora. No lo compartas con nadie, ni siquiera con Evelyn. Si no pediste crear una cuenta, ignora este email: sin el código la cuenta no se activa.",
     },
     en: {
       subject: "Activate your Radici account",
-      lead: "To activate your Radici account and choose your password, open this link:",
-      button: "Activate account",
-      fallback: "If the button doesn't open, copy this address into your browser:",
-      note: "The link is valid for one hour and works once. If you didn't ask to create an account, ignore this email: without confirmation the account isn't activated.",
+      lead: "Your code to activate your Radici account:",
+      code: true,
+      note: "Enter it in the app to finish creating your account. It's valid for one hour. Don't share it with anyone, not even Evelyn. If you didn't ask to create an account, ignore this email: without the code the account isn't activated.",
     },
   },
   recovery: {

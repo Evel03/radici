@@ -16,20 +16,17 @@
 </td></tr>
 <tr><td style="padding:20px 24px 28px;font-size:17px;line-height:1.55;">
 {{ if and .Data.locale (eq .Data.locale "es") }}
-<p style="margin:0 0 16px;">Para activar tu cuenta de Radici y elegir la contraseña, abre este enlace:</p>
-<table role="presentation" cellspacing="0" cellpadding="0" style="margin:8px 0 20px;"><tr><td style="border-radius:2px;background:#4a5a3c;"><a href="https://radicicucina.app/accesso/?lang=es#token_hash={{ .TokenHash }}&type=email" style="display:inline-block;padding:13px 26px;font-family:Cinzel,'Trajan Pro','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-size:17px;letter-spacing:0.06em;font-variant:small-caps;color:#f5ede1;text-decoration:none;border-radius:2px;">Activar la cuenta</a></td></tr></table>
-<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#5b5847;">Si el botón no se abre, copia esta dirección en el navegador:<br><a href="https://radicicucina.app/accesso/?lang=es#token_hash={{ .TokenHash }}&type=email" style="color:#4a5a3c;word-break:break-all;overflow-wrap:anywhere;">https://radicicucina.app/accesso/?lang=es#token_hash={{ .TokenHash }}&type=email</a></p>
-<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">El enlace vale una hora y se usa una sola vez. Si no pediste crear una cuenta, ignora este email: sin confirmación la cuenta no se activa.</p>
+<p style="margin:0 0 16px;">Tu código para activar la cuenta de Radici:</p>
+<p style="margin:0 0 16px;font-size:32px;font-weight:700;letter-spacing:8px;font-family:Menlo,Consolas,monospace;color:#2c2b20;">{{ .Token }}</p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Escríbelo en la app para terminar de crear la cuenta. Vale una hora. No lo compartas con nadie, ni siquiera con Evelyn. Si no pediste crear una cuenta, ignora este email: sin el código la cuenta no se activa.</p>
 {{ else if and .Data.locale (eq .Data.locale "en") }}
-<p style="margin:0 0 16px;">To activate your Radici account and choose your password, open this link:</p>
-<table role="presentation" cellspacing="0" cellpadding="0" style="margin:8px 0 20px;"><tr><td style="border-radius:2px;background:#4a5a3c;"><a href="https://radicicucina.app/accesso/?lang=en#token_hash={{ .TokenHash }}&type=email" style="display:inline-block;padding:13px 26px;font-family:Cinzel,'Trajan Pro','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-size:17px;letter-spacing:0.06em;font-variant:small-caps;color:#f5ede1;text-decoration:none;border-radius:2px;">Activate account</a></td></tr></table>
-<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#5b5847;">If the button doesn't open, copy this address into your browser:<br><a href="https://radicicucina.app/accesso/?lang=en#token_hash={{ .TokenHash }}&type=email" style="color:#4a5a3c;word-break:break-all;overflow-wrap:anywhere;">https://radicicucina.app/accesso/?lang=en#token_hash={{ .TokenHash }}&type=email</a></p>
-<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">The link is valid for one hour and works once. If you didn't ask to create an account, ignore this email: without confirmation the account isn't activated.</p>
+<p style="margin:0 0 16px;">Your code to activate your Radici account:</p>
+<p style="margin:0 0 16px;font-size:32px;font-weight:700;letter-spacing:8px;font-family:Menlo,Consolas,monospace;color:#2c2b20;">{{ .Token }}</p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Enter it in the app to finish creating your account. It's valid for one hour. Don't share it with anyone, not even Evelyn. If you didn't ask to create an account, ignore this email: without the code the account isn't activated.</p>
 {{ else }}
-<p style="margin:0 0 16px;">Per attivare il tuo account Radici e scegliere la password, apri questo link:</p>
-<table role="presentation" cellspacing="0" cellpadding="0" style="margin:8px 0 20px;"><tr><td style="border-radius:2px;background:#4a5a3c;"><a href="https://radicicucina.app/accesso/?lang=it#token_hash={{ .TokenHash }}&type=email" style="display:inline-block;padding:13px 26px;font-family:Cinzel,'Trajan Pro','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Times New Roman',serif;font-size:17px;letter-spacing:0.06em;font-variant:small-caps;color:#f5ede1;text-decoration:none;border-radius:2px;">Attiva l'account</a></td></tr></table>
-<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#5b5847;">Se il pulsante non si apre, copia questo indirizzo nel browser:<br><a href="https://radicicucina.app/accesso/?lang=it#token_hash={{ .TokenHash }}&type=email" style="color:#4a5a3c;word-break:break-all;overflow-wrap:anywhere;">https://radicicucina.app/accesso/?lang=it#token_hash={{ .TokenHash }}&type=email</a></p>
-<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Il link vale un'ora e si usa una sola volta. Se non hai chiesto tu di creare un account, ignora questa email: senza conferma l'account non si attiva.</p>
+<p style="margin:0 0 16px;">Il tuo codice per attivare l'account Radici:</p>
+<p style="margin:0 0 16px;font-size:32px;font-weight:700;letter-spacing:8px;font-family:Menlo,Consolas,monospace;color:#2c2b20;">{{ .Token }}</p>
+<p style="margin:0;font-size:15px;line-height:1.5;font-style:italic;color:#5b5847;">Scrivilo nell'app per finire di creare l'account. Vale un'ora. Non condividerlo con nessuno, nemmeno con Evelyn. Se non hai chiesto tu di creare un account, ignora questa email: senza il codice l'account non si attiva.</p>
 {{ end }}
 </td></tr>
 </table>
