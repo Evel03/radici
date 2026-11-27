@@ -412,3 +412,34 @@ Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerrada
 **Código.** Migración `20261127120000_test_clients.sql` (`private.sync_test_clients`, solo la ejecuta postgres; pgTAP `29_test_clients`), `supabase/scripts/test-clients.ts` (la lista; la misma regla del email que la base) y `deploy-accounts.sh testers` (tests con la API simulada en `deploy-accounts.test.ts`).
 
 **Cómo se usa** (Nicolas): cargar el secreto en GitHub → Settings → Secrets and variables → Actions → `TEST_CLIENT_EMAILS`; correr Deploy Supabase (Actions → Run workflow); en la app, «Password dimenticata?» con ese email, elegir la contraseña desde el link, y entrar.
+
+## 16. El hook de envío de emails: la función (PR19, 27/11/2026; se prende en PR20)
+
+**Para qué.** Con el Send Email Hook prendido, GoTrue no manda los emails de Auth: le pasa cada uno a la Edge Function `auth-email`, que decide si sale y lo manda por Resend con las plantillas de §13. Es lo que permite abrir las altas (PR20): corta el cambio de email **antes de mandar nada** (§4: el trigger no alcanza contra el secuestro por cambio de email) y pone topes que GoTrue no tiene. **PR19 solo publica la función**: GoTrue no la llama hasta que PR20 prenda el hook y cargue su secreto. Hasta entonces los emails salen como siempre, con las plantillas de GoTrue por SMTP.
+
+**Qué hace con cada email** (`email_action_type` de GoTrue → plantilla; decide `public.auth_email_gate`, migración `20261127130000_auth_email_log.sql`):
+
+| Email | Cocina (cocinera y colaboradores) | Las demás cuentas |
+|---|---|---|
+| `magiclink` / `email` (el código) | Sale | No sale; la función contesta 200 igual (no delata qué emails son de la cocina) |
+| `signup` (confirmar el alta) | No sale (200) | Sale |
+| `recovery` («Password dimenticata?») | No sale (200): un link de recuperación le abriría una sesión como el código | Sale |
+| `email_change`, `invite`, `reauthentication` y cualquier otro | 403 `email_not_allowed`: Radici no los usa, y así `PUT /user {email}` falla antes de mandar nada | Igual |
+
+**Topes** (`limited` → 429 `too_many_emails`; GoTrue además manda uno por minuto como mucho a cada dirección, §9):
+- la cocina: 10 por hora por destinatario. Va en su propio carril: lo que manden las clientas nunca la frena;
+- las demás cuentas: 3 por hora y 10 por día por destinatario, 3 por hora por cuenta y 60 por día entre todas (el plan gratis de Resend son 100 por día, compartidos con los emails de los pedidos).
+
+**El registro** (`private.auth_email_log`): solo lo que sale, con el tipo, el carril, la cuenta y el destinatario como HMAC-SHA256 (con `IP_HASH_SALT`; la función lo calcula, el email nunca llega a la base). Se borra a los 2 días (pg_cron `radici-purge-auth-email-log`, 03:50 UTC). Nadie lo lee por la API; `auth_email_gate` la ejecuta solo `service_role`.
+
+**La firma.** Standard Webhooks: cabeceras `webhook-id`, `webhook-timestamp` y `webhook-signature`; HMAC-SHA256 de `id.timestamp.cuerpo` con el secreto `v1,whsec_<base64>`; 5 minutos de tolerancia (para atrás y para adelante). `SEND_EMAIL_HOOK_SECRETS` acepta varios separados por «|», para cambiarlo sin cortar. Sin secreto, 503; firma mala o vieja, 401. `verify_jwt = false` (la llama GoTrue, no una persona).
+
+**Respuestas.** 200 `{}` (salió, o no sale sin avisar), o `{"error": {"http_code", "message"}}`, que GoTrue devuelve a quien pidió el email: 400 `invalid_payload`, 401 `invalid_signature`, 403 `email_not_allowed`, 405, 413, 429 `too_many_emails`, 500 `gate_failed`, 502 `email_not_sent` (Resend no lo aceptó), 503 `hook_not_configured` / `email_not_configured`. Con `EMAIL_TRANSPORT=log`, no manda (desarrollo).
+
+**Resend.** `RESEND_AUTH_KEY`: en producción es la clave del SMTP de Auth (`RESEND_SMTP_KEY` de GitHub), aparte de la de los pedidos; la carga el paso «Secretos de la función». Clave de idempotencia: el hash del `webhook-id` (si GoTrue reintenta, Resend no lo manda dos veces).
+
+**Logs.** Solo el evento, el tipo de email y la decisión: nunca el destinatario, el código, el `token_hash` ni la cuenta.
+
+**Código y tests.** `supabase/functions/auth-email/` (`handler.ts` con tests y fakes; `index.ts` conecta Deno, supabase-js y Resend), `_shared/auth_email_hook.ts` (firma contra una implementación aparte con `node:crypto`, pedido de GoTrue, email), pgTAP `30_auth_email_log` (qué sale, topes por carril, retención).
+
+**Qué falta (PR20).** Prender el hook en Auth (URI y secreto) desde `auth-config.ts`, con el secreto en la función; comprobar antes del PATCH que la función contesta; y verificar en producción que llega el código de la cocina, que una cuenta de prueba recupera la contraseña y que `PUT /user {email}` falla sin que salga nada. Vuelta atrás: el hook en `false`; las plantillas de GoTrue siguen en su lugar.

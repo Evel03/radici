@@ -481,6 +481,13 @@ verify_jwt = false
 enabled = true
 verify_jwt = false
 
+# El Send Email Hook de Auth (docs/contracts/auth.md §16, PR19): GoTrue le pasa cada email de Auth (cuando
+# PR20 prenda el hook) y la función decide si sale. Sin JWT: la llama GoTrue; la protege la firma Standard Webhooks
+# (SEND_EMAIL_HOOK_SECRETS).
+[functions.auth-email]
+enabled = true
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

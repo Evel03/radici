@@ -389,6 +389,9 @@ jobs:
           PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL }}
           WHATSAPP_PHONE_NUMBER_ID: ${{ vars.WHATSAPP_PHONE_NUMBER_ID }}
           WHATSAPP_TEMPLATE: ${{ vars.WHATSAPP_TEMPLATE }}
+          # La clave de Resend de los emails de Auth (la del SMTP de Auth): la usa la función auth-email, el hook de
+          # envío (auth.md §16). Aparte de RESEND_API_KEY, la de los pedidos.
+          RESEND_AUTH_KEY: ${{ secrets.RESEND_SMTP_KEY }}
         run: |
           set -euo pipefail
           # Valores de desarrollo (supabase/functions/.env.example) en producción: se corta antes de cargarlos.
@@ -412,7 +415,7 @@ jobs:
 
           # Cada valor viaja como un argumento NOMBRE=valor (sin pasar por un .env ni por echo).
           pairs=()
-          for name in RESEND_API_KEY TURNSTILE_SECRET_KEY IP_HASH_SALT WHATSAPP_TOKEN ANTHROPIC_API_KEY \
+          for name in RESEND_API_KEY RESEND_AUTH_KEY TURNSTILE_SECRET_KEY IP_HASH_SALT WHATSAPP_TOKEN ANTHROPIC_API_KEY \
                       CHEF_ID CHEF_NOTIFY_EMAIL CHEF_LOCALE MAIL_FROM MAIL_REPLY_TO EMAIL_TRANSPORT \
                       ALLOWED_ORIGINS INBOX_URL PUBLIC_SITE_URL WHATSAPP_PHONE_NUMBER_ID WHATSAPP_TEMPLATE; do
             value="${!name:-}"
@@ -562,6 +565,17 @@ jobs:
             exit 1
           fi
 
+      # El Send Email Hook de Auth (auth.md §16, PR19): la función auth-email se publica, pero GoTrue no la llama
+      # hasta que PR20 prenda el hook (hasta entonces los emails de Auth salen con las plantillas de GoTrue).
+      # verify_jwt = false sale de supabase/config.toml ([functions.auth-email]): la protege la firma Standard
+      # Webhooks con SEND_EMAIL_HOOK_SECRETS, que carga PR20 (sin él contesta 503). Usa IP_HASH_SALT, MAIL_FROM y
+      # RESEND_AUTH_KEY, cargados en "Secretos de la función".
+      - name: Desplegar auth-email (hook de envío, todavía apagado)
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: supabase functions deploy auth-email --project-ref "${SUPABASE_PROJECT_REF}" --use-api
+
       # Las cuentas de prueba de clienta, en cada despliegue (supabase/scripts/deploy-accounts.sh testers,
       # con tests; auth.md §15): la lista del secreto TEST_CLIENT_EMAILS manda (la valida test-clients.ts:
       # ninguna de la cocina). Crea las que faltan, confirmadas y sin contraseña, y
@@ -608,5 +622,5 @@ jobs:
           {
             echo "### Backend desplegado"
             echo "- Migraciones aplicadas con db push"
-            echo "- Funciones: https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/public-request, …/functions/v1/chef, …/functions/v1/client-link y …/functions/v1/menu-reminders"
+            echo "- Funciones: https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/public-request, …/functions/v1/chef, …/functions/v1/client-link, …/functions/v1/menu-reminders y …/functions/v1/auth-email (hook de envío, apagado hasta PR20)"
           } >> "${GITHUB_STEP_SUMMARY}"
