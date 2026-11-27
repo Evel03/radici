@@ -237,6 +237,33 @@ class FakeAccountRepository implements AccountRepository {
     final failure = detailsFailure;
     if (failure != null) throw failure;
     savedDetails.add(details);
+    storedDetails = details;
+  }
+
+  /// Lo que devuelve [fetchAccountDetails] (lo último guardado).
+  Map<String, Object?>? storedDetails;
+
+  /// Si no es null, [fetchAccountDetails] lanza esto.
+  Exception? fetchDetailsFailure;
+
+  /// Veces que se llamó a [deleteMyAccount].
+  int deletes = 0;
+
+  /// Si no es null, [deleteMyAccount] lanza esto.
+  Exception? deleteFailure;
+
+  @override
+  Future<Map<String, Object?>?> fetchAccountDetails() async {
+    final failure = fetchDetailsFailure;
+    if (failure != null) throw failure;
+    return storedDetails;
+  }
+
+  @override
+  Future<void> deleteMyAccount() async {
+    final failure = deleteFailure;
+    if (failure != null) throw failure;
+    deletes++;
   }
 
   @override

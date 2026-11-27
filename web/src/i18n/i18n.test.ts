@@ -444,6 +444,20 @@ describe("privacy", () => {
     });
   }
 
+  // 2026-11-27: «Mi cuenta» en la app (auth.md §20). La cuenta se borra desde ahí, al instante, además de escribiendo
+  // al contacto del punto 1; los nombres son los de la app (ARB myAccountTitle y myAccountDelete).
+  const myAccount: Record<Lang, { screen: string; button: string }> = {
+    it: { screen: "«Il mio account»", button: "«Elimina il mio account»" },
+    es: { screen: "«Mi cuenta»", button: "«Borrar mi cuenta»" },
+    en: { screen: "“My account”", button: "“Delete my account”" },
+  };
+  for (const lang of LANGS) {
+    it(`${lang}: cuenta que la cuenta se borra desde «Mi cuenta» en la app`, () => {
+      expect(dicts[lang]["privacy.retentionBody"]).toContain(myAccount[lang].screen);
+      expect(dicts[lang]["privacy.retentionBody"]).toContain(myAccount[lang].button);
+    });
+  }
+
   // 2026-11-23: el presupuesto en la página de la reserva (SPEC 5.8). La página muestra su precio (la de 2026-11-22
   // decía que nunca mostraba precios) y la clienta lo acepta o lo rechaza: una respuesta más de la solicitud, con la
   // misma base (art. 6.1.b) y la misma conservación que las respuestas al menú. Nada de pagos.

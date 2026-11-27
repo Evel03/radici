@@ -293,6 +293,7 @@ select is(
     'public.chef_marketing_withdraw(p_email text)',  -- rpc de la app: la cocina da de baja un contacto de su lista (valida current_chef_id())
     'public.current_chef_id()',        -- las políticas de la cocina y la app (rpc)
     'public.current_client_ids()',     -- clients_guard_update, que corre con el rol de la cocinera
+    'public.delete_my_account()',      -- rpc de la app: la clienta borra su cuenta (la cocina no)
     'public.is_chef_of(p_chef_id uuid)',
     'public.save_account_details(p jsonb)',                         -- rpc de la app: la clienta guarda sus datos (solo los suyos; la cocina no)
     'public.save_recipe(p jsonb)',                                  -- rpc de la app, valida current_chef_id()

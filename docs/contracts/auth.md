@@ -522,3 +522,17 @@ Nada de salud: las alergias, intolerancias y dietas van aparte, con su consentim
 El formulario (con la contraseña) vive solo en memoria, en `SignUpController`, y se olvida al terminar o al salir de la pantalla; nada de eso va a un log ni al `toString` del estado. En `/gestione/` la ruta no existe (lleva al login de la cocina).
 
 **Lo que quedó del alta vieja.** `/accesso/` con `type=email` sigue andando para los links que ya salieron, pero ningún email nuevo lo usa. La recuperación de la contraseña no cambia (link a `/accesso/`).
+
+## 20. «Mi cuenta»: corregir los datos y borrar la cuenta (27/11/2026)
+
+**Pedido de Nicolas (27/11/2026, «Todos juntos»).** La clienta corrige sus datos, borra sus respuestas opcionales y borra su cuenta desde la app. Para publicar en el App Store, la cuenta se tiene que poder borrar dentro de la app.
+
+**La pantalla** (`/area/account`, botón «Il mio account» del área; `features/auth/presentation/my_account_screen.dart` y `application/my_account_controller.dart`):
+- **El email**, solo para ver (cambiarlo sigue cerrado).
+- **Los datos** de §18, con los mismos campos que «Crear cuenta» (`account_details_fields.dart`) y las mismas reglas (`detailsProblems`: sin email ni contraseña). Se leen de `account_details` (la fila de la cuenta, con la RLS de §18) y se guardan con `save_account_details`; después se vuelven a leer (el teléfono queda como lo guardó la base). Una cuenta sin fila (de antes del alta con datos) lo avisa y pide aceptar la privacy; una aceptada con otra versión, también.
+- **«Borrar mis respuestas opcionales»:** pide confirmar y guarda sin la temporada, cómo nos conoció, qué le interesa, los días ni las personas. Los datos personales y la dirección quedan.
+- **«Borrar mi cuenta»:** pide confirmar, llama a `public.delete_my_account()` y sale (la sesión local se borra aunque el aviso al servidor falle). Si la llamada falla, la sesión sigue abierta y lo dice.
+
+**`public.delete_my_account()`** (migración `20261127150000_delete_my_account.sql`, pgTAP `32_delete_my_account`; security definer, solo `authenticated`): borra de `auth.users` la cuenta de la sesión. Las cascadas se llevan el perfil, `account_details`, las sesiones, los tokens de push y las notificaciones. La ficha de Evelyn (`clients`) queda con `profile_id` en null: sus reservas y documentos siguen siendo de la cocina. La cocina (la cocinera o un colaborador) no se borra así: 42501 `kitchen_account`. Sin sesión: 42501 `not_authenticated`.
+
+**Lo que no toca.** La inscripción a ofertas y novedades (`marketing_contacts`) va aparte: se da de baja con el link de los emails (privacy, punto 6). Los pedidos de la web (`requests`) siguen su propia conservación. La informativa lo cuenta en la conservación de la cuenta, sin cambiar de versión: es una forma más de pedir el borrado, y el tratamiento no cambia.

@@ -16,6 +16,7 @@ import 'package:radici/features/auth/application/session_controller.dart';
 import 'package:radici/features/auth/application/sign_up_controller.dart';
 import 'package:radici/features/auth/presentation/change_password_screen.dart';
 import 'package:radici/features/auth/presentation/login_screen.dart';
+import 'package:radici/features/auth/presentation/my_account_screen.dart';
 import 'package:radici/features/auth/presentation/session_screen.dart';
 import 'package:radici/features/auth/presentation/sign_up_screen.dart';
 import 'package:radici/features/auth/presentation/wrong_entry_screen.dart';
@@ -111,6 +112,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.areaPasswordSegment,
             pageBuilder: (context, state) =>
                 _page(state, const ChangePasswordScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.areaAccountSegment,
+            pageBuilder: (context, state) =>
+                _page(state, const MyAccountScreen()),
           ),
         ],
       ),

@@ -129,8 +129,9 @@ bool isAdult(DateTime birthDate, DateTime today) {
   return !eighteenth.isAfter(day);
 }
 
-/// Los problemas del formulario, campo por campo (vacío: se puede mandar). [today] es el día en Roma.
-Map<SignUpField, Object> signUpProblems(SignUpForm form, DateTime today) {
+/// Los problemas de los datos de la cuenta (nombre, teléfono, nacimiento y dirección), campo por campo: los de «Mi
+/// cuenta» (auth.md §20) y la primera parte de «Crear cuenta». [today] es el día en Roma.
+Map<SignUpField, Object> detailsProblems(SignUpForm form, DateTime today) {
   final problems = <SignUpField, Object>{};
   final first = form.firstName.trim();
   final last = form.lastName.trim();
@@ -145,17 +146,6 @@ Map<SignUpField, Object> signUpProblems(SignUpForm form, DateTime today) {
   } else if (!isAdult(birth, today)) {
     problems[SignUpField.underage] = true;
   }
-  final email = form.normalizedEmail;
-  if (email.length > 254 || !_email.hasMatch(email)) {
-    problems[SignUpField.email] = true;
-  }
-  final password = passwordProblem(form.password);
-  if (password != null) {
-    problems[SignUpField.password] = password;
-  } else if (form.repeat != form.password) {
-    problems[SignUpField.repeat] = true;
-  }
-  if (!form.privacyAccepted) problems[SignUpField.privacy] = true;
   if (form._hasAddress) {
     final street = form.street.trim();
     final city = form.city.trim();
@@ -168,6 +158,24 @@ Map<SignUpField, Object> signUpProblems(SignUpForm form, DateTime today) {
     }
     if (form.notes.trim().length > 200) problems[SignUpField.notes] = true;
   }
+  return problems;
+}
+
+/// Los problemas de «Crear cuenta», campo por campo (vacío: se puede mandar): los datos, más el email, la contraseña
+/// dos veces y la privacy. [today] es el día en Roma.
+Map<SignUpField, Object> signUpProblems(SignUpForm form, DateTime today) {
+  final problems = detailsProblems(form, today);
+  final email = form.normalizedEmail;
+  if (email.length > 254 || !_email.hasMatch(email)) {
+    problems[SignUpField.email] = true;
+  }
+  final password = passwordProblem(form.password);
+  if (password != null) {
+    problems[SignUpField.password] = password;
+  } else if (form.repeat != form.password) {
+    problems[SignUpField.repeat] = true;
+  }
+  if (!form.privacyAccepted) problems[SignUpField.privacy] = true;
   return problems;
 }
 

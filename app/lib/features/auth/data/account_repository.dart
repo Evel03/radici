@@ -37,6 +37,14 @@ abstract interface class AccountRepository {
   /// [accountDetailsPayload]. Lanza [AccountDetailsRejected] con los campos
   /// que la base rechazó, o [AccountFailure].
   Future<void> saveAccountDetails(Map<String, Object?> details);
+
+  /// «Mi cuenta»: los datos guardados de la cuenta de la sesión (su fila de account_details, con las claves de la
+  /// base), o null si todavía no los cargó. Lanza [AccountFailure].
+  Future<Map<String, Object?>?> fetchAccountDetails();
+
+  /// «Borrar mi cuenta» (public.delete_my_account, auth.md §20): la cuenta de la sesión y sus datos. Después hay que
+  /// salir. Lanza [AccountFailure].
+  Future<void> deleteMyAccount();
 }
 
 final accountRepositoryProvider = Provider<AccountRepository>((ref) {
@@ -133,6 +141,31 @@ class SupabaseAccountRepository implements AccountRepository {
     }
   }
 
+  /// Las columnas que muestra «Mi cuenta» (las que escribe save_account_details).
+  static const String _detailsColumns =
+      'first_name,last_name,phone,birth_date,address_street,address_city,address_postal_code,address_notes,'
+      'favorite_season,heard_from,interests,preferred_days,household_size,privacy_version';
+
+  @override
+  Future<Map<String, Object?>?> fetchAccountDetails() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw const AccountFailure(AccountFailureKind.unavailable);
+    try {
+      return await _client.from('account_details').select(_detailsColumns).eq('profile_id', userId).maybeSingle();
+    } on Object {
+      throw const AccountFailure(AccountFailureKind.unavailable);
+    }
+  }
+
+  @override
+  Future<void> deleteMyAccount() async {
+    try {
+      await _client.rpc<Object?>('delete_my_account');
+    } on Object {
+      throw const AccountFailure(AccountFailureKind.unavailable);
+    }
+  }
+
   @override
   Future<void> saveAccountDetails(Map<String, Object?> details) async {
     try {
@@ -165,4 +198,10 @@ class _NoBackendAccountRepository implements AccountRepository {
   @override
   Future<void> saveAccountDetails(Map<String, Object?> details) =>
       Future.error(_failure);
+
+  @override
+  Future<Map<String, Object?>?> fetchAccountDetails() => Future.error(_failure);
+
+  @override
+  Future<void> deleteMyAccount() => Future.error(_failure);
 }

@@ -225,4 +225,55 @@ void main() {
       ),
     );
   });
+
+  group('«Mi cuenta» (auth.md §20)', () {
+    Matcher unavailable() => throwsA(
+      isA<AccountFailure>().having((f) => f.kind, 'kind', AccountFailureKind.unavailable),
+    );
+
+    test('fetchAccountDetails: su fila de account_details, o null si todavía no la tiene', () async {
+      await _signIn(server);
+      server.handler = (_) async => jsonResponse([
+        {'first_name': 'Anna', 'phone': '+393401234567', 'privacy_version': '2026-11-28'},
+      ]);
+      expect(await repository.fetchAccountDetails(), {
+        'first_name': 'Anna',
+        'phone': '+393401234567',
+        'privacy_version': '2026-11-28',
+      });
+      final read = server.last;
+      expect(read.method, 'GET');
+      expect(read.url.path, '/rest/v1/account_details');
+      expect(read.url.queryParameters['profile_id'], 'eq.user-1');
+      // Las columnas de los datos; nunca profile_id ni las fechas internas.
+      expect(read.url.queryParameters['select']!.split(','), [
+        'first_name', 'last_name', 'phone', 'birth_date', 'address_street', 'address_city', 'address_postal_code',
+        'address_notes', 'favorite_season', 'heard_from', 'interests', 'preferred_days', 'household_size',
+        'privacy_version',
+      ]);
+
+      server.handler = (_) async => jsonResponse(<Object>[]);
+      expect(await repository.fetchAccountDetails(), isNull);
+    });
+
+    test('fetchAccountDetails sin sesión (no pregunta) o con error del servidor → unavailable', () async {
+      await expectLater(repository.fetchAccountDetails(), unavailable());
+      expect(server.requests, isEmpty);
+
+      await _signIn(server);
+      server.handler = (_) async => jsonResponse({'message': 'boom', 'code': 'XX000'}, status: 500);
+      await expectLater(repository.fetchAccountDetails(), unavailable());
+    });
+
+    test('deleteMyAccount: POST a rpc/delete_my_account; un rechazo → unavailable', () async {
+      await _signIn(server);
+      server.handler = (_) async => jsonResponse(null);
+      await repository.deleteMyAccount();
+      expect(server.last.method, 'POST');
+      expect(server.last.url.path, '/rest/v1/rpc/delete_my_account');
+
+      server.handler = (_) async => jsonResponse({'message': 'kitchen_account', 'code': '42501'}, status: 403);
+      await expectLater(repository.deleteMyAccount(), unavailable());
+    });
+  });
 }

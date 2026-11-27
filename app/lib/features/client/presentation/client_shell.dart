@@ -1,5 +1,5 @@
 // Marco provisorio del área de la clienta (/area, entrada /app/): una pantalla
-// sin datos todavía, con el idioma, «Cambia password» y salir. Sus pantallas (pedidos, reservas,
+// sin datos todavía, con el idioma, «Il mio account», «Cambia password» y salir. Sus pantallas (pedidos, reservas,
 // menús, presupuestos, perfil) llegan en los PRs siguientes y cuelgan de acá.
 // Como en Impostazioni, el idioma de la interfaz sale del perfil y se puede
 // cambiar.
@@ -87,6 +87,13 @@ class ClientShell extends ConsumerWidget {
                   ),
                   const LanguageSelector(),
                   const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    key: const ValueKey('client-area-account'),
+                    onPressed: () => context.push(AppRoutes.areaAccount),
+                    icon: const Icon(Icons.person_outline),
+                    label: Text(l10n.myAccountTitle),
+                  ),
+                  const SizedBox(height: 8),
                   OutlinedButton.icon(
                     key: const ValueKey('client-area-change-password'),
                     onPressed: () => context.push(AppRoutes.areaPassword),
