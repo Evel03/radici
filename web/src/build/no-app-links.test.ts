@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-// Hasta PR69 ningún link público lleva a /app/ (el área de la clienta ya está publicada, pero no se anuncia: la
-// enlaza la web recién cuando la app esté lista para las clientas). Este test lee todo lo que la web publica
-// (páginas, partials, textos, código, robots.txt y sitemap.xml) y falla si algo apunta a /app/, ya sea con la
-// ruta sola, con el dominio propio o con el de *.pages.dev. Cuando llegue PR69, se cambia este test a propósito.
+// Los links de la web a /app/ (el área de la clienta) son solo los que se decidieron: desde el 27/11/2026, con las
+// altas abiertas (PR20), «Accedi» en el encabezado y en el pie (pedido de Nicolas), más «Vai al login» de /accesso/.
+// Este test lee todo lo que la web publica (páginas, partials, textos, código, robots.txt y sitemap.xml) y falla si
+// algo más apunta a /app/, ya sea con la ruta sola, con el dominio propio o con el de *.pages.dev. Un link nuevo a
+// /app/ se suma acá a propósito. robots.txt y sitemap.xml nunca lo anuncian (/app/ no se indexa).
 const files: Record<string, string> = {
   ...import.meta.glob<string>("../../*.html", { query: "?raw", import: "default", eager: true }),
   ...import.meta.glob<string>("../../*/index.html", { query: "?raw", import: "default", eager: true }),
@@ -15,16 +16,19 @@ const files: Record<string, string> = {
 };
 
 /**
- * La única excepción, a propósito: «Vai al login» de /accesso/ (src/access/login-link.ts). A /accesso/ solo se llega desde
- * el link de un email de Auth (no la enlaza ninguna página ni se indexa) y las altas siguen cerradas hasta PR20: hasta
- * el lanzamiento, ese botón solo lo ven las cuentas de prueba. Un archivo, un solo link (el test cuenta los dos).
+ * Los links permitidos, con cuántos tiene cada archivo (el test cuenta los dos): «Accedi» del encabezado y del pie, y
+ * «Vai al login» de /accesso/ (src/access/login-link.ts).
  */
-const ALLOWED: Record<string, number> = { "../access/login-link.ts": 1 };
+const ALLOWED: Record<string, number> = {
+  "../partials/header.html": 1,
+  "../partials/footer.html": 1,
+  "../access/login-link.ts": 1,
+};
 
 /** Un texto entre comillas, un href o una URL que empieza en /app o en <dominio>/app (con barra, ?, # o el cierre). */
 const APP_LINK = /(?:["'(=`]|href=)\s*(?:https?:\/\/[^\s"'`/]+)?\/app(?:[/?#"'`)]|$)/gm;
 
-describe("sin links públicos a /app/ (hasta PR69)", () => {
+describe("links a /app/: solo los decididos", () => {
   it("lee las páginas, los partials, los textos, el código y los archivos públicos", () => {
     const names = Object.keys(files);
     expect(names.some((n) => n.endsWith("index.html"))).toBe(true);
@@ -36,7 +40,7 @@ describe("sin links públicos a /app/ (hasta PR69)", () => {
     expect(names.length).toBeGreaterThan(25);
   });
 
-  it("ningún archivo apunta a /app/ (salvo la excepción de /accesso/)", () => {
+  it("ningún otro archivo apunta a /app/", () => {
     const found: string[] = [];
     for (const [name, source] of Object.entries(files)) {
       if (name in ALLOWED) continue;
@@ -45,7 +49,9 @@ describe("sin links públicos a /app/ (hasta PR69)", () => {
     expect(found).toEqual([]);
   });
 
-  it("la excepción sigue siendo exactamente la que se permitió (si se mueve o crece, este test lo dice)", () => {
+  it("los permitidos siguen siendo exactamente esos (si se mueven o crecen, este test lo dice)", () => {
+    // robots.txt y sitemap.xml nunca: /app/ no se indexa.
+    for (const name of Object.keys(files).filter((n) => /robots\.txt$|sitemap\.xml$/.test(n))) expect(name in ALLOWED, name).toBe(false);
     for (const [name, count] of Object.entries(ALLOWED)) {
       expect(files[name], name).toBeDefined();
       expect([...(files[name] ?? "").matchAll(APP_LINK)].length, name).toBe(count);

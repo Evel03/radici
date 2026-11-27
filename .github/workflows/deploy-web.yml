@@ -1,6 +1,6 @@
 # Publica en Cloudflare Pages (Direct Upload) la web pública (web/) y, dentro del mismo sitio, la
 # bandeja de Evelyn en /gestione/ y el área de las clientas en /app/ (la app Flutter compilada para la web,
-# un solo build copiado dos veces; hasta PR69 ningún link público lleva a /app/). Contrato:
+# un solo build copiado dos veces; la web enlaza /app/ con «Accedi» del encabezado y del pie). Contrato:
 # docs/contracts/public-request.md §6–§8.
 # - push a main  → producción (rama de producción del proyecto: main). Se sirve en el dominio
 #   propio https://radicicucina.app (dominio personalizado del proyecto, se agrega una vez
@@ -373,7 +373,7 @@ jobs:
             echo "- Deploy: ${{ steps.deploy.outputs.deployment-url }}"
             echo "- Alias: ${{ steps.deploy.outputs.pages-deployment-alias-url }}"
             echo "- Bandeja de Evelyn: ${{ steps.deploy.outputs.deployment-url }}/gestione/ (versión ${BUILD_ID})"
-            echo "- Área de la clienta (sin links públicos hasta PR69): ${{ steps.deploy.outputs.deployment-url }}/app/"
+            echo "- Área de la clienta («Accedi» en la web): ${{ steps.deploy.outputs.deployment-url }}/app/"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       # Producción: los archivos de /gestione/ y /app/ no llevan hash en el nombre, así que el navegador tiene que
