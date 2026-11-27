@@ -19,7 +19,7 @@
 #   despliegue corta antes de tocar Auth)
 #   y RESEND_SMTP_KEY (la segunda clave de Resend: SMTP de Auth; en Free, sin SMTP propio Supabase no deja
 #   poner la plantilla del código y Evelyn no puede entrar; sin ella el despliegue sigue y avisa)
-#   (opcionales: WHATSAPP_TOKEN, CHEF_MEMBER_EMAILS, TEST_CLIENT_EMAILS y ANTHROPIC_API_KEY)
+#   (opcionales: WHATSAPP_TOKEN, CHEF_MEMBER_EMAILS, TEST_CLIENT_EMAILS, SEND_EMAIL_HOOK_SECRET y ANTHROPIC_API_KEY)
 #   · ANTHROPIC_API_KEY: la clave de la API de Claude con que la función chef traduce los platos del
 #     español al italiano y al inglés (POST /chef/translate, contrato chef-api.md §12). A Anthropic solo
 #     van el nombre y la descripción del plato, nunca datos de clientes ni de pedidos. Sin ella la
@@ -37,6 +37,9 @@
 #     despliegue: después de editarlo, correr Deploy Supabase a mano (Actions → Deploy Supabase → Run
 #     workflow). Va como secreto y no como variable: los valores de las variables salen en claro en el
 #     log del paso, y estos emails no se publican.
+#   · SEND_EMAIL_HOOK_SECRET: el secreto del hook de envío de Auth ("v1,whsec_" + 32 bytes al azar en base64; auth.md
+#     §16). Con él, cada despliegue comprueba la función auth-email y abre las altas con el freno de altas y el hook de
+#     envío prendidos (paso «Hooks de Auth»); sin él, las altas siguen cerradas y los emails de Auth salen por GoTrue.
 #   · TEST_CLIENT_EMAILS: cuentas de prueba de clienta (emails separados por coma, hasta 10; auth.md §15),
 #     para probar en producción el área de clientas (/app/ y la app) con las altas cerradas. La lista
 #     manda: un email nuevo recibe su cuenta confirmada y SIN contraseña (la elige en la app con «Password
@@ -251,7 +254,8 @@ jobs:
           TURNSTILE_AUTH_SECRET_KEY: ${{ secrets.TURNSTILE_AUTH_SECRET_KEY }}
         run: node supabase/scripts/auth-captcha-check.ts secret
 
-      # Antes que nada, las altas apagadas y el resto de lo fijo de Auth. Tres PATCH
+      # Antes que nada, lo fijo de Auth (las altas y los hooks de altas y de envío van al final, en «Hooks de Auth»,
+      # cuando la función auth-email ya está publicada). Tres PATCH
       # (supabase/scripts/auth-config.ts): security siempre; smtp y templates solo con RESEND_SMTP_KEY,
       # porque en un proyecto Free Supabase no deja cambiar las plantillas sin SMTP propio (el email
       # traería un link y no el código). Los cuerpos van directo del script al curl, y la respuesta (la
@@ -314,10 +318,6 @@ jobs:
             fi
           }
           patch security
-          if ! jq -e '.disable_signup == true' "${response}" > /dev/null; then
-            echo "::error::Auth no quedó con las altas apagadas."
-            exit 1
-          fi
           if [ -z "${RESEND_SMTP_KEY:-}" ]; then
             echo "::warning::Sin RESEND_SMTP_KEY no hay SMTP propio: en un proyecto Free Supabase no deja cambiar la plantilla y el email trae un link en lugar del código, así que Evelyn todavía no puede entrar a la app. Cargar la segunda clave de Resend y volver a desplegar."
             note_summary
@@ -392,6 +392,8 @@ jobs:
           # La clave de Resend de los emails de Auth (la del SMTP de Auth): la usa la función auth-email, el hook de
           # envío (auth.md §16). Aparte de RESEND_API_KEY, la de los pedidos.
           RESEND_AUTH_KEY: ${{ secrets.RESEND_SMTP_KEY }}
+          # El secreto del hook de envío (PR20, auth.md §16): el mismo que «Hooks de Auth» le da a Auth.
+          SEND_EMAIL_HOOK_SECRETS: ${{ secrets.SEND_EMAIL_HOOK_SECRET }}
         run: |
           set -euo pipefail
           # Valores de desarrollo (supabase/functions/.env.example) en producción: se corta antes de cargarlos.
@@ -409,13 +411,17 @@ jobs:
           if [ "${EMAIL_TRANSPORT:-}" = "log" ]; then
             echo "::warning::EMAIL_TRANSPORT=log: la función no manda ningún email (solo los registra). En producción, borrar la variable."
           fi
+          if [ -n "${SEND_EMAIL_HOOK_SECRETS:-}" ] && ! [[ "${SEND_EMAIL_HOOK_SECRETS}" =~ ^v1,whsec_[A-Za-z0-9+/]{43,}={0,2}$ ]]; then
+            echo "::error::SEND_EMAIL_HOOK_SECRET no tiene la forma v1,whsec_<base64 de 32 bytes> (auth.md §16)."
+            exit 1
+          fi
           if [[ "${CHEF_ID:-}" == cef00000-* ]]; then
             echo "::warning::CHEF_ID es el de la cocinera del seed de desarrollo: la función respondería 500 (chef_not_found). Borrar la variable para usar la única cocinera."
           fi
 
           # Cada valor viaja como un argumento NOMBRE=valor (sin pasar por un .env ni por echo).
           pairs=()
-          for name in RESEND_API_KEY RESEND_AUTH_KEY TURNSTILE_SECRET_KEY IP_HASH_SALT WHATSAPP_TOKEN ANTHROPIC_API_KEY \
+          for name in RESEND_API_KEY RESEND_AUTH_KEY SEND_EMAIL_HOOK_SECRETS TURNSTILE_SECRET_KEY IP_HASH_SALT WHATSAPP_TOKEN ANTHROPIC_API_KEY \
                       CHEF_ID CHEF_NOTIFY_EMAIL CHEF_LOCALE MAIL_FROM MAIL_REPLY_TO EMAIL_TRANSPORT \
                       ALLOWED_ORIGINS INBOX_URL PUBLIC_SITE_URL WHATSAPP_PHONE_NUMBER_ID WHATSAPP_TEMPLATE; do
             value="${!name:-}"
@@ -575,6 +581,60 @@ jobs:
         env:
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
         run: supabase functions deploy auth-email --project-ref "${SUPABASE_PROJECT_REF}" --use-api
+
+      # Las altas y los hooks de Auth de altas y de envío (PR20, auth.md §16), siempre juntos (auth-config.ts hooks-on y
+      # hooks-off). Con el secreto SEND_EMAIL_HOOK_SECRET: primero se comprueba la función del freno de altas
+      # (auth-hook-check.ts signup) y la función auth-email (auth-email-check.ts: contesta, exige la firma y tiene el
+      # mismo secreto, sin mandar ningún email); recién entonces hooks-on: altas abiertas, freno de altas y hook de envío
+      # prendidos. Sin el secreto, o si una comprobación falla, hooks-off: altas cerradas y los emails de Auth por GoTrue,
+      # como antes (si algo falló, además el paso queda en rojo). Después de cada PATCH se compara lo que Supabase
+      # guardó, como en «Auth desde el repo» (el secreto no se compara: la API no lo devuelve igual). Vuelta atrás a
+      # mano: borrar el secreto SEND_EMAIL_HOOK_SECRET y volver a desplegar (o el PATCH de hooks-off, auth.md §16).
+      - name: "Hooks de Auth: envío de emails y altas"
+        if: env.HAS_SUPABASE == 'true'
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SEND_EMAIL_HOOK_SECRET: ${{ secrets.SEND_EMAIL_HOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          response="$(mktemp)"
+          trap 'rm -f "${response}"' EXIT
+          api="https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_REF}"
+          # El cuerpo va directo del script al curl y la respuesta queda en un archivo que solo leen jq y auth-config.ts.
+          patch() {
+            local body status
+            body=$(node supabase/scripts/auth-config.ts "$1")
+            status=$(curl -sS -o "${response}" -w '%{http_code}' \
+              -X PATCH "${api}/config/auth" \
+              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data-binary @- <<< "${body}")
+            if [ "${status}" != "200" ]; then
+              echo "::error::La Management API respondió ${status} al configurar Auth (${1})."
+              exit 1
+            fi
+            if ! node supabase/scripts/auth-config.ts verify "$1" < "${response}"; then
+              echo "::error::Auth no quedó como pide el repo (${1})."
+              exit 1
+            fi
+          }
+          if [ -z "${SEND_EMAIL_HOOK_SECRET:-}" ]; then
+            patch hooks-off
+            echo "::warning::Sin el secreto SEND_EMAIL_HOOK_SECRET las altas siguen cerradas y los emails de Auth salen por GoTrue (auth.md §16). Cargarlo y volver a desplegar."
+            exit 0
+          fi
+          if ! node supabase/scripts/auth-hook-check.ts signup || ! node supabase/scripts/auth-email-check.ts; then
+            patch hooks-off
+            echo "::error::No se abrieron las altas ni se prendieron los hooks: quedaron apagados (el motivo está arriba)."
+            exit 1
+          fi
+          patch hooks-on
+          if ! jq -e '.disable_signup == false and .hook_send_email_enabled == true and .hook_before_user_created_enabled == true' "${response}" > /dev/null; then
+            patch hooks-off
+            echo "::error::Auth no quedó con las altas abiertas y los hooks prendidos: se volvieron a apagar."
+            exit 1
+          fi
+          echo "Altas abiertas, con el freno de altas y el hook de envío prendidos."
 
       # Las cuentas de prueba de clienta, en cada despliegue (supabase/scripts/deploy-accounts.sh testers,
       # con tests; auth.md §15): la lista del secreto TEST_CLIENT_EMAILS manda (la valida test-clients.ts:

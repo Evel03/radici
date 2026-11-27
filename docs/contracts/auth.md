@@ -2,10 +2,10 @@
 
 Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo se comprueban y qué se acepta a sabiendas. Se aplica en cada despliegue (`deploy-supabase.yml`, paso «Auth desde el repo»), antes de `db push`. SPEC §6. Lo que se cambie de esto en el panel de Supabase lo pisa el próximo despliegue: un cambio es un PR.
 
-## 1. Qué hace Auth hoy (M0, altas apagadas)
+## 1. Qué hace Auth hoy
 
 - Login con **código por email** (OTP de 10 cifras, vale una hora desde PR16; antes 8 cifras y 600 segundos). La app llama a `signInWithOtp(email, shouldCreateUser: false)` y después `verifyOTP(type: email)`; no manda `emailRedirectTo` y el email no lleva link, solo el código. Por eso `site_url` y `uri_allow_list` no intervienen en el login de `/gestione/` (web, iOS y Android): no hay ninguna redirección que permitir.
-- Las altas están apagadas (`disable_signup`): las cuentas de Evelyn y de sus colaboradores las crea confirmadas el despliegue (contrato public-request §10.1), y también las cuentas de prueba de clienta del secreto `TEST_CLIENT_EMAILS` (§15). Se abren en M2, en su propio PR, con Turnstile.
+- Las altas (`disable_signup`) se abren desde PR20 (27/11/2026) junto con el freno de altas y el hook de envío, solo si el despliegue tiene `SEND_EMAIL_HOOK_SECRET` y las comprobaciones pasan (§17); si no, siguen cerradas. Con Turnstile (§10). Las cuentas de Evelyn y de sus colaboradores las crea confirmadas el despliegue (contrato public-request §10.1), y también las cuentas de prueba de clienta del secreto `TEST_CLIENT_EMAILS` (§15).
 - El email del código sale por el SMTP de Resend (`RESEND_SMTP_KEY`) con la plantilla `supabase/templates/login_code.html`, que se usa para «Magic link» (usuario existente) y «Confirm signup». Sale en el idioma de `user_metadata.locale` (it, es, en).
 
 ## 2. Lo que fija el repo
@@ -26,7 +26,7 @@ Qué hace Auth en el proyecto, qué ajustes fija el repo en producción, cómo s
 | security | `external_email_magic_link_disabled` | `false` | (magic link y código por email prendidos: el código de Evelyn sale de esa plantilla) |
 | security | `rate_limit_verify` | `10` | `[auth.rate_limit] token_verifications = 10` |
 | security | `hook_custom_access_token_enabled`, `hook_custom_access_token_uri` | `true`, `pg-functions://postgres/public/kitchen_access_token_hook` (§8: la cocina solo entra con código) | `[auth.hook.custom_access_token] enabled`, `uri` |
-| security | `hook_before_user_created_enabled` | `false` (el freno de altas se prende en PR20, con las altas) | sin `[auth.hook.before_user_created]` |
+| hooks-on / hooks-off (§17) | `disable_signup`, `hook_before_user_created_*`, `hook_send_email_*` | las altas abiertas con los dos hooks prendidos, o todo cerrado y apagado | sin `[auth.hook.before_user_created]` ni `[auth.hook.send_email]` (en local los emails van a Mailpit) |
 | security | `rate_limit_token_refresh`, `rate_limit_otp`, `rate_limit_anonymous_users`, `rate_limit_sms_sent`, `rate_limit_web3` | `20`, `10`, `1`, `1`, `1` (§9) | `token_refresh`, `sign_in_sign_ups`, `anonymous_users`, `sms_sent`, `web3` |
 | security | `external_google_enabled`, `external_apple_enabled`, `external_phone_enabled`, `external_anonymous_users_enabled`, `external_web3_solana_enabled`, `external_web3_ethereum_enabled`, `saml_enabled` | `false` | sin proveedores en `config.toml` |
 | security | `password_min_length`, `password_required_characters` | `10`, letras y números (§12) | `[auth] minimum_password_length = 10`, `password_requirements = "letters_digits"` |
@@ -144,7 +144,7 @@ Solo cuentan las altas **permitidas** (una rechazada no deja renglón: quien ins
 
 ### Runbook: pausar las altas en una emergencia
 
-Cuando el hook de las altas esté prendido (PR20), desde el SQL editor del panel de Supabase (o `psql` como `postgres`):
+Con el hook de las altas prendido (PR20, §17), desde el SQL editor del panel de Supabase (o `psql` como `postgres`):
 
 ```sql
 update private.auth_guard set paused = true;    -- pausa: las altas dan 403 signups_paused
@@ -159,7 +159,7 @@ Rige en la próxima alta (los valores se leen en cada llamada). No toca el login
 ### Qué se acepta a sabiendas
 
 - **Rotar de IP.** Quien tiene muchas direcciones (o IPv6 repartida en muchos /64, por ejemplo un /48) evita el tope por IP; lo frena el diario (50). Con IPv6 el límite por IP es por /64, no por dirección.
-- **IP spoofeable según el borde.** En local GoTrue confía en `X-Forwarded-For`. En producción la IP del hook la fija la cabecera que Supabase configura detrás de su proxy; no se midió (nada de este PR toca producción). Si no fuera confiable, el tope por IP sería inútil y quedaría el diario: medirlo antes de PR20.
+- **IP spoofeable según el borde.** En local GoTrue confía en `X-Forwarded-For`. En producción la IP del hook la fija la cabecera que Supabase configura detrás de su proxy; no se midió (nada de este PR toca producción). Si no fuera confiable, el tope por IP sería inútil y quedaría el diario: medirlo con las primeras altas (§17, «Pendiente»).
 - **IP compartida.** Una red con NAT (una oficina, un operador móvil) comparte el tope de 5 por hora: con altas poco frecuentes no debería pasar; el síntoma es `signups_ip_cap` y se arregla subiendo `ip_hour_cap`.
 - **Sin IP.** Todas las altas sin IP comparten un cubo de 5 por hora: más estricto que con IP, a propósito.
 - **Altas que fallan después del hook.** Si el alta falla luego (la transacción se revierte), el renglón del contador también: no cuenta.
@@ -413,7 +413,7 @@ Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerrada
 
 **Cómo se usa** (Nicolas): cargar el secreto en GitHub → Settings → Secrets and variables → Actions → `TEST_CLIENT_EMAILS`; correr Deploy Supabase (Actions → Run workflow); en la app, «Password dimenticata?» con ese email, elegir la contraseña desde el link, y entrar.
 
-## 16. El hook de envío de emails: la función (PR19, 27/11/2026; se prende en PR20)
+## 16. El hook de envío de emails: la función (PR19, 27/11/2026; se prende en PR20, §17)
 
 **Para qué.** Con el Send Email Hook prendido, GoTrue no manda los emails de Auth: le pasa cada uno a la Edge Function `auth-email`, que decide si sale y lo manda por Resend con las plantillas de §13. Es lo que permite abrir las altas (PR20): corta el cambio de email **antes de mandar nada** (§4: el trigger no alcanza contra el secuestro por cambio de email) y pone topes que GoTrue no tiene. **PR19 solo publica la función**: GoTrue no la llama hasta que PR20 prenda el hook y cargue su secreto. Hasta entonces los emails salen como siempre, con las plantillas de GoTrue por SMTP.
 
@@ -434,7 +434,7 @@ Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerrada
 
 **La firma.** Standard Webhooks: cabeceras `webhook-id`, `webhook-timestamp` y `webhook-signature`; HMAC-SHA256 de `id.timestamp.cuerpo` con el secreto `v1,whsec_<base64>`; 5 minutos de tolerancia (para atrás y para adelante). `SEND_EMAIL_HOOK_SECRETS` acepta varios separados por «|», para cambiarlo sin cortar. Sin secreto, 503; firma mala o vieja, 401. `verify_jwt = false` (la llama GoTrue, no una persona).
 
-**Respuestas.** 200 `{}` (salió, o no sale sin avisar), o `{"error": {"http_code", "message"}}`, que GoTrue devuelve a quien pidió el email: 400 `invalid_payload`, 401 `invalid_signature`, 403 `email_not_allowed`, 405, 413, 429 `too_many_emails`, 500 `gate_failed`, 502 `email_not_sent` (Resend no lo aceptó), 503 `hook_not_configured` / `email_not_configured`. Con `EMAIL_TRANSPORT=log`, no manda (desarrollo).
+**Respuestas** (corregido en PR20, medido contra GoTrue v2.197.0: §17). 200 `{}`: salió, o no sale sin avisar. Para la persona, 200 con `{"error": {"http_code", "message"}}` en el cuerpo, que GoTrue le devuelve: 403 `email_not_allowed` y 429 `too_many_emails`. Las fallas del hook van con su estado HTTP y GoTrue contesta 500 sin mandar nada: 400 `invalid_payload`, 401 `invalid_signature`, 405, 413, 500 `gate_failed`, 502 `email_not_sent` (Resend no lo aceptó), 503 `hook_not_configured` / `email_not_configured`. Con `EMAIL_TRANSPORT=log`, no manda (desarrollo).
 
 **Resend.** `RESEND_AUTH_KEY`: en producción es la clave del SMTP de Auth (`RESEND_SMTP_KEY` de GitHub), aparte de la de los pedidos; la carga el paso «Secretos de la función». Clave de idempotencia: el hash del `webhook-id` (si GoTrue reintenta, Resend no lo manda dos veces).
 
@@ -442,4 +442,41 @@ Hoy nadie entra con contraseña (la cocina, solo con código; las altas, cerrada
 
 **Código y tests.** `supabase/functions/auth-email/` (`handler.ts` con tests y fakes; `index.ts` conecta Deno, supabase-js y Resend), `_shared/auth_email_hook.ts` (firma contra una implementación aparte con `node:crypto`, pedido de GoTrue, email), pgTAP `30_auth_email_log` (qué sale, topes por carril, retención).
 
-**Qué falta (PR20).** Prender el hook en Auth (URI y secreto) desde `auth-config.ts`, con el secreto en la función; comprobar antes del PATCH que la función contesta; y verificar en producción que llega el código de la cocina, que una cuenta de prueba recupera la contraseña y que `PUT /user {email}` falla sin que salga nada. Vuelta atrás: el hook en `false`; las plantillas de GoTrue siguen en su lugar.
+**Prendido en PR20** junto con las altas: §17.
+
+## 17. Las altas abiertas, con el freno de altas y el hook de envío (PR20, 27/11/2026)
+
+Decisión de Nicolas del 27/11/2026: el hook de envío y las altas, juntos. Las altas (`disable_signup`), el freno de altas (`before_user_created_guard`, §8) y el hook de envío (`auth-email`, §16) van siempre juntos, en el paso «Hooks de Auth: envío de emails y altas» de `deploy-supabase.yml`, al final (cuando la función ya está publicada y tiene su secreto). `auth-config.ts` arma los dos cuerpos:
+
+| Cuerpo | Campos |
+|---|---|
+| `hooks-on` | `disable_signup: false`, `hook_before_user_created_enabled: true` + su URI, `hook_send_email_enabled: true` + `https://<ref>.supabase.co/functions/v1/auth-email` + `hook_send_email_secrets` |
+| `hooks-off` | `disable_signup: true`, los dos hooks en `false`: los emails de Auth salen por GoTrue con sus plantillas, como antes |
+
+**El secreto.** `SEND_EMAIL_HOOK_SECRET` (secreto de GitHub, lo crea Nicolas una vez): `v1,whsec_` y 32 bytes al azar en base64. El mismo valor va a Auth (`hook_send_email_secrets`) y a la función (`SEND_EMAIL_HOOK_SECRETS`, en «Secretos de la función», que corta si no tiene esa forma). No se compara después del PATCH (la API no lo devuelve igual). Cambiarlo: un secreto nuevo en GitHub y volver a desplegar (la función lo recibe antes que Auth; durante esos segundos un email de Auth puede fallar).
+
+**Qué hace el paso.**
+1. Sin el secreto: `hooks-off` y un aviso. Las altas siguen cerradas.
+2. Con el secreto: comprueba la función del freno (`auth-hook-check.ts signup`: existe, security definer, solo la ejecuta `supabase_auth_admin`, trae su regla) y la función de envío (`auth-email-check.ts`: sin firma contesta 401, y firmada como una invitación contesta 200 con el error 403 `email_not_allowed`, o sea, tiene el mismo secreto; ninguno de los dos pedidos manda un email). Si algo falla: `hooks-off` y el paso en rojo.
+3. `hooks-on`, y comprueba que Auth quedó con las altas abiertas y los dos hooks prendidos; si no, `hooks-off` y en rojo.
+
+**Probado de punta a punta** (27/11/2026) contra un GoTrue v2.197.0 local con el hook y el freno prendidos y el handler real de `auth-email` (en lugar de Resend, cada email anotado):
+- el código: a la cocinera le llega; a una clienta, GoTrue contesta 200 y no sale nada;
+- la recuperación: a una clienta le llega el link a `/accesso/`; a la cocinera, 200 y nada;
+- un alta nueva: pasa por el freno (lo anota) y le llega la confirmación;
+- `PUT /user {email}` de una clienta con sesión: **403 `email_not_allowed`**, sin email y sin ningún cambio pendiente (`email_change` y `email_change_sent_at` vacíos). Es lo que exigía §4 antes de abrir las altas;
+- la cuarta recuperación en una hora a la misma clienta: **429 `too_many_emails`**;
+- los logs del handler, sin emails, códigos ni links.
+
+**Lo que se aprendió en esa prueba.** GoTrue solo le devuelve el error a la persona si el hook contesta con estado **200** y `{"error": {"http_code", "message"}}` en el cuerpo. Con un estado 403 o 429 contesta 500 `unexpected_failure` (y a un 429 además lo reintenta). Por eso `auth-email` contesta 200 con el error para lo que es para la persona (rechazo y tope) y con estado de error para las fallas del hook (firma, configuración, base, Resend).
+
+**Para probar en producción después de prenderlo** (Nicolas, con la cuenta de prueba de §15):
+1. Evelyn (o Nicolas en `/gestione/`) pide el código: le llega.
+2. La cuenta de prueba: «¿Olvidaste la contraseña?» → le llega el link y elige la contraseña.
+3. Crear una cuenta nueva con otro email: llega la confirmación, se elige la contraseña y se entra.
+
+**Vuelta atrás.** Borrar el secreto `SEND_EMAIL_HOOK_SECRET` en GitHub y correr Deploy Supabase: `hooks-off`. Las plantillas de GoTrue siguen cargadas. En una emergencia sin esperar un despliegue: el PATCH de `hooks-off` con la Management API, o pausar solo las altas por SQL (§8: `update private.auth_guard set paused = true`).
+
+**Código de emergencia para Evelyn.** Si el hook falla y Evelyn necesita entrar ya: primero `hooks-off` (el código vuelve a salir por GoTrue). Si tampoco sale por GoTrue: un administrador genera un link con la API de administración (`POST /auth/v1/admin/generate_link`, `type: magiclink`) y se lo manda por la API de Resend directo a su email, sin escribirlo nunca en un log ni en un chat.
+
+**Pendiente.** La IP que ve el freno de altas en producción (`metadata.ip_address`, §8, «IP spoofeable según el borde») todavía no se midió: con las primeras altas, mirar en `private.signup_attempts` que los hashes de IP varíen. Si no son confiables, el tope por IP no sirve y queda el diario (50).
