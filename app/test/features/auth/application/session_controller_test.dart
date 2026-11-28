@@ -180,4 +180,11 @@ class _SlowAccounts implements AccountRepository {
   @override
   Future<void> saveAccountDetails(Map<String, Object?> details) =>
       throw UnimplementedError();
+
+  @override
+  Future<Map<String, Object?>?> fetchAccountDetails() =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> deleteMyAccount() => throw UnimplementedError();
 }

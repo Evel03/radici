@@ -31,6 +31,10 @@ abstract final class AppRoutes {
   static const String areaPasswordSegment = 'password';
   static const String areaPassword = '$area/$areaPasswordSegment';
 
+  /// «Mi cuenta» de la clienta (auth.md §20): sus datos, borrar las respuestas opcionales o la cuenta.
+  static const String areaAccountSegment = 'account';
+  static const String areaAccount = '$area/$areaAccountSegment';
+
   /// Parámetro de [login] con el email ya escrito (el «Vai al login» de
   /// /accesso/: `/app/#/accedi?email=…`).
   static const String emailParam = 'email';

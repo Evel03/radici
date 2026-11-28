@@ -5016,5 +5016,77 @@
   "menuSendOldQuote": "È partito con una versione precedente del preventivo e nessuno l'ha confermato: invialo di nuovo.",
   "@menuSendOldQuote": {
     "description": "Estado del envío del menú de una semana confirmada (ficha, editor y semanas de la reserva): su último envío salió con una versión anterior del presupuesto y nadie lo confirmó."
+  },
+  "myAccountTitle": "Il mio account",
+  "@myAccountTitle": {
+    "description": "Título de «Mi cuenta» (área de la clienta) y del botón que la abre."
+  },
+  "myAccountEmpty": "Non hai ancora inserito i tuoi dati: completali qui, così Evelyn ti conosce meglio.",
+  "@myAccountEmpty": {
+    "description": "«Mi cuenta» de una cuenta sin datos guardados (creada antes del alta con datos)."
+  },
+  "myAccountEmailFixed": "È l'email con cui entri. Per ora non si può cambiare.",
+  "@myAccountEmailFixed": {
+    "description": "Debajo del email en «Mi cuenta»: no se cambia desde la app."
+  },
+  "myAccountPrivacy": "Ho letto l'informativa privacy.",
+  "@myAccountPrivacy": {
+    "description": "Casilla de la privacy en «Mi cuenta» cuando falta aceptarla (sin datos guardados o con una versión anterior)."
+  },
+  "myAccountErrorPrivacy": "Per salvare i tuoi dati devi accettare l'informativa privacy.",
+  "@myAccountErrorPrivacy": {
+    "description": "Debajo de la casilla de la privacy en «Mi cuenta» si se quiso guardar sin aceptarla."
+  },
+  "myAccountSaved": "Dati salvati.",
+  "@myAccountSaved": {
+    "description": "Aviso después de guardar los datos en «Mi cuenta»."
+  },
+  "myAccountLoadFailed": "Non riusciamo a caricare i tuoi dati. Controlla la connessione e riprova.",
+  "@myAccountLoadFailed": {
+    "description": "«Mi cuenta» cuando no se pudieron leer los datos guardados."
+  },
+  "myAccountDangerSection": "Cancellare i tuoi dati",
+  "@myAccountDangerSection": {
+    "description": "Título de la sección de «Mi cuenta» con borrar las respuestas opcionales y borrar la cuenta."
+  },
+  "myAccountClearOptional": "Cancella le risposte facoltative",
+  "@myAccountClearOptional": {
+    "description": "Botón de «Mi cuenta»: borra la temporada, cómo nos conoció, intereses, días y personas."
+  },
+  "myAccountClearTitle": "Cancellare le risposte facoltative?",
+  "@myAccountClearTitle": {
+    "description": "Título del diálogo que confirma borrar las respuestas opcionales."
+  },
+  "myAccountClearBody": "Cancelliamo la stagione preferita, come ci hai conosciuto, cosa ti interessa, i giorni e per quante persone. I tuoi dati personali e l'indirizzo restano.",
+  "@myAccountClearBody": {
+    "description": "Cuerpo del diálogo que confirma borrar las respuestas opcionales."
+  },
+  "myAccountClearConfirm": "Cancella",
+  "@myAccountClearConfirm": {
+    "description": "Botón que confirma borrar las respuestas opcionales."
+  },
+  "myAccountDelete": "Elimina il mio account",
+  "@myAccountDelete": {
+    "description": "Botón de «Mi cuenta» que borra la cuenta entera (pide confirmación)."
+  },
+  "myAccountDeleteHint": "Si cancellano l'account e i dati che hai inserito. Non si può annullare.",
+  "@myAccountDeleteHint": {
+    "description": "Debajo de «Borrar mi cuenta»."
+  },
+  "myAccountDeleteTitle": "Eliminare il tuo account?",
+  "@myAccountDeleteTitle": {
+    "description": "Título del diálogo que confirma borrar la cuenta."
+  },
+  "myAccountDeleteBody": "Cancelliamo il tuo account, i tuoi dati e le tue risposte, ed esci dall'app. Evelyn conserva solo ciò che serve dei servizi già fatti (per esempio i pagamenti). Non si può annullare.",
+  "@myAccountDeleteBody": {
+    "description": "Cuerpo del diálogo que confirma borrar la cuenta."
+  },
+  "myAccountDeleteConfirm": "Elimina l'account",
+  "@myAccountDeleteConfirm": {
+    "description": "Botón que confirma borrar la cuenta."
+  },
+  "myAccountDeleted": "Il tuo account è stato eliminato.",
+  "@myAccountDeleted": {
+    "description": "Aviso después de borrar la cuenta (ya fuera de la sesión)."
   }
 }
