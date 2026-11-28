@@ -6,7 +6,7 @@ import 'package:radici/features/auth/domain/password_rules.dart';
 
 /// La versión de la privacy que acepta quien crea la cuenta: la vigente de la web (CONSENT_VERSION de
 /// supabase/functions/_shared/public_request.ts; test/features/auth/sign_up_form_test.dart las compara).
-const String accountPrivacyVersion = '2026-11-28';
+const String accountPrivacyVersion = '2026-11-29';
 
 /// Temporada preferida (account_details.favorite_season).
 enum Season { spring, summer, autumn, winter, any }

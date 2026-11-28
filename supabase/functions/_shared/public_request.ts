@@ -23,7 +23,7 @@ export const PUBLIC_REQUEST_VERSION = 4;
 export const PUBLIC_REQUEST_VERSIONS: readonly number[] = [PUBLIC_REQUEST_VERSION, 3, 2];
 
 /** Versión vigente del texto de los consentimientos (privacy y datos de salud). */
-export const CONSENT_VERSION = "2026-11-28";
+export const CONSENT_VERSION = "2026-11-29";
 /**
  * Versiones de la privacy con que se puede guardar un pedido de la versión vigente del contrato. Al cambiar
  * el texto sin cambiar el contrato, agregar la nueva y dejar la anterior mientras haya páginas en caché (y
@@ -39,11 +39,13 @@ export const CONSENT_VERSION = "2026-11-28";
  * que nunca mostraba precios) y la clienta lo acepta o lo rechaza desde ahí, una respuesta más de la
  * solicitud (la misma base, art. 6.1.b, y la misma conservación); el formulario tampoco cambia, así que las
  * tres anteriores siguen valiendo. 2026-11-28 suma la cuenta de la clienta (sus datos, para qué, base, conservación y qué
- * es obligatorio; auth.md §18), sin cambiar el formulario: 2026-11-27 sigue valiendo. 2026-11-27 suma el punto 6, «Offerte e novità» (la casilla opcional de ofertas,
+ * es obligatorio; auth.md §18), sin cambiar el formulario: 2026-11-27 sigue valiendo. 2026-11-29 cuenta que la
+ * cuenta se borra desde «Mi cuenta» en la app, al instante (auth.md §20), sin cambiar el formulario: 2026-11-28 y
+ * las anteriores siguen valiendo. 2026-11-27 suma el punto 6, «Offerte e novità» (la casilla opcional de ofertas,
  * contrato §13), y corre la numeración de los siguientes; las páginas abiertas antes no la tienen, así que
  * 2026-11-23 y las anteriores siguen valiendo.
  */
-export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-11-27", "2026-11-23", "2026-11-22", "2026-11-19", "2026-11-16"];
+export const CONSENT_VERSIONS: readonly string[] = [CONSENT_VERSION, "2026-11-28", "2026-11-27", "2026-11-23", "2026-11-22", "2026-11-19", "2026-11-16"];
 /**
  * Privacy de las páginas de la versión 1 del contrato: 2026-11-15 (sin la pregunta de alergias ni las
  * consultas del calendario) y 2026-10-19 (el borrador, solo prueba interna). Nunca se guardan: se aceptan
